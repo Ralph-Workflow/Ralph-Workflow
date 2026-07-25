@@ -221,7 +221,6 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
     assert "ralph_submit_md_artifact" in prompt
     assert "ralph_verify_md_artifact" in prompt
-    assert "ralph_edit_md_plan_step" in prompt
     assert PLANNING_FIRST_PASS_APPROVAL_TEXT in prompt
     assert "## SHIPPED SKILLS" in prompt
     assert "skill discovery" in prompt
@@ -241,7 +240,8 @@ def test_planning_prompt_describes_native_markdown_plan_contract(tmp_path: Path)
 
     assert "ONE markdown document" in prompt
     assert "### [S-n] Title" in prompt
-    assert "IDs are stable and never renumbered" in prompt
+    assert "IDs are" in prompt
+    assert "stable and never renumbered" in prompt
     assert "ralph_verify_md_artifact" in prompt
     assert "ralph_submit_md_artifact" in prompt
     assert "ralph_stage_md_artifact" in prompt
@@ -269,9 +269,7 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> 
 
     assert "PLANNING EDIT MODE" in prompt
     assert "The prior plan was rejected by planning analysis." in prompt
-    assert "ralph_edit_md_plan_step" in prompt
-    assert "replacement" in prompt
-    assert "IDs are stable and never renumbered" in prompt
+    assert "ralph_edit_md_plan_step" not in prompt
     assert PLANNING_EDIT_DEFECT_SCOPE_TEXT in prompt
     assert PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT in prompt
     assert "ralph_verify_md_artifact" in prompt
@@ -325,12 +323,11 @@ def test_planning_prompts_regression_step_editor_uses_staged_draft_contract(
     )
 
     for prompt in prompts:
-        assert "persisted plan draft" in prompt
-        assert "stage the complete plan first" in prompt
-        assert "`content` is not an accepted argument" in prompt
-        assert "`replacement` is required for `insert` and `replace`" in prompt
-        assert "`index` is required for `move`" in prompt
-        assert "finalize the edited draft" in prompt
+        assert "ralph_stage_md_artifact" in prompt
+        assert "mode=\"replace_all\"" in prompt
+        assert "unit of revision" in prompt
+        assert "ralph_finalize_md_artifact" in prompt
+        assert "ralph_edit_md_plan_step" not in prompt
 
 
 def test_planning_analysis_prompt_teaches_core_workflow_inference(tmp_path: Path) -> None:
@@ -384,7 +381,7 @@ def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: P
         )
 
     assert "ONE markdown document" in prompt
-    assert "ralph_edit_md_plan_step" in prompt
+    assert "ralph_edit_md_plan_step" not in prompt
     assert "ralph_verify_md_artifact" in prompt
     assert "ralph_submit_md_artifact" in prompt
     assert history_path in prompt

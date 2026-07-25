@@ -36,7 +36,6 @@ Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml im
 Not submitting the revised plan is a FAILURE.
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
-{{ render_optional_artifact_skill_pointer('submit-plan-step-edits', '.agent/artifact-formats/plan.md') }}
 
 Analysis rules:
 - Do not localize your revision pass to only the sections explicitly cited by the analyzer; you must perform your own repo-grounded analysis before submitting.
@@ -57,8 +56,7 @@ Submission gates:
 
 Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan.md`):
 1. Read the current plan at `.agent/artifacts/plan.md` with read-only tools and rewrite every section the feedback invalidates.
-2. For a fix confined to individual steps, stage the complete current plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against the persisted draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace` and must be one complete matching `### [S-3] Title` block; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. The editor saves the draft, and IDs are stable and never renumbered.
-3. Inspect the edited draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), repair every line/section/rule-anchored diagnostic, then finalize it with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
+2. To revise a staged plan, call {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete updated document, `mode="replace_all"`), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). The whole document is the unit of revision; no per-step edit endpoint exists.
 4. For a holistic rewrite that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments.
 5. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
    After that receipt exists, you MUST call

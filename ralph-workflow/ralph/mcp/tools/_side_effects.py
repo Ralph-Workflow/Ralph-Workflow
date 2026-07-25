@@ -90,8 +90,6 @@ REGISTRY: dict[str, SideEffectContract] = {
     "git_show": _contract("git_show", "read"),
     "ralph_verify_md_artifact": _contract("ralph_verify_md_artifact", "read"),
     "ralph_get_md_draft": _contract("ralph_get_md_draft", "read"),
-    # Loads and atomically replaces the persisted plan draft.
-    "ralph_edit_md_plan_step": _contract("ralph_edit_md_plan_step", "mutate"),
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
     # Indexed exploration tools (Phase 1).

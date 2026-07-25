@@ -558,10 +558,10 @@ def test_format_doc_includes_new_sections() -> None:
         "Verify:",
         "Timeout:",
         "Evidence:",
-        "ralph_edit_md_plan_step",
+        "ralph_stage_md_artifact",
         "must not start with `bash -c`, `sh -c`, or `eval`",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
     normalized = " ".join(doc.split())
-    assert "wherever that step appears in the document" in normalized
+    assert "ralph_edit_md_plan_step" not in doc
     assert "Resubmit the whole document" not in doc

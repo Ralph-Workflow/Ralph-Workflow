@@ -21,7 +21,6 @@ pytestmark = pytest.mark.subprocess_e2e
 PACKAGE_OWNED_SKILLS = frozenset(
     {
         "submit-plan-artifact",
-        "submit-plan-step-edits",
         "submit-artifact",
         "submit-commit-message-artifact",
         "submit-development-result-artifact",

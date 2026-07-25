@@ -32,7 +32,7 @@ def test_template_variables_name_the_native_markdown_surface() -> None:
     assert variables["STAGE_MD_ARTIFACT_TOOL_NAME"] == "ralph_stage_md_artifact"
     assert variables["GET_MD_DRAFT_TOOL_NAME"] == "ralph_get_md_draft"
     assert variables["FINALIZE_MD_ARTIFACT_TOOL_NAME"] == "ralph_finalize_md_artifact"
-    assert variables["EDIT_MD_PLAN_STEP_TOOL_NAME"] == "ralph_edit_md_plan_step"
+    assert "EDIT_MD_PLAN_STEP_TOOL_NAME" not in variables
 
 
 def test_prefixed_template_variables_use_only_provider_visible_names() -> None:

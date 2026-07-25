@@ -54,15 +54,16 @@ Agents submit artifacts through the markdown artifact tools. The handlers live i
 | `ralph_get_md_draft` | Return the staged draft and its current diagnostics (resume after interruption) |
 | `ralph_discard_md_draft` | Delete the staged draft for one artifact type |
 | `ralph_finalize_md_artifact` | Validate the assembled draft with the submission gate and submit it canonically |
-| `ralph_edit_md_plan_step` | Edit and persist one staged plan step by stable `S-<n>` ID (`insert`, `replace`, `remove`, `move`) |
 
 Every artifact type — including `plan` — is submitted as one markdown document via
 `ralph_submit_md_artifact` (parameters: `artifact_type`, `content`).
 `ralph_verify_md_artifact` takes the same parameters and lets an agent check a draft
-cheaply before submitting. After a plan is staged, `ralph_edit_md_plan_step`
-loads the persisted draft, applies one ID-addressed step edit, preserves stable
-step IDs and references, revalidates the result, and atomically saves the
-updated draft.
+cheaply before submitting. To revise a staged plan, `ralph_stage_md_artifact`
+(`mode="replace_all"`) replaces the persisted draft with the complete updated
+document; `ralph_get_md_draft` returns it for inspection, and
+`ralph_finalize_md_artifact` revalidates the whole document and submits it.
+Stable step IDs are preserved because the author keeps them stable — the
+revision flow is the whole document, not per-step edits.
 
 ### Staging large documents
 

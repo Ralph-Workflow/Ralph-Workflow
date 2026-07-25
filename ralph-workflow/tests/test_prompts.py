@@ -119,7 +119,7 @@ def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     assert variables["EXEC_TOOL_NAME"] == "exec"
     assert variables["DECLARE_COMPLETE_TOOL_NAME"] == "declare_complete"
     assert variables["GIT_DIFF_TOOL_NAME"] == "git_diff"
-    assert variables["EDIT_MD_PLAN_STEP_TOOL_NAME"] == "ralph_edit_md_plan_step"
+    assert "EDIT_MD_PLAN_STEP_TOOL_NAME" not in variables
     assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(
         visible_mcp_tool_names(capabilities)
     )

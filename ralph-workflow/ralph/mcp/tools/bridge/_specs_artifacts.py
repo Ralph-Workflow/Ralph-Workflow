@@ -10,7 +10,6 @@ from ralph.mcp.tools.names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
     DISCARD_MD_DRAFT_TOOL,
-    EDIT_MD_PLAN_STEP_TOOL,
     FINALIZE_MD_ARTIFACT_TOOL,
     GET_MD_DRAFT_TOOL,
     READ_ENV_TOOL,
@@ -117,25 +116,6 @@ def artifact_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.md_artifact",
             handler_name="handle_finalize_md_artifact",
-        ),
-        ToolSpec(
-            metadata=_metadata(
-                name=EDIT_MD_PLAN_STEP_TOOL,
-                description="Edit one step in the persisted markdown plan draft by stable S-id. Stage the plan first; replacement is a markdown step block ('### [S-n] Title' heading plus body), never JSON or a full document. The updated draft is saved atomically and returned with diagnostics; stable 'Depends on:' and 'Satisfied by:' references survive edits.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "action": {"enum": ["insert", "replace", "remove", "move"]},
-                        "step_id": {"type": "string"},
-                        "replacement": {"type": "string"},
-                        "index": {"type": "integer"},
-                    },
-                    "required": ["action", "step_id"],
-                },
-                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
-            ),
-            module_name="ralph.mcp.tools.md_artifact",
-            handler_name="handle_edit_md_plan_step",
         ),
         ToolSpec(
             metadata=_metadata(

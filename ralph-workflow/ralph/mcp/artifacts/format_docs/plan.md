@@ -6,10 +6,11 @@ Validate with `ralph_verify_md_artifact`, then submit with
 `ralph_submit_md_artifact` (`artifact_type: plan`). Large plans may use the
 stage/get/finalize tools.
 
-Call `ralph_edit_md_plan_step` with a step's stable `S-n` ID wherever that step
-appears in the document, including under custom, repeated, or nested headings.
-Insert, move, replace, and remove never renumber IDs. A replacement is one
-complete `### [S-n] Title` block whose ID matches `step_id`.
+To revise a staged plan, call `ralph_stage_md_artifact` (`artifact_type: plan`,
+`mode="replace_all"`, `content` = the complete updated document), inspect with
+`ralph_get_md_draft`, then submit with `ralph_finalize_md_artifact`. Stable IDs
+are preserved because the author keeps them stable; renumbering breaks every
+`Depends on:` and `Satisfied by:` reference in the document.
 
 Parallel work is delegated to agent-managed sub-agents. Ralph-managed fan-out is dormant
 in this build, but work-unit markers are still validated when used.
@@ -389,7 +390,6 @@ not make the surrounding sections mandatory:
 Descriptive labels and vocabulary are advisory. `Intent`, `Coverage`, scope
 `Category`, step `Type`, step `Priority`, target and critical-file `Action`,
 and risk `Severity` are free-form descriptive hints, so project-specific
-`Type:` values and target actions are preserved verbatim. Project-specific
 `Type:` values and target actions are preserved verbatim, and arbitrary
 headings remain descriptive — only the fan-out parser, validators, and the
 schema rules above enforce structure. Recommended built-in `Type:` values

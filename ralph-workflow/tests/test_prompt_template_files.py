@@ -55,7 +55,7 @@ def test_planning_templates_name_only_the_markdown_artifact_surface() -> None:
 
     assert "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE" in text
     assert "VERIFY_MD_ARTIFACT_TOOL_REFERENCE" in text
-    assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" in text
+    assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" not in text
     for retired in (
         "ralph_submit_artifact",
         "ralph_submit_plan_section",
@@ -132,12 +132,10 @@ def test_planning_edit_templates_explain_stable_targeted_edits() -> None:
         assert "STAGE_MD_ARTIFACT_TOOL_REFERENCE" in text
         assert "GET_MD_DRAFT_TOOL_REFERENCE" in text
         assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in text
-        assert "`content` is not an accepted argument" in text
-        assert "replacement" in text
-        assert "`index` is required for `move`" in text
-        assert "### [S-3] Title" in text
-        assert "stable" in text.lower()
-        assert "never renumbered" in text
+        assert "mode=\"replace_all\"" in text
+        assert "no per-step edit endpoint exists" in text or "unit of revision" in text
+        assert "stable" in text.lower() or "stable" in _template("shared/_planning_thinking.jinja").lower()
+        assert "never renumbered" in text or "never renumbered" in _template("shared/_planning_thinking.jinja")
 
 
 def test_planning_author_templates_use_the_persisted_step_edit_flow() -> None:
@@ -155,32 +153,28 @@ def test_planning_author_templates_use_the_persisted_step_edit_flow() -> None:
         text = _template(name)
         combined = text + "\n" + partial_text
         assert "STAGE_MD_ARTIFACT_TOOL_REFERENCE" in combined, (
-            f"{name} (or its thinking partial) must reference the persisted step edit flow"
+            f"{name} (or its thinking partial) must reference the staged revision flow"
         )
-        assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" in combined
+        assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" not in combined
         assert "GET_MD_DRAFT_TOOL_REFERENCE" in combined
         assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in combined
-        # The persisted-edit-flow arguments are shared across every author template
-        # because the thinking partial owns the edit-flow narrative.
-        assert "`content` is not an accepted argument" in combined
-        assert "`replacement` is required for `insert` and `replace`" in combined
-        assert "`index` is required for `move`" in combined
+        # The staged-revision-flow arguments are shared across every author template
+        # because the thinking partial owns the revision-flow narrative.
+        assert "mode=\"replace_all\"" in combined
+        assert "no per-step edit endpoint exists" in combined
 
 
-def test_planning_analysis_teaches_targeted_edits_through_the_saved_draft() -> None:
+def test_planning_analysis_teaches_standard_revision_flow() -> None:
     text = _template("planning_analysis.jinja")
 
     for tool_name in (
         "ralph_stage_md_artifact",
-        "ralph_edit_md_plan_step",
         "ralph_get_md_draft",
         "ralph_finalize_md_artifact",
     ):
         assert tool_name in text
+    assert "ralph_edit_md_plan_step" not in text
     assert "resubmitted via `ralph_submit_md_artifact`" not in text
-    assert (
-        'Use ralph_edit_md_plan_step with action "replace" on S-2 so it names the exact policy'
-    ) not in text
 
 
 def test_analysis_templates_require_markdown_submission_and_actionable_repair() -> None:

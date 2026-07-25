@@ -206,28 +206,33 @@ def _teach_duplicate_closed_frontmatter_vocabulary(
 ) -> None:
     """Rewrite MD006 duplicate-frontmatter diagnostics into the consumer convention.
 
-    Every MD006 message starts as ``duplicate frontmatter field <key>``; the
-    teach pass appends the consumer phrase (closed-vocabulary acceptance
-    list when one is registered, otherwise the spec-registry phrase for the
-    plain ``type`` frontmatter field) plus a ``resolve by`` clause so the
-    diagnostic reads ``what; blocking because <consumer>; resolve by <fix>``.
+    The parser already attaches a generic routing-consumer phrase to every
+    MD006 message; when the duplicated field has a closed vocabulary in
+    the spec, the teach pass replaces the generic ``resolve by`` line with
+    the closed-vocabulary acceptance list so the agent sees the exact
+    set of values the consumer can route. Plain ``type`` duplicates and
+    other non-closed fields keep the generic spec-registry phrase.
+
+    Detection: the message starts with ``duplicate frontmatter field <key>``
+    (followed by the parser's appended consumer phrase), so the prefix
+    regex anchors the look-up to the start of the message.
     """
     for index, diagnostic in enumerate(diagnostics):
         if diagnostic.rule_id != "MD006":
             continue
         for field_name, vocabulary in spec.closed_frontmatter.items():
-            if diagnostic.message != f"duplicate frontmatter field {field_name!r}":
+            if not diagnostic.message.startswith(f"duplicate frontmatter field {field_name!r}"):
                 continue
             accepted = ", ".join(vocabulary.values)
             diagnostics[index] = Diagnostic(
                 diagnostic.line,
                 diagnostic.section,
                 diagnostic.rule_id,
-                f"{diagnostic.message}; blocking because the closed vocabulary for "
-                f"{field_name!r} is consumed by the spec registry "
-                "(ralph/mcp/artifacts/markdown/registry.py) so duplicates cannot be "
-                f"routed; resolve by keeping exactly one {field_name!r} field "
-                f"whose value is one of: {accepted}",
+                f"duplicate frontmatter field {field_name!r}; blocking because the "
+                f"closed vocabulary for {field_name!r} is consumed by the spec "
+                "registry (ralph/mcp/artifacts/markdown/registry.py) so "
+                f"duplicates cannot be routed; resolve by keeping exactly one "
+                f"{field_name!r} field whose value is one of: {accepted}",
                 diagnostic.severity,
             )
             break
@@ -242,10 +247,11 @@ def _teach_duplicate_closed_frontmatter_vocabulary(
                 diagnostic.line,
                 diagnostic.section,
                 diagnostic.rule_id,
-                f"{diagnostic.message}; blocking because the artifact spec registry "
-                "(ralph/mcp/artifacts/markdown/registry.py) routes the parsed "
-                f"{field_name} value to the plan validator and a duplicate field "
-                f"cannot be routed; resolve by keeping exactly one {field_name} field",
+                f"duplicate frontmatter field {field_name!r}; blocking because the "
+                "artifact spec registry (ralph/mcp/artifacts/markdown/registry.py) "
+                f"routes the parsed {field_name} value to the plan validator and "
+                f"a duplicate field cannot be routed; resolve by keeping exactly "
+                f"one {field_name} field",
                 diagnostic.severity,
             )
 

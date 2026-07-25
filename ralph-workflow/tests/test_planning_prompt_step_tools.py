@@ -87,9 +87,10 @@ def test_planning_prompt_mentions_markdown_plan_tools(tmp_path: Path) -> None:
     rendered = workspace.read(prompt_path)
     assert "ralph_verify_md_artifact" in rendered
     assert "ralph_submit_md_artifact" in rendered
-    assert "ralph_edit_md_plan_step" in rendered
+    assert "ralph_edit_md_plan_step" not in rendered
     assert "### [S-n] Title" in rendered
-    assert "IDs are stable and never renumbered" in rendered
+    assert "IDs are" in rendered
+    assert "stable and never renumbered" in rendered
 
 
 # ---------------------------------------------------------------------------
@@ -197,8 +198,7 @@ def test_planning_analysis_prompt_mentions_markdown_step_edit_remediation_flow(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "ralph_edit_md_plan_step" in rendered
-    assert "`replace` for a vague or wrong step" in rendered
-    assert "`insert` for missing work" in rendered
-    assert "`remove` for unsupported work" in rendered
+    assert "ralph_edit_md_plan_step" not in rendered
+    assert "ralph_stage_md_artifact" in rendered
+    assert "ralph_finalize_md_artifact" in rendered
     assert "ralph_submit_md_artifact" in rendered

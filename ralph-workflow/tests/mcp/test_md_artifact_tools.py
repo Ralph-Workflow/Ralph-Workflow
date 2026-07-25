@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import tool_specs
@@ -86,3 +88,49 @@ def test_markdown_artifact_tools_are_registered() -> None:
     tool_names = {spec.metadata.definition.name for spec in tool_specs(McpConfig())}
 
     assert {SUBMIT_MD_ARTIFACT_TOOL, VERIFY_MD_ARTIFACT_TOOL} <= tool_names
+
+
+@pytest.mark.parametrize(
+    ("label", "content"),
+    [
+        (
+            "duplicate_type_frontmatter",
+            "---\ntype: plan\ntype: plan\n---\n## Steps\n\n### [S-1] Step\nType: file_change\nFiles:\n- modify foo.py\n",
+        ),
+        (
+            "malformed_frontmatter",
+            "---\ntype: plan\nnot a field\n---\n## Steps\n\n### [S-1] Step\nType: file_change\nFiles:\n- modify foo.py\n",
+        ),
+        (
+            "top_level_prose",
+            "---\ntype: plan\n---\nSome prose before any heading.\n## Steps\n\n### [S-1] Step\nType: file_change\nFiles:\n- modify foo.py\n",
+        ),
+    ],
+)
+def test_plan_verify_rejects_malformed_markdown(tmp_path, label, content) -> None:
+    """The public ``handle_verify_md_artifact`` rejects malformed plan documents.
+
+    Pre-24e66c49f the plan-aware analyze path silently canonicalized
+    malformed documents; the rewritten chain keeps the parser
+    diagnostics and surfaces them through the tool handler so a real
+    agent never sees ``valid=True`` for a plan that the parser cannot
+    route.
+    """
+    session = MockSession()
+    workspace = MockWorkspace(tmp_path)
+    params = {"artifact_type": "plan", "content": content}
+
+    verified = handle_verify_md_artifact(session, workspace, params)
+
+    assert verified.is_error is True, (
+        f"malformed plan ({label}) should fail through the public tool path"
+    )
+    payload = _payload(verified)
+    assert payload["valid"] is False
+    diagnostics = must_dict_list(payload["diagnostics"])
+    assert diagnostics, f"malformed plan ({label}) must surface at least one diagnostic"
+    rule_ids = {diagnostic["rule_id"] for diagnostic in diagnostics}
+    assert rule_ids & {"MD002", "MD005", "MD006", "MD007"}, (
+        f"malformed plan ({label}) should surface a parser-originated error; "
+        f"got rule_ids={sorted(rule_ids)!r}"
+    )

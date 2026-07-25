@@ -21,13 +21,6 @@ _SEED_ARTIFACT_PLANNING: tuple[AuditEntry, ...] = (
         counters=_counters(transcript_tokens=96, returned_bytes=192, tool_calls=1),
     ),
     AuditEntry(
-        tool=RalphToolName.EDIT_MD_PLAN_STEP,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.KEEP,
-        rationale="Stable-ID plan editing replaces JSON draft mutations.",
-        counters=_counters(transcript_tokens=96, returned_bytes=192, tool_calls=1),
-    ),
-    AuditEntry(
         tool=RalphToolName.STAGE_MD_ARTIFACT,
         family=AuditFamily.ARTIFACT,
         outcome=AuditOutcome.KEEP,

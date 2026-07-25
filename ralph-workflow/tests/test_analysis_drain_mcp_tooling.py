@@ -50,7 +50,6 @@ _PLANNING_REQUIRED_TOOLS = {
     "ralph_stage_md_artifact",
     "ralph_finalize_md_artifact",
     "ralph_discard_md_draft",
-    "ralph_edit_md_plan_step",
 }
 
 

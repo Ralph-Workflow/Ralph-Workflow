@@ -11,7 +11,6 @@ from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs.plan import (
     _OverrideMatch,
     analyze_plan_document,
-    edit_plan_step_markdown,
 )
 from ralph.mcp.artifacts.md_draft_io import (
     delete_md_draft,
@@ -215,46 +214,6 @@ def _submit_canonical(
     )
 
 
-def handle_edit_md_plan_step(
-    session: CoordinationSessionLike,
-    workspace: WorkspaceLike,
-    params: dict[str, object],
-    *,
-    deps: ArtifactHandlerDeps | None = None,
-) -> ToolResult:
-    """Edit one stable-ID step in the persisted plan draft."""
-    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown plan-step editing")
-    if "content" in params:
-        raise InvalidParamsError(
-            "'content' is not an accepted argument: ralph_edit_md_plan_step edits the "
-            "persisted staged plan draft and does not take a full document. Resubmit "
-            "the document with ralph_stage_md_artifact, or edit staged steps "
-            "individually by step_id."
-        )
-    action = params.get("action")
-    step_id = params.get("step_id")
-    replacement = params.get("replacement")
-    index = params.get("index")
-    if not isinstance(action, str) or not isinstance(step_id, str):
-        raise InvalidParamsError("action and step_id are required")
-    if replacement is not None and not isinstance(replacement, str):
-        raise InvalidParamsError(
-            "replacement must be a markdown step block string ('### [S-n] Title' plus body)"
-        )
-    if index is not None and not isinstance(index, int):
-        raise InvalidParamsError("index must be an integer")
-    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
-    artifact_dir = _resolve_artifact_dir(session, workspace)
-    draft = load_md_draft(artifact_dir, "plan", backend=backend)
-    if draft is None:
-        raise InvalidParamsError(
-            "no staged draft exists for 'plan'; stage it with ralph_stage_md_artifact first"
-        )
-    edited = edit_plan_step_markdown(draft, action, step_id, replacement, index)
-    save_md_draft(artifact_dir, "plan", edited, backend=backend)
-    return _draft_status_result("plan", edited, exists=True)
-
-
 def _params(params: dict[str, object]) -> tuple[str, str]:
     artifact_type = _artifact_type_param(params)
     content = params.get("content")
@@ -408,7 +367,6 @@ def _override_payload(match: object) -> dict[str, object]:
 
 __all__ = [
     "handle_discard_md_draft",
-    "handle_edit_md_plan_step",
     "handle_finalize_md_artifact",
     "handle_get_md_draft",
     "handle_stage_md_artifact",

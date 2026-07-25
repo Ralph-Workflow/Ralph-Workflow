@@ -15,8 +15,9 @@ frontmatter, sections, and stable-ID items.
 For large plans you can stage incrementally: `ralph_stage_md_artifact` to
 save a draft, `ralph_get_md_draft` to read it back, `ralph_discard_md_draft`
 to drop it, and `ralph_finalize_md_artifact` to validate and submit the
-staged document. To change one plan step without resubmitting the whole
-document, use `ralph_edit_md_plan_step`.
+staged document. To revise a submitted plan, stage the complete updated
+document with `ralph_stage_md_artifact` (`mode="replace_all"`) and finalize
+it; the whole document is the unit of revision.
 
 ## Shared grammar
 

@@ -328,11 +328,17 @@ def test_plan_doc_teaches_fail_closed_consumed_sections_and_free_form_vocabulari
         "exact, case-sensitive `## Work Units` or `## Parallel Plan` heading",
         "fails closed",
         "Acceptance-criterion items are criteria, never phantom work units",
-        "Project-specific `Type:` values and target actions are preserved verbatim",
+        "project-specific `Type:` values and target actions are preserved verbatim",
         "built-in `file_change` and `verify` contracts",
         "arbitrary headings remain descriptive",
     ):
         assert phrase in normalized
+
+    # The project-specific ``Type:`` / target-action preservation promise is
+    # a single commitment, not a restated one. A future edit that drifts back
+    # to two occurrences of the same substring would re-introduce a
+    # duplication the format-doc rewrite was supposed to remove.
+    assert doc.count("target actions are preserved verbatim") == 1
 
 
 @pytest.mark.parametrize(

@@ -217,7 +217,6 @@ def test_structured_tools_outcome_is_keep() -> None:
         RalphToolName.GET_MD_DRAFT,
         RalphToolName.DISCARD_MD_DRAFT,
         RalphToolName.FINALIZE_MD_ARTIFACT,
-        RalphToolName.EDIT_MD_PLAN_STEP,
         RalphToolName.REPORT_PROGRESS,
         RalphToolName.DECLARE_COMPLETE,
         RalphToolName.COORDINATE,
@@ -231,7 +230,6 @@ def test_structured_tools_outcome_is_keep() -> None:
         RalphToolName.GET_MD_DRAFT,
         RalphToolName.DISCARD_MD_DRAFT,
         RalphToolName.FINALIZE_MD_ARTIFACT,
-        RalphToolName.EDIT_MD_PLAN_STEP,
         RalphToolName.REPORT_PROGRESS,
         RalphToolName.DECLARE_COMPLETE,
         RalphToolName.COORDINATE,
@@ -256,11 +254,11 @@ def test_structured_tools_outcome_is_keep() -> None:
             f"Originally-deferred tool {tool} is still DEFER after Phase 4: "
             f"{entry.outcome}"
         )
-    assert len(structured_tools) == 10, (
-        f"structured_tools must contain exactly 10 entries, got {len(structured_tools)}"
+    assert len(structured_tools) == 9, (
+        f"structured_tools must contain exactly 9 entries, got {len(structured_tools)}"
     )
-    assert len(originally_deferred) == 17, (
-        f"originally_deferred must contain exactly 17 entries, got {len(originally_deferred)}"
+    assert len(originally_deferred) == 16, (
+        f"originally_deferred must contain exactly 16 entries, got {len(originally_deferred)}"
     )
 
 
