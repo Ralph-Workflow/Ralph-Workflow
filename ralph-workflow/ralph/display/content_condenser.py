@@ -20,6 +20,12 @@ from ralph.display.long_content_summary import (
 _SOFT_LIMIT = 400
 _HARD_LIMIT = 4000
 
+# IEC binary unit base. The condensation marker reports sizes in
+# ``B`` / ``KiB`` / ``MiB`` so a reader can tell the difference
+# between a character count and a UTF-8 byte count; 1024 is the
+# standard power-of-two divisor for the IEC suffixes.
+_IEC_KIB_BYTES: int = 1024
+
 _CondensedResult = tuple[str, bool] | tuple[str, bool, str | None, str | None]
 
 
@@ -66,18 +72,75 @@ def _build_summaries(text: str, env: Mapping[str, str] | None) -> tuple[str | No
     return (None, None)
 
 
-def _truncation_suffix(overflow_ref: str | None) -> str:
-    """Build truncation suffix string."""
+def _truncation_suffix(
+    overflow_ref: str | None,
+    *,
+    total_chars: int,
+    hidden_lines: int = 1,
+) -> str:
+    """Build the truncation marker that owes three facts at once.
+
+    The product criteria require every condensation marker to carry
+    (count, size, destination) on the same line so the operator
+    learns what was hidden, how large it was, and where the full
+    version lives -- all without consulting the file. ``hidden_lines``
+    defaults to 1 because head-only truncation drops one continuous
+    tail slice; the more aggressive head+tail path uses
+    :func:`_elision_suffix` which already counts the omitted slice.
+    """
+    size = _format_size(total_chars)
+    parts = f"1 line · {size}"
+    if hidden_lines > 1:
+        parts = f"{hidden_lines} lines · {size}"
     if overflow_ref is not None:
-        return f" … (truncated, see {overflow_ref})"
-    return " … (truncated)"
+        return f" … (truncated, {parts}, see {overflow_ref})"
+    return f" … (truncated, {parts})"
 
 
-def _elision_suffix(omitted: int, overflow_ref: str | None) -> str:
-    """Build middle elision suffix string."""
+def _elision_suffix(
+    omitted: int,
+    overflow_ref: str | None,
+    *,
+    total_chars: int,
+    hidden_lines: int = 1,
+) -> str:
+    """Build the middle-elision marker that owes three facts at once.
+
+    Same contract as :func:`_truncation_suffix`: the marker carries
+    the hidden line/fragment count, the original size, and the
+    destination path. ``omitted`` is preserved in the marker so a
+    reader still sees exactly how many characters were dropped
+    between the visible head and tail (the per-line fragment count
+    is also spelled out for the head+tail path).
+    """
+    size = _format_size(total_chars)
+    parts = f"{hidden_lines} line · {size} · +{omitted} chars elided"
+    if hidden_lines > 1:
+        parts = f"{hidden_lines} lines · {size} · +{omitted} chars elided"
     if overflow_ref is not None:
-        return f" … (+{omitted} chars, see {overflow_ref}) … "
-    return f" … (+{omitted} chars truncated) … "
+        return f" … ({parts}, see {overflow_ref}) … "
+    return f" … ({parts}) … "
+
+
+def _format_size(total_chars: int) -> str:
+    """Return a human-readable size string for the marker.
+
+    The marker must say how large the original was. Bytes below
+    1 KB are reported as a raw character count; 1 KB and up use
+    the IEC ``KiB`` suffix so the marker stays honest about the
+    base (UTF-8 bytes may differ from character count). Negative
+    or zero values normalize to ``0 B`` so a misbehaving caller
+    cannot smuggle a misleading ``-1 B`` into the marker.
+    """
+    if total_chars <= 0:
+        return "0 B"
+    if total_chars < _IEC_KIB_BYTES:
+        return f"{total_chars} B"
+    kib = total_chars / _IEC_KIB_BYTES
+    if kib < _IEC_KIB_BYTES:
+        return f"{kib:.1f} KiB"
+    mib = kib / _IEC_KIB_BYTES
+    return f"{mib:.1f} MiB"
 
 
 def _extract_tail(text: str, tail_cells: int) -> str:
@@ -106,7 +169,10 @@ def _return_result(
 def _condense_head_only(text: str, options: CondenseOptions) -> _CondensedResult:
     """Condense using head-only truncation."""
     head = _slice_to_cells(text, options.soft_limit)
-    visible = head + _truncation_suffix(options.overflow_ref)
+    total_chars = cell_len(text)
+    visible = head + _truncation_suffix(
+        options.overflow_ref, total_chars=total_chars, hidden_lines=1
+    )
     return _return_result(visible, True, options, text)
 
 
@@ -119,7 +185,17 @@ def _condense_head_and_tail(text: str, total: int, options: CondenseOptions) -> 
     tail = _extract_tail(text, tail_cells)
 
     omitted = total - cell_len(head) - cell_len(tail)
-    visible = head + _elision_suffix(omitted, options.overflow_ref) + tail
+    total_chars = cell_len(text)
+    visible = (
+        head
+        + _elision_suffix(
+            omitted,
+            options.overflow_ref,
+            total_chars=total_chars,
+            hidden_lines=1,
+        )
+        + tail
+    )
     return _return_result(visible, True, options, text)
 
 

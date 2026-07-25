@@ -407,6 +407,8 @@ def _build_status_bar_model(
     *,
     elapsed_seconds: float | None = None,
     run_started_monotonic: float | None = None,
+    last_activity_monotonic: float | None = None,
+    attention: str | None = None,
 ) -> StatusBarModel:
     """Build a :class:`StatusBarModel` from the live pipeline state.
 
@@ -423,6 +425,14 @@ def _build_status_bar_model(
     present, the renderer recomputes elapsed on every Live tick so
     the bar keeps ticking during quiet agent turns without a model
     re-push. ``None`` keeps the existing snapshot-elapsed contract.
+
+    P0 (wt-028-display S-2 / AC-01): ``last_activity_monotonic`` is
+    the most recent agent-activity anchor captured by the
+    display's :class:`ParallelDisplay`; the renderer derives
+    ``stalled`` from a real activity gap. ``attention`` carries
+    the explicit attention state (``waiting`` / ``retrying`` /
+    ``terminated``) so a run-end or operator-pushed state can
+    override the stall derivation.
     """
     entry = build_phase_entry_model_from_state(state.phase, state, policy_bundle.pipeline)
     phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
@@ -439,6 +449,8 @@ def _build_status_bar_model(
         elapsed_seconds=elapsed_seconds,
         agent_name=entry_agent_name if isinstance(entry_agent_name, str) else None,
         run_started_monotonic=run_started_monotonic,
+        last_activity_monotonic=last_activity_monotonic,
+        attention=attention,
     )
 
 
@@ -457,13 +469,43 @@ def _integration_alert_for_state(state: PipelineState) -> str | None:
     return f"integration conflict ({reason}) — resolution required"
 
 
+def _attention_state_for_state(state: PipelineState) -> str | None:
+    """Return the explicit attention state to push to the Status Bar.
+
+    P0 (wt-028-display S-2 / AC-01): the run loop owns the truth
+    about whether the run is healthy, waiting, retrying, or has
+    terminated. The bar's renderer derives ``stalled`` from the
+    activity gap; here we report operator-pushed states that
+    must override the derivation. ``None`` means the renderer
+    uses its default healthy rendering with the stall derivation
+    in play.
+
+    The mapping is read defensively from ``state`` so a fake /
+    legacy state object without the new slots never breaks the
+    status bar push.
+    """
+    run_outcome: object = getattr(state, "run_outcome", None)
+    if isinstance(run_outcome, str) and run_outcome:
+        if run_outcome in ("failed", "error", "cancelled"):
+            return "terminated"
+        if run_outcome == "completed":
+            return "terminated"
+    run_phase: object = getattr(state, "phase", None)
+    if isinstance(run_phase, str) and run_phase.startswith("waiting"):
+        return "waiting"
+    retrying: object = getattr(state, "retrying", None)
+    if isinstance(retrying, bool) and retrying:
+        return "retrying"
+    return None
+
+
 def _push_status_bar_if_changed(
     active_display: object,
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
-    last_sig: tuple[str, int | None, int | None, str | None, str | None, str | None] | None,
-) -> tuple[str, int | None, int | None, str | None, str | None, str | None] | None:
+    last_sig: tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None,
+) -> tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None:
     """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert, label) signature changes.
 
     The integration alert participates in the signature so the bar
@@ -486,12 +528,26 @@ def _push_status_bar_if_changed(
             if isinstance(active_display, ParallelDisplay)
             else None
         )
+        # P0 (wt-028-display S-2 / AC-01): forward the liveness
+        # producer's last-activity anchor so the Status Bar can
+        # derive ``stalled`` from a real activity gap. ``attention``
+        # carries the explicit attention state when the run loop
+        # pushes one (waiting / retrying / terminated / starting
+        # up); ``None`` keeps the existing snapshot-only contract.
+        last_activity_monotonic = (
+            active_display.last_activity_monotonic
+            if isinstance(active_display, ParallelDisplay)
+            else None
+        )
+        attention = _attention_state_for_state(state)
         model = _build_status_bar_model(
             state,
             policy_bundle,
             workspace_root,
             elapsed_seconds=elapsed_seconds,
             run_started_monotonic=run_started_monotonic,
+            last_activity_monotonic=last_activity_monotonic,
+            attention=attention,
         )
         signature = (
             state.phase,
@@ -500,6 +556,7 @@ def _push_status_bar_if_changed(
             model.integration_alert,
             model.outer_label,
             model.agent_name,
+            model.attention,
         )
         if signature != last_sig and hasattr(active_display, "update_status_bar"):
             active_display.update_status_bar(model)
@@ -1044,7 +1101,7 @@ def _run_inner_loop(
         return bool(state_holder[0].is_waiting_state)
 
     last_status_sig: (
-        tuple[str, int | None, int | None, str | None, str | None, str | None] | None
+        tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None
     ) = None
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)

@@ -80,6 +80,15 @@ class PresentedEntry:
     cycle: int | None = None
     iter: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+    # P1 (wt-028-display S-12 / AC-07): hierarchy is data, not glyphs.
+    # ``indent_level`` is a 0-indexed depth; ``grouping_role`` is the
+    # semantic role used by the record writer to choose indentation
+    # and by the live log to choose hanging-indent continuation
+    # columns. Adding a new event kind means picking a role here
+    # once; every consumer (record writer, live log, accessibility
+    # matrix) inherits the structural position automatically.
+    indent_level: int = 0
+    grouping_role: str = "agent_text"
 
     @property
     def agent(self) -> str:
@@ -113,6 +122,12 @@ def build_presented_entry(
     identity / body / metadata) so the live display path can keep
     its ``Text`` rendering while the text-first record writer
     consumes the same structured intermediate.
+
+    S-12 (wt-028-display P1): the canonical entry also carries
+    ``indent_level`` and ``grouping_role`` so hierarchy is data
+    rather than embedded glyphs. The mapping is fixed in
+    :data:`_KIND_TO_GROUPING`; adding a new event kind means
+    picking a role there once.
     """
     identity = unit_id or ""
     metadata: dict[str, object] = {}
@@ -130,6 +145,9 @@ def build_presented_entry(
         severity = "warn"
     if event.kind == ActivityEventKind.ERROR:
         severity = "error"
+    grouping_role, indent_level = _KIND_TO_GROUPING.get(
+        event.kind, ("agent_text", 0)
+    )
     return PresentedEntry(
         kind=event.kind.value if hasattr(event.kind, "value") else str(event.kind),
         severity=severity,
@@ -140,7 +158,31 @@ def build_presented_entry(
         cycle=cycle,
         iter=iter_,
         metadata=metadata,
+        indent_level=indent_level,
+        grouping_role=grouping_role,
     )
+
+
+#: Map ``ActivityEventKind`` to ``(grouping_role, indent_level)`` for
+#: the structured-hierarchy contract. The roles are part of the
+#: P1 (wt-028-display S-12) vocabulary: a tool result hangs under
+#: its call (deeper indent), reasoning reads as one subordinated
+#: passage, and condensation markers stay at body level so the
+#: reader knows they're the same kind of chrome as the body line
+#: they replace.
+_KIND_TO_GROUPING: dict[ActivityEventKind, tuple[str, int]] = {
+    ActivityEventKind.TEXT: ("agent_text", 0),
+    ActivityEventKind.THINKING: ("reasoning", 1),
+    ActivityEventKind.STATUS: ("status_line", 0),
+    ActivityEventKind.TOOL_USE: ("tool_call", 0),
+    ActivityEventKind.TOOL_RESULT: ("tool_result", 1),
+    ActivityEventKind.ERROR: ("error", 0),
+    ActivityEventKind.LIFECYCLE: ("phase_header", 0),
+    ActivityEventKind.HEARTBEAT: ("heartbeat", 0),
+    ActivityEventKind.PROGRESS: ("progress", 1),
+    ActivityEventKind.SUBAGENT_PROGRESS: ("progress", 1),
+    ActivityEventKind.UNKNOWN: ("unrecognized", 0),
+}
 
 
 __all__ = ["PresentedEntry", "build_presented_entry"]

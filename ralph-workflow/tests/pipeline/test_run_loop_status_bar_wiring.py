@@ -542,9 +542,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
             f"AC-07: _push_status_bar_if_changed must return a fresh "
             f"signature after a first push at width={width}; got None"
         )
-        assert isinstance(new_sig, tuple) and len(new_sig) == 6, (
+        assert isinstance(new_sig, tuple) and len(new_sig) == 7, (
             f"AC-07: _push_status_bar_if_changed must return a "
-            f"(phase, outer, inner, integration_alert, outer_label, agent_name) tuple; "
+            f"(phase, outer, inner, integration_alert, outer_label, agent_name, attention) tuple; "
             f"got {new_sig!r}"
         )
     assert captured_inside_active is True, (
@@ -722,3 +722,161 @@ def test_setup_active_display_returns_live_context_object() -> None:
         )
     finally:
         stop_fn()
+
+
+def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
+    """S-2 / AC-01: every ``_emit_activity_event`` records the liveness anchor.
+
+    The producer-side wiring is the AC-01 contract: a display that
+    emits an event must update ``last_activity_monotonic`` so the
+    Status Bar can derive ``stalled`` from a real activity gap.
+    Without the producer call the renderer-only ``stalled``
+    derivation is dead code in production.
+    """
+    # Each emit call advances the clock. The exact order in which
+    # the producer reads the clock depends on prior inits, so the
+    # test asserts only that the recorded anchor advances with
+    # the clock (not the absolute value).
+    clock = {"t": 1000.0}
+    monotonic_fn = lambda: clock.__setitem__("t", clock["t"] + 1) or clock["t"]  # noqa: E731
+    console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={}),
+        workspace_root=Path(tempfile.mkdtemp()),
+        monotonic=monotonic_fn,
+    )
+    # Initial state: no activity yet.
+    assert pd.last_activity_monotonic is None
+    from ralph.display.activity_event_kind import ActivityEventKind
+    before = clock["t"]
+    pd._emit_activity_event("u1", ActivityEventKind.TEXT, "hello", None, {})
+    first = pd.last_activity_monotonic
+    assert first is not None and first >= before, (
+        f"last_activity_monotonic must advance on emit; got {first!r} >= {before!r}"
+    )
+    pd._emit_activity_event("u1", ActivityEventKind.TEXT, "world", None, {})
+    second = pd.last_activity_monotonic
+    assert second is not None and second > first, (
+        f"last_activity_monotonic must advance between emits; got {second!r} > {first!r}"
+    )
+
+
+def test_push_status_bar_carries_liveness_through_production_path() -> None:
+    """S-2 / AC-01: the production push path carries ``last_activity_monotonic``.
+
+    The run-loop helper :func:`_push_status_bar_if_changed` reads
+    ``active_display.last_activity_monotonic`` and forwards it into
+    :func:`_build_status_bar_model`. The captured model carries
+    the same anchor so the bar can drive the stall derivation.
+    """
+    clock = {"t": 1000.0}
+    monotonic_fn = lambda: clock.__setitem__("t", clock["t"] + 1) or clock["t"]  # noqa: E731
+    console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
+    workspace_root = Path(tempfile.mkdtemp())
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={}),
+        workspace_root=workspace_root,
+        monotonic=monotonic_fn,
+    )
+    # Seed the producer with a recent activity anchor.
+    from ralph.display.activity_event_kind import ActivityEventKind
+    pd._emit_activity_event("u1", ActivityEventKind.TEXT, "seed", None, {})
+    expected_anchor = pd.last_activity_monotonic
+    assert expected_anchor is not None
+    # Build a policy-aware state for the push helper.
+    policy_bundle = load_policy(workspace_root / ".agent")
+    state = _make_state("development", 1, 1, 1)
+    sig = _push_status_bar_if_changed(
+        pd,
+        state,
+        policy_bundle,
+        workspace_root,
+        last_sig=None,
+    )
+    assert sig is not None
+    # The StatusBar's ``last_model`` property surfaces the captured
+    # model so the test can read it without monkeypatching.
+    pushed = pd.status_bar.last_model
+    assert pushed is not None, (
+        "P0 (AC-01): the production push path must reach the StatusBar's "
+        "update seam so ``last_model`` reflects the new model."
+    )
+    # P0 (AC-01): the captured model carries the liveness anchor
+    # through the production push path.
+    assert pushed.last_activity_monotonic == expected_anchor, (
+        f"Captured model must carry last_activity_monotonic; got {pushed.last_activity_monotonic!r}"
+    )
+
+
+def test_attention_state_for_state_returns_waiting() -> None:
+    """S-2 / AC-01: a waiting phase pushes ``attention='waiting'`` through the run loop."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _make_state("waiting", 1, 1, 1)
+    assert _attention_state_for_state(state) == "waiting"
+
+
+def test_attention_state_for_state_returns_retrying() -> None:
+    """S-2 / AC-01: a retrying run pushes ``attention='retrying'`` through the run loop."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _StubState(phase="development", retrying=True)
+    assert _attention_state_for_state(state) == "retrying"
+
+
+def test_attention_state_for_state_returns_terminated() -> None:
+    """S-2 / AC-01: a failed run pushes ``attention='terminated'`` through the run loop."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _StubState(phase="development", run_outcome="failed")
+    assert _attention_state_for_state(state) == "terminated"
+
+
+def test_attention_state_for_state_returns_none_when_healthy() -> None:
+    """S-2 / AC-01: a healthy development phase pushes ``attention=None`` (renderer drives)."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _StubState(phase="development")
+    assert _attention_state_for_state(state) is None
+
+
+class _StubState:
+    """Lightweight stand-in for ``PipelineState`` in attention-state tests.
+
+    ``PipelineState`` is a frozen pydantic model; the
+    ``_attention_state_for_state`` helper reads via ``getattr`` so
+    a stub is the simplest way to set ``run_outcome`` / ``retrying``
+    per test without copying the model.
+    """
+
+    def __init__(
+        self,
+        *,
+        phase: str = "development",
+        run_outcome: str | None = None,
+        retrying: bool = False,
+    ) -> None:
+        self.phase = phase
+        self.run_outcome = run_outcome
+        self.retrying = retrying
+
+
+def _make_state(
+    phase: str,
+    outer_dev_iteration: int,
+    outer_dev_cap: int,
+    inner_analysis: int,
+) -> PipelineState:
+    """Build a minimal ``PipelineState`` for the wiring tests.
+
+    Mirrors the same shape ``_build_status_bar_model`` expects so
+    the helper can resolve the human phase label. Defensive
+    ``getattr`` keeps the test tolerant of new optional fields.
+    """
+    from ralph.pipeline.state import AgentChainState
+    chain = AgentChainState(agent_name="claude", attempts=0, history=())
+    return PipelineState(
+        phase=phase,
+        previous_phase=None,
+        attempts=1,
+        chain=chain,
+        started_at=0.0,
+        last_blocked_phase=None,
+        is_waiting_state=False,
+    )

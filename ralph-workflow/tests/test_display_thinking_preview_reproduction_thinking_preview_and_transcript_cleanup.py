@@ -171,10 +171,13 @@ class TestStreamingBlockCoalescingSingleEntry:
             f"Lines: {thinking_lines}\nFull output:\n{out}"
         )
 
-        # The close line carries the fragment and char counts (S-7 shape).
+        # The close line carries the joined passage (S-7 / S-9 shape).
+        # Per AC-05, the close line is human vocabulary only -- the
+        # "fragments" footer is retired and the joined passage is the
+        # single visible entry for the block.
         close_line = thinking_lines[0]
-        assert "3 fragments" in close_line, (
-            f"Close line must report fragment count: {close_line!r}"
+        assert "fragments" not in close_line, (
+            f"Close line must NOT report fragment count: {close_line!r}"
         )
 
         # No internal vocabulary leaked.
@@ -301,8 +304,8 @@ class TestStreamingBlockCoalescingSingleEntry:
             f"Long thinking must still emit exactly one close line, "
             f"got {len(thinking_lines)} lines:\n{out}"
         )
-        assert "25 fragments" in thinking_lines[0], (
-            f"Close line must report 25 fragments: {thinking_lines[0]!r}"
+        assert "fragments" not in thinking_lines[0], (
+            f"Close line must NOT report fragment count: {thinking_lines[0]!r}"
         )
 
         # No checkpoints, no continuation tags, no previews.

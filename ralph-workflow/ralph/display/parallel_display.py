@@ -415,6 +415,7 @@ class ParallelDisplay:
         "_emitted_empty_decision_log",
         "_emitted_empty_plan",
         "_is_quiet",
+        "_last_activity_monotonic",
         "_last_activity_signature",
         "_last_analysis_signature",
         "_last_budget_progress",
@@ -466,6 +467,13 @@ class ParallelDisplay:
         self._monotonic: Callable[[], float] = (
             monotonic if monotonic is not None else time.monotonic
         )
+        # P0 (wt-028-display S-2 / AC-01): the run loop needs the
+        # most-recent agent-activity timestamp so the Status Bar
+        # model can drive the stalled / advancing derivation.
+        # The producer here records ``time.monotonic()`` (or the
+        # injected clock) on every ``_emit_activity_event`` so
+        # :attr:`last_activity_monotonic` is always current.
+        self._last_activity_monotonic: float | None = None
 
         # Inlined from _PlainLogRendererBase.__init__ -- 22 state attributes
         # that previously lived on a separate renderer instance. Documented in
@@ -835,8 +843,6 @@ class ParallelDisplay:
             return
         if not accumulated:
             return
-        n = len(accumulated)
-        chars = sum(len(x) for x in accumulated)
         joined = " ".join(accumulated)
         sanitized_joined = _sanitize(joined)
         # S-7 / AC-06: condensation still applies to the joined passage --
@@ -861,16 +867,17 @@ class ParallelDisplay:
             with contextlib.suppress(Exception):
                 overflow.append(sanitized_joined)
                 self._check_overflow_size(unit_id, overflow)
-        # S-7 single-entry shape: base tag + fragment count + char count +
-        # joined passage. Span / start-end timestamps are owned by the
-        # activity-emit record path (timestamp carried by the badge), so
-        # the close line stays one self-contained entry.
-        body = (
-            f"\u22ef {base_tag} \u00b7 {n} fragments \u00b7 {chars} chars\n"
-            f"{visible}"
-        )
+        # S-7 / S-9 (wt-028-display P1 / AC-04 / AC-05): single-entry
+        # shape with human vocabulary only. The "fragments" footer
+        # and the "CONT" category are machine vocabulary and
+        # belong on no surface. The close line carries the base
+        # tag, the joined passage, and (when oversized) the
+        # condensation marker the condenser already produced; the
+        # verbatim overflow log under .agent/raw/<safe_id>.log
+        # remains the destination the marker points to.
+        body = f"\u22ef {base_tag}\n{visible}"
         self._console.print(
-            self._build_line(timestamp, "INFO", "CONT", f"[{base_tag}][{rendered_unit_id}] {body}"),
+            self._build_line(timestamp, "INFO", "", f"[{base_tag}][{rendered_unit_id}] {body}"),
             markup=False,
             highlight=False,
             no_wrap=False,
@@ -1259,6 +1266,20 @@ class ParallelDisplay:
         """
         return self._run_start_time
 
+    @property
+    def last_activity_monotonic(self) -> float | None:
+        """Return the most-recent agent-activity monotonic timestamp, or ``None``.
+
+        P0 (wt-028-display S-2 / AC-01): the producer (every
+        :meth:`_emit_activity_event` call) records ``self._monotonic()``
+        so the Status Bar can derive ``stalled`` from a real
+        activity gap. ``None`` means the run has not produced an
+        event yet, which the bar's renderer treats as
+        "starting up" rather than "stalled" so the operator
+        does not get a false alarm before the first phase.
+        """
+        return self._last_activity_monotonic
+
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._overflow_logs:
             self._overflow_logs[unit_id] = RawOverflowLog(
@@ -1371,6 +1392,13 @@ class ParallelDisplay:
         """
         metadata = {} if metadata is None else metadata
         text_content = content or ""
+
+        # P0 (wt-028-display S-2 / AC-01): record the activity timestamp
+        # at the producer site so the Status Bar can derive ``stalled``
+        # from a real activity gap. Use ``self._monotonic()`` (the
+        # injected clock) so the test can drive a 30 s gap without
+        # sleeping.
+        self._last_activity_monotonic = self._monotonic()
 
         # Normalize loose render args to a canonical
         # :class:`AgentActivityEvent` BEFORE rendering so the registry

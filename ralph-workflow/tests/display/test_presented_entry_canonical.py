@@ -229,3 +229,108 @@ def test_presented_entry_timestamp_does_not_appear_twice(tmp_path) -> None:
     # The timestamp token ``14:29:03`` should appear exactly once.
     ts_count = contents.count("14:29:03")
     assert ts_count == 1, f"timestamp 14:29:03 appears {ts_count} times in: {contents!r}"
+
+
+def test_presented_entry_default_indent_level_is_zero() -> None:
+    """S-12 (wt-028-display AC-07): the canonical entry carries indent_level.
+
+    Default is 0; the record writer produces an unindented line.
+    The structural role defaults to ``agent_text`` so existing
+    entries keep their pre-S-12 contract.
+    """
+    entry = build_presented_entry(_event(ActivityEventKind.TEXT, "hi"), unit_id="claude")
+    assert entry.indent_level == 0
+    assert entry.grouping_role == "agent_text"
+
+
+def test_tool_call_vs_tool_result_have_different_indent_levels() -> None:
+    """S-12 (wt-028-display AC-07): a tool result hangs under its call.
+
+    The product criteria pin: a tool result line is indented
+    deeper than its call. ``_KIND_TO_GROUPING`` is the single
+    source of truth.
+    """
+    call = build_presented_entry(_event(ActivityEventKind.TOOL_USE, "read"), unit_id="c")
+    result = build_presented_entry(_event(ActivityEventKind.TOOL_RESULT, "ok"), unit_id="c")
+    assert call.indent_level == 0
+    assert result.indent_level == 1
+    assert result.indent_level > call.indent_level
+    assert result.grouping_role == "tool_result"
+
+
+def test_thinking_entries_are_subordinated() -> None:
+    """S-12 (wt-028-display AC-07): reasoning reads as one subordinated passage.
+
+    THINKING gets a level-1 ``reasoning`` role so a single
+    coalesced reasoning block still carries its structural
+    position when emitted as a presented entry.
+    """
+    entry = build_presented_entry(
+        _event(ActivityEventKind.THINKING, "one thought"), unit_id="c"
+    )
+    assert entry.indent_level == 1
+    assert entry.grouping_role == "reasoning"
+
+
+def test_record_writer_hangs_tool_result_under_call(tmp_path) -> None:
+    """S-12 (wt-028-display AC-07): record carries hierarchy via indentation.
+
+    The record writer outputs a level-0 line for the call and a
+    level-1 line for the result. A grep for ``role=tool_result``
+    finds the nested entry without depending on column positions.
+    """
+    from pathlib import Path
+
+    call = PresentedEntry(
+        kind="tool_use",
+        severity="info",
+        identity="claude",
+        body="read status_bar.py",
+        timestamp="14:29:04",
+    )
+    result = PresentedEntry(
+        kind="tool_result",
+        severity="info",
+        identity="claude",
+        body="214 lines",
+        timestamp="14:29:04",
+        indent_level=1,
+        grouping_role="tool_result",
+    )
+    writer = RenderedRecordWriter(tmp_path, "claude", model="claude-sonnet-4.5")
+    writer.append(call)
+    writer.append(result)
+    writer.flush()
+    contents = Path(writer.path).read_text(encoding="utf-8")
+    lines = contents.splitlines()
+    # The call line is at column 0; the result line is indented
+    # by the indent width.
+    assert lines[0].startswith("[14:29:04]")
+    assert lines[1].startswith(" " * 2 + "[14:29:04]"), (
+        f"Tool result line must be indented under its call; got: {lines[1]!r}"
+    )
+    assert "role=tool_result" in contents
+
+
+def test_record_writer_invalid_indent_level_falls_back_to_zero() -> None:
+    """S-12 (wt-028-display AC-07): the writer never crashes on bad input.
+
+    A non-int ``indent_level`` clamps to 0 so a future event
+    kind with a typo cannot crash the writer.
+    """
+    from ralph.display.record_writer import _format_entry_line
+
+    entry = PresentedEntry(
+        kind="text",
+        severity="info",
+        identity="claude",
+        body="hi",
+        timestamp="14:29:03",
+        indent_level=0,  # type: ignore[arg-type]
+    )
+    # Force a bad value through the dict-like contract.
+    bad_entry = {"kind": "text", "severity": "info", "identity": "c", "body": "hi",
+                 "timestamp": "14:29:03", "indent_level": "two"}
+    line = _format_entry_line(bad_entry)
+    assert line.startswith("[14:29:03]"), f"bad indent must clamp to 0; got: {line!r}"
+    _ = entry  # silence unused warning; canonical entry used elsewhere

@@ -61,6 +61,22 @@ _RECORD_FIELD_ORDER: Final[tuple[str, ...]] = (
     "body",
 )
 
+#: P1 (wt-028-display S-12 / AC-07): the record carries real
+#: hierarchy via indentation. Two-space indent per ``indent_level``
+#: keeps the file diff-friendly; the field column starts at column
+#: 0 and the body hangs at the level column for the role. A
+#: phase header is rendered as a level-0 line whose body is the
+#: phase rule; condensation markers stay at the body level of
+#: the entry they replace.
+_INDENT_WIDTH: Final[int] = 2
+
+#: P1 (wt-028-display S-12 / AC-07): the columns in the rendered
+#: record are fixed so a tool result visibly hangs under its call
+#: and a phase header still aligns its field column. The first
+#: non-indent column is reserved for the timestamp ``[hh:mm:ss]``
+#: token; the rest follows the same _RECORD_FIELD_ORDER contract.
+_FIELD_COLUMN_START: Final[int] = 0
+
 
 #: ANSI / CSI escape sequence stripper for the rendered record. The
 #: writer is the destination for the human-readable file; a stray
@@ -131,6 +147,16 @@ def _format_entry_line(entry: object) -> str:
     body, with newlines flattened to spaces and tabs converted to
     spaces so a grep for the body text never matches a partial line.
 
+    P1 (wt-028-display S-12 / AC-07): the line opens with
+    ``indent_level`` copies of :data:`_INDENT_WIDTH` so a tool
+    result visibly hangs under its call (level 1) and a phase
+    header sits at the margin (level 0). The indent is part of
+    the contract: a reader (or a screen reader / braille display
+    that linearises the file) sees the structural position from
+    the leading whitespace alone, with the grouping role
+    available via ``grouping_role`` for consumers that want the
+    semantic label.
+
     The function is import-tolerant: it tolerates any object that
     exposes the expected attributes (the live-display presenter and
     the canonical pipeline both produce such objects) and falls back
@@ -144,8 +170,11 @@ def _format_entry_line(entry: object) -> str:
     agent = _extract_field(entry, "agent")
     severity = _extract_field(entry, "severity")
     body = _extract_field(entry, "body")
+    indent_level = _extract_indent_level(entry)
+    grouping_role = _extract_field(entry, "grouping_role")
 
     hh_mm_ss = _to_hh_mm_ss(timestamp)
+    indent_prefix = " " * (_INDENT_WIDTH * max(0, indent_level))
     parts: list[str] = []
     parts.append(f"[{hh_mm_ss}]")
     if phase:
@@ -161,7 +190,12 @@ def _format_entry_line(entry: object) -> str:
     body_str = _flatten_body(body)
     if body_str:
         parts.append(body_str)
-    return " ".join(parts)
+    if grouping_role and grouping_role != "agent_text":
+        # Append a structural marker so a grep for ``role=tool_call``
+        # still finds the entry after hierarchy is data, not glyphs.
+        # This is a contract addition, kept narrow.
+        parts.append(f"role={grouping_role}")
+    return indent_prefix + " ".join(parts)
 
 
 def _extract_field(entry: object, name: str) -> object:
@@ -179,6 +213,27 @@ def _extract_field(entry: object, name: str) -> object:
         return value
     raw: object = getattr(entry, name, None)
     return raw
+
+
+def _extract_indent_level(entry: object) -> int:
+    """Return the structured indent level (default 0) for ``entry``.
+
+    P1 (wt-028-display S-12 / AC-07): the canonical
+    :class:`PresentedEntry` carries an ``indent_level`` integer
+    that controls the line's leading whitespace. Tolerates a
+    non-int value (clamped to 0) so a future event kind cannot
+    crash the writer; a missing field defaults to 0 to keep
+    pre-S-12 entries on the same line they always rendered at.
+    """
+    raw = _extract_field(entry, "indent_level")
+    if isinstance(raw, bool):
+        # ``bool`` is a subclass of ``int`` in Python; refuse so a
+        # accidental ``indent_level=True`` doesn't render as
+        # one full level of indent.
+        return 0
+    if isinstance(raw, int):
+        return max(0, raw)
+    return 0
 
 
 def _to_hh_mm_ss(timestamp: object) -> str:
