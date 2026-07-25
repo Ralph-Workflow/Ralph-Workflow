@@ -80,10 +80,19 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=EDIT_MD_ARTIFACT_TOOL,
                 description=(
-                    "Edit the staged markdown draft in place with oldText/newText replacements "
-                    "(same semantics as edit_file): sequential first-occurrence replacement, "
-                    "all-or-nothing on a miss. Prefer this over resending a whole document to "
-                    "fix validation errors."
+                    "Submit an artifact by editing the staged draft in place: this is "
+                    f"{SUBMIT_MD_ARTIFACT_TOOL} starting from the existing draft instead of a "
+                    "whole retyped document. Applies oldText/newText replacements with the same "
+                    "semantics as edit_file (sequential first-occurrence replacement, "
+                    "all-or-nothing on a miss), then, whenever the edited draft passes the "
+                    "submission gate, submits it canonically through the same path as "
+                    f"{SUBMIT_MD_ARTIFACT_TOOL} — no separate finalize call is needed. A draft "
+                    "that still has errors is kept for further repair and nothing is submitted; "
+                    "the response reports `submitted` either way. Submitting does not end the "
+                    "phase, so a later edit in the same attempt simply resubmits. `dry_run` "
+                    "previews the diff without writing or submitting. PREFER THIS over resending "
+                    "a whole document: use it to fix validation errors and for any revision "
+                    "where the new content is substantially similar to the draft."
                 ),
                 input_schema={
                     "type": "object",
@@ -128,7 +137,15 @@ def artifact_specs() -> list[ToolSpec]:
         ToolSpec(
             metadata=_metadata(
                 name=DISCARD_MD_DRAFT_TOOL,
-                description="Discard the staged markdown draft for one artifact type.",
+                description=(
+                    "Discard the staged markdown draft for one artifact type. WARNING: this "
+                    "throws away the whole document and forces a full retype. Do NOT use it to "
+                    "recover from validation errors or to make a revision whose content is "
+                    f"substantially similar to the draft — repair it in place with "
+                    f"{EDIT_MD_ARTIFACT_TOOL} instead, which also submits once the draft "
+                    "validates. Discard only for a genuine wholesale restart, where almost "
+                    "nothing in the current draft survives."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {"artifact_type": {"type": "string"}},

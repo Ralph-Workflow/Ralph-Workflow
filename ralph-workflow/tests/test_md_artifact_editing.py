@@ -300,6 +300,81 @@ def test_edit_repairs_a_rejected_whole_document_submission(tmp_path: Path) -> No
     assert _draft(session, workspace) == _SPEC
 
 
+def test_edit_submits_canonically_once_the_edited_draft_validates(tmp_path: Path) -> None:
+    """An edit that completes the document is a full submission, not just a draft write."""
+    session = MockSession()
+    workspace = _workspace(tmp_path)
+    broken = _SPEC.replace("- [C1] Markdown validates\n", "")
+    handle_stage_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": broken}
+    )
+
+    result = _edit(
+        session,
+        workspace,
+        [
+            {
+                "oldText": "## Success Criteria\n",
+                "newText": "## Success Criteria\n- [C1] Markdown validates\n",
+            }
+        ],
+    )
+
+    payload = _payload(result)
+    assert payload["valid"] is True
+    assert payload["submitted"] is True
+    artifact_path = tmp_path / ".agent" / "artifacts" / "product_spec.md"
+    assert artifact_path.read_text(encoding="utf-8") == _SPEC
+    # The submitted document stays editable for an in-phase revision.
+    assert _draft(session, workspace) == _SPEC
+
+
+def test_edit_does_not_submit_while_the_edited_draft_is_still_invalid(tmp_path: Path) -> None:
+    session = MockSession()
+    workspace = _workspace(tmp_path)
+    broken = _SPEC.replace("- [C1] Markdown validates\n", "")
+    handle_stage_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": broken}
+    )
+
+    result = _edit(session, workspace, [{"oldText": "Agents", "newText": "Coding agents"}])
+
+    payload = _payload(result)
+    assert payload["valid"] is False
+    assert payload["submitted"] is False
+    assert not (tmp_path / ".agent" / "artifacts" / "product_spec.md").exists()
+    # The edit still landed in the draft so repair can continue.
+    assert "Coding agents" in _draft(session, workspace)
+
+
+def test_edit_dry_run_previews_without_submitting(tmp_path: Path) -> None:
+    """A preview stays a preview even when the edited document would validate."""
+    session = MockSession()
+    workspace = _workspace(tmp_path)
+    broken = _SPEC.replace("- [C1] Markdown validates\n", "")
+    handle_stage_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": broken}
+    )
+
+    result = _edit(
+        session,
+        workspace,
+        [
+            {
+                "oldText": "## Success Criteria\n",
+                "newText": "## Success Criteria\n- [C1] Markdown validates\n",
+            }
+        ],
+        dry_run=True,
+    )
+
+    payload = _payload(result)
+    assert payload["status"] == "preview"
+    assert payload["submitted"] is False
+    assert not (tmp_path / ".agent" / "artifacts" / "product_spec.md").exists()
+    assert _draft(session, workspace) == broken
+
+
 def test_edit_tool_is_registered_with_a_mutate_side_effect_contract() -> None:
     tool_names = {spec.metadata.definition.name for spec in tool_specs(McpConfig())}
 

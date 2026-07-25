@@ -182,9 +182,11 @@ reported but do not block. The repair loop is: fix the markdown the diagnostics 
 at (the format docs under `.agent/artifact-formats/` describe each type's expected
 shape), optionally re-check with `ralph_verify_md_artifact`, then retry
 `ralph_submit_md_artifact`. Because every submission stages its document as the
-artifact's draft, a rejected document can be repaired in place: revisions go through
-`ralph_edit_md_artifact` (`oldText`/`newText` edits) → `ralph_get_md_draft` →
-`ralph_finalize_md_artifact`. Resending the whole document via
+artifact's draft, a rejected document can be repaired in place with
+`ralph_edit_md_artifact` (`oldText`/`newText` edits) — which is itself a submission:
+it is `ralph_submit_md_artifact` starting from the existing draft, and it persists the
+artifact canonically as soon as the edited draft validates, with no separate
+`ralph_finalize_md_artifact` call. Resending the whole document via
 `ralph_stage_md_artifact` (`mode="replace_all"`) is the wholesale-rewrite fallback.
 
 Large documents can be authored incrementally: `ralph_stage_md_artifact` accumulates
@@ -195,7 +197,12 @@ after an interruption, `ralph_discard_md_draft` deletes it, and
 submitting canonically on success and keeping the draft either way. `ralph_edit_md_artifact`
 applies `oldText`/`newText` edits to the draft with the same engine `edit_file` uses
 (sequential first-occurrence replacement, all-or-nothing on a miss, optional `dry_run`
-and `expected_content_hash`). Drafts survive a same-phase retry or an analysis loopback
+and `expected_content_hash`), then submits the result canonically whenever it validates;
+its response reports `submitted`, and a `dry_run` edit submits nothing. Submission is not
+phase completion — `declare_complete` stays separate — so a later edit within the same
+phase attempt simply resubmits. `ralph_discard_md_draft` is for a genuine wholesale
+restart only, never for validation-error recovery or a revision substantially similar to
+the draft. Drafts survive a same-phase retry or an analysis loopback
 and are cleared on genuine fresh phase entry; on a retry or loopback with no draft on
 disk, the canonical artifact is loaded back as the draft so a rejected document is
 immediately editable.

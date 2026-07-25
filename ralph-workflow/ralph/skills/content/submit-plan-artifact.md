@@ -167,10 +167,16 @@ For a long plan:
 2. Inspect the full draft with `ralph_get_md_draft`.
 3. Edit the staged draft in place with `ralph_edit_md_artifact` (`edits`: a
    list of `oldText`/`newText` pairs). Every submission stages its document
-   as the draft, so this also repairs a rejected submission.
-4. Submit the assembled draft with `ralph_finalize_md_artifact`. Failed
-   validation preserves the draft.
-5. Use `ralph_discard_md_draft` only when intentionally starting over.
+   as the draft, so this also repairs a rejected submission — and the edit
+   itself submits the plan canonically as soon as the edited draft
+   validates, reporting `submitted` in its response.
+4. `ralph_finalize_md_artifact` submits an assembled draft that was built by
+   staging alone. It is not needed after an edit that already reported
+   `submitted: true`. Failed validation preserves the draft either way.
+5. Use `ralph_discard_md_draft` only when intentionally starting over — never
+   to recover from validation errors, and never for a revision whose content
+   is substantially similar to the draft. Edit in place instead; discarding
+   throws the document away and forces a full retype.
 
 ## Error recovery
 

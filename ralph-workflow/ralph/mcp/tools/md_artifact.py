@@ -60,8 +60,9 @@ _PLAN_READ_CAPABILITY = "artifact.plan_read"
 REPAIR_HINT: str = (
     f"The submitted document is staged as this artifact's draft. Repair it in place with "
     f"`{EDIT_MD_ARTIFACT_TOOL}` (oldText/newText edits) instead of resending the whole "
-    f"document, read it back with `{GET_MD_DRAFT_TOOL}`, and resubmit with "
-    f"`{FINALIZE_MD_ARTIFACT_TOOL}`."
+    f"document; it resubmits the artifact automatically as soon as the edited draft "
+    f"validates, so no separate `{FINALIZE_MD_ARTIFACT_TOOL}` call is needed. Read the draft "
+    f"back with `{GET_MD_DRAFT_TOOL}` when you need to see its current text."
 )
 
 
@@ -108,14 +109,23 @@ def handle_edit_md_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Apply oldText/newText edits to the staged draft, ``edit_file``-style.
+    """Apply oldText/newText edits to the staged draft and submit it when it validates.
+
+    This is ``ralph_submit_md_artifact`` starting from the existing draft
+    instead of a whole retyped document: whenever the edited draft passes the
+    submission gate it is persisted through the same canonical path submission
+    uses, with no separate finalize call. An edited draft that still has errors
+    is kept as a draft for further repair and nothing is submitted. Submission
+    does not end the phase — ``declare_complete`` remains separate — so a later
+    edit in the same phase attempt simply resubmits.
 
     Edits apply sequentially, each replacing the first occurrence of its
     ``oldText``; a single miss rejects the whole batch and writes nothing.
-    ``dry_run`` previews the diff without persisting, and
+    ``dry_run`` previews the diff without persisting or submitting, and
     ``expected_content_hash`` fails closed when the draft changed underneath
-    the caller. The response carries the refreshed draft diagnostics so one
-    call shows both what changed and whether the artifact now validates.
+    the caller. The response carries the refreshed draft diagnostics and a
+    ``submitted`` flag, so one call shows what changed, whether the artifact
+    now validates, and whether it was submitted.
     """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft editing")
     artifact_type = _artifact_type_param(params)
@@ -150,11 +160,23 @@ def handle_edit_md_artifact(
         )
 
     if bool(params.get("dry_run", False)):
-        return _edit_result(artifact_type, draft, outcome.diff, len(outcome.applied), "preview")
+        return _edit_result(
+            artifact_type, draft, outcome.diff, len(outcome.applied), "preview", submitted=False
+        )
 
     save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
+    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, outcome.content)
+    submitted = not any(item.severity == "error" for item in diagnostics)
+    if submitted:
+        _submit_canonical(session, workspace, artifact_type, parsed_content, outcome.content, deps)
     return _edit_result(
-        artifact_type, outcome.content, outcome.diff, len(outcome.applied), "applied"
+        artifact_type,
+        outcome.content,
+        outcome.diff,
+        len(outcome.applied),
+        "applied",
+        submitted=submitted,
+        analysis=(diagnostics, overridden),
     )
 
 
@@ -208,7 +230,15 @@ def handle_discard_md_draft(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Drop the persisted markdown draft for one artifact type."""
+    """Drop the persisted markdown draft for one artifact type.
+
+    Warning:
+        This discards the whole document and forces a full retype. It is not
+        the way to recover from validation errors, nor to make a revision whose
+        content is substantially similar to the draft — ``ralph_edit_md_artifact``
+        repairs in place and submits once the draft validates. Reserve discard
+        for a genuine wholesale restart where almost nothing survives.
+    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft discard")
     artifact_type = _artifact_type_param(params)
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
@@ -368,18 +398,36 @@ def _stale_draft_result(artifact_type: str, expected: str, current: str) -> Tool
 
 
 def _edit_result(
-    artifact_type: str, draft: str, diff: str, edits_applied: int, status: str
+    artifact_type: str,
+    draft: str,
+    diff: str,
+    edits_applied: int,
+    status: str,
+    *,
+    submitted: bool,
+    analysis: tuple[list[Diagnostic], list[object]] | None = None,
 ) -> ToolResult:
-    """Return the edit outcome alongside the refreshed draft diagnostics."""
-    payload = _draft_status_payload(artifact_type, draft)
+    """Return the edit outcome alongside the refreshed draft diagnostics.
+
+    ``submitted`` reports whether the edited draft went through the canonical
+    submission path, so a green result is never mistaken for a submission that
+    did not happen. ``analysis`` reuses the diagnostics the submit decision was
+    already made from rather than validating the same draft a second time.
+    """
+    payload = _draft_status_payload(artifact_type, draft, analysis=analysis)
     payload["status"] = status
     payload["diff"] = diff
     payload["edits_applied"] = edits_applied
+    payload["submitted"] = submitted
     return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
 
 
 def _draft_status_payload(
-    artifact_type: str, draft: str, *, exists: bool | None = None
+    artifact_type: str,
+    draft: str,
+    *,
+    exists: bool | None = None,
+    analysis: tuple[list[Diagnostic], list[object]] | None = None,
 ) -> dict[str, object]:
     """Describe the draft-so-far: length, section outline, check-only diagnostics.
 
@@ -389,7 +437,7 @@ def _draft_status_payload(
     passes ``exists`` and gets the full draft back for resumption.
     """
     document, _ = parse_markdown_document(draft)
-    diagnostics, overridden = _validate_with_overrides(artifact_type, draft)
+    diagnostics, overridden = analysis or _validate_with_overrides(artifact_type, draft)
     payload: dict[str, object] = {"artifact_type": artifact_type}
     if exists is not None:
         payload["exists"] = exists

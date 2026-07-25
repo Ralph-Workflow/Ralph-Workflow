@@ -60,16 +60,28 @@ become possible:
 The only allowed writers are:
 
 1. ``ralph.mcp.artifacts.canonical_submit.submit_artifact_canonical`` —
-   the canonical backend for the MCP ``ralph_submit_md_artifact`` and
-   ``ralph_finalize_md_artifact`` tools (``handle_submit_md_artifact`` /
-   ``handle_finalize_md_artifact`` in ``ralph.mcp.tools.md_artifact``).
-   Draft staging and editing (``ralph_stage_md_artifact`` /
-   ``ralph_edit_md_artifact`` / ``ralph_get_md_draft`` /
-   ``ralph_discard_md_draft``) writes only the per-type draft file
-   ``.<artifact_type>.draft.md`` via ``ralph.mcp.artifacts.md_draft_io``,
-   never the canonical artifact, receipt, or sentinel surfaces.
+   the canonical backend for the MCP ``ralph_submit_md_artifact``,
+   ``ralph_finalize_md_artifact``, and ``ralph_edit_md_artifact`` tools
+   (``handle_submit_md_artifact`` / ``handle_finalize_md_artifact`` /
+   ``handle_edit_md_artifact`` in ``ralph.mcp.tools.md_artifact``).
+   The remaining draft tools (``ralph_stage_md_artifact`` /
+   ``ralph_get_md_draft`` / ``ralph_discard_md_draft``) write only the
+   per-type draft file ``.<artifact_type>.draft.md`` via
+   ``ralph.mcp.artifacts.md_draft_io``, never the canonical artifact,
+   receipt, or sentinel surfaces.
 
-   Both submission tools also write that draft: they stage the submitted
+   ``ralph_edit_md_artifact`` is a submission tool: it is
+   ``ralph_submit_md_artifact`` starting from the existing draft rather than
+   a whole retyped document. It applies its ``oldText``/``newText`` edits to
+   the draft and, whenever the edited draft passes the submission gate,
+   routes it through ``submit_artifact_canonical`` — the same call the other
+   two make. An edited draft that still carries error diagnostics is written
+   back as a draft and nothing is submitted; a ``dry_run`` edit writes and
+   submits nothing. Submission is not phase completion: ``declare_complete``
+   remains separate, so a later edit within the same phase attempt simply
+   resubmits.
+
+   All three submission tools also write that draft: they stage the submitted
    document before validating it, and retain it after a successful submit,
    so a rejected or superseded document can be repaired in place with
    ``ralph_edit_md_artifact`` instead of being re-transcribed. The draft is

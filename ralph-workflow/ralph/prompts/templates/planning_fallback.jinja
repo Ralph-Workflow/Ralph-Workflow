@@ -87,11 +87,12 @@ Submit one native-markdown document:
    a reason under `## Validation Overrides`; errors cannot be overridden.
 4. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same arguments).
 5. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}
-   (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs),
-   inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with
-   {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). Every
-   submission stages its document as the draft, so this works after a
-   rejected submit. Resend the whole document via
+   (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs).
+   That call submits the plan as soon as the edited draft validates, so no
+   separate {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} call is needed; inspect
+   the draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} when you need its current
+   text. Every submission stages its document as the draft, so this works
+   after a rejected submit. Resend the whole document via
    {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a
    wholesale rewrite.
 6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},

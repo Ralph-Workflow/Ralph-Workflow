@@ -20,9 +20,18 @@ staged document.
 Every submission also stages its document as that artifact's draft, whether
 or not it validated. To revise a submitted or rejected plan, edit that draft
 in place with `ralph_edit_md_artifact` (`edits`: a list of `oldText`/`newText`
-pairs, the same semantics as `edit_file`), then finalize it. Resending the
-whole document with `ralph_stage_md_artifact` (`mode="replace_all"`) is the
-fallback for a wholesale rewrite.
+pairs, the same semantics as `edit_file`). That call is itself a submission —
+it is `ralph_submit_md_artifact` starting from the existing draft, and it
+persists the artifact canonically as soon as the edited draft validates, so
+no separate `ralph_finalize_md_artifact` call is needed. A draft that still
+has errors is kept for further repair and nothing is submitted; the response
+reports `submitted` either way.
+
+Resending the whole document with `ralph_stage_md_artifact`
+(`mode="replace_all"`), or dropping it with `ralph_discard_md_draft`, is the
+fallback for a wholesale rewrite only. Do not reach for either to recover
+from validation errors or to make a revision whose content is substantially
+similar to the draft — edit in place instead.
 
 ## Shared grammar
 
