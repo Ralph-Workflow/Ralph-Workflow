@@ -29,7 +29,6 @@ from ralph.git.operations import (
     create_commit,
     find_repo_root,
     has_staged_changes,
-    stage_all,
 )
 from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,

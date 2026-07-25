@@ -475,6 +475,31 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.display._plain_constants",
             ("_sanitize",),
         ),
+        # Tests whose subject IS the internal seam: the
+        # wt-028-display P2/P3 contract lives on these private
+        # helpers (identity slot assignment, stall threshold,
+        # buffer cap), so the accessibility / parity / liveness
+        # tests must import them to pin the contract.
+        (
+            "tests/display/test_accessibility_matrix.py",
+            "ralph.display.theme",
+            ("_identity_slot",),
+        ),
+        (
+            "tests/display/test_identity_collision_aware.py",
+            "ralph.display.agent_event_renderer",
+            ("_identity_style_for",),
+        ),
+        (
+            "tests/display/test_record_writer.py",
+            "ralph.display.record_writer",
+            ("_DEFAULT_BUFFER_CAP",),
+        ),
+        (
+            "tests/display/test_status_bar_liveness.py",
+            "ralph.display.status_bar",
+            ("_STALL_THRESHOLD_SECONDS",),
+        ),
         (
             "tests/project_policy/test_cli_integration_helpers.py",
             "ralph.cli.commands._load_result",

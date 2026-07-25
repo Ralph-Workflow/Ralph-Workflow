@@ -39,8 +39,35 @@ def test_unit_id_sanitization(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "unit/with:special chars!")
     log.append("test")
     log.flush()
-    assert log.path.name == "unit_with_special_chars_.log"
+    # S-23 (wt-028-display): the verbatim capture derives its id from
+    # ``safe_id_for(unit_id, model)`` so it pairs with the rendered
+    # record. ``safe_id_for`` strips leading AND trailing underscores,
+    # so the trailing ``_`` from the historical sanitizer is gone.
+    assert log.path.name == "unit_with_special_chars.log"
     assert log.path.exists()
+    log.close()
+
+
+def test_unit_id_with_model_pairs_with_rendered_record(tmp_path: Path) -> None:
+    """S-23 (wt-028-display): the verbatim capture and the rendered record
+    share the same ``safe_id_for(agent, model)`` id so condensation
+    markers in the rendered record point at a real file on disk.
+    """
+    from ralph.display.record_writer import rendered_record_path, safe_id_for
+
+    log = RawOverflowLog(tmp_path, "pi", model="minimax-MiniMax-3")
+    log.append("verbatim line")
+    log.flush()
+    rendered = rendered_record_path(tmp_path, "pi", model="minimax-MiniMax-3")
+    # Both files share the same ``safe_id_for`` id; the verbatim
+    # capture adds ``.log`` and the rendered record adds ``.rendered.log``.
+    shared_id = safe_id_for("pi", "minimax-MiniMax-3")
+    assert log.path.name == f"{shared_id}.log"
+    assert rendered.name == f"{shared_id}.rendered.log"
+    # The two files have the same parent directory -- the rendered
+    # record's condensation markers can point at the verbatim capture
+    # by relative path (``safe_id_for(pi, model).log``).
+    assert log.path.parent == rendered.parent
     log.close()
 
 

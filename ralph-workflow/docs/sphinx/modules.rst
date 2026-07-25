@@ -3304,6 +3304,13 @@ ralph.display.prompt_reader
    :members:
    :show-inheritance:
 
+ralph.display.presented_entry
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.presented_entry
+   :members:
+   :show-inheritance:
+
 ralph.display.raw_overflow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

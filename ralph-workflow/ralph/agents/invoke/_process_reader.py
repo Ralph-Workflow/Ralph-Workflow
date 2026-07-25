@@ -244,6 +244,7 @@ class _ProcessLineReader:
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             _agent_command_name(self._config),
+            model=self._config.model,
         )
         self._last_activity_kind = "none"
         # Captured transport-level session id from the most recent

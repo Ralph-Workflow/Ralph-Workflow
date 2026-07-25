@@ -1177,6 +1177,7 @@ class PtyLineReader:
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             self._agent_name,
+            model=self._config.model,
         )
         watchdog = IdleWatchdog(
             self._policy,

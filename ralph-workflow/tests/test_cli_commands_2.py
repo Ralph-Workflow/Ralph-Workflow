@@ -168,7 +168,9 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    monkeypatch.setattr(
+        commit_module, "stage_commit_changes_safely", lambda _root: None
+    )
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
