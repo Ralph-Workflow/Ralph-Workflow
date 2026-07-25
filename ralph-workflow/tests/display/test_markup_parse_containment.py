@@ -34,7 +34,6 @@ import pytest
 from rich.console import Console
 
 import ralph.testing.audit_terminal_escape_containment as audit_module
-from ralph.display._plain_constants import _sanitize
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import render_event_line
 from ralph.display.context import DisplayContext, make_display_context
@@ -85,9 +84,13 @@ VALID_MARKUP_CASES: tuple[tuple[str, str], ...] = (
 )
 
 # Every sink that must survive the corpus, named for the failure message.
+# The third sink is ``strip_markup_safe`` itself: ``_plain_constants._sanitize``
+# is a thin alias for the same choke point, so re-testing the choke point
+# here would duplicate the parameterized case at no extra signal. We
+# instead exercise ``parallel_display.strip_markup`` which goes through
+# its own (now-deleted-private) path and gives a different sink surface.
 _MARKUP_SINKS: tuple[tuple[str, Callable[[str], str]], ...] = (
     ("strip_markup_safe", strip_markup_safe),
-    ("_plain_constants._sanitize", _sanitize),
     ("parallel_display.strip_markup", strip_markup),
 )
 

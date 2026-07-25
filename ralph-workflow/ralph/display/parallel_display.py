@@ -3149,17 +3149,37 @@ class ParallelDisplay:
         """Print the first-run welcome Panel to ``self._ctx.console``.
 
         Port of the retired ralph.display.first_run_panel.render_first_run_panel helper.
+
+        P0 (wt-028-display S-6 / AC-05): on a height-constrained
+        console (``self._ctx.height < 12``) the bordered Panel
+        degrades to unboxed headed text so the welcome takes fewer
+        rows in the working area. The information is the same; the
+        visual chrome is dropped because the panel border + padding
+        would crowd a 12-row split pane.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            panel = Panel(
-                Group(*content),
-                title="Ralph Workflow first-run setup",
-                border_style="theme.banner.border",
-                padding=(1, 2),
-            )
-            self._console.print(panel)
+            if self._ctx.is_height_constrained():
+                # Unboxed heading: title row + content lines, no
+                # border, no padding. The title still carries the
+                # semantic role (theme.banner.title) so a CVD /
+                # no-color reader still sees the heading.
+                self._console.rule(
+                    "Ralph Workflow first-run setup",
+                    style="theme.banner.border",
+                    align="left",
+                )
+                for item in content:
+                    self._console.print(item)
+            else:
+                panel = Panel(
+                    Group(*content),
+                    title="Ralph Workflow first-run setup",
+                    border_style="theme.banner.border",
+                    padding=(1, 2),
+                )
+                self._console.print(panel)
 
     def emit_welcome_banner(
         self,
@@ -3169,24 +3189,43 @@ class ParallelDisplay:
         """Print the Ralph Workflow welcome banner.
 
         Port of the retired ralph.banner.show_banner helper.
+
+        P0 (wt-028-display S-6 / AC-05): on a height-constrained
+        console the bordered ``Panel.fit`` around the ASCII-art
+        banner degrades to a plain heading line so the banner
+        takes one row instead of seven. The ASCII art itself is
+        skipped on the constrained surface (it would dominate
+        the 12-row working area); the title + version line
+        carries the same identity information.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[welcome]")
-            banner_text = Text("\n".join(_ASCII_ART_BANNER), style="theme.banner.ascii")
-            version_text = Text(f"v{version}", style="theme.banner.version")
-            title_text = Text("Ralph Workflow", style="theme.banner.title")
-            welcome_text = Text(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
-            tagline_text = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
-            banner_panel = Panel.fit(
-                banner_text,
-                border_style="theme.banner.border",
-                padding=(0, 1),
-                title=title_text,
-                subtitle=version_text,
-            )
-            self._console.print(Group(banner_panel, welcome_text, tagline_text))
+            if self._ctx.is_height_constrained():
+                # Unboxed heading: title + version on one line,
+                # welcome + tagline on the next. The box is gone
+                # but the text reads the same.
+                self._console.print(
+                    f"Ralph Workflow v{version}",
+                    style="theme.banner.title",
+                )
+                self._console.print(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
+                self._console.print(_TAGLINE_TEXT, style="theme.banner.tagline")
+            else:
+                banner_text = Text("\n".join(_ASCII_ART_BANNER), style="theme.banner.ascii")
+                version_text = Text(f"v{version}", style="theme.banner.version")
+                title_text = Text("Ralph Workflow", style="theme.banner.title")
+                welcome_text = Text(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
+                tagline_text = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
+                banner_panel = Panel.fit(
+                    banner_text,
+                    border_style="theme.banner.border",
+                    padding=(0, 1),
+                    title=title_text,
+                    subtitle=version_text,
+                )
+                self._console.print(Group(banner_panel, welcome_text, tagline_text))
 
     def emit_agents_table(self, agents: Mapping[str, object]) -> None:
         """Render the agent table for --list-agents.
@@ -3392,13 +3431,28 @@ class ParallelDisplay:
         Used by ``diagnose`` to surface the "Next steps" panel and any
         free-form info block. Replaces the inline ``Panel(...)`` call
         in diagnose.py.
+
+        P0 (wt-028-display S-6 / AC-05): on a height-constrained
+        console the bordered Panel degrades to a heading + body
+        pair (no border, no padding) so the info block fits inside
+        a 12-row working area without crowding the scrollback. The
+        title still carries the theme.phase.planning color so the
+        reader can still locate the section.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[info]")
-            panel = Panel(content, title=title, border_style="theme.phase.planning", padding=(1, 2))
-            self._console.print(panel)
+            if self._ctx.is_height_constrained():
+                self._console.print(
+                    Text(title, style="theme.phase.planning"),
+                )
+                self._console.print(content)
+            else:
+                panel = Panel(
+                    content, title=title, border_style="theme.phase.planning", padding=(1, 2)
+                )
+                self._console.print(panel)
 
     def emit_metrics_table(self, metrics: dict[str, int]) -> None:
         """Render the metrics table for pipeline summary stats.

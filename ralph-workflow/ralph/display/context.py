@@ -361,6 +361,15 @@ class DisplayContext:
     streaming_checkpoints_enabled: bool
     thinking_preview_min_chars: int
     tool_result_headline_min_chars: int
+    # P1 (wt-028-display S-5 / AC-04): maximum comfortable column
+    # count for prose and log body text. Consumers that render
+    # prose-shaped content (paragraphs, log body, single-line tool
+    # summaries) cap the visible width at this value; rules, tables,
+    # and aligned columns continue to use the full ``width`` because
+    # they have their own width negotiation. Default 100 keeps prose
+    # readable on a 250-column monitor; the value is also the upper
+    # bound of ``body_measure()`` so the cap is honored on any width.
+    body_measure_cap: int = 100
     # P0 (wt-028-display S-5 / AC-06): the vertical dimension of the
     # terminal is consumed by height-aware presentation -- boxed
     # panels degrade to unboxed headed text below a row threshold
@@ -405,6 +414,54 @@ class DisplayContext:
         if self.glyphs_enabled:
             return UNICODE_GLYPHS[name]
         return ASCII_GLYPHS[name]
+
+    def is_height_constrained(self, threshold: int = 12) -> bool:
+        """Return ``True`` when the height is known and below ``threshold``.
+
+        P0 (wt-028-display S-6 / AC-05): on a short terminal
+        (``height < threshold``) framed presentation degrades to
+        unboxed headed text. The threshold defaults to 12 rows
+        (the canonical split-pane size where the working area
+        shrinks enough that a bordered panel would crowd the
+        scrollback). When ``height`` is ``None`` (the legacy
+        opt-out) the constraint check returns ``False`` so a
+        caller without a known height keeps the full boxed
+        presentation -- the height is required to make the
+        degradation decision at all.
+
+        Args:
+            threshold: The row count at or below which the
+                presentation is considered "height-constrained".
+                Defaults to 12 (the canonical short-terminal
+                threshold).
+
+        Returns:
+            ``True`` when ``self.height`` is set and is strictly
+            less than ``threshold``; ``False`` when ``self.height``
+            is ``None`` or is ``>= threshold``.
+        """
+        if self.height is None:
+            return False
+        return self.height < threshold
+
+    def body_measure(self) -> int:
+        """Return the cap for prose / log body text on this console.
+
+        P1 (wt-028-display S-5 / AC-04): one measure rule for prose
+        and log body text. On a very wide terminal (e.g. 250 cols)
+        the cap keeps the line at a comfortable measure (the
+        ``body_measure_cap`` constant) so the operator's eye does
+        not have to track a 250-char line. On a narrow console
+        (e.g. 80 cols) the cap is a no-op because the full width
+        is already at or below the cap. Rules, tables, and aligned
+        columns use ``self.width`` directly; they are not prose.
+
+        The minimum of 40 columns is preserved even on the narrowest
+        consoles so a single token wider than the floor still wraps
+        through the line wrap machinery instead of crashing on a
+        zero-or-negative effective measure.
+        """
+        return max(40, min(self.width, self.body_measure_cap))
 
     def refreshed(self) -> DisplayContext:
         """Return a new DisplayContext with refreshed terminal width AND height.
@@ -453,6 +510,7 @@ class DisplayContext:
             streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
             thinking_preview_min_chars=self.thinking_preview_min_chars,
             tool_result_headline_min_chars=self.tool_result_headline_min_chars,
+            body_measure_cap=self.body_measure_cap,
             height=new_height,
             _resolved_env=self._resolved_env,
             env=self.env,
@@ -568,6 +626,7 @@ def make_display_context(
         streaming_checkpoints_enabled=resolved_env.streaming_checkpoints_enabled,
         thinking_preview_min_chars=limits.thinking_preview_min_chars,
         tool_result_headline_min_chars=limits.tool_result_headline_min_chars,
+        body_measure_cap=limits.body_measure_cap,
         env=env_dict,
         _resolved_env=resolved_env,
         _force_width=force_width,

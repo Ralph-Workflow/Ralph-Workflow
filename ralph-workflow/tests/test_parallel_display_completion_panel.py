@@ -15,6 +15,7 @@ from rich.console import Console
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.subscriber import PipelineSubscriber
+from ralph.display.theme import RALPH_THEME
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 
@@ -84,3 +85,198 @@ def test_emit_run_end_non_terminal_phase_no_panel(tmp_path: Path) -> None:
     assert "Pipeline Complete" not in out
     assert "Pipeline Failed" not in out
     assert "[run-end]" in out
+
+
+# --- wt-028-display S-6 / AC-05: height-constrained panel
+# degradation. The shared threshold (12 rows) is honored by every
+# Panel-using emit method: at height=11 the bordered Panel degrades
+# to unboxed headed text; at height=12 the full Panel survives. The
+# tests below pin the degradation for ``emit_info_panel``,
+# ``emit_welcome_banner``, and ``emit_first_run_panel`` so a
+# regression that re-introduces a border on a short terminal fails.
+# -------------------------------------------------------------------------
+
+
+def _make_height_aware_display(
+    tmp_path: Path, *, height: int
+) -> tuple[ParallelDisplay, Console]:
+    """Build a display whose Console carries the requested ``height``.
+
+    The :class:`rich.console.Console` is created with
+    ``record=True`` so :meth:`export_text` captures the rendered
+    output, and with ``theme=RALPH_THEME`` so the
+    ``theme.banner.border`` / ``theme.phase.planning`` styles
+    the panel renderables reference resolve to a real color
+    (without the theme, ``Panel(border_style=...)`` raises
+    ``MissingStyle`` and the panel is silently dropped by the
+    ``contextlib.suppress(Exception)`` wrapper in the emit
+    method). ``force_terminal=False`` matches the
+    ``_make_display`` helper used by the existing tests in this
+    file (a record-mode Console with ``force_terminal=True``
+    captures inconsistently when the Panel renderable is
+    involved; the canonical pattern is ``record=True`` +
+    ``force_terminal=False`` so the record is a pure plain-text
+    capture without the Live / is_terminal branches).
+    """
+    console = Console(
+        record=True,
+        width=120,
+        height=height,
+        force_terminal=False,
+        color_system=None,
+        highlight=False,
+        theme=RALPH_THEME,
+    )
+    snapshot_q: Queue = Queue(maxsize=64)
+    subscriber = PipelineSubscriber(
+        queue=snapshot_q,
+        workspace_root=tmp_path,
+        run_id=f"test-run-h{height}",
+        pipeline_policy=_DEFAULT_POLICY.pipeline,
+    )
+    display = ParallelDisplay(
+        make_display_context(console=console, env={}),
+        workspace_root=tmp_path,
+        subscriber=subscriber,
+    )
+    return display, console
+
+
+def test_emit_info_panel_degrades_to_unboxed_at_11_rows(tmp_path: Path) -> None:
+    """S-6: at height=11 the bordered info Panel becomes unboxed heading + body."""
+    display, console = _make_height_aware_display(tmp_path, height=11)
+    display.emit_info_panel(title="Next steps", content="Run ralph --init to bootstrap.")
+    out = console.export_text()
+    # Title is present (as a heading), the body is present.
+    assert "Next steps" in out, f"unboxed title missing at 11 rows:\n{out!r}"
+    assert "Run ralph --init to bootstrap." in out, f"unboxed body missing at 11 rows:\n{out!r}"
+    # The full boxed Panel would draw a top/bottom border made of
+    # ─ or ╭╮╰╯ Unicode box-drawing characters. The unboxed
+    # heading has none of those around the title line.
+    # Specifically, the title line ("Next steps") is NOT flanked
+    # by box-drawing characters on the same line.
+    next_steps_lines = [
+        line for line in out.splitlines() if "Next steps" in line
+    ]
+    assert next_steps_lines, f"title line not found:\n{out!r}"
+    title_line = next_steps_lines[0]
+    for box_char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─"):
+        assert box_char not in title_line, (
+            f"boxed title line found at 11 rows: {title_line!r}"
+        )
+
+
+def test_emit_info_panel_keeps_box_at_12_rows(tmp_path: Path) -> None:
+    """S-6: at height=12 the bordered info Panel is preserved (12 == floor)."""
+    display, console = _make_height_aware_display(tmp_path, height=12)
+    display.emit_info_panel(title="Next steps", content="Run ralph --init to bootstrap.")
+    out = console.export_text()
+    # Both the title and the body are present.
+    assert "Next steps" in out
+    assert "Run ralph --init to bootstrap." in out
+    # The full boxed Panel draws at least one box-drawing character
+    # in the rendered output (the border around the panel).
+    has_box = any(
+        char in out
+        for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│")
+    )
+    assert has_box, (
+        f"boxed Panel border missing at 12 rows (the floor):\n{out!r}"
+    )
+
+
+def test_emit_info_panel_keeps_box_at_24_rows(tmp_path: Path) -> None:
+    """S-6: at height=24 the full boxed info Panel is preserved."""
+    display, console = _make_height_aware_display(tmp_path, height=24)
+    display.emit_info_panel(title="Next steps", content="Run ralph --init to bootstrap.")
+    out = console.export_text()
+    assert "Next steps" in out
+    assert "Run ralph --init to bootstrap." in out
+    has_box = any(
+        char in out
+        for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│")
+    )
+    assert has_box, f"boxed Panel border missing at 24 rows:\n{out!r}"
+
+
+def test_emit_welcome_banner_degrades_to_heading_at_11_rows(tmp_path: Path) -> None:
+    """S-6: at height=11 the welcome banner is unboxed heading + 2 text lines."""
+    display, console = _make_height_aware_display(tmp_path, height=11)
+    display.emit_welcome_banner(version="9.9.9")
+    out = console.export_text()
+    # The heading + version line is present.
+    assert "Ralph Workflow" in out, f"unboxed banner missing at 11 rows:\n{out!r}"
+    assert "v9.9.9" in out, f"version missing at 11 rows:\n{out!r}"
+    # The ASCII-art banner (the 6-row ``_ASCII_ART_BANNER``
+    # block with pipe characters at the column edges) is NOT
+    # rendered at 11 rows; the unboxed banner replaces it with a
+    # single heading line + welcome + tagline.
+    # Check that no line carries the pipe-rail ASCII art pattern.
+    ascii_art_lines = [
+        line for line in out.splitlines()
+        if line.lstrip().startswith("\u2502") and line.rstrip().endswith("\u2502")
+    ]
+    assert not ascii_art_lines, (
+        f"boxed ASCII-art banner survived at 11 rows: {ascii_art_lines!r}"
+    )
+
+
+def test_emit_welcome_banner_keeps_box_at_12_rows(tmp_path: Path) -> None:
+    """S-6: at height=12 the welcome banner keeps its full boxed panel."""
+    display, console = _make_height_aware_display(tmp_path, height=12)
+    display.emit_welcome_banner(version="9.9.9")
+    out = console.export_text()
+    # At 12 rows the ASCII-art banner IS present (the box is kept).
+    # The banner is identified by the pipe-rail pattern of the
+    # ``_ASCII_ART_BANNER`` lines (Unicode ``\u2502`` rails on
+    # both column edges).
+    ascii_art_lines = [
+        line for line in out.splitlines()
+        if line.lstrip().startswith("\u2502") and line.rstrip().endswith("\u2502")
+    ]
+    assert len(ascii_art_lines) >= 3, (
+        f"boxed ASCII-art banner missing at 12 rows (the floor):\n{out!r}"
+    )
+
+
+def test_emit_first_run_panel_degrades_to_unboxed_at_11_rows(tmp_path: Path) -> None:
+    """S-6: at height=11 the first-run Panel becomes unboxed heading + content."""
+    from rich.text import Text
+
+    display, console = _make_height_aware_display(tmp_path, height=11)
+    display.emit_first_run_panel(content=[Text("body line 1"), Text("body line 2")])
+    out = console.export_text()
+    # The unboxed heading is present (the section rule is emitted
+    # first, then the title rule, then the body lines).
+    assert "Ralph Workflow first-run setup" in out, (
+        f"unboxed first-run heading missing at 11 rows:\n{out!r}"
+    )
+    assert "body line 1" in out
+    assert "body line 2" in out
+    # The full boxed Panel draws a top/bottom border made of
+    # corner box-drawing characters (``╭``/``╮``/``╰``/``╯``).
+    # The unboxed heading uses ``console.rule()`` which fills
+    # with the horizontal ``─`` character but does NOT have
+    # corners. The corner check distinguishes the two: the boxed
+    # form has ``╭`` / ``╯`` somewhere in the output, the
+    # unboxed form has only ``─``.
+    for corner in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘"):
+        assert corner not in out, (
+            f"boxed Panel corner character {corner!r} survived at 11 rows:\n{out!r}"
+        )
+
+
+def test_emit_first_run_panel_keeps_box_at_12_rows(tmp_path: Path) -> None:
+    """S-6: at height=12 the first-run Panel is preserved."""
+    from rich.text import Text
+
+    display, console = _make_height_aware_display(tmp_path, height=12)
+    display.emit_first_run_panel(content=[Text("body line 1")])
+    out = console.export_text()
+    assert "Ralph Workflow first-run setup" in out
+    assert "body line 1" in out
+    has_box = any(
+        char in out
+        for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│")
+    )
+    assert has_box, f"boxed Panel border missing at 12 rows:\n{out!r}"

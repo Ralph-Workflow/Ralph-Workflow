@@ -77,3 +77,93 @@ def test_make_display_context_height_is_optional_for_legacy_callers() -> None:
     # Either ``None`` (no Console size) or a positive int are both
     # valid legacy outcomes; the contract is "doesn't crash".
     assert ctx.height is None or isinstance(ctx.height, int)
+
+
+# --- wt-028-display S-6 / AC-05: height-constrained presentation. ---------
+# Below 12 rows, framed presentation degrades to unboxed headed
+# text. The threshold is the canonical split-pane size; below it,
+# a bordered panel would crowd the working area. The threshold is
+# honored by :meth:`DisplayContext.is_height_constrained` and is
+# the single source of truth for every Panel-using emit method.
+
+
+def test_is_height_constrained_default_threshold() -> None:
+    """S-6: at height=12 the working area is NOT constrained (12 == 12)."""
+    console = Console(width=80, height=12, force_terminal=True)
+    ctx = make_display_context(console=console)
+    assert ctx.height == 12
+    assert ctx.is_height_constrained() is False, (
+        "height=12 is the floor; the constraint starts strictly below 12"
+    )
+
+
+def test_is_height_constrained_just_below_threshold() -> None:
+    """S-6: at height=11 the working area IS constrained."""
+    console = Console(width=80, height=11, force_terminal=True)
+    ctx = make_display_context(console=console)
+    assert ctx.height == 11
+    assert ctx.is_height_constrained() is True
+
+
+def test_is_height_constrained_well_below_threshold() -> None:
+    """S-6: at height=8 the working area is constrained."""
+    console = Console(width=80, height=8, force_terminal=True)
+    ctx = make_display_context(console=console)
+    assert ctx.is_height_constrained() is True
+
+
+def test_is_height_constrained_above_threshold() -> None:
+    """S-6: at height=24 the working area is NOT constrained."""
+    console = Console(width=80, height=24, force_terminal=True)
+    ctx = make_display_context(console=console)
+    assert ctx.is_height_constrained() is False
+
+
+def test_is_height_constrained_none_height_returns_false() -> None:
+    """S-6: when height is None (legacy opt-out) the constraint is False.
+
+    A caller that does not know the height cannot make the
+    degradation decision safely (degrading on a 200-row monitor
+    would be wrong). The conservative default is to keep the
+    full boxed presentation; the height must be explicitly set
+    to opt into the short-terminal contract.
+
+    The :func:`make_display_context` factory uses
+    ``force_height=0`` (the legacy opt-out) to produce a context
+    with ``height=None``; that is the canonical way to exercise
+    the None-height branch without poking at a frozen dataclass
+    field.
+    """
+    ctx = make_display_context(
+        force_width=80, force_glyphs=True, force_height=0
+    )
+    assert ctx.height is None
+    assert ctx.is_height_constrained() is False
+
+
+def test_is_height_constrained_custom_threshold() -> None:
+    """S-6: the threshold parameter overrides the default 12.
+
+    The 12-row default is the canonical split-pane size; a
+    caller that wants a stricter (e.g. 16) or looser (e.g. 8)
+    threshold passes it explicitly. The check is a strict
+    less-than so a height of exactly ``threshold`` is NOT
+    constrained.
+    """
+    console = Console(width=80, height=15, force_terminal=True)
+    ctx = make_display_context(console=console)
+    # At 15, the default threshold (12) is NOT constrained.
+    assert ctx.is_height_constrained(threshold=12) is False
+    # At 15, a stricter threshold (16) IS constrained.
+    assert ctx.is_height_constrained(threshold=16) is True
+    # At 15, a looser threshold (8) is NOT constrained.
+    assert ctx.is_height_constrained(threshold=8) is False
+
+
+def test_is_height_constrained_survives_refreshed() -> None:
+    """S-6: ``is_height_constrained`` survives the refreshed() cycle."""
+    console = Console(width=80, height=10, force_terminal=True)
+    ctx = make_display_context(console=console)
+    assert ctx.is_height_constrained() is True
+    refreshed = ctx.refreshed()
+    assert refreshed.is_height_constrained() is True

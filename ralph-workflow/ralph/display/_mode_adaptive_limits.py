@@ -19,6 +19,15 @@ CONDENSER_HARD_LIMIT: Final[int] = 4000
 STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
 THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
 TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
+#: P1 (wt-028-display S-5 / AC-04): the comfortable measure for prose
+#: and log body text. A 250-column console would otherwise let a
+#: rendered paragraph run full width, which forces the operator's eye
+#: to track very long lines. Capping the measure at a comfortable
+#: 100 columns keeps the line length readable on any console; rules,
+#: tables, and aligned columns continue to use the extra space
+#: because they are NOT prose-shaped and have their own width
+#: negotiation.
+BODY_MEASURE_CAP: Final[int] = 100
 
 
 @dataclass(frozen=True)
@@ -35,6 +44,7 @@ class _ModeAdaptiveLimits:
     streaming_checkpoint_chars: int
     thinking_preview_min_chars: int
     tool_result_headline_min_chars: int
+    body_measure_cap: int
 
 
 _DEFAULT_LIMITS: Final[_ModeAdaptiveLimits] = _ModeAdaptiveLimits(
@@ -44,6 +54,7 @@ _DEFAULT_LIMITS: Final[_ModeAdaptiveLimits] = _ModeAdaptiveLimits(
     streaming_checkpoint_chars=STREAMING_CHECKPOINT_CHARS,
     thinking_preview_min_chars=THINKING_PREVIEW_MIN_CHARS,
     tool_result_headline_min_chars=TOOL_RESULT_HEADLINE_MIN_CHARS,
+    body_measure_cap=BODY_MEASURE_CAP,
 )
 
 

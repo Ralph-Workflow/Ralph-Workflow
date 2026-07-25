@@ -482,3 +482,173 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
             f"forbidden token {forbidden!r} in record:\n{body}"
         )
     assert "\x1b[" not in body, f"ANSI escape leaked into record:\n{body}"
+
+
+# --- wt-028-display S-2 / S-3: production-path drive of the
+# canonical NDJSON fixtures. The earlier ``_drive_through_writer``
+# path tested the writer in isolation; these tests drive the same
+# fixtures through :class:`ParallelDisplay` so the live log and the
+# rendered record surface are both asserted.
+# ---------------------------------------------------------------------------
+
+
+def _drive_fixture_through_production(
+    fixture_name: str,
+    tmp_path: Path,
+    *,
+    unit_id: str,
+) -> tuple[str, str]:
+    """Drive every event in ``fixture_name`` through the production path.
+
+    Returns ``(rendered_record, live_log)``. The rendered record is
+    read from ``.agent/raw/<unit_id>.rendered.log``; the live log
+    is read from the captured ``StringIO`` console sink. ``tmp_path``
+    is the workspace root.
+    """
+    path = _fixture(fixture_name)
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+
+    pd, buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for record in records:
+        kind_str = str(record.get("kind", "text"))
+        kind = ActivityEventKind(kind_str)
+        content = str(record.get("content", ""))
+        metadata = dict(record.get("metadata") or {})
+        pd.emit_parsed_event(
+            unit_id=unit_id,
+            kind=kind,
+            content=content,
+            metadata=metadata,
+        )
+    pd.stop()
+    record_path = tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log"
+    return (
+        record_path.read_text(encoding="utf-8"),
+        buf.getvalue(),
+    )
+
+
+def test_production_path_pi_fixture_one_entry_per_event_with_real_timestamps(
+    tmp_path: Path,
+) -> None:
+    """S-2: pi NDJSON fixture drives through production path, one entry per event,
+    real timestamps only.
+
+    The pre-fix corpus showed every event twice and every line
+    rendered as ``[??:??:??]``. This test re-renders the committed
+    pi fixture through the production path and asserts the post-fix
+    contract: the number of emitted record lines equals the number
+    of fixture events, and every line carries a real ``hh:mm:ss``
+    timestamp from the injected clock.
+    """
+    fixture_path = _fixture("pi_ndjson.jsonl")
+    n_records = sum(
+        1 for line in fixture_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
+    rendered, _live = _drive_fixture_through_production(
+        "pi_ndjson.jsonl", tmp_path, unit_id="pi"
+    )
+    lines = [line for line in rendered.splitlines() if line.strip()]
+    assert len(lines) == n_records, (
+        f"expected {n_records} lines (one per event) for pi fixture, got {len(lines)}:\n{rendered}"
+    )
+    assert "[??:??:??]" not in rendered, (
+        f"placeholder timestamp leaked into production record:\n{rendered}"
+    )
+    # Injected clock starts at 2026-07-25T09:30:00; assert a real hh:mm:ss
+    # slot from that clock is present in every line.
+    for line in lines:
+        assert "[" in line and "]" in line, f"line missing timestamp slot:\n{line!r}"
+        ts_slot = line.split("]")[0] + "]"
+        assert "09:30:" in ts_slot, (
+            f"line timestamp not from injected clock: {ts_slot!r}\nfull line:\n{line!r}"
+        )
+
+
+def test_production_path_claude_fixture_one_entry_per_event_with_real_timestamps(
+    tmp_path: Path,
+) -> None:
+    """S-2: claude NDJSON fixture drives through production path, one entry per
+    event, real timestamps only."""
+    fixture_path = _fixture("claude_ndjson.jsonl")
+    n_records = sum(
+        1 for line in fixture_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
+    rendered, _live = _drive_fixture_through_production(
+        "claude_ndjson.jsonl", tmp_path, unit_id="claude"
+    )
+    lines = [line for line in rendered.splitlines() if line.strip()]
+    assert len(lines) == n_records, (
+        f"expected {n_records} lines (one per event) for claude fixture, got {len(lines)}:\n{rendered}"
+    )
+    assert "[??:??:??]" not in rendered
+    for line in lines:
+        ts_slot = line.split("]")[0] + "]"
+        assert "09:30:" in ts_slot, (
+            f"line timestamp not from injected clock: {ts_slot!r}\nfull line:\n{line!r}"
+        )
+
+
+def test_production_path_pi_fixture_no_internal_channel_tokens(
+    tmp_path: Path,
+) -> None:
+    """S-3: no internal channel name leaks into the rendered record OR the live log.
+
+    The pre-fix corpus carried ``text:``, ``thinking:``,
+    ``tool_use:``, ``tool_result:`` prefixes inside the body of
+    ``role=progress`` echo entries. The post-fix contract is that
+    no internal channel name (the four documented kinds in their
+    short form, with the trailing colon) ever appears on either
+    surface; the severity word, tool name, and outcome carry the
+    information instead.
+    """
+    rendered, live = _drive_fixture_through_production(
+        "pi_ndjson.jsonl", tmp_path, unit_id="pi"
+    )
+    for surface_name, surface in (("record", rendered), ("live_log", live)):
+        for forbidden in ("text:", "thinking:", "tool_use:", "tool_result:"):
+            assert forbidden not in surface, (
+                f"internal channel token {forbidden!r} leaked into "
+                f"{surface_name} surface:\n{surface}"
+            )
+
+
+def test_production_path_claude_fixture_no_internal_channel_tokens(
+    tmp_path: Path,
+) -> None:
+    """S-3: same channel-token invariant for the claude fixture."""
+    rendered, live = _drive_fixture_through_production(
+        "claude_ndjson.jsonl", tmp_path, unit_id="claude"
+    )
+    for surface_name, surface in (("record", rendered), ("live_log", live)):
+        for forbidden in ("text:", "thinking:", "tool_use:", "tool_result:"):
+            assert forbidden not in surface, (
+                f"internal channel token {forbidden!r} leaked into "
+                f"{surface_name} surface:\n{surface}"
+            )
+
+
+def test_production_path_pi_fixture_no_role_progress_duplicate(
+    tmp_path: Path,
+) -> None:
+    """S-2: the ``role=progress`` echo is gone from the rendered record.
+
+    The pre-fix corpus produced a ``role=progress`` echo for every
+    ``role=reasoning`` / ``role=tool_call`` / ``role=tool_result``
+    entry (the SUBAGENT_PROGRESS companion event). The post-fix
+    contract is exactly one record entry per logical event, so the
+    echo must not appear on the record surface.
+    """
+    rendered, _live = _drive_fixture_through_production(
+        "pi_ndjson.jsonl", tmp_path, unit_id="pi"
+    )
+    # The real entry may carry its own ``role=reasoning`` /
+    # ``role=tool_call`` / ``role=tool_result`` marker (the
+    # structured grouping role), but the duplicate ``role=progress``
+    # echo that the pre-fix corpus produced for every event is gone.
+    assert "role=progress" not in rendered, (
+        f"role=progress echo leaked into record:\n{rendered}"
+    )
