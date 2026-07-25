@@ -13,6 +13,7 @@ from ralph.executor._process_result import ProcessResult
 from ralph.executor._process_run_options import ProcessRunOptions
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -23,14 +24,44 @@ TIMEOUT_EXIT_CODE = 124
 
 # Default per-call observability label for every child spawned through
 # ``run_process`` / ``run_process_async``. Recorded on the
-# ``ProcessRecord`` (NOT a teardown target — these children are
-# synchronously reaped on every code path; the label is purely
-# consistency / observability so ``pm.list_records(label_prefix=...)``
-# and ``pm.cleanup_orphans(label_prefix=...)`` can target the spawned
-# PID for diagnostics). Callers can override per-call via
-# ``ProcessRunOptions(label=...)`` / the ``label=`` kwarg on
-# ``run_process_async``.
+# ``ProcessRecord`` so ``pm.list_records(label_prefix=...)`` and
+# ``pm.cleanup_orphans(label_prefix=...)`` can target the spawned PID.
+# Callers can override per-call via ``ProcessRunOptions(label=...)`` /
+# the ``label=`` kwarg on ``run_process_async``.
+#
+# This comment used to claim these children were "NOT a teardown target"
+# because they are "synchronously reaped on every code path". That was
+# true only of the DIRECT child. ``handle.terminate()`` escalates
+# SIGTERM -> SIGKILL along the direct-child path only; it is not
+# transitive and, without a process group, there was nothing to signal
+# the tree with. So `exec("bin/rails test")` reaped rails and orphaned
+# every parallel worker it had forked: they reparented to PID 1 and
+# survived the call. Those orphans accumulated to 1800+ processes and
+# 35k tasks on a reference host, at which point everything else on the
+# box failed to start a thread — including the Ralph MCP server, whose
+# request handlers died with ``RuntimeError: can't start new thread``
+# after their SSE headers were already written, wedging agent runs.
 _DEFAULT_RUN_PROCESS_LABEL: Final[str] = "executor:run-process"
+
+
+def _reap_subtree(pid: int | None) -> None:
+    """Reap the whole descendant tree of an exec child, transitively.
+
+    Runs on EVERY exit path (success, timeout, cancellation, error).
+    ``teardown_subtree`` walks all descendants and escalates SIGTERM ->
+    SIGKILL, and falls back to signalling the process group when the host
+    PID is already gone — which is why exec children are spawned with
+    ``start_new_session=True``: without their own session there is no
+    group to signal and deep descendants cannot be reached.
+
+    Best-effort: a teardown failure must never mask the call's own result
+    or exception.
+    """
+    if pid is None:
+        return
+    with contextlib.suppress(Exception):
+        teardown_subtree(pid)
+
 
 # Defense-in-depth bound for the post-terminate pipe drain. The child has
 # already been escalated SIGTERM -> SIGKILL via ``terminate(grace_period_s=0)``,
@@ -116,6 +147,10 @@ async def run_process_async(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 label=effective_label,
+                # Own session/group so _reap_subtree can signal the whole
+                # tree even after the direct child is gone. Without it,
+                # forked grandchildren orphan to PID 1 and survive.
+                start_new_session=True,
             ),
         )
     except OSError as exc:
@@ -124,6 +159,7 @@ async def run_process_async(
     communicate_task: asyncio.Task[tuple[bytes, bytes]]
     communicate_task = asyncio.create_task(handle.communicate())  # mcp-timeout-ok: wait-bounded
 
+    child_pid = handle.pid
     try:
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
         if communicate_task not in done:
@@ -148,6 +184,9 @@ async def run_process_async(
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(handle.wait(), timeout=0)  # mcp-timeout-ok: wait_for-bounded
         raise
+    finally:
+        # Every exit path, including the two `return`s above: reap the tree.
+        _reap_subtree(child_pid)
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
@@ -190,11 +229,15 @@ def run_process(
                 stdout=pipe,
                 stderr=pipe,
                 label=effective_label,
+                # See the async spawn above: own session/group so the whole
+                # descendant tree is reachable at teardown.
+                start_new_session=True,
             ),
         )
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
+    child_pid = handle.pid
     try:
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired:
@@ -223,6 +266,9 @@ def run_process(
             with contextlib.suppress(Exception):
                 handle.wait(timeout=0)  # mcp-timeout-ok: bounded
         raise
+    finally:
+        # Every exit path, including the timeout `return` above: reap the tree.
+        _reap_subtree(child_pid)
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(

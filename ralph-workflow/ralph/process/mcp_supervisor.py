@@ -16,11 +16,30 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
+from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 DEFAULT_INTERVAL = timedelta(seconds=2)
+
+#: Label prefix every agent subprocess is spawned under (see
+#: ``ralph.agents.invoke._process_reader`` and ``._pty_runner``, which both
+#: use ``label=f"invoke:{...}"``). Terminating this prefix releases an agent
+#: that is blocked on MCP calls the server can no longer answer.
+AGENT_PROCESS_LABEL_PREFIX = "invoke:"
+
+#: Grace period for the terminal-failure interrupt. The MCP server is
+#: already unrecoverable at this point, so the agent has nothing left to
+#: finish; the window only lets it flush output before SIGKILL.
+_INTERRUPT_GRACE_PERIOD_S = 0.5
+
+
+def _terminate_agent_processes(label_prefix: str) -> None:
+    """Terminate every live agent subprocess under ``label_prefix``."""
+    get_process_manager().shutdown_all_for_label(
+        label_prefix, grace_period_s=_INTERRUPT_GRACE_PERIOD_S
+    )
 
 
 class McpSupervisor:
@@ -46,11 +65,13 @@ class McpSupervisor:
         check_interval: timedelta = DEFAULT_INTERVAL,
         on_restart: Callable[[int], None] | None = None,
         on_error: Callable[[McpServerError], None] | None = None,
+        terminate_agents: Callable[[str], None] = _terminate_agent_processes,
     ) -> None:
         self._bridge = bridge
         self._check_interval = check_interval
         self._on_restart = on_restart
         self._on_error = on_error
+        self._terminate_agents = terminate_agents
         self._mcp_error: McpServerError | None = None
         self._done = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="mcp-supervisor")
@@ -78,6 +99,24 @@ class McpSupervisor:
             )
             raise
 
+    def _interrupt_blocked_invocation(self, exc: McpServerError) -> None:
+        """Release an agent wedged on an MCP server that cannot recover.
+
+        Best-effort: a failure to terminate is logged rather than raised,
+        because this runs on the supervisor thread where an escaping
+        error would only lose the diagnosis stored on ``_mcp_error``.
+        """
+        logger.error(
+            "MCP supervision is terminal; interrupting agent processes under {!r} so the"
+            " run fails instead of hanging: {}",
+            AGENT_PROCESS_LABEL_PREFIX,
+            exc,
+        )
+        try:
+            self._terminate_agents(AGENT_PROCESS_LABEL_PREFIX)
+        except Exception:
+            logger.exception("Failed to interrupt agent processes after terminal MCP failure")
+
     def __enter__(self) -> McpSupervisor:
         self._thread.start()
         return self
@@ -98,9 +137,15 @@ class McpSupervisor:
         while not self._done.wait(timeout=interval_s):
             try:
                 self._do_check_once()
-            except McpServerError:
+            except McpServerError as exc:
                 # Budget exhausted: terminal by design, and already stored
                 # on _mcp_error for __exit__ to re-raise on the main thread.
+                # __exit__ cannot run while the agent is still blocked on
+                # MCP calls this server will never answer, so the stored
+                # error would sit unread and the run would hang. Interrupt
+                # the agent so the invocation returns and the failure
+                # reaches the recovery controller.
+                self._interrupt_blocked_invocation(exc)
                 return
             except Exception:
                 # Anything else is a transient supervision failure. Letting
@@ -110,4 +155,4 @@ class McpSupervisor:
                 logger.exception("MCP supervisor health check failed; continuing to supervise")
 
 
-__all__ = ["DEFAULT_INTERVAL", "McpSupervisor"]
+__all__ = ["AGENT_PROCESS_LABEL_PREFIX", "DEFAULT_INTERVAL", "McpSupervisor"]

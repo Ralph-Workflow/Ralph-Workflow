@@ -28,7 +28,7 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.process.mcp_supervisor import AGENT_PROCESS_LABEL_PREFIX, McpSupervisor
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -64,6 +64,7 @@ def _make_bridge(
     *,
     probe_outcomes: list[bool],
     process_poll: int | None = None,
+    max_restarts: int = 10,
 ) -> tuple[lifecycle.RestartAwareMcpBridge, list[int]]:
     """Return a bridge plus a restart-count log.
 
@@ -100,7 +101,7 @@ def _make_bridge(
             session_file=session_file,
         ),
         restart_fn=restart_fn,
-        restart_policy=lifecycle.McpRestartPolicy(max_restarts=10),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=max_restarts),
         run_id="test-run",
         probe_fn=probe_fn,
         probe_timeout_fn=lambda: timedelta(seconds=5),
@@ -142,6 +143,60 @@ def test_an_exited_process_restarts_without_waiting_for_repeated_evidence() -> N
 
     assert bridge.check_health_and_restart_if_needed() is True
     assert restarts == [1]
+
+
+def test_exhausted_budget_interrupts_a_blocked_invocation() -> None:
+    """Terminal supervision must unblock the run, not wait for ``__exit__``.
+
+    Step 3 above left one hang intact. When the restart budget is
+    exhausted the supervisor stores the error and stops its thread, and
+    the stored error is re-raised only by ``__exit__`` — which cannot
+    run while the agent is still blocked on MCP calls that will never be
+    answered. Nothing else probes the server, so the run stalls until
+    the idle watchdog fires, if it fires at all: an agent that keeps
+    retrying and printing looks busy to the watchdog.
+    """
+    bridge, restarts = _make_bridge(probe_outcomes=[True], process_poll=1, max_restarts=0)
+    interrupted = threading.Event()
+
+    supervisor = McpSupervisor(
+        bridge,
+        check_interval=timedelta(milliseconds=10),
+        on_error=lambda _exc: interrupted.set(),
+    )
+
+    with pytest.raises(lifecycle.McpServerError, match="budget"), supervisor:
+        # Stands in for an agent wedged on unanswerable MCP calls: it
+        # returns only because supervision interrupted it.
+        assert interrupted.wait(timeout=5.0), "supervisor never interrupted the blocked invocation"
+
+    assert restarts == []
+
+
+def test_supervision_interrupts_the_agent_by_default() -> None:
+    """The interrupt must be wired in production, not just available.
+
+    ``on_error`` existed but no production call site ever passed one, so
+    a terminal MCP failure was diagnosed and then silently dropped.
+    """
+    bridge, _ = _make_bridge(probe_outcomes=[True], process_poll=1, max_restarts=0)
+    killed: list[str] = []
+
+    supervisor = McpSupervisor(
+        bridge,
+        check_interval=timedelta(milliseconds=10),
+        terminate_agents=killed.append,
+    )
+
+    with pytest.raises(lifecycle.McpServerError, match="budget"), supervisor:
+        deadline = 5.0
+        step = 0.01
+        waited = 0.0
+        while not killed and waited < deadline:
+            threading.Event().wait(step)
+            waited += step
+
+    assert killed == [AGENT_PROCESS_LABEL_PREFIX]
 
 
 def test_preflight_failure_on_a_live_process_surfaces_as_mcp_server_error(
