@@ -139,10 +139,6 @@ from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.line_sanitizer import strip_terminal_control
-from ralph.display.long_content_summary import (
-    build_ai_summary,
-    build_headline_or_placeholder,
-)
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
@@ -150,6 +146,7 @@ from ralph.display.phase_status import (
     format_transition_context_items,
 )
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
+from ralph.display.record_writer import RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
@@ -435,6 +432,7 @@ class ParallelDisplay:
         "_overflow_warned",
         "_phase_close_emitted",
         "_phase_counters",
+        "_rendered_writers",
         "_run_counters",
         "_run_start_time",
         "_status_bar",
@@ -522,8 +520,18 @@ class ParallelDisplay:
         # Per-unit last drop-warning timestamp; _NEVER_WARNED means never warned yet
         self._drop_last_warned: dict[str, float] = {}  # bounded-accumulator-ok: drop_unit
 
+        # P0 (wt-028-display S-11 / AC-07): the rendered-record writer is
+        # the production seam that puts one entry per agent event under
+        # ``.agent/raw/<safe_id>.rendered.log``. The dictionary is bounded
+        # by ``drop_unit`` (parallel coordinator ``finally``) and by
+        # ``stop()``'s flush, so a long unattended run cannot accumulate
+        # writers beyond the per-wave set. Quiet mode (single-line runs)
+        # and tests that disable the writer get a no-op append.
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._rendered_writers: dict[str, RenderedRecordWriter] = {}  # bounded-accumulator-ok: drop_unit
+
         self._activity_router: ActivityRouter = ActivityRouter(
-            on_event=self._emit_activity_event,
+            on_event=self._on_activity_router_event,
             raw_overflow_callback=self._raw_overflow_write,
         )
 
@@ -807,7 +815,15 @@ class ParallelDisplay:
             )
 
     def _close_block(self, unit_id: str, timestamp: str) -> None:
-        """Close an active streaming block, emitting the end-line and optional AI summary."""
+        """Close an active streaming block: emit exactly one coalesced entry.
+
+        S-7 (wt-028-display P1): one entry per block. The close line carries
+        the joined passage with span and duration (sketch J shape). The
+        preview line, the AI summary line, the close summary, and the
+        per-fragment emission paths are all retired; the live log must
+        present a single coalesced entry for the whole block rather than
+        the up-to-four repeat-renderings that used to surface here.
+        """
         if unit_id not in self._active_block:
             return
         rendered_unit_id = _render_unit_id(unit_id)
@@ -817,50 +833,49 @@ class ParallelDisplay:
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
             return
-        end_tag = block_tags[2]
+        if not accumulated:
+            return
         n = len(accumulated)
         chars = sum(len(x) for x in accumulated)
         joined = " ".join(accumulated)
-        headline = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "CONT",
-                f"[{end_tag}][{rendered_unit_id}] ({n} fragments, {chars} chars) {headline}",
+        sanitized_joined = _sanitize(joined)
+        # S-7 / AC-06: condensation still applies to the joined passage --
+        # a long reasoning or text block may exceed the soft limit on
+        # close. The condenser carries the count + size + destination
+        # marker the product criteria require; the verbatim overflow
+        # log under .agent/raw/<safe_id>.log remains the destination.
+        overflow = self._get_overflow_log(unit_id)
+        overflow_ref = overflow.relative_reference(self._workspace_root)
+        visible, condensed_flag = cast(
+            "tuple[str, bool]",
+            condense_content(
+                sanitized_joined,
+                options=CondenseOptions(
+                    soft_limit=self._ctx.condenser_soft_limit,
+                    hard_limit=self._ctx.condenser_hard_limit,
+                    overflow_ref=overflow_ref,
+                ),
             ),
+        )
+        if condensed_flag:
+            with contextlib.suppress(Exception):
+                overflow.append(sanitized_joined)
+                self._check_overflow_size(unit_id, overflow)
+        # S-7 single-entry shape: base tag + fragment count + char count +
+        # joined passage. Span / start-end timestamps are owned by the
+        # activity-emit record path (timestamp carried by the badge), so
+        # the close line stays one self-contained entry.
+        body = (
+            f"\u22ef {base_tag} \u00b7 {n} fragments \u00b7 {chars} chars\n"
+            f"{visible}"
+        )
+        self._console.print(
+            self._build_line(timestamp, "INFO", "CONT", f"[{base_tag}][{rendered_unit_id}] {body}"),
             markup=False,
             highlight=False,
             no_wrap=False,
             overflow="fold",
         )
-
-        if base_tag == "thinking":
-            preview = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
-            preview_suffix = f"[{end_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
-            self._console.print(
-                self._build_line(timestamp, "INFO", "CONT", preview_suffix),
-                markup=False,
-                highlight=False,
-                no_wrap=False,
-                overflow="fold",
-            )
-
-        ai_summary = build_ai_summary(joined, self._ctx.env)
-        if ai_summary:
-            ai_text = _sanitize(ai_summary)
-            self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "CONT",
-                    f"[{end_tag}][{rendered_unit_id}] \u21b3 ai-summary: {ai_text}",
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=False,
-                overflow="fold",
-            )
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks and refresh display context."""
@@ -875,18 +890,20 @@ class ParallelDisplay:
         self,
         ctx: _StreamingCtx,
         start_tag: str,
-    ) -> tuple[str, str | None]:
-        """Open a new streaming block and return (tag, sanitized_override | None)."""
+    ) -> tuple[str, str | None] | None:
+        """Open a new streaming block: accumulate first fragment, suppress emission.
+
+        S-7 (wt-028-display P1): one entry per block. The streaming layer is
+        silent on open; the close path emits the single coalesced entry.
+        Returning ``None`` here causes ``emit_activity_line`` to skip the
+        per-fragment console-print while the fragment is still buffered
+        into ``_active_block`` for ``_close_block`` to join.
+        """
         self._active_block[ctx.unit_id] = (ctx.base_tag, [ctx.content])
         self._last_checkpoint_chars[ctx.unit_id] = 0
         self._active_block_chars[ctx.unit_id] = len(ctx.content)
         self._update_counters(ctx.kind, is_new_block=True)
-        if ctx.kind == "thinking":
-            headline = build_headline_or_placeholder(
-                ctx.content, max_chars=self._ctx.headline_max_chars
-            )
-            return start_tag, f"\u21b3 preview: {_sanitize(headline)}"
-        return start_tag, None
+        return None  # S-7: suppress per-fragment emission; close emits one entry
 
     def _continue_streaming_block(
         self,
@@ -895,63 +912,29 @@ class ParallelDisplay:
         continue_tag: str,
         start_tag: str,
     ) -> tuple[str, str | None] | None:
-        """Continue an existing streaming block; returns (tag, override) or None for dedup."""
+        """Continue an existing streaming block: accumulate fragment, suppress emission.
+
+        S-7 (wt-028-display P1): the live log is silent during streaming.
+        The single coalesced entry is emitted on ``_close_block``.
+        Returns ``None`` to suppress the per-fragment console-print while
+        still appending to ``accumulated`` so the close path can join
+        the passage. The close-and-reopen cap (memory-perf GAP-MEM-03)
+        still fires here so a chatty stream cannot blow the fragment cap.
+        """
         if self._ctx.streaming_dedup_enabled and accumulated and accumulated[-1] == ctx.content:
             return None
         if len(accumulated) >= _MAX_STREAMING_FRAGMENTS:
+            # Close-and-reopen: close the current block (which emits the
+            # coalesced entry) and open a fresh one with the current
+            # fragment. Both paths are silent at the streaming layer; the
+            # close is the single visible emission.
             self._close_block(ctx.unit_id, ctx.timestamp)
-            return self._handle_new_streaming_block(ctx, start_tag)
-        seq = len(accumulated) + 1
+            self._handle_new_streaming_block(ctx, start_tag)
+            return None  # S-7: suppress this fragment's per-line emission
         accumulated.append(ctx.content)
         running_total = self._active_block_chars.get(ctx.unit_id, 0) + len(ctx.content)
         self._active_block_chars[ctx.unit_id] = running_total
-        tag = f"{continue_tag}#{seq}"
-        if self._ctx.streaming_checkpoints_enabled:
-            total_chars = self._active_block_chars.get(ctx.unit_id, 0)
-            last_cp = self._last_checkpoint_chars.get(ctx.unit_id, 0)
-            emit_checkpoint = (
-                seq % self._ctx.streaming_checkpoint_fragments == 0
-                or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
-            )
-            if emit_checkpoint:
-                self._last_checkpoint_chars[ctx.unit_id] = total_chars
-                rendered_unit_id = _render_unit_id(ctx.unit_id)
-                headline = build_headline_or_placeholder(
-                    " ".join(accumulated), max_chars=self._ctx.headline_max_chars
-                )
-                cp_tag = f"{ctx.base_tag}-checkpoint#{seq}"
-                cp_suffix = (
-                    f"[{cp_tag}][{rendered_unit_id}] "
-                    f"({seq} fragments, {total_chars} chars) {headline}"
-                )
-                self._console.print(
-                    self._build_line(ctx.timestamp, "INFO", "CONT", cp_suffix),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=False,
-                    overflow="fold",
-                )
-                if ctx.kind == "thinking":
-                    preview = build_headline_or_placeholder(
-                        " ".join(accumulated), max_chars=self._ctx.headline_max_chars
-                    )
-                    preview_suffix = (
-                        f"[{cp_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
-                    )
-                    self._console.print(
-                        self._build_line(ctx.timestamp, "INFO", "CONT", preview_suffix),
-                        markup=False,
-                        highlight=False,
-                        no_wrap=False,
-                        overflow="fold",
-                    )
-        thinking_min = self._ctx.thinking_preview_min_chars
-        if ctx.kind == "thinking" and len(ctx.content) >= thinking_min:
-            preview = build_headline_or_placeholder(
-                ctx.content, max_chars=self._ctx.headline_max_chars
-            )
-            return tag, f"\u21b3 preview: {_sanitize(preview)}"
-        return tag, None
+        return None  # S-7: suppress per-fragment emission; close emits one entry
 
     def _process_streaming_block(
         self,
@@ -1283,6 +1266,25 @@ class ParallelDisplay:
             )
         return self._overflow_logs[unit_id]
 
+    def _get_rendered_writer(self, unit_id: str) -> RenderedRecordWriter | None:
+        """Return the per-unit rendered-record writer, lazy-created.
+
+        P0 (wt-028-display S-11 / AC-07): the writer is created on
+        first use so quiet-mode runs and tests that never emit
+        activity events pay nothing. Quiet mode returns ``None`` so
+        the caller can skip the append in a single guarded branch.
+        ``drop_unit`` flushes and removes the writer; ``stop()``
+        flushes any straggler writers at run end so a buffered line
+        is not lost.
+        """
+        if self._is_quiet:
+            return None
+        if unit_id not in self._rendered_writers:
+            self._rendered_writers[unit_id] = RenderedRecordWriter(
+                self._workspace_root, unit_id
+            )
+        return self._rendered_writers[unit_id]
+
     def _raw_overflow_write(self, unit_id: str, raw_line: str) -> None:
         """Write a raw malformed line to the per-unit overflow log for diagnosis.
 
@@ -1462,22 +1464,62 @@ class ParallelDisplay:
             and text.strip()
             and len(text) >= self._ctx.tool_result_headline_min_chars
         ):
-            effective_summary_line = build_headline_or_placeholder(
-                text, max_chars=self._ctx.headline_max_chars
+            # S-7 (wt-028-display P1): the per-event ``\u21b3 summary:``
+            # supplement line is retired. ``build_headline_or_placeholder``
+            # used to drive a duplicate ``[tool-result][u1] \u21b3 summary: <headline>``
+            # line above the actual content, which violates the
+            # one-entry-per-event contract. The tool_result's own content
+            # line is the entry; the headline is no longer surfaced here.
+            del effective_summary_line
+            effective_summary_line = None
+        else:
+            effective_summary_line = summary_line
+
+        # S-7 (wt-028-display P1): streaming kinds must buffer raw content,
+        # not the registry-rendered visible text. The registry's render_event
+        # prepends ``\u25d0 RUN <ts> <unit_id>`` to each fragment; if that
+        # pre-formatted text were stored in ``_active_block`` and joined at
+        # close, the joined passage would carry the prefix between every
+        # fragment. The close path formats the joined passage itself via
+        # ``_build_line`` so per-fragment formatting must be skipped here.
+        content_for_emit = (
+            text_content if kind.value in _STREAMING_KINDS else visible
+        )
+
+        # S-7 (wt-028-display P1): SUBAGENT_PROGRESS is a watchdog-side
+        # companion event. The audit trail (rendered record writer below)
+        # still records it, but the live console must not surface a
+        # ``[progress][unit] \u25d0 RUN ... <summary>`` line alongside the
+        # close-path entry that already carries the same content -- one
+        # event, one visible line.
+        if kind is not ActivityEventKind.SUBAGENT_PROGRESS:
+            self.emit_activity_line(
+                unit_id,
+                kind.value,
+                content_for_emit,
+                options=_ActivityLineOptions(
+                    condensed_ref=overflow_ref if condensed_flag else None,
+                    condensed_flag=condensed_flag,
+                    summary_line=effective_summary_line,
+                    ai_summary_line=ai_summary_line,
+                    tool_signature=tool_signature,
+                ),
             )
 
-        self.emit_activity_line(
-            unit_id,
-            kind.value,
-            visible,
-            options=_ActivityLineOptions(
-                condensed_ref=overflow_ref if condensed_flag else None,
-                condensed_flag=condensed_flag,
-                summary_line=effective_summary_line,
-                ai_summary_line=ai_summary_line,
-                tool_signature=tool_signature,
-            ),
-        )
+        # P0 (wt-028-display S-11 / AC-07): the same event that
+        # lands in the live log also lands in the rendered record.
+        # ``build_presented_entry`` returns the canonical
+        # ``PresentedEntry`` (one timestamp, one identity, one
+        # severity) the writer's ``_format_entry_line`` consumes.
+        # The append is suppressed on any exception so a writer
+        # error can never break the live display path.
+        with contextlib.suppress(Exception):
+            writer = self._get_rendered_writer(unit_id)
+            if writer is not None:
+                from ralph.display.presented_entry import build_presented_entry
+
+                entry = build_presented_entry(event, unit_id=unit_id)
+                writer.append(entry)
 
         self._emit_drop_warning(unit_id)
 
@@ -1503,6 +1545,17 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._status_bar.stop()
         self.flush_blocks()
+        # P0 (wt-028-display S-11 / AC-07): flush any per-unit
+        # rendered-record writer that was not already collected by
+        # ``drop_unit`` (e.g. a single-wave run whose drop_unit is
+        # never called). Each writer is disabled after flush so a
+        # second ``stop()`` is a no-op.
+        for writer in self._rendered_writers.values():
+            with contextlib.suppress(Exception):
+                writer.flush()
+            with contextlib.suppress(Exception):
+                writer.disable()
+        self._rendered_writers.clear()
 
     def update_status_bar(self, model: object) -> None:
         """Push a new :class:`StatusBarModel` to the composed StatusBar.
@@ -1562,7 +1615,40 @@ class ParallelDisplay:
             and _is_bare_lifecycle(content)
         ):
             return
+        # S-7 (wt-028-display P1): SUBAGENT_PROGRESS still reaches
+        # ``_emit_activity_event`` here so the event-emission contract
+        # (``stream_parsed_agent_activity`` -> ``display.emit_parsed_event``
+        # carries the watchdog companion event end-to-end) is preserved
+        # for tests and other subscribers that hook ``_emit_activity_event``.
+        # The LIVE console emission is suppressed inside
+        # ``_emit_activity_event`` itself (the watchdog's audit trail still
+        # records the event via the rendered record writer path).
         self._emit_activity_event(unit_id, kind, content, None, metadata)
+
+    def _on_activity_router_event(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        raw_reference: str | None,
+        metadata: dict[str, object] | None,
+    ) -> None:
+        """Adapter between ``ActivityRouter.on_event`` and ``_emit_activity_event``.
+
+        S-7 (wt-028-display P1): the router forwards SUBAGENT_PROGRESS
+        events for every thinking / text / tool line so the watchdog
+        sink stays fresh. The watchdog sink is reached BEFORE this
+        adapter runs (via ``invoke_subagent_sink`` in
+        ``ActivityRouter._dispatch_subagent_progress``), so dropping the
+        event here does not lose watchdog coverage. Dropping it here
+        also prevents the per-fragment watchdog summary from closing the
+        active streaming block before the operator sees the joined
+        passage, and from emitting a duplicate progress line alongside
+        the close entry.
+        """
+        if kind is ActivityEventKind.SUBAGENT_PROGRESS:
+            return
+        self._emit_activity_event(unit_id, kind, content, raw_reference, metadata)
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         if self._is_quiet:
@@ -3051,6 +3137,20 @@ class ParallelDisplay:
         self._active_block.pop(unit_id, None)
         self._active_block_chars.pop(unit_id, None)
         self._last_checkpoint_chars.pop(unit_id, None)
+        # P0 (wt-028-display S-11 / AC-07): the rendered-record
+        # writer is per-unit; ``drop_unit`` flushes the buffered
+        # entries to ``.agent/raw/<safe_id>.rendered.log`` and
+        # disables the writer so a follow-up ``_emit_activity_event``
+        # for the same unit id (a re-spawned worker) does not double-
+        # flush an already-disabled instance. The actual pop
+        # happens after flush so the writer is reachable for its
+        # own flush call.
+        writer = self._rendered_writers.pop(unit_id, None)
+        if writer is not None:
+            with contextlib.suppress(Exception):
+                writer.flush()
+            with contextlib.suppress(Exception):
+                writer.disable()
         self._activity_router.drop_unit(unit_id)
 
     def __enter__(self) -> ParallelDisplay:

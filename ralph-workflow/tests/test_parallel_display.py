@@ -242,32 +242,58 @@ def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: 
 
 
 def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> None:
-    """Content between soft and hard limits includes overflow ref in condensed output."""
+    """S-7 / AC-06: the close path condenses the joined passage on its own schedule.
+
+    A 500-char single-fragment TEXT stream sits above the soft_limit (400)
+    so the condenser truncates head-only and the close line carries the
+    ``(truncated, see .agent/raw/<id>.log)`` marker with count + size +
+    destination (AC-06). The verbatim capture under .agent/raw/<id>.log
+    is the destination and remains complete.
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     # 500 chars: above soft_limit(400), below hard_limit(4000)
-    # renderer appends [see .agent/raw/unit-1.log] via condensed_ref
     soft_limit_content = "B" * 500
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
+    pd.stop()
 
     rendered = buf.getvalue()
-    assert "unit-1.log" in rendered
+    # Close line carries [content] tag and the joined passage is condensed.
+    assert "[content][unit-1]" in rendered
+    # S-7 / AC-06: condensation marker carries the destination.
+    assert "see .agent/raw/unit-1.log" in rendered
+    # The full 500 chars do NOT appear (condenser truncated head-only).
+    assert soft_limit_content not in rendered
+    # Exactly one close entry per block.
+    content_lines = [line for line in rendered.splitlines() if "[content][unit-1]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [content] entry, got {len(content_lines)}:\n{rendered}"
+    )
 
 
 def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:
-    """The overflow ref is added by PlainLogRenderer, not embedded in condenser output."""
+    """S-7 / AC-06: the close path applies the condenser (count+size+destination).
+
+    The marker shape is consistent across streaming and non-streaming
+    surfaces: count + size + destination (``see .agent/raw/<id>.log``).
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     soft_limit_content = "C" * 500
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
+    pd.stop()
 
     rendered = buf.getvalue()
-    # Renderer suffix uses [see ...] brackets
-    assert "[see .agent/raw/unit-1.log]" in rendered
-    # Condenser fallback "raw unavailable" should NOT appear since we don't pass overflow_ref
-    assert "raw unavailable" not in rendered
+    # S-7 / AC-06: the close path applies the condenser; the marker
+    # appears in the visible line and points at the verbatim destination.
+    assert "see .agent/raw/unit-1.log" in rendered
+    # Full content is condensed (head-only truncation kicks in at soft_limit).
+    assert soft_limit_content not in rendered
+    # The legacy ``[see ...]`` per-fragment marker format is retired;
+    # the condenser emits the ``(truncated, see ...)`` shape instead.
+    assert "[see .agent/raw/" not in rendered
 
 
 def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
@@ -282,6 +308,11 @@ def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
 
 
 def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
+    """S-7 (wt-028-display P1): ``stop()`` flushes open streaming blocks with one close line.
+
+    The close line carries ``[content]`` (not ``[content-end]``); the
+    ``-end`` suffix is part of the retired per-fragment vocabulary.
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
@@ -289,11 +320,15 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     pd.stop()
 
     rendered = buf.getvalue()
-    assert "[content-end]" in rendered
+    assert "[content][unit-1]" in rendered
 
 
 def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
+    """S-7 (wt-028-display P1): phase close flushes the open streaming block.
 
+    The flush emits one ``[content]`` close line (not ``[content-end]``);
+    the ``-end`` suffix is part of the retired per-fragment vocabulary.
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
@@ -307,7 +342,7 @@ def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
     pd.emit_phase_close_from_exit(exit_model)
 
     rendered = buf.getvalue()
-    assert "[content-end]" in rendered
+    assert "[content][unit-1]" in rendered
 
 
 # --- Drop reporting tests ---

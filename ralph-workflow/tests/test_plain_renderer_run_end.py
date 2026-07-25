@@ -83,7 +83,12 @@ def test_emit_run_end_no_ansi_escapes() -> None:
 
 
 def test_emit_run_end_flushes_open_streaming_block() -> None:
-    """Calling emit_run_end with an open streaming block closes it before emitting [run-end]."""
+    """Calling emit_run_end with an open streaming block closes it before emitting [run-end].
+
+    S-7 (wt-028-display P1): the close line for a streaming block carries
+    ``[content]`` (not ``[content-end]``); the lifecycle suffix is part of
+    the retired per-fragment vocabulary.
+    """
     pd, buf = _make_display()
     # Open a streaming block
     pd.emit_activity_line("u", "text", "partial content")
@@ -92,10 +97,11 @@ def test_emit_run_end_flushes_open_streaming_block() -> None:
     # emit_run_end should close the block first
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
-    # [content-end] must appear before [run-end] MILESTONE header
-    assert "[content-end]" in out
+    # The streaming-block close line ([content] · 1 fragments) must
+    # appear before the [run-end] MILESTONE header.
+    assert "[content][u]" in out
     assert "MILESTONE META [run-end]" in out
-    assert out.index("[content-end]") < out.index("MILESTONE META [run-end]")
+    assert out.index("[content][u]") < out.index("MILESTONE META [run-end]")
 
 
 def test_emit_run_end_includes_all_counter_lines() -> None:

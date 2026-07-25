@@ -12,9 +12,11 @@ module is the thin CLI surface (option setup, report rendering, exit codes).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -481,8 +483,35 @@ def smoke_harness_agent_command(
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
     exit_code = 0 if not result.errors else 1
-    print(f"EXIT_CODE={exit_code}")
+    # S-14: keep the literal ``EXIT_CODE=N`` machine-line shape so
+    # external smoke harnesses that grep the line keep working. The
+    # line is a machine contract (not operator-visible decoration) and
+    # must NOT carry the ``[status]`` rule or badge formatting the
+    # shared ``emit_status`` / ``emit_log_line`` helpers add, so it
+    # uses ``contextlib.suppress`` + ``sys.stdout.write`` rather than
+    # routing through ``display._console.print(...)`` (which would also
+    # trip the wt-007 anti-drift guard). The drift-prevention suite
+    # whitelists this exact line via the smoke-specific test in
+    # ``test_parallel_display_drift_prevention.py``.
+    _smoke_emit_exit_code_line(exit_code)
     return exit_code
+
+
+def _smoke_emit_exit_code_line(exit_code: int) -> None:
+    """Emit the literal ``EXIT_CODE=N`` machine contract line.
+
+    P2 (wt-028-display S-14): smoke.py's machine contract is the one
+    allowed bare-stdout call site in the command suite. Every other
+    command in :mod:`ralph.cli.commands` routes through the shared
+    ``ParallelDisplay`` surface (``emit_status`` / ``emit_warning`` /
+    ``emit_renderable``). The literal ``EXIT_CODE=N`` shape is the
+    machine-readable contract external smoke harnesses depend on; it
+    is preserved verbatim on its own line and intentionally bypasses
+    the display console.
+    """
+    with contextlib.suppress(Exception):
+        sys.stdout.write(f"EXIT_CODE={exit_code}\n")
+        sys.stdout.flush()
 
 
 def smoke_interactive_claude_command(

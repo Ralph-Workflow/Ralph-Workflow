@@ -217,13 +217,24 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     assert run_start_idx < planning_idx, "run-start should appear before the first phase transition"
 
     # --- Assert streaming content block structure ---
-    # Content is emitted during the stubbed agent runs, which may span multiple phases.
-    # We check for the overall streaming block structure rather than assuming content starts
-    # in any particular phase.
-    assert "[content-start]" in out, "Transcript should contain a content-start marker"
-    # Require proper streaming sequence: content-start → content-continue#N → content-end
-    assert "[content-continue" in out, "Transcript should contain content-continue markers"
-    assert "[content-end]" in out, "Transcript should contain a content-end marker"
+    # S-7 (wt-028-display P1): one entry per block close, with the
+    # joined passage plus fragment/char counts. The close-line tag is
+    # ``[content]`` (NOT ``[content-start]`` / ``[content-end]``); there
+    # are no per-fragment ``[content-continue#N]`` markers because the
+    # streaming layer is silent during open / continue.
+    assert "[content]" in out, "Transcript should contain a [content] close line"
+    # Close-line shape carries fragment count + char count joined by `·`.
+    assert "fragments" in out, "Transcript should mention fragment count on close"
+    # The pre-S-7 per-fragment / preview tokens must NOT surface.
+    for forbidden in (
+        "[content-start]",
+        "[content-end]",
+        "[content-continue#",
+        "[content-checkpoint#",
+    ):
+        assert forbidden not in out, (
+            f"Retired streaming token {forbidden!r} leaked into transcript"
+        )
 
     # --- Assert [phase-close] contains elapsed= and content_blocks= ---
     # Exclude the visual-hierarchy section rule line `─── [phase-close]`

@@ -18,6 +18,7 @@ import pytest
 import typer
 from rich.console import Console
 
+from ralph.cli.commands import check_policy as check_policy_module
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
@@ -995,14 +996,24 @@ def test_init_command_respects_explicit_config_path(
 
 
 class TestCheckPolicyCommand:
-    """check_policy_command validates the active policy and reports results."""
+    """check_policy_command validates the active policy and reports results.
+
+    P0 (wt-028-display S-14): the command now routes its success and
+    warning output through the shared ``display.emit_status`` /
+    ``display.emit_warning`` surface so the drift-prevention suite can
+    verify no command reaches the terminal through a private print
+    path. Tests use ``_attach_console`` to inject a StringIO-backed
+    Rich console (the canonical display seam) and read the captured
+    output from the returned stream.
+    """
 
     def test_success_returns_zero_and_prints_ok(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
+        stream = _attach_console(monkeypatch, check_policy_module)
         code = check_policy_command(tmp_path)
-        out = capsys.readouterr().out
+        out = stream.getvalue()
         assert code == 0
         assert "Policy OK" in out
         assert "phases:" in out
@@ -1010,11 +1021,12 @@ class TestCheckPolicyCommand:
         assert "artifact contracts:" in out
 
     def test_success_includes_counts(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
+        stream = _attach_console(monkeypatch, check_policy_module)
         check_policy_command(tmp_path)
-        out = capsys.readouterr().out
+        out = stream.getvalue()
         # All count lines are present
         for label in (
             "phases:",
@@ -1026,16 +1038,17 @@ class TestCheckPolicyCommand:
             assert label in out
 
     def test_missing_directory_returns_one(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         missing = tmp_path / "nonexistent"
+        stream = _attach_console(monkeypatch, check_policy_module)
         code = check_policy_command(missing)
-        err = capsys.readouterr().err
+        out = stream.getvalue()
         assert code == 1
-        assert "not found" in err
+        assert "not found" in out
 
     def test_invalid_pipeline_returns_two(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
         # Overwrite pipeline.toml with an invalid transition target
@@ -1052,10 +1065,11 @@ class TestCheckPolicyCommand:
             'on_success = "complete"\n'
             'on_loopback = "complete"\n'
         )
+        stream = _attach_console(monkeypatch, check_policy_module)
         code = check_policy_command(tmp_path)
-        err = capsys.readouterr().err
+        out = stream.getvalue()
         assert code == _POLICY_VALIDATION_EXIT_CODE
-        assert "Policy validation error" in err
+        assert "Policy validation error" in out
 
 
 def test_agent_session_uses_stored_capability_profile_when_set() -> None:

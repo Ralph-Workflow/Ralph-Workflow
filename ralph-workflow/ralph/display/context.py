@@ -272,6 +272,46 @@ def _set_injected_console_width(console: Console, width: int) -> None:
         console._height = height
 
 
+def _compute_height(console: Console, force_height: int | None) -> int | None:
+    """Resolve effective terminal height using the documented precedence.
+
+    P0 (wt-028-display S-6 / AC-03): the height is resolved the same
+    way as width so ``refreshed()`` can recompute it on every cycle
+    (SIGWINCH on POSIX, poll on Windows) without losing the
+    ``force_height`` override the operator pinned at construction
+    time. Precedence:
+
+    1. Explicit ``force_height > 0`` -- the operator override.
+    2. Explicit ``force_height`` of zero or negative -- the legacy
+       opt-out: ``None`` disables height-aware rendering.
+    3. The Console's own ``_height`` attribute when set and positive.
+    4. The Console's live ``size.height`` when positive.
+    5. ``None`` when nothing else resolves (the legacy contract).
+
+    Args:
+        console: Console to read height from as fallback.
+        force_height: Operator override (``None`` to opt out).
+
+    Returns:
+        Effective terminal height in rows, or ``None`` when no source
+        resolves a positive integer.
+    """
+    if force_height is not None and force_height > 0:
+        return force_height
+    if force_height is not None:
+        # Explicit zero / negative -> legacy opt-out.
+        return None
+    configured_height = cast("object", getattr(console, "_height", None))
+    if isinstance(configured_height, int) and configured_height > 0:
+        return configured_height
+    size_obj: object = getattr(console, "size", None)
+    if size_obj is not None:
+        candidate: object = getattr(size_obj, "height", None)
+        if isinstance(candidate, int) and candidate > 0:
+            return candidate
+    return None
+
+
 def _compute_default_mode() -> Literal["default"]:
     """Return the single display mode.
 
@@ -367,16 +407,20 @@ class DisplayContext:
         return ASCII_GLYPHS[name]
 
     def refreshed(self) -> DisplayContext:
-        """Return a new DisplayContext with refreshed terminal width.
+        """Return a new DisplayContext with refreshed terminal width AND height.
 
         Re-resolves width using the same precedence rules as
         make_display_context(), preserving any active overrides (COLUMNS,
-        force_width) stored at construction time. The console identity,
+        force_width) stored at construction time. P0 (wt-028-display
+        S-6 / AC-03): height is RE-RESOLVED from the live Console on
+        every cycle so a SIGWINCH or poll refresher observes a vertical
+        resize, while the ``force_height`` override the operator pinned
+        at construction time continues to win. The console identity,
         theme, color_enabled, glyphs_enabled, and adaptive limits are
         unchanged. Mode is always ``'default'``.
 
         Returns:
-            New DisplayContext with updated width.
+            New DisplayContext with updated width and height.
         """
         new_width = _compute_width(
             self._resolved_env,
@@ -385,6 +429,13 @@ class DisplayContext:
             prefer_configured_width=False,
             explicit_env=self._explicit_env,
         )
+        # P0 (wt-028-display S-6 / AC-03): re-resolve height the same
+        # way ``make_display_context`` does so a vertical resize is
+        # observed. ``_force_height`` is preserved (the operator's
+        # construction-time override continues to win) and the
+        # Console's own ``size.height`` is the source of truth for
+        # non-overridden callers.
+        new_height = _compute_height(self.console, self._force_height)
 
         return DisplayContext(
             console=self.console,
@@ -402,7 +453,7 @@ class DisplayContext:
             streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
             thinking_preview_min_chars=self.thinking_preview_min_chars,
             tool_result_headline_min_chars=self.tool_result_headline_min_chars,
-            height=self.height,
+            height=new_height,
             _resolved_env=self._resolved_env,
             env=self.env,
             _force_width=self._force_width,
@@ -521,6 +572,7 @@ def make_display_context(
         _resolved_env=resolved_env,
         _force_width=force_width,
         _force_glyphs=force_glyphs,
+        _force_height=force_height,
         _explicit_env=env_was_provided,
     )
 

@@ -42,11 +42,18 @@ def test_push_text_line_emits_content_tag(tmp_path: Path) -> None:
         '{"type":"content_block_delta","delta":{"type":"text_delta","text":"hello world"}}',
         provider=ActivityProvider.CLAUDE,
     )
+    # S-7: streaming layer is silent during open/continue; pd.stop() flushes
+    # the open block so the single coalesced entry surfaces.
+    pd.stop()
     out = buf.getvalue()
-    # Streaming blocks: first text event opens [content-start]
+    # S-7 single-entry shape: one [content] line carrying the joined passage.
     assert "[content" in out
     assert "[u]" in out
     assert "hello world" in out
+    content_lines = [line for line in out.splitlines() if "[content][u]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [content] entry on close, got {len(content_lines)}:\\n{out}"
+    )
 
 
 def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
@@ -66,11 +73,16 @@ def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
     ]
     for line in lines:
         pd.activity_router.push_raw_line("u", line, provider=ActivityProvider.CLAUDE)
+    # S-7: stop() flushes the still-open thinking block as one coalesced entry.
+    pd.stop()
     out = buf.getvalue()
-    # Streaming blocks: first thinking event opens [thinking-start]
     assert "[thinking" in out
     assert "[u]" in out
     assert "deep thought" in out
+    thinking_lines = [line for line in out.splitlines() if "[thinking][u]" in line]
+    assert len(thinking_lines) == 1, (
+        f"Expected exactly 1 [thinking] entry on close, got {len(thinking_lines)}:\\n{out}"
+    )
 
 
 def test_output_does_not_contain_raw_json(tmp_path: Path) -> None:
@@ -95,13 +107,20 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     pd.activity_router.push_raw_line(
         "u", '{"type":"message_stop"}', provider=ActivityProvider.CLAUDE
     )
+    # S-7: stop() flushes the still-open block; condensation is part of the
+    # single coalesced entry.
+    pd.stop()
 
     out = buf.getvalue()
-    # Streaming blocks use [content-start]/[content-continue]/[content-end] tags
+    # S-7 single-entry shape: one [content] line carrying the condensed passage.
     assert "[content" in out
     # Content should be condensed (not all characters present)
     assert len(out) < _LONG_TEXT_LEN
     assert "…" in out or "truncated" in out or "raw unavailable" in out
+    content_lines = [line for line in out.splitlines() if "[content][u]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [content] entry on close, got {len(content_lines)}:\\n{out}"
+    )
 
 
 def test_only_one_activity_router_per_parallel_display(tmp_path: Path) -> None:
@@ -179,10 +198,17 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
         provider=ActivityProvider.CLAUDE,
         raw_reference=".agent/raw/u.log",
     )
+    # S-7: stop() flushes the still-open block; condensation lives in the
+    # single coalesced entry that surfaces.
+    pd.stop()
 
     out = buf.getvalue()
     assert "[content" in out
     assert ".agent/raw/u.log" in out
+    content_lines = [line for line in out.splitlines() if "[content][u]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [content] entry on close, got {len(content_lines)}:\\n{out}"
+    )
 
 
 def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) -> None:
@@ -305,11 +331,17 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
         agent_name="claude/sonnet",
         display=pd,
     )
+    # S-7: stop() flushes the still-open thinking block as one coalesced entry.
+    pd.stop()
 
     out = buf.getvalue()
     assert "[content][activity]" not in out
     assert "deep reasoning here" in out
     assert "[thinking" in out
+    thinking_lines = [line for line in out.splitlines() if "[thinking]" in line]
+    assert len(thinking_lines) == 1, (
+        f"Expected exactly 1 [thinking] entry on close, got {len(thinking_lines)}:\\n{out}"
+    )
 
 
 def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:

@@ -184,6 +184,8 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 
 The optional AI-generated layer is separate from the deterministic headline layer. Use `RALPH_LONG_CONTENT_AI_SUMMARY` only when you want the additional `↳ ai-summary:` style output.
 
+The single-entry contract above the deterministic-summary layer is unchanged: streaming blocks emit exactly one entry per block close on the live log, and the per-block headline is informational, not a separate line.
+
 ### Environment Variables (display)
 
 | Variable | Default | Effect |

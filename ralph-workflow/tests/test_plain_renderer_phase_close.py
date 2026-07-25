@@ -35,17 +35,27 @@ def test_phase_close_emits_body_line() -> None:
 
 
 def test_phase_close_flushes_open_streaming_block() -> None:
+    """``emit_phase_close`` closes any active streaming block before its body line.
+
+    S-7 (wt-028-display P1): the close line carries ``[content]`` (NOT
+    ``[content-end]``); the lifecycle suffix is part of the retired
+    per-fragment vocabulary. The ordering invariant — streaming close
+    before phase-close body — still holds.
+    """
     pd, buf = _make_display()
     # Open a streaming block
     pd.emit_activity_line("u", "text", "streaming content")
     pd.emit_phase_close("development", "development: result artifact present")
     out = buf.getvalue()
-    # [content-end] must appear before the body [phase-close] line
+    # The streaming-block close line ([content] tag) must appear before
+    # the [phase-close] body line.
     body_phase_close_idx = out.index("INFO META [phase-close] phase=development")
-    content_end_idx = out.index("[content-end]")
-    assert "[content-end]" in out
-    assert content_end_idx < body_phase_close_idx, (
-        f"[content-end] (at {content_end_idx}) must appear before "
+    content_close_idx = out.index("[content][u]")
+    assert "[content][u]" in out
+    # Pre-S-7 retired token must NOT appear.
+    assert "[content-end]" not in out
+    assert content_close_idx < body_phase_close_idx, (
+        f"[content][u] (at {content_close_idx}) must appear before "
         f"the [phase-close] body line (at {body_phase_close_idx}); got:\n{out}"
     )
 
