@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from ralph.pipeline.events import PipelineEvent
 
@@ -31,15 +31,15 @@ class MockAgentInvoker:
         self.call_history.append({"agent": agent_name, "phase": phase})
 
         if phase in ("planning", "development", "review"):
-            return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
+            return PipelineEvent.AGENT_SUCCESS
 
         if "analysis" in phase:
-            return cast("PipelineEvent", PipelineEvent.ANALYSIS_SUCCESS)
+            return PipelineEvent.ANALYSIS_SUCCESS
 
         if phase.endswith("_commit") or phase == "commit":
-            return cast("PipelineEvent", PipelineEvent.COMMIT_SUCCESS)
+            return PipelineEvent.COMMIT_SUCCESS
 
-        return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
+        return PipelineEvent.AGENT_SUCCESS
 
     def count_for(self, phase: str) -> int:
         return self.call_counts.get(phase, 0)

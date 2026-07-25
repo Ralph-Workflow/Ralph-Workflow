@@ -236,8 +236,7 @@ def handle_web_search(
         return ToolResult(
             content=[
                 ToolContent.text_content(
-                    f"Invalid web_search format: {format_value!r}; "
-                    "expected 'raw' or 'summary'"
+                    f"Invalid web_search format: {format_value!r}; expected 'raw' or 'summary'"
                 )
             ],
             is_error=True,

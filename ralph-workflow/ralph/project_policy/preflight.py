@@ -111,9 +111,7 @@ def run_policy_readiness_preflight(
 
     # REMEDIATION_REQUIRED: emit here because remediation follows and the
     # run-loop needs to know the count.
-    emit(
-        f"project-policy-readiness: remediation-required ({len(findings)} findings)"
-    )
+    emit(f"project-policy-readiness: remediation-required ({len(findings)} findings)")
     return ReadinessResult(
         status=ReadinessStatus.REMEDIATION_REQUIRED,
         findings=findings,
@@ -146,9 +144,7 @@ def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[st
     return seeded
 
 
-def _collect_migrated_sources(
-    workspace: Workspace, findings: list[PolicyFinding]
-) -> list[str]:
+def _collect_migrated_sources(workspace: Workspace, findings: list[PolicyFinding]) -> list[str]:
     """Return the list of files referenced by migration findings."""
     migration_id_prefix = markers.ID_MIGRATE
     return [

@@ -45,16 +45,20 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     return {
         ActivityProvider.AGY: AgyParser,
         ActivityProvider.CLAUDE: ClaudeParser,
-        ActivityProvider.CLAUDE_INTERACTIVE: cast(
-            "type[AgentParser]", ClaudeInteractiveParser
-        ),
+        ActivityProvider.CLAUDE_INTERACTIVE: cast("type[AgentParser]", ClaudeInteractiveParser),
         ActivityProvider.OPENCODE: OpenCodeParser,
         ActivityProvider.CODEX: CodexParser,
         ActivityProvider.CURSOR: CursorParser,
         ActivityProvider.GEMINI: GeminiParser,
-        ActivityProvider.NANOCODER: cast("type[AgentParser]", NanocoderParser),
-        ActivityProvider.PI: cast("type[AgentParser]", PiParser),
-        ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
+        ActivityProvider.NANOCODER: cast(
+            "type[AgentParser]", NanocoderParser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ActivityProvider.PI: cast(
+            "type[AgentParser]", PiParser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ActivityProvider.GENERIC: cast(
+            "type[AgentParser]", GenericParser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     }
 
 
@@ -65,7 +69,9 @@ def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
     if parser_cls is None:
         from ralph.agents.parsers import GenericParser
 
-        parser_cls = cast("type[AgentParser]", GenericParser)
+        parser_cls = cast(
+            "type[AgentParser]", GenericParser
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return parser_cls()
 
 

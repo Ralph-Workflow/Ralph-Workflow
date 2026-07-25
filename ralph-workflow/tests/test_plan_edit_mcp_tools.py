@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,12 +14,14 @@ from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step, handle_stage_md_artifact
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_str,
+)
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.mcp.tools.tool_content import ToolContent
 
 _AGENTS_POLICY = AgentsPolicy(
     agent_chains={
@@ -103,7 +105,7 @@ class _EchoWorkspace:
 
 def _edited(params: dict[str, object], *, document: str = _PLAN) -> str:
     deps = ArtifactHandlerDeps(backend=MemoryBackend())
-    workspace = cast("object", _EchoWorkspace())
+    workspace = _EchoWorkspace()
     handle_stage_md_artifact(
         _Session(),
         workspace,
@@ -111,8 +113,8 @@ def _edited(params: dict[str, object], *, document: str = _PLAN) -> str:
         deps=deps,
     )
     result = handle_edit_md_plan_step(_Session(), workspace, params, deps=deps)
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
-    return cast("str", payload["content"])
+    payload = json.loads(result.content[0].text)
+    return must_str(payload["content"])
 
 
 def _session(drain: str, workspace_path: Path) -> AgentSession:

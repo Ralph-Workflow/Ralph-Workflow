@@ -24,7 +24,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -38,11 +38,9 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from ralph.agents.registry import AgentRegistry
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.rebase_state import RebaseState
-    from ralph.policy.models import PolicyBundle
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
 
@@ -379,7 +377,7 @@ def test_missing_dependencies_degrade_to_integration_without_resolvers(
         config=_config(),
         workspace_scope=WorkspaceScope(_git_workspace(tmp_path)),
         policy_bundle=None,
-        registry=cast("AgentRegistry | None", None),
+        registry=None,
         pipeline_deps=None,
         display_context=None,
         recover_first=True,
@@ -409,7 +407,7 @@ def test_a_workspace_that_is_not_a_checkout_costs_nothing(
             config=_config(),
             workspace_scope=WorkspaceScope(tmp_path),
             policy_bundle=None,
-            registry=cast("AgentRegistry | None", None),
+            registry=None,
             pipeline_deps=None,
             display_context=None,
             recover_first=True,
@@ -445,8 +443,8 @@ def test_a_raising_seam_never_aborts_the_worker(
         module.run_worker_auto_integration(
             config=_config(),
             workspace_scope=WorkspaceScope(_git_workspace(tmp_path)),
-            policy_bundle=cast("PolicyBundle | None", None),
-            registry=cast("AgentRegistry | None", None),
+            policy_bundle=None,
+            registry=None,
             pipeline_deps=None,
             display_context=None,
             recover_first=True,

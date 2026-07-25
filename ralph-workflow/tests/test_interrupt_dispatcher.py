@@ -24,7 +24,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -176,10 +176,8 @@ def test_dispatcher_force_exit_calls_shutdown_zero_and_hard_exit_with_pgid() -> 
     exit_calls: list[tuple[int, ...]] = []
     dispatcher = dispatcher_from_process_manager(
         process_manager=manager,
-        kill_process_group=cast(
-            "Callable[[int, int], None]", lambda pgid, sig: kill_calls.append((pgid, sig))
-        ),
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        kill_process_group=lambda pgid, sig: kill_calls.append((pgid, sig)),
+        hard_exit=lambda code: exit_calls.append((code,)),
     )
 
     dispatcher.force_exit(bridge_pgids=[_PGID])
@@ -200,7 +198,7 @@ def test_dispatcher_factory_wires_process_manager() -> None:
     exit_calls: list[tuple[int, ...]] = []
     dispatcher = _build_dispatcher(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        hard_exit=lambda code: exit_calls.append((code,)),
     )[1]
     assert dispatcher.controller.shutdown_all is not None
     assert dispatcher.controller.shutdown_all_for_label is not None
@@ -231,7 +229,7 @@ def test_controller_force_exit_has_no_idempotency_guarantee() -> None:
     controller = InterruptController(
         shutdown_all=lambda grace_period_s: None,
         record_interrupt=lambda: None,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        hard_exit=lambda code: exit_calls.append((code,)),
     )
     controller.force_exit(bridge_pgids=[_PID])
     controller.force_exit(bridge_pgids=[_PID])
@@ -249,7 +247,7 @@ def test_dispatcher_uses_process_manager_default_grace_period_when_none() -> Non
 
     dispatcher = dispatcher_from_process_manager(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
     )
     dispatcher.begin_interrupt(grace_period_s=None)
 
@@ -266,7 +264,7 @@ def test_dispatcher_force_exit_calls_record_interrupt_exactly_once() -> None:
     record_calls: list[None] = []
     _, dispatcher = _build_dispatcher(
         process_manager=manager,
-        record_interrupt=cast("Callable[[], None]", lambda: record_calls.append(None)),
+        record_interrupt=lambda: record_calls.append(None),
     )
     dispatcher.force_exit(bridge_pgids=[_PID])
     assert record_calls == [None]
@@ -282,7 +280,7 @@ def test_interrupt_dispatcher_constructor_rejects_invalid_budget() -> None:
         InterruptDispatcher(
             controller=InterruptController(shutdown_all=lambda _g: None),
             process_manager=manager,
-            hard_exit=cast("Callable[[int], None]", lambda _c: None),
+            hard_exit=lambda _c: None,
             poll_interval_s=0.01,
             hard_kill_budget_s=0,
         )
@@ -296,7 +294,7 @@ def test_dispatcher_factory_uses_explicit_process_manager_not_singleton() -> Non
     manager = FakeProcessManager()
     dispatcher = dispatcher_from_process_manager(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
     )
     assert dispatcher.process_manager is manager
 
@@ -435,7 +433,7 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
             shutdown_all_for_label=lambda _l, _g: None,
         ),
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
         clock=_fake_clock,
@@ -478,7 +476,7 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
             shutdown_all_for_label=lambda _l, _g: None,
         ),
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
         clock=_fake_clock,
@@ -520,7 +518,7 @@ def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.Monke
             shutdown_all_for_label=lambda _l, _g: None,
         ),
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
@@ -622,9 +620,9 @@ def test_dispatcher_uses_injected_clock_for_block_wait_deadline() -> None:
     exit_calls: list[tuple[int, ...]] = []
     _, dispatcher = _build_dispatcher(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
-        clock=cast("Callable[[], float]", _fake_clock),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        hard_exit=lambda code: exit_calls.append((code,)),
+        clock=_fake_clock,
+        sleep=_fake_sleep,
     )
     dispatcher.begin_interrupt(block=True, grace_period_s=_INVOKE_GRACE)
     assert len(sleep_calls) >= 1
@@ -671,10 +669,10 @@ def test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline() -> None:
 
     _, dispatcher = _build_dispatcher(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        hard_exit=lambda code: exit_calls.append((code,)),
         poll_interval_s=0.2,
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        clock=clock.now,
+        sleep=_fake_sleep,
     )
     dispatcher.begin_interrupt(block=True, grace_period_s=1.0)
 
@@ -703,9 +701,9 @@ def test_dispatcher_block_wait_does_not_sleep_when_already_empty() -> None:
     manager = FakeProcessManager()
     _, dispatcher = _build_dispatcher(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", sleep_calls.append),
+        hard_exit=lambda _c: None,
+        clock=clock.now,
+        sleep=sleep_calls.append,
     )
     dispatcher.begin_interrupt(block=True, grace_period_s=_INVOKE_GRACE)
     assert sleep_calls == []
@@ -733,11 +731,11 @@ def test_dispatcher_early_escalation_uses_injected_clock_for_deadline() -> None:
             shutdown_all_for_label=lambda _l, _g: None,
         ),
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        clock=clock.now,
+        sleep=_fake_sleep,
     )
     dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert sleep_calls, "sleep must be called by run_early_escalation_poll"
@@ -755,11 +753,11 @@ def test_dispatcher_constructor_rejects_clock_returning_non_float() -> None:
         InterruptDispatcher(
             controller=InterruptController(shutdown_all=lambda _g: None),
             process_manager=manager,
-            hard_exit=cast("Callable[[int], None]", lambda _c: None),
+            hard_exit=lambda _c: None,
             poll_interval_s=0.01,
             hard_kill_budget_s=0.05,
-            clock=cast("Callable[[], float]", lambda: "1.0"),
-            sleep=cast("Callable[[float], None]", lambda _s: None),
+            clock=lambda: "1.0",
+            sleep=lambda _s: None,
         )
 
 
@@ -771,7 +769,7 @@ def test_dispatcher_factory_defaults_to_time_monotonic() -> None:
     default — not a wrapper.
     """
     dispatcher = dispatcher_from_process_manager(
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
     )
     assert dispatcher.clock is time.monotonic
     assert dispatcher.sleep is time.sleep
@@ -797,7 +795,7 @@ def test_dispatcher_early_escalation_poll_sleeps_before_matched_check() -> None:
         event_order.append("list_active")
         return original_list_active()
 
-    manager.list_active = cast("Any", _recording_list_active)
+    manager.list_active = _recording_list_active
 
     def _fake_sleep(s: float) -> None:
         event_order.append(f"sleep({s})")
@@ -808,11 +806,11 @@ def test_dispatcher_early_escalation_poll_sleeps_before_matched_check() -> None:
             shutdown_all_for_label=lambda _l, _g: None,
         ),
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        hard_exit=lambda _c: None,
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        clock=clock.now,
+        sleep=_fake_sleep,
     )
     dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     sleep_indices = [i for i, e in enumerate(event_order) if e.startswith("sleep(")]
@@ -848,12 +846,10 @@ def test_dispatcher_waits_until_empty_or_escalates_when_stuck() -> None:
 
     _, dispatcher = _build_dispatcher(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
-        kill_process_group=cast(
-            "Callable[[int, int], None]", lambda pgid, sig: kill_calls.append((pgid, sig))
-        ),
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        hard_exit=lambda code: exit_calls.append((code,)),
+        kill_process_group=lambda pgid, sig: kill_calls.append((pgid, sig)),
+        clock=clock.now,
+        sleep=_fake_sleep,
     )
     dispatcher.begin_interrupt(block=True, grace_period_s=0.05)
     # force_exit was called with INTERRUPT_EXIT_CODE
@@ -934,15 +930,13 @@ def test_begin_interrupt_with_slow_body_still_escalates_after_body_returns() -> 
 
     dispatcher = dispatcher_from_process_manager(
         process_manager=manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
-        kill_process_group=cast(
-            "Callable[[int, int], None]", lambda pgid, sig: kill_calls.append((pgid, sig))
-        ),
+        hard_exit=lambda code: exit_calls.append((code,)),
+        kill_process_group=lambda pgid, sig: kill_calls.append((pgid, sig)),
         record_interrupt=_slow_record_interrupt,
         poll_interval_s=0.001,
         hard_kill_budget_s=0.05,
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        clock=clock.now,
+        sleep=_fake_sleep,
     )
 
     def _worker() -> None:
@@ -1006,8 +1000,8 @@ def test_handle_keyboard_interrupt_force_kill_handler_restores_previous() -> Non
     handle_keyboard_interrupt(
         monitor_stop=None,
         dispatcher=dispatcher,
-        signal_getter=cast("Callable[[int], object]", _fake_getsignal),
-        signal_setter=cast("Callable[[int, object], object]", _fake_set),
+        signal_getter=_fake_getsignal,
+        signal_setter=_fake_set,
     )
     assert len(set_calls) == 4
     assert set_calls[0][0] == _SIGINT
@@ -1397,8 +1391,8 @@ def test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_age
     _patch_pid_alive(monkeypatch, alive=True)
 
     manager, dispatcher = _build_dispatcher(
-        clock=cast("Callable[[], float]", clock.now),
-        sleep=cast("Callable[[float], None]", _fake_sleep),
+        clock=clock.now,
+        sleep=_fake_sleep,
         poll_interval_s=0.001,
     )
     captured_manager.append(manager)

@@ -66,9 +66,7 @@ def _read_head_sha(root: Path) -> str | None:
 
 def _rebase_bookkeeping_dir(root: Path) -> Path | None:
     try:
-        result = run_git(
-            ("rev-parse", "--git-dir"), cwd=root, label="git-recovery-git-dir"
-        )
+        result = run_git(("rev-parse", "--git-dir"), cwd=root, label="git-recovery-git-dir")
     except Exception:
         return None
     if result.returncode != 0:

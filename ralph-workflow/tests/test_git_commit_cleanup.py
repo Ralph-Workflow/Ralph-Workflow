@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from contextlib import suppress
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from git import GitCommandError, Repo
@@ -19,6 +19,7 @@ from ralph.git.commit_cleanup import (
     untrack_engine_internal_files,
 )
 from ralph.git.operations import get_head_sha
+from tests._support.typed_accessors import must_str
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -120,7 +121,7 @@ def test_add_to_git_exclude_untracks_a_tracked_secret_without_deleting_it(
     add_to_git_exclude(tmp_git_repo, [".env"])
 
     with Repo(tmp_git_repo) as repo:
-        tracked = cast("str", repo.git.ls_files("--cached")).splitlines()
+        tracked = must_str(repo.git.ls_files("--cached")).splitlines()
         assert ".env" not in tracked
     assert secret.read_text(encoding="utf-8") == "TOKEN=secret\n"
     assert (
@@ -142,7 +143,7 @@ def test_add_to_git_exclude_never_untracks_non_secret_project_files(
     add_to_git_exclude(tmp_git_repo, ["settings.ini", "*"])
 
     with Repo(tmp_git_repo) as repo:
-        tracked = cast("str", repo.git.ls_files("--cached")).splitlines()
+        tracked = must_str(repo.git.ls_files("--cached")).splitlines()
     assert "settings.ini" in tracked
     assert "README.md" in tracked
 

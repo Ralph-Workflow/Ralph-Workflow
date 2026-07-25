@@ -13,10 +13,7 @@ class PiContextExhaustedExitError(AgentInvocationError):
         super().__init__(
             agent_name,
             0,
-            (
-                "pi agent context length exhausted "
-                "(stopReason=length; advance to the next agent)"
-            ),
+            ("pi agent context length exhausted (stopReason=length; advance to the next agent)"),
         )
 
 

@@ -95,9 +95,7 @@ def _validate_structure(
     if spec.max_characters is not None and len(text) > spec.max_characters:
         diagnostics.append(Diagnostic(1, None, "SPEC001", "document exceeds its character limit"))
     allowed_frontmatter = (
-        spec.required_frontmatter
-        | spec.optional_frontmatter
-        | frozenset(spec.closed_frontmatter)
+        spec.required_frontmatter | spec.optional_frontmatter | frozenset(spec.closed_frontmatter)
     )
     diagnostics.extend(
         Diagnostic(

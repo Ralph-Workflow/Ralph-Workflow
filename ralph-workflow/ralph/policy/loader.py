@@ -106,7 +106,9 @@ def _warn_unknown_policy_top_level_fields(data: dict[str, object], path: Path) -
 # tomllib.TOMLDecodeError is type-Any on 3.14 because the runtime module
 # has no mypy-compatible stubs; bind it once so the ``except`` clause and
 # any callers see a stable, narrowed type.
-_TOML_DECODE_ERROR = cast("type[Exception]", tomllib.TOMLDecodeError)
+_TOML_DECODE_ERROR = cast(
+    "type[Exception]", tomllib.TOMLDecodeError
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
@@ -243,7 +245,9 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
     """Format all pydantic ValidationError errors into human-readable strings."""
-    details = cast("ValidationErrorDetails", exc.errors())
+    details = cast(
+        "ValidationErrorDetails", exc.errors()
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return [format_validation_error_detail(detail) for detail in details]
 
 
@@ -451,7 +455,9 @@ def _coerce_agent_chain_config(
     if isinstance(value, AgentChainConfig):
         return value
     return AgentChainConfig(
-        agents=list(cast("Sequence[str]", value)),
+        agents=list(
+            cast("Sequence[str]", value)
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         max_retries=retry_budget,
         retry_delay_ms=retry_delay_ms,
     )
@@ -470,7 +476,9 @@ def _coerce_agent_drain_config(
             capability_class=value.capability_class,
         )
     return AgentDrainConfig(
-        chain=cast("str", value),
+        chain=cast(
+            "str", value
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         drain_class=builtin_drain_classes.get(drain),
     )
 

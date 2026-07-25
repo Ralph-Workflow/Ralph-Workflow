@@ -21,7 +21,7 @@ import atexit
 from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast, get_args
+from typing import TYPE_CHECKING, get_args
 from unittest.mock import MagicMock
 
 import pytest
@@ -44,18 +44,13 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    import typer
-
-    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.policy.models import PolicyBundle
 
 
 def _stub_display_context() -> DisplayContext:
     """Build the smallest DisplayContext the tests need."""
-    return cast(
-        "DisplayContext",
-        type(
+    return type(
             "_StubDisplay",
             (),
             {
@@ -68,8 +63,7 @@ def _stub_display_context() -> DisplayContext:
                     },
                 )(),
             },
-        )(),
-    )
+        )()
 
 
 class _OutcomeRecorder:
@@ -311,7 +305,7 @@ def test_record_cli_command_records_pipeline_when_no_subcommand(
     spy.install(monkeypatch)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
-    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": None})())
+    ctx = type("_StubCtx", (), {"invoked_subcommand": None})()
     ralph_cli_main._record_cli_command(ctx)
 
     assert spy.command_calls == ["pipeline"]
@@ -325,7 +319,7 @@ def test_record_cli_command_records_subcommand_name_when_set(
     spy.install(monkeypatch)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
-    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": "cleanup"})())
+    ctx = type("_StubCtx", (), {"invoked_subcommand": "cleanup"})()
     ralph_cli_main._record_cli_command(ctx)
 
     assert spy.command_calls == ["cleanup"]
@@ -339,7 +333,7 @@ def test_record_cli_command_noop_when_disabled(
     spy.install(monkeypatch)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
-    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": "cleanup"})())
+    ctx = type("_StubCtx", (), {"invoked_subcommand": "cleanup"})()
     ralph_cli_main._record_cli_command(ctx)
 
     assert spy.command_calls == []
@@ -354,7 +348,7 @@ def test_record_cli_command_fail_soft(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("ralph.telemetry._sentry.record_command_invocation", boom)
 
-    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": None})())
+    ctx = type("_StubCtx", (), {"invoked_subcommand": None})()
     # Must not raise.
     ralph_cli_main._record_cli_command(ctx)
 
@@ -632,7 +626,7 @@ def test_record_config_telemetry_forwards_the_resolved_agent_config(
     monkeypatch.setattr(sentry_module, "set_agent_config_context", forwarded_agents.append)
     monkeypatch.setattr(sentry_module, "set_policy_schema_context", forwarded_states.append)
 
-    config = cast("UnifiedConfig", SimpleNamespace(agents=_agents_fixture()))
+    config = SimpleNamespace(agents=_agents_fixture())
     run_module._record_config_telemetry(config, tmp_path)
 
     assert len(forwarded_agents) == 1
@@ -660,7 +654,7 @@ def test_record_config_telemetry_is_silent_when_telemetry_inactive(
         lambda state: calls.append("policy"),
     )
 
-    config = cast("UnifiedConfig", SimpleNamespace(agents=_agents_fixture()))
+    config = SimpleNamespace(agents=_agents_fixture())
     run_module._record_config_telemetry(config, tmp_path)
 
     assert calls == []
@@ -678,6 +672,6 @@ def test_record_config_telemetry_never_breaks_the_run(
     monkeypatch.setattr(sentry_module, "is_telemetry_active", lambda: True)
     monkeypatch.setattr(sentry_module, "set_agent_config_context", boom)
 
-    config = cast("UnifiedConfig", SimpleNamespace(agents=_agents_fixture()))
+    config = SimpleNamespace(agents=_agents_fixture())
 
     run_module._record_config_telemetry(config, tmp_path)  # must not raise

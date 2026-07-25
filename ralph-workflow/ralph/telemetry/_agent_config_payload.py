@@ -59,7 +59,9 @@ _CUSTOM: str = "custom"
 # hyphenated segments, at most two ``/`` separators (``vendor/family/name``),
 # and no scheme, credential, whitespace, or backslash. Anything else — every
 # absolute path and every URL — collapses to ``custom``.
-_MODEL_ID_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]*(?:/[A-Za-z0-9._:+-]+){0,2}$")
+_MODEL_ID_RE: re.Pattern[str] = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._:+-]*(?:/[A-Za-z0-9._:+-]+){0,2}$"
+)
 _MODEL_ID_MAX_LEN: int = 96
 
 

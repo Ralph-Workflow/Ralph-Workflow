@@ -202,7 +202,7 @@ def _split_body_with_unit(body: str, unit_id: str | None) -> tuple[str, str]:
         return "", body
     prefix = f"{unit_id} "
     if body.startswith(prefix):
-        return prefix, body[len(prefix):]
+        return prefix, body[len(prefix) :]
     if body == unit_id:
         return unit_id, ""
     return "", body

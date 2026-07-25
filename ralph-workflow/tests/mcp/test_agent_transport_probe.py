@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -24,6 +23,7 @@ from ralph.mcp.upstream.agent_probe import (
     probe_agent_transports,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from tests._support.typed_accessors import must_mapping
 
 
 def _http_server(
@@ -178,7 +178,7 @@ def test_probe_emits_agy_config_with_server_url_key(
 
     def spy_agy_mcp_config(endpoint: str) -> str:
         blob = real_agy_mcp_config(endpoint)
-        payload = cast("dict[str, object]", json.loads(blob))
+        payload = must_mapping(json.loads(blob))
         captured_blobs.append((endpoint, payload))
         return blob
 
@@ -199,8 +199,8 @@ def test_probe_emits_agy_config_with_server_url_key(
     assert len(captured_blobs) == 1
     assert captured_blobs[0][0] == server.url
     parsed_blob = captured_blobs[0][1]
-    mcp_servers = cast("dict[str, object]", parsed_blob["mcpServers"])
-    ralph_entry = cast("dict[str, object]", mcp_servers["ralph"])
+    mcp_servers = must_mapping(parsed_blob["mcpServers"])
+    ralph_entry = must_mapping(mcp_servers["ralph"])
     assert "serverUrl" in ralph_entry
     assert ralph_entry["serverUrl"] == server.url
 

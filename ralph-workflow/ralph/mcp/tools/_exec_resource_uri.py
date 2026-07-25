@@ -120,9 +120,7 @@ class ExecResourceResolver:
         """Register a spill file and return its replayable URI."""
         spill_path = spill_path.resolve()
         if not self._is_under_trusted_root(spill_path):
-            raise ValueError(
-                f"exec spill path escapes trusted roots: {spill_path}"
-            )
+            raise ValueError(f"exec spill path escapes trusted roots: {spill_path}")
         name = spill_path.name
         if not _BASENAME_PATTERN.match(name):
             raise ValueError(f"Invalid exec spill basename: {name!r}")
@@ -144,7 +142,9 @@ class ExecResourceResolver:
     def __init__(self, spill_roots: tuple[Path, ...]) -> None:
         self._roots: tuple[Path, ...] = tuple(p.resolve() for p in spill_roots)
         # bounded-accumulator-ok: _MAX_RESOLVER_ENTRIES=256 with FIFO eviction in register()
-        self._entries: OrderedDict[str, ExecResourceEntry] = OrderedDict()  # bounded-accumulator-ok: cap=_MAX_RESOLVER_ENTRIES (256), popitem(last=False) eviction in register()
+        self._entries: OrderedDict[str, ExecResourceEntry] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: cap=_MAX_RESOLVER_ENTRIES (256), popitem(last=False) eviction in register()
 
     @property
     def spill_roots(self) -> tuple[Path, ...]:

@@ -79,9 +79,7 @@ def refresh_target(config: UnifiedConfig, root: Path, target: str) -> str:
         # to degrade to local-only integration with no operator-visible
         # trace naming the branch involved, so a fleet that had been
         # integrating against a stale pointer for hours looked healthy.
-        logger.warning(
-            "auto_integrate: target refresh of '{}' failed: {}", target, exc
-        )
+        logger.warning("auto_integrate: target refresh of '{}' failed: {}", target, exc)
         return REFRESH_UNREACHABLE
 
 
@@ -98,8 +96,4 @@ def _observe_locally(root: Path, target: str) -> str:
     :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_DISABLED` survives
     for the case where there is no such local branch to observe either.
     """
-    return (
-        REFRESH_LOCAL_FLEET
-        if observe_target_sha(root, target) is not None
-        else REFRESH_DISABLED
-    )
+    return REFRESH_LOCAL_FLEET if observe_target_sha(root, target) is not None else REFRESH_DISABLED

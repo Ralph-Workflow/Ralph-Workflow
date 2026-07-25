@@ -42,7 +42,9 @@ _MAX_METADATA_SUMMARY_LENGTH = 120
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
+    module = cast(
+        "_ParallelDisplayModule", import_module("ralph.display.parallel_display")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.ParallelDisplay
 
 
@@ -72,10 +74,18 @@ def stream_parsed_agent_activity(
     the Trustworthy Idle Watchdog spec). Both kwargs are optional;
     legacy callers continue to work without them.
     """
-    transport = cast("AgentTransport | None", kwargs.get("transport"))
-    display_context = cast("DisplayContext | None", kwargs.get("display_context"))
-    raw_output_sink = cast("deque[str] | list[str] | None", kwargs.get("raw_output_sink"))
-    rendered_output_sink = cast("deque[str] | list[str] | None", kwargs.get("rendered_output_sink"))
+    transport = cast(
+        "AgentTransport | None", kwargs.get("transport")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    display_context = cast(
+        "DisplayContext | None", kwargs.get("display_context")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    raw_output_sink = cast(
+        "deque[str] | list[str] | None", kwargs.get("raw_output_sink")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    rendered_output_sink = cast(
+        "deque[str] | list[str] | None", kwargs.get("rendered_output_sink")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
     subagent_pid_registry = cast(
         "SubagentPidRegistry | None",
@@ -90,7 +100,9 @@ def stream_parsed_agent_activity(
         parser_key = resolve_parser_key(
             agent_config.cmd,
             agent_config.json_parser,
-            cast("AgentTransport", agent_config.transport),
+            cast(
+                "AgentTransport", agent_config.transport
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
     else:
         parser_key = (

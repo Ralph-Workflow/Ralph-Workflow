@@ -175,9 +175,7 @@ def sweep_agent_dir(
     if not agent_dir.is_dir():
         return 0
     cutoff = now() - max_age_seconds
-    keep_sentinel = (
-        f"completion_seen_{keep_run_id}.json" if keep_run_id is not None else None
-    )
+    keep_sentinel = f"completion_seen_{keep_run_id}.json" if keep_run_id is not None else None
     removed = _sweep_completion_sentinels(
         agent_dir,
         cutoff=cutoff,
@@ -189,9 +187,7 @@ def sweep_agent_dir(
         keep_run_id=keep_run_id,
     )
     removed += _sweep_scratch_files(agent_dir / "tmp", cutoff=cutoff)
-    removed += _sweep_run_state_db_rows(
-        workspace_root, cutoff=cutoff, keep_run_id=keep_run_id
-    )
+    removed += _sweep_run_state_db_rows(workspace_root, cutoff=cutoff, keep_run_id=keep_run_id)
     return removed
 
 

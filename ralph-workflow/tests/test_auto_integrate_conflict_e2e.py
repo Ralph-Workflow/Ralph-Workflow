@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,9 +29,6 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PhaseDefinition
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -87,8 +84,8 @@ def test_commit_seam_returns_the_injected_integration_outcome(
         runner, "clear_cycle_baseline", MagicMock(return_value=None)
     )
     scope = WorkspaceScope(Path("/workspace"))
-    state = cast("PipelineState", SimpleNamespace(rebase=RebaseState()))
-    phase = cast("PhaseDefinition", SimpleNamespace(role="commit"))
+    state = SimpleNamespace(rebase=RebaseState())
+    phase = SimpleNamespace(role="commit")
 
     actual = runner._maybe_auto_integrate(
         effect=CommitEffect(message_file="unused"),
@@ -100,9 +97,7 @@ def test_commit_seam_returns_the_injected_integration_outcome(
         display=MagicMock(),
         policy_bundle=MagicMock(),
         registry=MagicMock(),
-        pipeline_deps=cast(
-            "PipelineDeps", MagicMock(auto_integrate_resolver=None)
-        ),
+        pipeline_deps=MagicMock(auto_integrate_resolver=None),
     )
 
     assert actual is outcome

@@ -205,9 +205,7 @@ def run_process(
         # closes the pipes within milliseconds; the bound only fires in the
         # pathological case where the OS never reaps the child.
         try:
-            stdout_bytes, stderr_bytes = handle.communicate(
-                timeout=_POST_TERMINATE_DRAIN_SECONDS
-            )
+            stdout_bytes, stderr_bytes = handle.communicate(timeout=_POST_TERMINATE_DRAIN_SECONDS)
         except subprocess.TimeoutExpired:
             stdout_bytes, stderr_bytes = b"", b""
         # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)

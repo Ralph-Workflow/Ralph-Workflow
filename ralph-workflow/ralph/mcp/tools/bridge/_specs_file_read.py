@@ -127,9 +127,7 @@ def file_read_specs() -> list[ToolSpec]:
                         },
                         "context_lines": {
                             "type": "integer",
-                            "description": (
-                                "Number of context lines around an indexed span."
-                            ),
+                            "description": ("Number of context lines around an indexed span."),
                             "default": 0,
                         },
                         "return_metadata": {
@@ -268,7 +266,7 @@ def file_read_specs() -> list[ToolSpec]:
                                 '"line_start": N, "line_end": N}, '
                                 '{"evidence_id": "..."}, {"span_id": "..."}, '
                                 'or {"symbol": "..."}. The indexed selectors '
-                                'resolve via the explore index when present.'
+                                "resolve via the explore index when present."
                             ),
                             "items": {
                                 "type": "object",

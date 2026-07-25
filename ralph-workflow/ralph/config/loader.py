@@ -101,7 +101,9 @@ def load_toml(path: Path) -> dict[str, object]:
     try:
         with path.open("rb") as fh:
             data: dict[str, object] = tomllib.load(fh)
-    except cast("type[ValueError]", tomllib.TOMLDecodeError) as exc:
+    except cast(
+        "type[ValueError]", tomllib.TOMLDecodeError
+    ) as exc:  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         raise ConfigTomlError(
             f"What failed: Ralph could not read {path}: {exc}.\n"
             "Why it matters: settings in a malformed file are not safe to use.\n"

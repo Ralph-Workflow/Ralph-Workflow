@@ -14,7 +14,6 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -32,9 +31,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
-
-if TYPE_CHECKING:
-    from ralph.process.manager import ManagedProcess
 from tests.integration._fake_handle_post_exit import _FakeHandlePostExit
 
 
@@ -65,7 +61,7 @@ class TestPostExitViaCheckProcessResult:
 
         # Should not raise because terminal ack → TERMINAL_COMPLETE
         check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             CompletionCheckOptions(
@@ -114,7 +110,7 @@ class TestPostExitViaCheckProcessResult:
 
         with pytest.raises(OpenCodeResumableExitError):
             check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 CompletionCheckOptions(

@@ -82,45 +82,25 @@ class AuditCounters:
 
     def __post_init__(self) -> None:
         if self.transcript_tokens < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): transcript_tokens must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): transcript_tokens must be >= 0")
         if self.returned_bytes < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): returned_bytes must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): returned_bytes must be >= 0")
         if self.tool_calls < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): tool_calls must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): tool_calls must be >= 0")
         if not 0.0 <= self.evidence_recall <= 1.0:
-            raise ValueError(
-                f"AuditCounters({self!r}): evidence_recall must be in [0.0, 1.0]"
-            )
+            raise ValueError(f"AuditCounters({self!r}): evidence_recall must be in [0.0, 1.0]")
         if not 0.0 <= self.evidence_precision <= 1.0:
-            raise ValueError(
-                f"AuditCounters({self!r}): evidence_precision must be in [0.0, 1.0]"
-            )
+            raise ValueError(f"AuditCounters({self!r}): evidence_precision must be in [0.0, 1.0]")
         if self.stale_fallback_events < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): stale_fallback_events must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): stale_fallback_events must be >= 0")
         if self.parse_count < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): parse_count must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): parse_count must be >= 0")
         if self.changed_file_count < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): changed_file_count must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): changed_file_count must be >= 0")
         if self.index_storage_bytes < 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): index_storage_bytes must be >= 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): index_storage_bytes must be >= 0")
         if not self.wall_time_seconds > 0:
-            raise ValueError(
-                f"AuditCounters({self!r}): wall_time_seconds must be > 0"
-            )
+            raise ValueError(f"AuditCounters({self!r}): wall_time_seconds must be > 0")
 
 
 @dataclass(frozen=True, slots=True)

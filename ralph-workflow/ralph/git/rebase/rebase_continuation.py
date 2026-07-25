@@ -204,10 +204,10 @@ def continue_rebase_at(repo_root: Path | str) -> None:
             )
             if not rebase_in_progress_at(repo_root):
                 return
-            if skipped.returncode != 0 and not is_empty_rebase_stop(
-                skipped.stderr, skipped.stdout
-            ):
-                detail = skipped.stderr.strip() or skipped.stdout.strip() or "git rebase --skip failed"
+            if skipped.returncode != 0 and not is_empty_rebase_stop(skipped.stderr, skipped.stdout):
+                detail = (
+                    skipped.stderr.strip() or skipped.stdout.strip() or "git rebase --skip failed"
+                )
                 raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
             try:
                 run_git(
@@ -224,11 +224,15 @@ def continue_rebase_at(repo_root: Path | str) -> None:
                 next_stdout = raw_next_stdout if isinstance(raw_next_stdout, str) else ""
                 if not is_empty_rebase_stop(next_stderr, next_stdout):
                     detail = next_stderr.strip() or next_stdout.strip() or str(next_exc)
-                    raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from next_exc
+                    raise RebaseContinuationError(
+                        f"Failed to continue rebase: {detail}"
+                    ) from next_exc
                 if not rebase_in_progress_at(repo_root):
                     return
 
-        raise RebaseContinuationError("Failed to continue rebase: empty commit skip limit exceeded") from exc
+        raise RebaseContinuationError(
+            "Failed to continue rebase: empty commit skip limit exceeded"
+        ) from exc
 
 
 def continue_rebase(repo_root: Path | str | None = None) -> None:

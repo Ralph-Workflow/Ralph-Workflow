@@ -147,9 +147,7 @@ def invoke_resolution_agent(
     return event == PipelineEvent.AGENT_SUCCESS
 
 
-def with_session_ceiling(
-    config: UnifiedConfig, max_session_seconds: float
-) -> UnifiedConfig:
+def with_session_ceiling(config: UnifiedConfig, max_session_seconds: float) -> UnifiedConfig:
     """Return ``config`` with this attempt's wall-clock ceiling applied.
 
     An earlier version DECLINED the override whenever the requested share

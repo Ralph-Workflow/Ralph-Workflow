@@ -51,9 +51,10 @@ _MIGRATED_MARKER_PREFIX: str = markers.MIGRATED_MARKER_TEMPLATE.split("{target}"
 #: CLAUDE.md are always Ralph-owned surfaces (committed unconditionally);
 #: every other candidate is only committed once it carries the migrated
 #: marker, so unrelated user edits are never swept into the chore commit.
-_CONDITIONAL_MIGRATION_SCOPES: frozenset[str] = frozenset(
-    markers.MIGRATION_CANDIDATE_PATHS
-) - {markers.AGENTS_MD, markers.CLAUDE_MD}
+_CONDITIONAL_MIGRATION_SCOPES: frozenset[str] = frozenset(markers.MIGRATION_CANDIDATE_PATHS) - {
+    markers.AGENTS_MD,
+    markers.CLAUDE_MD,
+}
 
 
 def _migrated_only(repo_root: Path) -> Callable[[str], bool]:
@@ -161,14 +162,11 @@ def _committable_authored_paths(
     return frozenset(
         path
         for path in authored_paths
-        if not path_in_scope(path, _POLICY_COMMIT_SCOPES)
-        and not path.startswith(".agent/")
+        if not path_in_scope(path, _POLICY_COMMIT_SCOPES) and not path.startswith(".agent/")
     )
 
 
-def _in_scope_or_authored(
-    repo_root: Path, authored: frozenset[str]
-) -> Callable[[str], bool]:
+def _in_scope_or_authored(repo_root: Path, authored: frozenset[str]) -> Callable[[str], bool]:
     """Filter: the normal policy-scope rules, plus the authored paths."""
     migrated = _migrated_only(repo_root)
 

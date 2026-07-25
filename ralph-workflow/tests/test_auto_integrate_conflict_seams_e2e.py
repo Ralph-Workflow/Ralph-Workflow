@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.state import PipelineState
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -58,7 +57,7 @@ def test_phase_transition_returns_observable_conflict(
         commit_phase_def=None,
         config=_config(),
         workspace_scope=scope,
-        state=cast("PipelineState", SimpleNamespace(rebase=RebaseState())),
+        state=SimpleNamespace(rebase=RebaseState()),
         display=MagicMock(),
     )
 

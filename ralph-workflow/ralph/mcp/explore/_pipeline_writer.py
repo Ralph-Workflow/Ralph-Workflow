@@ -39,7 +39,9 @@ class ReindexWriter:
     """
 
     _lock_factory: Callable[[], threading.Lock] = threading.Lock
-    _active: dict[str, ReindexWriter] = {}  # bounded-accumulator-ok: keyed by db_path; entries are popped in `finally` of claim()
+    _active: dict[
+        str, ReindexWriter
+    ] = {}  # bounded-accumulator-ok: keyed by db_path; entries are popped in `finally` of claim()
     _active_lock: threading.Lock = threading.Lock()
 
     @classmethod
@@ -107,9 +109,7 @@ class ReindexWriter:
                 )
             cls._active[key] = cls(store)
         try:
-            return reindex(
-                store, workspace_root, options=options, cancel=cancel
-            )
+            return reindex(store, workspace_root, options=options, cancel=cancel)
         finally:
             with cls._active_lock:
                 cls._active.pop(key, None)

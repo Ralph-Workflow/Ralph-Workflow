@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -35,7 +35,6 @@ from ralph.pro_support.state_query import (
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     from ralph.config.models import UnifiedConfig
 
@@ -117,7 +116,7 @@ def _build_config() -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _patch_runner_dependencies(
@@ -200,7 +199,7 @@ def test_policy_bundle_override_routes_through_inner_loop(
     )
 
     config = _build_config()
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config,
         initial_state=state,
         pro_hooks=hooks,
@@ -250,7 +249,7 @@ def test_registry_factory_is_invoked(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     config = _build_config()
     hooks = ProPipelineHooks(registry_factory=_registry_factory)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state, pro_hooks=hooks
     )
     assert exit_code == 0
@@ -297,7 +296,7 @@ def test_state_factory_is_invoked(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
     config = _build_config()
     hooks = ProPipelineHooks(state_factory=_state_factory)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(config, pro_hooks=hooks)
+    exit_code = run_loop_module.run(config, pro_hooks=hooks)
     assert exit_code == 0
     assert len(state_factory_calls) == 1
     assert captured_state[0] is custom_state
@@ -345,7 +344,7 @@ def test_recovery_controller_factory_is_invoked(
 
     config = _build_config()
     hooks = ProPipelineHooks(recovery_controller_factory=_controller_factory)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state, pro_hooks=hooks
     )
     assert exit_code == 0
@@ -382,7 +381,7 @@ def test_hooks_default_to_existing_runner_helpers_when_fields_are_none(
     _install_display_context(monkeypatch, run_loop_module)
 
     config = _build_config()
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(config, initial_state=state)
+    exit_code = run_loop_module.run(config, initial_state=state)
     assert exit_code == 0
 
 
@@ -423,7 +422,7 @@ def test_snapshot_registry_receives_publishes(
 
     config = _build_config()
     hooks = ProPipelineHooks(snapshot_registry=registry)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state, pro_hooks=hooks
     )
     assert exit_code == 0
@@ -468,7 +467,7 @@ def test_custom_pipeline_artifact_type_end_to_end(
 
     config = _build_config()
     hooks = ProPipelineHooks(policy_bundle_override=custom_bundle)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state, pro_hooks=hooks
     )
     assert exit_code == 0
@@ -501,7 +500,7 @@ def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
     ``frozen=True`` guard, so it would not detect a regression
     in which someone removed ``frozen=True`` from the dataclass.
     """
-    sentinel_bundle = cast("PolicyBundle", object())
+    sentinel_bundle = object()
     sentinel_policy = MagicMock(name="policy_bundle_factory")
     sentinel_registry = MagicMock(name="registry_factory")
     sentinel_state = MagicMock(name="state_factory")

@@ -204,9 +204,7 @@ def build_session_bridge(
         # session attribute is typed as the protocol. Assigning the
         # concrete instance is structurally valid because the
         # protocol narrows to the same public surface.
-        session.exec_resource_resolver = ExecResourceResolver(
-            spill_roots=(spill_root,)
-        )
+        session.exec_resource_resolver = ExecResourceResolver(spill_roots=(spill_root,))
     except Exception:
         # Surface as no resolver rather than failing the bridge.
         session.exec_resource_resolver = None

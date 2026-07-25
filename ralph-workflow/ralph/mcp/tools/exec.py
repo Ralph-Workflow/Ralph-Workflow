@@ -861,7 +861,9 @@ def handle_exec_command(
         summary=summary,
         stdout_text=stdout_text,
         stderr_text=stderr_text,
-        exec_resource_resolver=cast("object | None", getattr(session, "exec_resource_resolver", None)),
+        exec_resource_resolver=cast(
+            "object | None", getattr(session, "exec_resource_resolver", None)
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 

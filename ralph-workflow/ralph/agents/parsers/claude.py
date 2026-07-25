@@ -350,7 +350,9 @@ class ClaudeParser(NdjsonParserBase):
         stop_reason = delta_dict.get("stop_reason")
         if stop_reason is None or str(stop_reason) in _CLAUDE_EXPECTED_STOP_REASONS:
             return
-        yield AgentOutputLine(type="message_delta", content=str(stop_reason), raw=raw, metadata=event)
+        yield AgentOutputLine(
+            type="message_delta", content=str(stop_reason), raw=raw, metadata=event
+        )
 
     def _parse_content_block_delta(
         self,

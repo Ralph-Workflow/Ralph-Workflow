@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
@@ -43,7 +41,7 @@ class TestHandleDirectoryTree:
             {"path": "."},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["type"] == "dir"
         assert "children" in payload
         assert len(payload["children"]) == 2
@@ -61,7 +59,7 @@ class TestHandleDirectoryTree:
             {"path": ".", "max_depth": 1},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert len(payload["children"]) > 0
         for child in payload["children"]:
             if child["type"] == "dir":

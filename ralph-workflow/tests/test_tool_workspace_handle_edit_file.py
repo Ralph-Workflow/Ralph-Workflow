@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +10,6 @@ import pytest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_EDIT_CAPABILITY,
@@ -35,7 +33,7 @@ class TestHandleEditFile:
             {"path": "file.txt", "edits": [{"oldText": "world", "newText": "there"}]},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "applied"
         ws.write.assert_called_once()
 
@@ -53,7 +51,7 @@ class TestHandleEditFile:
             },
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "preview"
         assert "diff" in payload
         ws.write.assert_not_called()
@@ -71,7 +69,7 @@ class TestHandleEditFile:
             },
         )
         assert result.is_error is True
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "no_match"
 
     def test_multi_edit_applies_in_order(self) -> None:

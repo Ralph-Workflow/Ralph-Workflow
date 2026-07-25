@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -18,13 +18,15 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     from pytest import MonkeyPatch
 
-    from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PhasePromptMaterializerFn, PipelineDeps
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
@@ -46,7 +48,7 @@ class _FakePipelineFactory:
     ) -> PipelineDeps:
         del config, kwargs
         return make_test_pipeline_deps(
-            cast("DisplayContext", display_context),
+            display_context,
             phase_prompt_materializer=self._phase_prompt_materializer,
         )
 
@@ -69,7 +71,7 @@ class _RecordingPipelineFactory:
         del config, kwargs
         self._captured["model_identity"] = model_identity
         self._captured["pro_hooks"] = pro_hooks
-        return make_test_pipeline_deps(cast("DisplayContext", display_context))
+        return make_test_pipeline_deps(display_context)
 
 
 def _no_agent_registry_class() -> object:
@@ -271,10 +273,7 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         return [ExecutionResultEvent(phase="development", status="completed")]
 
     def _fake_phase_event_after_agent_run(**kwargs: object) -> ExecutionResultEvent:
-        handle_phase_fn = cast(
-            "Callable[[object, object], list[ExecutionResultEvent]]",
-            kwargs.get("handle_phase_fn"),
-        )
+        handle_phase_fn = kwargs.get("handle_phase_fn")
         return handle_phase_fn(object(), object())[0]
 
     monkeypatch.setattr(
@@ -418,7 +417,7 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
     )
 
     assert exit_code == 0
-    kwargs = cast("dict[str, object]", captured["kwargs"])
+    kwargs = must_mapping(captured["kwargs"])
     assert kwargs["worker_namespace"] == worker_ns
     assert kwargs["worker_artifact_dir"] == worker_ns / "artifacts"
     assert kwargs["parallel_worker"] is True
@@ -536,7 +535,7 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
     assert exit_code == 0
     session_caps = captured["session_caps"]
     assert hasattr(session_caps, "tool_name_prefix")
-    assert cast("str", object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"
+    assert must_str(object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"
 
 
 def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_without_resume_support(
@@ -842,4 +841,4 @@ def test_materialize_prepared_prompt_preserves_transport_tool_prefix_from_agent_
 
     session_caps = captured["session_caps"]
     assert hasattr(session_caps, "tool_name_prefix")
-    assert cast("str", object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"
+    assert must_str(object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"

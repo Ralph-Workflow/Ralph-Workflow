@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 
+
 def classify_stuck_now(
     self: IdleWatchdog,
     *,
@@ -140,9 +141,7 @@ def gate_fire(
     """
     if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
         return WatchdogVerdict.FIRE
-    kind = self._classify_stuck_now(
-        now=now, idle_elapsed=idle_elapsed, corroboration=corroboration
-    )
+    kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed, corroboration=corroboration)
     if kind == StuckKind.STUCK:
         return WatchdogVerdict.FIRE
     # SILENT_SUBAGENT is a LABEL, never a veto.
@@ -179,9 +178,7 @@ def gate_fire(
     self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
     self._last_deferred_kind = kind
     coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)
-    if coarse_allowed and self._maybe_log_deferred(
-        fire_reason, kind, idle_elapsed, now
-    ):
+    if coarse_allowed and self._maybe_log_deferred(fire_reason, kind, idle_elapsed, now):
         self._log.debug(
             "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
             fire_reason,

@@ -61,9 +61,7 @@ def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None
     or fails schema validation against :class:`SmokeTestResult`.  This prevents
     a malformed or incomplete artifact from influencing pass/fail decisions.
     """
-    artifact_path = (
-        repo_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
-    )
+    artifact_path = repo_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     try:
         import_module("ralph.mcp.artifacts.markdown.specs")
         markdown = artifact_path.read_text(encoding="utf-8")

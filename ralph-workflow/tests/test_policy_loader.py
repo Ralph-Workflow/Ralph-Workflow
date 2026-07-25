@@ -5,7 +5,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -58,7 +57,7 @@ def test_format_validation_helpers_handle_various_inputs() -> None:
     assert format_validation_message(42) == "42"
 
     dummy = _DummyValidationError([detail, {"loc": None, "msg": "oops"}])
-    messages = format_validation_error_messages(cast("Any", dummy))
+    messages = format_validation_error_messages(dummy)
     assert messages == [
         "  agents.chain: missing chain",
         "  <root>: oops",

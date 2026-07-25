@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner as TyperCliRunner
@@ -13,6 +13,7 @@ from ralph.cli.main import (
     app,
 )
 from ralph.display.context import DisplayContext, make_display_context
+from tests._support.typed_accessors import must_mapping
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -52,8 +53,8 @@ class TestThoroughModeSemantics:
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
-        general = cast("dict[str, object]", cli_overrides["general"])
+        cli_overrides = must_mapping(captured.get("request").cli_overrides)
+        general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == THOROUGH_DEVELOPER_ITERS
 
     def test_thorough_overrides_developer_iters_when_both_supplied(
@@ -73,8 +74,8 @@ class TestThoroughModeSemantics:
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "-D", "3", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
-        general = cast("dict[str, object]", cli_overrides["general"])
+        cli_overrides = must_mapping(captured.get("request").cli_overrides)
+        general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == THOROUGH_DEVELOPER_ITERS
 
     def test_quick_and_thorough_together_raise_usage_error(

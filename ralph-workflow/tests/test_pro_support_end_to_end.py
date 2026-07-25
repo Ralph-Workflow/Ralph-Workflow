@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -127,7 +127,7 @@ def _build_config() -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _patch_runner_dependencies(
@@ -312,7 +312,7 @@ def test_pro_invocation_end_to_end_satisfies_all_three_bullets(
         snapshot_registry=registry,
         policy_bundle_override=override_bundle,
     )
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config,
         initial_state=state,
         pro_hooks=hooks,

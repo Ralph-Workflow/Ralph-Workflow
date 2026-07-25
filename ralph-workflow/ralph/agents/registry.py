@@ -573,9 +573,7 @@ def _resolve_dynamic_simple_prefixed_agent(
                 model_flag = f"--provider {shlex.quote(provider)}"
                 if model is not None:
                     model_flag += f" --model {shlex.quote(model)}"
-                return base_config.model_copy(
-                    update={"model_flag": model_flag, "can_commit": True}
-                )
+                return base_config.model_copy(update={"model_flag": model_flag, "can_commit": True})
     elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS and segments[1]:
         base_config = base_lookup("agy")
         if base_config is not None:
@@ -622,9 +620,7 @@ def _normalize_opencode_model_id(name: str) -> str:
     return name.removeprefix("opencode/")
 
 
-def _resolve_dynamic_codex_agent(
-    name: str, base_config: AgentConfig | None
-) -> AgentConfig | None:
+def _resolve_dynamic_codex_agent(name: str, base_config: AgentConfig | None) -> AgentConfig | None:
     """Resolve a validated Codex model alias against its effective base config."""
     codex_alias = _parse_codex_alias(name.removeprefix("codex/"))
     if codex_alias is None or base_config is None:

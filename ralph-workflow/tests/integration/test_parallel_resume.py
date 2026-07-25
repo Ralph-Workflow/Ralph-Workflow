@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,7 +20,6 @@ from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.display.parallel_display import ParallelDisplay
 from tests.integration.test_parallel_resume_helper__fakedisplay import _FakeDisplay
 
 # Per-test pytest marker: the fan-out resume tests in this
@@ -126,7 +125,7 @@ class TestParallelResume:
         execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -173,7 +172,7 @@ class TestParallelResume:
         execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -215,7 +214,7 @@ class TestParallelResume:
         final_state = execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )

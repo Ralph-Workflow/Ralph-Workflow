@@ -18,13 +18,12 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from ralph.mcp.multimodal.artifacts import ResourceReferenceContent
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-from ralph.mcp.tools.coordination import ImageContent, ToolContent
+from ralph.mcp.tools.coordination import ImageContent
 from ralph.mcp.tools.workspace._media_handlers import (
     handle_read_image,
     handle_read_media,
@@ -72,7 +71,7 @@ class TestReadImageMetadata:
         )
 
         assert result.is_error is False
-        envelope = json.loads(cast("ToolContent", result.content[0]).text)
+        envelope = json.loads(result.content[0].text)
         assert envelope["format"] == "metadata"
         assert envelope["media_kind"] == "image"
         assert envelope["mime_type"] == "image/png"
@@ -144,7 +143,7 @@ class TestReadMediaMetadata:
         )
 
         assert result.is_error is False
-        envelope = json.loads(cast("ToolContent", result.content[0]).text)
+        envelope = json.loads(result.content[0].text)
         assert envelope["format"] == "metadata"
         assert envelope["media_kind"] == "pdf"
         assert envelope["mime_type"] == "application/pdf"
@@ -177,7 +176,7 @@ class TestReadMediaMetadata:
         )
 
         assert result.is_error is False
-        envelope = json.loads(cast("ToolContent", result.content[0]).text)
+        envelope = json.loads(result.content[0].text)
         assert envelope["format"] == "metadata"
         assert envelope["media_kind"] == "image"
         assert envelope["mime_type"] == "image/png"

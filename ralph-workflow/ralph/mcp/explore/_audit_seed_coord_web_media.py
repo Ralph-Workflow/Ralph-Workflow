@@ -74,9 +74,7 @@ _SEED_COORD_WEB_MEDIA: tuple[AuditEntry, ...] = (
         tool=RalphToolName.READ_ENV,
         family=AuditFamily.COORDINATION,
         outcome=AuditOutcome.KEEP,
-        rationale=(
-            "Single-string env read; current output is already bounded."
-        ),
+        rationale=("Single-string env read; current output is already bounded."),
         counters=_counters(
             transcript_tokens=16,
             returned_bytes=32,

@@ -1,6 +1,6 @@
 """Pure behavior tests for the JSON-free plan markdown grammar."""
 
-from typing import cast
+
 
 import pytest
 
@@ -8,6 +8,10 @@ from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_valida
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import edit_plan_step_markdown
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+)
 
 
 def _plan_document() -> str:
@@ -98,7 +102,7 @@ Non-goals:
 def _steps(content: dict[str, object]) -> list[dict[str, object]]:
     steps = content["steps"]
     assert isinstance(steps, list)
-    return [cast("dict[str, object]", step) for step in steps]
+    return [must_mapping(step) for step in steps]
 
 
 def test_explicit_noop_plan_uses_minimal_closed_frontmatter_grammar() -> None:
@@ -160,16 +164,16 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
     assert get_spec("plan") is PLAN_SPEC
     assert content["schema_version"] == 1
 
-    summary = cast("dict[str, object]", content["summary"])
+    summary = must_mapping(content["summary"])
     assert summary["intent_verb"] == "add"
     assert summary["intent"] == "Plan documents are authored as plain markdown."
     assert summary["context"] == "Migrate the plan artifact to a JSON-free markdown grammar."
     assert summary["coverage_areas"] == ["feature", "test"]
-    scope_items = cast("list[dict[str, object]]", summary["scope_items"])
+    scope_items = must_dict_list(summary["scope_items"])
     assert scope_items[0] == {"text": "Redesign the plan grammar", "category": "feature"}
     assert scope_items[2]["count"] == "1 file"
 
-    skills = cast("dict[str, object]", content["skills_mcp"])
+    skills = must_mapping(content["skills_mcp"])
     assert skills == {"skills": ["test-driven-development"], "mcps": ["docs-mcp-server"]}
 
     steps = _steps(content)
@@ -192,7 +196,7 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
         "the focused markdown-plan tests pass with exit code 0"
     )
 
-    critical = cast("dict[str, object]", content["critical_files"])
+    critical = must_mapping(content["critical_files"])
     assert critical["primary_files"] == [
         {
             "path": "ralph/mcp/artifacts/markdown/specs/plan.py",
@@ -207,16 +211,16 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
         }
     ]
 
-    constraints = cast("dict[str, object]", content["constraints"])
+    constraints = must_mapping(content["constraints"])
     assert constraints["must_not_break"] == ["existing markdown artifact specs"]
     assert constraints["performance_budget"] == "focused suites stay under one second"
 
-    design = cast("dict[str, object]", content["design"])
+    design = must_mapping(content["design"])
     assert design["outcome"] == "Plan documents contain no embedded JSON."
     assert design["notes"] == "Grammar decisions and notes live here as prose."
     assert design["non_goals"] == {"items": ["redesigning what plans say"]}
-    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    acceptance = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(acceptance["criteria"])
     assert criteria[0]["id"] == "AC-01"
     assert criteria[0]["satisfied_by_steps"] == [1]
     assert criteria[0]["verification_step"] == "pytest tests/mcp/test_md_plan_spec.py -q"
@@ -224,11 +228,11 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
         "the focused markdown-plan tests pass with exit code 0"
     )
 
-    risks = cast("list[dict[str, object]]", content["risks_mitigations"])
+    risks = must_dict_list(content["risks_mitigations"])
     assert risks[0]["severity"] == "medium"
     assert risks[0]["mitigation"] == "Reuse the canonical plan normalizer on the mapped content."
 
-    verification = cast("list[dict[str, object]]", content["verification_strategy"])
+    verification = must_dict_list(content["verification_strategy"])
     assert verification[0] == {
         "method": "pytest tests/mcp/test_md_plan_spec.py -q",
         "expected_outcome": "focused tests pass",
@@ -252,17 +256,17 @@ def test_plan_spec_preserves_descriptive_execution_vocabularies() -> None:
 
     assert all(diagnostic.severity == "warning" for diagnostic in diagnostics)
     assert {diagnostic.rule_id for diagnostic in diagnostics} == {"PLAN006"}
-    summary = cast("dict[str, object]", content["summary"])
+    summary = must_mapping(content["summary"])
     assert summary["intent_verb"] == "invented"
     assert summary["coverage_areas"] == ["feature", "invented"]
-    scope_items = cast("list[dict[str, object]]", summary["scope_items"])
+    scope_items = must_dict_list(summary["scope_items"])
     assert scope_items[0]["category"] == "invented"
     steps = _steps(content)
     assert steps[0]["step_type"] == "invented"
-    first_target = cast("list[dict[str, object]]", steps[0]["targets"])[0]
+    first_target = must_dict_list(steps[0]["targets"])[0]
     assert first_target["action"] == "invented"
     assert first_target["path"] == "ralph/mcp/artifacts/markdown/specs/plan.py"
-    risks = cast("list[dict[str, object]]", content["risks_mitigations"])
+    risks = must_dict_list(content["risks_mitigations"])
     assert risks[0]["severity"] == "invented"
 
 
@@ -273,7 +277,7 @@ def test_canonical_evidence_kind_prefix_is_preserved_without_diagnostics() -> No
 
     assert diagnostics == []
     steps = _steps(content)
-    evidence = cast("list[dict[str, object]]", steps[0]["expected_evidence"])
+    evidence = must_dict_list(steps[0]["expected_evidence"])
     assert evidence[0]["kind"] == "command_output"
 
 
@@ -283,8 +287,8 @@ def test_critical_file_action_is_free_form_descriptive_content() -> None:
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    critical = cast("dict[str, object]", content["critical_files"])
-    primary = cast("list[dict[str, object]]", critical["primary_files"])
+    critical = must_mapping(content["critical_files"])
+    primary = must_dict_list(critical["primary_files"])
     assert primary[0]["action"] == "inspect-only"
 
 

@@ -89,8 +89,7 @@ def _serialize_tool_spec(spec: object) -> str:
 class Clock(Protocol):
     """Protocol for wall-clock injection. Tests inject a FakeClock."""
 
-    def now(self) -> float:
-        ...
+    def now(self) -> float: ...
 
 
 class SystemClock:
@@ -98,7 +97,6 @@ class SystemClock:
 
     def now(self) -> float:
         return time.monotonic()
-
 
 
 def _tokenize_call(call: ScriptedCall) -> int:
@@ -180,7 +178,9 @@ def derive_visible_catalog(
         # without a real bridge can pass a stub. The bridge
         # ``tool_specs`` requires ``McpConfig``; the cast happens at
         # the boundary where we know the caller satisfied it.
-        cfg = cast("McpConfig", mcp_config)
+        cfg = cast(
+            "McpConfig", mcp_config
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
         specs = _bridge_tool_specs(cfg)
     except Exception:
@@ -192,8 +192,7 @@ def derive_visible_catalog(
         from ralph.mcp.tools.names import RalphToolName
 
         return tuple(
-            (member.value, {"type": "object", "properties": {}})
-            for member in RalphToolName
+            (member.value, {"type": "object", "properties": {}}) for member in RalphToolName
         )
 
     catalog: list[object] = []
@@ -303,9 +302,7 @@ def _run_script(
     # we use ``max(supplied, derived_from_returned)`` so callers
     # can pin a known-context budget without losing the derived
     # signal when more ids are actually returned.
-    derived_final_evidence_tokens = sum(
-        len(ev_id.split()) for ev_id in returned_evidence_ids
-    )
+    derived_final_evidence_tokens = sum(len(ev_id.split()) for ev_id in returned_evidence_ids)
     effective_final_evidence_tokens = max(
         final_evidence_tokens,
         derived_final_evidence_tokens,
@@ -458,7 +455,6 @@ def run_benchmark(
         indexed=indexed_counters,
         notes=(fixture.description,),
     )
-
 
 
 __all__ = [

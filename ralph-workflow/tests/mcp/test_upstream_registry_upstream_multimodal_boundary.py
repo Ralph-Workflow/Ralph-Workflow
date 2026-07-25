@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -13,7 +13,7 @@ from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
-from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +72,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -110,7 +110,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -149,7 +149,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -187,7 +187,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -228,7 +228,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -266,7 +266,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         result = registry.call_tool("ralph_upstream__uri_server__screenshot", {})
@@ -298,7 +298,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -334,7 +334,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -357,7 +357,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -386,7 +386,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -414,7 +414,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -456,7 +456,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -487,7 +487,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         result = registry.call_tool("ralph_upstream__text_server__echo", {})
@@ -512,7 +512,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         result = registry.call_tool("ralph_upstream__minimal_server__ping", {})
@@ -531,7 +531,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         result = registry.call_tool("ralph_upstream__empty_server__noop", {})
@@ -567,7 +567,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         class _FakeSession:
@@ -614,7 +614,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=cast("UpstreamClientFactory", lambda srv: client),
+            client_factory=lambda srv: client,
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:

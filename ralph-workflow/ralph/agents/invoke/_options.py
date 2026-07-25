@@ -107,7 +107,9 @@ def build_invoke_options_from_config(
 def _get_os_descendant_field(value: float | None | object, fallback: float | None) -> float | None:
     if value is _INVOKE_OPTS_UNSET:
         return fallback
-    return cast("float | None", value)
+    return cast(
+        "float | None", value
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
@@ -280,10 +282,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         # get the 600s sub-ceiling default.
         stuck_job_sub_ceiling_seconds=(
             STUCK_JOB_SUB_CEILING_SECONDS
-            if (
-                _effective_max is not None
-                and _effective_max >= STUCK_JOB_SUB_CEILING_SECONDS
-            )
+            if (_effective_max is not None and _effective_max >= STUCK_JOB_SUB_CEILING_SECONDS)
             else None
         ),
     )

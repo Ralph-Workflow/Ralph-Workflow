@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     InvalidParamsError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
@@ -38,7 +36,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "head": 2},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "line1\nline2\n"
         assert payload["returned_lines"] == 2
         assert payload["truncated"] is True
@@ -56,7 +54,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "tail": 2},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "line4\nline5\n"
 
     def test_line_start_and_end_returns_range(self) -> None:
@@ -72,7 +70,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "line_start": 2, "line_end": 3},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "line2\nline3\n"
 
     def test_offset_and_limit_uses_byte_window_read(self) -> None:
@@ -88,7 +86,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "offset": 0, "limit": 100},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "some content"
         assert payload["total_bytes"] == 200
         assert payload["returned_bytes"] == 100
@@ -107,7 +105,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "offset": 17},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "remainder content"
         assert payload["total_bytes"] == 100
         ws.read_bytes.assert_called_once()
@@ -153,7 +151,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "line_start": 2, "line_end": 3, "offset": 0, "limit": 0},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "line2\nline3\n"
         ws.read_lines.assert_called_once()
         _, kwargs = ws.read_lines.call_args
@@ -176,7 +174,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "head": 2, "offset": 0, "limit": 0},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "first\nsecond\n"
         ws.read_lines.assert_called_once()
         _, kwargs = ws.read_lines.call_args
@@ -198,7 +196,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "tail": 2, "offset": 0, "limit": 0},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "last\nline\n"
         ws.read_lines.assert_called_once()
         _, kwargs = ws.read_lines.call_args
@@ -220,7 +218,7 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "offset": 0, "limit": 100},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["content"] == "hello"
         ws.read_bytes.assert_called_once()
         _, kwargs = ws.read_bytes.call_args

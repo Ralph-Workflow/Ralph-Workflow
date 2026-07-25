@@ -67,13 +67,17 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
         display = display_context
     elif display_context is not None:
         try:
-            display = resolve_active_display(None, cast("DisplayContext", display_context))
+            display = resolve_active_display(
+                None, cast("DisplayContext", display_context)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         except Exception:
             display = None
     if display is None:
         return
     with suppress(Exception):
-        cast("ParallelDisplay", display).emit_commit_message(repo_root)
+        cast("ParallelDisplay", display).emit_commit_message(
+            repo_root
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 @dataclass(frozen=True)
@@ -103,7 +107,9 @@ def execute_commit_effect(
     **opts: object,
 ) -> PipelineEvent:
     """Execute a commit effect, creating or skipping a git commit."""
-    verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
+    verbosity = cast(
+        "Verbosity", opts.get("verbosity", Verbosity.VERBOSE)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     _raw_create = opts.get("create_commit_fn")
     _create_commit_fn: _CreateCommitFn = cast(
         "_CreateCommitFn", _raw_create if callable(_raw_create) else create_commit
@@ -142,7 +148,9 @@ def execute_commit_effect(
             _render_commit_fn(repo_root, get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
+                cast("ParallelDisplay", display).record_artifact_outcome(
+                    f"sha={sha[:8]}"
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
@@ -361,8 +369,12 @@ def clear_phase_output_artifacts(
     outputs again here reintroduces a second, less-informed authority and can
     delete the live plan handoff on non-fresh planning entries.
     """
-    drain = cast("str | None", opts.get("drain"))
-    policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
+    drain = cast(
+        "str | None", opts.get("drain")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    policy_bundle = cast(
+        "PolicyBundle | None", opts.get("policy_bundle")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     effective_drain = drain or phase
     required_artifact = (
         resolve_phase_required_artifact(

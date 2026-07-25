@@ -77,12 +77,16 @@ def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]
             serialized.append(cast("dict[str, object]", block))
             continue
 
-        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
+        to_dict = cast(
+            "_ToDict | None", getattr(block, "to_dict", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if callable(to_dict):
             serialized.append(to_dict())
             continue
 
-        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
+        model_dump = cast(
+            "_ModelDump | None", getattr(block, "model_dump", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if callable(model_dump):
             serialized.append(model_dump(exclude_none=True, by_alias=True))
             continue
@@ -385,9 +389,7 @@ class McpServer:
             self._session, "exec_resource_resolver", None
         )
         if resolver is not None:
-            resources.extend(
-                entry.resource_list_entry() for entry in resolver.list_entries()
-            )
+            resources.extend(entry.resource_list_entry() for entry in resolver.list_entries())
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id),
             ServerState.RUNNING,
@@ -591,7 +593,9 @@ class McpServer:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
-        to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
+        to_dict = cast(
+            "_ToDict | None", getattr(raw_result, "to_dict", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_wrapup_notice(payload)

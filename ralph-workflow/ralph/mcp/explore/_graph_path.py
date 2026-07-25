@@ -1,6 +1,5 @@
 """Graph path query for ``ralph_graph`` (Phase 2+)."""
 
-
 import sqlite3
 from collections.abc import Sequence
 
@@ -66,9 +65,7 @@ def path_query(
             continue
         if len(current_path) >= bounded_depth + 1:
             continue
-        for edge in _iter_outgoing(
-            store, source_id=current_id, relations=relations_actual
-        ):
+        for edge in _iter_outgoing(store, source_id=current_id, relations=relations_actual):
             if edge.target_id in visited:
                 continue
             visited.add(edge.target_id)
@@ -119,9 +116,7 @@ def path_query(
 
     nodes_out: list[GraphNode] = []
     for node_id in node_ids:
-        cur = store._conn.execute(
-            "SELECT * FROM symbols WHERE symbol_id = ?", (node_id,)
-        )
+        cur = store._conn.execute("SELECT * FROM symbols WHERE symbol_id = ?", (node_id,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is not None:
             nodes_out.append(_row_to_node_from_symbol(row))
@@ -152,7 +147,11 @@ def path_query(
         edges=tuple(edges_out),
         paths=tuple(path_strings),
         confidence=min(
-            (e.confidence for edges_list in (path_edges for _, path_edges in found) for e in edges_list),
+            (
+                e.confidence
+                for edges_list in (path_edges for _, path_edges in found)
+                for e in edges_list
+            ),
             default=0.0,
         ),
         provenance="extracted",

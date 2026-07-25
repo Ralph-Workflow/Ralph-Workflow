@@ -31,20 +31,16 @@ class _SymbolLike(Protocol):
     """
 
     @property
-    def qualified_name(self) -> str:
-        ...
+    def qualified_name(self) -> str: ...
 
     @property
-    def kind(self) -> str:
-        ...
+    def kind(self) -> str: ...
 
     @property
-    def symbol_id(self) -> str:
-        ...
+    def symbol_id(self) -> str: ...
 
     @property
-    def span_id(self) -> str:
-        ...
+    def span_id(self) -> str: ...
 
 
 class ExploreIndexLike(Protocol):
@@ -55,8 +51,9 @@ class ExploreIndexLike(Protocol):
     without inheriting from a heavy base class.
     """
 
-    def mark_dirty(self, paths: list[str], *, source_tool: str, reason: str = "mutated") -> None:
-        ...
+    def mark_dirty(
+        self, paths: list[str], *, source_tool: str, reason: str = "mutated"
+    ) -> None: ...
 
     @property
     def store(self) -> ExploreStoreLike | None:
@@ -77,23 +74,18 @@ class ExploreStoreLike(Protocol):
     they actually use.
     """
 
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
-    def peek_dirty_paths(self) -> list[str]:
-        ...
+    def peek_dirty_paths(self) -> list[str]: ...
 
-    def has_deleted_files(self) -> bool:
-        ...
+    def has_deleted_files(self) -> bool: ...
 
-    def count_deleted_files(self) -> int:
-        ...
+    def count_deleted_files(self) -> int: ...
 
     def iter_files(self) -> object:  # Iterator[FileRow]
         ...
 
-    def iter_symbols(self, path: str | None = None) -> object:
-        ...
+    def iter_symbols(self, path: str | None = None) -> object: ...
 
     def find_symbols(
         self,
@@ -101,11 +93,9 @@ class ExploreStoreLike(Protocol):
         name: str | None = None,
         qualified_name: str | None = None,
         path: str | None = None,
-    ) -> list[_SymbolLike]:
-        ...
+    ) -> list[_SymbolLike]: ...
 
-    def insert_evidence(self, row: object) -> None:
-        ...
+    def insert_evidence(self, row: object) -> None: ...
 
     def mark_dirty(
         self,
@@ -114,8 +104,7 @@ class ExploreStoreLike(Protocol):
         reason: str,
         source_tool: str,
         now: float | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class NoOpExploreIndex:
@@ -198,13 +187,13 @@ def build_sqlite_index_handle(
             self, paths: list[str], *, source_tool: str, reason: str = "mutated"
         ) -> None:
             for path in paths:
-                store.mark_dirty(
-                    path, reason=reason, source_tool=source_tool
-                )
+                store.mark_dirty(path, reason=reason, source_tool=source_tool)
 
         @property
         def store(self) -> ExploreStoreLike | None:
-            return cast("ExploreStoreLike | None", store)
+            return cast(
+                "ExploreStoreLike | None", store
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
         @property
         def reindex_in_progress(self) -> bool:

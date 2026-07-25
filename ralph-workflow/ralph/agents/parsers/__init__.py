@@ -101,7 +101,9 @@ class _CatalogModule(Protocol):
 
 def _catalog_module() -> _CatalogModule:
     """Load the catalog lazily to preserve the parser/catalog import boundary."""
-    return cast("_CatalogModule", importlib.import_module("ralph.agents.catalog"))
+    return cast(
+        "_CatalogModule", importlib.import_module("ralph.agents.catalog")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 # Public read-only views over the AgentCatalog's mutable state dicts.
@@ -148,7 +150,9 @@ def _view(name: str) -> Mapping[str, _ParserFactory]:
     forcing eager module-level definitions that would create a circular
     import with ``ralph.agents.catalog``.
     """
-    return cast("Mapping[str, _ParserFactory]", getattr(sys.modules[__name__], name))
+    return cast(
+        "Mapping[str, _ParserFactory]", getattr(sys.modules[__name__], name)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def resolve_parser_key(

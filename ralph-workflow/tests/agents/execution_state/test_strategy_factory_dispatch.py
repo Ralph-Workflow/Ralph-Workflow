@@ -7,7 +7,6 @@ no real psutil.
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -21,9 +20,6 @@ from ralph.agents.execution_state import (
 )
 from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.config.enums import AgentTransport
-
-if TYPE_CHECKING:
-    from ralph.process.child_liveness import ChildLivenessRegistry
 
 
 class TestStrategyFactoryDispatch:
@@ -78,7 +74,7 @@ class TestStrategyFactoryDispatch:
         assert fallback is GenericExecutionStrategy
 
     def test_opencode_forwards_label_scope_and_registry(self) -> None:
-        fake_registry = cast("ChildLivenessRegistry", object())
+        fake_registry = object()
         strategy = strategy_for_transport(
             AgentTransport.OPENCODE,
             label_scope="unit-x",

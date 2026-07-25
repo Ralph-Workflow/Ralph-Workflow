@@ -7,7 +7,7 @@ import uuid
 from contextlib import nullcontext
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.startup import HeartbeatPolicy
 from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
@@ -130,9 +130,7 @@ def _artifact_requirements_resolver_impl(
     return None
 
 
-_artifact_requirements_resolver: ArtifactRequirementsResolverFn = cast(
-    "ArtifactRequirementsResolverFn", _artifact_requirements_resolver_impl
-)
+_artifact_requirements_resolver: ArtifactRequirementsResolverFn = _artifact_requirements_resolver_impl
 
 
 def _phase_prompt_materializer_impl(
@@ -149,9 +147,7 @@ def _phase_prompt_materializer_impl(
     return ".agent/tmp/development_prompt.md"
 
 
-_phase_prompt_materializer: PhasePromptMaterializerFn = cast(
-    "PhasePromptMaterializerFn", _phase_prompt_materializer_impl
-)
+_phase_prompt_materializer: PhasePromptMaterializerFn = _phase_prompt_materializer_impl
 
 
 def _master_prompt_materializer_impl(
@@ -220,10 +216,7 @@ def make_test_pipeline_deps(
         artifact_requirements_resolver=(
             artifact_requirements_resolver or _artifact_requirements_resolver
         ),
-        bridge_factory=cast(
-            "BridgeFactory",
-            bridge_factory or _RecordingBridgeFactory(bridge),
-        ),
+        bridge_factory=bridge_factory or _RecordingBridgeFactory(bridge),
         mcp_supervisor_factory=mcp_supervisor_factory or _mcp_supervisor_factory,
         heartbeat_policy_from_env_fn=heartbeat_policy_from_env_fn or _heartbeat_policy_from_env,
         check_mcp_bridge_health_fn=check_mcp_bridge_health_fn or _check_mcp_bridge_health,

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.bridge._types import JsonObject
 
+
 def _is_approved(outcome: object) -> bool:
     if outcome is True:
         return True
@@ -21,7 +22,12 @@ def _is_approved(outcome: object) -> bool:
         mapping = cast("Mapping[str, object]", outcome)
         return any(
             isinstance(mapping.get(field), str)
-            and cast("str", mapping[field]).strip().lower() in {"approved", "allow", "allowed"}
+            and cast("str", mapping[field]).strip().lower()
+            in {
+                "approved",
+                "allow",
+                "allowed",
+            }  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             for field in ("name", "value", "status")
         )
     for field in ("name", "value", "status"):

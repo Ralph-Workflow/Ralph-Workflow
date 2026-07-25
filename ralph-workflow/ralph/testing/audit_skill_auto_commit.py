@@ -170,9 +170,7 @@ _INVARIANTS: tuple[Invariant, ...] = (
     # (the locked project-scope conflict-resolution branch).
     Invariant(
         rel_path="skills/_installer.py",
-        present=(
-            "_materialize_canonical_skill",
-        ),
+        present=("_materialize_canonical_skill",),
     ),
 )
 
@@ -273,9 +271,7 @@ def _check_skill_root_skip_placement() -> list[str]:  # noqa: PLR0912 - AST walk
             )
         break
     else:
-        problems.append(
-            f"  {rel}:untrack_engine_internal_files function definition not found"
-        )
+        problems.append(f"  {rel}:untrack_engine_internal_files function definition not found")
     return problems
 
 
@@ -374,9 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(_check_skill_root_prefixes_constant_matches())
 
     if problems:
-        print(
-            f"SKILL-AUTO-COMMIT AUDIT FAILED: {len(problems)} invariant violation(s)"
-        )
+        print(f"SKILL-AUTO-COMMIT AUDIT FAILED: {len(problems)} invariant violation(s)")
         for problem in problems:
             print(problem)
         return 1

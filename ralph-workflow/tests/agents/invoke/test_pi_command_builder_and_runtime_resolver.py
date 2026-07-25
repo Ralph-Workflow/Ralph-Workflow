@@ -11,7 +11,7 @@ MCP-closure rules cannot silently regress.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -38,7 +38,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 def _make_prompt(tmp_path: Path) -> str:
@@ -471,7 +470,7 @@ class TestPiCompletionEnforcement:
 
         with pytest.raises(OpenCodeResumableExitError) as excinfo:
             check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "pi",
                 parsed_output=[
                     '{"type":"session","id":"pi-session-123","version":3}',

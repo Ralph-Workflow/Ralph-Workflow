@@ -14,11 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
-
-if TYPE_CHECKING:
-    from ralph.display.parallel_display import ParallelDisplay
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner as runner_module
@@ -125,7 +121,7 @@ class TestSameWorkspaceFanOutE2E:
             coordinator.run_fan_out(
                 effect=effect,
                 executor=FakeAgentExecutor(runs),
-                display=cast("ParallelDisplay", _FakeDisplay()),
+                display=_FakeDisplay(),
             )
         )
 
@@ -157,7 +153,7 @@ class TestSameWorkspaceFanOutE2E:
             coordinator.run_fan_out(
                 effect=effect,
                 executor=FakeAgentExecutor(runs),
-                display=cast("ParallelDisplay", _FakeDisplay()),
+                display=_FakeDisplay(),
             )
         )
 
@@ -191,7 +187,7 @@ class TestSameWorkspaceFanOutE2E:
             coordinator.run_fan_out(
                 effect=effect,
                 executor=FakeAgentExecutor(runs),
-                display=cast("ParallelDisplay", _FakeDisplay()),
+                display=_FakeDisplay(),
             )
         )
 

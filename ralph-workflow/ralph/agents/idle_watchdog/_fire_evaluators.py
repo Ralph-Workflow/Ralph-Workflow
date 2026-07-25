@@ -24,6 +24,7 @@ _FRESH_ALIVE_BY_STATES: frozenset[AliveBy] = frozenset(
 def _alive_by_is_fresh(alive_by: AliveBy | None) -> bool:
     return alive_by in _FRESH_ALIVE_BY_STATES
 
+
 def is_no_progress_quiet(
     self: IdleWatchdog, now: float, corroboration: CorroborationSnapshot
 ) -> bool:
@@ -377,13 +378,9 @@ def evaluate_strictly_stuck(  # noqa: PLR0911 - early-exit guards per branch of 
         return WatchdogVerdict.CONTINUE
     self._last_fire_reason = WatchdogFireReason.STRICTLY_STUCK
     diag: dict[str, object] = {
-        "alive_by": corroboration.alive_by.value
-        if corroboration.alive_by is not None
-        else None,
+        "alive_by": corroboration.alive_by.value if corroboration.alive_by is not None else None,
         "strictly_stuck_run_seconds": round(strictly_stuck_run_seconds, 1),
-        "strictly_stuck_ceiling_seconds": (
-            self._config.no_progress_quiet_strictly_stuck_seconds
-        ),
+        "strictly_stuck_ceiling_seconds": (self._config.no_progress_quiet_strictly_stuck_seconds),
         "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
         "idle_elapsed": round(idle_elapsed, 1),
         # Populate ``scoped_child_active`` so the 3 consumer
@@ -406,8 +403,7 @@ def evaluate_strictly_stuck(  # noqa: PLR0911 - early-exit guards per branch of 
         diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
     )
     self._log.warning(
-        "idle watchdog: FIRE reason={} idle_elapsed={}s"
-        " strictly_stuck_run_seconds={}s alive_by={}",
+        "idle watchdog: FIRE reason={} idle_elapsed={}s strictly_stuck_run_seconds={}s alive_by={}",
         WatchdogFireReason.STRICTLY_STUCK,
         round(idle_elapsed, 1),
         round(strictly_stuck_run_seconds, 1),
@@ -584,8 +580,6 @@ def evaluate_no_output_at_start(  # noqa: PLR0911 - 3 early-exit guards + 2 defe
         WatchdogFireReason.NO_OUTPUT_AT_START,
         now=now,
         idle_elapsed=idle_elapsed,
-        message_suffix=(
-            f" no_output_at_start_seconds={self._config.no_output_at_start_seconds}s"
-        ),
+        message_suffix=(f" no_output_at_start_seconds={self._config.no_output_at_start_seconds}s"),
     )
     return WatchdogVerdict.FIRE

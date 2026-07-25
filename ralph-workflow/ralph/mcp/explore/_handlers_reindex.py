@@ -64,7 +64,9 @@ logger = logging.getLogger(__name__)
 #: a previous caller's cancel cannot poison a concurrent reindex
 #: against the same session and the map cannot leak across
 #: long-lived sessions.
-_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
+_REINDEX_CANCEL_FLAGS: dict[
+    str, bool
+] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
 _REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 
@@ -90,9 +92,7 @@ def handle_ralph_reindex(
     mode_raw: object = params.get("mode", "changed")
     mode: str = str(mode_raw) if not isinstance(mode_raw, str) else mode_raw
     if mode not in {"changed", "full"}:
-        raise InvalidParamsError(
-            f"Invalid reindex mode: {mode!r}; expected 'changed' or 'full'"
-        )
+        raise InvalidParamsError(f"Invalid reindex mode: {mode!r}; expected 'changed' or 'full'")
     # AC-05: bounded per-call budget. Malformed or out-of-range
     # values fail closed with a structured tool error; the
     # dispatcher must NOT silently fall back to the default when
@@ -117,18 +117,12 @@ def handle_ralph_reindex(
                 # AC-05: surface invalid path_scope as a structured
                 # tool error before reindexing rather than letting
                 # the rejection propagate as a generic exception.
-                raise InvalidParamsError(
-                    f"Invalid path_scope entry {p!r}: {exc}"
-                ) from exc
+                raise InvalidParamsError(f"Invalid path_scope entry {p!r}: {exc}") from exc
         path_scope = tuple(normalized_scope)
 
     workspace_root_obj2: object = getattr(workspace, "root", None)
-    workspace_root_raw2: object = workspace_root_obj2 or params.get(
-        "workspace_root", ""
-    )
-    workspace_root_str2: str = (
-        str(workspace_root_raw2) if workspace_root_raw2 else ""
-    )
+    workspace_root_raw2: object = workspace_root_obj2 or params.get("workspace_root", "")
+    workspace_root_str2: str = str(workspace_root_raw2) if workspace_root_raw2 else ""
     workspace_root = Path(workspace_root_str2) if workspace_root_str2 else Path.cwd()
 
     handle: ExploreIndex | None = handlers_module._resolve_explore_index(session)
@@ -162,9 +156,10 @@ def handle_ralph_reindex(
             # assignment still goes through the protocol's optional
             # surface so legacy workspaces can ignore the attribute
             # without errors.
-            cast("Workspace", workspace).explore_index = handle
+            cast(
+                "Workspace", workspace
+            ).explore_index = handle  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     _ = cold_built  # reserved for future payload/audit fields
-
 
     started_at = time.time()
     options = ReindexOptions(
@@ -258,4 +253,3 @@ def _build_reindex_payload(result: ReindexResult) -> dict[str, object]:
         "elapsed_seconds": result.elapsed_seconds,
         "error_summary": result.error_summary,
     }
-

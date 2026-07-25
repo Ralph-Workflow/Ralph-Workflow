@@ -6,7 +6,7 @@ import pathlib
 import tempfile
 from contextlib import nullcontext
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
@@ -19,7 +19,6 @@ from ralph.mcp.protocol.startup import HeartbeatPolicy
 from ralph.mcp.server.lifecycle import (
     McpRestartPolicy,
     McpServerError,
-    ProcessLike,
     RestartAwareMcpBridge,
     StandaloneMcpProcess,
 )
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ralph.display.parallel_display import ParallelDisplay
 
 
 def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
@@ -92,7 +90,7 @@ def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
 
     inner = StandaloneMcpProcess(
         endpoint="http://127.0.0.1:9888/mcp",
-        process=cast("ProcessLike", _FakePopen()),
+        process=_FakePopen(),
         session_file=sf,
     )
     return RestartAwareMcpBridge(
@@ -619,7 +617,7 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         deps,
         WorkspaceScope(tmp_path),
         display_context=None,
-        display=cast("ParallelDisplay", _FakeDisplay()),
+        display=_FakeDisplay(),
     )
 
     assert recorded == [1], f"expected record_mcp_restart([1]); got {recorded}"

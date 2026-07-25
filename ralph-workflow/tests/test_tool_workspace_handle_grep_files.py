@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +10,6 @@ import pytest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
@@ -49,7 +47,7 @@ class TestHandleGrepFiles:
             {"pattern": "def foo", "path": "."},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert len(payload["matches"]) > 0
         assert payload["matches"][0]["text"] == "def foo():"
 
@@ -78,7 +76,7 @@ class TestHandleGrepFiles:
             {"pattern": "def foo", "path": ".", "case_sensitive": False},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert len(payload["matches"]) > 0
 
     def test_grep_whole_word(self) -> None:
@@ -106,7 +104,7 @@ class TestHandleGrepFiles:
             {"pattern": "line2", "path": ".", "context_before": 1, "context_after": 1},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert len(payload["matches"]) > 0
         match = payload["matches"][0]
         assert "context_before" in match

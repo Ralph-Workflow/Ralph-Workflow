@@ -1,6 +1,5 @@
 """Graph neighbors query for ``ralph_graph`` (Phase 2+)."""
 
-
 import sqlite3
 from collections.abc import Sequence
 
@@ -58,9 +57,7 @@ def neighbors(
     def _node_for_symbol(symbol_id: str) -> GraphNode | None:
         if symbol_id in visited_nodes:
             return visited_nodes[symbol_id]
-        cur = store._conn.execute(
-            "SELECT * FROM symbols WHERE symbol_id = ?", (symbol_id,)
-        )
+        cur = store._conn.execute("SELECT * FROM symbols WHERE symbol_id = ?", (symbol_id,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             if symbol_id.startswith("file:"):
@@ -88,9 +85,7 @@ def neighbors(
         next_frontier: list[str] = []
         for current_id in frontier:
             if direction in {"out", "both"}:
-                for edge in _iter_outgoing(
-                    store, source_id=current_id, relations=relations_actual
-                ):
+                for edge in _iter_outgoing(store, source_id=current_id, relations=relations_actual):
                     visited_edges.append(_row_to_edge(edge))
                     _node_for_symbol(edge.target_id)
                     if edge.target_id not in visited_ids:
@@ -100,9 +95,7 @@ def neighbors(
                             truncated = True
                             break
             if direction in {"in", "both"}:
-                for edge in _iter_incoming(
-                    store, target_id=current_id, relations=relations_actual
-                ):
+                for edge in _iter_incoming(store, target_id=current_id, relations=relations_actual):
                     visited_edges.append(_row_to_edge(edge))
                     _node_for_symbol(edge.source_id)
                     if edge.source_id not in visited_ids:

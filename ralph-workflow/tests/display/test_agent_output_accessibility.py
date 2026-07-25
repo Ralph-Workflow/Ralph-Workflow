@@ -20,7 +20,7 @@ from __future__ import annotations
 import io
 import string
 from itertools import combinations
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
@@ -32,7 +32,6 @@ from ralph.display.status_bar import StatusBarModel, render_status_bar
 from ralph.display.theme import STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG
 
 if TYPE_CHECKING:
-    from ralph.display.activity_event_kind import ActivityEventKind
     from ralph.display.agent_activity_event import AgentActivityEvent
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -49,7 +48,7 @@ def _event(kind: object, content: str = "x") -> AgentActivityEvent:
 
     return make_event(
         provider=ActivityProvider.CLAUDE,
-        kind=cast("ActivityEventKind", kind),
+        kind=kind,
         options=EventOptions(content=content),
     )
 

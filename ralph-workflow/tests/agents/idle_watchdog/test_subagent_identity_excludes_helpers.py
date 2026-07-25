@@ -28,7 +28,7 @@ The tests in this module are pure black-box:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -252,7 +252,7 @@ def test_subagent_identity_rejects_invalid_source() -> None:
     with pytest.raises(ValueError, match="unknown subagent source"):
         SubagentIdentity(
             pid=1234,
-            source=cast("SubagentIdentity.__init__", bad_source),
+            source=bad_source,
             registered_at_monotonic=0.0,
         )
     with pytest.raises(ValueError, match="pid must be positive"):

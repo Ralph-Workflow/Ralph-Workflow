@@ -50,7 +50,7 @@ import io
 import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
@@ -178,18 +178,18 @@ def _make_loop_context(
     return _LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=WorkspaceScope(root=workspace_root),
-        config=cast("object", None),
+        config=None,
         active_display=active_display,
         display_context=display_context,
         effective_verbosity=Verbosity.NORMAL,
-        registry=cast("object", type("R", (), {})()),
-        effective_pipeline_subscriber=cast("object", None),
-        controller=cast("object", type("C", (), {})()),
+        registry=type("R", (), {})(),
+        effective_pipeline_subscriber=None,
+        controller=type("C", (), {})(),
         config_path=None,
         cli_overrides={},
         monitor_stop=None,
-        connectivity_monitor=cast("object", _OnlineMonitor()),
-        sleep=cast("object", lambda _s: None),
+        connectivity_monitor=_OnlineMonitor(),
+        sleep=lambda _s: None,
         is_quiet=False,
         snapshot_registry=None,
     )
@@ -504,7 +504,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
         f"AC-07: console width MUST be {width} for this parametrized variant; "
         f"got {pd._ctx.console.width!r}"
     )
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     assert isinstance(sb, StatusBar)
     workspace_root = Path("/Users/alice/code/very-long-project-name/subdir")
     workspace_root_str = str(workspace_root)

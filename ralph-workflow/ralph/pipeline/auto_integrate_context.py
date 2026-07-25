@@ -100,9 +100,7 @@ def record_refresh(record: RebaseState, refresh: str | None) -> RebaseState:
     return record.model_copy(update={"last_refresh": refresh})
 
 
-def record_when_stale(
-    record: RebaseState, refresh: str | None
-) -> RebaseState | None:
+def record_when_stale(record: RebaseState, refresh: str | None) -> RebaseState | None:
     """Return ``record`` stamped with ``refresh``, or ``None`` if healthy.
 
     The phase-boundary hook is deliberately quiet: it records nothing

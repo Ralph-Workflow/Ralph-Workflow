@@ -101,6 +101,7 @@ def make_stderr_log_sink(
     if writer is not None:
         sink_writer = writer
     else:
+
         def _stderr_writer(text: str) -> None:
             sys.stderr.write(text)
             sys.stderr.flush()

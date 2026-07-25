@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,15 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.config.agent_config import AgentConfig
-    from ralph.config.enums import Verbosity
-    from ralph.config.models import UnifiedConfig
-    from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.policy.models import PolicyBundle
-    from ralph.pro_support.heartbeat import ProHeartbeatClient
-    from ralph.pro_support.state_query import SnapshotRegistry
-    from ralph.pro_support.watcher import ProMarkerWatcher
-    from ralph.recovery.controller import RecoveryController
 
 
 def _make_loop_ctx(
@@ -47,24 +38,24 @@ def _make_loop_ctx(
 ) -> _LoopContext:
     """Build a ``_LoopContext`` with MagicMock placeholders + injected process_teardown."""
     return _LoopContext(
-        policy_bundle=cast("PolicyBundle", MagicMock()),
+        policy_bundle=MagicMock(),
         workspace_scope=WorkspaceScope(root=Path(tempfile.gettempdir())),
-        config=cast("UnifiedConfig", MagicMock()),
-        active_display=cast("ParallelDisplay", MagicMock()),
-        display_context=cast("DisplayContext", MagicMock()),
-        effective_verbosity=cast("Verbosity", MagicMock()),
-        registry=cast("_RegistryLike", MagicMock()),
+        config=MagicMock(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=MagicMock(),
+        registry=MagicMock(),
         effective_pipeline_subscriber=None,
-        controller=cast("RecoveryController", MagicMock()),
+        controller=MagicMock(),
         config_path=None,
         cli_overrides={},
         monitor_stop=None,
-        connectivity_monitor=cast("_MonitorLike", MagicMock()),
-        sleep=cast("Callable[[float], None]", MagicMock()),
+        connectivity_monitor=MagicMock(),
+        sleep=MagicMock(),
         is_quiet=False,
-        heartbeat_client=cast("ProHeartbeatClient | None", None),
-        pro_watcher=cast("ProMarkerWatcher | None", None),
-        snapshot_registry=cast("SnapshotRegistry | None", None),
+        heartbeat_client=None,
+        pro_watcher=None,
+        snapshot_registry=None,
         process_teardown=process_teardown,
     )
 

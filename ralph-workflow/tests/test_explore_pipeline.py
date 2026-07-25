@@ -21,7 +21,6 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -908,7 +907,7 @@ def test_coalesces_handler_and_lifecycle_claims_while_writer_is_active(
             return ("changed.py",)
 
     ReindexWriter.configure(lock_factory=threading.Lock)
-    store = cast("ExploreStore", _Store())
+    store = _Store()
     owner_entered = threading.Event()
     release_owner = threading.Event()
     owner_results: list[ReindexResult] = []

@@ -3,14 +3,12 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    ToolContent,
     handle_coordinate,
     handle_declare_complete,
     handle_read_env,
@@ -71,7 +69,7 @@ def test_declare_complete_uses_session_run_id_for_sentinel_key(
         now_fn=lambda: 456,
     )
 
-    assert "timestamp=456" in cast("ToolContent", result.content[0]).text
+    assert "timestamp=456" in result.content[0].text
     assert seen == [(".agent/completion_seen_run-1.json", "run-1")]
 
 
@@ -157,7 +155,7 @@ def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(
     )
 
     assert result.is_error is True
-    text = cast("ToolContent", result.content[0]).text
+    text = result.content[0].text
     assert "Task completion rejected" in text
     assert "durable completion sentinel" in text
     assert "timestamp=456" not in text
@@ -171,7 +169,7 @@ def test_report_progress_accepts_injected_timestamp() -> None:
         now_fn=lambda: 123,
     )
 
-    assert "timestamp=123" in cast("ToolContent", result.content[0]).text
+    assert "timestamp=123" in result.content[0].text
 
 
 def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
@@ -333,7 +331,7 @@ def test_coordinate_accepts_injected_timestamp() -> None:
         now_fn=lambda: 789,
     )
 
-    assert "timestamp=789" in cast("ToolContent", result.content[0]).text
+    assert "timestamp=789" in result.content[0].text
 
 
 class MockDeniedSession:
@@ -348,12 +346,12 @@ def test_read_env_returns_variable_value() -> None:
     result = handle_read_env(
         MockCapableSession(), MockWorkspace(), {"name": "MY_VAR"}, env={"MY_VAR": "hello"}
     )
-    assert "MY_VAR=hello" in cast("ToolContent", result.content[0]).text
+    assert "MY_VAR=hello" in result.content[0].text
 
 
 def test_read_env_returns_not_found_when_missing() -> None:
     result = handle_read_env(MockCapableSession(), MockWorkspace(), {"name": "MISSING"}, env={})
-    assert "MISSING=[not found]" in cast("ToolContent", result.content[0]).text
+    assert "MISSING=[not found]" in result.content[0].text
 
 
 def test_read_env_requires_capability() -> None:
@@ -372,7 +370,7 @@ def test_read_env_refuses_broker_secret() -> None:
         {"name": "RALPH_BROKER_SECRET"},
         env={"RALPH_BROKER_SECRET": "topsecret-broker-key"},
     )
-    text = cast("ToolContent", result.content[0]).text
+    text = result.content[0].text
     assert "topsecret-broker-key" not in text
     assert "redacted" in text.lower()
     assert "RALPH_BROKER_SECRET=" in text

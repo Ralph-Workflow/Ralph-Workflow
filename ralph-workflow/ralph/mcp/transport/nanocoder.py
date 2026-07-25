@@ -65,7 +65,9 @@ def load_existing_nanocoder_upstream_servers(
     env: dict[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
     """Load Nanocoder MCP servers from documented config locations."""
-    active_env = env if env is not None else cast("dict[str, str]", os.environ)
+    active_env = (
+        env if env is not None else cast("dict[str, str]", os.environ)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     config_dir = active_env.get(_NANOCODER_CONFIG_DIR_ENV)
     paths: tuple[Path, ...]
     if config_dir:

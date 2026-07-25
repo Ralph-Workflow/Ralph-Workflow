@@ -430,9 +430,7 @@ def extract_python(
                 callee = attr_id if isinstance(attr_id, str) else None
             if not callee or not isinstance(callee, str):
                 continue
-            span_start_line, span_start_col, span_end_line, span_end_col = _line_col(
-                node
-            )
+            span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
             span_id = derive_span_id(
                 path=path,
                 start_line=span_start_line,
@@ -468,9 +466,7 @@ def extract_python(
         if isinstance(node, ast.Import):
             for alias in node.names:
                 target = alias.name
-                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(
-                    node
-                )
+                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
                 span_id = derive_span_id(
                     path=path,
                     start_line=span_start_line,
@@ -504,9 +500,7 @@ def extract_python(
             module_name = node.module or ""
             for alias in node.names:
                 target = f"{module_name}.{alias.name}" if module_name else alias.name
-                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(
-                    node
-                )
+                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
                 span_id = derive_span_id(
                     path=path,
                     start_line=span_start_line,
@@ -549,9 +543,7 @@ def extract_python(
     }
     if defined_names:
         for body_node in ast.walk(tree):
-            if not isinstance(
-                body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-            ):
+            if not isinstance(body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 continue
             body_start, _, body_end, _ = _line_col(body_node)
             for sub in ast.walk(body_node):
@@ -564,9 +556,7 @@ def extract_python(
                             body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
                         ):
                             raw_name: object = getattr(body_node, "name", "")
-                            body_node_name = (
-                                raw_name if isinstance(raw_name, str) else ""
-                            )
+                            body_node_name = raw_name if isinstance(raw_name, str) else ""
                         if body_node_name == name:
                             continue
                         ref_line, _, ref_end, ref_end_col = _line_col(sub)
@@ -574,7 +564,9 @@ def extract_python(
                             continue
                         raw_col: object = getattr(sub, "col_offset", 0)
                         ref_col_offset = (
-                            int(raw_col) if isinstance(raw_col, int) and not isinstance(raw_col, bool) else 0
+                            int(raw_col)
+                            if isinstance(raw_col, int) and not isinstance(raw_col, bool)
+                            else 0
                         )
                         ref_span_id = derive_span_id(
                             path=path,

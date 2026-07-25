@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 import errno
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -20,6 +20,9 @@ from ralph.mcp.upstream.config import (
     serialize_upstream_mcp_servers,
 )
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
+from tests._support.typed_accessors import (
+    must_str,
+)
 
 if TYPE_CHECKING:
     import socket
@@ -235,7 +238,7 @@ def test_connect_to_endpoint_accepts_injected_connector() -> None:
     class Socket:
         pass
 
-    sock = cast("socket.socket", Socket())
+    sock = Socket()
 
     def fake_connect(address: tuple[str, int], timeout: float) -> socket.socket:
         seen["address"] = address
@@ -314,7 +317,7 @@ def test_preflight_tcp_attempt_accepts_injected_connector() -> None:
     ) -> socket.socket:
         seen["endpoint"] = endpoint
         seen["address"] = address
-        return cast("socket.socket", Socket())
+        return Socket()
 
     startup.preflight_tcp_attempt(
         "tcp://demo",
@@ -344,7 +347,7 @@ def test_preflight_http_attempt_accepts_injected_post() -> None:
         post_fn: startup.HttpPostFn = httpx.post,
     ) -> tuple[startup.JsonRpcResponse, str | None]:
         del post_fn
-        endpoint = cast("str", endpoint_or_target)
+        endpoint = must_str(endpoint_or_target)
         assert isinstance(target_or_payload, startup.HttpEndpointTarget)
         calls.append((endpoint, payload, session_id))
         if payload and payload.get("method") == "initialize":

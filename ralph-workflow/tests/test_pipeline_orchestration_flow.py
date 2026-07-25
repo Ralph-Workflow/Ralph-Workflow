@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -73,7 +72,7 @@ def _make_initial_state() -> PipelineState:
 
 def _apply(state: PipelineState, event: str) -> PipelineState:
     bundle = _load_default_bundle()
-    next_state, _ = reduce(state, cast("PipelineEvent", event), bundle.pipeline)
+    next_state, _ = reduce(state, event, bundle.pipeline)
     return next_state
 
 

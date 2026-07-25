@@ -131,8 +131,7 @@ _INIT_QUESTION: str = "What should Ralph Workflow do about this repository's pol
 _INIT_CHOICES: tuple[_prompt_ui.PromptChoice, ...] = (
     _prompt_ui.PromptChoice(
         key=_CHOICE_ADOPT,
-        title="Adopt Ralph Workflow's managed policy "
-        f"(one-time setup, {_SETUP_ESTIMATE})",
+        title=f"Adopt Ralph Workflow's managed policy (one-time setup, {_SETUP_ESTIMATE})",
         description="Best choice if you are not an experienced developer.",
     ),
     _prompt_ui.PromptChoice(
@@ -187,8 +186,7 @@ def _ask(
 def _policy_contents_detail(workspace: Workspace) -> str:
     """Render the exact policy files this project would get, and why."""
     core = "\n".join(
-        f"  • {policy_markers.CANONICAL_DIR}{name}"
-        for name in policy_markers.CORE_POLICY_FILES
+        f"  • {policy_markers.CANONICAL_DIR}{name}" for name in policy_markers.CORE_POLICY_FILES
     )
     stack = get_project_stack(workspace)
     requirements = policy_evidence.conditional_domain_requirements(workspace, stack)
@@ -347,9 +345,7 @@ def _maybe_resolve_schema_upgrade(
         first_line = next((line for line in lines if line.strip()), "")
         if first_line == policy_markers.POLICY_SCHEMA_MARKER:
             continue
-        freeze_match = re.fullmatch(
-            r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line
-        )
+        freeze_match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line)
         if freeze_match is not None:
             frozen_version = int(freeze_match.group(1))
             if frozen_version < current_version:
@@ -412,8 +408,7 @@ def _maybe_resolve_schema_upgrade(
             choices,
             _CHOICE_UPGRADE,
             fallback_notice=(
-                "Policy schema choice could not be completed; no implicit "
-                "upgrade was applied."
+                "Policy schema choice could not be completed; no implicit upgrade was applied."
             ),
         )
         if choice == _CHOICE_EXPLAIN:
@@ -568,9 +563,7 @@ def _make_production_invoke_agent(
             if event == PipelineEvent.AGENT_SUCCESS:
                 return True
         if last_error is not None:
-            raise policy_remediation.RemediationInvocationError(
-                str(last_error)
-            ) from last_error
+            raise policy_remediation.RemediationInvocationError(str(last_error)) from last_error
         return False
 
     typed: InvokePolicyAgent = invoke_agent
@@ -589,7 +582,6 @@ def _build_workspace(
         msg = "_build_workspace called with a missing workspace_scope"
         raise RuntimeError(msg)
     return FsWorkspace(scope.root, allowed_roots=scope.allowed_roots)
-
 
 
 def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
@@ -755,6 +747,7 @@ def _dispatch_preflight_result(
     # before each remediation iteration so the footer shows
     # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
     with display:
+
         def _on_remediation_attempt(attempt: int) -> None:
             push_remediation_status_bar(
                 display,
@@ -763,9 +756,7 @@ def _dispatch_preflight_result(
                 attempt=attempt,
             )
 
-        push_remediation_status_bar(
-            display, workspace_scope, DEFAULT_MAX_REMEDIATION_ATTEMPTS
-        )
+        push_remediation_status_bar(display, workspace_scope, DEFAULT_MAX_REMEDIATION_ATTEMPTS)
         final = run_policy_pipeline(
             workspace,
             stack,
@@ -777,9 +768,7 @@ def _dispatch_preflight_result(
             on_remediation_attempt=_on_remediation_attempt,
         )
     if final.is_ready():
-        _finalize_ready_state(
-            workspace, workspace_scope, pre_run_dirty, frozenset(authored)
-        )
+        _finalize_ready_state(workspace, workspace_scope, pre_run_dirty, frozenset(authored))
         return _EXIT_SUCCESS
     emit("\n".join(final.report_lines))
     return _exit_code_for_not_ready(mode)
@@ -809,8 +798,7 @@ def run_project_policy_readiness(
     mode: PolicyMode = PolicyMode.NORMAL,
     workspace_factory: Callable[[], Workspace] | None = None,
     emit_factory: Callable[[str], None] | None = None,
-    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent]
-    | None = None,
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None = None,
     select_factory: _prompt_ui.SelectFn | None = None,
     is_tty: Callable[[], bool] | None = None,
 ) -> int:
@@ -917,12 +905,8 @@ def _run_policy_readiness(
         )
 
     if not mode.is_explicit():
-        _maybe_offer_inline_policy_skip(
-            workspace, emit, select=select_factory, is_tty=is_tty
-        )
-        if not _maybe_resolve_schema_upgrade(
-            workspace, emit, select=select_factory, is_tty=is_tty
-        ):
+        _maybe_offer_inline_policy_skip(workspace, emit, select=select_factory, is_tty=is_tty)
+        if not _maybe_resolve_schema_upgrade(workspace, emit, select=select_factory, is_tty=is_tty):
             # The user declined a schema upgrade. Not a failure of the run.
             return _EXIT_SUCCESS
 
@@ -937,10 +921,7 @@ def _run_policy_readiness(
     # no-ops on a ready project would be useless, since auditing a policy that
     # LOOKS ready is the entire point of the flag.
     if result.is_ready() and not mode.is_explicit():
-        emit(
-            f"project-policy-readiness: ready "
-            f"({len(result.changed_files)} files updated)"
-        )
+        emit(f"project-policy-readiness: ready ({len(result.changed_files)} files updated)")
         _finalize_ready_state(workspace, workspace_scope)
         return _EXIT_SUCCESS
 

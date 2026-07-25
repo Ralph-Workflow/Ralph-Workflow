@@ -263,9 +263,7 @@ def _worktree_is_clean(root: Path) -> bool:
         repo = Repo(root)
         # ``repo.git.<cmd>`` is GitPython's dynamic dispatch and types
         # as Any; the cast is the sanctioned disallow_any_expr wrapper.
-        status_out = cast(
-            "str", repo.git.status("--porcelain", "--untracked-files=no")
-        )
+        status_out = cast("str", repo.git.status("--porcelain", "--untracked-files=no"))  # cast-policy: seam: GitPython dynamic dispatch (repo.git.status returns Any)
         return not status_out.strip()
     except Exception:
         return False
@@ -368,9 +366,7 @@ def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:
         _close_repo(repo)
 
 
-def _observe_strictly_behind(
-    root: Path, target: str, current: str
-) -> tuple[str | None, str]:
+def _observe_strictly_behind(root: Path, target: str, current: str) -> tuple[str | None, str]:
     """Observe both tips; return ``(target_sha, skip_reason)``.
 
     Exactly one slot is populated: the target SHA when the checkout is
@@ -476,9 +472,7 @@ class AutoIntegrateCatchupWorker:
         # stream. Only the tick that actually moved the checkout says
         # anything.
         if outcome == CATCHUP_FAST_FORWARDED:
-            logger.info(
-                "auto_integrate catch-up: fast-forwarded the checkout onto the target"
-            )
+            logger.info("auto_integrate catch-up: fast-forwarded the checkout onto the target")
 
 
 def start_catchup_worker_if_enabled(

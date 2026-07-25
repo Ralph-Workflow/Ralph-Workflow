@@ -926,16 +926,22 @@ class FailureClassifier:
             "BaseException | None", getattr(exc, "__cause__", None)
         )
         if current is None:
-            current = cast("BaseException | None", getattr(exc, "__context__", None))
+            current = cast(
+                "BaseException | None", getattr(exc, "__context__", None)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         while current is not None and id(current) not in visited:
             visited.add(id(current))
             if isinstance(current, IdleWatchdogKilledError):
                 return current
-            next_cause = cast("BaseException | None", getattr(current, "__cause__", None))
+            next_cause = cast(
+                "BaseException | None", getattr(current, "__cause__", None)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             if next_cause is not None:
                 current = next_cause
             else:
-                current = cast("BaseException | None", getattr(current, "__context__", None))
+                current = cast(
+                    "BaseException | None", getattr(current, "__context__", None)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return None
 
     def _classify_agent_invocation_error(

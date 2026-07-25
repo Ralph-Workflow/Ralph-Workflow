@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import (
     InvokeOptions,
@@ -413,7 +413,7 @@ def test_ansi_wrapped_completion_marker_detected(
         evaluate_completion_fn=lambda *args, **kwargs: None,
     )
 
-    lines = list(run_pty_and_read_lines(["claude", "--print"], cast("Any", ctx)))
+    lines = list(run_pty_and_read_lines(["claude", "--print"], ctx))
 
     assert lines == [ansi_line]
     assert captured_completion_seen == [True]
@@ -491,7 +491,7 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         evaluate_completion_fn=lambda *args, **kwargs: None,
     )
 
-    iterator = run_pty_and_read_lines(["nanocoder"], cast("Any", ctx))
+    iterator = run_pty_and_read_lines(["nanocoder"], ctx)
     assert next(iterator) == "Nanocoder banner\n"
 
     iterator.close()

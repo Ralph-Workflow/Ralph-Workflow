@@ -71,9 +71,13 @@ def validate_unique_ids(
     for item in items:
         key = normalize_id(item.identifier, case_sensitive=case_sensitive)
         if key is None:
-            diagnostics.append(Diagnostic(item.line, section, "REF001", f"malformed ID {item.identifier!r}"))
+            diagnostics.append(
+                Diagnostic(item.line, section, "REF001", f"malformed ID {item.identifier!r}")
+            )
         elif key in seen:
-            diagnostics.append(Diagnostic(item.line, section, "REF002", f"duplicate ID {item.identifier!r}"))
+            diagnostics.append(
+                Diagnostic(item.line, section, "REF002", f"duplicate ID {item.identifier!r}")
+            )
         else:
             seen.add(key)
     return diagnostics

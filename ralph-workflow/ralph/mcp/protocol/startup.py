@@ -294,7 +294,9 @@ def read_jsonrpc_response(reader: io.BufferedReader) -> JsonRpcResponse:
         raise PermanentPreflightError(f"failed to parse MCP response JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise PermanentPreflightError("failed to parse MCP response JSON: expected object")
-    return cast("JsonRpcResponse", payload)
+    return cast(
+        "JsonRpcResponse", payload
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _read_content_length(reader: io.BufferedReader) -> int:

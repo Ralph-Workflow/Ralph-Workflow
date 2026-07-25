@@ -13,13 +13,12 @@ All workers use FakeAgentExecutor (no subprocess, no real MCP).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     import pytest
 
-    from ralph.display.parallel_display import ParallelDisplay
 
 
 from ralph.pipeline import checkpoint as ckpt
@@ -118,7 +117,7 @@ class TestRunnerAnalysisHandoffIntegration:
         runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=bundle,
             workspace_scope=scope,
         )
@@ -173,7 +172,7 @@ class TestRunnerAnalysisHandoffIntegration:
         runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=bundle,
             workspace_scope=scope,
         )

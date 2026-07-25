@@ -115,9 +115,8 @@ def _is_none_expr(node: ast.expr) -> bool:
     bounded" and is out of scope (dataflow tracking would be required to prove
     the variable resolves to ``None``).
     """
-    return (
-        (isinstance(node, ast.Constant) and node.value is None)
-        or (isinstance(node, ast.Name) and node.id == "None")
+    return (isinstance(node, ast.Constant) and node.value is None) or (
+        isinstance(node, ast.Name) and node.id == "None"
     )
 
 
@@ -131,9 +130,7 @@ def _has_bounded_timeout_keyword(node: ast.Call) -> bool:
     ``None`` literals — a variable that resolves to ``None`` at runtime is out
     of scope and would require dataflow tracking.
     """
-    return any(
-        kw.arg == "timeout" and not _is_none_expr(kw.value) for kw in node.keywords
-    )
+    return any(kw.arg == "timeout" and not _is_none_expr(kw.value) for kw in node.keywords)
 
 
 def _first_positional_is_bounded_timeout(node: ast.Call) -> bool:
@@ -272,10 +269,9 @@ class McpTimeoutAuditor(ast.NodeVisitor):
                 # ``wait()``'s first positional IS the timeout, so we accept
                 # either a non-None first positional OR a non-None ``timeout=``
                 # keyword. Both ``.wait()`` and ``.wait(None)`` are flagged.
-                bounded = (
-                    _first_positional_is_bounded_timeout(node)
-                    or _has_bounded_timeout_keyword(node)
-                )
+                bounded = _first_positional_is_bounded_timeout(
+                    node
+                ) or _has_bounded_timeout_keyword(node)
                 if not bounded:
                     self._add(node, "wait", ".wait() without a bounded timeout")
 

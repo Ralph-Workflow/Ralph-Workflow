@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.cli.commands.prompt_helper import run_prompt_helper
@@ -60,7 +60,7 @@ class TestRefineAcceptLoop:
                 return mock_invoke_runtime()
 
         monkeypatch.setattr(
-            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            _session_runtime().ManagedAgentSessionRuntime,
             "open",
             classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )

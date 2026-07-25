@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from loguru import logger as loguru_logger
@@ -33,6 +33,9 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.workspace.scope import WorkspaceScope
+from tests._support.typed_accessors import (
+    must_str_list,
+)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -48,7 +51,7 @@ def _config_with_development_agent() -> UnifiedConfig:
     config = MagicMock()
     config.agent_chains = {"developer": ["claude"]}
     config.agent_drains = {"development": "developer"}
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _write_plan_artifact(root: Path, work_units: list[dict[str, object]]) -> None:
@@ -56,7 +59,7 @@ def _write_plan_artifact(root: Path, work_units: list[dict[str, object]]) -> Non
     artifact_dir.mkdir(parents=True, exist_ok=True)
     unit_items = "\n".join(
         f"- [{unit['unit_id']}] {unit['description']}\n"
-        f"  Directories: {', '.join(cast('list[str]', unit['allowed_directories']))}"
+        f"  Directories: {', '.join(must_str_list(unit['allowed_directories']))}"
         for unit in work_units
     )
     (artifact_dir / "plan.md").write_text(

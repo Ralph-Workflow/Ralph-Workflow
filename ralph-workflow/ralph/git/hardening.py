@@ -255,9 +255,11 @@ def parse_porcelain_z(blob: str) -> list[PorcelainEntry]:
         # unconditionally when missing is safe because real-world
         # paths don't start with a space and the parser would never
         # mistake a leading-XY-byte for a separator.
-        path = piece[_XY_WIDTH + 1 :] if (
-            len(piece) > _XY_WIDTH and piece[_XY_WIDTH] == _PATH_SEPARATOR
-        ) else piece[_XY_WIDTH:]
+        path = (
+            piece[_XY_WIDTH + 1 :]
+            if (len(piece) > _XY_WIDTH and piece[_XY_WIDTH] == _PATH_SEPARATOR)
+            else piece[_XY_WIDTH:]
+        )
         # Rename/copy detection: a ``R`` or ``C`` first character with
         # a non-zero second character emits the SOURCE as a separate
         # NUL-delimited record BEFORE the destination. The destination
@@ -279,9 +281,7 @@ def parse_porcelain_z(blob: str) -> list[PorcelainEntry]:
 #: the change. ``U?`` codes are listed explicitly because some git
 #: versions use the asymmetric ``AU``/``UA``/``DU``/``UD`` set in
 #: addition to the symmetric ``UU``/``AA``/``DD``.
-_UNMERGED_XY: frozenset[str] = frozenset(
-    {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
-)
+_UNMERGED_XY: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
 
 #: Width of the ``XY`` porcelain status code (two characters). Used
 #: by the parser to slice the status code off the start of every
@@ -387,9 +387,7 @@ def _selftest() -> None:  # pragma: no cover - smoke self-check
     # preserve the ``-c``-then-key sequence, so this asserts the
     # property instead of pinning the literal contents.
     out = pinned_argv(("rebase", "--", "upstream"))
-    assert all(
-        out[i] == "-c" and "=" in out[i + 1] for i in range(0, len(PINNED_CONFIG_ARGS), 2)
-    )
+    assert all(out[i] == "-c" and "=" in out[i + 1] for i in range(0, len(PINNED_CONFIG_ARGS), 2))
     assert out[-2:] == ("--", "upstream")
 
 

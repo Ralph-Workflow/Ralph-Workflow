@@ -137,9 +137,7 @@ def _resolve_and_commit(
     try:
         resolved = bool(resolver(root, target))
     except Exception as resolver_exc:
-        logger.warning(
-            "auto_integrate: conflict resolver raised: {}", resolver_exc
-        )
+        logger.warning("auto_integrate: conflict resolver raised: {}", resolver_exc)
         return False
     if not resolved:
         return False
@@ -158,9 +156,7 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
     second gate before the deterministic commit.
     """
     if not stage_paths(root, conflicted):
-        logger.warning(
-            "auto_integrate: failed to stage resolved paths: {}", conflicted
-        )
+        logger.warning("auto_integrate: failed to stage resolved paths: {}", conflicted)
         return False
     marked = paths_with_conflict_markers(root, conflicted)
     if marked:
@@ -171,9 +167,7 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
         return False
     remaining = unmerged_paths(root)
     if remaining:
-        logger.warning(
-            "auto_integrate: conflicts remain after resolution: {}", remaining
-        )
+        logger.warning("auto_integrate: conflicts remain after resolution: {}", remaining)
         return False
     if not commit_merge_in_progress(root):
         logger.warning("auto_integrate: resolved merge failed to commit")

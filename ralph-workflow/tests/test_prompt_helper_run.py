@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -51,7 +51,7 @@ class TestRunPromptHelper:
                 return iter(())
 
         monkeypatch.setattr(
-            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            _session_runtime().ManagedAgentSessionRuntime,
             "open",
             classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
@@ -254,7 +254,7 @@ class TestRunPromptHelper:
                 return iter(())
 
         monkeypatch.setattr(
-            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            _session_runtime().ManagedAgentSessionRuntime,
             "open",
             classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )

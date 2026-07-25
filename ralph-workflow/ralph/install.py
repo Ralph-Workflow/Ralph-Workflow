@@ -150,8 +150,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None]:
     parsed = _build_parser().parse_args(argv)
-    stable = cast("bool", parsed.stable)
-    version = cast("str | None", parsed.version)
+    stable = cast(
+        "bool", parsed.stable
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    version = cast(
+        "str | None", parsed.version
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return stable, version
 
 

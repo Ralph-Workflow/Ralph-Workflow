@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from ralph.display.parallel_display import ParallelDisplay
 
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
@@ -37,7 +33,7 @@ def _run_fan_out(
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
         )
     )
 

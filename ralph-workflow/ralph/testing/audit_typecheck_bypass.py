@@ -357,7 +357,9 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:  # noq
 
     rel_path = str(config_path)
 
-    for section_name in cast("list[str]", config.sections()):
+    for section_name in cast(
+        "list[str]", config.sections()
+    ):  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if not section_name.startswith("mypy"):
             continue
 

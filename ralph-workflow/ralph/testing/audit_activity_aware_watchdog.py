@@ -58,6 +58,7 @@ def _line_in_ranges(line: int, ranges: list[tuple[int, int]]) -> bool:
     """Return True when ``line`` sits inside any ``(start, end)`` range."""
     return any(start <= line <= end for start, end in ranges)
 
+
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -495,16 +496,12 @@ class _ModuleVisitor(ast.NodeVisitor):
                 continue
             line: int = line_raw
             is_name_match = (
-                isinstance(child, ast.Name)
-                and child.id == _SUBAGENT_COUNTING_SEAM_REJECTED
+                isinstance(child, ast.Name) and child.id == _SUBAGENT_COUNTING_SEAM_REJECTED
             )
             is_attr_match = (
-                isinstance(child, ast.Attribute)
-                and child.attr == _SUBAGENT_COUNTING_SEAM_REJECTED
+                isinstance(child, ast.Attribute) and child.attr == _SUBAGENT_COUNTING_SEAM_REJECTED
             )
-            if (is_name_match or is_attr_match) and not _line_in_ranges(
-                line, legacy_line_ranges
-            ):
+            if (is_name_match or is_attr_match) and not _line_in_ranges(line, legacy_line_ranges):
                 forbidden.append(line)
         return forbidden
 
@@ -524,17 +521,14 @@ class _ModuleVisitor(ast.NodeVisitor):
                 continue
             test_src = ast.unparse(stmt.test)
             is_guard = (
-                "self._process_monitor is not None" in test_src
-                or "monitor is not None" in test_src
+                "self._process_monitor is not None" in test_src or "monitor is not None" in test_src
             )
             if not is_guard:
                 continue
             body_first = stmt.body[0] if stmt.body else stmt
             body_last = stmt.body[-1] if stmt.body else stmt
             if_start_raw: object = getattr(body_first, "lineno", stmt.lineno)
-            if_start: int = (
-                if_start_raw if isinstance(if_start_raw, int) else stmt.lineno
-            )
+            if_start: int = if_start_raw if isinstance(if_start_raw, int) else stmt.lineno
             if_end_raw: object = getattr(body_last, "end_lineno", stmt.lineno)
             if_end: int = if_end_raw if isinstance(if_end_raw, int) else stmt.lineno
             if stmt.orelse:
@@ -542,12 +536,8 @@ class _ModuleVisitor(ast.NodeVisitor):
                 else_last = stmt.orelse[-1]
                 else_start_raw: object = getattr(else_first, "lineno", None)
                 else_end_raw: object = getattr(else_last, "end_lineno", None)
-                else_start: int | None = (
-                    else_start_raw if isinstance(else_start_raw, int) else None
-                )
-                else_end: int | None = (
-                    else_end_raw if isinstance(else_end_raw, int) else None
-                )
+                else_start: int | None = else_start_raw if isinstance(else_start_raw, int) else None
+                else_end: int | None = else_end_raw if isinstance(else_end_raw, int) else None
             else:
                 else_start = None
                 else_end = None

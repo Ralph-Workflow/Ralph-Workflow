@@ -246,9 +246,7 @@ class AgentSession:
     #: legacy contract is preserved. Production bridges attach one
     #: resolver in :func:`ralph.pipeline.session_bridge.build_session_bridge`
     #: so spill files can be replayed through ``resources/read``.
-    exec_resource_resolver: ExecResourceResolverLike | None = field(
-        default=None, repr=False
-    )
+    exec_resource_resolver: ExecResourceResolverLike | None = field(default=None, repr=False)
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile:

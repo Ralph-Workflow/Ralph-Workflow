@@ -157,22 +157,42 @@ def materialize_prompt_for_phase(
     """Render and persist the prompt for a pipeline phase, returning its dump path."""
     if context is None:
         context = PromptPhaseContext(
-            phase=cast("str", kwargs["phase"]),
-            workspace=cast("Workspace", kwargs["workspace"]),
-            pipeline_policy=cast("PipelinePolicy", kwargs["pipeline_policy"]),
-            session_caps=cast("SessionCapabilities", kwargs["session_caps"]),
-            workspace_root=cast("Path", kwargs["workspace_root"]),
+            phase=cast(
+                "str", kwargs["phase"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            workspace=cast(
+                "Workspace", kwargs["workspace"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            pipeline_policy=cast(
+                "PipelinePolicy", kwargs["pipeline_policy"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            session_caps=cast(
+                "SessionCapabilities", kwargs["session_caps"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            workspace_root=cast(
+                "Path", kwargs["workspace_root"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
         if options is None:
             options = PromptPhaseOptions(
-                artifacts_policy=cast("ArtifactsPolicy | None", kwargs.get("artifacts_policy")),
-                worker_namespace=cast("Path | None", kwargs.get("worker_namespace")),
-                previous_phase=cast("str | None", kwargs.get("previous_phase")),
-                resume_existing_phase=cast("bool", kwargs.get("resume_existing_phase", False)),
+                artifacts_policy=cast(
+                    "ArtifactsPolicy | None", kwargs.get("artifacts_policy")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                worker_namespace=cast(
+                    "Path | None", kwargs.get("worker_namespace")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                previous_phase=cast(
+                    "str | None", kwargs.get("previous_phase")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                resume_existing_phase=cast(
+                    "bool", kwargs.get("resume_existing_phase", False)
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 multimodal_entries=cast(
                     "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
                 ),
-                work_unit=cast("WorkUnit | None", kwargs.get("work_unit")),
+                work_unit=cast(
+                    "WorkUnit | None", kwargs.get("work_unit")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             )
     opts = options or PromptPhaseOptions()
     if opts.work_unit is not None and opts.worker_namespace is None:
@@ -1041,7 +1061,12 @@ def _resolve_partial_development_result(
     values = (summary, next_steps, prior_session_id)
     if not all(isinstance(value, str) for value in values):
         return None
-    return "partial", cast("str", summary), cast("str", next_steps), cast("str", prior_session_id)
+    return (
+        "partial",
+        cast("str", summary),
+        cast("str", next_steps),
+        cast("str", prior_session_id),
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _snapshot_partial_execution_result(

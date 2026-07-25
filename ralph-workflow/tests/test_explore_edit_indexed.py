@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
@@ -24,7 +24,6 @@ from ralph.mcp.tools.workspace._write_handlers import handle_edit_file
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._tool_spec import ToolSpec
-    from ralph.mcp.tools.coordination import ToolContent
 
 
 class _FakeSession:
@@ -131,7 +130,7 @@ def test_edit_file_rejects_expected_content_hash_mismatch_before_mutation(
         },
     )
     assert result.is_error is True
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     assert payload["status"] == "stale_evidence"
     assert payload["expected_content_hash"] == bogus_hash
     assert payload["reason"] == "content_changed"
@@ -177,7 +176,7 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
             },
         )
         preview_payload = json.loads(
-            cast("ToolContent", preview_result.content[0]).text
+            preview_result.content[0].text
         )
         assert preview_payload["status"] == "preview"
         assert "impact_preview" in preview_payload
@@ -195,7 +194,7 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
             },
         )
         apply_payload = json.loads(
-            cast("ToolContent", apply_result.content[0]).text
+            apply_result.content[0].text
         )
         assert apply_payload["status"] == "applied"
         assert "evidence_updates" in apply_payload
@@ -222,7 +221,7 @@ def test_edit_file_legacy_oldtext_newtext_contract_still_works(tmp_path: Path) -
             "edits": [{"oldText": "return 1", "newText": "return 2"}],
         },
     )
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     assert payload["status"] == "applied"
     assert "diff" in payload
     assert "bytes_written" in payload
@@ -254,7 +253,7 @@ def test_edit_file_ambiguous_symbol_target_returns_structured_error(
             },
         )
         assert result.is_error is True
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "ambiguous_target"
         assert payload["reason"] == "target_unresolved"
         ws.write.assert_not_called()
@@ -312,7 +311,7 @@ def test_edit_file_cross_file_evidence_target_is_rejected(tmp_path: Path) -> Non
             },
         )
         assert result.is_error is True
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "ambiguous_target"
         assert payload["reason"] == "target_path_mismatch"
         assert payload["target_path"] == "other_module.py"
@@ -382,7 +381,7 @@ def test_edit_file_stale_target_hash_fails_closed_before_mutation(tmp_path: Path
             },
         )
         assert result.is_error is True
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "stale_evidence"
         assert payload["path"] == "module.py"
         assert payload["reason"] == "content_changed"
@@ -434,7 +433,7 @@ def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -
             },
         )
         assert result.is_error is True
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "ambiguous_target"
         assert payload["reason"] == "match_strategy_all_in_target_violation"
         ws.write.assert_not_called()

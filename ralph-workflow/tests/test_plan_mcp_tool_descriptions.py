@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_list,
+)
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
@@ -29,11 +33,11 @@ def test_plan_markdown_tools_expose_string_document_schemas() -> None:
         schema = definition.input_schema
         properties = schema["properties"]
         assert isinstance(properties, dict)
-        typed_properties = cast("dict[str, object]", properties)
+        typed_properties = must_mapping(properties)
         required = schema["required"]
         assert isinstance(required, list)
         assert all(isinstance(item, str) for item in required)
-        typed_required = cast("list[str]", required)
+        typed_required = must_str_list(required)
         assert typed_properties["artifact_type"] == {"type": "string"}
         assert typed_properties["content"] == {"type": "string"}
         assert {"artifact_type", "content"} <= set(typed_required)
@@ -57,10 +61,10 @@ def test_plan_edit_schema_uses_stable_ids_and_markdown_replacements() -> None:
     schema = definition.input_schema
     properties = schema["properties"]
     assert isinstance(properties, dict)
-    typed_properties = cast("dict[str, object]", properties)
+    typed_properties = must_mapping(properties)
     action = typed_properties["action"]
     assert isinstance(action, dict)
-    typed_action = cast("dict[str, object]", action)
+    typed_action = must_mapping(action)
 
     assert typed_action["enum"] == ["insert", "replace", "remove", "move"]
     assert typed_properties["replacement"] == {"type": "string"}

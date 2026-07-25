@@ -128,9 +128,7 @@ def _apply_git_exclude_patterns(
             add_to_git_exclude(repo_root, [pattern])
             logger.debug("Added pattern to .git/info/exclude: {}", pattern)
         except Exception as exc:
-            logger.warning(
-                "Failed to append pattern to .git/info/exclude ({}): {}", pattern, exc
-            )
+            logger.warning("Failed to append pattern to .git/info/exclude ({}): {}", pattern, exc)
 
 
 def _apply_safe_deletes(
@@ -154,7 +152,5 @@ def _apply_safe_deletes(
             logger.debug("Deleted file: {}", file_path)
         except Exception as exc:
             failed.append(file_path)
-            logger.warning(
-                "Failed to delete file {!r} (continuing batch): {}", file_path, exc
-            )
+            logger.warning("Failed to delete file {!r} (continuing batch): {}", file_path, exc)
     return succeeded, failed

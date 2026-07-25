@@ -257,7 +257,6 @@ def _iter_incoming(
 # --- neighbors ------------------------------------------------------------
 
 
-
 def _deadline_elapsed(deadline: float | None) -> bool:
     """Return True when ``deadline`` is set and the monotonic clock has passed it.
 

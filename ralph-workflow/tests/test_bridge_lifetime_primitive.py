@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,7 +51,7 @@ def test_with_bridge_lifetime_creates_and_yields_bridge() -> None:
         session_id_prefix="commit",
         model_identity=core.model_identity,
     )
-    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert bridge.shutdown.call_count == 1
 
 
 def test_with_bridge_lifetime_shuts_down_on_body_raise() -> None:
@@ -75,7 +75,7 @@ def test_with_bridge_lifetime_shuts_down_on_body_raise() -> None:
     ):
         raise _BodyError("boom")
 
-    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert bridge.shutdown.call_count == 1
 
 
 def test_with_bridge_lifetime_shuts_down_exactly_once_on_success() -> None:
@@ -93,7 +93,7 @@ def test_with_bridge_lifetime_shuts_down_exactly_once_on_success() -> None:
     ):
         pass
 
-    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert bridge.shutdown.call_count == 1
 
 
 def test_with_bridge_lifetime_forwards_model_identity() -> None:
@@ -167,4 +167,4 @@ def test_with_bridge_lifetime_shutdown_is_idempotent() -> None:
     ) as yielded:
         yielded.shutdown()
 
-    assert cast("MagicMock", bridge.shutdown).call_count == 2
+    assert bridge.shutdown.call_count == 2

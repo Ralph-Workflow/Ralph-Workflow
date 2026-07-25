@@ -33,7 +33,7 @@ class DevelopmentResult(RalphBaseModel):
     def validate_status_requirements(self) -> DevelopmentResult:
         allowed_statuses: tuple[Literal["completed", "partial"], ...] = ("completed", "partial")
         if self.status not in allowed_statuses:
-            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"
+            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             raise ValueError(msg)
         if self.status == "partial":
             if self.next_steps is None:

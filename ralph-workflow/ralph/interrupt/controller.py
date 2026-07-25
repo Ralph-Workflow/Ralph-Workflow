@@ -29,8 +29,12 @@ if TYPE_CHECKING:
     from ralph.process.manager import ProcessManager
 
 
-_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
-_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+_DEFAULT_SIGNAL_GETTER = cast(
+    "SignalGetter", signal.getsignal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+_DEFAULT_SIGNAL_SETTER = cast(
+    "SignalSetter", signal.signal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130
@@ -105,7 +109,9 @@ class InterruptController:
         per-pgid loop was redundant. Callers MUST pass
         ``bridge_pgids`` in new code.
         """
-        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        bridge_pids_legacy = cast(
+            "Iterable[int]", kwargs.pop("bridge_pids", ())
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         del bridge_pgids, bridge_pids_legacy
@@ -128,7 +134,9 @@ class InterruptController:
         ``**kwargs`` for backward compatibility and emits a single
         loguru warning when used.
         """
-        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        bridge_pids_legacy = cast(
+            "Iterable[int]", kwargs.pop("bridge_pids", ())
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)

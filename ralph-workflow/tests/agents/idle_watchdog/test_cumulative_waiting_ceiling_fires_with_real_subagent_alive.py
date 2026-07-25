@@ -59,7 +59,7 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
@@ -340,4 +340,4 @@ __all__ = [
 # Silence unused-import warning for cast -- kept for forward
 # compatibility with future test methods that may need explicit
 # narrowing.
-_ = cast("Any", None)
+_ = None

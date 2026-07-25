@@ -17,7 +17,7 @@ wall-clock time per the 60s combined test budget rule.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -36,6 +36,9 @@ from ralph.mcp.tools.bridge import ToolBridge
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, claude_tool_name
+from tests._support.typed_accessors import (
+    must_dict_list,
+)
 
 
 class _NoopHandler:
@@ -56,11 +59,11 @@ def _build_server_with_tool(name: str = "read_file") -> McpServer:
             ),
             required_capability="workspace.read",
         ),
-        cast("Any", _NoopHandler()),
+        _NoopHandler(),
     )
     return McpServer(
-        session=cast("Any", object()),
-        workspace=cast("Any", object()),
+        session=object(),
+        workspace=object(),
         registry=bridge,
     )
 
@@ -69,7 +72,7 @@ def _tools_list(server: McpServer) -> list[dict[str, object]]:
     request = JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id="1", params={})
     response, _ = server._handle_tools_list(request)
     assert response.result is not None
-    return cast("list[dict[str, object]]", response.result["tools"])
+    return must_dict_list(response.result["tools"])
 
 
 def test_tools_list_exposes_both_raw_and_alias_for_strict_mcp_clients() -> None:

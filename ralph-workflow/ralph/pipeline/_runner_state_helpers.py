@@ -134,9 +134,7 @@ def recover_missing_plan_handoff(
     )
 
     if not bound_exceeded:
-        advanced_state = reset_phase_chain_for_recovery(
-            advanced_state, target_phase
-        )
+        advanced_state = reset_phase_chain_for_recovery(advanced_state, target_phase)
 
     recovered_state = advanced_state.copy_with(
         last_error=str(exc),

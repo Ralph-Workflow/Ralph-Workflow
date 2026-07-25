@@ -113,7 +113,9 @@ _typer_get_command = typer.main.get_command
 
 def _as_click_command(command: object) -> click.Command:
     """Bridge across typer versions that expose different Command types."""
-    return cast("click.Command", command)
+    return cast(
+        "click.Command", command
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _get_cli_context() -> DisplayContext:

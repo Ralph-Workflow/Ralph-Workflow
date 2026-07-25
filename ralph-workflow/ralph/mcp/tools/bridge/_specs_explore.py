@@ -25,8 +25,8 @@ def explore_specs() -> list[ToolSpec]:
                     "graph_backend, dirty_paths_count, cold_index_required, "
                     "last_refresh_kind, is_stale, stale_paths_count, "
                     "index_storage_bytes, managed_ignore_rule_present. "
-                    'Side-effect free when no handle is attached. '
-                    'Example: {} returns the live index status.'
+                    "Side-effect free when no handle is attached. "
+                    "Example: {} returns the live index status."
                 ),
                 input_schema={
                     "type": "object",
@@ -132,15 +132,11 @@ def explore_specs() -> list[ToolSpec]:
                         },
                         "target": {
                             "type": "string",
-                            "description": (
-                                "Symbol id, qualified name, or path to query."
-                            ),
+                            "description": ("Symbol id, qualified name, or path to query."),
                         },
                         "target_b": {
                             "type": "string",
-                            "description": (
-                                "Second endpoint for path queries."
-                            ),
+                            "description": ("Second endpoint for path queries."),
                         },
                         "relations": {
                             "type": "array",

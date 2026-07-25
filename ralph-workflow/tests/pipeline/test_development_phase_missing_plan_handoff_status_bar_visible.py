@@ -57,7 +57,7 @@ from __future__ import annotations
 import io
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
@@ -190,18 +190,18 @@ def _make_loop_context(
         workspace_scope=WorkspaceScope(
             root=workspace_root, allowed_roots=frozenset({workspace_root})
         ),
-        config=cast("object", None),
+        config=None,
         active_display=active_display,
         display_context=display_context,
         effective_verbosity=Verbosity.NORMAL,
-        registry=cast("object", type("R", (), {})()),
-        effective_pipeline_subscriber=cast("object", None),
-        controller=cast("object", type("C", (), {})()),
+        registry=type("R", (), {})(),
+        effective_pipeline_subscriber=None,
+        controller=type("C", (), {})(),
         config_path=None,
         cli_overrides={},
         monitor_stop=None,
-        connectivity_monitor=cast("object", _OnlineMonitor()),
-        sleep=cast("object", lambda _s: None),
+        connectivity_monitor=_OnlineMonitor(),
+        sleep=lambda _s: None,
         is_quiet=False,
         snapshot_registry=None,
     )
@@ -275,7 +275,7 @@ def _patch_materialize_to_raise_for_development_only(
         state: PipelineState | None = None,
         **kwargs: object,
     ) -> None:
-        states_observed.append(cast("PipelineState", state))
+        states_observed.append(state)
         if state is not None and str(state.phase) == "development":
             raise MissingPlanHandoffError(dev_msg)
         real_materialize_prepared(*args, **kwargs)
@@ -292,10 +292,7 @@ def _patch_materialize_to_raise_for_development_only(
             effect = args[0]
             phase = getattr(effect, "phase", None)
             if phase is not None and str(phase) == "development":
-                state = cast(
-                    "PipelineState | None",
-                    args[1] if len(args) > 1 else kwargs.get("state"),
-                )
+                state = args[1] if len(args) > 1 else kwargs.get("state")
                 if state is not None:
                     states_observed.append(state)
                 raise MissingPlanHandoffError(dev_msg)

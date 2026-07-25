@@ -28,7 +28,6 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,10 +47,10 @@ from ralph.mcp.tools.workspace import (
     handle_move_file,
     handle_write_file,
 )
+from tests._support.typed_accessors import (
+    must_mapping,
+)
 from tests.mock_session import MockSession
-
-if TYPE_CHECKING:
-    from ralph.mcp.tools.coordination import ToolContent
 
 
 @pytest.fixture(scope="module")
@@ -97,7 +96,7 @@ class TestMutationFreshnessWithRealHandle:
             {"path": "foo.py", "content": "print(1)\n"},
         )
         assert result.is_error is False
-        body = json.loads(cast("ToolContent", result.content[0]).text)
+        body = json.loads(result.content[0].text)
         for field in (
             "index_used",
             "index_generation",
@@ -125,7 +124,7 @@ class TestMutationFreshnessWithRealHandle:
             session, ws, {"path": "foo.py", "content": "\n"}
         )
         assert result.is_error is False
-        body = json.loads(cast("ToolContent", result.content[0]).text)
+        body = json.loads(result.content[0].text)
         assert "reindex_in_progress" in body
         assert body["index_used"] is True
 
@@ -217,7 +216,7 @@ class TestMutationFreshnessWithRealHandle:
             {"path": "foo.py", "content": "x = 1\n"},
         )
         assert result.is_error is False
-        body = json.loads(cast("ToolContent", result.content[0]).text)
+        body = json.loads(result.content[0].text)
         assert body["reindex_in_progress"] is False
 
 
@@ -234,7 +233,7 @@ class TestListDirectoryLegacyShape:
                 session, _make_listing_ws(), {"path": "."}
             )
             assert result.is_error is False
-            text = cast("ToolContent", result.content[0]).text
+            text = result.content[0].text
             # Legacy shape: "Directory: ." header + entry list.
             assert text.startswith("Directory: .")
             assert "foo.py" in text
@@ -254,7 +253,7 @@ class TestListDirectoryLegacyShape:
                 session, ws, {"path": ".", "recursive": True}
             )
             assert result.is_error is False
-            text = cast("ToolContent", result.content[0]).text
+            text = result.content[0].text
             assert text.startswith("Directory (recursive): .")
 
     def test_use_index_never_returns_legacy_text_for_every_view(
@@ -272,7 +271,7 @@ class TestListDirectoryLegacyShape:
                     {"path": ".", "view": view, "use_index": "never"},
                 )
                 assert result.is_error is False
-                text = cast("ToolContent", result.content[0]).text
+                text = result.content[0].text
                 assert text.startswith("Directory: ."), (
                     f"use_index=never with view={view} returned non-legacy "
                     f"text: {text!r}"
@@ -285,7 +284,7 @@ class TestListDirectoryLegacyShape:
             {"path": ".", "view": "compact", "use_index": "always"},
         )
         assert result.is_error is True
-        body = json.loads(cast("ToolContent", result.content[0]).text)
+        body = json.loads(result.content[0].text)
         assert body["status"] == "indexed_view_unavailable"
         assert body["reason"] == "no_explore_index_handle"
 
@@ -303,7 +302,7 @@ class TestDirectoryTreeLegacyShape:
         ws.exists.return_value = False
         result = handle_directory_tree(session, ws, {"path": "."})
         assert result.is_error is False
-        body = json.loads(cast("ToolContent", result.content[0]).text)
+        body = json.loads(result.content[0].text)
         assert set(body.keys()) >= {"name", "type", "path"}
         assert body["type"] == "dir"
         assert "children" in body
@@ -325,7 +324,7 @@ class TestDirectoryTreeLegacyShape:
                 session, ws, {"path": ".", "view": view, "use_index": "never"}
             )
             assert result.is_error is False
-            body = json.loads(cast("ToolContent", result.content[0]).text)
+            body = json.loads(result.content[0].text)
             assert "name" in body
             assert "type" in body
             assert "children" in body
@@ -348,7 +347,7 @@ class TestDirectoryTreeLegacyShape:
             session, ws, {"path": ".", "view": "compact", "include_counts": True}
         )
         assert result.is_error is False
-        tree = json.loads(cast("ToolContent", result.content[0]).text)["tree"]
+        tree = json.loads(result.content[0].text)["tree"]
         for child in tree.get("children", []):
             if isinstance(child, dict):
                 assert "counts" in child
@@ -366,7 +365,7 @@ class TestDirectoryTreeLegacyShape:
             {"path": ".", "view": "compact", "use_index": "always"},
         )
         assert result.is_error is True
-        body = json.loads(cast("ToolContent", result.content[0]).text)
+        body = json.loads(result.content[0].text)
         assert body["status"] == "indexed_view_unavailable"
         assert body["reason"] == "no_explore_index_handle"
 
@@ -382,13 +381,7 @@ class TestDirectoryTreeSchemaAdvertisesChangedOnly:
         specs = {s.metadata.definition.name: s for s in file_list_specs()}
         assert DIRECTORY_TREE_TOOL in specs
         spec = specs[DIRECTORY_TREE_TOOL]
-        properties = cast(
-            "dict[str, object]",
-            cast(
-                "dict[str, object]",
-                spec.metadata.definition.input_schema,
-            )["properties"],
-        )
+        properties = must_mapping(must_mapping(spec.metadata.definition.input_schema,)["properties"],)
         assert "changed_only" in properties
-        prop = cast("dict[str, object]", properties["changed_only"])
+        prop = must_mapping(properties["changed_only"])
         assert prop.get("type") == "boolean"

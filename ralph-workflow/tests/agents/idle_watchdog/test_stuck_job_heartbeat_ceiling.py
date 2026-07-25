@@ -36,14 +36,12 @@ and NOT ``smoke``).
 
 from __future__ import annotations
 
-import typing
 from dataclasses import dataclass
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
-    WaitingCorroborator,
 )
 from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
@@ -110,7 +108,7 @@ def _make_watchdog(
         IdleWatchdog(
             policy,
             clock,
-            corroborator=typing.cast("WaitingCorroborator", _StubCorroborator(alive_by)),
+            corroborator=_StubCorroborator(alive_by),
             process_monitor=_NoProcessMonitor(),
         ),
         clock,

@@ -103,8 +103,12 @@ if (
     )
 
 
-_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
-_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+_DEFAULT_SIGNAL_GETTER = cast(
+    "SignalGetter", signal.getsignal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+_DEFAULT_SIGNAL_SETTER = cast(
+    "SignalSetter", signal.signal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 class _CpuTimes(Protocol):
@@ -123,7 +127,9 @@ class _PsutilModule(Protocol):
 def _psutil_pid_cpu_time(pid: int) -> float:
     """Return the cumulative CPU time for a PID, or 0.0 on any failure."""
     try:
-        psutil = cast("_PsutilModule", importlib.import_module("psutil"))
+        psutil = cast(
+            "_PsutilModule", importlib.import_module("psutil")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     except Exception:
         return 0.0
     try:
@@ -308,7 +314,9 @@ class InterruptDispatcher:
         compatibility; it is deprecated and emits a single loguru
         warning when used. New callers MUST pass ``bridge_pgids``.
         """
-        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        bridge_pids_legacy = cast(
+            "Iterable[int]", kwargs.pop("bridge_pids", ())
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)

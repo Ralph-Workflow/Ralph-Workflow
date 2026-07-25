@@ -117,7 +117,9 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
             _atomic_append_text(exclude_path, payload)
             logger.debug("Added {} patterns to .git/info/exclude", len(new_patterns))
 
-        tracked_output = cast("str", repo.git.ls_files("--cached", "-z"))
+        tracked_output = cast(
+            "str", repo.git.ls_files("--cached", "-z")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         tracked: list[str] = [path for path in tracked_output.split("\0") if path]
         tracked_secrets: list[str] = [
             path

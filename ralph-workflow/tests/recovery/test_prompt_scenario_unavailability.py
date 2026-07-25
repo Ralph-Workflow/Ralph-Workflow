@@ -47,7 +47,6 @@ from __future__ import annotations
 import importlib
 import tempfile
 from pathlib import Path
-from typing import cast
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
@@ -580,7 +579,7 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
             cycle_cap=10,
             policy_bundle=_minimal_policy_bundle(),
             event_bus=FailureEventBus(),
-            unavailability_store=cast("UnavailabilityStore", custom_store),
+            unavailability_store=custom_store,
         ),
     )
 

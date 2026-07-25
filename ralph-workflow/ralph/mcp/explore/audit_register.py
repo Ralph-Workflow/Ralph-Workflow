@@ -149,9 +149,7 @@ def refresh_audit_register(
         tool: _aggregate_measurements(tool_measurements)
         for tool, tool_measurements in grouped.items()
     }
-    duplicates = {
-        tool for tool, tool_measurements in grouped.items() if len(tool_measurements) > 1
-    }
+    duplicates = {tool for tool, tool_measurements in grouped.items() if len(tool_measurements) > 1}
     rebuilt: list[AuditEntry] = []
     applied: set[RalphToolName] = set()
     for entry in AUDIT_REGISTER:
@@ -174,11 +172,7 @@ def refresh_audit_register(
             )
         else:
             rebuilt.append(entry)
-    unmeasured = frozenset(
-        member
-        for member in RalphToolName
-        if member not in applied
-    )
+    unmeasured = frozenset(member for member in RalphToolName if member not in applied)
     return RefreshResult(
         register=tuple(rebuilt),
         applied=frozenset(applied),
@@ -218,19 +212,11 @@ def _aggregate_measurements(measurements: Sequence[Measurement]) -> Measurement:
             tool_calls=counters.tool_calls + other.tool_calls,
             evidence_recall=min(counters.evidence_recall, other.evidence_recall),
             evidence_precision=min(counters.evidence_precision, other.evidence_precision),
-            stale_fallback_events=(
-                counters.stale_fallback_events + other.stale_fallback_events
-            ),
+            stale_fallback_events=(counters.stale_fallback_events + other.stale_fallback_events),
             parse_count=counters.parse_count + other.parse_count,
-            changed_file_count=(
-                counters.changed_file_count + other.changed_file_count
-            ),
-            index_storage_bytes=max(
-                counters.index_storage_bytes, other.index_storage_bytes
-            ),
-            wall_time_seconds=(
-                counters.wall_time_seconds + other.wall_time_seconds
-            ),
+            changed_file_count=(counters.changed_file_count + other.changed_file_count),
+            index_storage_bytes=max(counters.index_storage_bytes, other.index_storage_bytes),
+            wall_time_seconds=(counters.wall_time_seconds + other.wall_time_seconds),
         )
     return Measurement(
         tool=first.tool,

@@ -6,7 +6,6 @@ import sys
 import threading
 from importlib import import_module
 from types import ModuleType
-from typing import Any, cast
 
 import pytest
 from _pytest.mark import Mark, MarkDecorator
@@ -47,7 +46,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
                 ]
             }
 
-    fake_module = cast("Any", ModuleType("tavily"))
+    fake_module = ModuleType("tavily")
     fake_module.TavilyClient = FakeClient
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
 
@@ -72,7 +71,7 @@ def test_401_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
         def search(self, query: str, *, max_results: int) -> dict[str, object]:
             raise RuntimeError(f"401 unauthorized api_key={self.api_key} query={query}")
 
-    fake_module = cast("Any", ModuleType("tavily"))
+    fake_module = ModuleType("tavily")
     fake_module.TavilyClient = BrokenClient
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
 
@@ -132,7 +131,7 @@ def test_tavily_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch)
             event.wait(timeout=10.0)
             return {"results": []}
 
-    fake_module = cast("Any", ModuleType("tavily"))
+    fake_module = ModuleType("tavily")
     fake_module.TavilyClient = HangingTavily
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
     try:

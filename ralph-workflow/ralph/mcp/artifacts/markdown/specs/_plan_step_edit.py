@@ -63,9 +63,7 @@ def edit_plan_step_markdown(
         elif action == "move" and index is not None:
             edited_lines = _move(lines, spans, position, index)
         else:
-            raise ValueError(
-                "action must be replace, insert, remove, or move; move requires index"
-            )
+            raise ValueError("action must be replace, insert, remove, or move; move requires index")
     edited = _join_lines(edited_lines, trailing_newline=text.endswith("\n"))
     _, validation = parse_and_validate(edited, spec)
     validation_errors = [diagnostic for diagnostic in validation if diagnostic.severity == "error"]
@@ -125,9 +123,7 @@ def _insert(
     return [*lines[:insertion], *payload, *lines[insertion:]]
 
 
-def _move(
-    lines: list[str], spans: list[_StepSpan], position: int, index: int
-) -> list[str]:
+def _move(lines: list[str], spans: list[_StepSpan], position: int, index: int) -> list[str]:
     desired = _edit_position(index, len(spans) - 1)
     if desired == position:
         return lines

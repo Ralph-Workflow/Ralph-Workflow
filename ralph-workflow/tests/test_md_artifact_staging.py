@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -24,12 +24,15 @@ from ralph.mcp.tools.names import (
     GET_MD_DRAFT_TOOL,
     STAGE_MD_ARTIFACT_TOOL,
 )
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.tools.coordination import ToolResult, WorkspaceLike
-    from ralph.mcp.tools.tool_content import ToolContent
 
 
 class MockSession:
@@ -76,12 +79,12 @@ _TAIL = """## Goals
 
 
 def _payload(result: ToolResult) -> dict[str, object]:
-    content = cast("ToolContent", result.content[0])
-    return cast("dict[str, object]", json.loads(content.text))
+    content = result.content[0]
+    return must_mapping(json.loads(content.text))
 
 
 def _diagnostic_rules(payload: dict[str, object]) -> set[object]:
-    diagnostics = cast("list[dict[str, object]]", payload["diagnostics"])
+    diagnostics = must_dict_list(payload["diagnostics"])
     return {diagnostic["rule_id"] for diagnostic in diagnostics}
 
 

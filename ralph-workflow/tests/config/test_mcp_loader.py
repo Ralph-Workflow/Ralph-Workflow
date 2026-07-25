@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import textwrap
 import tomllib
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -25,7 +25,6 @@ from ralph.config.mcp_models import McpConfig
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.workspace.scope import WorkspaceScope
 
 
 DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
@@ -78,7 +77,7 @@ def test_global_mcp_config_path_respects_xdg(
 
 def test_local_mcp_config_path(tmp_path: Path) -> None:
     scope = _FakeScope(tmp_path)
-    path = local_mcp_config_path(cast("WorkspaceScope", scope))
+    path = local_mcp_config_path(scope)
     assert path == tmp_path / ".agent" / "mcp.toml"
 
 
@@ -174,7 +173,7 @@ def test_load_mcp_config_workspace_scope_local_path(
         encoding="utf-8",
     )
     scope = _FakeScope(tmp_path)
-    config = load_mcp_config(workspace_scope=cast("WorkspaceScope", scope))
+    config = load_mcp_config(workspace_scope=scope)
     assert config.web_search.enabled is False
 
 

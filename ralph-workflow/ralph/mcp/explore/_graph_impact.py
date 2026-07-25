@@ -1,6 +1,5 @@
 """Graph impact and hubs queries for ``ralph_graph`` (Phase 2+)."""
 
-
 import sqlite3
 
 from ralph.mcp.explore.graph import (
@@ -59,9 +58,7 @@ def impact(
         )
     bounded_limit = max(1, min(limit, 100))
     impacted: list[GraphEdge] = []
-    for edge in _iter_incoming(
-        store, target_id=resolved_id, relations=relations
-    ):
+    for edge in _iter_incoming(store, target_id=resolved_id, relations=relations):
         impacted.append(_row_to_edge(edge))
         if len(impacted) >= bounded_limit:
             break
@@ -69,8 +66,7 @@ def impact(
     # Walk calls_syntax edges to flag dynamic / unknown cases.
     missing_data: list[str] = []
     if any(
-        edge.reason and ("getattr" in edge.reason or "dynamic" in edge.reason)
-        for edge in impacted
+        edge.reason and ("getattr" in edge.reason or "dynamic" in edge.reason) for edge in impacted
     ):
         missing_data.append("dynamic_dispatch_possible")
     if any(edge.path.startswith("vendor/") for edge in impacted):
@@ -126,6 +122,8 @@ def impact(
             "limit": bounded_limit,
         },
     )
+
+
 def hubs(
     store: ExploreStore,
     *,
@@ -154,9 +152,7 @@ def hubs(
             (".py", ".md", ".json", ".yaml", ".yml", ".toml")
         ):
             continue
-        if role == "test" and "/tests/" not in path_value and not path_value.startswith(
-            "tests/"
-        ):
+        if role == "test" and "/tests/" not in path_value and not path_value.startswith("tests/"):
             continue
         weight = len(_RELATION_PRIORITY) - _relation_priority(relation_value)
         for node_id in (source, target):
@@ -177,9 +173,7 @@ def hubs(
 
     nodes_out: list[GraphNode] = []
     for score, total_degree, node_id in scored:
-        cur = store._conn.execute(
-            "SELECT * FROM symbols WHERE symbol_id = ?", (node_id,)
-        )
+        cur = store._conn.execute("SELECT * FROM symbols WHERE symbol_id = ?", (node_id,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is not None:
             node = _row_to_node_from_symbol(row)

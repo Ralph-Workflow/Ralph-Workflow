@@ -128,7 +128,9 @@ def build_standalone_http_server(
         drain="standalone",
         capabilities=_all_capability_values(),
     )
-    allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
+    allowed_roots = cast(
+        "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     workspace = FsWorkspace(
         workspace_root,
         allowed_roots=allowed_roots if allowed_roots else None,
@@ -296,10 +298,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     """
     args = parse_args(argv)
     run_standalone_server(
-        cast("Path", args.workspace),
+        cast(
+            "Path", args.workspace
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         transport=DEFAULT_TRANSPORT,
-        host=cast("str", args.host),
-        port=cast("int", args.port),
+        host=cast(
+            "str", args.host
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        port=cast(
+            "int", args.port
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 

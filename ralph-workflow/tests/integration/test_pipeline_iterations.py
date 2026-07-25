@@ -13,7 +13,7 @@ from __future__ import annotations
 import gc
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
@@ -49,7 +49,6 @@ from tests.plan_fixtures import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     from pytest import MonkeyPatch
 
@@ -133,10 +132,7 @@ def _run_pipeline(
             mock_agent_invoker.invoke(effect.agent_name, effect.phase)
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
-            commit_event_for = cast(
-                "Callable[[str], PipelineEvent] | None",
-                getattr(mock_agent_invoker, "commit_event_for", None),
-            )
+            commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None),
             last_phase = getattr(mock_agent_invoker, "last_phase", None)
             if (
                 commit_event_for is not None
@@ -153,18 +149,12 @@ def _run_pipeline(
         effect: InvokeAgentEffect,
         **_kwargs: object,
     ) -> AnalysisDecisionEvent | PipelineEvent:
-        analysis_event_for = cast(
-            "Callable[[str], AnalysisDecisionEvent] | None",
-            getattr(mock_agent_invoker, "analysis_event_for", None),
-        )
+        analysis_event_for = getattr(mock_agent_invoker, "analysis_event_for", None),
         analysis_phases = {"planning_analysis", "development_analysis"}
         if analysis_event_for is not None and effect.phase in analysis_phases:
             return analysis_event_for(effect.phase)
         # Handle commit phases using commit_event_for
-        commit_event_for = cast(
-            "Callable[[str], PipelineEvent] | None",
-            getattr(mock_agent_invoker, "commit_event_for", None),
-        )
+        commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None),
         if commit_event_for is not None:
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS

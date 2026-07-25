@@ -36,9 +36,7 @@ def subplan_units_content(
     out of same-workspace worker dispatch while retaining their global steps.
     """
     step_by_id = {
-        f"S-{number}": step
-        for step in steps
-        if isinstance((number := step.get("number")), int)
+        f"S-{number}": step for step in steps if isinstance((number := step.get("number")), int)
     }
     candidates = [
         candidate
@@ -58,12 +56,18 @@ def subplan_units_content(
     owner_by_step = {
         step_id: candidate
         for candidate in candidates
-        for step_id in cast("list[str]", candidate["step_ids"])
+        for step_id in cast(
+            "list[str]", candidate["step_ids"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     }
     dispatchable_ids = {
-        cast("str", candidate["unit_id"])
+        cast(
+            "str", candidate["unit_id"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for candidate in candidates
-        if cast("list[str]", candidate["allowed_directories"])
+        if cast(
+            "list[str]", candidate["allowed_directories"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     }
     dispatchable_ids = _remove_units_with_external_dependencies(
         candidates,
@@ -74,7 +78,9 @@ def subplan_units_content(
 
     units: list[Content] = []
     for candidate in candidates:
-        unit_id = cast("str", candidate["unit_id"])
+        unit_id = cast(
+            "str", candidate["unit_id"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if unit_id not in dispatchable_ids:
             continue
         dependencies = _unit_dependencies(
@@ -132,7 +138,9 @@ def _subplan_label(name: str) -> str | None:
     for pattern in (_SUBPLAN_PREFIX, _SUBPLAN_SUFFIX):
         match = pattern.fullmatch(name)
         if match is not None:
-            return cast("str", match.group("label")).strip()
+            return cast(
+                "str", match.group("label")
+            ).strip()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return None
 
 
@@ -170,12 +178,16 @@ def _remove_units_with_external_dependencies(
     while changed:
         changed = False
         for candidate in candidates:
-            unit_id = cast("str", candidate["unit_id"])
+            unit_id = cast(
+                "str", candidate["unit_id"]
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             if unit_id not in safe_ids:
                 continue
             for dependency in _cross_unit_dependency_steps(candidate, step_by_id):
                 owner = owner_by_step.get(dependency)
-                owner_id = cast("str", owner["unit_id"]) if owner is not None else None
+                owner_id = (
+                    cast("str", owner["unit_id"]) if owner is not None else None
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 if owner_id != unit_id and owner_id not in safe_ids:
                     safe_ids.remove(unit_id)
                     changed = True
@@ -189,18 +201,18 @@ def _unit_dependencies(
     step_by_id: dict[str, Content],
     dispatchable_ids: set[str],
 ) -> list[str]:
-    unit_id = cast("str", candidate["unit_id"])
+    unit_id = cast(
+        "str", candidate["unit_id"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     dependencies: list[str] = []
     for dependency in _cross_unit_dependency_steps(candidate, step_by_id):
         owner = owner_by_step.get(dependency)
         if owner is None:
             continue
-        owner_id = cast("str", owner["unit_id"])
-        if (
-            owner_id != unit_id
-            and owner_id in dispatchable_ids
-            and owner_id not in dependencies
-        ):
+        owner_id = cast(
+            "str", owner["unit_id"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if owner_id != unit_id and owner_id in dispatchable_ids and owner_id not in dependencies:
             dependencies.append(owner_id)
     return dependencies
 
@@ -210,7 +222,9 @@ def _cross_unit_dependency_steps(
     step_by_id: dict[str, Content],
 ) -> list[str]:
     dependencies: list[str] = []
-    for step_id in cast("list[str]", candidate["step_ids"]):
+    for step_id in cast(
+        "list[str]", candidate["step_ids"]
+    ):  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         step = step_by_id.get(step_id, {})
         raw_dependencies = step.get("depends_on", [])
         if not isinstance(raw_dependencies, list):

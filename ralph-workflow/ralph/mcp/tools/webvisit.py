@@ -140,8 +140,7 @@ def handle_visit_url(
         return ToolResult(
             content=[
                 ToolContent.text_content(
-                    f"Invalid visit_url format: {format_value!r}; "
-                    "expected 'raw' or 'metadata'"
+                    f"Invalid visit_url format: {format_value!r}; expected 'raw' or 'metadata'"
                 )
             ],
             is_error=True,
@@ -204,11 +203,7 @@ def handle_visit_url(
             metadata_payload["links"] = list(page.links)[:10]
         metadata_payload = finalize_envelope_bytes_out(metadata_payload)
         return ToolResult(
-            content=[
-                ToolContent.text_content(
-                    json.dumps(metadata_payload, separators=(",", ":"))
-                )
-            ],
+            content=[ToolContent.text_content(json.dumps(metadata_payload, separators=(",", ":")))],
             is_error=False,
         )
 
@@ -297,8 +292,7 @@ def handle_download_url(
         return ToolResult(
             content=[
                 ToolContent.text_content(
-                    f"Invalid download_url format: {format_value!r}; "
-                    "expected 'raw' or 'summary'"
+                    f"Invalid download_url format: {format_value!r}; expected 'raw' or 'summary'"
                 )
             ],
             is_error=True,

@@ -96,9 +96,7 @@ _POLICY_PIPELINE: Final[dict[str, PolicyPhaseDef]] = {
 }
 
 #: The phase graph, read-only. Exposed for tests and for the driver.
-POLICY_PIPELINE: Final[Mapping[str, PolicyPhaseDef]] = MappingProxyType(
-    _POLICY_PIPELINE
-)
+POLICY_PIPELINE: Final[Mapping[str, PolicyPhaseDef]] = MappingProxyType(_POLICY_PIPELINE)
 
 
 def phase_definition(phase: str) -> PolicyPhaseDef:

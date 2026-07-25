@@ -73,7 +73,9 @@ def _load_resolve_workspace_scope() -> _ResolveWorkspaceScopeFn:
 def _load_policy_loader() -> tuple[_LoadPolicyFn, _LoadPolicyForWorkspaceScopeFn]:
     module = import_module("ralph.policy.loader")
     return (
-        cast("_LoadPolicyFn", _module_attr(module, "load_policy")),
+        cast(
+            "_LoadPolicyFn", _module_attr(module, "load_policy")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         cast(
             "_LoadPolicyForWorkspaceScopeFn",
             _module_attr(module, "load_policy_for_workspace_scope"),
@@ -91,8 +93,12 @@ def _load_explain_policy() -> _ExplainPolicyFn:
 def _load_renderers() -> tuple[_RenderExplanationFn, _RenderExplanationFn]:
     module = import_module("ralph.policy.render")
     return (
-        cast("_RenderExplanationFn", _module_attr(module, "render_explanation_ascii")),
-        cast("_RenderExplanationFn", _module_attr(module, "render_explanation_text")),
+        cast(
+            "_RenderExplanationFn", _module_attr(module, "render_explanation_ascii")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        cast(
+            "_RenderExplanationFn", _module_attr(module, "render_explanation_text")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 

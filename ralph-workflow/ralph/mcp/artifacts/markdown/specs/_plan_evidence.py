@@ -34,8 +34,12 @@ def evidence_content(entry: ParsedLine, context: str, diagnostics: list[Diagnost
     match = _EVIDENCE_ENTRY.fullmatch(entry.text)
     if match is None:
         return {"kind": "file", "ref": entry.text}
-    kind = cast("str", match.group("kind"))
-    ref = cast("str", match.group("ref"))
+    kind = cast(
+        "str", match.group("kind")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    ref = cast(
+        "str", match.group("ref")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if kind in _EVIDENCE_KINDS:
         return {"kind": kind, "ref": ref}
     diagnostics.append(

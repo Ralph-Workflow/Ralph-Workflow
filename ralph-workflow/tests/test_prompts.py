@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import cast
 
 import pytest
 
@@ -97,17 +96,17 @@ def test_render_template_rejects_legacy_default_shorthand() -> None:
 
 def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     capabilities = CapabilitySet()
-    capabilities.insert(cast("Capability", Capability.WORKSPACE_READ))
-    capabilities.insert(cast("Capability", Capability.WORKSPACE_WRITE_TRACKED))
-    capabilities.insert(cast("Capability", Capability.GIT_STATUS_READ))
-    capabilities.insert(cast("Capability", Capability.GIT_DIFF_READ))
-    capabilities.insert(cast("Capability", Capability.PROCESS_EXEC_BOUNDED))
-    capabilities.insert(cast("Capability", Capability.ARTIFACT_SUBMIT))
-    capabilities.insert(cast("Capability", Capability.ARTIFACT_PLAN_WRITE))
-    capabilities.insert(cast("Capability", Capability.RUN_REPORT_PROGRESS))
+    capabilities.insert(Capability.WORKSPACE_READ)
+    capabilities.insert(Capability.WORKSPACE_WRITE_TRACKED)
+    capabilities.insert(Capability.GIT_STATUS_READ)
+    capabilities.insert(Capability.GIT_DIFF_READ)
+    capabilities.insert(Capability.PROCESS_EXEC_BOUNDED)
+    capabilities.insert(Capability.ARTIFACT_SUBMIT)
+    capabilities.insert(Capability.ARTIFACT_PLAN_WRITE)
+    capabilities.insert(Capability.RUN_REPORT_PROGRESS)
 
     policy_flags = PolicyFlagSet()
-    policy_flags.insert(cast("PolicyFlag", PolicyFlag.ALLOW_SHELL))
+    policy_flags.insert(PolicyFlag.ALLOW_SHELL)
 
     variables = capability_template_variables(capabilities, policy_flags)
 

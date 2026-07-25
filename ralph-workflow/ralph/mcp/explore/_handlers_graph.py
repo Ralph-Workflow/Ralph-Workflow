@@ -86,7 +86,9 @@ _GRAPH_TIMEOUT_MAX_MS: int = 30_000
 #: other's flags. The internal lock guards concurrent mutation
 #: of the dict so a writer that arms its flag and a cleanup
 #: path that pops a different call's flag cannot race.
-_GRAPH_CANCEL_FLAGS: dict[str, bool] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
+_GRAPH_CANCEL_FLAGS: dict[
+    str, bool
+] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
 _GRAPH_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 #: Per-request cancel flag for ralph_reindex. Mirrors the
@@ -96,7 +98,9 @@ _GRAPH_CANCEL_LOCK: threading.Lock = threading.Lock()
 #: set, the writer preserves the prior committed generation and
 #: returns a ``cancelled`` result. Concurrent reindex calls
 #: against the same session get distinct tokens.
-_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
+_REINDEX_CANCEL_FLAGS: dict[
+    str, bool
+] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
 _REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 
@@ -244,13 +248,10 @@ def handle_ralph_graph(
     if isinstance(relations_raw, list):
         relations = tuple(str(rel) for rel in relations_raw if isinstance(rel, str))
     freshness_raw: object = params.get("freshness", "prefer_fresh")
-    freshness: str = (
-        str(freshness_raw) if isinstance(freshness_raw, str) else "prefer_fresh"
-    )
+    freshness: str = str(freshness_raw) if isinstance(freshness_raw, str) else "prefer_fresh"
     if freshness not in _VALID_FRESHNESS:
         raise InvalidParamsError(
-            f"Invalid freshness: {freshness!r}; expected one of "
-            f"{', '.join(_VALID_FRESHNESS)}"
+            f"Invalid freshness: {freshness!r}; expected one of {', '.join(_VALID_FRESHNESS)}"
         )
     limit = _int_param(params, "limit", 25)
     if limit < 1 or limit > _GRAPH_LIMIT_MAX:
@@ -263,9 +264,7 @@ def handle_ralph_graph(
     depth = _int_param(params, "depth", 1)
     max_paths = _int_param(params, "max_paths", 3)
     change_kind_raw: object = params.get("change_kind", "unknown")
-    change_kind: str = (
-        str(change_kind_raw) if isinstance(change_kind_raw, str) else "unknown"
-    )
+    change_kind: str = str(change_kind_raw) if isinstance(change_kind_raw, str) else "unknown"
     if change_kind not in _VALID_CHANGE_KINDS:
         raise InvalidParamsError(
             f"Invalid change_kind: {change_kind!r}; expected one of "
@@ -273,14 +272,10 @@ def handle_ralph_graph(
         )
     scope_path_raw = params.get("scope_path")
     scope_path: str | None = (
-        str(scope_path_raw)
-        if isinstance(scope_path_raw, str) and scope_path_raw
-        else None
+        str(scope_path_raw) if isinstance(scope_path_raw, str) and scope_path_raw else None
     )
     role_raw = params.get("role")
-    role: str | None = (
-        str(role_raw) if isinstance(role_raw, str) and role_raw else None
-    )
+    role: str | None = str(role_raw) if isinstance(role_raw, str) and role_raw else None
     # AC-05: bounded per-call deadline. Reject malformed values
     # fail-closed; only positive integers in [1, 30000] are
     # accepted. The deadline is converted to a monotonic-clock
@@ -327,17 +322,9 @@ def handle_ralph_graph(
         handle: ExploreIndex | None = handlers_module._resolve_explore_index(session)
         if handle is None:
             workspace_root_obj: object = getattr(workspace, "root", None)
-            workspace_root_raw: object = workspace_root_obj or params.get(
-                "workspace_root", ""
-            )
-            workspace_root_str: str = (
-                str(workspace_root_raw) if workspace_root_raw else ""
-            )
-            workspace_root = (
-                Path(workspace_root_str)
-                if workspace_root_str
-                else Path.cwd()
-            )
+            workspace_root_raw: object = workspace_root_obj or params.get("workspace_root", "")
+            workspace_root_str: str = str(workspace_root_raw) if workspace_root_raw else ""
+            workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()
             handle = handlers_module.build_explore_index(workspace_root)
             ephemeral_handle = handle
         # ``graph.run_query`` is dynamically exported via a module-level
@@ -385,4 +372,3 @@ def handle_ralph_graph(
         content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
-

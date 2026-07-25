@@ -6,10 +6,9 @@ import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
-from git import Actor, GitCommandError, Repo
+from git import GitCommandError, Repo
 
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
@@ -406,7 +405,7 @@ def test_create_commit_with_author() -> None:
     finally:
         monkeypatch.undo()
 
-    author = cast("Actor", captured["author"])
+    author = captured["author"]
     assert sha == "b" * FULL_SHA_LENGTH
     assert captured["message"] == (
         "Custom author commit\n\nCo-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
@@ -449,7 +448,7 @@ def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
     finally:
         monkeypatch.undo()
 
-    author = cast("Actor", captured["author"])
+    author = captured["author"]
     assert sha == "d" * FULL_SHA_LENGTH
     assert captured["message"] == (
         "feat(cli): support generated commits\n\n"

@@ -111,13 +111,9 @@ class FileBackedSession:
         # lazily from the on-disk payload's ``exec_spill_roots`` so a
         # subprocess session restored from the on-disk payload can
         # replay parent-side spills.
-        self._exec_resource_resolver: ExecResourceResolverLike | None = (
-            exec_resource_resolver
-        )
+        self._exec_resource_resolver: ExecResourceResolverLike | None = exec_resource_resolver
         if exec_spill_roots is not None:
-            self._exec_spill_roots: tuple[Path, ...] | None = tuple(
-                exec_spill_roots
-            )
+            self._exec_spill_roots: tuple[Path, ...] | None = tuple(exec_spill_roots)
         else:
             # AC-11: discover the on-disk payload's ``exec_spill_roots``
             # so the subprocess MCP server path (which only sees the
@@ -213,15 +209,11 @@ class FileBackedSession:
             return self._exec_resource_resolver
         if not self._exec_spill_roots:
             return None
-        self._exec_resource_resolver = ExecResourceResolver(
-            spill_roots=self._exec_spill_roots
-        )
+        self._exec_resource_resolver = ExecResourceResolver(spill_roots=self._exec_spill_roots)
         return self._exec_resource_resolver
 
     @exec_resource_resolver.setter
-    def exec_resource_resolver(
-        self, value: ExecResourceResolverLike | None
-    ) -> None:
+    def exec_resource_resolver(self, value: ExecResourceResolverLike | None) -> None:
         """Allow callers to inject a resolver after construction.
 
         The production session_from_env path uses this to attach a

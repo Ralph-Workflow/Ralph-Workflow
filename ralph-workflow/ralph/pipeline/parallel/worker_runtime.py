@@ -196,8 +196,7 @@ def _worker_integration_resolvers(
         if display_context is not None:
             emit_integration_warn_line(
                 resolve_active_display(None, display_context),
-                "conflict resolution unavailable: parallel worker has no "
-                "resolution dependencies",
+                "conflict resolution unavailable: parallel worker has no resolution dependencies",
             )
         return None, None, None
     display = resolve_active_display(None, display_context)
@@ -272,13 +271,10 @@ def run_worker_auto_integration(
         return None
     try:
         if recover_first:
-            recovered = recover_incomplete_integration(
-                workspace_scope, config=config
-            )
+            recovered = recover_incomplete_integration(workspace_scope, config=config)
             if recovered is not None:
                 logger.info(
-                    "auto_integrate: parallel worker reconciled an interrupted "
-                    "integration: {}",
+                    "auto_integrate: parallel worker reconciled an interrupted integration: {}",
                     recovered.last_action,
                 )
                 if recovery_retained_record(recovered):
@@ -293,15 +289,13 @@ def run_worker_auto_integration(
                     # verdict, and leave ownership with recovery.
                     _emit_deferred_integration_line(display_context, recovered)
                     return recovered
-        conflict_resolver, rebase_stop_resolver, display = (
-            _worker_integration_resolvers(
-                config=config,
-                workspace_scope=workspace_scope,
-                policy_bundle=policy_bundle,
-                registry=registry,
-                pipeline_deps=pipeline_deps,
-                display_context=display_context,
-            )
+        conflict_resolver, rebase_stop_resolver, display = _worker_integration_resolvers(
+            config=config,
+            workspace_scope=workspace_scope,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
         )
         outcome = auto_integrate_on_phase_transition(
             config,
@@ -433,9 +427,7 @@ def run_parallel_worker_from_manifest(
         parallel_worker=True,
     )
     if event == PipelineEvent.AGENT_SUCCESS:
-        worker_artifact_path = (
-            Path(manifest.worker_artifact_dir) / "development_result.md"
-        )
+        worker_artifact_path = Path(manifest.worker_artifact_dir) / "development_result.md"
         event = phase_event_after_agent_run(
             effect=worker_effect,
             config=config,

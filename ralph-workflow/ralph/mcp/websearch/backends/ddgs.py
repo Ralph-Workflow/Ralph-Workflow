@@ -26,7 +26,9 @@ except ImportError:  # pragma: no cover - depends on optional runtime dependency
 else:
     _ddgs_module = _loaded_ddgs_module
 
-DDGS = cast("Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None))
+DDGS = cast(
+    "Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None)
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 class DdgsBackend:

@@ -635,7 +635,9 @@ def _load_is_agent_internal_path() -> Callable[[str], bool]:
     # public signature so downstream ``is_agent_internal_path(path)`` calls and
     # the ``result is not True`` / ``result is not False`` checks type-check
     # cleanly. The runtime contract is exactly the same callable.
-    return cast("Callable[[str], bool]", module.is_agent_internal_path)
+    return cast(
+        "Callable[[str], bool]", module.is_agent_internal_path
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _behavioral_invariants() -> list[str]:

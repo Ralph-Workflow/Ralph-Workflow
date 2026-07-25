@@ -1,6 +1,5 @@
 """Graph run_query dispatcher for ``ralph_graph`` (Phase 2+)."""
 
-
 from collections.abc import Callable, Sequence
 
 from ralph.mcp.explore._graph_impact import hubs as _hubs
@@ -135,9 +134,7 @@ def run_query(
             return _cancelled_result(query_type, target, target_b, store)
         if _deadline_elapsed(deadline):
             return _deadline_result(query_type, target, target_b, store)
-        result = _impact(
-            store, target=target, change_kind=change_kind, limit=limit
-        )
+        result = _impact(store, target=target, change_kind=change_kind, limit=limit)
     elif query_type == "hubs":
         if _is_cancelled(cancel):
             return _cancelled_result(query_type, target, target_b, store)

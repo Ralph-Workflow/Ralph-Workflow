@@ -535,7 +535,6 @@ _INVARIANTS: tuple[
     # ``strip_terminal_control`` (hostile CSI/OSC/C0 strip). Malformed
     # markup remains literal so agent output is not lost. The deeper
     # ``_sanitize`` helper uses the same contract.
-
     FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
         qualname="ParallelDisplay.strip_markup",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.cli.commands import run as run_module
 from ralph.cli.commands._execute_pipeline_request import _ExecutePipelineRequest
@@ -13,13 +13,13 @@ from ralph.display.context import make_display_context
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
+from tests._support.typed_accessors import (
+    must_mapping,
+)
 
 if TYPE_CHECKING:
     import pytest
 
-    from ralph.pipeline.factory import PipelineDeps
-    from ralph.policy.models import PolicyBundle
-    from ralph.workspace.scope import WorkspaceScope
 
 
 def _fake_preflight_request(
@@ -62,7 +62,7 @@ def test_run_preflight_aborts_when_custom_mcp_validation_fails(
     result = run_module._run_preflight_checks(
         _fake_preflight_request(
             config=UnifiedConfig(),
-            workspace_scope=cast("WorkspaceScope", _FakeWorkspaceScope(str(tmp_path))),
+            workspace_scope=_FakeWorkspaceScope(str(tmp_path)),
             policy_bundle=None,
             initial_state=None,
             counter_overrides={},
@@ -92,7 +92,7 @@ def test_run_pipeline_stops_before_execution_when_custom_mcp_validation_fails(
     monkeypatch.setattr(
         run_module,
         "resolve_workspace_scope",
-        lambda: cast("WorkspaceScope", _FakeWorkspaceScope(str(tmp_path))),
+        lambda: _FakeWorkspaceScope(str(tmp_path)),
     )
     (tmp_path / "PROMPT.md").write_text("prompt", encoding="utf-8")
 
@@ -131,7 +131,7 @@ def test_execute_pipeline_forwards_pro_hooks_model_identity_and_policy_bundle(
     request = _ExecutePipelineRequest(
         config=UnifiedConfig(),
         initial_state=None,
-        policy_bundle=cast("PolicyBundle | None", policy_bundle),
+        policy_bundle=policy_bundle,
         verbosity=None,
         counter_overrides={},
         pro_hooks=pro_hooks,
@@ -141,8 +141,8 @@ def test_execute_pipeline_forwards_pro_hooks_model_identity_and_policy_bundle(
     result = run_module._execute_pipeline(request, display_context=display_context)
 
     assert result == 0
-    kwargs = cast("dict[str, object]", captured["kwargs"])
-    pipeline_deps = cast("PipelineDeps", kwargs["pipeline_deps"])
+    kwargs = must_mapping(captured["kwargs"])
+    pipeline_deps = kwargs["pipeline_deps"]
     assert pipeline_deps.policy_bundle is policy_bundle
     assert pipeline_deps.model_identity is model_identity
     assert pipeline_deps.snapshot_registry is pro_hooks.snapshot_registry

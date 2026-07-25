@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
@@ -35,7 +33,7 @@ class TestHandleSearchFiles:
             {"pattern": "*.py", "path": "."},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert "main.py" in payload["matches"]
         assert "test.py" in payload["matches"]
 
@@ -49,7 +47,7 @@ class TestHandleSearchFiles:
             {"pattern": "*.py", "path": ".", "exclude": ["test_*.py"]},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert "file.py" in payload["matches"]
         assert "test_file.py" not in payload["matches"]
 
@@ -63,7 +61,7 @@ class TestHandleSearchFiles:
             {"pattern": "*.py", "path": ".", "limit": 2},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["truncated"] is True
         assert len(payload["matches"]) == 2
 

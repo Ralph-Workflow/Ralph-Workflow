@@ -7,7 +7,6 @@ per-unit status is reported correctly for all workers.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from ralph.pipeline.effects import FanOutEffect
@@ -24,9 +23,6 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
-
-if TYPE_CHECKING:
-    from ralph.display.parallel_display import ParallelDisplay
 from tests.integration._fake_display_reporting import _FakeDisplay
 
 
@@ -44,7 +40,7 @@ def _run_fan_out(effect: FanOutEffect, runs: dict[str, FakeRun]) -> list[object]
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
         )
     )
 

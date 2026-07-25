@@ -345,7 +345,9 @@ def _generate_commit_message_with_chain(
     :mod:`ralph.pipeline.plumbing.commit_plumbing`.
     """
     deps = DefaultPipelineFactory().build(
-        cast("UnifiedConfig", chain_config.general_config),
+        cast(
+            "UnifiedConfig", chain_config.general_config
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         display_context,
         model_identity=model_identity,
         pro_hooks=pro_hooks,

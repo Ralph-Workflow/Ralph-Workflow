@@ -400,7 +400,9 @@ def _execute_effect_with_optional_display(
         "pipeline_deps": pipeline_deps,
     }
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
-    return cast("_ExecuteEffectKwargsFn", fn)(effect, config, workspace_scope, **supported)
+    return cast("_ExecuteEffectKwargsFn", fn)(
+        effect, config, workspace_scope, **supported
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def execute_effect_with_optional_display(
@@ -799,9 +801,7 @@ def _maybe_auto_integrate(
             display_context=display_context,
         )
     if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
-        return pipeline_deps.auto_integrate_resolver(
-            config, workspace_scope, state.rebase
-        )
+        return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
@@ -972,9 +972,7 @@ def _integrate_on_phase_transition(
         # transitions; non-seam events are retried at their next real seam.
         return None
     if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
-        return pipeline_deps.auto_integrate_resolver(
-            config, workspace_scope, state.rebase
-        )
+        return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
@@ -1171,9 +1169,7 @@ def _run_pipeline_step(
             )
             try:
                 _materialize_fn = (
-                    pipeline_deps.phase_prompt_materializer
-                    if pipeline_deps is not None
-                    else None
+                    pipeline_deps.phase_prompt_materializer if pipeline_deps is not None else None
                 )
                 materialize_agent_prompt_if_needed(
                     effect,

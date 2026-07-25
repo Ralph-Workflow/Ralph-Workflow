@@ -28,7 +28,6 @@ that merges two of them into the same error message is caught.
 from __future__ import annotations
 
 import inspect
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,10 +53,10 @@ def _make_bridge(*, max_restarts: int) -> RestartAwareMcpBridge:
         new_process = MagicMock(spec=ProcessLike)
         new_process.poll.return_value = None
         new_inner.process = new_process
-        return cast("StandaloneMcpProcess", new_inner)
+        return new_inner
 
     return RestartAwareMcpBridge(
-        cast("StandaloneMcpProcess", inner),
+        inner,
         restart_fn=_restart_fn,
         restart_policy=MagicMock(max_restarts=max_restarts),
         run_id="test-run",

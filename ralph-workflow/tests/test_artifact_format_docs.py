@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -29,6 +28,7 @@ from ralph.pipeline.work_units import (
     parse_work_units_from_artifact,
     validate_for_same_workspace,
 )
+from tests._support.typed_accessors import must_dict_list
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
@@ -285,7 +285,7 @@ def test_large_plan_example_has_four_independent_subplans_then_fan_in() -> None:
     content, diagnostics = parse_and_validate(large, get_spec("plan"))
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert [step["number"] for step in steps] == [
         10,
         11,
@@ -298,7 +298,7 @@ def test_large_plan_example_has_four_independent_subplans_then_fan_in() -> None:
         50,
         51,
     ]
-    units = cast("list[dict[str, object]]", content["work_units"])
+    units = must_dict_list(content["work_units"])
     assert [unit["unit_id"] for unit in units] == [
         "subplan-s-10",
         "subplan-s-20",

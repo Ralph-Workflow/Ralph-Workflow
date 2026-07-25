@@ -2,7 +2,6 @@ import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -510,7 +509,7 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
 
 def test_handle_planning_invokes_agent_successfully() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _PLAN_DOC
     effect = InvokeAgentEffect(
@@ -524,7 +523,7 @@ def test_handle_planning_invokes_agent_successfully() -> None:
 
 def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.return_value = False
 
     effect = InvokeAgentEffect(
@@ -544,7 +543,7 @@ def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
 
 def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = (
         _PLAN_DOC
@@ -574,7 +573,7 @@ def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
 
 def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _PLAN_DOC
 
@@ -586,7 +585,7 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
 
 def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _PLAN_DOC.replace("### [S-1]", "### [STEP-1]")
 
@@ -603,7 +602,7 @@ def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
 
 def test_handle_planning_accepts_noop_plan() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _NOOP_PLAN_DOC
 
@@ -614,7 +613,7 @@ def test_handle_planning_accepts_noop_plan() -> None:
 
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     plan_doc = _PLAN_DOC
     workspace.exists.side_effect = lambda path: (
         path
@@ -641,7 +640,7 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
 
 def test_handle_development_skips_when_plan_is_noop() -> None:
     ctx = _mk_policy_context()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _NOOP_PLAN_DOC
 
@@ -689,7 +688,7 @@ def test_handle_phase_raises_when_handler_missing() -> None:
 def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
     """handle_generic_analysis_phase emits a completed decision when plan is a no-op."""
     ctx = _stub_context_no_exists()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _NOOP_PLAN_DOC
 
@@ -707,7 +706,7 @@ def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
 def test_handle_development_analysis_skips_minimal_noop_plan() -> None:
     """The explicit minimal no-op document short-circuits analysis."""
     ctx = _stub_context_no_exists()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _NOOP_PLAN_DOC
 
@@ -730,7 +729,7 @@ def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
     agent attempt and route it through normal retry/fallback handling.
     """
     ctx = _stub_context_no_exists()
-    workspace = cast("MagicMock", ctx.workspace)
+    workspace = ctx.workspace
     # plan.md exists but is not a no-op.
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = _PLAN_DOC

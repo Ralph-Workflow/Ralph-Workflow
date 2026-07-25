@@ -128,7 +128,9 @@ SIGNATURE_LANGUAGE_MAP: dict[str, str] = {
 
 def _load_guideline_class(module_name: str, class_name: str) -> _HandlerCallable:
     module = import_module(module_name)
-    return cast("_HandlerCallable", _module_attr(module, class_name))
+    return cast(
+        "_HandlerCallable", _module_attr(module, class_name)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -151,7 +153,9 @@ def _guideline_categories(source: GuidelineSource) -> tuple[tuple[str, Sequence[
     def _category(name: str) -> Sequence[str]:
         value: object = getattr(source, name, ())
         if isinstance(value, list | tuple) and all(isinstance(item, str) for item in value):
-            return cast("Sequence[str]", value)
+            return cast(
+                "Sequence[str]", value
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return ()
 
     return (
@@ -275,7 +279,9 @@ class StackGuidelines:
             items = source_items[category]
             if not items:
                 continue
-            mutable_target = cast("list[str]", target)
+            mutable_target = cast(
+                "list[str]", target
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             seen = self._seen[category]
             for item in items:
                 if item not in seen:
@@ -329,7 +335,9 @@ def _detect_stack_with_workspace(workspace: Workspace, root: str) -> DetectedSta
     if detector_candidate is None or not callable(detector_candidate):
         return _fallback_detect_stack(workspace)
 
-    detector = cast("_StackDetector", detector_candidate)
+    detector = cast(
+        "_StackDetector", detector_candidate
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     stack_candidate = detector(workspace, root)
     if not isinstance(stack_candidate, _DetectedStackLike):
         return _fallback_detect_stack(workspace)

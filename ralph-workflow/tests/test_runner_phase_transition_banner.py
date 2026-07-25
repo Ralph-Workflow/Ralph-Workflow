@@ -5,7 +5,6 @@ from __future__ import annotations
 import tempfile
 import types
 from pathlib import Path
-from typing import cast
 from unittest.mock import patch
 
 from ralph.pipeline import runner as runner_module
@@ -51,7 +50,7 @@ def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
     )
 
     result = runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -76,7 +75,7 @@ def test_emit_phase_transition_populates_last_failure_category_from_state() -> N
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -98,7 +97,7 @@ def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> Non
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -120,7 +119,7 @@ def test_emit_phase_transition_populates_activity_counters_from_display() -> Non
     )
 
     result = runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -147,7 +146,7 @@ def test_emit_phase_transition_propagates_artifact_outcome_from_display() -> Non
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -170,7 +169,7 @@ def test_emit_phase_transition_uses_produced_exit_trigger_when_artifact_present(
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -194,7 +193,7 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -237,7 +236,7 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
             _fake_create_commit,
             _fake_stage_all,
             Path("/tmp"),
-            cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+            display,
             verbosity=runner_module.Verbosity.VERBOSE,
             phase_name="development_commit",
         )
@@ -316,7 +315,7 @@ def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
             _fake_create_commit,
             _fake_stage_all,
             Path("/tmp"),
-            cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+            display,
             verbosity=runner_module.Verbosity.VERBOSE,
             phase_name="development_commit",
             state=state,
@@ -345,7 +344,7 @@ def test_emit_phase_transition_shows_rich_transition_banner_for_major_routing() 
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -377,7 +376,7 @@ def test_emit_phase_transition_calls_canonical_rich_phase_change_surfaces() -> N
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -426,7 +425,7 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
     display._pending_routing_note = "Analysis cap reached, skipping"
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "development_commit",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -481,7 +480,7 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "review",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -519,7 +518,7 @@ def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback() -> N
     display._pending_routing_note = "final, skipping next"
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning_analysis",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -545,7 +544,7 @@ def test_emit_phase_transition_review_issues_found_none_for_non_review_phase() -
     )
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -579,7 +578,7 @@ def test_emit_phase_transition_shows_bypass_metadata_without_fake_decision() -> 
     display._pending_routing_note = "Planning Analysis cap reached, skipping"
 
     runner_module.emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module.ParallelDisplay", display),
+        display,
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,

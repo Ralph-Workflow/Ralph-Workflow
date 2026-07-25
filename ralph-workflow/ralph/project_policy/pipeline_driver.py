@@ -168,9 +168,7 @@ def run_policy_pipeline(
                 phase = PHASE_REMEDIATION
                 continue
 
-            decision = analysis.run_analysis_phase(
-                workspace, invoke_agent=invoke_agent, emit=emit
-            )
+            decision = analysis.run_analysis_phase(workspace, invoke_agent=invoke_agent, emit=emit)
             route = resolve_decision(decision.status)
             if route.reset_loop:
                 iteration = 0
@@ -255,8 +253,7 @@ def _finish(
     if remaining:
         return _not_ready(
             remaining,
-            "project-policy-readiness: analysis approved but the validator "
-            "still reports findings",
+            "project-policy-readiness: analysis approved but the validator still reports findings",
         )
 
     cache.write_cache(workspace, stack, ReadinessStatus.READY)

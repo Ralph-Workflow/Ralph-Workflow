@@ -94,9 +94,7 @@ def emit_integration_warn_line(display: object, message: str) -> None:
         if emit is not None:
             emit("run", _WARN_CHANNEL, message)
     except Exception as exc:
-        logger.debug(
-            "auto_integrate: operator warn line failed (non-fatal): {}", exc
-        )
+        logger.debug("auto_integrate: operator warn line failed (non-fatal): {}", exc)
 
 
 def build_agent_conflict_resolver(
@@ -145,8 +143,7 @@ def build_agent_conflict_resolver(
             )
             emit_integration_warn_line(
                 display,
-                f"conflict resolution unavailable: {missing} not threaded "
-                "to this seam",
+                f"conflict resolution unavailable: {missing} not threaded to this seam",
             )
             return False
         if not _any_chain_agent_installed(policy_bundle, registry):
@@ -156,8 +153,7 @@ def build_agent_conflict_resolver(
             )
             emit_integration_warn_line(
                 display,
-                "conflict resolution unavailable: no rebase-conflict-resolution "
-                "agent installed",
+                "conflict resolution unavailable: no rebase-conflict-resolution agent installed",
             )
             return False
         try:
@@ -175,9 +171,7 @@ def build_agent_conflict_resolver(
             # The pipeline contains its own failures; this is the outer
             # net that keeps the promise the integration step relies on:
             # a conflict resolver never raises into it, it only declines.
-            logger.warning(
-                "auto_integrate: conflict-resolution pipeline raised: {}", exc
-            )
+            logger.warning("auto_integrate: conflict-resolution pipeline raised: {}", exc)
             emit_integration_warn_line(
                 display, f"conflict resolution failed: resolution pipeline raised {exc}"
             )
@@ -238,8 +232,7 @@ def build_agent_rebase_stop_resolver(
             )
             emit_integration_warn_line(
                 display,
-                f"rebase conflict resolution unavailable: {missing} not threaded "
-                "to this seam",
+                f"rebase conflict resolution unavailable: {missing} not threaded to this seam",
             )
             return False
         if not _any_chain_agent_installed(policy_bundle, registry):
@@ -283,9 +276,7 @@ def build_agent_rebase_stop_resolver(
     return _resolver
 
 
-def _any_chain_agent_installed(
-    policy_bundle: PolicyBundle, registry: _SupportsAgentLookup
-) -> bool:
+def _any_chain_agent_installed(policy_bundle: PolicyBundle, registry: _SupportsAgentLookup) -> bool:
     """Whether at least one resolution-chain agent exists in the registry.
 
     Checked here rather than inside the pipeline so a workspace with no

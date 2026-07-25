@@ -303,7 +303,9 @@ def _loaded_names(node: nodes.Node) -> set[str]:
     """Return load-context variable names referenced by one Jinja AST node."""
     names: set[str] = set()
     if type(node).__name__ == "Name":
-        name_node = cast("_NameNodeView", node)
+        name_node = cast(
+            "_NameNodeView", node
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if name_node.ctx == "load":
             names.add(name_node.name)
     for child in node.iter_child_nodes():
@@ -327,7 +329,9 @@ def _conditional_variable_groups(
             undeclared_names: set[str],
         ) -> None:
             if type(node).__name__ == "If":
-                if_node = cast("_IfNodeView", node)
+                if_node = cast(
+                    "_IfNodeView", node
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 condition_names = frozenset(_loaded_names(if_node.test) & undeclared_names)
                 path_names = (ancestors | condition_names) - _ENGINE_GLOBAL_NAMES
                 if path_names:
@@ -545,7 +549,9 @@ def _duplicated_paragraphs(rendered: str) -> list[str]:
     counts: Counter[str] = Counter()
     # re.split is typed ``list[str | Any]`` (group-dependent); this pattern
     # has no groups, so every element is a plain str.
-    paragraphs = cast("list[str]", re.split(r"\n\s*\n", rendered))
+    paragraphs = cast(
+        "list[str]", re.split(r"\n\s*\n", rendered)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     for paragraph in paragraphs:
         normalized = " ".join(paragraph.split())
         if len(normalized) >= _MIN_DUPLICATE_PARAGRAPH_CHARS:

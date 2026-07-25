@@ -12,7 +12,7 @@ These tests verify:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -38,7 +38,7 @@ def _reduce(
     event: object,
     policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    return reducer_reduce(state, cast("Any", event), policy)
+    return reducer_reduce(state, event, policy)
 
 
 def _dev_analysis_policy() -> PipelinePolicy:

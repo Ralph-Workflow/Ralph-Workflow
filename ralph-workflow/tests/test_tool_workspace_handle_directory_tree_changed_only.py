@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
 from ralph.mcp.explore.store import ExploreStore
-from ralph.mcp.tools.coordination import CapabilityDeniedError, ToolContent
+from ralph.mcp.tools.coordination import CapabilityDeniedError
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
     handle_directory_tree,
+)
+from tests._support.typed_accessors import (
+    must_dict_list,
 )
 from tests.mock_session import MockSession
 
@@ -100,7 +103,7 @@ def test_changed_only_returns_only_dirty_subtree(tmp_path: Path) -> None:
         {"path": "", "changed_only": True},
     )
     assert result.is_error is False
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     paths = _flat_paths(payload["tree"])
 
     # The changed subtree is present (file + every ancestor kept).
@@ -130,7 +133,7 @@ def test_changed_only_empty_dirty_set_omits_all_subtrees(tmp_path: Path) -> None
         {"path": "", "changed_only": True},
     )
     assert result.is_error is False
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     paths = _flat_paths(payload["tree"])
     # Empty dirty set should drop every subtree.
     assert paths == []
@@ -144,7 +147,7 @@ def test_changed_only_use_index_always_without_handle_fails_closed() -> None:
         {"path": "", "changed_only": True, "use_index": "always"},
     )
     assert result.is_error is True
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     assert payload["reason"] == "no_explore_index_handle"
 
 
@@ -156,10 +159,10 @@ def test_changed_only_use_index_never_preserves_raw_tree(tmp_path: Path) -> None
         {"path": "", "changed_only": True, "use_index": "never"},
     )
     assert result.is_error is False
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     names = sorted(
         child.get("name")
-        for child in cast("list[dict[str, object]]", payload.get("children", []))
+        for child in must_dict_list(payload.get("children", []))
         if isinstance(child, dict)
     )
     # Raw tree unchanged - both a and b appear regardless of dirty state.
@@ -177,7 +180,7 @@ def test_changed_only_reports_is_stale_metadata(tmp_path: Path) -> None:
         {"path": "", "changed_only": True},
     )
     assert result.is_error is False
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    payload = json.loads(result.content[0].text)
     assert payload["changed_only"] is True
     assert payload["is_stale"] is True
 

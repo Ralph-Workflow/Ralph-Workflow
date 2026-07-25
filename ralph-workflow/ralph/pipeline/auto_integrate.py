@@ -290,9 +290,7 @@ def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
     return not is_ancestor(root, target_sha, get_head_sha(root))
 
 
-def _defer_dirty_boundary(
-    config: UnifiedConfig, root: Path, target: str
-) -> RebaseState | None:
+def _defer_dirty_boundary(config: UnifiedConfig, root: Path, target: str) -> RebaseState | None:
     """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
@@ -312,8 +310,7 @@ def _defer_dirty_boundary(
     if diverged:
         skip = _record_skip(
             reason=(
-                "worktree not clean; uncommitted tracked changes deferred "
-                "catch-up integration"
+                "worktree not clean; uncommitted tracked changes deferred catch-up integration"
             ),
             target=target,
         )
@@ -336,6 +333,7 @@ def _defer_dirty_boundary(
 #: "the target moved once" and "the target kept moving until I gave up"
 #: call for different operator responses.
 _MAX_INTEGRATION_ATTEMPTS = 3
+
 
 def _auto_integrate_after_commit_inner(
     config: UnifiedConfig,
@@ -403,9 +401,7 @@ def _auto_integrate_after_commit_inner(
                 effective_resolver,
                 prefer_merge=prefer_merge,
                 refresh=refresh,
-                rebase_stop_resolver=(
-                    rebase_stop_resolver if allowed else None
-                ),
+                rebase_stop_resolver=(rebase_stop_resolver if allowed else None),
                 display=display,
             )
             if not retry_ff:
@@ -489,9 +485,7 @@ def _record_attempt_budget_spent(record: RebaseState) -> RebaseState:
     base = record.last_reason or "fast-forward did not land"
     return record.model_copy(
         update={
-            "last_reason": (
-                f"{base}; exhausted {_MAX_INTEGRATION_ATTEMPTS} integration attempts"
-            )
+            "last_reason": (f"{base}; exhausted {_MAX_INTEGRATION_ATTEMPTS} integration attempts")
         }
     )
 
@@ -549,13 +543,9 @@ def _integrate_once(
         # Success path: the feature branch contains the target.
         feature_sha = _read_post_integration_head_sha(root, target)
         if feature_sha is None:
-            _verify_and_cleanup_backup(
-                root, backup_ref, pre_feature_sha, owns_resolution
-            )
+            _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
             return record_refresh(
-                _record_skip(
-                    reason="post-integration HEAD read failed", target=target
-                ),
+                _record_skip(reason="post-integration HEAD read failed", target=target),
                 refresh,
             ), False
 
@@ -634,9 +624,7 @@ def _integrate_once(
         # rebase/merge phase (including benign rebase NoOp reasons
         # like ``"Branch is already up-to-date with upstream"``)
         # is scrubbed here. A clean-success state carries no reason.
-        record = record.model_copy(
-            update={"fast_forwarded": True, "last_reason": None}
-        )
+        record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         # Opt-in multi-remote push. Runs ONLY after the local fast-forward
         # already landed -- a remote failure cannot undo a local ref
         # advance. The push is fail-open and best-effort by contract; the
@@ -701,13 +689,9 @@ def _check_early_skips(
         # not a silent no-op. The crash record is never written in
         # this branch -- a detached HEAD is not an in-progress
         # integration.
-        return record_refresh(
-            _record_skip(reason="detached HEAD", target=target), refresh
-        ), None
+        return record_refresh(_record_skip(reason="detached HEAD", target=target), refresh), None
     if target is None:  # AC-13: no target resolved -> recorded skip
-        return _record_skip(
-            reason="no integration target branch resolved", target=None
-        ), None
+        return _record_skip(reason="no integration target branch resolved", target=None), None
     skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
     if skip is not None:
         # Every skip in that table is decided FROM the target pointer
@@ -719,9 +703,7 @@ def _check_early_skips(
     return None, (root, current_branch, target)
 
 
-def _read_post_integration_head_sha(
-    root: Path, target: str
-) -> str | None:
+def _read_post_integration_head_sha(root: Path, target: str) -> str | None:
     """Read the feature branch's HEAD after a successful rebase/merge.
 
     Returns the SHA on success; clears the crash record and returns

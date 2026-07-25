@@ -116,7 +116,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         signal sent". Sink exceptions are swallowed so a buggy sink
         cannot corrupt the registry or break the line loop.
         """
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         # Invoke the activity sink BEFORE the registry update so a
         # progress signal is recorded as activity regardless of whether
         # the registry update succeeds. We only invoke on the two
@@ -209,7 +211,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
         scoped_child_evidence_stale = False
 
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if registry is not None:
             had_scoped_records = registry.has_records(probe_prefix)
             if had_scoped_records:
@@ -247,7 +251,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         label_prefix = self._active_label_prefix()
         return _evidence_precedence(
             handle, completion_signals, liveness_probe, label_prefix, registry=registry

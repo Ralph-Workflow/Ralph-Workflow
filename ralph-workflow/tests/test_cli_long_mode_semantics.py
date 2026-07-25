@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 from typer.testing import CliRunner as TyperCliRunner
 
@@ -11,6 +9,7 @@ from ralph.cli.main import (
     LONG_DEVELOPER_ITERS,
     app,
 )
+from tests._support.typed_accessors import must_mapping
 
 CliRunner = TyperCliRunner
 
@@ -32,8 +31,8 @@ def _stub_pipeline(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
 
 
 def _captured_developer_iters(captured: dict[str, object]) -> object:
-    cli_overrides = cast("dict[str, object]", captured["request"].cli_overrides)
-    general = cast("dict[str, object]", cli_overrides["general"])
+    cli_overrides = must_mapping(captured["request"].cli_overrides)
+    general = must_mapping(cli_overrides["general"])
     return general["developer_iters"]
 
 

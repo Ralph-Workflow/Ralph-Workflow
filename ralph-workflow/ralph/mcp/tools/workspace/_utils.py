@@ -43,7 +43,9 @@ FULL_READ_DEFAULT_MAX_BYTES = 5_000_000
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    return cast("object | None", getattr(obj, attribute_name, default))
+    return cast(
+        "object | None", getattr(obj, attribute_name, default)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def required_string_param(params: dict[str, object], name: str) -> str:

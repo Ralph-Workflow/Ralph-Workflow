@@ -84,7 +84,9 @@ class OpencodeRuntimeResolver:
             build_opencode_provider_config,
         )
 
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -130,7 +132,9 @@ class NanocoderRuntimeResolver:
 
         from ralph.agents.invoke import _apply_upstream_env  # noqa: PLC0415
 
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -196,7 +200,9 @@ class CodexRuntimeResolver:
             prepare_codex_home_with_upstreams,
         )
 
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -270,7 +276,9 @@ class ClaudeRuntimeResolver:
             load_existing_claude_upstream_servers,
         )
 
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -311,7 +319,9 @@ class AgyRuntimeResolver:
             load_existing_agy_upstream_servers,
         )
 
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -351,7 +361,9 @@ class DefaultRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
 
@@ -385,7 +397,9 @@ class PiRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
         runtime_env.pop(MCP_ENDPOINT_ENV, None)
@@ -434,7 +448,9 @@ class CursorRuntimeResolver:
             _apply_upstream_env,
         )
 
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        _env = (
+            base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)

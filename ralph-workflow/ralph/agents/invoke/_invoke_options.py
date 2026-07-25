@@ -31,9 +31,9 @@ class InvokeOptions:
     # enforced by ``tests/conftest.py``. The factory signature mirrors
     # :func:`ralph.agents.invoke._start_workspace_monitor` so callers
     # can pass a thin ``lambda *args, **kwargs: None`` shortcut.
-    workspace_monitor_factory: Callable[
-        [Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None
-    ] | None = None
+    workspace_monitor_factory: (
+        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
+    ) = None
 
     model_flag: str | None = None
     session_id: str | None = None

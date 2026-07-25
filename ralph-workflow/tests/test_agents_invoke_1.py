@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 
@@ -14,7 +14,6 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
     AgentExecutionState,
     ClaudeInteractiveExecutionStrategy,
-    OpenCodeExecutionStrategy,
     strategy_for_transport,
 )
 from ralph.agents.invoke import (
@@ -35,9 +34,14 @@ from ralph.mcp.tools.names import (
     claude_tool_name,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str,
+    must_str_dict,
+    must_str_list,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
 
 
@@ -50,21 +54,21 @@ def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _json_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(raw))
+    return must_mapping(json.loads(raw))
 
 
 def _toml_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", tomllib.loads(raw))
+    return must_mapping(tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(cast("Iterable[str]", args[0]))
+    return list(args[0])
 
 
 def test_invoke_agent_passes_idle_timeout_to_subprocess(
@@ -137,7 +141,7 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
         )
     )
 
-    strategy = cast("OpenCodeExecutionStrategy", captured["execution_strategy"])
+    strategy = captured["execution_strategy"]
     probe = captured["liveness_probe"]
     strategy_registry = getattr(strategy, "_registry", None)
     probe_registry = getattr(probe, "_registry", None)
@@ -192,7 +196,7 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
         def has_live_descendants(self) -> bool:
             return False
 
-    strategy = cast("OpenCodeExecutionStrategy", captured["execution_strategy"])
+    strategy = captured["execution_strategy"]
     state = strategy.classify_quiet(
         _NoDescendantsHandle(),
         FakeLivenessProbe(active_labels=frozenset({"agent:run-scope-123:worker1"})),
@@ -236,7 +240,7 @@ def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
         def has_live_descendants(self) -> bool:
             return False
 
-    strategy = cast("OpenCodeExecutionStrategy", captured["execution_strategy"])
+    strategy = captured["execution_strategy"]
     state = strategy.classify_quiet(
         _NoDescendantsHandle(),
         FakeLivenessProbe(active_labels=frozenset({"agent:other-session:worker1"})),
@@ -558,21 +562,21 @@ def test_invoke_agent_claude_interactive_default_settings_include_permission_req
         )
     )
 
-    cmd = cast("list[str]", captured["cmd"])
+    cmd = must_str_list(captured["cmd"])
     settings_index = cmd.index("--settings")
     settings = _json_object(cmd[settings_index + 1])
-    hooks = cast("dict[str, object]", settings["hooks"])
+    hooks = must_mapping(settings["hooks"])
 
     assert settings["skipDangerousModePermissionPrompt"] is True
     assert "Stop" in hooks
     assert "PermissionRequest" in hooks
-    permission_entries = cast("list[object]", hooks["PermissionRequest"])
-    permission_entry = cast("dict[str, object]", permission_entries[0])
-    permission_hooks = cast("list[object]", permission_entry["hooks"])
-    permission_hook = cast("dict[str, object]", permission_hooks[0])
+    permission_entries = hooks["PermissionRequest"]
+    permission_entry = must_mapping(permission_entries[0])
+    permission_hooks = permission_entry["hooks"]
+    permission_hook = must_mapping(permission_hooks[0])
     assert permission_hook["type"] == "command"
-    assert "PermissionRequest" in cast("str", permission_hook["command"])
-    assert "allow" in cast("str", permission_hook["command"])
+    assert "PermissionRequest" in must_str(permission_hook["command"])
+    assert "allow" in must_str(permission_hook["command"])
 
 
 @pytest.mark.timeout_seconds(3)
@@ -673,10 +677,10 @@ def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_ho
         )
     )
 
-    cmd = cast("list[str]", captured["cmd"])
+    cmd = must_str_list(captured["cmd"])
     settings_index = cmd.index("--settings")
     settings = _json_object(cmd[settings_index + 1])
-    hooks = cast("dict[str, object]", settings["hooks"])
+    hooks = must_mapping(settings["hooks"])
 
     assert settings["tui"] == "fullscreen"
     assert settings["skipDangerousModePermissionPrompt"] is True
@@ -766,8 +770,8 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
     assert "--mcp-config" in cmd
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
-    assert cast("dict[str, object]", servers["ralph"]) == {
+    servers = must_mapping(config_payload["mcpServers"])
+    assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
     }

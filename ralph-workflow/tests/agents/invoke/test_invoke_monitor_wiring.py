@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -72,7 +72,7 @@ def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
         return FakePopen(
             1,
             state=ProcessState(returncode=0),
-            streams=ProcessStreams(stdout=cast("object", io.StringIO(""))),
+            streams=ProcessStreams(stdout=io.StringIO("")),
         )
 
     manager = ProcessManager(

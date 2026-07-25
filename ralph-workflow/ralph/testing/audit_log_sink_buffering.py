@@ -207,9 +207,7 @@ def _is_filesystem_path_expression(node: ast.AST) -> bool:
     is_string_literal: bool = isinstance(node, ast.Constant) and isinstance(node.value, str)
     is_fstring: bool = isinstance(node, ast.JoinedStr)
     is_named_path: bool = isinstance(node, ast.Name) and node.id in _FILE_SINK_PATH_NAMES
-    is_attribute_path: bool = (
-        isinstance(node, ast.Attribute) and node.attr in _FILE_SINK_PATH_NAMES
-    )
+    is_attribute_path: bool = isinstance(node, ast.Attribute) and node.attr in _FILE_SINK_PATH_NAMES
     return bool(
         is_div_join
         or is_path_constructor
@@ -273,11 +271,7 @@ def _positive_int_constant(
 ) -> bool:
     """Return True iff ``node`` is a literal or the pinned buffer constant."""
     value: object
-    if (
-        isinstance(node, ast.Name)
-        and bindings is not None
-        and node.id == "_FILE_SINK_BUFFER_BYTES"
-    ):
+    if isinstance(node, ast.Name) and bindings is not None and node.id == "_FILE_SINK_BUFFER_BYTES":
         value = bindings.get(node.id)
     elif isinstance(node, ast.Constant):
         value = node.value
@@ -420,10 +414,7 @@ def audit_log_sink_buffering(
     except (OSError, UnicodeDecodeError):
         return []
 
-    if (
-        _LOGGER_ADD_MARKER not in source
-        and _BUFFERED_FILE_SINK_HELPER_MARKER not in source
-    ):
+    if _LOGGER_ADD_MARKER not in source and _BUFFERED_FILE_SINK_HELPER_MARKER not in source:
         return []
 
     return _check_logging_module(module_path, rel_path, source)

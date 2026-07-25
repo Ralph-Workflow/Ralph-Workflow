@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -117,6 +116,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     from ralph.mcp.explore.pipeline import EXTRACTOR_VERSION
     from ralph.mcp.explore.store import SCHEMA_VERSION
     from ralph.mcp.explore.structure import EXTRACTOR_VERSION as STRUCTURE_EXTRACTOR_VERSION
+
     raw = store.get_setting("current_generation") or "0"
     try:
         generation = int(raw)
@@ -138,10 +138,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             pass
         store = ExploreStore(index_root)
         generation = 0
-    elif (
-        persisted_schema is not None
-        and persisted_schema != SCHEMA_VERSION
-    ):
+    elif persisted_schema is not None and persisted_schema != SCHEMA_VERSION:
         # Incompatible persisted index: safe cold rebuild.
         try:
             index_db = index_root / DEFAULT_INDEX_DB
@@ -153,10 +150,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             pass
         store = ExploreStore(index_root)
         generation = 0
-    elif (
-        persisted_extractor is not None
-        and persisted_extractor != EXTRACTOR_VERSION
-    ):
+    elif persisted_extractor is not None and persisted_extractor != EXTRACTOR_VERSION:
         try:
             index_db = index_root / DEFAULT_INDEX_DB
             for suffix in ("", "-wal", "-shm"):
@@ -167,10 +161,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             pass
         store = ExploreStore(index_root)
         generation = 0
-    elif (
-        persisted_structure is not None
-        and persisted_structure != STRUCTURE_EXTRACTOR_VERSION
-    ):
+    elif persisted_structure is not None and persisted_structure != STRUCTURE_EXTRACTOR_VERSION:
         # Structure rows are out of date but the lexical rows are
         # still safe: drop structure rows and the structure-extractor
         # key. The next reindex rebuilds the structure rows.
@@ -182,9 +173,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
         except Exception:
             pass
     latest_row: sqlite3.Row | None = store.latest_job()
-    raw_status: object = (
-        row_str(latest_row, "status") if latest_row is not None else ""
-    )
+    raw_status: object = row_str(latest_row, "status") if latest_row is not None else ""
     last_status: str | None
     if raw_status == "":
         last_status = None
@@ -284,6 +273,8 @@ def _disarm_cancel_flag(
     """
     with lock:
         registry.pop(token, None)
+
+
 def _int_param(params: dict[str, object], key: str, default: int) -> int:
     """Coerce an integer parameter, falling back to ``default`` on error."""
     raw: object = params.get(key, default)
@@ -321,9 +312,7 @@ def _strict_int_param(
     else:
         raw: object = params[key]
         if isinstance(raw, bool):
-            raise InvalidParamsError(
-                f"{key} must be an integer in [{min_value}, {max_value}]"
-            )
+            raise InvalidParamsError(f"{key} must be an integer in [{min_value}, {max_value}]")
         if isinstance(raw, int):
             value = raw
         elif isinstance(raw, str):
@@ -331,19 +320,14 @@ def _strict_int_param(
                 value = int(raw)
             except ValueError as exc:
                 raise InvalidParamsError(
-                    f"{key} must be an integer in [{min_value}, {max_value}]; "
-                    f"got {raw!r}"
+                    f"{key} must be an integer in [{min_value}, {max_value}]; got {raw!r}"
                 ) from exc
         elif isinstance(raw, float):
             if not raw.is_integer():
-                raise InvalidParamsError(
-                    f"{key} must be an integer in [{min_value}, {max_value}]"
-                )
+                raise InvalidParamsError(f"{key} must be an integer in [{min_value}, {max_value}]")
             value = int(raw)
         else:
-            raise InvalidParamsError(
-                f"{key} must be an integer in [{min_value}, {max_value}]"
-            )
+            raise InvalidParamsError(f"{key} must be an integer in [{min_value}, {max_value}]")
     if value < min_value or value > max_value:
         raise InvalidParamsError(
             f"{key} must be an integer in [{min_value}, {max_value}]; got {value}"
@@ -352,17 +336,17 @@ def _strict_int_param(
 
 
 __all__ = [
-    'DEFAULT_INDEX_ROOT',
-    'ExploreIndex',
-    '_arm_cancel_flag',
-    '_disarm_cancel_flag',
-    '_gitignore_coverage',
-    '_int_param',
-    '_new_cancel_token',
-    '_resolve_explore_index',
-    '_resolve_index_dir',
-    '_strict_int_param',
-    'build_explore_index',
+    "DEFAULT_INDEX_ROOT",
+    "ExploreIndex",
+    "_arm_cancel_flag",
+    "_disarm_cancel_flag",
+    "_gitignore_coverage",
+    "_int_param",
+    "_new_cancel_token",
+    "_resolve_explore_index",
+    "_resolve_index_dir",
+    "_strict_int_param",
+    "build_explore_index",
 ]
 
 
@@ -378,7 +362,9 @@ __all__ = [
 # ``__getattr__`` keeps the public API surface (``from ralph.mcp.explore.handlers
 # import handle_ralph_graph``) source-compatible without creating
 # the cycle.
-_LAZY_REEXPORTS: dict[str, str] = {  # bounded-accumulator-ok: PEP 562 dispatch table; fixed size, populated once at module load
+_LAZY_REEXPORTS: dict[
+    str, str
+] = {  # bounded-accumulator-ok: PEP 562 dispatch table; fixed size, populated once at module load
     "graph_module": "ralph.mcp.explore.graph",
     "_GRAPH_CANCEL_FLAGS": "ralph.mcp.explore._handlers_graph",
     "_GRAPH_CANCEL_LOCK": "ralph.mcp.explore._handlers_graph",
@@ -424,9 +410,7 @@ def __getattr__(name: str) -> object:
             value = getattr(sub_module, name)
         setattr(sys.modules[__name__], name, value)
         return value
-    raise AttributeError(
-        f"module 'ralph.mcp.explore.handlers' has no attribute {name!r}"
-    )
+    raise AttributeError(f"module 'ralph.mcp.explore.handlers' has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:

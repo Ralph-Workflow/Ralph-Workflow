@@ -7,7 +7,7 @@ no real psutil.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -53,7 +53,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.process.child_liveness import ChildLivenessRegistry
 
 
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
@@ -73,7 +72,7 @@ def _reset_catalog() -> object:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
     yield
     cat._entries.clear()
     cat._entries.update(_GOLDEN_ENTRIES)
@@ -84,7 +83,7 @@ def _reset_catalog() -> object:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
 
 
 class FakeAgentParser:
@@ -286,7 +285,7 @@ class TestRegisterAgentSupport:
 
     def test_strategy_factory_kwargs_are_preserved_when_accepted(self) -> None:
         registry = AgentRegistry()
-        fake_registry = cast("ChildLivenessRegistry", object())
+        fake_registry = object()
 
         register_agent_support(
             "fake-kwargs",
@@ -328,7 +327,7 @@ class TestRegisterAgentSupport:
             "fake-no-kwargs",
             AgentTransport.GENERIC,
             label_scope="scope-x",
-            registry=cast("ChildLivenessRegistry", object()),
+            registry=object(),
         )
         assert isinstance(strategy, FakeAgentStrategy)
 
@@ -559,7 +558,7 @@ class TestRegistrationRegressionCases:
 
     def test_kwargs_forwarded_through_var_keyword_factory(self) -> None:
         registry = AgentRegistry()
-        fake_registry = cast("ChildLivenessRegistry", object())
+        fake_registry = object()
 
         register_agent_support(
             "kwargs-agent",

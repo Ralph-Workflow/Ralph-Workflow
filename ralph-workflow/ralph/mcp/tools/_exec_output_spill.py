@@ -145,9 +145,7 @@ def format_or_spill(
         spill_path = spill_output(text, spill_dir)
         preview = build_spill_preview(text, spill_path, encoded_len, truncated=truncated)
         if not summary:
-            return ToolResult(
-                content=[ToolContent.text_content(preview)], is_error=is_error
-            )
+            return ToolResult(content=[ToolContent.text_content(preview)], is_error=is_error)
         # AC-11: when the caller provided split streams, each stream
         # gets its own resource id and spill path so the agent can
         # re-read stdout and stderr independently. Both streams are

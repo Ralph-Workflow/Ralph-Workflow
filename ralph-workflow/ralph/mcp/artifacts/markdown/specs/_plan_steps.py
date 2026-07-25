@@ -30,9 +30,7 @@ def _consumer_rule_message(what: str, fix: str, consumer: str) -> str:
     return f"{what}; {consumer}; resolve by {fix}"
 
 
-def step_number_map(
-    document: ParsedDocument, diagnostics: list[Diagnostic]
-) -> dict[str, int]:
+def step_number_map(document: ParsedDocument, diagnostics: list[Diagnostic]) -> dict[str, int]:
     """Collect globally unique steps and diagnose step-ID near misses."""
     numbers: dict[str, int] = {}
     for section in document.sections:

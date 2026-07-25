@@ -14,8 +14,6 @@ test budget stays well within budget.
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
@@ -28,6 +26,10 @@ from ralph.mcp.artifacts.plan import (
     VerificationStep,
     normalize_plan_artifact_content,
     validate_plan_section,
+)
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
 )
 
 
@@ -139,14 +141,14 @@ def test_plan_step_preserves_project_specific_step_types(alias: str) -> None:
 
     normalized = normalize_plan_artifact_content(plan)
 
-    normalized_steps = cast("list[dict[str, object]]", normalized["steps"])
+    normalized_steps = must_dict_list(normalized["steps"])
     assert normalized_steps[0]["step_type"] == alias
 
 
 def test_canonical_plan_rejects_duplicate_consumed_step_numbers() -> None:
     """Direct canonical payloads share Markdown's document-wide step namespace."""
     plan = _base_plan_dict()
-    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps = must_dict_list(plan["steps"])
     steps.append(
         {
             "number": 1,
@@ -165,7 +167,7 @@ def test_canonical_plan_rejects_duplicate_consumed_step_numbers() -> None:
 def test_canonical_plan_rejects_dangling_step_dependencies() -> None:
     """A canonical dependency must resolve just like a Markdown ``S-n`` edge."""
     plan = _base_plan_dict()
-    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps = must_dict_list(plan["steps"])
     steps[0]["depends_on"] = [99]
 
     with pytest.raises(
@@ -178,7 +180,7 @@ def test_canonical_plan_rejects_dangling_step_dependencies() -> None:
 def test_canonical_step_command_requires_an_expected_outcome() -> None:
     """The runtime model cannot bypass Markdown's command-plus-outcome pair."""
     plan = _base_plan_dict()
-    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps = must_dict_list(plan["steps"])
     steps[0]["verify_command"] = "pytest tests/test_x.py -q"
 
     with pytest.raises(
@@ -274,7 +276,7 @@ def test_intent_verb_scope_categories_are_descriptive() -> None:
     )
     plan["summary"] = summary
     normalized = normalize_plan_artifact_content(plan)
-    normalized_summary = cast("dict[str, object]", normalized["summary"])
+    normalized_summary = must_mapping(normalized["summary"])
     assert normalized_summary["intent_verb"] == "fix"
     assert normalized_summary["scope_items"] == summary["scope_items"]
 
@@ -283,7 +285,7 @@ def test_intent_verb_scope_categories_are_descriptive() -> None:
     )
     plan["summary"] = summary
     normalized = normalize_plan_artifact_content(plan)
-    normalized_summary = cast("dict[str, object]", normalized["summary"])
+    normalized_summary = must_mapping(normalized["summary"])
     assert normalized_summary["intent_verb"] == "add"
     assert normalized_summary["scope_items"] == summary["scope_items"]
 
@@ -298,23 +300,23 @@ def test_all_unconsumed_plan_vocabularies_accept_project_specific_values() -> No
             {"text": "Refresh the operator flow", "category": "product-polish"}
         ],
     }
-    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps = must_dict_list(plan["steps"])
     steps[0]["priority"] = "release-blocker"
-    risks = cast("list[dict[str, object]]", plan["risks_mitigations"])
+    risks = must_dict_list(plan["risks_mitigations"])
     risks[0]["severity"] = "watch-carefully"
 
     normalized = normalize_plan_artifact_content(plan)
 
-    summary = cast("dict[str, object]", normalized["summary"])
+    summary = must_mapping(normalized["summary"])
     assert summary["intent_verb"] == "ship_it"
     assert summary["coverage_areas"] == ["operator-experience"]
-    assert cast("list[dict[str, object]]", summary["scope_items"])[0][
+    assert must_dict_list(summary["scope_items"])[0][
         "category"
     ] == "product-polish"
-    assert cast("list[dict[str, object]]", normalized["steps"])[0][
+    assert must_dict_list(normalized["steps"])[0][
         "priority"
     ] == "release-blocker"
-    assert cast("list[dict[str, object]]", normalized["risks_mitigations"])[0][
+    assert must_dict_list(normalized["risks_mitigations"])[0][
         "severity"
     ] == "watch-carefully"
 
@@ -517,9 +519,9 @@ def test_research_step_can_be_referenced_by_ac() -> None:
         }
     }
     normalized = normalize_plan_artifact_content(plan)
-    design = cast("dict[str, object]", normalized["design"])
-    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    design = must_mapping(normalized["design"])
+    acceptance = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(acceptance["criteria"])
     assert criteria[0]["satisfied_by_steps"] == [2]
 
 

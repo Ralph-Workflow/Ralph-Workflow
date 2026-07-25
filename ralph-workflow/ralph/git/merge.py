@@ -373,9 +373,7 @@ def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
     return result.returncode == 0
 
 
-def paths_with_conflict_markers(
-    repo_root: Path | str, paths: Sequence[str]
-) -> list[str]:
+def paths_with_conflict_markers(repo_root: Path | str, paths: Sequence[str]) -> list[str]:
     """Return the subset of ``paths`` whose content still holds markers.
 
     ``git add`` on a file that still contains ``<<<<<<<`` markers
@@ -396,9 +394,7 @@ def paths_with_conflict_markers(
     reported: list[str] = []
     for path in paths:
         try:
-            content = (repo_root_path / path).read_text(
-                encoding="utf-8", errors="replace"
-            )
+            content = (repo_root_path / path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         seen = {
@@ -435,10 +431,7 @@ def commit_merge_in_progress(repo_root: Path | str) -> bool:
         cwd=repo_root_path,
         label="git-merge-commit",
     )
-    return (
-        result.returncode == 0
-        and merge_state(repo_root_path) == MERGE_STATE_NONE
-    )
+    return result.returncode == 0 and merge_state(repo_root_path) == MERGE_STATE_NONE
 
 
 def abort_merge(repo_root: Path | str) -> bool:
@@ -582,7 +575,11 @@ def worktree_lookup(repo_root: Path | str, branch: str) -> tuple[str, Path | Non
             continue
         if line.startswith("worktree "):
             current_path = Path(line.split(" ", 1)[1])
-        elif line.startswith("branch ") and line == f"branch {target_ref}" and current_path is not None:
+        elif (
+            line.startswith("branch ")
+            and line == f"branch {target_ref}"
+            and current_path is not None
+        ):
             return WORKTREE_FOUND, current_path
     return WORKTREE_NOT_CHECKED_OUT, None
 

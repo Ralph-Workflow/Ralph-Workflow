@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
@@ -34,7 +34,7 @@ def _load_run_fan_out() -> RunFanOut:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = getattr(module, "run_fan_out", None)
     assert callable(run_fan_out), "run_fan_out must be defined"
-    return cast("RunFanOut", run_fan_out)
+    return run_fan_out
 
 
 def make_unit(unit_id: str, deps: list[str] | None = None) -> WorkUnit:

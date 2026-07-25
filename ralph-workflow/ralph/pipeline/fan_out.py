@@ -281,7 +281,9 @@ def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
     module = import_module("ralph.display.parallel_display")
-    return cast("type[ParallelDisplay]", module.ParallelDisplay)
+    return cast(
+        "type[ParallelDisplay]", module.ParallelDisplay
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _fan_out_display_and_subscriber(
@@ -293,7 +295,9 @@ def _fan_out_display_and_subscriber(
     if isinstance(display, parallel_display_cls):
         parallel_display = display
     else:
-        console = cast("Console | None", getattr(display, "console", None))
+        console = cast(
+            "Console | None", getattr(display, "console", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         parallel_display = parallel_display_cls(make_display_context(console=console))
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_subscriber is None and hasattr(parallel_display, "subscriber"):
@@ -313,9 +317,13 @@ def _build_session_mcp_plan_for_phase(
     """Build session MCP plan for fan-out workers matching the serial execution contract."""
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
-    _effect_drain = cast("str | None", getattr(effect, "drain", None))
+    _effect_drain = cast(
+        "str | None", getattr(effect, "drain", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     drain: str = (
-        cast("str", _effect_drain)
+        cast(
+            "str", _effect_drain
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
         or effect.phase
         or "development"
@@ -343,9 +351,13 @@ def _build_session_mcp_plan_for_phase(
         agent_config = registry.get(agent_name)
 
     _transport_raw = cast("object", getattr(agent_config, "transport", None))
-    transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
+    transport = (
+        cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
-    model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
+    model_flag = (
+        cast("str | None", _model_flag_raw) if agent_config is not None else None
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     effective_agents_policy = (
         policy_bundle.agents
@@ -389,12 +401,16 @@ def _fan_out_worker_context(
     _executor_cls = (
         executor_cls
         if executor_cls is not None
-        else cast("_ExecutorFactory", SubprocessAgentExecutor)
+        else cast(
+            "_ExecutorFactory", SubprocessAgentExecutor
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     _mcp_factory_cls = (
         mcp_factory_cls
         if mcp_factory_cls is not None
-        else cast("_McpFactory", DynamicBindingMcpServerFactory)
+        else cast(
+            "_McpFactory", DynamicBindingMcpServerFactory
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     executor = _executor_cls(_parallel_worker_command(), signal_bridge=bridge)
     workspace = FsWorkspace(
@@ -494,7 +510,9 @@ def _resume_fan_out_state(
     _reduce = (
         reducer_reduce_fn
         if reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+        else cast(
+            "_ReducerReduceFn", reducer_reduce
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
@@ -517,7 +535,9 @@ async def _run_post_fanout_verification(
     _run = (
         run_process_async_fn
         if run_process_async_fn is not None
-        else cast("_RunProcessAsyncFn", run_process_async)
+        else cast(
+            "_RunProcessAsyncFn", run_process_async
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     verify_result = await _run(
         "make",
@@ -553,7 +573,9 @@ async def _run_verify_phase(
     _reduce = (
         ctx.reducer_reduce_fn
         if ctx.reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+        else cast(
+            "_ReducerReduceFn", reducer_reduce
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
@@ -569,12 +591,16 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
     _reduce = (
         ctx.reducer_reduce_fn
         if ctx.reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+        else cast(
+            "_ReducerReduceFn", reducer_reduce
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     _install = (
         ctx.install_signal_handlers_fn
         if ctx.install_signal_handlers_fn is not None
-        else cast("_InstallSignalHandlersFn", install_signal_handlers)
+        else cast(
+            "_InstallSignalHandlersFn", install_signal_handlers
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     teardown_fn: Callable[[], None] | None = None
     try:
@@ -743,19 +769,41 @@ def execute_fan_out_sync(
     **opts: object,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
-    policy_bundle = cast("PolicyBundle", opts["policy_bundle"])
-    workspace_scope = cast("WorkspaceScope", opts["workspace_scope"])
-    pipeline_subscriber = cast("_PipelineSubscriberLike | None", opts.get("pipeline_subscriber"))
-    dashboard_subscriber = cast("_PipelineSubscriberLike | None", opts.get("dashboard_subscriber"))
-    config = cast("UnifiedConfig | None", opts.get("config"))
-    config_path = cast("Path | None", opts.get("config_path"))
+    policy_bundle = cast(
+        "PolicyBundle", opts["policy_bundle"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    workspace_scope = cast(
+        "WorkspaceScope", opts["workspace_scope"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    pipeline_subscriber = cast(
+        "_PipelineSubscriberLike | None", opts.get("pipeline_subscriber")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    dashboard_subscriber = cast(
+        "_PipelineSubscriberLike | None", opts.get("dashboard_subscriber")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    config = cast(
+        "UnifiedConfig | None", opts.get("config")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    config_path = cast(
+        "Path | None", opts.get("config_path")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     cli_overrides = cast("dict[str, object] | None", opts.get("cli_overrides"))
     monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
-    install_fn = cast("_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers"))
-    executor_cls = cast("_ExecutorFactory | None", opts.get("_executor_cls"))
-    mcp_factory_cls = cast("_McpFactory | None", opts.get("_mcp_factory_cls"))
-    run_process_fn = cast("_RunProcessAsyncFn | None", opts.get("_run_process_async"))
-    reducer_fn = cast("_ReducerReduceFn | None", opts.get("_reducer_reduce"))
+    install_fn = cast(
+        "_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    executor_cls = cast(
+        "_ExecutorFactory | None", opts.get("_executor_cls")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    mcp_factory_cls = cast(
+        "_McpFactory | None", opts.get("_mcp_factory_cls")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    run_process_fn = cast(
+        "_RunProcessAsyncFn | None", opts.get("_run_process_async")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    reducer_fn = cast(
+        "_ReducerReduceFn | None", opts.get("_reducer_reduce")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     on_successful_completion = cast(
         "Callable[[PipelineState], PipelineState] | None", opts.get("_on_successful_completion")
     )

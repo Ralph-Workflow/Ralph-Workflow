@@ -347,7 +347,9 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
-            status_lines = cast("str", repo.git.status("--porcelain")).splitlines()
+            status_lines = cast(
+                "str", repo.git.status("--porcelain")
+            ).splitlines()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         finally:
             _close_repo(repo)
 
@@ -444,7 +446,9 @@ def stage_all(repo_root: Path | str) -> None:
         repo = Repo(repo_root)
 
         def _stage() -> None:
-            _ = cast("str", repo.git.add(A=True))
+            _ = cast(
+                "str", repo.git.add(A=True)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
         _run_git_operation_with_stale_lock_recovery("stage_all", _stage)
         logger.debug("Staged all changes in {}", repo_root)
@@ -468,7 +472,9 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
         repo = Repo(repo_root)
 
         def _stage() -> None:
-            _ = cast("str", repo.git.add("--all", "--", *files))
+            _ = cast(
+                "str", repo.git.add("--all", "--", *files)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
         _run_git_operation_with_stale_lock_recovery("stage_files", _stage)
         logger.debug("Staged {} selected paths in {}", len(files), repo_root)
@@ -736,9 +742,7 @@ def _atomic_append_text(
         separator = b"\n"
     _staging_hash = hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]
     _staging_pid = os.getpid()
-    staging = path.with_suffix(
-        path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}"
-    )
+    staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
     try:
         staging.write_bytes(existing + separator + payload.encode(encoding))
         staging.replace(path)

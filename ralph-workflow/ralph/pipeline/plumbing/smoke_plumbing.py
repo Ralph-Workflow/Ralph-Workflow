@@ -427,7 +427,9 @@ def _parser_key_for_config(config: AgentConfig) -> str:
     return resolve_parser_key(
         config.cmd,
         config.json_parser,
-        cast("AgentTransport", config.transport),
+        cast(
+            "AgentTransport", config.transport
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 
@@ -548,7 +550,9 @@ def _execute_smoke_turns(
                 params.unified_config,
                 pipeline_deps,
                 workspace_scope,
-                bridge=cast("RestartAwareMcpBridge", params.bridge),
+                bridge=cast(
+                    "RestartAwareMcpBridge", params.bridge
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 display_context=params.display_context,
                 run_id=run_id,
                 raw_output_sink=raw_lines,

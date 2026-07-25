@@ -10,7 +10,7 @@ import importlib
 import time
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -38,7 +38,6 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from types import ModuleType
 
     from ralph.config.models import UnifiedConfig
@@ -62,7 +61,7 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _display_context() -> DisplayContext:
@@ -178,7 +177,7 @@ class TestRunLoopPipelineDeps:
         from_config_spy = runner_module.AgentRegistry.from_config
         from_config_spy.reset_mock()
 
-        exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        exit_code = run_loop_module.run(
             config,
             initial_state=state,
             pipeline_deps=None,
@@ -231,7 +230,7 @@ class TestRunLoopPipelineDeps:
         from_config_spy = runner_module.AgentRegistry.from_config
         from_config_spy.reset_mock()
 
-        exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        exit_code = run_loop_module.run(
             config,
             initial_state=state,
             pipeline_deps=deps,
@@ -302,7 +301,7 @@ class TestRunLoopPipelineDeps:
         from_config_spy = runner_module.AgentRegistry.from_config
         from_config_spy.reset_mock()
 
-        exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        exit_code = run_loop_module.run(
             config,
             initial_state=state,
             pro_hooks=pro_hooks,
@@ -384,7 +383,7 @@ def _capture_run_ctx(
     run_args: dict[str, object] = {}
     if provide_initial_state:
         run_args["initial_state"] = state
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config,
         **run_args,
         **run_kwargs,

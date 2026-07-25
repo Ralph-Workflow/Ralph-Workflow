@@ -50,7 +50,7 @@ AC-04 contract: defensive. A raising display fake does not break the
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.agents.timeout_clock import FakeClock
@@ -79,7 +79,7 @@ def _build_controller_with_bus() -> tuple[RecoveryController, FakeClock]:
     """
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=cast("Any", clock)),
+        options=RecoveryControllerOptions(clock=clock),
     )
     return controller, clock
 

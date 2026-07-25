@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import cast
 
 from ralph.mcp.tools import artifact as artifact_tools
 from ralph.mcp.tools.artifact import KNOWN_ARTIFACT_TYPES
+from tests._support.typed_accessors import must_str_list
 
 TEMPLATES_DIR = Path("ralph/prompts/templates")
 
@@ -51,7 +51,7 @@ _CALL_RE = re.compile(
 def test_every_call_site_uses_canonical_artifact_type() -> None:
     for template_name in SINGLE_SHOT_TEMPLATES:
         content = (TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
-        calls = cast("list[str]", _CALL_RE.findall(content))
+        calls = must_str_list(_CALL_RE.findall(content))
         assert calls, (
             f"{template_name} must call render_artifact_submission with an "
             f"artifact_type so the macro can render the right path / "

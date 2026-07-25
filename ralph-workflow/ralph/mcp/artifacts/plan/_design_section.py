@@ -31,9 +31,7 @@ class DesignSection(RalphBaseModel):
         default=None,
         min_length=1,
         max_length=200,
-        description=(
-            "Free-form descriptive profile hint with no implicit defaults."
-        ),
+        description=("Free-form descriptive profile hint with no implicit defaults."),
     )
     constraints: DesignConstraints | None = None
     non_goals: NonGoals | None = None
@@ -52,5 +50,6 @@ class DesignSection(RalphBaseModel):
             return None
         stripped = value.strip()
         return stripped or None
+
 
 __all__ = ["DesignSection"]

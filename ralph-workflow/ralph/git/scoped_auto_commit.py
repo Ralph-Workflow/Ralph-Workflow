@@ -48,10 +48,7 @@ _GIT_INDEX_STAGE_MERGED: str = "0"
 
 def path_in_scope(path: str, scopes: tuple[str, ...]) -> bool:
     """True when ``path`` falls under any scope (dir prefix or exact file)."""
-    return any(
-        path.startswith(scope) if scope.endswith("/") else path == scope
-        for scope in scopes
-    )
+    return any(path.startswith(scope) if scope.endswith("/") else path == scope for scope in scopes)
 
 
 def _list_dirty_paths(repo: Repo, scope: str) -> list[str]:
@@ -60,7 +57,9 @@ def _list_dirty_paths(repo: Repo, scope: str) -> list[str]:
     ``--untracked-files=all`` is required so nested untracked files are
     reported individually rather than collapsed to the parent directory.
     """
-    raw = cast("str", repo.git.status("--porcelain", "--untracked-files=all", "--", scope))
+    raw = cast(
+        "str", repo.git.status("--porcelain", "--untracked-files=all", "--", scope)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     dirty: list[str] = []
     for line in raw.splitlines():
         if len(line) < _GIT_PORCELAIN_PREFIX_LEN:
@@ -84,9 +83,7 @@ def list_dirty_paths(repo_root: Path | str) -> frozenset[str]:
     """
     try:
         repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw = cast(
-            "str", repo.git.status("--porcelain", "--untracked-files=all")
-        )
+        raw = cast("str", repo.git.status("--porcelain", "--untracked-files=all"))
     except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
         logger.debug("could not snapshot the working tree ({}); assuming clean", exc)
         return frozenset()
@@ -97,9 +94,7 @@ def list_dirty_paths(repo_root: Path | str) -> frozenset[str]:
     )
 
 
-def _snapshot_pre_staged_index_entries(
-    repo: Repo, paths: list[str]
-) -> dict[str, tuple[str, str]]:
+def _snapshot_pre_staged_index_entries(repo: Repo, paths: list[str]) -> dict[str, tuple[str, str]]:
     """Capture each path's index entry (mode + blob SHA) via ``git ls-files --stage``.
 
     Restoring by pathname would replace partially staged hunks with the
@@ -110,7 +105,9 @@ def _snapshot_pre_staged_index_entries(
     snapshots: dict[str, tuple[str, str]] = {}
     if not paths:
         return snapshots
-    ls_files_raw = cast("str", repo.git.ls_files("--stage", "--", *paths))
+    ls_files_raw = cast(
+        "str", repo.git.ls_files("--stage", "--", *paths)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     for ls_line in ls_files_raw.splitlines():
         parts = ls_line.split("\t", 1)
         if len(parts) != _GIT_LS_FILES_PATH_PARTS:
@@ -125,9 +122,7 @@ def _snapshot_pre_staged_index_entries(
     return snapshots
 
 
-def _restore_pre_staged_index_entries(
-    repo: Repo, snapshots: dict[str, tuple[str, str]]
-) -> None:
+def _restore_pre_staged_index_entries(repo: Repo, snapshots: dict[str, tuple[str, str]]) -> None:
     """Restore each path's exact index entry via ``git update-index --cacheinfo``."""
     for path, (mode, blob_sha) in snapshots.items():
         _ = cast(
@@ -187,11 +182,7 @@ def commit_scoped_updates(
             # ``git status -- <scope>`` somehow returned it. Then drop everything
             # that was already dirty before we started -- that is the user's work.
             all_dirty = sorted(
-                {
-                    path
-                    for path in all_dirty
-                    if path_in_scope(path, scopes) and path not in exclude
-                }
+                {path for path in all_dirty if path_in_scope(path, scopes) and path not in exclude}
             )
             if path_filter is not None:
                 all_dirty = [path for path in all_dirty if path_filter(path)]
@@ -202,11 +193,9 @@ def commit_scoped_updates(
             # restore the exact index state afterwards.
             pre_staged_outside = sorted(
                 path
-                for path in cast(
-                    "str", repo.git.diff("--cached", "--name-only")
-                ).splitlines()
+                for path in cast("str", repo.git.diff("--cached", "--name-only")).splitlines()
                 if not path_in_scope(path, scopes)
-            )
+            )  # cast-policy: seam: GitPython dynamic dispatch (repo.git.diff returns Any)
             pre_staged_blobs = _snapshot_pre_staged_index_entries(repo, pre_staged_outside)
             if pre_staged_outside:
                 cast("None", repo.git.reset("HEAD", "--", *pre_staged_outside))

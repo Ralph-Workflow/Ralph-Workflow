@@ -3,13 +3,12 @@ from __future__ import annotations
 import re
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
-    from collections import deque
 
     from ralph.pipeline.factory import PipelineDeps
 
@@ -27,6 +26,9 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._support.typed_accessors import (
+    must_mapping,
+)
 
 # Policy (2026-06-14): smoke tests are NOT part of any test suite. They are
 # one-off manual debug harnesses for a SPECIFIC agent issue. Marked with
@@ -254,10 +256,10 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         ]
         if raw_sink is not None:
             for line in raw_lines:
-                cast("deque[str]", raw_sink).append(line)
+                raw_sink.append(line)
         if rendered_sink is not None:
             for line in rendered_lines:
-                cast("deque[str]", rendered_sink).append(line)
+                rendered_sink.append(line)
         return PipelineEvent.AGENT_SUCCESS
 
     def fake_bridge_factory(**_kwargs: object) -> FakeBridge:
@@ -419,7 +421,7 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     factory_call = fake_factory.calls[0]
     assert factory_call["model_identity"] is model_identity
     assert factory_call["pro_hooks"] is pro_hooks
-    plumbing_kwargs = cast("dict[str, object]", captured["plumbing_kwargs"])
+    plumbing_kwargs = must_mapping(captured["plumbing_kwargs"])
     assert plumbing_kwargs["pipeline_deps"] is expected_deps
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 
@@ -35,9 +35,12 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
 
 
@@ -60,21 +63,21 @@ def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _json_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(raw))
+    return must_mapping(json.loads(raw))
 
 
 def _toml_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", tomllib.loads(raw))
+    return must_mapping(tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(cast("Iterable[str]", args[0]))
+    return list(args[0])
 
 
 def test_invoke_agent_times_out_when_agent_goes_idle(
@@ -285,7 +288,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
         del args
-        seen_cwds.append(cast("str | None", kwargs.get("cwd")))
+        seen_cwds.append(kwargs.get("cwd"))
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
@@ -404,8 +407,8 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "--mcp-config",
     ]
     mcp_payload = _json_object(cmd[9])
-    servers = cast("dict[str, object]", mcp_payload["mcpServers"])
-    assert cast("dict[str, object]", servers["ralph"]) == {
+    servers = must_mapping(mcp_payload["mcpServers"])
+    assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
     }
@@ -739,7 +742,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     assert servers == {
         "ralph": {
             "type": "http",
@@ -848,7 +851,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     assert servers == {
         "ralph": {
             "type": "http",
@@ -960,7 +963,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     assert servers == {
         "ralph": {
             "type": "http",

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from pydantic import TypeAdapter
 
@@ -29,7 +28,7 @@ def _skill_body() -> str:
 
 
 def _session() -> CoordinationSessionLike:
-    return cast("CoordinationSessionLike", planning_session())
+    return planning_session()
 
 
 class _Workspace:
@@ -38,7 +37,7 @@ class _Workspace:
 
 
 def _workspace() -> WorkspaceLike:
-    return cast("WorkspaceLike", _Workspace())
+    return _Workspace()
 
 
 def test_skill_names_the_native_markdown_edit_and_submission_flow() -> None:

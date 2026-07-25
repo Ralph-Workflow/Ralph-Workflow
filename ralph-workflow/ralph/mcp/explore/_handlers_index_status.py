@@ -53,16 +53,10 @@ def handle_ralph_index_status(
     ``index_exists=False`` so callers can decide whether to run
     ``ralph_reindex``.
     """
-    require_capability(
-        session, WORKSPACE_METADATA_READ_CAPABILITY, "Explore index status"
-    )
+    require_capability(session, WORKSPACE_METADATA_READ_CAPABILITY, "Explore index status")
     workspace_root_obj: object = getattr(workspace, "root", None)
-    workspace_root_raw: object = workspace_root_obj or params.get(
-        "workspace_root", ""
-    )
-    workspace_root_str: str = (
-        str(workspace_root_raw) if workspace_root_raw else ""
-    )
+    workspace_root_raw: object = workspace_root_obj or params.get("workspace_root", "")
+    workspace_root_str: str = str(workspace_root_raw) if workspace_root_raw else ""
     workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()
     handle: ExploreIndex | None = handlers_module._resolve_explore_index(session)
     if handle is None:
@@ -213,9 +207,7 @@ def _gitignore_child_rule_present(workspace_root: Path) -> bool:
         text = gitignore.read_text(encoding="utf-8")
     except OSError:
         return False
-    return any(
-        line.strip() == ".agent/ralph-explore/" for line in text.splitlines()
-    )
+    return any(line.strip() == ".agent/ralph-explore/" for line in text.splitlines())
 
 
 def _build_status_payload(
@@ -225,9 +217,7 @@ def _build_status_payload(
 ) -> dict[str, object]:
     store = handle.store
     latest_row: sqlite3.Row | None = store.latest_job()
-    finished_value: str = (
-        row_str(latest_row, "finished_at") if latest_row is not None else ""
-    )
+    finished_value: str = row_str(latest_row, "finished_at") if latest_row is not None else ""
     indexed_at: float | None
     if finished_value == "":
         indexed_at = None

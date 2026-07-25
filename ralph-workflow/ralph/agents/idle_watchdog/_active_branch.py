@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
 
+
 def build_evidence_summary_diag(
     self: IdleWatchdog,
     now: float,
@@ -324,12 +325,9 @@ def evaluate_inner(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distin
     if strictly_stuck_verdict is not None:
         return strictly_stuck_verdict
 
-    if (
-        quiet_state == AgentExecutionState.WAITING_ON_CHILD
-        and (
-            self._config.no_progress_quiet_seconds is not None
-            or self._config.no_progress_quiet_heartbeat_ceiling_seconds is not None
-        )
+    if quiet_state == AgentExecutionState.WAITING_ON_CHILD and (
+        self._config.no_progress_quiet_seconds is not None
+        or self._config.no_progress_quiet_heartbeat_ceiling_seconds is not None
     ):
         no_progress_verdict = self._evaluate_no_progress_quiet(now, idle_elapsed)
         if no_progress_verdict is not None:

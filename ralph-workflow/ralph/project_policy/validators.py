@@ -184,7 +184,7 @@ def _extract_managed_block_body(content: str) -> str | None:
     end_idx = content.find(markers.AGENTS_BLOCK_END)
     if begin_idx >= end_idx:
         return None
-    return content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN):end_idx]
+    return content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN) : end_idx]
 
 
 def _check_managed_block_canonical_dir(content: str) -> list[PolicyFinding]:
@@ -244,9 +244,7 @@ def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:
     return []
 
 
-def _check_core_policy_file(
-    workspace: Workspace, filename: str
-) -> list[PolicyFinding]:
+def _check_core_policy_file(workspace: Workspace, filename: str) -> list[PolicyFinding]:
     """Validate one canonical core policy file."""
     path = f"{markers.CANONICAL_DIR}{filename}"
     return _check_policy_file(workspace, path, filename)
@@ -270,9 +268,7 @@ def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[P
     return _validate_existing_policy_file(content, path, filename)
 
 
-def _validate_existing_policy_file(
-    content: str, path: str, filename: str
-) -> list[PolicyFinding]:
+def _validate_existing_policy_file(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Validate every check that operates on an existing policy file's content."""
     findings: list[PolicyFinding] = []
     findings.extend(_check_markers(content, path, filename))
@@ -286,7 +282,6 @@ def _validate_existing_policy_file(
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     return findings
-
 
 
 def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
@@ -347,7 +342,7 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
             continue
         if not line.startswith(markers.COMMAND_MARKER):
             continue
-        value = line[len(markers.COMMAND_MARKER):].strip()
+        value = line[len(markers.COMMAND_MARKER) :].strip()
         if not value:
             saw_empty_command = True
             continue
@@ -355,13 +350,11 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
             findings.append(
                 PolicyFinding(
                     requirement_id=(
-                        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:"
-                        f"bypass-cmd:placeholder"
+                        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:placeholder"
                     ),
                     path=path,
                     missing_evidence=(
-                        "'Bypass detection' RALPH-COMMAND contains a "
-                        "placeholder token"
+                        "'Bypass detection' RALPH-COMMAND contains a placeholder token"
                     ),
                     required_outcome=(
                         "replace the placeholder in the 'Bypass detection' "
@@ -375,8 +368,7 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
             findings.append(
                 PolicyFinding(
                     requirement_id=(
-                        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:"
-                        f"bypass-cmd:unapproved"
+                        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:unapproved"
                     ),
                     path=path,
                     missing_evidence=(
@@ -401,8 +393,7 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
         findings.append(
             PolicyFinding(
                 requirement_id=(
-                    f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:"
-                    f"bypass-cmd:empty"
+                    f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:empty"
                 ),
                 path=path,
                 missing_evidence=(
@@ -419,13 +410,9 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
     if not saw_real_command and not saw_empty_command:
         findings.append(
             PolicyFinding(
-                requirement_id=(
-                    f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd"
-                ),
+                requirement_id=(f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd"),
                 path=path,
-                missing_evidence=(
-                    "'Bypass detection' section has no RALPH-COMMAND line"
-                ),
+                missing_evidence=("'Bypass detection' section has no RALPH-COMMAND line"),
                 required_outcome=(
                     "add a non-empty, placeholder-free RALPH-COMMAND under "
                     "'Bypass detection' that runs the bypass-detection audit"
@@ -534,9 +521,7 @@ def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
     return findings
 
 
-def validate_readiness(
-    workspace: Workspace, stack: ProjectStack
-) -> list[PolicyFinding]:
+def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
     """Run every deterministic readiness check and return the findings list.
 
     The function is pure: it does NOT mutate the workspace and it does NOT
@@ -557,9 +542,7 @@ def validate_readiness(
     requirements = evidence.conditional_domain_requirements(workspace, stack)
     for domain, filename in markers.CONDITIONAL_POLICY_FILES.items():
         required, _ = requirements[domain]
-        findings.extend(
-            _check_conditional_domain(workspace, domain, filename, required)
-        )
+        findings.extend(_check_conditional_domain(workspace, domain, filename, required))
 
     findings.extend(_check_migration(workspace))
     return findings

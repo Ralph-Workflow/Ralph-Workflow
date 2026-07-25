@@ -47,7 +47,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import loguru
 import pytest
@@ -60,7 +60,6 @@ from ralph.agents.idle_watchdog import (
     SubagentPidRegistry,
     TimeoutPolicy,
     WaitingStatusEvent,
-    WaitingStatusListener,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -305,7 +304,7 @@ class TestTrustworthyIdleWatchdogSpec:
         with pytest.raises(ValueError, match="unknown subagent source"):
             SubagentIdentity(
                 pid=1234,
-                source=cast("SubagentIdentity.__init__", bad_source),
+                source=bad_source,
                 registered_at_monotonic=0.0,
             )
 
@@ -627,7 +626,7 @@ class TestTrustworthyIdleWatchdogSpec:
         )
         watchdog.record_invocation_start()
         watchdog.register_default_subagent_activity_listener(
-            cast("WaitingStatusListener", _capture)
+            _capture
         )
         # Baseline: all three R5 fields are None at invocation start
         # (per-invocation reset semantics).

@@ -742,10 +742,7 @@ def _land_and_reconcile(
         )
         return record_refresh(
             _record_skip(
-                reason=(
-                    "recovery: terminal-state invariant violated; record "
-                    "retained for retry"
-                ),
+                reason=("recovery: terminal-state invariant violated; record retained for retry"),
                 target=record.target,
                 record_retained=True,
             ),

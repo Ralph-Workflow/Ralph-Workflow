@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from types import ModuleType
-from typing import Protocol, cast
+from typing import Protocol
 
 _CLI_MODULE = "ralph.cli.commands.commit"
 _PLUMBING_MODULE = "ralph.pipeline.plumbing.commit_plumbing"
@@ -33,10 +33,7 @@ def test_commit_plumbing_is_directly_importable() -> None:
     try:
         sys.modules.pop(_CLI_MODULE, None)
         sys.modules.pop(_PLUMBING_MODULE, None)
-        imported = cast(
-            "_CommitPlumbingModule",
-            importlib.import_module(_PLUMBING_MODULE),
-        )
+        imported = importlib.import_module(_PLUMBING_MODULE)
         result_type = imported.CommitAgentResult
         assert result_type.__name__ == "CommitAgentResult"
     finally:

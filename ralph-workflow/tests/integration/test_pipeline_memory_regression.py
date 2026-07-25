@@ -10,7 +10,7 @@ from __future__ import annotations
 import gc
 import json
 import tracemalloc
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -45,7 +45,7 @@ _PEAK_DELTA_LIMIT = 6_000_000
 
 
 def _config() -> UnifiedConfig:
-    return cast("UnifiedConfig", _ConfigStub())
+    return _ConfigStub()
 
 
 def _fake_invoke_agent(

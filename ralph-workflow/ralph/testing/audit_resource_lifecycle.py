@@ -91,9 +91,7 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 # Generalize to a SET so the resource-lifecycle-ok (contracts 1-3) and
 # bounded-accumulator-ok (contract 4) markers coexist; a future contract
 # can opt in without disrupting existing markers.
-_ALLOW_MARKERS: frozenset[str] = frozenset(
-    {"resource-lifecycle-ok", "bounded-accumulator-ok"}
-)
+_ALLOW_MARKERS: frozenset[str] = frozenset({"resource-lifecycle-ok", "bounded-accumulator-ok"})
 
 # threading.Thread / Thread constructors — these must carry daemon=True.
 _THREAD_NAMES: frozenset[str] = frozenset({"threading.Thread", "Thread"})
@@ -110,12 +108,8 @@ _HTTP_ROOTS: frozenset[str] = frozenset({"httpx", "requests"})
 # ``popitem(last=False)`` / ``len(...) > cap`` eviction policy in the
 # code itself. The audit MUST flag them so the only escape is an honest
 # ``# bounded-accumulator-ok: <cap>`` marker naming the real cap / drain.
-_ORDERED_DICT_NAMES: frozenset[str] = frozenset(
-    {"OrderedDict", "collections.OrderedDict"}
-)
-_DEFAULT_DICT_NAMES: frozenset[str] = frozenset(
-    {"defaultdict", "collections.defaultdict"}
-)
+_ORDERED_DICT_NAMES: frozenset[str] = frozenset({"OrderedDict", "collections.OrderedDict"})
+_DEFAULT_DICT_NAMES: frozenset[str] = frozenset({"defaultdict", "collections.defaultdict"})
 
 # Raw os fd creation — only allowed under ralph/process/ (centralized
 # process lifecycle layer). Outside that allowlist, this is a leak.
@@ -125,9 +119,7 @@ _RAW_OS_FD_NAMES: frozenset[str] = frozenset({"os.open", "os.openpty", "os.pipe"
 # because the centralized process lifecycle owns the fd. Paths are
 # matched against the relative-to-package-root path of the file under
 # audit.
-_RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = (
-    "process",
-)
+_RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = ("process",)
 
 
 class ResourceLifecycleViolation:
@@ -475,9 +467,7 @@ def _is_module_level_or_self_init(
     documented here), but the audit intentionally skips them.
     """
     is_module_level = enclosing_function is None
-    is_init = (
-        enclosing_function is not None and enclosing_function.name == "__init__"
-    )
+    is_init = enclosing_function is not None and enclosing_function.name == "__init__"
     if not (is_module_level or is_init):
         return False
     for target in targets:
@@ -520,12 +510,35 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         self._in_with_calls: set[ast.Call] | None = None
 
     def _allowed(self, node: ast.AST) -> bool:
-        lineno: int = getattr(node, "lineno", 0)
-        if not (1 <= lineno <= len(self.source_lines)):
-            return False
-        return any(
-            marker in self.source_lines[lineno - 1] for marker in _ALLOW_MARKERS
-        )
+        # The marker convention is ``# bounded-accumulator-ok: <reason>``
+        # on the same line as the assignment. For multi-line assignments
+        # (``_X: dict[str, bool] = {}`` split across several lines or
+        # parenthesized assignment targets), the marker naturally falls
+        # on the line where the value closes (``] = {}``). The audit
+        # accepts the assignment's own line, the value's line, and the
+        # assignment's ``end_lineno`` so the marker can sit at the
+        # natural end-of-statement position too.
+        candidates: set[int] = set()
+        for attr in ("lineno", "end_lineno"):
+            value: int | None = getattr(node, attr, None)
+            if isinstance(value, int) and value > 0:
+                candidates.add(value)
+        # When the anchor is an AnnAssign / Assign, the value's
+        # lineno is the line where the ``=`` happens for multi-line
+        # patterns (``_X: dict[\n  str, bool\n] = {}``). Pull it from
+        # the value attribute if available.
+        value_node: ast.AST | None = getattr(node, "value", None)
+        if value_node is not None:
+            v_lineno: int | None = getattr(value_node, "lineno", None)
+            if isinstance(v_lineno, int) and v_lineno > 0:
+                candidates.add(v_lineno)
+        for candidate in candidates:
+            if (
+                1 <= candidate <= len(self.source_lines)
+                and any(marker in self.source_lines[candidate - 1] for marker in _ALLOW_MARKERS)
+            ):
+                return True
+        return False
 
     def _add(self, node: ast.AST, category: str, detail: str) -> None:
         if self._allowed(node):
@@ -598,9 +611,7 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         value is NOT an unbounded accumulator (e.g., ``deque(maxlen=8)``
         or a non-collection expression).
         """
-        if not _is_unbounded_accumulator_value(
-            value, self._module_aliases, self._from_imports
-        ):
+        if not _is_unbounded_accumulator_value(value, self._module_aliases, self._from_imports):
             return
         if not _is_module_level_or_self_init(targets, self._enclosing_function):
             return
@@ -615,16 +626,13 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> None:
-        canonical = _canonical_name(
-            _dotted_name(node), self._module_aliases, self._from_imports
-        )
+        canonical = _canonical_name(_dotted_name(node), self._module_aliases, self._from_imports)
 
         if canonical in _THREAD_NAMES and not _keyword_truthy(node, "daemon"):
             self._add(
                 node,
                 "non_daemon_thread",
-                f"{canonical}() without daemon=True — non-daemon "
-                "threads can block process exit",
+                f"{canonical}() without daemon=True — non-daemon threads can block process exit",
             )
 
         if canonical in _HTTP_CLIENT_NAMES:

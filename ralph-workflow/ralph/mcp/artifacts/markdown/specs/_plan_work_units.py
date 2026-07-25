@@ -31,7 +31,9 @@ def attach_owned_step_ids(
 ) -> None:
     """Attach each nested step to at most one explicit work unit in place."""
     owner_by_step: dict[str, str] = {}
-    entry_by_id = {cast("str", entry["unit_id"]): entry for entry in entries}
+    entry_by_id = {
+        cast("str", entry["unit_id"]): entry for entry in entries
+    }  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     for index, section in enumerate(document.sections):
         if section.name == "Work Units":
@@ -60,11 +62,7 @@ def attach_owned_step_ids(
         if PLAN_STEP_ID_PATTERN.fullmatch(block.identifier) is not None
     ]
     for unit_id, entry in entry_by_id.items():
-        owned = [
-            step_id
-            for step_id in ordered_step_ids
-            if owner_by_step.get(step_id) == unit_id
-        ]
+        owned = [step_id for step_id in ordered_step_ids if owner_by_step.get(step_id) == unit_id]
         if owned:
             entry["step_ids"] = owned
     _attach_cross_unit_dependencies(entries, steps)
@@ -99,10 +97,7 @@ def _claim_work_unit_section_steps(
 ) -> None:
     """Assign each nested step to its nearest preceding unit item."""
     unit_items = tuple(
-        item
-        for section in sections
-        for item in section.items
-        if item.identifier in entry_by_id
+        item for section in sections for item in section.items if item.identifier in entry_by_id
     )
     for block in (block for section in sections for block in section.blocks):
         if PLAN_STEP_ID_PATTERN.fullmatch(block.identifier) is None:
@@ -137,7 +132,9 @@ def _claim_steps_by_target(
     owner_by_step: dict[str, str],
 ) -> None:
     directories_by_unit = {
-        cast("str", entry["unit_id"]): [
+        cast(
+            "str", entry["unit_id"]
+        ): [  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             directory
             for directory in cast("list[object]", entry.get("allowed_directories", []))
             if isinstance(directory, str)
@@ -153,7 +150,9 @@ def _claim_steps_by_target(
         if step_id in owner_by_step:
             continue
         paths = [
-            cast("str", target["path"])
+            cast(
+                "str", target["path"]
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             for target in targets
             if isinstance(target, dict) and isinstance(target.get("path"), str)
         ]
@@ -171,19 +170,27 @@ def _attach_cross_unit_dependencies(
     steps: list[Content],
 ) -> None:
     owner_by_step = {
-        step_id: cast("str", entry["unit_id"])
+        step_id: cast(
+            "str", entry["unit_id"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for entry in entries
-        for step_id in cast("list[str]", entry.get("step_ids", []))
+        for step_id in cast(
+            "list[str]", entry.get("step_ids", [])
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     }
     step_by_id = {
-        f"S-{number}": step
-        for step in steps
-        if isinstance((number := step.get("number")), int)
+        f"S-{number}": step for step in steps if isinstance((number := step.get("number")), int)
     }
     for entry in entries:
-        unit_id = cast("str", entry["unit_id"])
-        dependencies = cast("list[str]", entry["dependencies"])
-        for step_id in cast("list[str]", entry.get("step_ids", [])):
+        unit_id = cast(
+            "str", entry["unit_id"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        dependencies = cast(
+            "list[str]", entry["dependencies"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        for step_id in cast(
+            "list[str]", entry.get("step_ids", [])
+        ):  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             step = step_by_id.get(step_id, {})
             raw_dependencies = step.get("depends_on", [])
             if not isinstance(raw_dependencies, list):

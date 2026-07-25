@@ -75,9 +75,7 @@ _SEED_WORKSPACE: tuple[AuditEntry, ...] = (
         tool=RalphToolName.LIST_ALLOWED_ROOTS,
         family=AuditFamily.WORKSPACE_READ,
         outcome=AuditOutcome.KEEP,
-        rationale=(
-            "Configuration surface; no per-call optimization is appropriate."
-        ),
+        rationale=("Configuration surface; no per-call optimization is appropriate."),
         counters=_counters(
             transcript_tokens=24,
             returned_bytes=64,
@@ -239,9 +237,7 @@ _SEED_WORKSPACE: tuple[AuditEntry, ...] = (
         tool=RalphToolName.APPEND_FILE,
         family=AuditFamily.WORKSPACE_MUTATE,
         outcome=AuditOutcome.KEEP,
-        rationale=(
-            "Append is a thin wrapper; dirty-path marking is wired in Phase 1."
-        ),
+        rationale=("Append is a thin wrapper; dirty-path marking is wired in Phase 1."),
         counters=_counters(
             transcript_tokens=72,
             returned_bytes=192,

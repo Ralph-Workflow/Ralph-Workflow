@@ -57,7 +57,7 @@ import signal
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -164,7 +164,7 @@ def _build_dispatcher(
     ``os._exit(130)``.
     """
     return dispatcher_from_process_manager(
-        process_manager=cast("object", manager),
+        process_manager=manager,
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
         hard_exit=hard_exit,
@@ -196,10 +196,10 @@ def _make_signal_fakes() -> tuple[
         set_calls.append((signum, handler))
         return handler
 
-    previous_handler: SignalHandler = cast("SignalHandler", _previous_handler)
+    previous_handler: SignalHandler = _previous_handler
     return (
-        cast("Callable[[int], SignalHandler]", _fake_getsignal),
-        cast("Callable[[int, SignalHandler], SignalHandler]", _fake_set),
+        _fake_getsignal,
+        _fake_set,
         set_calls,
         previous_handler,
     )
@@ -247,9 +247,9 @@ class _RecordingDispatcher:
         )
 
     def force_exit(self, *, bridge_pgids: object = ()) -> None:
-        pgids_list = list(cast("list[int]", bridge_pgids)) if bridge_pgids else []
+        pgids_list = list(bridge_pgids) if bridge_pgids else []
         self.force_exit_calls.append(pgids_list)
-        self._real.force_exit(bridge_pgids=cast("list[int]", bridge_pgids))
+        self._real.force_exit(bridge_pgids=bridge_pgids)
 
 
 class _NotAnException(BaseException):
@@ -369,7 +369,7 @@ def test_handle_keyboard_interrupt_recovers_from_dispatcher_exception() -> None:
     handler_id = logger.add(_log_sink)
     try:
         handle_keyboard_interrupt(
-            dispatcher=cast("InterruptDispatcher", _BoomDispatcher()),
+            dispatcher=_BoomDispatcher(),
             signal_getter=getter,
             signal_setter=setter,
         )
@@ -428,8 +428,8 @@ def test_handle_keyboard_interrupt_runs_early_escalation_poll_after_begin_interr
     getter, setter, _set_calls, _previous_handler = _make_signal_fakes()
 
     handle_keyboard_interrupt(
-        dispatcher=cast("InterruptDispatcher", recorder),
-        process_manager=cast("object", manager),
+        dispatcher=recorder,
+        process_manager=manager,
         signal_getter=getter,
         signal_setter=setter,
         poll_interval_s=_POLL_INTERVAL,
@@ -470,7 +470,7 @@ def test_handle_keyboard_interrupt_second_sigint_force_exit_uses_active_pgids() 
     exit_calls: list[tuple[int, ...]] = []
     real_dispatcher = _build_dispatcher(
         manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        hard_exit=lambda code: exit_calls.append((code,)),
     )
     recorder = _DrainOnBeginDispatcher(
         real_dispatcher,
@@ -480,8 +480,8 @@ def test_handle_keyboard_interrupt_second_sigint_force_exit_uses_active_pgids() 
     getter, setter, set_calls, _previous_handler = _make_signal_fakes()
 
     handle_keyboard_interrupt(
-        dispatcher=cast("InterruptDispatcher", recorder),
-        process_manager=cast("object", manager),
+        dispatcher=recorder,
+        process_manager=manager,
         signal_getter=getter,
         signal_setter=setter,
         poll_interval_s=_POLL_INTERVAL,
@@ -550,7 +550,7 @@ def test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher() ->
     threading.excepthook = _capture_excepthook
     try:
         handle_keyboard_interrupt(
-            dispatcher=cast("InterruptDispatcher", _BoomNotException()),
+            dispatcher=_BoomNotException(),
             signal_getter=getter,
             signal_setter=setter,
         )
@@ -617,7 +617,7 @@ class _SlowBeginDispatcher:
         self._real.run_early_escalation_poll(*args, **kwargs)
 
     def force_exit(self, *, bridge_pgids: object = ()) -> None:
-        self._real.force_exit(bridge_pgids=cast("list[int]", bridge_pgids))
+        self._real.force_exit(bridge_pgids=bridge_pgids)
 
 
 def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
@@ -688,7 +688,7 @@ def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
     exit_calls: list[tuple[int, ...]] = []
     real_dispatcher = _build_dispatcher(
         manager,
-        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        hard_exit=lambda code: exit_calls.append((code,)),
     )
     begin_done = threading.Event()
     slow_dispatcher = _SlowBeginDispatcher(real_dispatcher, begin_done)
@@ -711,10 +711,10 @@ def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
 
     def _entry_point() -> None:
         handle_keyboard_interrupt(
-            dispatcher=cast("InterruptDispatcher", slow_dispatcher),
-            process_manager=cast("object", manager),
-            signal_getter=cast("Callable[[int], object]", _getter),
-            signal_setter=cast("Callable[[int, object], object]", _setter),
+            dispatcher=slow_dispatcher,
+            process_manager=manager,
+            signal_getter=_getter,
+            signal_setter=_setter,
             poll_interval_s=_POLL_INTERVAL,
         )
 

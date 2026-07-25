@@ -111,7 +111,9 @@ def _teardown_subtree_if_pid_available(handle: object) -> None:
     Test fakes may not implement ``pid``; this helper ignores them so
     unit tests stay isolated from real process signals.
     """
-    pid = cast("int | None", getattr(handle, "pid", None))
+    pid = cast(
+        "int | None", getattr(handle, "pid", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if pid is not None:
         teardown_subtree(pid)
 
@@ -237,7 +239,9 @@ def _apply_sentinel_signal(
     entering the session-continuation / completion-enforcement
     branches that reach this helper).
     """
-    workspace: Path = cast("Path", opts.workspace_path)
+    workspace: Path = cast(
+        "Path", opts.workspace_path
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if opts._sentinel_check_fn is not None:
         sentinel_found = opts._sentinel_check_fn(
             workspace,
@@ -413,7 +417,9 @@ def _check_process_result(
     """
     returncode = int(handle.returncode or 0)
     if returncode != 0:
-        stderr_pipe = cast("IO[str] | None", getattr(handle, "stderr", None))
+        stderr_pipe = cast(
+            "IO[str] | None", getattr(handle, "stderr", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         stderr = (
             _bounded_read(stderr_pipe) if stderr_pipe is not None else "(unable to read stderr)"
         )

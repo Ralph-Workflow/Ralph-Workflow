@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.phases import review as review_module
@@ -53,21 +53,19 @@ class RecordingFileBackend(FileBackend):
 
 
 def _auto_integrate_prompt_writer() -> Callable[..., Path | None]:
-    return cast(
-        "Callable[..., Path | None]", conflict_prompt.render_conflict_prompt
-    )
+    return conflict_prompt.render_conflict_prompt
 
 
 def _parallel_worker_prompt_writer() -> Callable[..., None]:
-    return cast("Callable[..., None]", worker_runtime._write_worker_prompt)
+    return worker_runtime._write_worker_prompt
 
 
 def _persist_review_baseline() -> Callable[..., None]:
-    return cast("Callable[..., None]", review_module._persist_review_baseline)
+    return review_module._persist_review_baseline
 
 
 def _write_cycle_baseline() -> Callable[..., None]:
-    return cast("Callable[..., None]", cycle_baseline.write_cycle_baseline)
+    return cycle_baseline.write_cycle_baseline
 
 
 def _render(

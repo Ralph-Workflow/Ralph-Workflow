@@ -120,16 +120,13 @@ class PlanArtifact(RalphBaseModel):
         known_steps: set[int] = set()
         for step_number in step_numbers:
             if step_number in known_steps:
-                raise PlanArtifactValidationError(
-                    f"duplicate plan step number {step_number}"
-                )
+                raise PlanArtifactValidationError(f"duplicate plan step number {step_number}")
             known_steps.add(step_number)
         for step in self.steps:
             for dependency in step.depends_on:
                 if dependency not in known_steps:
                     raise PlanArtifactValidationError(
-                        f"plan step {step.number} depends on unknown step "
-                        f"{dependency}"
+                        f"plan step {step.number} depends on unknown step {dependency}"
                     )
 
         graph: dict[int, list[int]] = {step.number: list(step.depends_on) for step in self.steps}
@@ -222,6 +219,7 @@ class PlanArtifact(RalphBaseModel):
                     raise PlanArtifactValidationError(msg)
 
         return self
+
 
 class _PlanArtifactRebuildState:
     rebuilt: bool = False
@@ -575,13 +573,10 @@ def _validate_named_dependency_graph(
     for identifier, dependencies in entries:
         for dependency in dependencies:
             if dependency == identifier:
-                raise PlanArtifactValidationError(
-                    f"{label} {identifier!r} depends on itself"
-                )
+                raise PlanArtifactValidationError(f"{label} {identifier!r} depends on itself")
             if dependency not in known:
                 raise PlanArtifactValidationError(
-                    f"{label} {identifier!r} references unknown dependency "
-                    f"{dependency!r}"
+                    f"{label} {identifier!r} references unknown dependency {dependency!r}"
                 )
 
     visiting: set[str] = set()

@@ -34,21 +34,15 @@ class DeferredPhase:
         if not self.phase_id.strip():
             raise ValueError(f"DeferredPhase({self.phase_id!r}): phase_id must be non-empty")
         if not self.title.strip():
-            raise ValueError(
-                f"DeferredPhase({self.phase_id!r}): title must be non-empty"
-            )
+            raise ValueError(f"DeferredPhase({self.phase_id!r}): title must be non-empty")
         if not self.deliverables:
-            raise ValueError(
-                f"DeferredPhase({self.phase_id!r}): deliverables must be non-empty"
-            )
+            raise ValueError(f"DeferredPhase({self.phase_id!r}): deliverables must be non-empty")
         if not self.deferral_rationale.strip():
             raise ValueError(
                 f"DeferredPhase({self.phase_id!r}): deferral_rationale must be non-empty"
             )
         if not self.risk.strip():
-            raise ValueError(
-                f"DeferredPhase({self.phase_id!r}): risk must be non-empty"
-            )
+            raise ValueError(f"DeferredPhase({self.phase_id!r}): risk must be non-empty")
 
 
 def _audit_baselines() -> dict[str, int | float | None]:

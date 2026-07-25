@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time as _time_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +36,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
@@ -95,7 +94,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -151,7 +150,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -223,7 +222,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
             result = wait_for_descendants_then_recheck(
-                cast("ManagedProcess", handle),
+                handle,
                 CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
@@ -288,7 +287,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -339,7 +338,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -405,7 +404,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -469,7 +468,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
             result = wait_for_descendants_then_recheck(
-                cast("ManagedProcess", handle),
+                handle,
                 CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
@@ -532,7 +531,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -579,7 +578,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -662,7 +661,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -737,7 +736,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         probe = FakeLivenessProbe(active=True)  # children still running
 
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(

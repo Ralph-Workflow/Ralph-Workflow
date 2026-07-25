@@ -260,8 +260,11 @@ def strategy_for_transport(
     subagent_pid_source: SubagentPidSource | None = None,
 ) -> BaseExecutionStrategy:
     """Return the appropriate ExecutionStrategy for an agent transport."""
-    factory = _view("_STRATEGY_DISPATCH").get(
-        cast("AgentTransport", transport), GenericExecutionStrategy
+    factory = _view(
+        "_STRATEGY_DISPATCH"
+    ).get(
+        cast("AgentTransport", transport),
+        GenericExecutionStrategy,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     return factory(
         label_scope=label_scope,

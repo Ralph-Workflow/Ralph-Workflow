@@ -160,9 +160,7 @@ def fast_forward_target(
         )
         return False, _TARGET_WORKTREE_QUERY_FAILED
     if verdict == WORKTREE_FOUND and wt is not None:
-        return _fast_forward_via_target_worktree(
-            repo_root, wt, target, feature_sha
-        )
+        return _fast_forward_via_target_worktree(repo_root, wt, target, feature_sha)
     return _fast_forward_via_cas(repo_root, target, feature_sha)
 
 
@@ -284,9 +282,7 @@ def _fast_forward_via_cas(
     doomed case (target already past the feature tip) be reported as the
     retryable :data:`_TARGET_NOT_ANCESTOR` instead of an attempted CAS.
     """
-    fresh_target_sha, reason = _observe_landable_target(
-        repo_root, target, feature_sha
-    )
+    fresh_target_sha, reason = _observe_landable_target(repo_root, target, feature_sha)
     if fresh_target_sha is None:
         return False, reason
     if not compare_and_swap_branch(repo_root, target, fresh_target_sha, feature_sha):

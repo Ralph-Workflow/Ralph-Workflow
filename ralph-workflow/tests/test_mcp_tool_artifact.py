@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact, handle_verify_md_artifact
+from tests._support.typed_accessors import (
+    must_dict_list,
+)
 from tests.test_artifact_format_docs_mock_session import MockSession, planning_session
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.mcp.tools.tool_content import ToolContent
 
 _DOCUMENT = """---
 type: commit
@@ -53,8 +55,8 @@ def test_verify_returns_structured_diagnostics_without_writing(tmp_path: Path) -
         {"artifact_type": "commit_message", "content": "---\ntype: commit\n---\n"},
     )
 
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
-    diagnostics = cast("list[dict[str, object]]", payload["diagnostics"])
+    payload = json.loads(result.content[0].text)
+    diagnostics = must_dict_list(payload["diagnostics"])
     assert result.is_error is True
     assert diagnostics
     assert {"line", "section", "rule_id", "severity"} <= diagnostics[0].keys()

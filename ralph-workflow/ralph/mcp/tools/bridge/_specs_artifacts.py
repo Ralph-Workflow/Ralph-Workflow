@@ -28,7 +28,14 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=SUBMIT_MD_ARTIFACT_TOOL,
                 description="Validate and submit one complete markdown artifact document.",
-                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}, "content": {"type": "string"}}, "required": ["artifact_type", "content"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "artifact_type": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["artifact_type", "content"],
+                },
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
@@ -38,7 +45,14 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=VERIFY_MD_ARTIFACT_TOOL,
                 description="Check a markdown artifact without persisting it; diagnostics match submission.",
-                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}, "content": {"type": "string"}}, "required": ["artifact_type", "content"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "artifact_type": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["artifact_type", "content"],
+                },
                 required_capability=Capability.ARTIFACT_PLAN_READ.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
@@ -48,7 +62,15 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=STAGE_MD_ARTIFACT_TOOL,
                 description="Stage a large markdown artifact incrementally: append to (or replace) a persisted draft; returns section outline and non-gating diagnostics.",
-                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}, "content": {"type": "string"}, "mode": {"enum": ["append", "replace_all"]}}, "required": ["artifact_type", "content"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "artifact_type": {"type": "string"},
+                        "content": {"type": "string"},
+                        "mode": {"enum": ["append", "replace_all"]},
+                    },
+                    "required": ["artifact_type", "content"],
+                },
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
@@ -58,7 +80,11 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=GET_MD_DRAFT_TOOL,
                 description="Return the staged markdown draft and its current diagnostics (resume after interruption).",
-                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}}, "required": ["artifact_type"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {"artifact_type": {"type": "string"}},
+                    "required": ["artifact_type"],
+                },
                 required_capability=Capability.ARTIFACT_PLAN_READ.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
@@ -68,7 +94,11 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=DISCARD_MD_DRAFT_TOOL,
                 description="Discard the staged markdown draft for one artifact type.",
-                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}}, "required": ["artifact_type"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {"artifact_type": {"type": "string"}},
+                    "required": ["artifact_type"],
+                },
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
@@ -78,7 +108,11 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=FINALIZE_MD_ARTIFACT_TOOL,
                 description="Validate the assembled draft with the submission gate and submit it canonically; on failure the draft is kept for repair.",
-                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}}, "required": ["artifact_type"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {"artifact_type": {"type": "string"}},
+                    "required": ["artifact_type"],
+                },
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
@@ -88,29 +122,74 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=EDIT_MD_PLAN_STEP_TOOL,
                 description="Edit one step in the persisted markdown plan draft by stable S-id. Stage the plan first; replacement is a markdown step block ('### [S-n] Title' heading plus body), never JSON or a full document. The updated draft is saved atomically and returned with diagnostics; stable 'Depends on:' and 'Satisfied by:' references survive edits.",
-                input_schema={"type": "object", "properties": {"action": {"enum": ["insert", "replace", "remove", "move"]}, "step_id": {"type": "string"}, "replacement": {"type": "string"}, "index": {"type": "integer"}}, "required": ["action", "step_id"]},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "action": {"enum": ["insert", "replace", "remove", "move"]},
+                        "step_id": {"type": "string"},
+                        "replacement": {"type": "string"},
+                        "index": {"type": "integer"},
+                    },
+                    "required": ["action", "step_id"],
+                },
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",
             handler_name="handle_edit_md_plan_step",
         ),
         ToolSpec(
-            metadata=_metadata(name=REPORT_PROGRESS_TOOL, description="Report pipeline progress.", input_schema={"type": "object", "properties": {"status": {"type": "string"}, "note": {"type": "string"}}, "required": ["status"]}, required_capability=McpCapability.RUN_REPORT_PROGRESS.value),
+            metadata=_metadata(
+                name=REPORT_PROGRESS_TOOL,
+                description="Report pipeline progress.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"status": {"type": "string"}, "note": {"type": "string"}},
+                    "required": ["status"],
+                },
+                required_capability=McpCapability.RUN_REPORT_PROGRESS.value,
+            ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_report_progress",
         ),
         ToolSpec(
-            metadata=_metadata(name=DECLARE_COMPLETE_TOOL, description="Declare agent completion.", input_schema={"type": "object", "properties": {"summary": {"type": "string"}}}, required_capability=McpCapability.ARTIFACT_SUBMIT.value),
+            metadata=_metadata(
+                name=DECLARE_COMPLETE_TOOL,
+                description="Declare agent completion.",
+                input_schema={"type": "object", "properties": {"summary": {"type": "string"}}},
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
+            ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_declare_complete",
         ),
         ToolSpec(
-            metadata=_metadata(name=READ_ENV_TOOL, description="Read an environment variable.", input_schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}, required_capability=McpCapability.ENV_READ.value),
+            metadata=_metadata(
+                name=READ_ENV_TOOL,
+                description="Read an environment variable.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                },
+                required_capability=McpCapability.ENV_READ.value,
+            ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_read_env",
         ),
         ToolSpec(
-            metadata=_metadata(name=COORDINATE_TOOL, description="Coordinate parallel work units.", input_schema={"type": "object", "properties": {"action": {"type": "string"}, "work_unit_id": {"type": "string"}, "payload": {"type": "object"}}, "required": ["action"]}, required_capability=Capability.ARTIFACT_PLAN_WRITE.value),
+            metadata=_metadata(
+                name=COORDINATE_TOOL,
+                description="Coordinate parallel work units.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string"},
+                        "work_unit_id": {"type": "string"},
+                        "payload": {"type": "object"},
+                    },
+                    "required": ["action"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_coordinate",
         ),

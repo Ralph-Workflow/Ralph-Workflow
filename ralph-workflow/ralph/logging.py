@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
         def __call__(self, target: object, /, **kwargs: object) -> int: ...
 
+
 from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
 from .logging_worker_sink import WorkerSinkHandle, bind_worker_sink, remove_worker_sink
 
@@ -214,7 +215,9 @@ def _configure_file_handlers(
     run_directory = log_directory / config.run_id if config.run_id else log_directory
     run_directory.mkdir(parents=True, exist_ok=True)
 
-    adder: SinkAdder = sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
+    adder: SinkAdder = (
+        sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     text_log_path = run_directory / "ralph.log"
     _add_buffered_file_sink(

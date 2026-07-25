@@ -10,7 +10,7 @@ import asyncio
 import contextlib
 import signal
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import ralph.interrupt.dispatcher as dispatcher_mod
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
@@ -118,8 +118,8 @@ def _build_dispatcher_for_async_bridge(
 
     return dispatcher_from_process_manager(
         process_manager=manager,
-        hard_exit=cast("Any", _record_exit),
-        kill_process_group=cast("Any", _record_kill),
+        hard_exit=_record_exit,
+        kill_process_group=_record_kill,
     )
 
 
@@ -389,7 +389,7 @@ class TestInstallSignalHandlers:
             block_kwargs.append(bool(kwargs.get("block", False)))
             return original_begin(self, *args, **kwargs)
 
-        InterruptDispatcher.begin_interrupt = cast("Any", _spy)
+        InterruptDispatcher.begin_interrupt = _spy
         try:
             manager = _FakeProcessManager()
             dispatcher = _build_dispatcher_for_async_bridge(manager)
@@ -401,7 +401,7 @@ class TestInstallSignalHandlers:
             first_handler = _install_and_get_first_handler(loop, root_task, bridge, dispatcher)
             first_handler()
         finally:
-            InterruptDispatcher.begin_interrupt = cast("Any", original_begin)
+            InterruptDispatcher.begin_interrupt = original_begin
         # NEW contract: the first-SIGINT path passes block=True via
         # run_shutdown_block.
         assert block_kwargs, "begin_interrupt was not called"
@@ -670,12 +670,12 @@ def test_asyncio_first_sigint_runs_early_escalation_poll(
 
     dispatcher = dispatcher_from_process_manager(
         process_manager=manager,
-        hard_exit=cast("Any", _record_exit),
-        kill_process_group=cast("Any", _record_kill),
+        hard_exit=_record_exit,
+        kill_process_group=_record_kill,
         poll_interval_s=0.05,
         hard_kill_budget_s=_EARLY_ESCALATION_BUDGET,
-        clock=cast("Any", clock.now),
-        sleep=cast("Any", _fake_sleep),
+        clock=clock.now,
+        sleep=_fake_sleep,
     )
 
     bridge = SignalBridge()
@@ -813,8 +813,8 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
     kill_calls: list[tuple[int, int]] = []
     dispatcher = dispatcher_from_process_manager(
         process_manager=manager,
-        hard_exit=cast("Any", lambda code: exit_calls.append((code,))),
-        kill_process_group=cast("Any", lambda pgid, sig: kill_calls.append((pgid, sig))),
+        hard_exit=lambda code: exit_calls.append((code,)),
+        kill_process_group=lambda pgid, sig: kill_calls.append((pgid, sig)),
         hard_kill_budget_s=0.05,
         poll_interval_s=0.01,
     )

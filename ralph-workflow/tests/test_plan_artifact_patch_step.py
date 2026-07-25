@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import pytest
 from pydantic import TypeAdapter
@@ -18,6 +17,9 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
 )
 from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step, handle_stage_md_artifact
+from tests._support.typed_accessors import (
+    must_dict_list,
+)
 from tests.mcp.test_md_plan_spec import _plan_document
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_session import planning_session
@@ -31,11 +33,11 @@ class _Workspace:
 
 
 def _session() -> CoordinationSessionLike:
-    return cast("CoordinationSessionLike", planning_session())
+    return planning_session()
 
 
 def _workspace() -> WorkspaceLike:
-    return cast("WorkspaceLike", _Workspace())
+    return _Workspace()
 
 
 def _staged_deps(document: str) -> ArtifactHandlerDeps:
@@ -81,7 +83,7 @@ Expect: the plan artifact tests pass with exit code 0
 
     edited = _edited_content(result)
     content, diagnostics = parse_and_validate(edited, get_spec("plan"))
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert diagnostics == []
     assert steps[1]["number"] == 2
     assert steps[1]["depends_on"] == [1]
@@ -118,7 +120,7 @@ def test_insert_and_move_keep_ids_instead_of_renumbering() -> None:
     )
 
     content, diagnostics = parse_and_validate(_edited_content(moved), get_spec("plan"))
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert diagnostics == []
     assert [step["number"] for step in steps] == [3, 1, 2]
     assert steps[0]["depends_on"] == [1]

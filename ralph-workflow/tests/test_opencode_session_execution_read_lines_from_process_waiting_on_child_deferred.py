@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import threading
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -28,10 +27,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
-
-if TYPE_CHECKING:
-    from ralph.process.manager import ManagedProcess
-
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -108,7 +103,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
         with pytest.raises(IdleStreamTimeoutError):
             list(
                 read_lines_from_process(
-                    cast("ManagedProcess", handle),
+                    handle,
                     ctx=ProcessReaderCtx(
                         config=AgentConfig(
                             cmd="opencode",

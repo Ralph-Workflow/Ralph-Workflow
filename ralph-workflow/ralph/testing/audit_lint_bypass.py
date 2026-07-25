@@ -237,10 +237,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
     },
     "ANN201": {
         "pattern": "tests/**/*.py",
-        "reason": (
-            "Test helpers' return types are not needed; assertions pin "
-            "the expected shape."
-        ),
+        "reason": ("Test helpers' return types are not needed; assertions pin the expected shape."),
     },
     "ANN202": {
         "pattern": "tests/**/*.py",
@@ -252,9 +249,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
     },
     "ANN204": {
         "pattern": "tests/**/*.py",
-        "reason": (
-            "Test __str__ / __repr__ helpers are documented inline."
-        ),
+        "reason": ("Test __str__ / __repr__ helpers are documented inline."),
     },
     "ANN401": {
         "pattern": "tests/**/*.py",
@@ -361,7 +356,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "control flow stays local."
         ),
     },
-
     # MutableClass-level dicts deliberately use class-level storage for the
     # single-writer registry; making _active instance-level would lose the
     # cross-instance coalescing that the contract guarantees.

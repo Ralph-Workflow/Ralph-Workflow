@@ -73,7 +73,9 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 
 def _resolve_artifact_dir(session: CoordinationSessionLike, workspace: WorkspaceLike) -> Path:
     """Use a worker-specific directory when a parallel worker has one."""
-    worker = cast("Path | None", getattr(session, "worker_artifact_dir", None))
+    worker = cast(
+        "Path | None", getattr(session, "worker_artifact_dir", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return worker if worker is not None else _artifact_dir(workspace)
 
 

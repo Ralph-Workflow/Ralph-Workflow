@@ -140,7 +140,9 @@ def validate_drain_contracts(bundle: PolicyBundle) -> None:
 
 
 def _work_units_validation_deps() -> tuple[type[Exception], Callable[[object], object]]:
-    module = cast("_WorkUnitsModule", import_module("ralph.pipeline.work_units"))
+    module = cast(
+        "_WorkUnitsModule", import_module("ralph.pipeline.work_units")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return (module.WorkUnitsValidationError, module.validate_for_same_workspace)
 
 

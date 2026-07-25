@@ -1,11 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from ralph.agents.executor import AgentExecutor
-    from ralph.display.parallel_display import ParallelDisplay
 
 from ralph.agents.worker_result import WorkerResult
 from ralph.pipeline.effects import FanOutEffect
@@ -31,7 +26,7 @@ def _run_fan_out(
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
         )
     )
 
@@ -80,8 +75,8 @@ def test_three_workers_all_succeed() -> None:
         task = asyncio.create_task(
             coordinator.run_fan_out(
                 effect=FanOutEffect(work_units=units, max_workers=3),
-                executor=cast("AgentExecutor", _ParallelProofExecutor()),
-                display=cast("ParallelDisplay", _FakeDisplay()),
+                executor=_ParallelProofExecutor(),
+                display=_FakeDisplay(),
             )
         )
         await asyncio.wait_for(second_started.wait(), timeout=5.0)

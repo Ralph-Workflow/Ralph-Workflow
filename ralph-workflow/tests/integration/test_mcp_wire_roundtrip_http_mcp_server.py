@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,6 +22,9 @@ from ralph.mcp.server.runtime import (
 )
 from ralph.mcp.webvisit.extractor import ExtractedPage
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_mapping,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -85,7 +88,7 @@ def _do_initialize(server: McpServer) -> ServerState:
     )
     resp, state = server.handle_request(req, ServerState.UNINITIALIZED)
     assert resp is not None, "initialize returned None"
-    init_result = cast("dict[str, Any]", resp.result)
+    init_result = resp.result
     assert init_result["protocolVersion"] == "2024-11-05"
     notif = JsonRpcRequest(jsonrpc="2.0", method="notifications/initialized", params={})
     none_resp, state = server.handle_request(notif, state)
@@ -97,7 +100,7 @@ def _do_tools_list(server: McpServer, state: ServerState) -> list[dict[str, obje
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"tools/list failed: {resp}"
-    return cast("list[dict[str, Any]]", cast("dict[str, Any]", resp.result)["tools"])
+    return must_mapping(resp.result)["tools"]
 
 
 def _do_tool_call(
@@ -117,7 +120,7 @@ def _do_tool_call(
     )
     resp, _ = server.handle_request(req, state)
     assert resp is not None, f"tools/call {name!r} returned None"
-    return cast("dict[str, Any]", resp.result)
+    return resp.result
 
 
 def _do_tool_call_response(
@@ -162,7 +165,7 @@ def _do_read_file_test(server: McpServer, state: ServerState) -> None:
     )
     result = _do_tool_call(server, state, call_id, "read_file", {"path": "_test_read_file.txt"})
     assert result.get("isError") is not True
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert any("hello roundtrip" in str(block.get("text", "")) for block in content)
 
 
@@ -303,7 +306,7 @@ class TestHttpMcpServer:
             },
         )
 
-        error = cast("dict[str, object]", response.error)
+        error = must_mapping(response.error)
         assert error["code"] == -32603
         message = str(error["message"])
         assert "removed in the markdown artifact migration" in message

@@ -108,9 +108,7 @@ def _render_prompt(
     repeat: without it the remediation agent would re-derive the same policy from
     the same findings and produce the same output.
     """
-    feedback_lines = (
-        analysis_feedback.feedback_lines() if analysis_feedback is not None else []
-    )
+    feedback_lines = analysis_feedback.feedback_lines() if analysis_feedback is not None else []
     variables = {
         "findings_block": _serialize_findings(findings),
         "analysis_feedback_block": "\n".join(feedback_lines),
@@ -121,9 +119,7 @@ def _render_prompt(
         "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
         "approved_tools": ", ".join(sorted(markers.APPROVED_GATE_TOOLS)),
         "applicability_overrides_path": markers.APPLICABILITY_OVERRIDES_PATH,
-        "migrated_marker": markers.MIGRATED_MARKER_TEMPLATE.format(
-            target="<canonical-filename>"
-        ),
+        "migrated_marker": markers.MIGRATED_MARKER_TEMPLATE.format(target="<canonical-filename>"),
         "agents_block_begin": markers.AGENTS_BLOCK_BEGIN,
         "agents_block_end": markers.AGENTS_BLOCK_END,
     }
@@ -181,18 +177,14 @@ def run_remediation_phase(
     """
     prompt_text = _render_prompt(findings, analysis_feedback)
     prompt_path = _write_prompt(workspace, prompt_text)
-    emit(
-        f"project-policy-readiness: invoking remediation agent "
-        f"({len(findings)} open findings)"
-    )
+    emit(f"project-policy-readiness: invoking remediation agent ({len(findings)} open findings)")
     success = bool(invoke_agent(phase=PHASE_REMEDIATION, prompt_path=prompt_path))
 
     # ALWAYS revalidate. Never trust the agent's claim alone.
     remaining = validators.validate_readiness(workspace, stack)
     if remaining and success:
         emit(
-            f"project-policy-readiness: agent reported success but "
-            f"{len(remaining)} findings remain"
+            f"project-policy-readiness: agent reported success but {len(remaining)} findings remain"
         )
     elif remaining:
         emit(

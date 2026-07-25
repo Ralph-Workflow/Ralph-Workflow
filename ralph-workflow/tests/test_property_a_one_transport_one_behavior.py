@@ -12,7 +12,6 @@ import importlib
 import json
 from functools import cache
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -21,6 +20,7 @@ from ralph.mcp.server import _fallback_http_handler
 from ralph.mcp.server._in_memory_transport import drive_request, parse_sse_data
 from ralph.mcp.server.runtime import McpServer, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import must_mapping
 
 REPO = Path(__file__).resolve().parents[1]
 FORBIDDEN_TOKENS = (
@@ -96,7 +96,7 @@ def test_in_memory_transport_drives_dispatch_via_saturated_seam(
     assert status == 200
     assert seen, "the dispatch must run through the saturated-dispatch seam"
     data = parse_sse_data(body)
-    result = cast("dict[str, object]", data.get("result", {}))
+    result = must_mapping(data.get("result", {}))
     assert "tools" in result
 
 

@@ -275,9 +275,7 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         marker_file = skill_dir / _MANAGED_MARKER
         skill_dir.mkdir(parents=True, exist_ok=True)
         on_disk_hash = (
-            hashlib.sha256(skill_file.read_bytes()).hexdigest()
-            if skill_file.exists()
-            else ""
+            hashlib.sha256(skill_file.read_bytes()).hexdigest() if skill_file.exists() else ""
         )
         if on_disk_hash == bundled_sha:
             return False

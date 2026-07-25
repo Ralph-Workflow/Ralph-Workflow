@@ -31,8 +31,6 @@ from ralph.mcp.explore.store import (
 logger = logging.getLogger(__name__)
 
 
-
-
 def _staged_full_reindex(
     store: ExploreStore,
     workspace_root: Path,
@@ -101,6 +99,7 @@ def _staged_full_reindex(
             # full mode; importing ``reindex`` back at module
             # scope would form a cycle that fails to load.
             from ralph.mcp.explore.pipeline import reindex
+
             inner_result = reindex(
                 staging,
                 workspace_root,
@@ -347,7 +346,6 @@ def _swap_staged_index(
     # the store is queryable; we do not let the budget
     # shorten the reopen path.
     store.reopen()
-
 
 
 def _finalize(

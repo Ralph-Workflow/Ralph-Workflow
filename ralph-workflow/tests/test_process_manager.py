@@ -14,7 +14,7 @@ import sys
 import threading
 import time as _time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -1080,7 +1080,7 @@ def test_atexit_shutdown_calls_pm_shutdown_all() -> None:
         def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
             captured["grace"] = grace_period_s
 
-    _singleton._pm_state.instance = cast("ProcessManager", _FakePM())
+    _singleton._pm_state.instance = _FakePM()
     try:
         _singleton._atexit_shutdown()
         assert captured.get("grace") == 0.5
@@ -1096,7 +1096,7 @@ def test_atexit_shutdown_swallows_baseexception() -> None:
             del grace_period_s
             raise RuntimeError("shutdown-failed")
 
-    _singleton._pm_state.instance = cast("ProcessManager", _ExplodingPM())
+    _singleton._pm_state.instance = _ExplodingPM()
     try:
         # Must NOT raise.
         _singleton._atexit_shutdown()
@@ -1176,7 +1176,7 @@ def test_process_phase_scope_logs_and_reraises_on_termination_error() -> None:
                 reason="cleanup failed",
             )
 
-    _singleton._pm_state.instance = cast("ProcessManager", _ExplodingPM())
+    _singleton._pm_state.instance = _ExplodingPM()
     try:
         with pytest.raises(ProcessTerminationError), process_phase_scope("audit"):
             pass
@@ -1435,7 +1435,7 @@ def test_reset_process_manager_swallows_exceptions_during_shutdown() -> None:
         def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
             raise RuntimeError("boom")
 
-    _pm_state.instance = cast("ProcessManager", _RaisingPm())
+    _pm_state.instance = _RaisingPm()
 
     # Must not raise
     reset_process_manager()

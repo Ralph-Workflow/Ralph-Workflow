@@ -131,9 +131,7 @@ def render_conflict_prompt(
     }
     template_root = packaged_template_root()
     try:
-        template_text = (template_root / PROMPT_TEMPLATE_NAME).read_text(
-            encoding="utf-8"
-        )
+        template_text = (template_root / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
         partials = load_partial_templates((template_root,))
         rendered = render_template(template_text, variables, partials)
     except Exception as render_exc:

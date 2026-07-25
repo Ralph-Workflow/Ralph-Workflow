@@ -407,6 +407,24 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-045 typechecking: AST + literal-string audit that enforces the
+        # ``Type assertions and casts`` section of
+        # ``docs/ralph-workflow-policy/typechecking-policy.md``. The audit
+        # rejects every ``cast(`` call in production code that is not (a)
+        # sound-by-construction (universal leaf types), (b) confined to a
+        # named boundary helper, or (c) carrying an inline
+        # ``# cast-policy: seam: <rationale>`` marker; it also rejects
+        # EVERY ``cast(`` in tests/. AST + Path.read_text only -- no
+        # subprocess, no sleep, no real I/O. Appended LAST so the
+        # index-based timeout assertions in tests/test_verify.py are
+        # not shifted; NOT budget-tracked (does not count against the
+        # immutable 60-second combined test budget).
+        "cast policy audit (audit_cast_policy)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_cast_policy"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 #: Index 2 is ``make test``: the primary test step, charged against

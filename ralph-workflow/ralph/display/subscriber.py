@@ -76,8 +76,11 @@ def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKind
     """
     from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 
-    return cast("type[_WaitingEventLike]", WaitingStatusEvent), cast(
-        "type[_WaitingKindLike]", WaitingStatusKind
+    return (
+        cast("type[_WaitingEventLike]", WaitingStatusEvent),
+        cast(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            "type[_WaitingKindLike]", WaitingStatusKind
+        ),
     )
 
 
@@ -128,9 +131,7 @@ def _format_waiting_status_line(event: object) -> str:
         # sees the latest progress description (``tool_use:Read`` etc.)
         # the watchdog recorded via ``record_subagent_work``.
         live_count = cast_event.diagnostic.get("live_subagent_count", 0)
-        live_label = (
-            f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
-        )
+        live_label = f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
         base = (
             f"Background child work: subagent progress"
             f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
@@ -139,7 +140,7 @@ def _format_waiting_status_line(event: object) -> str:
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
-        f", oldest_child_seconds={float(cast('int | float', oldest_val)):.0f}s"
+        f", oldest_child_seconds={float(cast('int | float', oldest_val)):.0f}s"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if oldest_val is not None
         else ""
     )

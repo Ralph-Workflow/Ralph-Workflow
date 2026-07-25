@@ -196,9 +196,7 @@ class ExploreStore(_ContentCacheMethods):
             )
 
     def get_file(self, path: str) -> FileRow | None:
-        cur = self._conn.execute(
-            "SELECT * FROM files WHERE path = ?", (path,)
-        )
+        cur = self._conn.execute("SELECT * FROM files WHERE path = ?", (path,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
@@ -206,7 +204,9 @@ class ExploreStore(_ContentCacheMethods):
 
     def iter_files(self) -> Iterator[FileRow]:
         cur = self._conn.execute("SELECT * FROM files WHERE is_deleted = 0")
-        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
+        all_rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for row in all_rows:
             yield _row_to_file(row)
 
@@ -220,9 +220,7 @@ class ExploreStore(_ContentCacheMethods):
         freshness with O(1) work instead of pulling the entire
         ``files`` table into memory.
         """
-        cur = self._conn.execute(
-            "SELECT COUNT(*) FROM files WHERE is_deleted = 0"
-        )
+        cur = self._conn.execute("SELECT COUNT(*) FROM files WHERE is_deleted = 0")
         row: sqlite3.Row | None = cur.fetchone()
         return _row_int_opt(row, 0) if row is not None else 0
 
@@ -234,9 +232,7 @@ class ExploreStore(_ContentCacheMethods):
         bounded way for callers to observe the deleted-row
         stale signal without materializing the entire table.
         """
-        cur = self._conn.execute(
-            "SELECT COUNT(*) FROM files WHERE is_deleted = 1"
-        )
+        cur = self._conn.execute("SELECT COUNT(*) FROM files WHERE is_deleted = 1")
         row: sqlite3.Row | None = cur.fetchone()
         return _row_int_opt(row, 0) if row is not None else 0
 
@@ -249,9 +245,7 @@ class ExploreStore(_ContentCacheMethods):
         (e.g., compact ``git_status``) should prefer this
         method over a count query.
         """
-        cur = self._conn.execute(
-            "SELECT EXISTS(SELECT 1 FROM files WHERE is_deleted = 1)"
-        )
+        cur = self._conn.execute("SELECT EXISTS(SELECT 1 FROM files WHERE is_deleted = 1)")
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return False
@@ -262,9 +256,7 @@ class ExploreStore(_ContentCacheMethods):
         with self._transaction() as cur:
             cur.execute("DELETE FROM files WHERE path = ?", (path,))
             cur.execute("DELETE FROM chunks WHERE path = ?", (path,))
-            cur.execute(
-                "DELETE FROM chunks_fts WHERE path = ?", (path,)
-            )
+            cur.execute("DELETE FROM chunks_fts WHERE path = ?", (path,))
             cur.execute("DELETE FROM evidence WHERE path = ?", (path,))
 
     # --- Chunk + FTS5 -------------------------------------------------
@@ -356,7 +348,9 @@ class ExploreStore(_ContentCacheMethods):
             """,
             (query, limit),
         )
-        raw_results = cast("list[sqlite3.Row]", cur.fetchall())
+        raw_results = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if path_filter is None:
             return raw_results
         filtered: list[sqlite3.Row] = []
@@ -408,9 +402,7 @@ class ExploreStore(_ContentCacheMethods):
             )
 
     def get_evidence(self, evidence_id: str) -> EvidenceRow | None:
-        cur = self._conn.execute(
-            "SELECT * FROM evidence WHERE evidence_id = ?", (evidence_id,)
-        )
+        cur = self._conn.execute("SELECT * FROM evidence WHERE evidence_id = ?", (evidence_id,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
@@ -535,24 +527,21 @@ class ExploreStore(_ContentCacheMethods):
 
     def iter_spans(self, path: str | None = None) -> Iterator[SpanRow]:
         if path is None:
-            cur = self._conn.execute(
-                "SELECT * FROM spans ORDER BY path, start_line, start_col"
-            )
+            cur = self._conn.execute("SELECT * FROM spans ORDER BY path, start_line, start_col")
         else:
             cur = self._conn.execute(
-                "SELECT * FROM spans WHERE path = ? "
-                "ORDER BY start_line, start_col",
+                "SELECT * FROM spans WHERE path = ? ORDER BY start_line, start_col",
                 (path,),
             )
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for span_row in rows:
             yield _row_to_span(span_row)
 
     def get_span(self, span_id: str) -> SpanRow | None:
         """Return the unique ``SpanRow`` for ``span_id`` or ``None``."""
-        cur = self._conn.execute(
-            "SELECT * FROM spans WHERE span_id = ?", (span_id,)
-        )
+        cur = self._conn.execute("SELECT * FROM spans WHERE span_id = ?", (span_id,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
@@ -590,21 +579,22 @@ class ExploreStore(_ContentCacheMethods):
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, qualified_name, kind"
         cur = self._conn.execute(sql, tuple(params))
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return [_row_to_symbol(row) for row in rows]
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
         if path is None:
-            cur = self._conn.execute(
-                "SELECT * FROM symbols ORDER BY path, qualified_name"
-            )
+            cur = self._conn.execute("SELECT * FROM symbols ORDER BY path, qualified_name")
         else:
             cur = self._conn.execute(
-                "SELECT * FROM symbols WHERE path = ? "
-                "ORDER BY qualified_name",
+                "SELECT * FROM symbols WHERE path = ? ORDER BY qualified_name",
                 (path,),
             )
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for sym_row in rows:
             yield _row_to_symbol(sym_row)
 
@@ -627,7 +617,9 @@ class ExploreStore(_ContentCacheMethods):
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, relation, source_id, target_id"
         cur = self._conn.execute(sql, params)
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for edge_row in rows:
             yield _row_to_edge(edge_row)
 
@@ -672,7 +664,9 @@ class ExploreStore(_ContentCacheMethods):
         """Atomically return + clear all currently dirty paths."""
         with self._transaction() as cur:
             cur.execute("SELECT path FROM dirty_paths")
-            rows = cast("list[sqlite3.Row]", cur.fetchall())
+            rows = cast(
+                "list[sqlite3.Row]", cur.fetchall()
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
@@ -688,15 +682,15 @@ class ExploreStore(_ContentCacheMethods):
 
     def peek_dirty_paths(self) -> list[str]:
         cur = self._conn.execute("SELECT path FROM dirty_paths")
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return [_row_str(row, "path") for row in rows]
 
     # --- Settings -----------------------------------------------------
 
     def get_setting(self, key: str) -> str | None:
-        cur = self._conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        )
+        cur = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
@@ -774,9 +768,7 @@ class ExploreStore(_ContentCacheMethods):
     # are documented in ``_store_class_content_cache.py``.
 
     def latest_job(self) -> sqlite3.Row | None:
-        cur = self._conn.execute(
-            "SELECT * FROM jobs ORDER BY started_at DESC LIMIT 1"
-        )
+        cur = self._conn.execute("SELECT * FROM jobs ORDER BY started_at DESC LIMIT 1")
         row: sqlite3.Row | None = cur.fetchone()
         return row
 
@@ -883,9 +875,7 @@ class ExploreStore(_ContentCacheMethods):
         migrated database is a no-op. The recorded version is then
         pinned to ``SCHEMA_VERSION`` so the next open is also a no-op.
         """
-        cur = self._conn.execute(
-            "SELECT value FROM settings WHERE key = 'schema_version'"
-        )
+        cur = self._conn.execute("SELECT value FROM settings WHERE key = 'schema_version'")
         row_obj: sqlite3.Row | None = cur.fetchone()
         on_disk: str = ""
         if row_obj is not None:

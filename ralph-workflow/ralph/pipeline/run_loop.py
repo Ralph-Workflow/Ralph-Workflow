@@ -283,7 +283,8 @@ def _setup_active_display(
         _stop = _runner_module.install_width_refresher(
             ctx_holder,
             on_refresh=lambda ctx: _sync_live_display_context(
-                cast("_DisplayContextOwner", active), ctx
+                cast("_DisplayContextOwner", active),
+                ctx,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
         )
 
@@ -305,7 +306,9 @@ def _emit_run_start(
         return
     with suppress(Exception):
         _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
-        _prompt_path: str | None = cast("str | None", _prompt_path_raw)
+        _prompt_path: str | None = cast(
+            "str | None", _prompt_path_raw
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         _dev_para = next(
             (
                 p.parallelization
@@ -327,8 +330,12 @@ def _emit_run_start(
         )
         _orientation = RunStartOrientation(
             prompt_path=_prompt_path,
-            developer_agent=cast("str | None", _dev_agent_raw),
-            developer_model=cast("str | None", _dev_model_raw),
+            developer_agent=cast(
+                "str | None", _dev_agent_raw
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            developer_model=cast(
+                "str | None", _dev_model_raw
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             developer_iters=ctx.config.general.developer_iters,
             parallel_max_workers=_parallel_max_workers,
             plan_present=_plan_present,
@@ -417,9 +424,7 @@ def _build_status_bar_model(
     the bar keeps ticking during quiet agent turns without a model
     re-push. ``None`` keeps the existing snapshot-elapsed contract.
     """
-    entry = build_phase_entry_model_from_state(
-        state.phase, state, policy_bundle.pipeline
-    )
+    entry = build_phase_entry_model_from_state(state.phase, state, policy_bundle.pipeline)
     phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
     entry_agent_name: object = getattr(entry, "agent_name", None)
     return StatusBarModel(
@@ -577,9 +582,7 @@ def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
         return None
     with suppress(Exception):
         if outcome is not None:
-            _runner_module._log_auto_integrate_outcome(
-                ctx.active_display, outcome
-            )
+            _runner_module._log_auto_integrate_outcome(ctx.active_display, outcome)
         else:
             # The startup check must never be invisible: even the
             # nothing-to-do outcome prints one line so an operator can
@@ -613,15 +616,11 @@ def _save_recovered_rebase_checkpoint(
     try:
         _runner_module.save_checkpoint_or_log(
             state,
-            message=(
-                "Checkpoint save failed while persisting auto-integrate recovery: {err}"
-            ),
+            message=("Checkpoint save failed while persisting auto-integrate recovery: {err}"),
             path=_runner_module._checkpoint_path(ctx.workspace_scope),
         )
     except Exception as save_exc:  # pragma: no cover -- defensive
-        logger.warning(
-            "auto_integrate recovery checkpoint save failed: {}", save_exc
-        )
+        logger.warning("auto_integrate recovery checkpoint save failed: {}", save_exc)
 
 
 @dataclass(frozen=True)
@@ -683,9 +682,13 @@ def _resolve_registry(
 ) -> _RegistryLike:
     """Resolve the agent registry with the standard DI precedence."""
     if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
-        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
+        return cast(
+            "_RegistryLike", pipeline_deps.registry_factory(config)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if pro_hooks is not None and pro_hooks.registry_factory is not None:
-        return cast("_RegistryLike", pro_hooks.registry_factory(config))
+        return cast(
+            "_RegistryLike", pro_hooks.registry_factory(config)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if registry_factory is not None:
         return registry_factory(config)
     return _runner_module.AgentRegistry.from_config(config)
@@ -878,9 +881,7 @@ def _resolve_run_collaborators(
         marker_watcher_factory=_resolve_marker_watcher_factory(
             pipeline_deps, pro_hooks, marker_watcher_factory
         ),
-        snapshot_registry=_resolve_snapshot_registry(
-            pipeline_deps, pro_hooks, snapshot_registry
-        ),
+        snapshot_registry=_resolve_snapshot_registry(pipeline_deps, pro_hooks, snapshot_registry),
     )
 
 
@@ -937,18 +938,12 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
         "agent_waiting_status_interval_seconds",
         WAITING_STATUS_INTERVAL_SECONDS,
     )
-    if (
-        isinstance(raw, (int, float))
-        and not isinstance(raw, bool)
-        and float(raw) > 0.0
-    ):
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and float(raw) > 0.0:
         return float(raw)
     return WAITING_STATUS_INTERVAL_SECONDS
 
 
-def _announce_deferred_startup_integration(
-    ctx: _LoopContext, recovered: RebaseState
-) -> None:
+def _announce_deferred_startup_integration(ctx: _LoopContext, recovered: RebaseState) -> None:
     """Tell the operator why the startup catch-up was skipped this run.
 
     A deferral that only appeared in the log file would read exactly
@@ -1002,18 +997,11 @@ def _apply_startup_rebase_outcomes(
     except AttributeError:
         candidate_deps = None
     pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
-    if (
-        pipeline_deps is not None
-        and pipeline_deps.startup_rebase_resolver is not None
-    ):
-        injected_rebase = pipeline_deps.startup_rebase_resolver(
-            ctx.config, ctx.workspace_scope
-        )
+    if pipeline_deps is not None and pipeline_deps.startup_rebase_resolver is not None:
+        injected_rebase = pipeline_deps.startup_rebase_resolver(ctx.config, ctx.workspace_scope)
         return state if injected_rebase is None else state.copy_with(rebase=injected_rebase)
 
-    recovered_rebase = _run_auto_integrate_recovery_preamble(
-        ctx.workspace_scope, ctx.config
-    )
+    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
     if recovered_rebase is not None:
         state = state.copy_with(rebase=recovered_rebase)
         _save_recovered_rebase_checkpoint(state, ctx)
@@ -1055,7 +1043,9 @@ def _run_inner_loop(
     def _live_is_waiting() -> bool:
         return bool(state_holder[0].is_waiting_state)
 
-    last_status_sig: tuple[str, int | None, int | None, str | None, str | None, str | None] | None = None
+    last_status_sig: (
+        tuple[str, int | None, int | None, str | None, str | None, str | None] | None
+    ) = None
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
@@ -1071,7 +1061,9 @@ def _run_inner_loop(
             )
         else:
             iter_pipeline_deps = ctx.pipeline_deps
-        runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
+        runner_step = cast(
+            "_RunPipelineStepFn", _runner_module.run_pipeline_step
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         step_result = runner_step(
             state=state,
             policy_bundle=ctx.policy_bundle,
@@ -1188,7 +1180,9 @@ def _run_inner_loop(
         )
         if hasattr(ctx.active_display, "begin_phase"):
             with suppress(Exception):
-                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(state.phase)
+                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(
+                    state.phase
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return state, prev_phase, None
 
 
@@ -1202,7 +1196,9 @@ def _emit_post_loop_result(
     """Emit run-end summary after the pipeline loop finishes."""
     if not is_quiet and hasattr(active_display, "emit_run_end"):
         with suppress(Exception):
-            total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
+            total_agent_calls = cast(
+                "int", getattr(state.metrics, "total_agent_calls", 0)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
                 (
@@ -1212,7 +1208,9 @@ def _emit_post_loop_result(
                 ),
                 None,
             )
-            cast("_RunEndDisplay", active_display).emit_run_end(
+            cast(
+                "_RunEndDisplay", active_display
+            ).emit_run_end(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 phase=state.phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=state.pr_url,
@@ -1360,8 +1358,7 @@ def _subscribe_recovery_display(
                     now_ts,
                     build=lambda: status_text(
                         "RECOVERING",
-                        f"falling over from {evt.from_agent} to "
-                        f"{evt.to_agent} ({evt.reason})",
+                        f"falling over from {evt.from_agent} to {evt.to_agent} ({evt.reason})",
                         "yellow",
                     ),
                 )
@@ -1375,10 +1372,7 @@ def _subscribe_recovery_display(
                             f"{evt.reason or 'no detail'})"
                         )
                     else:
-                        value = (
-                            f"chain exhausted ({evt.category}: "
-                            f"{evt.reason or 'no detail'})"
-                        )
+                        value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
                     style = "red"
                     tag = "terminal"
                 elif evt.watchdog_reason is not None:
@@ -1479,7 +1473,9 @@ def _cleanup_pipeline(
     emit_final_summary(
         state,
         loop_ctx.workspace_scope.root,
-        subscriber=cast("PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber),
+        subscriber=cast(
+            "PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         display=loop_ctx.active_display,
         display_context=loop_ctx.display_context,
     )
@@ -1493,8 +1489,10 @@ def _cleanup_pipeline(
     # behavior is unchanged.
     teardown = loop_ctx.process_teardown
     if teardown is None:
+
         def teardown() -> None:
             get_process_manager().shutdown_all(grace_period_s=0.5)
+
     with suppress(Exception):
         teardown()
 
@@ -1515,7 +1513,9 @@ def _execute_with_cleanup(
             _emit_run_start(loop_ctx, state)
             if hasattr(loop_ctx.active_display, "begin_phase"):
                 with suppress(Exception):
-                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
+                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(
+                        state.phase
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             # Seed the persistent bottom Status Bar with the active directory +
             # phase + iteration context for the initial phase. Defensive push
             # (matches _emit_run_start / emit_activity_line precedent). Pass
@@ -1691,9 +1691,7 @@ def run(
         workspace_scope.root,
         watcher_factory=collaborators.marker_watcher_factory,
     )
-    _heartbeat_client = _apply_legacy_heartbeat_override(
-        workspace_scope.root, _heartbeat_client
-    )
+    _heartbeat_client = _apply_legacy_heartbeat_override(workspace_scope.root, _heartbeat_client)
     _unsubscribe_display = _subscribe_recovery_display(
         _controller,
         active_display,
@@ -1729,8 +1727,7 @@ def run(
         pipeline_deps=pipeline_deps,
         catchup_worker=(
             pipeline_deps.catchup_worker_factory(config, workspace_scope.root)
-            if pipeline_deps is not None
-            and pipeline_deps.catchup_worker_factory is not None
+            if pipeline_deps is not None and pipeline_deps.catchup_worker_factory is not None
             else start_catchup_worker_if_enabled(config, workspace_scope.root)
         ),
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,

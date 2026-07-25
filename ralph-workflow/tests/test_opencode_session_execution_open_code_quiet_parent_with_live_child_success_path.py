@@ -7,7 +7,6 @@ no real psutil. Verifies the quiet-parent-with-live-child success path.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
 
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -19,9 +18,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
-
-if TYPE_CHECKING:
-    from ralph.process.manager import ManagedProcess
 
 
 class TestOpenCodeQuietParentWithLiveChildSuccessPath:
@@ -105,7 +101,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
 
         collected = list(
             read_lines_from_process(
-                cast("ManagedProcess", handle),
+                handle,
                 ctx=ProcessReaderCtx(
                     config=AgentConfig(
                         cmd="opencode",

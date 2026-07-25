@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +18,7 @@ from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
 from ralph.mcp.server.runtime import McpServer, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import must_mapping
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -72,7 +73,7 @@ def test_fastmcp_exec_family_returns_inline_text_result(
     )
     assert response is not None
     assert response.error is None
-    result_obj = cast("dict[str, object]", response.result or {})
+    result_obj = must_mapping(response.result or {})
     assert result_obj.get("isError") is False
     content = result_obj.get("content")
     assert isinstance(content, list)

@@ -8,7 +8,7 @@ reaches plumbing.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import click
@@ -29,6 +29,9 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._support.typed_accessors import (
+    must_mapping,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -112,7 +115,7 @@ def test_commit_cli_uses_default_pipeline_factory(tmp_path: Path) -> None:
     assert factory_call["display_context"] is display_context
     assert factory_call["model_identity"] is model_identity
     assert factory_call["pro_hooks"] is pro_hooks
-    plumbing_kwargs = cast("dict[str, object]", captured_plumbing["kwargs"])
+    plumbing_kwargs = must_mapping(captured_plumbing["kwargs"])
     assert plumbing_kwargs["pipeline_deps"] is expected_deps
 
 
@@ -193,10 +196,10 @@ def test_smoke_cli_uses_default_pipeline_factory(
     assert factory_call["display_context"] is display_context
     assert factory_call["model_identity"] is model_identity
     assert factory_call["pro_hooks"] is pro_hooks
-    plumbing_kwargs = cast("dict[str, object]", captured_plumbing["kwargs"])
+    plumbing_kwargs = must_mapping(captured_plumbing["kwargs"])
     assert plumbing_kwargs["pipeline_deps"] is expected_deps
     assert plumbing_kwargs["subagents"] is True
-    prompt_path = cast("Path", plumbing_kwargs["prompt_file"])
+    prompt_path = plumbing_kwargs["prompt_file"]
     prompt = prompt_path.read_text(encoding="utf-8")
     assert "Inspect watchdog evidence and report one likely stall edge case." in prompt
     assert "smoke_test_result" in prompt
@@ -332,7 +335,7 @@ def test_extended_pro_hooks_reach_plumbing_via_factory(tmp_path: Path) -> None:
     """All 8 extended Pro DI seams flow through the factory into plumbing."""
     display_context = _make_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
-    bundle: PolicyBundle = cast("PolicyBundle", object())
+    bundle: PolicyBundle = object()
 
     def my_policy_bundle_factory(_workspace_scope: object, _config: object) -> object:
         return bundle

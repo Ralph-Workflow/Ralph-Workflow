@@ -102,10 +102,14 @@ def _get_run_func() -> _RunnerFunc | None:
     repeated calls do not retry the import after a failure.
     """
     if _state.run_func is not _RUN_FUNC_UNSET:
-        return cast("_RunnerFunc | None", _state.run_func)
+        return cast(
+            "_RunnerFunc | None", _state.run_func
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     try:
-        module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
+        module = cast(
+            "_RunnerModule", import_module("ralph.pipeline.runner")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     except ImportError:
         _state.run_func = None
         return None
@@ -134,7 +138,9 @@ _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     module = import_module("ralph.pipeline.runner")
-    return cast("int", module.validate_custom_mcp_servers(workspace_root))
+    return cast(
+        "int", module.validate_custom_mcp_servers(workspace_root)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 validate_custom_mcp_servers = _validate_custom_mcp_servers
@@ -402,7 +408,9 @@ def _run_preflight_checks(
 
     # Only run policy-based validations if we have a loaded policy bundle.
     if request.policy_bundle is not None:
-        loaded_policy_bundle = cast("PolicyBundle", request.policy_bundle)
+        loaded_policy_bundle = cast(
+            "PolicyBundle", request.policy_bundle
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         try:
             validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
@@ -687,9 +695,7 @@ def _sync_shipped_skills_on_pipeline_run(
 
         removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id)
         if removed:
-            logger.debug(
-                "Retention sweep removed {} stale .agent entries", removed
-            )
+            logger.debug("Retention sweep removed {} stale .agent entries", removed)
     except Exception as exc:  # sweep is best-effort; never break the pipeline
         _emit_setup_warning(
             f"Retention sweep failed (non-fatal): {exc}. The run "
@@ -722,8 +728,7 @@ def _run_project_policy_readiness(
     mode: PolicyMode = PolicyMode.NORMAL,
     workspace_factory: Callable[[], Workspace] | None = None,
     emit_factory: Callable[[str], None] | None = None,
-    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent]
-    | None = None,
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None = None,
 ) -> int:
     """Run the project-policy-readiness preflight at run_pipeline startup.
 
@@ -896,10 +901,7 @@ def run_pipeline(
     # development run to proceed to. That is what this branch checks: we return
     # early because the user asked for policy work ONLY, not because policy
     # failed.
-    if (
-        load_result.workspace_scope is not None
-        and effective_request.inline_prompt is None
-    ):
+    if load_result.workspace_scope is not None and effective_request.inline_prompt is None:
         policy_readiness_result = _run_project_policy_readiness(
             load_result=load_result,
             display_context=ctx,

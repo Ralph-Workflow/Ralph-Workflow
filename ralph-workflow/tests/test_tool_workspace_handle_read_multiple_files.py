@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +10,6 @@ import pytest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
@@ -34,7 +32,7 @@ class TestHandleReadMultipleFiles:
             {"paths": ["file1.txt", "file2.txt"]},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert len(payload["files"]) == 2
         assert payload["files"][0]["content"] == "content1"
         assert payload["files"][1]["content"] == "content2"
@@ -49,7 +47,7 @@ class TestHandleReadMultipleFiles:
             {"paths": ["file1.txt", "missing.txt"]},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["files"][0]["content"] == "content1"
         assert "error" in payload["files"][1]
 

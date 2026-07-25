@@ -97,7 +97,9 @@ class _ContentCacheMethods:
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
-        value = cast("bytes | memoryview | None", row["payload"])
+        value = cast(
+            "bytes | memoryview | None", row["payload"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if value is None:
             return None
         if isinstance(value, bytes):
@@ -171,7 +173,9 @@ class _ContentCacheMethods:
     def iter_content_cache(self) -> Iterator[ContentCacheRow]:
         """Yield every ``ContentCacheRow`` for inspection/audit use only."""
         cur = self._conn.execute("SELECT * FROM content_cache")
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = cast(
+            "list[sqlite3.Row]", cur.fetchall()
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for cache_row in rows:
             yield _row_to_content_cache(cache_row)
 

@@ -8,7 +8,7 @@ regardless of content. The count must come from the validated Markdown document.
 from __future__ import annotations
 
 import types
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.config.enums import Verbosity
 from ralph.phases.required_artifacts import RequiredArtifact
@@ -17,8 +17,6 @@ from ralph.pipeline.phase_agent_handler import render_success_artifact
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
 
 _ISSUES_DOC = """---
 type: issues
@@ -64,8 +62,8 @@ def _render_and_capture(workspace_root: Path) -> dict[str, str]:
     render_success_artifact(
         "issues",
         workspace_root,
-        cast("DisplayContext", types.SimpleNamespace()),
-        cast("ParallelDisplay", display),
+        types.SimpleNamespace(),
+        display,
         Verbosity.VERBOSE,
         _required_issues_artifact(),
     )

@@ -63,7 +63,9 @@ def build_ralph_tool_registry(
     mcp_config: McpConfig | None = None,
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
-    mcp_config_cls = cast("type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig)
+    mcp_config_cls = cast(
+        "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
     for spec in tool_specs(mcp_cfg):

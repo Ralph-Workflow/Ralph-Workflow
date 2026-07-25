@@ -165,7 +165,10 @@ def _di_group(fields: ParsedFields, design: Content) -> None:
 
 def _drift_group(fields: ParsedFields, design: Content) -> None:
     group: Content = {}
-    for key, name in (("guard commands", "guard_commands"), ("expected outputs", "expected_outputs")):
+    for key, name in (
+        ("guard commands", "guard_commands"),
+        ("expected outputs", "expected_outputs"),
+    ):
         entries = fields.lists.get(key)
         if entries is not None:
             group[name] = [entry.text for entry in entries]

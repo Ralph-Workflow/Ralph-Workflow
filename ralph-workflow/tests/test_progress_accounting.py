@@ -11,7 +11,7 @@ These tests lock the intended contract before refactoring:
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -50,7 +50,7 @@ def _reduce(
     event: object,
     policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    return reducer_reduce(state, cast("Any", event), policy)
+    return reducer_reduce(state, event, policy)
 
 
 def _progress_policy() -> PipelinePolicy:

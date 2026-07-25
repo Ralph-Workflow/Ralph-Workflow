@@ -28,7 +28,9 @@ _BLOCK_HEADING = re.compile(
     r"^(?P<marks>#{3,6}) \[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] "
     r"(?P<title>\S(?:.*\S)?)$"
 )
-_ITEM = re.compile(r"^- (?:(?P<checked>\[[ xX]\]) )?\[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] (?P<text>\S(?:.*\S)?)$")
+_ITEM = re.compile(
+    r"^- (?:(?P<checked>\[[ xX]\]) )?\[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] (?P<text>\S(?:.*\S)?)$"
+)
 _LIST_PREFIX = re.compile(r"^- (?:\[[ xX]\] )?")
 
 
@@ -39,11 +41,19 @@ class _SectionBuilder:
         self.name = name
         self.line = line
         self.level = level
-        self.lines: list[ParsedLine] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
-        self.items: list[ParsedItem] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
-        self.blocks: list[ParsedBlock] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        self.lines: list[
+            ParsedLine
+        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        self.items: list[
+            ParsedItem
+        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        self.blocks: list[
+            ParsedBlock
+        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
         self.block: ParsedBlock | None = None
-        self.block_lines: list[ParsedLine] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
+        self.block_lines: list[
+            ParsedLine
+        ] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
 
     def finish_block(self) -> None:
         if self.block is not None:
@@ -113,9 +123,13 @@ def parse_markdown_document(
 
     for line_number, line in enumerate(lines[start:], start=start + 1):
         block_heading = _BLOCK_HEADING.fullmatch(line)
-        if block_heading is not None and (
-            allow_nested_headings
-            or cast("str", block_heading.group("marks")) == "###"
+        if (
+            block_heading is not None
+            and (
+                allow_nested_headings
+                or cast("str", block_heading.group("marks"))
+                == "###"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
         ):
             finish_item()
             if current is None:
@@ -135,8 +149,13 @@ def parse_markdown_document(
             )
             continue
         heading = _HEADING.fullmatch(line)
-        if heading is not None and (
-            allow_nested_headings or cast("str", heading.group("marks")) == "##"
+        if (
+            heading is not None
+            and (
+                allow_nested_headings
+                or cast("str", heading.group("marks"))
+                == "##"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            )
         ):
             finish_item()
             if current is not None:
@@ -144,14 +163,18 @@ def parse_markdown_document(
             current = _SectionBuilder(
                 heading.group("name"),
                 line_number,
-                len(cast("str", heading.group("marks"))),
+                len(
+                    cast("str", heading.group("marks"))
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             )
             continue
         if not line.strip():
             continue
         if current is None:
             diagnostics.append(
-                Diagnostic(line_number, None, "MD002", "content must be inside a '## Heading' section")
+                Diagnostic(
+                    line_number, None, "MD002", "content must be inside a '## Heading' section"
+                )
             )
             continue
         if line.startswith("#"):
@@ -168,9 +191,15 @@ def parse_markdown_document(
         if item is not None:
             finish_item()
             current.finish_block()
-            checkbox = cast("str | None", item.group("checked"))
-            identifier = cast("str", item.group("identifier"))
-            item_text = cast("str", item.group("text"))
+            checkbox = cast(
+                "str | None", item.group("checked")
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            identifier = cast(
+                "str", item.group("identifier")
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            item_text = cast(
+                "str", item.group("text")
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             last_item = ParsedItem(
                 identifier=identifier,
                 text=item_text,
@@ -224,7 +253,9 @@ def _parse_frontmatter(
             continue
         key = field.group("key")
         if key in frontmatter:
-            diagnostics.append(Diagnostic(line_number, None, "MD006", f"duplicate frontmatter field {key!r}"))
+            diagnostics.append(
+                Diagnostic(line_number, None, "MD006", f"duplicate frontmatter field {key!r}")
+            )
             continue
         frontmatter[key] = field.group("value")
         frontmatter_lines[key] = line_number

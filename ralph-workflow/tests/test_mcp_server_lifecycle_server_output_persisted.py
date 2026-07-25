@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.server.lifecycle import _spawn_process
 
@@ -29,7 +29,7 @@ def test_spawned_mcp_server_output_lands_in_agent_tmp_log(tmp_path: Path) -> Non
         # Simulate the child writing a traceback to its stderr fd at spawn time.
         assert isinstance(options.stderr, int)
         os.write(options.stderr, b"Traceback: boom\n")
-        return cast("ManagedProcess", object())
+        return object()
 
     _spawn_process(
         ["python", "-m", "ralph.mcp.server"],
@@ -54,7 +54,7 @@ def test_spawned_mcp_server_log_fd_is_released_in_parent(tmp_path: Path) -> None
     def fake_spawn(command: object, options: SpawnOptions) -> ManagedProcess:
         assert isinstance(options.stderr, int)
         seen_fd.append(options.stderr)
-        return cast("ManagedProcess", object())
+        return object()
 
     _spawn_process(["x"], tmp_path, {}, phase=None, spawn=fake_spawn)
 

@@ -52,7 +52,9 @@ class TemplateRenderer:
         templates = {
             f"{name}.j2": _normalize_static_spacing(content) for name, content in partials.items()
         }
-        strict_undefined = cast("type[Undefined]", StrictUndefined)
+        strict_undefined = cast(
+            "type[Undefined]", StrictUndefined
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         self._environment = Environment(
             loader=DictLoader(templates),
             autoescape=False,
@@ -190,7 +192,9 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
                 outside.append(line)
                 continue
             flush_outside()
-            fence = cast("str", match.group("fence"))
+            fence = cast(
+                "str", match.group("fence")
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             fence_character = fence[0]
             fence_length = len(fence)
             output.append(line)
@@ -199,7 +203,9 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
         output.append(line)
         if match is None:
             continue
-        fence = cast("str", match.group("fence"))
+        fence = cast(
+            "str", match.group("fence")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if fence[0] == fence_character and len(fence) >= fence_length:
             fence_character = ""
             fence_length = 0

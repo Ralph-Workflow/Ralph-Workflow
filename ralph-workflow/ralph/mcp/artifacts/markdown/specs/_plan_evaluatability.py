@@ -22,9 +22,7 @@ _LOCATOR = re.compile(
     r"\b[\w.-]+\.(?:json|xml|ya?ml|toml|txt|log|md|html?|csv|pdf|png|jpe?g)\b",
     re.IGNORECASE,
 )
-_EXECUTABLE = re.compile(
-    r"^(?:\.{0,2}/)?[A-Za-z0-9_.+@-]+(?:/[A-Za-z0-9_.+@-]+)*$"
-)
+_EXECUTABLE = re.compile(r"^(?:\.{0,2}/)?[A-Za-z0-9_.+@-]+(?:/[A-Za-z0-9_.+@-]+)*$")
 _NON_COMMAND_LEADS = frozenset(
     {
         "check",

@@ -235,8 +235,12 @@ def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:
     parser.add_argument("--suite-timeout", type=float, default=DEFAULT_SUITE_TIMEOUT_SECONDS)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     parsed = parser.parse_args(list(argv))
-    suite_timeout = cast("float", parsed.suite_timeout)
-    command = cast("list[str]", parsed.command)
+    suite_timeout = cast(
+        "float", parsed.suite_timeout
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    command = cast(
+        "list[str]", parsed.command
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if command and command[0] == "--":
         command = command[1:]
     if not command:

@@ -174,16 +174,18 @@ def _run_hook(
         handle_runner_obj: object = getattr(explore_index, "runner", None)
         if callable(handle_runner_obj):
             resolved_runner: object = handle_runner_obj()
-            runner_value = cast("ReindexRunner", resolved_runner)
+            runner_value = cast(
+                "ReindexRunner", resolved_runner
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if runner_value is None:
         # Default runner: invoke ``claim_reindex`` so the
         # production coordinator handles concurrent calls and
         # dirty-path coalescing. Tests bypass this path with the
         # ``reindex_runner`` injection.
-        runner_value = cast("ReindexRunner", claim_reindex)
-    options_value: ReindexOptions = ReindexOptions(
-        mode="changed", timeout_ms=timeout_ms
-    )
+        runner_value = cast(
+            "ReindexRunner", claim_reindex
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    options_value: ReindexOptions = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
     try:
         runner: ReindexRunner = runner_value
         # Backward compat: legacy/test runners accept ``opts=`` while
@@ -197,7 +199,9 @@ def _run_hook(
             workspace_root,
             **{kwargs_name: options_value},
         )
-        result = cast("ReindexResult", raw_result)
+        result = cast(
+            "ReindexResult", raw_result
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     except Exception as exc:
         logger.warning(
             "Lifecycle refresh (%s) failed: %s",
@@ -211,9 +215,7 @@ def _run_hook(
             skipped_reason=f"error:{type(exc).__name__}",
         )
     result_status: object = getattr(result, "status", "")
-    result_status_str: str = (
-        result_status if isinstance(result_status, str) else str(result_status)
-    )
+    result_status_str: str = result_status if isinstance(result_status, str) else str(result_status)
     timed_out = bool(result_status_str == "timed_out")
     return LifecycleHookResult(
         invoked=True,

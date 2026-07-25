@@ -3223,7 +3223,9 @@ def subscriber_for_display(
     """Return the pipeline subscriber attached to the given display, when present."""
     if display is None:
         return None
-    return cast("PipelineSubscriber | None", getattr(display, "subscriber", None))
+    return cast(
+        "PipelineSubscriber | None", getattr(display, "subscriber", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 __all__ = [

@@ -97,9 +97,7 @@ def is_generated_path(path: str) -> bool:
 def is_source_role(path: str) -> bool:
     """True for source files (heuristic)."""
     lowered = path.lower()
-    return lowered.endswith(
-        (".py", ".md", ".markdown", ".json", ".yaml", ".yml", ".toml")
-    )
+    return lowered.endswith((".py", ".md", ".markdown", ".json", ".yaml", ".yml", ".toml"))
 
 
 def is_test_role(path: str) -> bool:
@@ -290,6 +288,7 @@ def matches_role(path: str, role: str) -> bool:
 
 def sort_ranked(items: list[RankedItem]) -> list[RankedItem]:
     """Stable sort: score DESC, then path ASC, then line ASC, then evidence_id ASC."""
+
     def _sort_key(item: RankedItem) -> tuple[int, str, int, str]:
         line_value: int = item.line if item.line is not None else -1
         return (-item.score, item.path, line_value, item.evidence_id or "")
@@ -338,15 +337,9 @@ def score_search_file(
         # Symbol and graph components only contribute when the
         # caller passed ``contains_symbol``; otherwise the
         # missing-data note makes the absent context auditable.
-        reasons.append(
-            f"+0 symbol_definition:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
-        reasons.append(
-            f"+0 symbol_mention:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
-        reasons.append(
-            f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
+        reasons.append(f"+0 symbol_definition:{INDEXED_COMPONENT_NOT_AVAILABLE}")
+        reasons.append(f"+0 symbol_mention:{INDEXED_COMPONENT_NOT_AVAILABLE}")
+        reasons.append(f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}")
 
     if is_git_changed:
         score += SEARCH_GIT_CHANGED
@@ -448,41 +441,27 @@ def score_grep_match(
         score += GREP_DEFINITION_BONUS
         reasons.append(f"+{GREP_DEFINITION_BONUS} definition_name_or_signature")
     else:
-        reasons.append(
-            f"+0 definition_bonus:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
+        reasons.append(f"+0 definition_bonus:{INDEXED_COMPONENT_NOT_AVAILABLE}")
     if same_symbol_bonus:
         score += GREP_SAME_SYMBOL_BODY
         reasons.append(f"+{GREP_SAME_SYMBOL_BODY} same_symbol_body")
     else:
-        reasons.append(
-            f"+0 same_symbol_body:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
+        reasons.append(f"+0 same_symbol_body:{INDEXED_COMPONENT_NOT_AVAILABLE}")
     if comment_doc_bonus:
         score += GREP_COMMENT_DOC
         reasons.append(f"+{GREP_COMMENT_DOC} comment_or_doc_tied_to_symbol")
     else:
-        reasons.append(
-            f"+0 comment_doc:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
+        reasons.append(f"+0 comment_doc:{INDEXED_COMPONENT_NOT_AVAILABLE}")
     if graph_neighbor_bonus:
         score += GREP_GRAPH_NEIGHBOR
-        reasons.append(
-            f"+{GREP_GRAPH_NEIGHBOR} graph_neighbor_of_target"
-        )
+        reasons.append(f"+{GREP_GRAPH_NEIGHBOR} graph_neighbor_of_target")
     else:
-        reasons.append(
-            f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
+        reasons.append(f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}")
     if graph_component_bonus:
         score += GREP_GRAPH_COMPONENT
-        reasons.append(
-            f"+{GREP_GRAPH_COMPONENT} same_graph_component_as_target"
-        )
+        reasons.append(f"+{GREP_GRAPH_COMPONENT} same_graph_component_as_target")
     else:
-        reasons.append(
-            f"+0 graph_component:{INDEXED_COMPONENT_NOT_AVAILABLE}"
-        )
+        reasons.append(f"+0 graph_component:{INDEXED_COMPONENT_NOT_AVAILABLE}")
 
     if is_git_changed:
         score += GREP_GIT_CHANGED

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.tools.names import custom_proxy_tool_name
@@ -48,7 +48,7 @@ def test_mcp_toml_entry_surfaces_in_upstream_registry(
 
     registry = UpstreamRegistry.build(
         upstreams,
-        client_factory=cast("Any", make_stub_client_factory()),
+        client_factory=make_stub_client_factory(),
     )
     aliases = {t.alias for t in registry.tool_definitions()}
 

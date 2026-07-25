@@ -148,10 +148,7 @@ def resolver_allowed(
     the same ``identity``. A fresh :class:`RebaseState` always yields
     True, so the first attempt of a run is never suppressed.
     """
-    return (
-        prior_conflict_count(state, target, identity)
-        < MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
-    )
+    return prior_conflict_count(state, target, identity) < MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
 
 
 def apply_conflict_budget(

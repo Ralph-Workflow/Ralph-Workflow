@@ -35,7 +35,7 @@ import importlib
 import io
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
@@ -50,7 +50,6 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from ralph.agents.registry import AgentRegistry
     from ralph.display.context import DisplayContext
 
 
@@ -496,7 +495,7 @@ def _run_worker_seam(
         config=_config(),
         workspace_scope=WorkspaceScope(_git_workspace(tmp_path)),
         policy_bundle=None,
-        registry=cast("AgentRegistry | None", None),
+        registry=None,
         pipeline_deps=None,
         display_context=display_context,
         recover_first=recover_first,

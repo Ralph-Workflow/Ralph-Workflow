@@ -187,9 +187,7 @@ def _commit_section(
     has_pr = pr_url is not None
     if not commit_lines and not has_pr:
         return []
-    items: list[Text | Rule] = [
-        Rule("Commit", style=style_for_role("terminal", pipeline_policy))
-    ]
+    items: list[Text | Rule] = [Rule("Commit", style=style_for_role("terminal", pipeline_policy))]
     items.extend(Text(f"  {line}") for line in commit_lines)
     if has_pr:
         items.append(Text(f"  PR: {pr_url}"))

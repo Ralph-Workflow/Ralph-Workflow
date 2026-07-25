@@ -7,7 +7,7 @@ network, no time.sleep, no real file I/O.
 from __future__ import annotations
 
 from io import StringIO
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -56,7 +56,7 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _make_fake_bundle() -> PolicyBundle:

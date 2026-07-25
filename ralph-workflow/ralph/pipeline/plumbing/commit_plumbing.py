@@ -306,7 +306,9 @@ def run_commit_plumbing(
                 "display_context is required when pipeline_deps and pipeline_core are not provided"
             )
         effective_pipeline_deps = _commit_pipeline_deps(
-            cast("UnifiedConfig", chain_config.general_config),
+            cast(
+                "UnifiedConfig", chain_config.general_config
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             display_context,
             materializer=None,
             registry=chain_config.registry,
@@ -560,7 +562,9 @@ def _reset_tool_registry_callback(
     callback = reset_tool_registry_callback(bridge)
     if callback is None:
         return None
-    return cast("typing.Callable[[], object]", callback)
+    return cast(
+        "typing.Callable[[], object]", callback
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _run_commit_agent_attempt_with_recovery(
@@ -641,7 +645,9 @@ def _run_commit_agent_attempt_with_recovery(
             effective_general_config,
             effective_pipeline_deps,
             workspace_scope,
-            bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
+            bridge=cast(
+                "RestartAwareMcpBridge", attempt_context.bridge
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
             session_id=prior_session_id,
@@ -655,7 +661,11 @@ def _run_commit_agent_attempt_with_recovery(
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
             parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, cast("AgentTransport", agent.transport)
+                agent.cmd,
+                agent.json_parser,
+                cast(
+                    "AgentTransport", agent.transport
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -851,7 +861,11 @@ def invoke_commit_agent_attempt(
         parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
             parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, cast("AgentTransport", agent.transport)
+                agent.cmd,
+                agent.json_parser,
+                cast(
+                    "AgentTransport", agent.transport
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,

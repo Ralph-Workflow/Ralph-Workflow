@@ -208,6 +208,11 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             args=("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
             returncode=0, stdout="fenced artifact example audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_cast_policy"),
+            returncode=0, stdout="cast policy audit ok\n",
+        ),
     }
 
 
@@ -252,6 +257,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
     ]
     assert all(
         args != ("test-auto-integrate-e2e",)
@@ -395,9 +401,9 @@ def test_run_verify_single_step_within_budget(
     # 20=repo_structure audit, 21=fsevents_watch_consolidation audit,
     # 22=log_sink_buffering audit, 23=idempotent_write_adoption audit,
     # 24=template_render_integrity audit,
-    # 25=fenced_artifact_examples audit).
+    # 25=fenced_artifact_examples audit, 26=cast_policy audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
-    # all other steps take 0s. Total: 26 steps x 2 monotonic calls = 52 entries.
+    # all other steps take 0s. Total: 27 steps x 2 monotonic calls = 54 entries.
     times = [
         0.0,
         0.0,
@@ -451,6 +457,8 @@ def test_run_verify_single_step_within_budget(
         1.0,
         1.0,
         1.0,
+        0.0,
+        0.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
@@ -660,6 +668,8 @@ def test_run_verify_non_test_steps_not_counted(
         2500.0,
         2500.0,
         2600.0,
+        2600.0,
+        2700.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import sys
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
@@ -80,11 +80,11 @@ class _AsyncProc(Protocol):
 
 
 def _psutil() -> _PsutilModuleLike:
-    return cast("_PsutilModuleLike", FakePsutil())
+    return FakePsutil()
 
 
 def _as_proc(value: object) -> _AsyncProcessLike:
-    return cast("_AsyncProcessLike", value)
+    return value
 
 
 async def test_async_context_manager_terminates_on_exit() -> None:
@@ -209,15 +209,12 @@ def _build_proc_with_close_tracking(
     close_calls: list[str], *, raise_on_close: bool
 ) -> _AsyncProcessLike:
     """Build a fake async proc whose stdin/stdout/stderr each call ``close()``."""
-    return cast(
-        "_AsyncProcessLike",
-        _RecordingFakeAsyncProc(
+    return _RecordingFakeAsyncProc(
             pid=9999,
             stdin=_RecordingStream("stdin", close_calls, raise_on_close),
             stdout=_RecordingStream("stdout", close_calls, raise_on_close),
             stderr=_RecordingStream("stderr", close_calls, raise_on_close),
-        ),
-    )
+        )
 
 
 async def test_aexit_closes_stdin_stdout_stderr_transports() -> None:
@@ -315,7 +312,7 @@ async def test_wait_bounds_with_asyncio_wait_for() -> None:
         psutil=_psutil(),
     )
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
-    handle._proc = cast("_AsyncProcessLike", controllable)
+    handle._proc = controllable
 
     original = PROCESS_EXIT_WAIT_SECONDS
     _async_proc_mod.PROCESS_EXIT_WAIT_SECONDS = 0.05
@@ -348,7 +345,7 @@ async def test_communicate_bounds_with_asyncio_wait_for() -> None:
         psutil=_psutil(),
     )
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
-    handle._proc = cast("_AsyncProcessLike", controllable)
+    handle._proc = controllable
 
     original = PROCESS_EXIT_WAIT_SECONDS
     _async_proc_mod.PROCESS_EXIT_WAIT_SECONDS = 0.05

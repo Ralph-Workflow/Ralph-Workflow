@@ -84,17 +84,17 @@ def test_no_module_level_mutable_list_in_explore() -> None:
     for py_file in sorted(EXPLORE_ROOT.rglob("*.py")):
         if "audit" in py_file.name or py_file.name == "__init__.py":
             continue
-        tree = ast.parse(py_file.read_text(encoding="utf-8"))
+        source = py_file.read_text(encoding="utf-8")
+        source_lines = source.splitlines()
+        tree = ast.parse(source)
         for node in tree.body:
             if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 target_id = node.target.id
+                end_lineno = getattr(node, "end_lineno", node.lineno)
+                marker_lines = source_lines[node.lineno - 1 : end_lineno]
                 if (
                     target_id == "__all__"
-                    or "bounded-accumulator-ok" in (
-                        py_file.read_text(encoding="utf-8").split("\n")[
-                            node.lineno - 1
-                        ]
-                    )
+                    or any("bounded-accumulator-ok" in line for line in marker_lines)
                 ):
                     continue
                 if isinstance(node.value, (ast.List, ast.Dict, ast.Set)):

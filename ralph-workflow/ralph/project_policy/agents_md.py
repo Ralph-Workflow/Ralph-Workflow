@@ -146,10 +146,7 @@ def has_significant_unmanaged_content(workspace: Workspace) -> bool:
     if _has_any_managed_marker(content) or markers.OPT_OUT_MARKER in content:
         return False
     nonempty_lines = [line for line in content.splitlines() if line.strip()]
-    if any(
-        line.lstrip().startswith(markers.SIGNIFICANT_HEADING_PREFIX)
-        for line in nonempty_lines
-    ):
+    if any(line.lstrip().startswith(markers.SIGNIFICANT_HEADING_PREFIX) for line in nonempty_lines):
         return True
     return len(nonempty_lines) >= markers.SIGNIFICANT_NONEMPTY_LINE_THRESHOLD
 
@@ -162,11 +159,7 @@ def write_opt_out(workspace: Workspace) -> list[str]:
     the marker is left untouched. Returns the changed-file list
     (``[markers.AGENTS_MD]`` or ``[]``), mirroring :func:`bootstrap`.
     """
-    content = (
-        workspace.read(markers.AGENTS_MD)
-        if workspace.exists(markers.AGENTS_MD)
-        else ""
-    )
+    content = workspace.read(markers.AGENTS_MD) if workspace.exists(markers.AGENTS_MD) else ""
     if markers.OPT_OUT_MARKER in content:
         return []
     if content and not content.endswith("\n"):
@@ -202,9 +195,7 @@ def _has_well_formed_managed_block(content: str) -> bool:
     end_count = content.count(markers.AGENTS_BLOCK_END)
     if begin_count != 1 or end_count != 1:
         return False
-    return content.find(markers.AGENTS_BLOCK_BEGIN) < content.find(
-        markers.AGENTS_BLOCK_END
-    )
+    return content.find(markers.AGENTS_BLOCK_BEGIN) < content.find(markers.AGENTS_BLOCK_END)
 
 
 def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
@@ -254,10 +245,7 @@ def _has_any_managed_marker(content: str) -> bool:
     "append one managed block" (clean state) and "leave for remediation"
     (any malformed state).
     """
-    return (
-        markers.AGENTS_BLOCK_BEGIN in content
-        or markers.AGENTS_BLOCK_END in content
-    )
+    return markers.AGENTS_BLOCK_BEGIN in content or markers.AGENTS_BLOCK_END in content
 
 
 def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
@@ -270,7 +258,10 @@ def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
     if "AGENTS.md" in content:
         return []
     separator = "" if content.endswith("\n") else "\n"
-    workspace.write(markers.CLAUDE_MD, content + separator + "\n# AGENTS.md\n\nSee `AGENTS.md` for project policy.\n")
+    workspace.write(
+        markers.CLAUDE_MD,
+        content + separator + "\n# AGENTS.md\n\nSee `AGENTS.md` for project policy.\n",
+    )
     return [markers.CLAUDE_MD]
 
 

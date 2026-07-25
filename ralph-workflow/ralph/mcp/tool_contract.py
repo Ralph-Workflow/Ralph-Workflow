@@ -84,7 +84,9 @@ def visible_owned_tool_names(
 
 
 _VISIBLE_TOOL_NAME_CACHE_MAXSIZE = 32
-_VISIBLE_TOOL_NAMES_BY_PROFILE: OrderedDict[tuple[tuple[str, ...], str], tuple[str, ...]] = OrderedDict()  # bounded-accumulator-ok: FIFO cache is capped at _VISIBLE_TOOL_NAME_CACHE_MAXSIZE.
+_VISIBLE_TOOL_NAMES_BY_PROFILE: OrderedDict[tuple[tuple[str, ...], str], tuple[str, ...]] = (
+    OrderedDict()
+)  # bounded-accumulator-ok: FIFO cache is capped at _VISIBLE_TOOL_NAME_CACHE_MAXSIZE.
 _VISIBLE_TOOL_NAMES_LOCK = Lock()
 
 

@@ -63,9 +63,7 @@ def observe_conflict_identity(root: Path, target: str) -> ConflictIdentity:
     )
 
 
-def carry_budget_through_skip(
-    skip: RebaseState, *, prior: RebaseState
-) -> RebaseState:
+def carry_budget_through_skip(skip: RebaseState, *, prior: RebaseState) -> RebaseState:
     """Preserve the conflict budget across an early skip.
 
     An early skip (dirty worktree, failed preconditions, ...)

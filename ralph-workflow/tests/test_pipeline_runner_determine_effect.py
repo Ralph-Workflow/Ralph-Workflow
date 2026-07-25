@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -125,7 +125,7 @@ def _config_with_agents(
     config = MagicMock()
     config.agent_chains = agent_chains
     config.agent_drains = agent_drains
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _write_minimal_plan_artifacts(

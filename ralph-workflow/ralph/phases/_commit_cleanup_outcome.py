@@ -52,9 +52,7 @@ def decide_cleanup_outcome(
         return _all_deletes_failed_failure(phase_name, failed_paths, safe_actions_count)
     delete_actions_count = _count_meaningful_delete_actions(cleanup)
     if skipped_delete_paths and safe_actions_count == 0 and delete_actions_count > 0:
-        return _all_deletes_rejected_failure(
-            phase_name, skipped_delete_paths, safe_actions_count
-        )
+        return _all_deletes_rejected_failure(phase_name, skipped_delete_paths, safe_actions_count)
     return _analysis_complete_outcome(cleanup)
 
 
@@ -70,16 +68,12 @@ def _count_safe_actions(
         sum(
             1
             for action in cleanup.actions
-            if action.action == "add_to_gitignore"
-            and action.pattern
-            and action.pattern.strip()
+            if action.action == "add_to_gitignore" and action.pattern and action.pattern.strip()
         )
         + sum(
             1
             for action in cleanup.actions
-            if action.action == "add_to_git_exclude"
-            and action.pattern
-            and action.pattern.strip()
+            if action.action == "add_to_git_exclude" and action.pattern and action.pattern.strip()
         )
         + sum(
             1

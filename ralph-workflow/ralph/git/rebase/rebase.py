@@ -122,9 +122,7 @@ def get_conflicted_files(
     try:
         entries = unmerged_paths_collect(path)
     except Exception as exc:
-        raise RebaseOperationError(
-            f"Failed to list conflicted files: {exc}"
-        ) from exc
+        raise RebaseOperationError(f"Failed to list conflicted files: {exc}") from exc
 
     return sorted({entry.path for entry in entries if entry.path})
 
@@ -199,9 +197,7 @@ def rebase_onto(
     # ``HEAD`` -- rebase_onto is only ever called from a known
     # checked-out state, and the precondition check has already
     # gated this path, so the fallback is purely defensive.
-    upstream_branch_name = (
-        branch_name if branch_name is not None else "HEAD"
-    )
+    upstream_branch_name = branch_name if branch_name is not None else "HEAD"
     rebase_argv = (
         "rebase",
         "--no-autostash",
@@ -234,9 +230,7 @@ def rebase_onto(
     # timeout that closes the original rebase closes the loop
     # here too.
     while (
-        result.returncode != 0
-        and rebase_in_progress(path)
-        and _rebase_stop_reports_empty(result)
+        result.returncode != 0 and rebase_in_progress(path) and _rebase_stop_reports_empty(result)
     ):
         skip_result = executor.execute("git", ("rebase", "--skip"), cwd=path)
         # A skip that itself succeeded means the empty stop landed
@@ -375,16 +369,12 @@ def _rebase_result_from_process(
 
     error_kind = classify_rebase_error(result.stderr, result.stdout)
     if error_kind.kind == RebaseKind.CONTENT_CONFLICT:
-        return RebaseConflicts(
-            get_conflicted_files(repo_root=repo_root, executor=executor)
-        )
+        return RebaseConflicts(get_conflicted_files(repo_root=repo_root, executor=executor))
 
     return RebaseFailed(error_kind)
 
 
-def _conflicted_files_if_rebasing(
-    repo_root: Path, executor: ProcessExecutor
-) -> list[str]:
+def _conflicted_files_if_rebasing(repo_root: Path, executor: ProcessExecutor) -> list[str]:
     """Unmerged paths, but ONLY while a rebase is genuinely paused.
 
     Both conditions matter. Without the rebase-in-progress check this

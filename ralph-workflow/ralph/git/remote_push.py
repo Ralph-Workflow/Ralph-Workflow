@@ -174,9 +174,7 @@ def push_branch_to_all_remotes(
     successes: list[str] = []
     failures: list[str] = []
     for remote in remotes:
-        ok, detail = _push_to_remote(
-            repo_root, remote, branch, timeout_seconds=timeout_seconds
-        )
+        ok, detail = _push_to_remote(repo_root, remote, branch, timeout_seconds=timeout_seconds)
         if ok:
             successes.append(remote)
             continue

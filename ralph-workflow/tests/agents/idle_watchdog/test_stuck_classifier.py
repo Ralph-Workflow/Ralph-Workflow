@@ -13,7 +13,6 @@ time.sleep, do NOT start real subprocesses, and do NOT touch the network.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog._evidence_tier import (
@@ -154,16 +153,13 @@ def _inputs(
     evidence_summary: EvidenceSummary | None = None,
     classify_quiet_state: AgentExecutionState = AgentExecutionState.ACTIVE,
 ) -> ClassifyStuckInputs:
-    return cast(
-        "ClassifyStuckInputs",
-        {
+    return {
             "is_waiting_state": is_waiting_state,
             "connectivity_state": connectivity_state,
             "evidence_summary": evidence_summary or _multi_summary(),
             "classify_quiet": _ClassifyQuietStub(state=classify_quiet_state),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
 
 
 def test_is_waiting_state_true_returns_duplicate_kill() -> None:
@@ -479,9 +475,7 @@ def test_silent_subagent_when_progress_count_ge_1_and_stale() -> None:
     summary = _multi_summary(
         subagent_output_at=_NOW - 1000.0,  # well past 180s
     )
-    inputs = cast(
-        "ClassifyStuckInputs",
-        {
+    inputs = {
             "is_waiting_state": False,
             "connectivity_state": "online",
             "evidence_summary": summary,
@@ -489,8 +483,7 @@ def test_silent_subagent_when_progress_count_ge_1_and_stale() -> None:
                 state=AgentExecutionState.ACTIVE,
             ),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
     kind = classify_stuck(
         **inputs,
         silent_subagent_seconds=180.0,
@@ -509,9 +502,7 @@ def test_no_silent_subagent_when_subagent_progress_is_fresh() -> None:
     summary = _multi_summary(
         subagent_output_at=_NOW - 5.0,  # well within 180s
     )
-    inputs = cast(
-        "ClassifyStuckInputs",
-        {
+    inputs = {
             "is_waiting_state": False,
             "connectivity_state": "online",
             "evidence_summary": summary,
@@ -519,8 +510,7 @@ def test_no_silent_subagent_when_subagent_progress_is_fresh() -> None:
                 state=AgentExecutionState.ACTIVE,
             ),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
     kind = classify_stuck(
         **inputs,
         silent_subagent_seconds=180.0,
@@ -554,9 +544,7 @@ def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none() -> None
     summary = _multi_summary(
         subagent_output_at=_NOW - 1000.0,
     )
-    inputs = cast(
-        "ClassifyStuckInputs",
-        {
+    inputs = {
             "is_waiting_state": False,
             "connectivity_state": "online",
             "evidence_summary": summary,
@@ -564,8 +552,7 @@ def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none() -> None
                 state=AgentExecutionState.ACTIVE,
             ),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
     kind = classify_stuck(
         **inputs,
         silent_subagent_seconds=None,
@@ -585,9 +572,7 @@ def test_silent_subagent_does_not_change_when_waiting() -> None:
     summary = _multi_summary(
         subagent_output_at=_NOW - 1000.0,  # stale evidence
     )
-    inputs = cast(
-        "ClassifyStuckInputs",
-        {
+    inputs = {
             "is_waiting_state": False,
             "connectivity_state": "online",
             "evidence_summary": summary,
@@ -595,8 +580,7 @@ def test_silent_subagent_does_not_change_when_waiting() -> None:
                 state=AgentExecutionState.WAITING_ON_CHILD,
             ),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
     kind = classify_stuck(
         **inputs,
         silent_subagent_seconds=180.0,
@@ -620,9 +604,7 @@ def test_no_silent_subagent_when_subagent_liveness_alive_by_is_not_none() -> Non
         subagent_liveness_at=_NOW - 1000.0,
         alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
     )
-    inputs = cast(
-        "ClassifyStuckInputs",
-        {
+    inputs = {
             "is_waiting_state": False,
             "connectivity_state": "online",
             "evidence_summary": summary,
@@ -630,8 +612,7 @@ def test_no_silent_subagent_when_subagent_liveness_alive_by_is_not_none() -> Non
                 state=AgentExecutionState.ACTIVE,
             ),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
     kind = classify_stuck(
         **inputs,
         silent_subagent_seconds=180.0,
@@ -649,9 +630,7 @@ def test_no_silent_subagent_when_only_liveness_alive_by_not_none() -> None:
         subagent_liveness_at=_NOW - 1000.0,
         alive_by=AliveBy.FRESH_PROGRESS,
     )
-    inputs = cast(
-        "ClassifyStuckInputs",
-        {
+    inputs = {
             "is_waiting_state": False,
             "connectivity_state": "online",
             "evidence_summary": summary,
@@ -659,8 +638,7 @@ def test_no_silent_subagent_when_only_liveness_alive_by_not_none() -> None:
                 state=AgentExecutionState.ACTIVE,
             ),
             "activity_evidence_ttl_seconds": _TTL_SECONDS,
-        },
-    )
+        }
     kind = classify_stuck(
         **inputs,
         silent_subagent_seconds=180.0,

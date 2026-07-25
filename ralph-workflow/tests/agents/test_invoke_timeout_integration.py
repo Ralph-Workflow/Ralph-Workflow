@@ -14,7 +14,7 @@ import json
 import re
 import threading
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -116,7 +116,7 @@ def _read_lines(
     _clock: FakeClock | None = None,
 ) -> Iterator[str]:
     return read_lines_from_process(
-        cast("object", handle),
+        handle,
         ctx=ProcessReaderCtx(
             config=AgentConfig(
                 cmd="opencode",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import psutil
 import pytest
@@ -11,7 +11,6 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.display.parallel_display import ParallelDisplay
 
 from ralph.pipeline import checkpoint
 from ralph.pipeline.effects import FanOutEffect
@@ -65,7 +64,7 @@ async def _run_with_cancel(
         coordinator.run_fan_out(
             effect=effect,
             executor=executor,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             ctx=coordinator.WorkerContext(
                 log=coordinator.WorkerLog(
                     log_dir=checkpoint_path.parent / "logs",

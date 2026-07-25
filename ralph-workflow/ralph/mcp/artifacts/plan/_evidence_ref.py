@@ -49,6 +49,7 @@ class EvidenceRef(RalphBaseModel):
             return value.strip()
         return value
 
+
 # Alias for the canonical list-of-evidence shape used by PlanStep.
 ExpectedEvidence = list[EvidenceRef]
 

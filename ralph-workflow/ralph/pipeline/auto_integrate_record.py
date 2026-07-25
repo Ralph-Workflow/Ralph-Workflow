@@ -222,8 +222,7 @@ def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
         )
     except Exception as exc:
         logger.warning(
-            "auto_integrate: could not persist resolving_rebase={} to the "
-            "durable record: {}",
+            "auto_integrate: could not persist resolving_rebase={} to the durable record: {}",
             resolving,
             exc,
         )

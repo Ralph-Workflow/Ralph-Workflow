@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 def _session() -> CoordinationSessionLike:
-    return cast("CoordinationSessionLike", planning_session())
+    return planning_session()
 
 
 def _payload(result: ToolResult) -> dict[str, object]:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never
 from unittest.mock import MagicMock
 
 import ralph.prompts.materialize
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.pipeline.events import Event
-    from ralph.pipeline.parallel.coordinator import WorkerContext
     from ralph.policy.models import PipelinePolicy
 
 
@@ -158,7 +157,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
         def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             executor_calls.append(
                 {
-                    "command": tuple(cast("tuple[str, ...]", command)),
+                    "command": tuple(command),
                     "signal_bridge": signal_bridge,
                 }
             )
@@ -192,7 +191,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert len(executor_calls) == 1
     assert executor_calls[0]["signal_bridge"] is install_calls[0][2]
     assert mcp_factory_calls
-    ctx = cast("WorkerContext", coordinator_calls[0]["ctx"])
+    ctx = coordinator_calls[0]["ctx"]
     assert ctx.same_workspace is not None
     # Verify session contract fields are properly threaded from the runner's
     # _build_session_mcp_plan_for_phase into SameWorkspaceContext.
@@ -264,7 +263,7 @@ def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_
         workspace_scope=workspace_scope,
     )
 
-    ctx = cast("WorkerContext", coordinator_calls[0]["ctx"])
+    ctx = coordinator_calls[0]["ctx"]
     same_workspace = ctx.same_workspace
     assert same_workspace is not None
     manifest_path = same_workspace.worker_manifest_paths[unit.unit_id]

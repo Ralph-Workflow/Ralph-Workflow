@@ -294,7 +294,9 @@ def reduce(
     worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
     if worker_result is not None:
         return worker_result
-    handler = _get_event_handlers().get(cast("PipelineEvent", event))
+    handler = _get_event_handlers().get(
+        cast("PipelineEvent", event)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy)

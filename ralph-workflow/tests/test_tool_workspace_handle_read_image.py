@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import tempfile
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -17,7 +16,6 @@ from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ImageContent,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
@@ -53,8 +51,8 @@ class TestHandleReadImage:
         )
 
         assert result.is_error is True
-        assert "Unsupported image format" in cast("ToolContent", result.content[0]).text
-        assert ".pdf" in cast("ToolContent", result.content[0]).text
+        assert "Unsupported image format" in result.content[0].text
+        assert ".pdf" in result.content[0].text
 
     def test_returns_error_for_missing_file(self) -> None:
         ws = MagicMock()
@@ -70,7 +68,7 @@ class TestHandleReadImage:
             {"path": "nonexistent.png"},
         )
         assert result.is_error is True
-        assert "Failed to read" in cast("ToolContent", result.content[0]).text
+        assert "Failed to read" in result.content[0].text
 
     def test_delivers_via_resource_reference_when_inline_too_large(self, tmp_path: Path) -> None:
         """When inline image is too large, falls back to resource-reference delivery.
@@ -154,5 +152,5 @@ class TestHandleReadImage:
 
         assert result.is_error is False
         assert hasattr(result.content[0], "text")
-        assert cast("ToolContent", result.content[0]).text == "hello world"
+        assert result.content[0].text == "hello world"
         assert not isinstance(result.content[0], ImageContent)

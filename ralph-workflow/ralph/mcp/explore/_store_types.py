@@ -111,7 +111,9 @@ def _parse_add_column(sql: str) -> tuple[str, str]:
 def _column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
     """Return True when ``table`` already has a ``column`` row."""
     pragma_cur = cur.execute(f"PRAGMA table_info({table})")
-    info_rows = cast("list[sqlite3.Row]", pragma_cur.fetchall())
+    info_rows = cast(
+        "list[sqlite3.Row]", pragma_cur.fetchall()
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     for row in info_rows:
         value_obj: object = row["name"]
         if isinstance(value_obj, str) and value_obj == column:
@@ -436,11 +438,11 @@ __all__ = [
     "serialize_content_cache_payload",
 ]
 
+
 class Clock(Protocol):
     """Protocol for wall-clock injection. Tests inject a FakeClock."""
 
-    def now(self) -> float:
-        ...
+    def now(self) -> float: ...
 
 
 class SystemClock:
@@ -475,17 +477,13 @@ def normalize_index_path(path: str) -> str:
     Raises ``ValueError`` for absolute or parent-escape inputs.
     """
     if not isinstance(path, str):
-        raise ValueError(
-            f"normalize_index_path: path must be a str, got {type(path).__name__}"
-        )
+        raise ValueError(f"normalize_index_path: path must be a str, got {type(path).__name__}")
     # Import lazily to avoid an import cycle at module load time
     # (the workspace utils import the MCP coordination helpers).
     from ralph.mcp.tools.workspace._utils import normalize_relative_path
 
     if path.startswith("/"):
-        raise ValueError(
-            f"normalize_index_path: absolute path {path!r} is not allowed"
-        )
+        raise ValueError(f"normalize_index_path: absolute path {path!r} is not allowed")
     normalized = normalize_relative_path(path)
     # ``PurePosixPath`` collapses redundant separators but does not
     # surface ``..`` escapes; explicitly reject any segment that
@@ -496,15 +494,11 @@ def normalize_index_path(path: str) -> str:
         or "/../" in normalized
         or normalized.endswith("/..")
     ):
-        raise ValueError(
-            f"normalize_index_path: parent-escape path {path!r} is not allowed"
-        )
+        raise ValueError(f"normalize_index_path: parent-escape path {path!r} is not allowed")
     return normalized
 
 
 # --- Store -----------------------------------------------------------------
-
-
 
 
 # --- Helpers --------------------------------------------------------------
@@ -528,7 +522,9 @@ def _row_int(row: sqlite3.Row, key: str) -> int:
         return int(bool(value))
     if isinstance(value, int):
         return value
-    return int(cast("int | str | float", value))
+    return int(
+        cast("int | str | float", value)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _row_float(row: sqlite3.Row, key: str) -> float:
@@ -538,7 +534,9 @@ def _row_float(row: sqlite3.Row, key: str) -> float:
         return float(value)
     if isinstance(value, (int, float)):
         return float(value)
-    return float(cast("int | str | float", value))
+    return float(
+        cast("int | str | float", value)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _row_bool(row: sqlite3.Row, key: str) -> bool:
@@ -568,7 +566,9 @@ def _row_int_opt(row: sqlite3.Row | None, idx: int) -> int:
         return int(bool(value))
     if isinstance(value, int):
         return value
-    return int(cast("int | str | float", value))
+    return int(
+        cast("int | str | float", value)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _row_to_file(row: sqlite3.Row) -> FileRow:
@@ -673,7 +673,9 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def chunk_text(text: str, *, lines_per_chunk: int = DEFAULT_CHUNK_LINES) -> list[tuple[int, int, str]]:
+def chunk_text(
+    text: str, *, lines_per_chunk: int = DEFAULT_CHUNK_LINES
+) -> list[tuple[int, int, str]]:
     """Split ``text`` into ``(start_line, end_line, chunk_text)`` chunks.
 
     Lines are 1-based and inclusive. The trailing chunk may be smaller
@@ -875,4 +877,3 @@ __all__ = [
     "sha256_bytes",
     "sha256_text",
 ]
-

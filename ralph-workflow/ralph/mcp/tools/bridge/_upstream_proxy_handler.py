@@ -38,8 +38,12 @@ class UpstreamProxyHandler:
         result = self._upstream_registry.call_tool(
             self._alias,
             params,
-            session=cast("HasMediaManifest | None", host_session),
-            workspace=cast("Workspace | None", workspace),
+            session=cast(
+                "HasMediaManifest | None", host_session
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            workspace=cast(
+                "Workspace | None", workspace
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
         if workspace is not None and host_session is not None and isinstance(result, dict):
             mod = import_module("ralph.mcp.tools.workspace")

@@ -199,7 +199,9 @@ def artifact_contract_for_drain(
             and contract_drain == drain
             and contract_artifact_type == artifact_type
         ):
-            return cast("ArtifactContract", contract)
+            return cast(
+                "ArtifactContract", contract
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return None
 
 

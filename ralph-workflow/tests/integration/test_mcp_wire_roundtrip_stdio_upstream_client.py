@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 
@@ -23,6 +22,7 @@ from ralph.mcp.server.runtime import (
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import must_mapping
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -81,7 +81,7 @@ def _do_initialize(server: McpServer) -> ServerState:
     )
     resp, state = server.handle_request(req, ServerState.UNINITIALIZED)
     assert resp is not None, "initialize returned None"
-    init_result = cast("dict[str, Any]", resp.result)
+    init_result = resp.result
     assert init_result["protocolVersion"] == "2024-11-05"
     notif = JsonRpcRequest(jsonrpc="2.0", method="notifications/initialized", params={})
     none_resp, state = server.handle_request(notif, state)
@@ -93,7 +93,7 @@ def _do_tools_list(server: McpServer, state: ServerState) -> list[dict[str, obje
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"tools/list failed: {resp}"
-    return cast("list[dict[str, Any]]", cast("dict[str, Any]", resp.result)["tools"])
+    return must_mapping(resp.result)["tools"]
 
 
 def _do_tool_call(
@@ -113,7 +113,7 @@ def _do_tool_call(
     )
     resp, _ = server.handle_request(req, state)
     assert resp is not None, f"tools/call {name!r} returned None"
-    return cast("dict[str, Any]", resp.result)
+    return resp.result
 
 
 @pytest.mark.integration

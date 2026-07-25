@@ -214,8 +214,8 @@ def _check_module(
         return []
 
     schedule_calls: list[ast.Call] = _find_schedule_calls(tree)
-    invariants_violations: list[FseventsWatchViolation] = (
-        _check_schedule_call_invariants(rel_path, schedule_calls)
+    invariants_violations: list[FseventsWatchViolation] = _check_schedule_call_invariants(
+        rel_path, schedule_calls
     )
     if invariants_violations or not schedule_calls:
         return invariants_violations
@@ -278,8 +278,8 @@ def _check_schedule_call_location(
     if _has_loop_ancestor(ancestors):
         return [_loop_ancestor_violation(rel_path, schedule_call.lineno)]
 
-    enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None = (
-        _nearest_enclosing_function(ancestors)
+    enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None = _nearest_enclosing_function(
+        ancestors
     )
     if enclosing_function is None or enclosing_function.name != "start":
         actual_name: str = enclosing_function.name if enclosing_function is not None else "<module>"
@@ -409,9 +409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Package root not found: {package_root}", file=sys.stderr)
         return 2
 
-    violations: list[FseventsWatchViolation] = audit_fsevents_watch_consolidation(
-        package_root
-    )
+    violations: list[FseventsWatchViolation] = audit_fsevents_watch_consolidation(package_root)
 
     if violations:
         print(f"FSEVENTS WATCH CONSOLIDATION VIOLATIONS: {len(violations)}")

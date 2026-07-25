@@ -6,7 +6,7 @@ per-unit status is reported correctly for all workers.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from ralph.display.parallel_display import ParallelDisplay
 
 
 from ralph.pipeline import checkpoint as ckpt
@@ -114,7 +113,7 @@ class TestPartialFailureHandoffContent:
         final_state = runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=bundle,
             workspace_scope=scope,
         )
@@ -185,7 +184,7 @@ class TestPartialFailureHandoffContent:
         runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=bundle,
             workspace_scope=scope,
         )

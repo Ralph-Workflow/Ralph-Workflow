@@ -40,7 +40,7 @@ import asyncio
 import itertools
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -50,6 +50,7 @@ from ralph.testing.fake_process import (
     make_async_process_factory,
     make_sync_process_factory,
 )
+from tests._support.typed_accessors import must_int
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -116,7 +117,7 @@ async def test_async_termination_uses_bounded_executor(
 
     def _spy_run_in_executor(executor: object, *args: object, **kwargs: object) -> object:
         captured["executor"] = executor
-        captured["call_count"] = cast("int", captured["call_count"]) + 1
+        captured["call_count"] = must_int(captured["call_count"]) + 1
         # Forward to the original bound method using positional args
         # only — run_in_executor's signature is (self, executor, func, *args)
         # on the unbound form. As a bound method it is (executor, func, *args).

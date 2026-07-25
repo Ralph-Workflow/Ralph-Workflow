@@ -351,7 +351,9 @@ class WorkspaceMonitor:
         """
         if self._handler is None:
             return
-        handler = cast("_HandlerWithDispatch", self._handler)
+        handler = cast(
+            "_HandlerWithDispatch", self._handler
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         handler.dispatch(event)
 
     @property

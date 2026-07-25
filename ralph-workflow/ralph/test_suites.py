@@ -127,9 +127,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_cli_commit_command.py",
     "tests/test_pi_mcp_extension_sse_behavior.py",
 )
-_VERIFICATION_MARK_EXPRESSION = (
-    "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
-)
+_VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SHARD_POLL_INTERVAL_SECONDS = 0.01
 _SHARD_TERMINATION_DRAIN_SECONDS = 5.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 60
@@ -173,6 +171,7 @@ def partition_selected_files(
     missing_weights = sorted(set(ordered_files) - set(effective_weights))
     if missing_weights:
         raise RuntimeError("missing test file weights: " + ", ".join(missing_weights))
+
     def file_sort_key(path: str) -> tuple[int, str]:
         return -effective_weights[path], path
 
@@ -402,8 +401,7 @@ def _run_shards(
                     monotonic=monotonic,
                 )
                 all_outputs = [
-                    completed.get(output_index, ("", ""))
-                    for output_index in range(len(processes))
+                    completed.get(output_index, ("", "")) for output_index in range(len(processes))
                 ]
                 for sibling_index, output in zip(
                     (
@@ -420,9 +418,7 @@ def _run_shards(
         if len(completed) < len(processes):
             wait(min(_SHARD_POLL_INTERVAL_SECONDS, _remaining_seconds(deadline, monotonic)))
 
-    _print_shard_outputs(
-        [completed[index] for index in range(len(processes))]
-    )
+    _print_shard_outputs([completed[index] for index in range(len(processes))])
     return 0
 
 
@@ -479,10 +475,7 @@ def run_test_suites(
     shards = partition_selected_files(
         selected_files,
         worker_count=int(_pytest_workers()),
-        file_weights={
-            path: file_weigher(cwd, path)
-            for path in selected_files
-        },
+        file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     validate_exact_file_assignment(selected_files, shards)
     profile = "auto-integrate-e2e" if auto_integrate_e2e_only else "verification"
@@ -516,9 +509,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments == ("--auto-integrate-e2e",):
         return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)
     if arguments:
-        raise SystemExit(
-            "ralph.test_suites accepts only the optional --auto-integrate-e2e profile"
-        )
+        raise SystemExit("ralph.test_suites accepts only the optional --auto-integrate-e2e profile")
     return run_test_suites(cwd=Path.cwd())
 
 

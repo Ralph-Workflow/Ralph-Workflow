@@ -87,6 +87,7 @@ def _parse_tool_call_from_description(description: str | None) -> str | None:
         return None
     return head
 
+
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 
@@ -122,6 +123,7 @@ if TYPE_CHECKING:
 # exposed on the public ``IdleWatchdog`` constructor).
 _MAX_SUBAGENT_OUTPUT_CAPTURES: int = 128
 _MAX_EVICTED_TOMBSTONES: int = _MAX_SUBAGENT_OUTPUT_CAPTURES
+
 
 def record_invocation_start(self: IdleWatchdog) -> None:
     """Record the start of the invocation.
@@ -294,29 +296,19 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
     """
     timestamp = now if now is not None else self._clock.monotonic()
     live_subagent_count = (
-        self._process_monitor.live_subagent_count()
-        if self._process_monitor is not None
-        else 0
+        self._process_monitor.live_subagent_count() if self._process_monitor is not None else 0
     )
     snapshot: dict[str, object] = {
         "last_fire_reason": (
-            self._last_fire_reason.value
-            if self._last_fire_reason is not None
-            else None
+            self._last_fire_reason.value if self._last_fire_reason is not None else None
         ),
         "last_deferred_kind": (
-            self._last_deferred_kind.value
-            if self._last_deferred_kind is not None
-            else None
+            self._last_deferred_kind.value if self._last_deferred_kind is not None else None
         ),
-        "last_alive_by": (
-            self._last_alive_by.value if self._last_alive_by is not None else None
-        ),
+        "last_alive_by": (self._last_alive_by.value if self._last_alive_by is not None else None),
         "idle_elapsed_seconds": round(self.idle_elapsed_seconds(timestamp), 1),
         "invocation_elapsed_seconds": round(self.invocation_elapsed_seconds, 1),
-        "cumulative_waiting_on_child_seconds": round(
-            self._cumulative_waiting_on_child_seconds, 1
-        ),
+        "cumulative_waiting_on_child_seconds": round(self._cumulative_waiting_on_child_seconds, 1),
         "last_subagent_progress_description": self._last_subagent_progress_description,
         "last_subagent_progress_at": self._last_subagent_progress_at,
         "current_subagent_tool_call": _parse_tool_call_from_description(

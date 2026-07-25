@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -152,14 +152,14 @@ def test_handle_keyboard_interrupt_at_cli_blocks_until_list_active_empty() -> No
 
     def _spy(**kwargs: object) -> object:
         if "sleep" not in kwargs:
-            kwargs["sleep"] = cast("Callable[[float], None]", _drain_sleep)
+            kwargs["sleep"] = _drain_sleep
         return real_factory(**kwargs)
 
-    dispatcher_mod.dispatcher_from_process_manager = cast("Any", _spy)
+    dispatcher_mod.dispatcher_from_process_manager = _spy
     try:
         result = helper(process_manager=manager, poll_interval_s=_POLL_INTERVAL)
     finally:
-        dispatcher_mod.dispatcher_from_process_manager = cast("Any", real_factory)
+        dispatcher_mod.dispatcher_from_process_manager = real_factory
     assert result == INTERRUPT_EXIT_CODE
     assert manager.shutdown_all_for_label_calls, "shutdown_all_for_label must be called"
     label, grace = manager.shutdown_all_for_label_calls[0]
@@ -188,16 +188,14 @@ def test_handle_keyboard_interrupt_at_cli_returns_after_grace_with_stuck_record(
         if "process_manager" not in kwargs:
             kwargs["process_manager"] = manager
         if "hard_exit" not in kwargs:
-            kwargs["hard_exit"] = cast(
-                "Callable[[int], None]", lambda code: exit_calls.append((code,))
-            )
+            kwargs["hard_exit"] = lambda code: exit_calls.append((code,))
         if "clock" not in kwargs:
-            kwargs["clock"] = cast("Callable[[], float]", clock.now)
+            kwargs["clock"] = clock.now
         if "sleep" not in kwargs:
-            kwargs["sleep"] = cast("Callable[[float], None]", _fake_sleep)
+            kwargs["sleep"] = _fake_sleep
         return real_factory(**kwargs)
 
-    dispatcher_mod.dispatcher_from_process_manager = cast("Any", _spy)
+    dispatcher_mod.dispatcher_from_process_manager = _spy
     try:
         result = helper(
             process_manager=manager,
@@ -205,7 +203,7 @@ def test_handle_keyboard_interrupt_at_cli_returns_after_grace_with_stuck_record(
             hard_kill_budget_s=_QUICK_BUDGET,
         )
     finally:
-        dispatcher_mod.dispatcher_from_process_manager = cast("Any", real_factory)
+        dispatcher_mod.dispatcher_from_process_manager = real_factory
     assert result == INTERRUPT_EXIT_CODE
 
 
@@ -218,7 +216,7 @@ def test_handle_keyboard_interrupt_at_cli_records_interrupt_exactly_once() -> No
     record_calls: list[None] = []
     result = helper(
         process_manager=manager,
-        record_interrupt=cast("Callable[[], None]", lambda: record_calls.append(None)),
+        record_interrupt=lambda: record_calls.append(None),
     )
     assert result == INTERRUPT_EXIT_CODE
     assert record_calls == [None]
@@ -239,11 +237,11 @@ def test_handle_keyboard_interrupt_at_cli_uses_injected_process_manager_not_sing
         seen.append(kwargs.get("process_manager"))
         return real_factory(**kwargs)
 
-    dispatcher_mod.dispatcher_from_process_manager = cast("Any", _spy)
+    dispatcher_mod.dispatcher_from_process_manager = _spy
     try:
         helper(process_manager=manager)
     finally:
-        dispatcher_mod.dispatcher_from_process_manager = cast("Any", real_factory)
+        dispatcher_mod.dispatcher_from_process_manager = real_factory
     assert seen, "dispatcher_from_process_manager was not invoked"
     assert seen[0] is manager
 
@@ -270,12 +268,12 @@ def test_handle_keyboard_interrupt_at_cli_propagates_dispatcher_failures() -> No
     def _boom(**kwargs: object) -> object:
         raise RuntimeError("boom")
 
-    dispatcher_mod.dispatcher_from_process_manager = cast("Any", _boom)
+    dispatcher_mod.dispatcher_from_process_manager = _boom
     try:
         with pytest.raises(RuntimeError, match="boom"):
             helper(process_manager=_RecordingManager())
     finally:
-        dispatcher_mod.dispatcher_from_process_manager = cast("Any", real_factory)
+        dispatcher_mod.dispatcher_from_process_manager = real_factory
 
 
 def test_handle_keyboard_interrupt_at_cli_uses_kill_label_invoke_by_default() -> None:
@@ -308,14 +306,14 @@ def test_handle_keyboard_interrupt_at_cli_blocks_with_block_true_in_real_helper(
         block_kwargs.append(bool(kwargs.get("block", False)))
         return original_begin(self, *args, **kwargs)
 
-    dispatcher_mod.InterruptDispatcher.begin_interrupt = cast("Any", _spy_begin)
+    dispatcher_mod.InterruptDispatcher.begin_interrupt = _spy_begin
     try:
         original_run_pipeline = ralph_cli_main.run_pipeline
 
         def _raise_kbi(*_args: object, **_kwargs: object) -> int:
             raise KeyboardInterrupt()
 
-        ralph_cli_main.run_pipeline = cast("Any", _raise_kbi)
+        ralph_cli_main.run_pipeline = _raise_kbi
         try:
             return_code = ralph_cli_main._run_pipeline(
                 config=None,
@@ -340,9 +338,9 @@ def test_handle_keyboard_interrupt_at_cli_blocks_with_block_true_in_real_helper(
                 )(),
             )
         finally:
-            ralph_cli_main.run_pipeline = cast("Any", original_run_pipeline)
+            ralph_cli_main.run_pipeline = original_run_pipeline
     finally:
-        dispatcher_mod.InterruptDispatcher.begin_interrupt = cast("Any", original_begin)
+        dispatcher_mod.InterruptDispatcher.begin_interrupt = original_begin
     assert block_kwargs, "begin_interrupt was not called"
     assert block_kwargs == [True]
     assert return_code == 130, (

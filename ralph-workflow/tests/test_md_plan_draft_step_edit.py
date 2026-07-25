@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from ralph.mcp.tools.coordination import InvalidParamsError, ToolContent, ToolResult, WorkspaceLike
+from ralph.mcp.tools.coordination import InvalidParamsError, ToolContent, ToolResult
 from ralph.mcp.tools.md_artifact import (
     handle_edit_md_plan_step,
     handle_get_md_draft,
     handle_stage_md_artifact,
+)
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str,
 )
 from tests.mcp.test_md_plan_spec import _plan_document
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
@@ -28,13 +31,13 @@ class _Workspace:
 def _payload(result: ToolResult) -> dict[str, object]:
     block = result.content[0]
     assert isinstance(block, ToolContent)
-    return cast("dict[str, object]", json.loads(block.text))
+    return must_mapping(json.loads(block.text))
 
 
 def test_edit_plan_step_updates_the_persisted_draft_for_a_fresh_session() -> None:
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
-    workspace = cast("WorkspaceLike", _Workspace())
+    workspace = _Workspace()
     handle_stage_md_artifact(
         planning_session(),
         workspace,
@@ -69,9 +72,7 @@ def test_edit_plan_step_updates_the_persisted_draft_for_a_fresh_session() -> Non
     edited_payload = _payload(edited)
     resumed_payload = _payload(resumed)
     assert edited_payload["content"] == resumed_payload["content"]
-    assert "### [S-2] Run the persisted draft suite" in cast(
-        "str", resumed_payload["content"]
-    )
+    assert "### [S-2] Run the persisted draft suite" in must_str(resumed_payload["content"])
     assert resumed_payload["valid"] is True
 
 
@@ -79,7 +80,7 @@ def test_edit_plan_step_rejects_a_direct_content_document() -> None:
     """Passing 'content' must fail loudly instead of silently skipping persistence."""
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
-    workspace = cast("WorkspaceLike", _Workspace())
+    workspace = _Workspace()
     handle_stage_md_artifact(
         planning_session(),
         workspace,

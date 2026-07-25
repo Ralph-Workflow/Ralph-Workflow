@@ -220,10 +220,7 @@ class SubagentPidRegistry:
             The registered ``SubagentIdentity`` (new or pre-existing).
         """
         if source not in _SUBAGENT_SOURCES:
-            msg = (
-                f"unknown subagent source {source!r}; expected one of"
-                f" {sorted(_SUBAGENT_SOURCES)}"
-            )
+            msg = f"unknown subagent source {source!r}; expected one of {sorted(_SUBAGENT_SOURCES)}"
             raise ValueError(msg)
         with self._lock:
             existing = self._identities.get(pid)

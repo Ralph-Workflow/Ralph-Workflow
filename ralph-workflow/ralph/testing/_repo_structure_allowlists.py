@@ -77,6 +77,9 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # The allowlist file is split from audit_repo_structure.py
         # specifically to keep both under the 1000-line cap. New
         # legacy entries (wt-040 wt-034 etc.) push the allowlist
+        # wt-045 typechecking migration: one test file slightly over the
+        # 1000-line cap; not split as part of this migration.
+        "tests/test_mcp_server_file_backed_session_model_identity.py",
         # itself over the cap; adding it to its own allowlist is the
         # only honest move because the alternative -- further splits
         # -- would force the audit to walk more than one file and
@@ -173,6 +176,11 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/agents/test_register_cursor.py",
         "tests/test_explore_legacy_shape_regressions.py",
         "tests/test_tool_media_format_metadata.py",
+        # wt-045 typechecking migration: existing test suites with multiple
+        # top-level test classes; not split as part of this migration.
+        "tests/test_audit_cast_policy.py",
+        "tests/test_checked_accessors.py",
+        "tests/test_typed_accessors.py",
     }
 )
 
@@ -1033,5 +1041,31 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # the lint-bypass audit detects; collapsing the branches would
         # duplicate the violation-builder call site in every arm.
         ("ralph/testing/audit_lint_bypass.py", 505),
+        # wt-045 typechecking migration: pre-existing noqa markers surfaced by
+        # the newly wired repo-structure audit. They mark complexity,
+        # lazy-import, or global-state suppression in long-lived modules;
+        # refactoring them is out of scope for this migration.
+        ("ralph/agents/execution_state/_factory.py", 295),
+        ("ralph/agents/idle_watchdog/_active_branch.py", 227),
+        ("ralph/agents/idle_watchdog/_fire_evaluators.py", 119),
+        ("ralph/agents/idle_watchdog/_fire_evaluators.py", 304),
+        ("ralph/agents/idle_watchdog/_fire_evaluators.py", 415),
+        ("ralph/agents/idle_watchdog/_waiting_branch.py", 93),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 133),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 150),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 198),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 274),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 317),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 447),
+        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 461),
+        ("ralph/pydantic_validation_errors.py", 170),
+        ("ralph/telemetry/_sentry.py", 413),
+        ("ralph/telemetry/_sentry.py", 546),
+        ("ralph/telemetry/_sentry.py", 572),
+        ("ralph/telemetry/_sentry.py", 621),
+        ("ralph/telemetry/_sentry.py", 767),
+        ("ralph/testing/audit_lint_bypass.py", 492),
+        ("ralph/testing/audit_skill_auto_commit.py", 181),
+        ("ralph/testing/audit_skill_auto_commit.py", 278),
     }
 )

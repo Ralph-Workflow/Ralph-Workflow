@@ -13,8 +13,6 @@ response.
 
 from __future__ import annotations
 
-from typing import Any, cast
-
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
@@ -32,9 +30,9 @@ class _RaisingRegistry:
 
 def _server_with_raising_registry() -> McpServer:
     return McpServer(
-        session=cast("Any", object()),
-        workspace=cast("Any", object()),
-        registry=cast("Any", _RaisingRegistry()),
+        session=object(),
+        workspace=object(),
+        registry=_RaisingRegistry(),
     )
 
 

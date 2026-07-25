@@ -53,9 +53,7 @@ __all__ = [
 
 
 @contextlib.contextmanager
-def conflict_status_bar_session(
-    display: object, workspace_root: Path
-) -> Iterator[None]:
+def conflict_status_bar_session(display: object, workspace_root: Path) -> Iterator[None]:
     """Own the footer for a whole resolution loop: capture once, restore once.
 
     A rebase resolution works through several stops, each of which pushes
@@ -169,15 +167,11 @@ def _phase_label(
     """
     if replay_index is not None and replay_total is not None:
         return (
-            f"{PHASE_LABEL} (commit {replay_index}/{replay_total}, "
-            f"round {round_index}/{round_cap})"
+            f"{PHASE_LABEL} (commit {replay_index}/{replay_total}, round {round_index}/{round_cap})"
         )
     if stop_index is None or stop_cap is None:
         return PHASE_LABEL
-    return (
-        f"{PHASE_LABEL} (commit {stop_index}/{stop_cap}, "
-        f"round {round_index}/{round_cap})"
-    )
+    return f"{PHASE_LABEL} (commit {stop_index}/{stop_cap}, round {round_index}/{round_cap})"
 
 
 def capture_status_bar_model(display: object) -> object | None:
@@ -194,9 +188,7 @@ def capture_status_bar_model(display: object) -> object | None:
         model: object = getattr(status_bar, "last_model", None)
         return model
     except Exception as exc:
-        logger.debug(
-            "conflict_resolution: status-bar capture failed (non-fatal): {}", exc
-        )
+        logger.debug("conflict_resolution: status-bar capture failed (non-fatal): {}", exc)
         return None
 
 
@@ -226,9 +218,7 @@ def clear_conflict_status_bar(display: object, workspace_root: Path) -> None:
         if update is not None:
             update(model)
     except Exception as exc:
-        logger.debug(
-            "conflict_resolution: status-bar clear failed (non-fatal): {}", exc
-        )
+        logger.debug("conflict_resolution: status-bar clear failed (non-fatal): {}", exc)
 
 
 def restore_status_bar(display: object, model: object | None) -> None:
@@ -249,9 +239,7 @@ def restore_status_bar(display: object, model: object | None) -> None:
         if update is not None:
             update(model)
     except Exception as exc:
-        logger.debug(
-            "conflict_resolution: status-bar restore failed (non-fatal): {}", exc
-        )
+        logger.debug("conflict_resolution: status-bar restore failed (non-fatal): {}", exc)
 
 
 def emit_conflict_phase_line(display: object, message: str) -> None:

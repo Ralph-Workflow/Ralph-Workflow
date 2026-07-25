@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import _in_memory_transport
@@ -24,6 +24,9 @@ from ralph.mcp.server._metrics import McpMetrics
 from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.mcp.server.runtime import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_mapping,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -78,7 +81,7 @@ def _make_with_probe(
     """Build a SimpleNamespace with health_probe_fn and metrics set."""
     factory = _original if _original is not None else _in_memory_transport._make_fake_server
     fake = factory(mcp_server, state)
-    typed: _ServerWithHealthProbe = cast("_ServerWithHealthProbe", fake)
+    typed: _ServerWithHealthProbe = fake
     if probe is not None:
         typed.health_probe_fn = probe
     if metrics is not None:
@@ -103,7 +106,7 @@ def test_health_route_returns_200_healthy_when_probe_succeeds(tmp_path: Path) ->
         _in_memory_transport._make_fake_server = original
     assert status == 200, f"expected 200, got {status}; body={body!r}"
     assert "application/json" in headers.get("content-type", "")
-    payload = cast("dict[str, object]", json.loads(body))
+    payload = must_mapping(json.loads(body))
     assert payload.get("status") == "healthy"
     assert payload.get("latency_ms") == 12.5
 
@@ -125,7 +128,7 @@ def test_health_route_returns_503_unhealthy_when_probe_raises(tmp_path: Path) ->
         _in_memory_transport._make_fake_server = original
     assert status == 503, f"expected 503, got {status}; body={body!r}"
     assert "application/json" in headers.get("content-type", "")
-    payload = cast("dict[str, object]", json.loads(body))
+    payload = must_mapping(json.loads(body))
     assert payload.get("status") == "unhealthy"
     assert "RuntimeError" in str(payload.get("reason", ""))
 
@@ -146,7 +149,7 @@ def test_health_route_returns_503_when_probe_reports_unhealthy(tmp_path: Path) -
     finally:
         _in_memory_transport._make_fake_server = original
     assert status == 503
-    payload = cast("dict[str, object]", json.loads(body))
+    payload = must_mapping(json.loads(body))
     assert payload.get("status") == "unhealthy"
     assert payload.get("reason") == "server_wedged"
 
@@ -169,7 +172,7 @@ def test_health_route_increments_health_probe_outcomes_counter(tmp_path: Path) -
     finally:
         _in_memory_transport._make_fake_server = original
     snapshot = metrics.snapshot()
-    outcomes = cast("dict[str, int]", snapshot["health_probe_outcomes"])
+    outcomes = snapshot["health_probe_outcomes"]
     assert outcomes["success"] >= 2
 
 
@@ -202,8 +205,8 @@ def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
         return new_inner
 
     bridge = RestartAwareMcpBridge(
-        inner=cast("object", inner),
-        restart_fn=cast("Callable[[], object]", restart_fn),
+        inner=inner,
+        restart_fn=restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
         run_id="test-run",
     )
@@ -243,11 +246,11 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
         return new_inner
 
     bridge = RestartAwareMcpBridge(
-        inner=cast("object", inner),
-        restart_fn=cast("Callable[[], object]", restart_fn),
+        inner=inner,
+        restart_fn=restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
         run_id="test-run",
-        probe_fn=cast("Callable[[str, timedelta], None]", probe_fn),
+        probe_fn=probe_fn,
     )
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True

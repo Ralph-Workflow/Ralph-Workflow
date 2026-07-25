@@ -124,9 +124,7 @@ def _build_image_metadata_envelope(
         }
     )
     return ToolResult(
-        content=[
-            ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))
-        ],
+        content=[ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))],
         is_error=False,
     )
 
@@ -167,9 +165,7 @@ def _build_media_metadata_envelope(
         base_envelope["height"] = height
     envelope = finalize_envelope_bytes_out(base_envelope)
     return ToolResult(
-        content=[
-            ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))
-        ],
+        content=[ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))],
         is_error=False,
     )
 
@@ -178,9 +174,7 @@ def _raise_invalid_format(value: object) -> ToolResult:
     """Return a structured ``InvalidParamsError`` for an unknown format."""
     from ralph.mcp.tools.coordination import InvalidParamsError
 
-    raise InvalidParamsError(
-        f"Invalid format: {value!r}; expected 'inline' or 'metadata'"
-    )
+    raise InvalidParamsError(f"Invalid format: {value!r}; expected 'inline' or 'metadata'")
 
 
 def handle_read_media(
@@ -225,9 +219,7 @@ def handle_read_media(
             return _build_replay_metadata_envelope(session, workspace, path)
         return _handle_replay_uri(session, workspace, path)
     if format_value == "metadata":
-        return _build_workspace_media_metadata(
-            session, workspace, path, max_inline_bytes
-        )
+        return _build_workspace_media_metadata(session, workspace, path, max_inline_bytes)
     return _handle_workspace_media(session, workspace, path, max_inline_bytes)
 
 
@@ -371,10 +363,7 @@ def _build_workspace_media_metadata(
     # so the resource_handle in the metadata envelope is replayable.
     # Inline-image deliveries never persist an artifact.
     resource_handle: str | None = None
-    if (
-        verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
-        and modality != "image"
-    ):
+    if verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY and modality != "image":
         manifest = _get_media_manifest(session)
         if manifest is not None:
             source_path = normalized or path
@@ -395,18 +384,14 @@ def _build_workspace_media_metadata(
                     source_path=source_path,
                     identity_key=identity_key,
                     cache_path=cache_path,
-                    byte_loader=_workspace_artifact_loader(
-                        workspace, cache_path, source_path
-                    ),
+                    byte_loader=_workspace_artifact_loader(workspace, cache_path, source_path),
                     artifact_id=artifact_id,
                 ),
             )
             entry.set_replay_source(
                 cache_path=cache_path,
                 source_path=source_path,
-                byte_loader=_workspace_artifact_loader(
-                    workspace, cache_path, source_path
-                ),
+                byte_loader=_workspace_artifact_loader(workspace, cache_path, source_path),
             )
             _persist_media_session_entry(
                 session,

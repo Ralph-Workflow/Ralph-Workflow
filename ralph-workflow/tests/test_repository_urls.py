@@ -11,7 +11,7 @@ import re
 import runpy
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
 
@@ -48,7 +48,7 @@ def _load_project_urls_module() -> ProjectUrlsModule:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast("ProjectUrlsModule", module)
+    return module
 
 
 def test_project_urls_module_defines_canonical_repo_constants() -> None:

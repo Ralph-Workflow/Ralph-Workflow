@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
@@ -13,6 +13,9 @@ from ralph.mcp.tools.md_artifact import (
 )
 from ralph.mcp.tools.tool_content import ToolContent
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_dict_list,
+)
 from tests.mcp.test_md_plan_spec import _plan_document
 from tests.test_artifact_format_docs_mock_session import planning_session
 
@@ -26,7 +29,7 @@ if TYPE_CHECKING:
 
 
 def _session() -> CoordinationSessionLike:
-    return cast("CoordinationSessionLike", planning_session())
+    return planning_session()
 
 
 def _payload(result: ToolResult) -> dict[str, object]:
@@ -77,7 +80,7 @@ def test_get_draft_reports_cross_reference_error_without_mutating_content(
         )
     )
 
-    diagnostics = cast("list[dict[str, object]]", first["diagnostics"])
+    diagnostics = must_dict_list(first["diagnostics"])
     assert first["valid"] is False
     assert any(item["rule_id"] == "PLAN021" for item in diagnostics)
     assert first["content"] == invalid

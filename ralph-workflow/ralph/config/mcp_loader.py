@@ -30,7 +30,9 @@ if TYPE_CHECKING:
 
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
-_TOML_DECODE_ERROR = cast("type[ValueError]", tomllib.TOMLDecodeError)
+_TOML_DECODE_ERROR = cast(
+    "type[ValueError]", tomllib.TOMLDecodeError
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 _MCP_TOP_LEVEL_FIELDS = frozenset({"mcp_servers", "web_search", "web_visit", "media"})
 
 

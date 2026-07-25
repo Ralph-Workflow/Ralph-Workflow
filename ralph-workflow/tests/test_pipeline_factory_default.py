@@ -7,7 +7,7 @@ propagation of all 13 ``ProPipelineHooks`` fields through the factory.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from ralph.agents.registry import AgentRegistry
@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ralph.policy.models import PolicyBundle
 
 
 def _make_display_context() -> DisplayContext:
@@ -206,7 +205,7 @@ class TestDefaultPipelineFactoryAppliesProHooksToExtendedSurface:
     def test_build_propagates_all_eight_extended_pro_fields(self) -> None:
         config = UnifiedConfig()
         display_context = _make_display_context()
-        bundle = cast("PolicyBundle", object())
+        bundle = object()
 
         def policy_bundle_factory(_workspace_scope: object, _config: object) -> object:
             return bundle

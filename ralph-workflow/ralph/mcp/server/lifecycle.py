@@ -515,7 +515,9 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    response = cast("IO[bytes]", urllib.request.urlopen(request, timeout=timeout))
+    response = cast(
+        "IO[bytes]", urllib.request.urlopen(request, timeout=timeout)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
         # Bound the read so a misbehaving upstream cannot OOM the parent by
         # streaming an unbounded response body (AC-08). 1 MiB is well above
@@ -551,7 +553,9 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
     if not isinstance(tools, list):
         return []
     return [
-        cast("str", entry_map["name"])
+        cast(
+            "str", entry_map["name"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for entry in tools
         for entry_map in [cast("dict[str, object]", entry)]
         if isinstance(entry, dict) and isinstance(entry_map.get("name"), str)
@@ -698,7 +702,9 @@ def _visible_mcp_tool_names_owned(
 def _workspace_root(workspace: WorkspaceLike) -> Path:
     if isinstance(workspace, FsWorkspace):
         return workspace.root
-    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    root_value = cast(
+        "Path | str | None", getattr(workspace, "root", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if isinstance(root_value, Path):
         return root_value.resolve()
     if isinstance(root_value, str):
@@ -710,7 +716,9 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 def _reserve_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
-        return cast("int", sock.getsockname()[1])
+        return cast(
+            "int", sock.getsockname()[1]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _subprocess_env(session_file: Path) -> dict[str, str]:

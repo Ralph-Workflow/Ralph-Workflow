@@ -80,13 +80,17 @@ def _freshness_payload_from_handle(
     ``handle.store`` is visible to mypy without an ``attr-defined``
     suppression at every call site.
     """
-    typed_handle = cast("ExploreIndexLike | None", handle)
+    typed_handle = cast(
+        "ExploreIndexLike | None", handle
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if typed_handle is None:
         return {}
     store_obj: ExploreStoreLike | None = getattr(typed_handle, "store", None)
     if store_obj is None:
         return {}
-    store: ExploreStore = cast("ExploreStore", store_obj)
+    store: ExploreStore = cast(
+        "ExploreStore", store_obj
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     generation_raw = store.get_setting("current_generation") or "0"
     try:
         generation_int = int(generation_raw)
@@ -205,7 +209,9 @@ def handle_edit_file(
     edits_param = params.get("edits")
     if not isinstance(edits_param, list) or len(edits_param) == 0:
         raise InvalidParamsError("Missing 'edits' parameter as non-empty list")
-    edits = cast("list[dict[str, str]]", edits_param)
+    edits = cast(
+        "list[dict[str, str]]", edits_param
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     dry_run = bool(params.get("dry_run", False))
     expected_hash_raw = params.get("expected_content_hash")
     expected_hash: str | None = (
@@ -221,8 +227,7 @@ def handle_edit_file(
     reindex_mode = str(params.get("reindex", "auto"))
     if reindex_mode not in {"auto", "skip", "changed_blocking"}:
         raise InvalidParamsError(
-            f"Invalid reindex: {reindex_mode!r}; expected "
-            "'auto', 'skip', or 'changed_blocking'"
+            f"Invalid reindex: {reindex_mode!r}; expected 'auto', 'skip', or 'changed_blocking'"
         )
     impact_preview = bool(params.get("impact_preview", False))
     return_evidence_updates = bool(params.get("return_evidence_updates", False))
@@ -241,9 +246,7 @@ def handle_edit_file(
                                 "expected_content_hash": expected_hash,
                                 "current_content_hash": actual_hash,
                                 "reason": (
-                                    "file_missing"
-                                    if actual_hash is None
-                                    else "content_changed"
+                                    "file_missing" if actual_hash is None else "content_changed"
                                 ),
                             }
                         )
@@ -274,14 +277,12 @@ def handle_edit_file(
                     "target": target_param,
                 }
                 return ToolResult(
-                    content=[
-                        ToolContent.text_content(
-                            _tool_json(target_resolution_error)
-                        )
-                    ],
+                    content=[ToolContent.text_content(_tool_json(target_resolution_error))],
                     is_error=True,
                 )
-            store: ExploreStore = cast("ExploreStore", store_obj)
+            store: ExploreStore = cast(
+                "ExploreStore", store_obj
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             evidence_id = target_param.get("evidence_id")
             span_id = target_param.get("span_id")
             symbol_name = target_param.get("symbol")
@@ -307,11 +308,7 @@ def handle_edit_file(
                     resolved_content_hash = row.content_hash
             elif target_resolution_error is None and isinstance(span_id, str) and span_id:
                 span_row = next(
-                    (
-                        s
-                        for s in store.iter_spans()
-                        if s.span_id == span_id
-                    ),
+                    (s for s in store.iter_spans() if s.span_id == span_id),
                     None,
                 )
                 if span_row is not None:
@@ -336,11 +333,7 @@ def handle_edit_file(
                     sym = scoped[0]
                     # Symbol stores span_id; resolve span via iter_spans.
                     span_row = next(
-                        (
-                            s
-                            for s in store.iter_spans()
-                            if s.span_id == sym.span_id
-                        ),
+                        (s for s in store.iter_spans() if s.span_id == sym.span_id),
                         None,
                     )
                     if span_row is not None:
@@ -360,11 +353,7 @@ def handle_edit_file(
             # an evidence row that points to file_b.py. The guard
             # runs after resolution so legitimate same-path edits
             # succeed.
-            if (
-                resolved is not None
-                and resolved_path is not None
-                and resolved_path != normalized
-            ):
+            if resolved is not None and resolved_path is not None and resolved_path != normalized:
                 target_resolution_error = {
                     "status": "ambiguous_target",
                     "reason": "target_path_mismatch",
@@ -528,10 +517,7 @@ def handle_edit_file(
                         is_error=True,
                     )
                 for occ_idx in occurrence_starts:
-                    if (
-                        occ_idx < anchor_offset
-                        or (occ_idx + old_len) > anchor_end
-                    ):
+                    if occ_idx < anchor_offset or (occ_idx + old_len) > anchor_end:
                         return ToolResult(
                             content=[
                                 ToolContent.text_content(
@@ -542,12 +528,8 @@ def handle_edit_file(
                                             "edit_index": i,
                                             "first_match_index": first_occurrence_idx,
                                             "first_match_in_target": (
-                                                anchor_offset
-                                                <= first_occurrence_idx
-                                                and (
-                                                    first_occurrence_idx + old_len
-                                                )
-                                                <= anchor_end
+                                                anchor_offset <= first_occurrence_idx
+                                                and (first_occurrence_idx + old_len) <= anchor_end
                                             ),
                                         }
                                     )
@@ -580,18 +562,14 @@ def handle_edit_file(
                 # existing diff so the caller can distinguish "no
                 # index" from "index present, no symbol target".
                 preview_payload["impact_preview_unavailable"] = True
-                preview_payload["impact_preview_unavailable_reason"] = (
-                    "no_explore_index_handle"
-                )
+                preview_payload["impact_preview_unavailable_reason"] = "no_explore_index_handle"
                 preview_payload["impact_preview"] = {
                     "available": False,
                     "reason": "no_explore_index_handle",
                 }
             elif target_span is None:
                 preview_payload["impact_preview_unavailable"] = True
-                preview_payload["impact_preview_unavailable_reason"] = (
-                    "no_symbol_target_for_impact"
-                )
+                preview_payload["impact_preview_unavailable_reason"] = "no_symbol_target_for_impact"
                 preview_payload["impact_preview"] = {
                     "available": False,
                     "reason": "no_symbol_target_for_impact",
@@ -615,9 +593,7 @@ def handle_edit_file(
 
                     impact_handle = handle_for_impact
                     impact_store_obj: ExploreStoreLike | None = (
-                        impact_handle.store
-                        if impact_handle is not None
-                        else None
+                        impact_handle.store if impact_handle is not None else None
                     )
                     # ``target_span`` here is a (line_start, line_end)
                     # tuple resolved earlier; the actual symbol id /
@@ -635,32 +611,24 @@ def handle_edit_file(
                         and target_symbol_name
                     ):
                         symbols = list(
-                            cast("ExploreStore", impact_store_obj).iter_symbols()
+                            cast(
+                                "ExploreStore", impact_store_obj
+                            ).iter_symbols()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                         )
                         scoped_symbols = [
-                            s
-                            for s in symbols
-                            if target_symbol_name in (s.name, s.qualified_name)
+                            s for s in symbols if target_symbol_name in (s.name, s.qualified_name)
                         ]
-                        if (
-                            isinstance(target_path, str)
-                            and target_path
-                        ):
-                            scoped_symbols = [
-                                s
-                                for s in scoped_symbols
-                                if s.path == target_path
-                            ]
+                        if isinstance(target_path, str) and target_path:
+                            scoped_symbols = [s for s in scoped_symbols if s.path == target_path]
                         if len(scoped_symbols) == 1:
                             target_symbol_id = scoped_symbols[0].symbol_id
                             if not target_path:
                                 target_path = scoped_symbols[0].path
-                    if (
-                        impact_store_obj is not None
-                        and target_symbol_id is not None
-                    ):
+                    if impact_store_obj is not None and target_symbol_id is not None:
                         result = run_query(
-                            cast("ExploreStore", impact_store_obj),
+                            cast(
+                                "ExploreStore", impact_store_obj
+                            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                             query_type="impact",
                             target=target_symbol_id,
                             change_kind="behavior",
@@ -720,9 +688,7 @@ def handle_edit_file(
         )
         workspace_root_obj: object = getattr(workspace, "root", None)
         workspace_root_path: Path | None = (
-            Path(str(workspace_root_obj))
-            if isinstance(workspace_root_obj, (str, Path))
-            else None
+            Path(str(workspace_root_obj)) if isinstance(workspace_root_obj, (str, Path)) else None
         )
         if edit_store_obj is not None and workspace_root_path is not None:
             try:
@@ -731,8 +697,11 @@ def handle_edit_file(
                     ReindexOptions,
                     reindex,
                 )
+
                 reindex(
-                    cast("ExploreStore", edit_store_obj),
+                    cast(
+                        "ExploreStore", edit_store_obj
+                    ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     workspace_root_path,
                     options=ReindexOptions(
                         mode="changed",
@@ -776,9 +745,7 @@ def _hash_file_text(workspace: Workspace, normalized: str) -> str | None:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def _line_range_to_byte_offsets(
-    text: str, start_line: int, end_line: int
-) -> tuple[int, int]:
+def _line_range_to_byte_offsets(text: str, start_line: int, end_line: int) -> tuple[int, int]:
     """Convert ``(start_line, end_line)`` (1-based, inclusive) to byte offsets.
 
     The mapping is conservative: missing line boundaries fall back

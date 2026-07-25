@@ -67,7 +67,9 @@ _SESSION_TRANSACTION: object | None = None
 # PhaseRole closed vocabulary — auto-derived from the Literal type alias via
 # ``get_args`` so the validation set cannot drift from the type. Phase telemetry
 # keys exclusively on these values; raw phase names are never forwarded.
-_PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
+_PHASE_ROLES: frozenset[str] = frozenset(
+    cast("tuple[str, ...]", get_args(PhaseRole))
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
 # Mirrors ralph.project_policy.schema_state.POLICY_SCHEMA_STATES. Restated here
 # rather than imported so telemetry keeps a dependency-free import graph (it is
@@ -92,9 +94,9 @@ _AGENT_STATS_MAX_KEYS = 128
 # Aggregate phase statistics across the whole pipeline run. Keyed by PhaseRole,
 # drained at session finalize. Bounded by the 8-value closed vocabulary above
 # (not by user input).
-_PHASE_STATS: dict[str, dict[str, object]] = (
-    {}
-)  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
+_PHASE_STATS: dict[
+    str, dict[str, object]
+] = {}  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
 
 # bounded-accumulator-ok: bounded by _AGENT_STATS_MAX_KEYS; drained at session finalize
 _AGENT_STATS: dict[str, dict[str, object]] = {}
@@ -228,7 +230,9 @@ def _sentry_environment() -> str:
 
 def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) -> None:
     with contextlib.suppress(Exception):
-        add_breadcrumb = cast("_BreadcrumbRecorder", sentry_sdk.add_breadcrumb)
+        add_breadcrumb = cast(
+            "_BreadcrumbRecorder", sentry_sdk.add_breadcrumb
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload: dict[str, object] = dict(data)
         add_breadcrumb(
             category=category,
@@ -245,7 +249,9 @@ def _metric_count(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        count = cast("_MetricCounter", sentry_metrics.count)
+        count = cast(
+            "_MetricCounter", sentry_metrics.count
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload: dict[str, object] = dict(attributes)
         count(name, value, attributes=payload)
 
@@ -258,7 +264,9 @@ def _metric_distribution(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        distribution = cast("_MetricDistribution", sentry_metrics.distribution)
+        distribution = cast(
+            "_MetricDistribution", sentry_metrics.distribution
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload: dict[str, object] = dict(attributes)
         distribution(name, value, unit=unit, attributes=payload)
 
@@ -352,7 +360,9 @@ def _scrub_frames(frames: object) -> None:
         filename = d_frame.get("filename")
         if not _is_path_like_filename(filename):
             continue
-        d_frame["filename"] = _basename_of_path_like(cast("str", filename))
+        d_frame["filename"] = _basename_of_path_like(
+            cast("str", filename)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _scrub_event(event: object, _hint: object) -> object:
@@ -714,11 +724,15 @@ def record_agent_invocation(
     attributes: dict[str, object] = {
         "agent_family": AGENT_FAMILY_BY_TRANSPORT.get(transport_value, "custom"),
         "transport": transport_value if transport_value in AGENT_FAMILY_BY_TRANSPORT else "generic",
-        "pipeline_profile": pipeline_profile if pipeline_profile in {"default", "custom"} else "custom",
+        "pipeline_profile": pipeline_profile
+        if pipeline_profile in {"default", "custom"}
+        else "custom",
         "phase_role": phase_role if phase_role in _PHASE_ROLES else "unknown",
         "drain": drain if drain in _SAFE_DRAIN_NAMES else "custom",
         "drain_class": drain_class if drain_class in _PHASE_ROLES else "unknown",
-        "outcome": outcome if outcome in {"success", "failure", "interrupted", "crashed"} else "crashed",
+        "outcome": outcome
+        if outcome in {"success", "failure", "interrupted", "crashed"}
+        else "crashed",
     }
     with contextlib.suppress(Exception):
         _metric_count("ralph.agent.invocation", 1.0, attributes=attributes)
@@ -827,9 +841,7 @@ def finalize_session(
         if _SESSION_WALLCLOCK_BUCKETS is not None:
             session_payload["wallclock"] = dict(_SESSION_WALLCLOCK_BUCKETS)
         if _PHASE_STATS:
-            session_payload["phases"] = {
-                role: dict(stats) for role, stats in _PHASE_STATS.items()
-            }
+            session_payload["phases"] = {role: dict(stats) for role, stats in _PHASE_STATS.items()}
         if _AGENT_STATS:
             session_payload["agent_invocations"] = {
                 key: dict(stats) for key, stats in _AGENT_STATS.items()

@@ -54,9 +54,7 @@ class FamilyBaselineFlow:
 
     def __post_init__(self) -> None:
         if not self.name.strip():
-            raise ValueError(
-                f"FamilyBaselineFlow({self.family!r}): name must be non-empty"
-            )
+            raise ValueError(f"FamilyBaselineFlow({self.family!r}): name must be non-empty")
         if not self.current_operation_script:
             raise ValueError(
                 f"FamilyBaselineFlow({self.family!r}): "
@@ -64,8 +62,7 @@ class FamilyBaselineFlow:
             )
         if not self.catalog_token_evidence.strip():
             raise ValueError(
-                f"FamilyBaselineFlow({self.family!r}): "
-                "catalog_token_evidence must be non-empty"
+                f"FamilyBaselineFlow({self.family!r}): catalog_token_evidence must be non-empty"
             )
 
 
@@ -192,9 +189,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
     FamilyBaselineFlow(
         family=AuditFamily.PROCESS,
         name="run_bounded_subprocess",
-        current_operation_script=(
-            "exec",
-        ),
+        current_operation_script=("exec",),
         counters=_counters(
             transcript_tokens=192,
             returned_bytes=768,

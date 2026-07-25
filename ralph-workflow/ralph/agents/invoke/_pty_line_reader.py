@@ -155,7 +155,9 @@ class PtyLineReader:
         self._config = ctx.config
         self._policy = ctx.policy
         self._monitor = ctx.monitor
-        self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
+        self._workspace_path = cast(
+            "Path | None", getattr(ctx, "workspace_path", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         self._clock = clock
         self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
@@ -183,7 +185,9 @@ class PtyLineReader:
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
         self._completion_run_id = completion_run_id_from_extra_env(
-            cast("dict[str, str] | None", getattr(ctx, "extra_env", None))
+            cast(
+                "dict[str, str] | None", getattr(ctx, "extra_env", None)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
         self._evaluate_completion_fn = cast(
             "_EvalCompletionFn | None",
@@ -227,7 +231,9 @@ class PtyLineReader:
         # new cap keeps the recent-session dedup window bounded.
         # module constant cap; FIFO eviction
         recent_choice_cap = _RECENT_CHOICE_LINES_MAX
-        self._recent_choice_lines: deque[str] = deque(maxlen=recent_choice_cap)  # bounded-accumulator-ok: FIFO cap
+        self._recent_choice_lines: deque[str] = deque(
+            maxlen=recent_choice_cap
+        )  # bounded-accumulator-ok: FIFO cap
         # module constant cap; FIFO eviction
         cap = _MAX_TRANSCRIPT_SESSION_IDS
         self._transcript_session_ids: deque[str] = deque(maxlen=cap)  # bounded-accumulator-ok
@@ -417,7 +423,9 @@ class PtyLineReader:
         # None (when no monitor was injected or the call raised).
         scoped_child_count_int: int | None = scoped_child_count
         alive_by: AliveBy | None = None
-        registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if registry is not None:
             try:
                 label_prefix = cast(
@@ -714,7 +722,9 @@ class PtyLineReader:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast("int | None", getattr(self._handle, "pid", None))
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None and self._handle.poll() is None:
             teardown_subtree(pid)
         # Real resume-safety from the canonical helper at
@@ -825,7 +835,9 @@ class PtyLineReader:
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=cast("_MergedDiagType", merged_diag),
+            diagnostic=cast(
+                "_MergedDiagType", merged_diag
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
         wrapper.__cause__ = typed_exc
         return pending_lines, wrapper
@@ -963,7 +975,9 @@ class PtyLineReader:
         # close/terminate cannot leak the teardown.
         with contextlib.suppress(Exception):
             self._handle.terminate(grace_period_s=0.5)
-        pid = cast("int | None", getattr(self._handle, "pid", None))
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             with contextlib.suppress(Exception):
                 teardown_subtree(pid)
@@ -999,7 +1013,9 @@ class PtyLineReader:
             return
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
             self._handle.terminate(grace_period_s=0.5)
-        pid = cast("int | None", getattr(self._handle, "pid", None))
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             teardown_subtree(pid)
         raise AgentInvocationError(

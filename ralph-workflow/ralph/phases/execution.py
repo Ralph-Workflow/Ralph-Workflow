@@ -540,11 +540,7 @@ def _get_canonical_work_unit_refs(
             return frozenset(), frozenset()
         return (
             frozenset(unit.unit_id for unit in parsed.work_units),
-            frozenset(
-                step_id
-                for unit in parsed.work_units
-                for step_id in unit.step_ids
-            ),
+            frozenset(step_id for unit in parsed.work_units for step_id in unit.step_ids),
         )
     except Exception:
         return frozenset(), frozenset()

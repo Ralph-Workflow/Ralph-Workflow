@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import os
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -38,6 +38,10 @@ from ralph.policy.models import AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str,
+)
 
 
 @pytest.mark.subprocess_e2e
@@ -624,7 +628,7 @@ def test_commit_generation_regression_secrets_never_reach_message_agent(
     captured_diffs: list[str] = []
 
     def capture_agent_diff(**kwargs: object) -> CommitAgentResult:
-        captured_diffs.append(cast("str", kwargs["diff"]))
+        captured_diffs.append(must_str(kwargs["diff"]))
         return CommitAgentResult(message="test: describe safe work")
 
     with (
@@ -662,7 +666,7 @@ def test_commit_generation_regression_secrets_never_reach_message_agent(
     assert ".env" not in agent_diff
     assert "untracked-placeholder" not in agent_diff
     with Repo(tmp_git_repo) as repo:
-        assert cast("str", repo.git.diff("--cached", "--name-only")) == ""
+        assert must_str(repo.git.diff("--cached", "--name-only")) == ""
     assert tracked_secret.read_text(encoding="utf-8") == '{"token":"placeholder-new"}\n'
     assert untracked_secret.read_text(encoding="utf-8") == "TOKEN=untracked-placeholder\n"
 
@@ -691,7 +695,7 @@ def test_generate_commit_excludes_untracked_secret_while_staging_safe_work(
         with Repo(repo_root) as repo:
             staged_at_commit.extend(
                 path
-                for path in cast("str", repo.git.diff("--cached", "--name-only")).splitlines()
+                for path in must_str(repo.git.diff("--cached", "--name-only")).splitlines()
                 if path
             )
         return "a" * 40
@@ -753,9 +757,7 @@ def test_generate_commit_untracks_recognized_tracked_secret_without_deleting_it(
         with Repo(repo_root) as repo:
             staged_status.extend(
                 line
-                for line in cast(
-                    "str", repo.git.diff("--cached", "--name-status")
-                ).splitlines()
+                for line in must_str(repo.git.diff("--cached", "--name-status")).splitlines()
                 if line
             )
         return "b" * 40
@@ -885,5 +887,5 @@ def test_generate_commit_message_with_chain_routes_through_default_pipeline_fact
     assert factory_call["display_context"] is display_context
     assert factory_call["model_identity"] is model_identity
     assert factory_call["pro_hooks"] is pro_hooks
-    plumbing_kwargs = cast("dict[str, object]", captured_plumbing["kwargs"])
+    plumbing_kwargs = must_mapping(captured_plumbing["kwargs"])
     assert plumbing_kwargs["pipeline_deps"] is expected_deps

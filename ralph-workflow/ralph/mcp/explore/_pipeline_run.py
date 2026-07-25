@@ -60,6 +60,7 @@ def _run_reindex(
     cancel: Callable[[], bool] | None = None,
 ) -> str:
     """Inner reindex logic. Returns a status string (without finalize)."""
+
     # AC-05: bounded cancel contract. Polled at the file-loop
     # boundary, at the FTS commit, and at the row-insert boundary
     # so cancellation latency is bounded by the duration of one
@@ -397,9 +398,7 @@ def _re_extract_path(
     # even when the file contents are identical). Saving only the
     # ``chunk_text`` + ``sha256_text`` work keeps the cache
     # path-neutral while still preserving structure correctness.
-    cached_payload: ContentCachePayload | None = _maybe_load_cached_payload(
-        store, content_hash
-    )
+    cached_payload: ContentCachePayload | None = _maybe_load_cached_payload(store, content_hash)
 
     # --- Preflight phase: read + decode + build lexical + structure.
     # These calls happen BEFORE any destructive write so a failure
@@ -415,14 +414,11 @@ def _re_extract_path(
         # chunk rows with path-derived ids; this also keeps the
         # ``chunks_fts`` text fresh for the new path.
         prepared_chunks = [
-            (chunk.start_line, chunk.end_line, chunk.text)
-            for chunk in cached_payload.chunks
+            (chunk.start_line, chunk.end_line, chunk.text) for chunk in cached_payload.chunks
         ]
         extracted_at = time.time()
     else:
-        prepared_chunks = list(
-            chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
-        )
+        prepared_chunks = list(chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES))
         extracted_at = time.time()
     # ``extract_structure`` raises ``PythonSyntaxError`` for
     # malformed Python; the typed exception propagates so the
@@ -528,11 +524,7 @@ def _re_extract_path(
     # Phase 2 (AC-06): persist deterministic structure rows for
     # Python and Markdown files. Unsupported languages keep their
     # lexical rows only — no graph edges are emitted for them.
-    if (
-        prepared_extraction.spans
-        or prepared_extraction.symbols
-        or prepared_extraction.edges
-    ):
+    if prepared_extraction.spans or prepared_extraction.symbols or prepared_extraction.edges:
         store.replace_structure_rows(
             path=relative_path,
             spans=prepared_extraction.spans,

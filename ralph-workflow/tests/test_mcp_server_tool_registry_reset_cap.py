@@ -16,7 +16,6 @@ it independently of the other two cap substrings
 from __future__ import annotations
 
 import contextlib
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -36,10 +35,10 @@ def _make_bridge() -> RestartAwareMcpBridge:
         counter["n"] += 1
         new_inner = MagicMock(spec=StandaloneMcpProcess)
         new_inner.endpoint = inner.endpoint
-        return cast("StandaloneMcpProcess", new_inner)
+        return new_inner
 
     bridge = RestartAwareMcpBridge(
-        cast("StandaloneMcpProcess", inner),
+        inner,
         restart_fn=_restart_fn,
         restart_policy=MagicMock(max_restarts=1000),
         run_id="test-run",

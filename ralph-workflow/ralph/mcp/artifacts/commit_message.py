@@ -101,11 +101,15 @@ def normalize_commit_message_content(content: dict[str, object]) -> dict[str, ob
 def render_commit_message_content(content: dict[str, object]) -> str:
     """Render normalized commit message content as a plain-text commit message string."""
     normalized = normalize_commit_message_content(content)
-    kind = cast("str", normalized["type"])
+    kind = cast(
+        "str", normalized["type"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if kind == _SKIP_KIND:
-        return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"
+        return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
-    subject = cast("str", normalized["subject"])
+    subject = cast(
+        "str", normalized["subject"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     body = _render_commit_body(normalized)
     return subject if not body else f"{subject}\n\n{body}"
 

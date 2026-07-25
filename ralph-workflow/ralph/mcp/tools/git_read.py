@@ -123,7 +123,9 @@ class _ReadablePipe(Protocol):
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
-    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    root_value = cast(
+        "Path | str | None", getattr(workspace, "root", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -202,9 +204,7 @@ def _validate_diff_args(args: Sequence[str]) -> None:
             or arg.startswith("-o=")
             or arg.startswith("-o ")
         ):
-            raise InvalidParamsError(
-                f"read-only git_diff rejects output-writing flag: {arg!r}"
-            )
+            raise InvalidParamsError(f"read-only git_diff rejects output-writing flag: {arg!r}")
         for bad in _DIFF_EXTERNAL_HELPER_FLAGS:
             if bad in arg:
                 raise InvalidParamsError(
@@ -388,17 +388,13 @@ def handle_git_status(
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "compact"}:
-        raise InvalidParamsError(
-            f"Invalid format: {format_value!r}; expected 'raw' or 'compact'"
-        )
+        raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'compact'")
     if format_value == "raw":
         return _git_read_result(lambda: run_git_command(workspace, ["status"]))
     # AC-11: compact mode runs through the same timeout-wrapping
     # helper as raw mode so a hung ``git status`` returns an
     # actionable is_error result rather than an uncaught exception.
-    return _git_read_result(
-        lambda: _build_compact_status_payload(workspace, session=session)
-    )
+    return _git_read_result(lambda: _build_compact_status_payload(workspace, session=session))
 
 
 def _resolve_compact_status_index(
@@ -421,9 +417,7 @@ def _resolve_compact_status_index(
     # ``explore_index`` attribute.
     handle: ExploreIndexLike | None = None
     workspace_session: object = (
-        cast("object", getattr(workspace, "session", None))
-        if workspace is not None
-        else None
+        cast("object", getattr(workspace, "session", None)) if workspace is not None else None
     )
     for candidate in (session, workspace, workspace_session):
         if candidate is None:
@@ -563,8 +557,7 @@ def _strict_max_bytes_param(
     raw: object = params["max_bytes"]
     if isinstance(raw, bool):
         raise InvalidParamsError(
-            f"max_bytes must be an integer in [{minimum}, {default}]; "
-            f"got bool {raw!r}"
+            f"max_bytes must be an integer in [{minimum}, {default}]; got bool {raw!r}"
         )
     if isinstance(raw, int):
         value = raw
@@ -573,8 +566,7 @@ def _strict_max_bytes_param(
             value = int(raw)
         except ValueError as exc:
             raise InvalidParamsError(
-                f"max_bytes must be an integer in [{minimum}, {default}]; "
-                f"got {raw!r}"
+                f"max_bytes must be an integer in [{minimum}, {default}]; got {raw!r}"
             ) from exc
     elif isinstance(raw, float):
         if not raw.is_integer():
@@ -585,8 +577,7 @@ def _strict_max_bytes_param(
         value = int(raw)
     else:
         raise InvalidParamsError(
-            f"max_bytes must be an integer in [{minimum}, {default}]; "
-            f"got {type(raw).__name__}"
+            f"max_bytes must be an integer in [{minimum}, {default}]; got {type(raw).__name__}"
         )
     if value < minimum or value > default:
         raise InvalidParamsError(
@@ -686,9 +677,7 @@ def _build_compact_status_payload(
             ],
         },
     }
-    payload.update(
-        _compact_status_index_meta(workspace, ranked_cards, session=session)
-    )
+    payload.update(_compact_status_index_meta(workspace, ranked_cards, session=session))
     return json.dumps(payload)
 
 
@@ -718,10 +707,7 @@ def _rank_compact_status_cards(
         elif role == "untracked":
             score += 60
             reasons.append("+60 role=untracked")
-        if (
-            card.get("untracked") is True
-            and role != "untracked"
-        ):
+        if card.get("untracked") is True and role != "untracked":
             # Defensive: legacy callers may still pass the
             # boolean ``untracked`` flag without the new
             # role. Honor the +60 signal in that case so
@@ -736,6 +722,7 @@ def _rank_compact_status_cards(
         new_card["score"] = score
         new_card["score_reasons"] = reasons
         ranked.append(new_card)
+
     # Sort: score descending, then path lexicographic. Stable
     # sort preserves the relative order of equal elements, but
     # we explicitly key on path so the tiebreak is
@@ -796,20 +783,16 @@ def handle_git_diff(
     parsed = parse_git_diff_params(params)
     format_value = params.get("format", "raw") if params else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
-        raise InvalidParamsError(
-            f"Invalid format: {format_value!r}; expected 'raw' or 'summary'"
-        )
+        raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'summary'")
     if format_value == "raw":
-        return _git_read_result(lambda: lenient_stdout(
-            run_git_command_lenient(workspace, ["diff", *parsed.args])
-        ))
+        return _git_read_result(
+            lambda: lenient_stdout(run_git_command_lenient(workspace, ["diff", *parsed.args]))
+        )
     max_bytes = _strict_max_bytes_param(params)
     # AC-11: wrap the summary branch in ``_git_read_result`` so a
     # timeout converts into the same actionable ``is_error`` result
     # as the raw branch, never an uncaught exception.
-    return _git_read_result(
-        lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes)
-    )
+    return _git_read_result(lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes))
 
 
 def _build_diff_summary_payload(
@@ -859,15 +842,9 @@ def _build_diff_summary_payload(
     # so the caller never holds an unbounded buffer. The
     # returned string is UTF-8 safe (errors="replace") and the
     # re-encoded length never exceeds ``max_bytes``.
-    full_text, truncated = _collect_git_diff_capped(
-        workspace, git_args, max_bytes
-    )
-    added_total = sum(
-        c["added"] for c in cards if isinstance(c["added"], int)
-    )
-    removed_total = sum(
-        c["removed"] for c in cards if isinstance(c["removed"], int)
-    )
+    full_text, truncated = _collect_git_diff_capped(workspace, git_args, max_bytes)
+    added_total = sum(c["added"] for c in cards if isinstance(c["added"], int))
+    removed_total = sum(c["removed"] for c in cards if isinstance(c["removed"], int))
     payload: dict[str, object] = {
         "format": "summary",
         "files_changed": len(cards),
@@ -923,9 +900,12 @@ def _collect_git_diff_capped(
     if stdout is None:  # pragma: no cover — defensive
         return ("", False)
     chunks, truncated = _read_git_diff_until_cap(
-        cast("_ReadablePipe", stdout), max_bytes
+        cast("_ReadablePipe", stdout),
+        max_bytes,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
-    _terminate_git_diff_proc(cast("_SpawnedProcessLike", proc))
+    _terminate_git_diff_proc(
+        cast("_SpawnedProcessLike", proc)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return (
         _decode_git_diff_capped(b"".join(chunks), truncated),
         truncated,
@@ -1049,13 +1029,9 @@ def handle_git_log(
     parsed = parse_git_log_params(params)
     if parsed.format == "raw":
         return _git_read_result(
-            lambda: run_git_command(
-                workspace, ["log", f"-{parsed.count}", "--oneline"]
-            )
+            lambda: run_git_command(workspace, ["log", f"-{parsed.count}", "--oneline"])
         )
-    return _git_read_result(
-        lambda: _build_git_log_summary_payload(workspace, parsed.count)
-    )
+    return _git_read_result(lambda: _build_git_log_summary_payload(workspace, parsed.count))
 
 
 def _build_git_log_summary_payload(workspace: object, count: int) -> str:
@@ -1068,9 +1044,7 @@ def _build_git_log_summary_payload(workspace: object, count: int) -> str:
     so an empty log still produces an empty ``commits`` list rather
     than a fake sentinel.
     """
-    raw = run_git_command(
-        workspace, ["log", f"-{count}", "--oneline"]
-    )
+    raw = run_git_command(workspace, ["log", f"-{count}", "--oneline"])
     raw_bytes = raw.encode("utf-8")
     commits: list[dict[str, object]] = []
     for line in raw.splitlines():
@@ -1084,9 +1058,7 @@ def _build_git_log_summary_payload(workspace: object, count: int) -> str:
         parts = stripped.split(maxsplit=1)
         short_sha = parts[0] if parts else ""
         subject = parts[1] if len(parts) > 1 else ""
-        commits.append(
-            {"short_sha": short_sha, "sha": short_sha, "subject": subject}
-        )
+        commits.append({"short_sha": short_sha, "sha": short_sha, "subject": subject})
     envelope = finalize_envelope_bytes_out(
         {
             "format": "summary",
@@ -1133,9 +1105,7 @@ def handle_git_show(
     parsed = parse_git_show_params(params)
     if parsed.format == "raw":
         return _git_read_result(lambda: run_git_command(workspace, ["show", parsed.git_ref]))
-    return _git_read_result(
-        lambda: _build_git_show_summary_payload(workspace, parsed.git_ref)
-    )
+    return _git_read_result(lambda: _build_git_show_summary_payload(workspace, parsed.git_ref))
 
 
 def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
@@ -1151,12 +1121,8 @@ def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
     matches the tag pattern. Commits are identified by the presence
     of parents in the header.
     """
-    fmt = (
-        "%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%P%x1f%D%x1f%H"
-    )
-    raw = run_git_command(
-        workspace, ["show", "--no-patch", f"--format={fmt}", ref]
-    )
+    fmt = "%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%P%x1f%D%x1f%H"
+    raw = run_git_command(workspace, ["show", "--no-patch", f"--format={fmt}", ref])
     raw_bytes = raw.encode("utf-8")
     fields = raw.split("\x1f")
     # ``%D`` is appended to the format above to also include the
@@ -1172,30 +1138,12 @@ def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
     decoration_idx = 7
     sha = fields[sha_idx].strip() if len(fields) > sha_idx else ""
     short_sha = fields[short_sha_idx].strip() if len(fields) > short_sha_idx else ""
-    author_name = (
-        fields[author_name_idx].strip()
-        if len(fields) > author_name_idx
-        else ""
-    )
-    author_email = (
-        fields[author_email_idx].strip()
-        if len(fields) > author_email_idx
-        else ""
-    )
-    author_date = (
-        fields[author_date_idx].strip()
-        if len(fields) > author_date_idx
-        else ""
-    )
+    author_name = fields[author_name_idx].strip() if len(fields) > author_name_idx else ""
+    author_email = fields[author_email_idx].strip() if len(fields) > author_email_idx else ""
+    author_date = fields[author_date_idx].strip() if len(fields) > author_date_idx else ""
     subject = fields[subject_idx].strip() if len(fields) > subject_idx else ""
-    parents_raw = (
-        fields[parents_raw_idx].strip()
-        if len(fields) > parents_raw_idx
-        else ""
-    )
-    decoration = (
-        fields[decoration_idx].strip() if len(fields) > decoration_idx else ""
-    )
+    parents_raw = fields[parents_raw_idx].strip() if len(fields) > parents_raw_idx else ""
+    decoration = fields[decoration_idx].strip() if len(fields) > decoration_idx else ""
     parents = [p for p in parents_raw.split() if p] if parents_raw else []
     # ``kind`` is inferred from decoration (tags/blobs/trees): tags
     # have ``tag:`` in the decoration; otherwise a commit with

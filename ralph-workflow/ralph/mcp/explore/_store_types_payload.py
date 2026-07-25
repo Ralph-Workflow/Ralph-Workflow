@@ -108,9 +108,7 @@ def deserialize_content_cache_payload(blob: bytes) -> ContentCachePayload:
     try:
         envelope_obj: object = json.loads(blob.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(
-            f"content_cache_payload not valid UTF-8 JSON: {exc}"
-        ) from exc
+        raise ValueError(f"content_cache_payload not valid UTF-8 JSON: {exc}") from exc
     if not isinstance(envelope_obj, dict):
         raise ValueError("content_cache_payload must decode to a JSON object")
     envelope = cast("dict[str, object]", envelope_obj)
@@ -126,17 +124,13 @@ def deserialize_content_cache_payload(blob: bytes) -> ContentCachePayload:
     if not isinstance(content_hash_obj, str):
         raise ValueError("content_cache_payload.content_hash must be a string")
     if not isinstance(extractor_version_obj, str):
-        raise ValueError(
-            "content_cache_payload.extractor_version must be a string"
-        )
+        raise ValueError("content_cache_payload.extractor_version must be a string")
     if not isinstance(chunks_obj, list):
         raise ValueError("content_cache_payload.chunks must be a list")
     decoded_chunks: list[ContentCacheChunk] = []
     for raw in chunks_obj:
         if not isinstance(raw, dict):
-            raise ValueError(
-                "content_cache_payload.chunk entry must be an object"
-            )
+            raise ValueError("content_cache_payload.chunk entry must be an object")
         raw_obj = cast("dict[str, object]", raw)
         start_line_obj: object = raw_obj.get("start_line")
         end_line_obj: object = raw_obj.get("end_line")

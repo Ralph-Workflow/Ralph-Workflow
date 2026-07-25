@@ -195,8 +195,12 @@ def _submit_canonical(
         ),
         receipt_secret=session.broker_secret,
     )
-    worker_namespace = cast("Path | None", getattr(session, "worker_namespace", None))
-    worker_artifact_dir = cast("Path | None", getattr(session, "worker_artifact_dir", None))
+    worker_namespace = cast(
+        "Path | None", getattr(session, "worker_namespace", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    worker_artifact_dir = cast(
+        "Path | None", getattr(session, "worker_artifact_dir", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if worker_namespace is None and worker_artifact_dir is not None:
         worker_namespace = worker_artifact_dir.parent
     submit_artifact_canonical(

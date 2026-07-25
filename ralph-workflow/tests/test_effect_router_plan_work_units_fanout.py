@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.pipeline.effect_router import determine_effect_from_policy
@@ -20,6 +20,9 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._support.typed_accessors import (
+    must_str_list,
+)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -58,13 +61,13 @@ def _config_with_development_agent() -> UnifiedConfig:
     config = MagicMock()
     config.agent_chains = {"developer": ["claude"]}
     config.agent_drains = {"development": "developer"}
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _plan_document(work_units: list[dict[str, object]]) -> str:
     unit_items = "\n".join(
         f"- [{unit['unit_id']}] {unit['description']}\n"
-        f"  Directories: {', '.join(cast('list[str]', unit['allowed_directories']))}"
+        f"  Directories: {', '.join(must_str_list(unit['allowed_directories']))}"
         for unit in work_units
     )
     return f"""---
@@ -292,7 +295,7 @@ def test_non_parallelized_phase_ignores_plan_work_units(tmp_path: Path) -> None:
         state,
         _default_policy_bundle(),
         WorkspaceScope(tmp_path),
-        config=cast("UnifiedConfig", config),
+        config=config,
     )
 
     assert isinstance(effect, InvokeAgentEffect)

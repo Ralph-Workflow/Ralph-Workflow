@@ -374,6 +374,7 @@ def identity_color(
         return candidate
     return palette[base_slot]
 
+
 _THEME_STYLES: Final[dict[str, str]] = {
     "theme.level.info": BLUE,
     "theme.level.success": f"bold {BLUISH_GREEN}",
@@ -586,9 +587,7 @@ def _state_payload_for_background(
         payload = table[state]
     except KeyError as exc:
         known = ", ".join(sorted(table))
-        raise KeyError(
-            f"Unknown status {state!r}. Known statuses: {known}"
-        ) from exc
+        raise KeyError(f"Unknown status {state!r}. Known statuses: {known}") from exc
     return payload
 
 
@@ -646,9 +645,7 @@ def assert_status_styles_meet_contrast(
             continue
         ratio = contrast_ratio(fg_hex, bg_hex)
         if ratio < min_ratio:
-            failures.append(
-                f"  {state}: {fg_hex} on {bg_hex} = {ratio:.2f}:1 (< {min_ratio})"
-            )
+            failures.append(f"  {state}: {fg_hex} on {bg_hex} = {ratio:.2f}:1 (< {min_ratio})")
     if failures:
         joined = "\n".join(failures)
         raise RuntimeError(

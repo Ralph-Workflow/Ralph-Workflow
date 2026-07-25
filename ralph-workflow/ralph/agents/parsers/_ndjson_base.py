@@ -165,7 +165,9 @@ class NdjsonParserBase(ParserTemplateBase):
             # canonical Literal set on every ``register`` call.
             registry.register(
                 pid,
-                source=cast("_SubagentSourceLabel", self._subagent_source_label),
+                source=cast(
+                    "_SubagentSourceLabel", self._subagent_source_label
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             )
         except ValueError:
             # Fail-closed: a known validation rejection (unknown

@@ -109,9 +109,7 @@ def observe_target_sha(repo_root: Path, target: str) -> str | None:
             label="git-observe-target-sha",
         )
     except Exception as observe_exc:
-        logger.debug(
-            "auto_integrate: could not observe '{}': {}", target, observe_exc
-        )
+        logger.debug("auto_integrate: could not observe '{}': {}", target, observe_exc)
         return None
     if result.returncode != 0:
         return None
@@ -166,8 +164,7 @@ def _observe_without_origin(repo_root: Path, target: str) -> str:
     observed = observe_target_sha(repo_root, target)
     if observed is None:
         logger.debug(
-            "auto_integrate: no origin remote and no local '{}'; "
-            "nothing to observe",
+            "auto_integrate: no origin remote and no local '{}'; nothing to observe",
             target,
         )
         return REFRESH_NO_ORIGIN
@@ -213,8 +210,7 @@ def _classify_remote_position(repo_root: Path, target: str) -> str:
         )
         return REFRESH_DIVERGED
     logger.debug(
-        "auto_integrate: origin/{} is ahead of the local ref; local kept "
-        "({} != {})",
+        "auto_integrate: origin/{} is ahead of the local ref; local kept ({} != {})",
         target,
         local_sha,
         remote_sha,

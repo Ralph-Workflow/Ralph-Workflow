@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 from loguru import logger
@@ -381,7 +381,7 @@ def test_controller_accepts_protocol_typed_unavailability_store() -> None:
         options=RecoveryControllerOptions(
             cycle_cap=10,
             policy_bundle=_minimal_policy_bundle(),
-            unavailability_store=cast("UnavailabilityStore", fake_store),
+            unavailability_store=fake_store,
         ),
     )
 

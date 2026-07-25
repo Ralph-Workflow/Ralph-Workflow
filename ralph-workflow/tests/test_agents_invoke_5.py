@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents import invoke as invoke_module
 from ralph.agents.invoke import BuildCommandOptions, InvokeOptions, build_command
@@ -15,9 +15,12 @@ from ralph.config.loader import load_config
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.workspace.scope import WorkspaceScope
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
 
     import pytest
 
@@ -26,21 +29,21 @@ _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
 def _json_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(raw))
+    return must_mapping(json.loads(raw))
 
 
 def _toml_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", tomllib.loads(raw))
+    return must_mapping(tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(cast("Iterable[str]", args[0]))
+    return list(args[0])
 
 
 class TestResolveInvocationRuntime:
@@ -155,7 +158,7 @@ class TestResolveInvocationRuntime:
         assert result.agent_env is not None
         assert result.agent_env["NANOCODER_TRUST_DIRECTORY"] == "1"
         payload = _json_object(result.agent_env["NANOCODER_MCPSERVERS"])
-        servers = cast("dict[str, dict[str, object]]", payload["mcpServers"])
+        servers = payload["mcpServers"]
         assert servers["ralph"]["transport"] == "http"
         assert servers["ralph"]["url"] == "http://localhost:9999/mcp"
 
@@ -184,7 +187,7 @@ class TestResolveInvocationRuntime:
 
         assert result.agent_env is not None
         payload = _json_object(result.agent_env["NANOCODER_MCPSERVERS"])
-        servers = cast("dict[str, dict[str, object]]", payload["mcpServers"])
+        servers = payload["mcpServers"]
         assert servers["ralph"]["alwaysAllow"] == [
             "read_file",
             "mcp__ralph__read_file",

@@ -190,9 +190,7 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         # Reuse existing native entries when present; otherwise append the synthetic
         # server so the probe verifies how Ralph would write it.
         parsed = (
-            cast("dict[str, object]", tomllib.loads(config_text))
-            if config_text.strip()
-            else {}
+            cast("dict[str, object]", tomllib.loads(config_text)) if config_text.strip() else {}
         )
         mcp_servers = parsed.get("mcp_servers") if isinstance(parsed, dict) else None
         existing_servers = (
@@ -229,7 +227,6 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         # ``from ... import x`` creates a local binding that ignores
         # later module-level ``setattr`` patches.
         _codex_transport.release_codex_home(codex_home_str)
-
 
 
 def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServer) -> str:

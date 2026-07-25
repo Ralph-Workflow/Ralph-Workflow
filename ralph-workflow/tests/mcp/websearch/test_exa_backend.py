@@ -5,7 +5,6 @@ import sys
 import threading
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
-from typing import Any, cast
 
 import pytest
 from _pytest.mark import Mark, MarkDecorator
@@ -46,7 +45,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
                 ]
             )
 
-    fake_module = cast("Any", ModuleType("exa_py"))
+    fake_module = ModuleType("exa_py")
     fake_module.Exa = FakeExa
     monkeypatch.setitem(sys.modules, "exa_py", fake_module)
 
@@ -71,7 +70,7 @@ def test_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
         def search(self, query: str, *, num_results: int) -> None:
             raise RuntimeError(f"401 unauthorized api_key={self.api_key} query={query}")
 
-    fake_module = cast("Any", ModuleType("exa_py"))
+    fake_module = ModuleType("exa_py")
     fake_module.Exa = BrokenExa
     monkeypatch.setitem(sys.modules, "exa_py", fake_module)
 
@@ -127,7 +126,7 @@ def test_exa_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch) ->
             event.wait(timeout=10.0)
             return SimpleNamespace(results=[])
 
-    fake_module = cast("Any", ModuleType("exa_py"))
+    fake_module = ModuleType("exa_py")
     fake_module.Exa = HangingExa
     monkeypatch.setitem(sys.modules, "exa_py", fake_module)
     try:

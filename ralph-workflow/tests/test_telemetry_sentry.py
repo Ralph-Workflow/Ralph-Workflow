@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import cast, get_args
+from typing import get_args
 
 import pytest
 
@@ -28,6 +28,9 @@ from ralph.telemetry._sentry import (
     _scrub_obj,
     init_sentry,
     is_telemetry_disabled,
+)
+from tests._support.typed_accessors import (
+    must_mapping,
 )
 
 
@@ -1722,7 +1725,7 @@ def test_record_phase_execution_fail_soft(
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     # Force a KeyError by pre-populating with a non-dict value.
-    _sentry._PHASE_STATS["execution"] = cast("dict[str, dict[str, object]]", "this is not a dict")
+    _sentry._PHASE_STATS["execution"] = "this is not a dict"
 
     # Must not raise even though the stats lookup will fail.
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
@@ -2203,7 +2206,7 @@ def _capture_contexts(
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
     monkeypatch.setattr(
         "sentry_sdk.set_context",
-        lambda name, data: contexts.append((str(name), dict(cast("dict[str, object]", data)))),
+        lambda name, data: contexts.append((str(name), dict(must_mapping(data)))),
     )
     monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: tags.append((str(k), v)))
     return contexts, tags
@@ -2230,8 +2233,8 @@ def test_agent_config_context_drops_names_and_raw_cmd(
     assert not any(
         isinstance(leaf, str) and ("secret-corp" in leaf or "hunter2" in leaf) for leaf in leaves
     )
-    agents = cast("dict[str, object]", payload["agents"])
-    entry = cast("dict[str, object]", agents["custom"])
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["custom"])
     assert entry["binary"] == "custom"
     assert ("agent_count", 1) in tags
 
@@ -2256,12 +2259,12 @@ def test_agent_config_context_keeps_model_and_reduces_flags_to_booleans(
     )
 
     payload = next(data for name, data in contexts if name == "agent_config")
-    agents = cast("dict[str, object]", payload["agents"])
-    entry = cast("dict[str, object]", agents["claude"])
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["claude"])
     assert entry["model"] == "zai-coding-plan/glm-5.2"
     assert entry["binary"] == "claude"
     assert entry["can_commit"] is True
-    flags = cast("dict[str, object]", entry["flags"])
+    flags = must_mapping(entry["flags"])
     assert flags["yolo_flag"] is True
     assert flags["model_flag"] is True
     assert flags["session_flag"] is False
@@ -2283,7 +2286,7 @@ def test_agent_config_context_disambiguates_same_family_agents(
     )
 
     payload = next(data for name, data in contexts if name == "agent_config")
-    agents = cast("dict[str, object]", payload["agents"])
+    agents = must_mapping(payload["agents"])
     assert set(agents.keys()) == {"claude", "claude_2"}
     assert payload["agent_count"] == 2
 
@@ -2300,7 +2303,7 @@ def test_agent_config_context_caps_entries_but_reports_true_count(
     _sentry.set_agent_config_context(oversized)
 
     payload = next(data for name, data in contexts if name == "agent_config")
-    agents = cast("dict[str, object]", payload["agents"])
+    agents = must_mapping(payload["agents"])
     assert len(agents) == _sentry_payload.AGENT_CONFIG_MAX_ENTRIES
     assert payload["agent_count"] == 40
     assert payload["truncated"] is True
@@ -2314,7 +2317,7 @@ def test_agent_config_context_noop_when_not_initialized(
     monkeypatch.setattr(_sentry, "_INITIALIZED", False)
     monkeypatch.setattr(
         "sentry_sdk.set_context",
-        lambda name, data: contexts.append((str(name), dict(cast("dict[str, object]", data)))),
+        lambda name, data: contexts.append((str(name), dict(must_mapping(data)))),
     )
 
     _sentry.set_agent_config_context({"primary": _agent()})
@@ -2414,8 +2417,8 @@ def test_agent_config_forwards_genuine_model_identifiers(
     _sentry.set_agent_config_context({"a": _agent(transport=AgentTransport.CLAUDE, model=model_id)})
 
     payload = next(data for name, data in contexts if name == "agent_config")
-    agents = cast("dict[str, object]", payload["agents"])
-    entry = cast("dict[str, object]", agents["claude"])
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["claude"])
     assert entry["model"] == model_id
 
 
@@ -2450,8 +2453,8 @@ def test_agent_config_rejects_paths_urls_and_credentials_in_model(
     )
 
     payload = next(data for name, data in contexts if name == "agent_config")
-    agents = cast("dict[str, object]", payload["agents"])
-    entry = cast("dict[str, object]", agents["claude"])
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["claude"])
     assert entry["model"] == "custom"
     leaves = [leaf for leaf in _flatten(payload) if isinstance(leaf, str)]
     for secret in ("otheruser", "acme-corp", "pa55w0rd", "acme.internal", "jane", "secret"):
@@ -2472,9 +2475,9 @@ def test_agent_config_distinguishes_unset_model_from_rejected_model(
     )
 
     payload = next(data for name, data in contexts if name == "agent_config")
-    agents = cast("dict[str, object]", payload["agents"])
-    assert cast("dict[str, object]", agents["claude"])["model"] is None
-    assert cast("dict[str, object]", agents["codex"])["model"] == "custom"
+    agents = must_mapping(payload["agents"])
+    assert must_mapping(agents["claude"])["model"] is None
+    assert must_mapping(agents["codex"])["model"] == "custom"
 
 
 def test_agent_families_tag_covers_every_agent_not_just_forwarded_ones(

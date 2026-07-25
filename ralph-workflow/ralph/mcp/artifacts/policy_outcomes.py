@@ -10,7 +10,9 @@ APPROVED_POLICY_OUTCOMES = frozenset({"approved", "allow", "allowed"})
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    return cast("object | None", getattr(obj, attribute_name, default))
+    return cast(
+        "object | None", getattr(obj, attribute_name, default)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def is_policy_approved(outcome: object | None) -> bool:

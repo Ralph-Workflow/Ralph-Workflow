@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import re
-from typing import cast
 
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.prompts.template_context import TemplateContext
+from tests._support.typed_accessors import must_str_list
 
 PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE = (
     "Infer the complete user-visible workflow required by the request"
@@ -37,7 +37,7 @@ def test_commit_cleanup_top_level_basename_list_matches_code_allowlist() -> None
     text = _template("commit_cleanup")
     match = re.search(r"the canonical allowlist\):\n(.+?)\n- \*\*", text, re.DOTALL)
     assert match is not None, "canonical allowlist bullet not found in commit_cleanup.jinja"
-    listed = set(cast("list[str]", re.findall(r"``\.agent/([^`]+)``", match.group(1))))
+    listed = set(must_str_list(re.findall(r"``\.agent/([^`]+)``", match.group(1))))
     assert listed == set(AGENT_INTERNAL_TOP_LEVEL_BASENAMES)
 
 
@@ -77,14 +77,11 @@ def test_planning_worked_examples_use_native_step_blocks() -> None:
     for name in ("planning.jinja", "planning_fallback.jinja"):
         text = _template(name)
         examples.extend(
-            cast(
-                "list[str]",
-                re.findall(
+            must_str_list(re.findall(
                     r"```markdown[^\n]*\n(---\ntype: plan\n.*?)(?:\n```)",
                     text,
                     re.DOTALL,
-                ),
-            )
+                ),)
         )
 
     for example in examples:
@@ -116,14 +113,11 @@ def test_planning_prompts_use_author_facing_plan_vocabulary() -> None:
 def test_plan_format_doc_embedded_examples_validate() -> None:
     text = load_bundled_format_doc("plan")
     assert text is not None
-    examples = cast(
-        "list[str]",
-        re.findall(
+    examples = must_str_list(re.findall(
             r"```markdown[^\n]*\n(---\ntype: plan\n.*?)(?:\n```)",
             text,
             re.DOTALL,
-        ),
-    )
+        ),)
 
     assert examples
     for example in examples:

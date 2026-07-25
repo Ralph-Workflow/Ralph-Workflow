@@ -292,11 +292,14 @@ def _resolve_gitlinks(
         ours = stage[_CONFLICT_STAGE_OURS][1]
         theirs = stage[_CONFLICT_STAGE_THEIRS][1]
         submodule = root / path
-        if run_git(
-            ("-C", str(submodule), "rev-parse", "--git-dir"),
-            cwd=root,
-            label="git-gitlink-dir",
-        ).returncode != 0:
+        if (
+            run_git(
+                ("-C", str(submodule), "rev-parse", "--git-dir"),
+                cwd=root,
+                label="git-gitlink-dir",
+            ).returncode
+            != 0
+        ):
             return False
         if any(
             run_git(
@@ -491,8 +494,7 @@ def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
     conflicted = tuple(get_conflicted_files(repo_root=root))
     if not conflicted:
         logger.warning(
-            "conflict_resolution: rebase is paused with no conflicted path; "
-            "declining to resolve"
+            "conflict_resolution: rebase is paused with no conflicted path; declining to resolve"
         )
         return None
     progress = _read_replay_progress(root)
@@ -658,8 +660,7 @@ def _continue_past(root: Path, stop: RebaseStop) -> bool:
     except (ConflictRemainingError, RebaseContinuationError) as exc:
         if _advanced_to_a_new_stop(root, stop):
             logger.info(
-                "conflict_resolution: stop {} landed; the rebase stopped again "
-                "on the next commit",
+                "conflict_resolution: stop {} landed; the rebase stopped again on the next commit",
                 stop.stop_index,
             )
             return True

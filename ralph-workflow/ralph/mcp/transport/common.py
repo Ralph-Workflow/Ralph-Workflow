@@ -275,11 +275,15 @@ def _load_upstreams_for_agent(
             servers = cast("dict[str, object]", existing_mcp_servers)
         elif agent_name == "claude":
             mod = importlib.import_module("ralph.mcp.transport.claude")
-            paths = cast("tuple[Path, ...]", mod._claude_mcp_config_paths(_workspace_path))
+            paths = cast(
+                "tuple[Path, ...]", mod._claude_mcp_config_paths(_workspace_path)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
         elif agent_name == "agy":
             mod = importlib.import_module("ralph.mcp.transport.agy")
-            paths = cast("tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path))
+            paths = cast(
+                "tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_agy_server_entry,
@@ -290,7 +294,9 @@ def _load_upstreams_for_agent(
             )
         elif agent_name == "cursor":
             mod = importlib.import_module("ralph.mcp.transport.cursor")
-            paths = cast("tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path))
+            paths = cast(
+                "tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_cursor_server_entry,
@@ -301,7 +307,9 @@ def _load_upstreams_for_agent(
             )
         else:  # nanocoder
             mod = importlib.import_module("ralph.mcp.transport.nanocoder")
-            paths = cast("tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path))
+            paths = cast(
+                "tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
         servers.pop(RALPH_MCP_SERVER_NAME, None)
         return normalize_upstream_mcp_servers(servers)

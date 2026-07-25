@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -28,7 +28,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 _check_process_result = check_process_result
@@ -59,7 +58,7 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
 
     with pytest.raises(AgentInvocationError):
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "agy",
             [],
             _CompletionCheckOptions(
@@ -94,7 +93,7 @@ def test_declare_complete_sentinel_satisfies_artifact_free_completion_contract(
     sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
     _check_process_result(
-        cast("ManagedProcess", handle),
+        handle,
         "agy",
         raw_output,
         _CompletionCheckOptions(
@@ -160,7 +159,7 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
 
     with pytest.raises(AgentInvocationError):
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "agy",
             [],
             options,
@@ -169,7 +168,7 @@ def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> 
     sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
     sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
     _check_process_result(
-        cast("ManagedProcess", handle),
+        handle,
         "agy",
         [],
         options,
@@ -183,7 +182,7 @@ def test_sentinel_check_fn_true_without_artifact_contract_prevents_invocation_er
     handle = _FakeHandle(returncode=0)
 
     _check_process_result(
-        cast("ManagedProcess", handle),
+        handle,
         "agy",
         [],
         _CompletionCheckOptions(
@@ -206,7 +205,7 @@ def test_sentinel_check_fn_true_does_not_replace_required_receipt(
 
     with pytest.raises(AgentInvocationError):
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "agy",
             [],
             _CompletionCheckOptions(
@@ -232,7 +231,7 @@ def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -
 
     with pytest.raises(AgentInvocationError):
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "agy",
             [],
             _CompletionCheckOptions(
@@ -262,7 +261,7 @@ def test_sentinel_check_fn_receives_completion_run_id(tmp_path: Path) -> None:
         return True
 
     _check_process_result(
-        cast("ManagedProcess", handle),
+        handle,
         "agy",
         [],
         _CompletionCheckOptions(
@@ -285,7 +284,7 @@ def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
     sentinel.write_text('{"run_id": "observable-run-001"}', encoding="utf-8")
 
     _check_process_result(
-        cast("ManagedProcess", handle),
+        handle,
         "agy",
         [],
         _CompletionCheckOptions(
@@ -303,7 +302,7 @@ def test_sentinel_absent_without_pty_echo_raises(tmp_path: Path) -> None:
 
     with pytest.raises(AgentInvocationError):
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "agy",
             [],
             _CompletionCheckOptions(

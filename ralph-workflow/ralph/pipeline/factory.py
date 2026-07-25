@@ -326,21 +326,29 @@ class PipelineDeps:
             if display_context is _UNSET:
                 raise ValueError("display_context is required when core is not provided")
             effective_core = PipelineCore(
-                display_context=cast("DisplayContext", display_context),
+                display_context=cast(
+                    "DisplayContext", display_context
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 model_identity=(
                     None
                     if model_identity is _UNSET
-                    else cast("MultimodalModelIdentity | None", model_identity)
+                    else cast(
+                        "MultimodalModelIdentity | None", model_identity
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 ),
                 master_prompt_materializer=(
                     _materialize_master_prompt
                     if master_prompt_materializer is _UNSET
-                    else cast("MaterializeMasterPromptFn", master_prompt_materializer)
+                    else cast(
+                        "MaterializeMasterPromptFn", master_prompt_materializer
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 ),
                 phase_prompt_materializer=(
                     _materialize_prompt_for_phase
                     if phase_prompt_materializer is _UNSET
-                    else cast("PhasePromptMaterializerFn", phase_prompt_materializer)
+                    else cast(
+                        "PhasePromptMaterializerFn", phase_prompt_materializer
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 ),
                 artifact_requirements_resolver=(
                     _resolve_phase_required_artifact
@@ -356,7 +364,9 @@ class PipelineDeps:
             if "display_context" in core_overrides:
                 effective_core = dataclasses.replace(
                     effective_core,
-                    display_context=cast("DisplayContext", core_overrides["display_context"]),
+                    display_context=cast(
+                        "DisplayContext", core_overrides["display_context"]
+                    ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 )
             if "model_identity" in core_overrides:
                 effective_core = dataclasses.replace(

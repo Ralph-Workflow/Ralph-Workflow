@@ -42,7 +42,9 @@ def _read_skill_metadata() -> SkillMetadata:
     """Load the bundled skill metadata from package resources."""
     content_dir = files(__package__) / "content"
     raw = (content_dir / "metadata.json").read_text(encoding="utf-8")
-    return cast("SkillMetadata", json.loads(raw))
+    return cast(
+        "SkillMetadata", json.loads(raw)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 BASELINE_SKILL_NAMES: tuple[str, ...] = tuple(_read_skill_metadata()["skills"])

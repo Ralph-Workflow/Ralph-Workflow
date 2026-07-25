@@ -87,7 +87,9 @@ class RawOverflowLog:
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     mode = "wb" if self._first_write else "ab"
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
-                    self._fh = cast("BinaryIO", handle_obj)
+                    self._fh = cast(
+                        "BinaryIO", handle_obj
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     self._first_write = False
                 fh: BinaryIO | None = self._fh
                 if fh is None:

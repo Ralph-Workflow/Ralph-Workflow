@@ -184,9 +184,7 @@ def file_list_specs() -> list[ToolSpec]:
                         },
                         "return_evidence_ids": {
                             "type": "boolean",
-                            "description": (
-                                "Attach evidence_id handles to matched paths."
-                            ),
+                            "description": ("Attach evidence_id handles to matched paths."),
                             "default": False,
                         },
                     },
@@ -435,9 +433,7 @@ def file_list_specs() -> list[ToolSpec]:
                         "use_index": {
                             "type": "string",
                             "enum": ["auto", "always", "never"],
-                            "description": (
-                                "Indexed selector for outline/counts metadata."
-                            ),
+                            "description": ("Indexed selector for outline/counts metadata."),
                             "default": "auto",
                         },
                     },

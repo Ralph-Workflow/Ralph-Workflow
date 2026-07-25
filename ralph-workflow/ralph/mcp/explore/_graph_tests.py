@@ -1,6 +1,5 @@
 """Graph tests_for query for ``ralph_graph`` (Phase 2+)."""
 
-
 from typing import Final
 
 from ralph.mcp.explore.graph import (
@@ -25,8 +24,6 @@ _TEST_PATH_SUFFIXES: Final[tuple[str, ...]] = (
     ".test.py",
     "_test.",
 )
-
-
 
 
 def tests_for(

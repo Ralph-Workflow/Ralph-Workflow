@@ -11,7 +11,7 @@ cursor, pi) must treat a clean exit as terminal here instead of raising
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -29,7 +29,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 def _zero_grace() -> TimeoutPolicy:
@@ -41,7 +40,7 @@ def test_clean_exit_is_terminal_when_completion_evidence_is_not_required(
 ) -> None:
     """No artifact, no declare_complete, no sentinel — and no error raised."""
     check_process_result(
-        cast("ManagedProcess", _FakeHandle(returncode=0)),
+        _FakeHandle(returncode=0),
         "agy",
         [],
         CompletionCheckOptions(
@@ -60,7 +59,7 @@ def test_clean_exit_still_raises_when_completion_evidence_is_required(
     """The default contract is unchanged: evidence is required unless opted out."""
     with pytest.raises(AgentInvocationError):
         check_process_result(
-            cast("ManagedProcess", _FakeHandle(returncode=0)),
+            _FakeHandle(returncode=0),
             "agy",
             [],
             CompletionCheckOptions(
@@ -124,7 +123,7 @@ def test_remediation_effect_opts_out_of_completion_evidence(
     )
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        cast("object", object()),
+        object(),
         load_result.workspace_scope,
         None,
         make_display_context(),

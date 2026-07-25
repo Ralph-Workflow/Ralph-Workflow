@@ -8,7 +8,6 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,7 +25,6 @@ from ralph.mcp.multimodal.resources import MediaManifest, build_media_uri
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ImageContent,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import _media_io as media_io
 from ralph.mcp.tools.workspace import (
@@ -59,7 +57,7 @@ class TestHandleReadMedia:
             result = handle_read_media(session, ws, {"path": "report.pdf"})
 
             assert result.is_error is True
-            msg = cast("ToolContent", result.content[0]).text
+            msg = result.content[0].text
             assert "no active session manifest" in msg
             assert "report.pdf" in msg
         finally:
@@ -83,7 +81,7 @@ class TestHandleReadMedia:
         )
 
         assert result.is_error is True
-        assert "Unsupported media format" in cast("ToolContent", result.content[0]).text
+        assert "Unsupported media format" in result.content[0].text
 
     def test_inline_image_returns_image_content_block(self) -> None:
         png_bytes = base64.b64decode(
@@ -144,7 +142,7 @@ class TestHandleReadMedia:
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
         result = handle_read_media(session, ws, {"path": "report.pdf"})
-        content = cast("ResourceReferenceContent", result.content[0])
+        content = result.content[0]
 
         # The artifact must be stored in the manifest
         assert not session.media_manifest.is_empty()
@@ -549,7 +547,7 @@ class TestHandleReadMedia:
         result = handle_read_media(session, ws, {"path": "ralph://media/not-a-valid-uuid"})
 
         assert result.is_error is True
-        text = cast("ToolContent", result.content[0]).text
+        text = result.content[0].text
         assert MultimodalFailureKind.INVALID_REPLAY_HANDLE in text
 
     def test_replay_unknown_artifact_id_returns_missing_replay_source_error(self) -> None:
@@ -560,7 +558,7 @@ class TestHandleReadMedia:
         result = handle_read_media(session, ws, {"path": unknown_uri})
 
         assert result.is_error is True
-        text = cast("ToolContent", result.content[0]).text
+        text = result.content[0].text
         assert MultimodalFailureKind.MISSING_REPLAY_SOURCE in text
 
     def test_cross_session_replay_from_persisted_cache(self, tmp_path: Path) -> None:
@@ -648,7 +646,7 @@ class TestHandleReadMedia:
         session2 = SessionWithDrain(MEDIA_READ_CAPABILITY)
         result2 = handle_read_media(session2, ws, {"path": artifact_uri})
         assert result2.is_error is True
-        text = cast("ToolContent", result2.content[0]).text
+        text = result2.content[0].text
         assert MultimodalFailureKind.MISSING_REPLAY_SOURCE in text
 
     def test_typed_block_to_dict_shapes(self) -> None:

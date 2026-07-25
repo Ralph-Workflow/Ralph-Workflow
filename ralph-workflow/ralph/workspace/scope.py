@@ -114,7 +114,6 @@ class WorkspaceScope:
     local_config_path: Path
     propagated_config_paths: tuple[Path, ...]
 
-
     def __init__(
         self,
         root: Path | str,
@@ -222,7 +221,9 @@ class WorkspaceScope:
         # only have their specific allowed directories + worker namespace.
         scope = object.__new__(cls)
         object.__setattr__(scope, "root", canonical_root)
-        object.__setattr__(scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots)))
+        object.__setattr__(
+            scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots))
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         object.__setattr__(scope, "local_config_path", _default_local_config_path(canonical_root))
         object.__setattr__(scope, "propagated_config_paths", ())
         return scope

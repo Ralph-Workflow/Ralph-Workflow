@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -13,9 +13,6 @@ from tests.test_process_manager_pty_helper__fakeprocess import _FakePtyProcess
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tests.test_process_manager_pty_helper__timeoutthenkillptyprocess import (
-        _TimeoutThenKillPtyProcess,
-    )
 from tests.test_process_manager_pty_helper__fakeptyfactory import _FakePtyFactory
 from tests.test_process_manager_pty_helper__timeoutthenkillptyfactory import (
     _TimeoutThenKillPtyFactory,
@@ -38,7 +35,7 @@ def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", FakePsutil()),
+        psutil=FakePsutil(),
     )
 
     handle = pm.spawn_pty(
@@ -61,7 +58,7 @@ def test_managed_pty_process_exposes_master_read_handle(tmp_path: Path) -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", FakePsutil()),
+        psutil=FakePsutil(),
     )
 
     handle = pm.spawn_pty(["claude", "PROMPT.md"], PtySpawnOptions(cwd=str(tmp_path)))
@@ -76,7 +73,7 @@ def test_terminate_pty_process_kills_process_group(tmp_path: Path) -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
 
     handle = pm.spawn_pty(
@@ -97,7 +94,7 @@ def test_terminate_pty_process_root_only_handles_builtin_timeout(tmp_path: Path)
     factory = _TimeoutThenKillPtyFactory()
     pm = ProcessManager(policy=_FAST_POLICY, pty_process_factory=factory, psutil=None)
     handle = pm.spawn_pty(["claude", "PROMPT.md"], cwd=str(tmp_path), label="invoke:claude")
-    proc = cast("_TimeoutThenKillPtyProcess", handle._proc)
+    proc = handle._proc
 
     # Mock os.kill to succeed so the liveness check returns ALIVE
     with patch("os.kill", return_value=None):
@@ -151,7 +148,7 @@ def test_managed_pty_wait_raises_on_live_process(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
 
     class _RaisingPty(_FakePtyProcess):
         def wait(self, timeout: float | None = None) -> int:
@@ -173,7 +170,7 @@ def test_managed_pty_wait_marks_exited_on_returncode(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc.returncode = 0
 
     rc = handle.wait(timeout=0.1)
@@ -193,7 +190,7 @@ def test_managed_pty_poll_returns_none_when_live(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc.returncode = None
 
     assert handle.poll() is None
@@ -210,7 +207,7 @@ def test_managed_pty_poll_marks_exited_when_returncode(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc.returncode = 0
 
     assert handle.poll() == 0
@@ -225,7 +222,7 @@ def test_managed_pty_terminate_calls_escalate_with_default_grace(tmp_path: Path)
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -245,7 +242,7 @@ def test_managed_pty_terminate_uses_overridden_grace_period(tmp_path: Path) -> N
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -263,10 +260,10 @@ def test_managed_pty_terminate_is_noop_when_already_terminal(tmp_path: Path) -> 
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", FakePsutil()),
+        psutil=FakePsutil(),
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc.returncode = 0
     handle.wait(timeout=0.1)
     # Now record is EXITED. terminate() must no-op.
@@ -283,7 +280,7 @@ def test_managed_pty_kill_uses_zero_grace_period(tmp_path: Path) -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -304,7 +301,7 @@ def test_managed_pty_has_live_descendants_returns_false_without_psutil(tmp_path:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc._terminated = False
     proc._killed = False
     assert handle.has_live_descendants() is False
@@ -318,7 +315,7 @@ def test_managed_pty_has_live_descendants_with_psutil(tmp_path: Path) -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -337,7 +334,7 @@ def test_managed_pty_descendant_snapshot_without_psutil_returns_zero(tmp_path: P
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc._terminated = False
     proc._killed = False
     count, oldest = handle.descendant_snapshot()
@@ -353,7 +350,7 @@ def test_managed_pty_descendant_snapshot_with_psutil_includes_only_live(tmp_path
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -377,7 +374,7 @@ def test_managed_pty_close_calls_proc_close(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     assert proc.closed is False
     handle.close()
     assert proc.closed is True
@@ -391,7 +388,7 @@ def test_managed_pty_context_manager_terminates_when_live(tmp_path: Path) -> Non
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -414,7 +411,7 @@ def test_managed_pty_context_manager_closes_only_on_keyboard_interrupt(tmp_path:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc.returncode = None
 
     with pytest.raises(KeyboardInterrupt), handle:
@@ -433,7 +430,7 @@ def test_managed_pty_context_manager_waits_after_terminate(tmp_path: Path) -> No
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     proc = psutil_mod.process_from_pid(handle.pid)
@@ -455,10 +452,10 @@ def test_managed_pty_context_manager_does_not_wait_when_already_terminal(tmp_pat
     pm = ProcessManager(
         policy=_FAST_POLICY,
         pty_process_factory=factory,
-        psutil=cast("Any", psutil_mod),
+        psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     proc.returncode = 0
     handle.wait(timeout=0.1)
     assert handle.record.status == ProcessStatus.EXITED
@@ -480,7 +477,7 @@ def test_managed_pty_master_fd_returns_proc_master_fd(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     assert handle.master_fd == proc.master_fd
 
 
@@ -494,7 +491,7 @@ def test_managed_pty_slave_fd_returns_proc_slave_fd(tmp_path: Path) -> None:
         psutil=None,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     assert handle.slave_fd == proc.slave_fd
 
 

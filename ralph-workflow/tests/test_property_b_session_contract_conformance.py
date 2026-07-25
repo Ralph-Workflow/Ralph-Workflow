@@ -206,7 +206,7 @@ def test_no_isinstance_narrowing_on_session_in_mcp_package(tmp_path: Path) -> No
 
 
 def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
-    """Audit: no cast('McpSession', ...) in ralph/ — the storm-enabling laundering."""
+    """Audit: no ... in ralph/ — the storm-enabling laundering."""
     ralph_root = Path(__file__).parent.parent / "ralph"
     hits: list[str] = []
     for py_file in ralph_root.rglob("*.py"):
@@ -218,7 +218,7 @@ def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
         ):
             rel = py_file.relative_to(Path(__file__).parent.parent)
             hits.append(f"{rel}")
-    assert not hits, f"Found cast(*McpSession, ...) laundering: {hits}"
+    assert not hits, f"Found ... laundering: {hits}"
 
 
 def test_runtime_session_returns_typed_mcp_session(tmp_path: Path) -> None:

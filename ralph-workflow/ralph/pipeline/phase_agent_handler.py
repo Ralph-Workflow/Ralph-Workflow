@@ -55,12 +55,16 @@ if TYPE_CHECKING:
 
 
 def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
-    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    module = cast(
+        "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.read_latest_analysis_decision
 
 
 def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
-    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    module = cast(
+        "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.read_plan_artifact
 
 
@@ -237,7 +241,9 @@ def _render_success_artifact(
     def _emit_close(produced: str) -> None:
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(produced)
+                cast("ParallelDisplay", display).record_artifact_outcome(
+                    produced
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     if artifact_type == "plan":
         _emit_via_display(display_context, "emit_plan_artifact", workspace_root)
@@ -255,7 +261,9 @@ def _render_success_artifact(
     if artifact_type == "development_result":
         _emit_via_display(display_context, "emit_development_artifact", workspace_root)
         produced = (
-            "result produced" if (workspace_root / ra.artifact_path).exists() else "no result artifact"
+            "result produced"
+            if (workspace_root / ra.artifact_path).exists()
+            else "no result artifact"
         )
         _emit_close(produced)
         return

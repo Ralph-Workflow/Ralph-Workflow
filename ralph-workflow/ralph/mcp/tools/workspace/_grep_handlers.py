@@ -135,9 +135,7 @@ def _indexed_matches(
         except IndexError:
             snippet_value = ""
         path_str = str(raw_path_value) if raw_path_value is not None else ""
-        chunk_id_str = (
-            str(raw_chunk_id_value) if raw_chunk_id_value is not None else ""
-        )
+        chunk_id_str = str(raw_chunk_id_value) if raw_chunk_id_value is not None else ""
         snippet_str = str(snippet_value) if snippet_value is not None else ""
         evidence_id = _ensure_grep_evidence_row(store, chunk_id_str)
         evidence_row = store.get_evidence(evidence_id)
@@ -174,7 +172,9 @@ def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
             (chunk_id,),
         ).fetchone()
         if fetched is not None and type(fetched) is not type(None):
-            chunk_row = cast("sqlite3.Row", fetched)
+            chunk_row = cast(
+                "sqlite3.Row", fetched
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     except sqlite3.OperationalError:
         chunk_row = None
     if chunk_row is None:
@@ -392,20 +392,12 @@ def _live_grep(
     matches: list[dict[str, object]] = []
     skipped_files = 0
     truncated = False
-    include_list: list[object] = (
-        list(cast("Iterable[object]", include)) if include else []
-    )
-    exclude_list: list[object] = (
-        list(cast("Iterable[object]", exclude)) if exclude else []
-    )
+    include_list: list[object] = list(cast("Iterable[object]", include)) if include else []
+    exclude_list: list[object] = list(cast("Iterable[object]", exclude)) if exclude else []
     for file_path in all_files:
-        if include_list and not any(
-            match_glob(file_path, str(p)) for p in include_list
-        ):
+        if include_list and not any(match_glob(file_path, str(p)) for p in include_list):
             continue
-        if exclude_list and any(
-            match_glob(file_path, str(p)) for p in exclude_list
-        ):
+        if exclude_list and any(match_glob(file_path, str(p)) for p in exclude_list):
             continue
         file_matches = _search_file_content(
             workspace,
@@ -572,15 +564,14 @@ def handle_grep_files(
                         store=store,
                         chunk_id=str(row.get("chunk_id", "")) or None,
                         graph_target=(
-                            str(params.get("graph_target"))
-                            if params.get("graph_target")
-                            else None
+                            str(params.get("graph_target")) if params.get("graph_target") else None
                         ),
                     )
                 )
             ranked_items = sort_ranked(ranked_items)
             # Apply the same order to the match rows.
             order = {item.key: idx for idx, item in enumerate(ranked_items)}
+
             def _indexed_order(row: dict[str, object]) -> int:
                 line_obj = row.get("line")
                 line_key = line_obj if isinstance(line_obj, int) else 0
@@ -623,11 +614,7 @@ def handle_grep_files(
     else:
         # use_index == 'never' OR store missing OR non-eligible pattern.
         if use_index == "auto":
-            fallback_reason = (
-                "pattern_not_fts_eligible"
-                if not eligible
-                else "no_index_handle"
-            )
+            fallback_reason = "pattern_not_fts_eligible" if not eligible else "no_index_handle"
         # Fall back to live grep.
         live_matches, skipped, truncated = _live_grep(
             workspace,
@@ -657,8 +644,7 @@ def handle_grep_files(
             # mirrors the indexed path's missing-data value so
             # callers can audit the absence.
             "graph_context": (
-                [] if include_graph_context
-                else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+                [] if include_graph_context else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
             ),
         }
         if return_evidence_ids:
@@ -673,9 +659,7 @@ def handle_grep_files(
             is_error=False,
         )
 
-    freshness = _freshness_for_grep(
-        session, index_used=index_used, fallback_reason=fallback_reason
-    )
+    freshness = _freshness_for_grep(session, index_used=index_used, fallback_reason=fallback_reason)
     result = {
         "pattern": pattern,
         "base": path,
@@ -689,16 +673,10 @@ def handle_grep_files(
             if include_graph_context
             else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
         ),
-        "score_reasons": (
-            [item.reasons for item in ranked_items]
-            if ranked_items
-            else []
-        ),
+        "score_reasons": ([item.reasons for item in ranked_items] if ranked_items else []),
     }
     if return_evidence_ids:
-        result["evidence_ids"] = [
-            row.get("evidence_id") for row in indexed_match_rows
-        ]
+        result["evidence_ids"] = [row.get("evidence_id") for row in indexed_match_rows]
     result.update(freshness)
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(result))],

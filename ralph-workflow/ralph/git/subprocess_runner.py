@@ -202,7 +202,9 @@ def run_git(
             with contextlib.suppress(Exception):
                 stream.close()
         if hasattr(raw_proc_obj, "__exit__"):
-            raw_proc = cast("_PopenExitProtocol", raw_proc_obj)
+            raw_proc = cast(
+                "_PopenExitProtocol", raw_proc_obj
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             with contextlib.suppress(Exception):
                 raw_proc.__exit__(None, None, None)
 

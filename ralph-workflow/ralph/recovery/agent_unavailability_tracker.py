@@ -233,9 +233,7 @@ class AgentUnavailabilityTracker:
         if now_ms is None:
             now_ms = int(self._clock.monotonic() * 1000)
         expired_keys = [
-            key
-            for key, entry in self._entries.items()
-            if now_ms >= entry.unavailable_until_ms
+            key for key, entry in self._entries.items() if now_ms >= entry.unavailable_until_ms
         ]
         for key in expired_keys:
             self._entries.pop(key, None)

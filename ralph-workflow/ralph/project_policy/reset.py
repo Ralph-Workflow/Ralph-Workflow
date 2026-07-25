@@ -65,9 +65,7 @@ def _strip_opt_out(content: str) -> str:
     standing at the terminal asking for policy right now, which outranks a marker
     they (or a teammate) committed at some point in the past.
     """
-    return content.replace(markers.OPT_OUT_MARKER + "\n", "").replace(
-        markers.OPT_OUT_MARKER, ""
-    )
+    return content.replace(markers.OPT_OUT_MARKER + "\n", "").replace(markers.OPT_OUT_MARKER, "")
 
 
 def _strip_migrated_markers(content: str) -> str:

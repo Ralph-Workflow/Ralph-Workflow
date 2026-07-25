@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
 
 from ralph.mcp.tools.names import custom_proxy_tool_name
 from ralph.mcp.transport.claude import claude_mcp_config
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.transport.opencode import build_opencode_provider_config
-from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
 from tests.fixtures.mcp_test_harness import FAKE_TOOL, make_stub_client_factory
 
 _FAKE_URL = "http://127.0.0.1:9999/mcp"
@@ -51,7 +50,7 @@ def test_single_server_entry_produces_non_empty_tool_definitions(
     upstreams = mcp_toml_as_upstreams(tmp_path)
     registry = UpstreamRegistry.build(
         upstreams,
-        client_factory=cast("UpstreamClientFactory", make_stub_client_factory()),
+        client_factory=make_stub_client_factory(),
     )
     tool_defs = registry.tool_definitions()
 
@@ -70,7 +69,7 @@ def test_single_server_entry_appears_in_ralph_transport_configs(
     upstreams = mcp_toml_as_upstreams(tmp_path)
     registry = UpstreamRegistry.build(
         upstreams,
-        client_factory=cast("UpstreamClientFactory", make_stub_client_factory()),
+        client_factory=make_stub_client_factory(),
     )
     tool_defs = registry.tool_definitions()
 
@@ -188,7 +187,7 @@ def test_single_server_entry_surfaces_in_all_transport_paths(
 
     registry = UpstreamRegistry.build(
         upstreams,
-        client_factory=cast("UpstreamClientFactory", make_stub_client_factory()),
+        client_factory=make_stub_client_factory(),
     )
     tool_defs = registry.tool_definitions()
     custom_alias = custom_proxy_tool_name("my-custom-server", FAKE_TOOL.name)

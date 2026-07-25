@@ -100,14 +100,14 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # side-effecting implementations are assembled in exactly one place —
     # the composition root." The line numbers shift with docstring edits;
     # the audit must be re-pointed whenever the docstring changes.
-    "mcp/server/runtime.py:142",
-    "mcp/server/runtime.py:184",
+    "mcp/server/runtime.py:144",
+    "mcp/server/runtime.py:186",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live
     # configuration. The banner is part of the composition root.
-    "mcp/server/_fallback_standalone_server.py:56",
-    "mcp/server/_fallback_standalone_server.py:70",
+    "mcp/server/_fallback_standalone_server.py:58",
+    "mcp/server/_fallback_standalone_server.py:72",
     # mcp/transport/nanocoder.py — reads platform env vars (``APPDATA``,
     # ``XDG_CONFIG_HOME``) to resolve the user-level nanocoder config dir.
     # These are platform-path conventions, not config; injecting them

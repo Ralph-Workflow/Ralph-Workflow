@@ -52,7 +52,6 @@ Tests
 from __future__ import annotations
 
 import io
-from typing import cast
 
 import pytest
 from rich.console import Console
@@ -119,7 +118,7 @@ def test_status_bar_is_active_through_parallel_display_context_manager() -> None
     ``pd.status_bar`` (single-owner invariant).
     """
     pd, _buf = _make_parallel_display()
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     assert isinstance(sb, StatusBar)
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
@@ -170,7 +169,7 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
     pd.update_status_bar(model)
     captured_inside_active = False
     with pd:
-        captured_inside_active = cast("StatusBar", pd.status_bar).is_active
+        captured_inside_active = pd.status_bar.is_active
     out = buf.getvalue()
     assert captured_inside_active is True
     assert "/tmp/proj" in out, (
@@ -211,7 +210,7 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
     pd.update_status_bar(model)
     captured_inside_active = False
     with pd:
-        captured_inside_active = cast("StatusBar", pd.status_bar).is_active
+        captured_inside_active = pd.status_bar.is_active
     out = buf.getvalue()
     assert captured_inside_active is True
     assert "Commit" in out, f"Live region must surface the phase label 'Commit'; got {out!r}"
@@ -269,7 +268,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
         f"AC-01: console width MUST be 100 for this focused test; "
         f"got {pd_full._ctx.console.width!r}"
     )
-    sb = cast("StatusBar", pd_full.status_bar)
+    sb = pd_full.status_bar
     full_model = StatusBarModel(
         workspace_root="/tmp/ac01-workspace",
         phase_label="development",
@@ -315,7 +314,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     pd_none.update_status_bar(none_model)
     captured_inside_none_active = False
     with pd_none:
-        captured_inside_none_active = cast("StatusBar", pd_none.status_bar).is_active
+        captured_inside_none_active = pd_none.status_bar.is_active
     none_out = buf_none.getvalue()
     assert captured_inside_none_active is True, (
         "StatusBar must be active inside the production context manager "
@@ -354,7 +353,7 @@ def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
     pd, buf = _make_parallel_display(is_quiet=True)
     assert pd._ctx.console.is_terminal is True
     assert pd._ctx.console.file.isatty() is True
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     model = StatusBarModel(
         workspace_root="/tmp/proj",
         phase_label="Development",
@@ -388,7 +387,7 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
     assert pd._ctx.console.file.isatty() is False, (
         "Plain StringIO is not a TTY (the isatty() conjunct gate check)."
     )
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     model = StatusBarModel(
         workspace_root="/tmp/proj",
         phase_label="Development",

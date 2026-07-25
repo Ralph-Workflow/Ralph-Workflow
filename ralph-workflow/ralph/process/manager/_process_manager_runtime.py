@@ -28,7 +28,9 @@ def load_psutil_module() -> _PsutilModuleLike | None:
         psutil_import = importlib.import_module("psutil")
     except ModuleNotFoundError:
         return None
-    return cast("_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import)))
+    return cast(
+        "_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import))
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def loguru_event_listener(event: ProcessEvent) -> None:

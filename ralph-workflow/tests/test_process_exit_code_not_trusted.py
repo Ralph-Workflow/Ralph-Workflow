@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import sys
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -81,10 +81,7 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
 
 
 def _load_coordinator() -> _CoordinatorModule:
-    return cast(
-        "_CoordinatorModule",
-        importlib.import_module("ralph.pipeline.parallel.coordinator"),
-    )
+    return importlib.import_module("ralph.pipeline.parallel.coordinator")
 
 
 def _make_unit(unit_id: str) -> WorkUnit:

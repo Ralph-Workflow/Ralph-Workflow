@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import edit_plan_step_markdown
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+)
 
 
 def _single_step_document(*, extra: str = "", section: str = "Implementation") -> str:
@@ -114,7 +116,7 @@ def test_plan_grammar_regression_punctuated_unicode_h2_titles_are_safe(
     )
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert steps[0]["title"] == "Implement the change"
 
 
@@ -131,9 +133,9 @@ def test_plan_grammar_regression_ac_items_are_discovered_outside_named_section()
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    design = cast("dict[str, object]", content["design"])
-    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    design = must_mapping(content["design"])
+    acceptance = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(acceptance["criteria"])
     assert criteria == [
         {
             "id": "AC-01",
@@ -164,7 +166,7 @@ Type: action
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert steps == [
         {
             "number": 1,
@@ -172,9 +174,9 @@ Type: action
             "content": "Add the endpoint behavior.",
         }
     ]
-    design = cast("dict[str, object]", content["design"])
-    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    design = must_mapping(content["design"])
+    acceptance = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(acceptance["criteria"])
     edited = edit_plan_step_markdown(
         document,
         "replace",
@@ -251,12 +253,12 @@ Type: action
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    work_units = cast("list[dict[str, object]]", content["work_units"])
+    work_units = must_dict_list(content["work_units"])
     assert [unit["unit_id"] for unit in work_units] == ["api"]
     assert work_units[0]["step_ids"] == ["S-1"]
-    design = cast("dict[str, object]", content["design"])
-    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    design = must_mapping(content["design"])
+    acceptance = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(acceptance["criteria"])
     assert criteria[0]["id"] == "AC-01"
 
 
@@ -325,7 +327,7 @@ def test_plan_grammar_regression_concrete_commands_and_artifacts_remain_valid() 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    assert len(cast("list[object]", content["verification_strategy"])) == 2
+    assert len(content["verification_strategy"]) == 2
 
 
 def test_semantic_verification_item_under_arbitrary_heading_advisories_vague_proof() -> None:
@@ -444,7 +446,7 @@ def test_plan_grammar_regression_arbitrary_executable_with_specific_output_is_va
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert steps[0]["expected_outcome"] == (
         "Plan.Tests reports 12 passed tests and exit code 0"
     )
@@ -468,7 +470,7 @@ def test_legacy_exact_command_reuses_global_verification_expectation() -> None:
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert steps[0]["expected_outcome"] == (
         "the focused plan-relaxation tests pass with exit code 0"
     )
@@ -499,7 +501,7 @@ Type: action
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert cast("list[dict[str, object]]", content["steps"])[0]["number"] == 1
+    assert must_dict_list(content["steps"])[0]["number"] == 1
 
 
 def test_strict_profile_remains_descriptive_and_does_not_inject_contracts() -> None:
@@ -548,17 +550,17 @@ Profile: strict
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert steps[0]["step_type"] == "integration_gate"
     assert steps[0]["targets"] == [
         {"path": "src/api/routes.py", "action": "inspect"},
         {"path": "tests/api/test_routes.py", "action": "coordinate"},
     ]
-    work_units = cast("list[dict[str, object]]", content["work_units"])
+    work_units = must_dict_list(content["work_units"])
     assert [unit["unit_id"] for unit in work_units] == ["api-gate"]
     assert work_units[0]["step_ids"] == ["S-10"]
-    critical_files = cast("dict[str, object]", content["critical_files"])
-    primary_files = cast("list[dict[str, object]]", critical_files["primary_files"])
+    critical_files = must_mapping(content["critical_files"])
+    primary_files = must_dict_list(critical_files["primary_files"])
     assert primary_files[0]["action"] == "inspect-only"
     assert content["design"] == {
         "planning_profile": "strict",
@@ -604,7 +606,7 @@ Implement the bounded plan.
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert cast("list[dict[str, object]]", content["steps"])[0]["number"] == 1
+    assert must_dict_list(content["steps"])[0]["number"] == 1
 
 
 def test_unconsumed_descriptive_sections_and_fields_never_become_requirements() -> None:
@@ -640,7 +642,7 @@ Type: action
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert steps == [{"number": 1, "title": "Apply the bounded change"}]
 
 
@@ -663,7 +665,7 @@ Implement the bounded result recorded by the plan.
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    assert cast("list[dict[str, object]]", content["steps"])[0]["number"] == 1
+    assert must_dict_list(content["steps"])[0]["number"] == 1
 
 
 def test_work_unit_descriptive_labels_do_not_block_consumed_fields() -> None:
@@ -686,7 +688,7 @@ Files:
 
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
     assert [diagnostic.rule_id for diagnostic in diagnostics] == ["PLAN009"]
-    units = cast("list[dict[str, object]]", content["work_units"])
+    units = must_dict_list(content["work_units"])
     assert units[0]["allowed_directories"] == ["src/api"]
     assert units[0]["step_ids"] == ["S-1"]
 
@@ -713,7 +715,7 @@ Type: action
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    units = cast("list[dict[str, object]]", content["work_units"])
+    units = must_dict_list(content["work_units"])
     assert units == [
         {
             "unit_id": "api",
@@ -749,7 +751,7 @@ Files:
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    units = cast("list[dict[str, object]]", content["work_units"])
+    units = must_dict_list(content["work_units"])
     assert units[0]["step_ids"] == ["S-1"]
 
 
@@ -769,7 +771,7 @@ Files:
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    units = cast("list[dict[str, object]]", content["work_units"])
+    units = must_dict_list(content["work_units"])
     assert units == [
         {
             "unit_id": "subplan-s-1",
@@ -832,7 +834,7 @@ Expect: the integrated web API test passes with exit code 0
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    units = cast("list[dict[str, object]]", content["work_units"])
+    units = must_dict_list(content["work_units"])
     assert units == [
         {
             "unit_id": "subplan-s-10",
@@ -922,7 +924,7 @@ Type: action
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
-    assert [step["number"] for step in cast("list[dict[str, object]]", content["steps"])] == [
+    assert [step["number"] for step in must_dict_list(content["steps"])] == [
         1
     ]
 
@@ -946,7 +948,7 @@ def test_plan_grammar_regression_repeated_work_units_retain_nested_step_ownershi
     content, diagnostics = parse_and_validate(_five_nested_work_units_document(), PLAN_SPEC)
 
     assert diagnostics == []
-    work_units = cast("list[dict[str, object]]", content["work_units"])
+    work_units = must_dict_list(content["work_units"])
     assert [unit["step_ids"] for unit in work_units] == [
         ["S-1"],
         ["S-2"],

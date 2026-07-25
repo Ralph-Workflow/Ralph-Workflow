@@ -13,7 +13,7 @@ Covers the seams that the run-integration tests mock away:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -28,6 +28,9 @@ from ralph.policy.models._agent_drain_config import AgentDrainConfig
 from ralph.project_policy import cli_integration, remediation
 from ralph.project_policy.pipeline_graph import DEFAULT_ANALYSIS_CAP, PHASE_REMEDIATION
 from ralph.workspace.scope import WorkspaceScope
+from tests._support.typed_accessors import (
+    must_str,
+)
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -112,7 +115,7 @@ def test_production_closure_forwards_display_context(
     )
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        cast("object", object()),  # non-None pipeline deps sentinel
+        object(),  # non-None pipeline deps sentinel
         load_result.workspace_scope,
         None,
         display_context,
@@ -139,7 +142,7 @@ def test_production_closure_falls_back_across_chain_agents(
     ) -> object:
         from ralph.pipeline.events import PipelineEvent
 
-        agent_name = cast("str", getattr(effect, "agent_name", ""))
+        agent_name = must_str(getattr(effect, "agent_name", ""))
         invoked_agents.append(agent_name)
         if agent_name == "dev-agent":
             return PipelineEvent.AGENT_FAILURE
@@ -150,7 +153,7 @@ def test_production_closure_falls_back_across_chain_agents(
     )
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        cast("object", object()),
+        object(),
         load_result.workspace_scope,
         None,
         make_display_context(),
@@ -341,7 +344,7 @@ def test_production_closure_raises_on_launch_crash(
     )
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        cast("object", object()),
+        object(),
         load_result.workspace_scope,
         None,
         make_display_context(),
@@ -369,7 +372,7 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
     ) -> object:
         from ralph.pipeline.events import PipelineEvent
 
-        agent_name = cast("str", getattr(effect, "agent_name", ""))
+        agent_name = must_str(getattr(effect, "agent_name", ""))
         invoked.append(agent_name)
         if agent_name == "dev-agent":
             raise RuntimeError("this agent's binary is missing")
@@ -380,7 +383,7 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
     )
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        cast("object", object()),
+        object(),
         load_result.workspace_scope,
         None,
         make_display_context(),
@@ -404,7 +407,7 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
     )
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
-        cast("object", object()),
+        object(),
         load_result.workspace_scope,
         None,
         make_display_context(),

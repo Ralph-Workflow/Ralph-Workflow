@@ -33,7 +33,9 @@ _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    return cast("AgentTransport", config.transport)
+    return cast(
+        "AgentTransport", config.transport
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:

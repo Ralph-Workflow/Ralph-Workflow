@@ -12,7 +12,7 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.enums import Verbosity
@@ -127,7 +127,7 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: ModuleType) -> None:
@@ -444,7 +444,7 @@ def test_pipeline_deps_policy_bundle_is_authoritative_for_pro_hooks(
     )
     _install_display_context(monkeypatch, run_loop_module)
 
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         _build_config(tmp_path),
         initial_state=state,
         pro_hooks=hooks,
@@ -527,7 +527,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
         lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
     )
 
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         _build_config(tmp_path),
         initial_state=state,
         pro_hooks=hooks,
@@ -597,7 +597,7 @@ def test_late_marker_adoption_starts_heartbeat_after_run(
 
     config = _build_config(tmp_path)
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state, pro_hooks=hooks
     )
     assert exit_code == 0

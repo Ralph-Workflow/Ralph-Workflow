@@ -6,7 +6,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -25,7 +25,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
@@ -55,7 +54,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "claude",
             raw_output,
             _CompletionCheckOptions(
@@ -74,7 +73,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
 
         with pytest.raises(OpenCodeResumableExitError):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "claude",
                 [],
                 _CompletionCheckOptions(
@@ -134,7 +133,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
 
         with pytest.raises(OpenCodeResumableExitError):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "claude",
                 [],
                 options,
@@ -143,7 +142,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "claude",
             [],
             options,
@@ -156,7 +155,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
 
         with pytest.raises(OpenCodeResumableExitError):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "claude",
                 [],
                 _CompletionCheckOptions(

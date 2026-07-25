@@ -8,8 +8,6 @@ Covers:
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 from pydantic import ValidationError
 
@@ -19,7 +17,6 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
-    DrainName,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
@@ -34,10 +31,7 @@ from ralph.policy.validation import (
 
 def _minimal_agents(drains: list[str]) -> AgentsPolicy:
     chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
-    agent_drains = cast(
-        "dict[DrainName, AgentDrainConfig]",
-        {d: AgentDrainConfig(chain=d) for d in drains},
-    )
+    agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
     return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
 
 

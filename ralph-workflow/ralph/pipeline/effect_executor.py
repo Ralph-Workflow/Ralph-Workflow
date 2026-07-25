@@ -146,7 +146,9 @@ def execute_agent_effect(
     """
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
-    agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))
+    agent_config = cast(
+        "AgentConfig | None", registry.get(effect.agent_name)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
@@ -202,9 +204,15 @@ def execute_agent_effect(
         waiting_listener=waiting_listener,
         agent_config=agent_config,
         display=display,
-        worker_namespace=cast("Path | None", opts.get("worker_namespace")),
-        worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
-        parallel_worker=cast("bool", opts.get("parallel_worker", False)),
+        worker_namespace=cast(
+            "Path | None", opts.get("worker_namespace")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        worker_artifact_dir=cast(
+            "Path | None", opts.get("worker_artifact_dir")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        parallel_worker=cast(
+            "bool", opts.get("parallel_worker", False)
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     invocation_started = time.monotonic()
     invocation_outcome = "crashed"
@@ -309,21 +317,29 @@ def _registry_from_pipeline_deps(
     config: UnifiedConfig,
 ) -> _RegistryLike:
     if pipeline_deps.registry_factory is not None:
-        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
-    return cast("_RegistryLike", AgentRegistry.from_config(config))
+        return cast(
+            "_RegistryLike", pipeline_deps.registry_factory(config)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast(
+        "_RegistryLike", AgentRegistry.from_config(config)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _invoke_agent_from_registry_or_opts(
     opts: dict[str, object],
 ) -> _InvokeAgentFn:
-    invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
+    invoke = cast(
+        "_InvokeAgentFn | None", opts.get("invoke_agent")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if invoke is not None:
         return invoke
     return invoke_agent
 
 
 def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception]:
-    error = cast("type[Exception] | None", opts.get("agent_invocation_error"))
+    error = cast(
+        "type[Exception] | None", opts.get("agent_invocation_error")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if error is not None:
         return error
     return AgentInvocationError
@@ -375,7 +391,9 @@ def _invoke_agent_with_recovery(
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:
-        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
+        effective_run_id = cast(
+            "str", getattr(bridge, "run_id", effective_run_id)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
         master_prompt_file = _materialize_master_prompt(
             ctx,

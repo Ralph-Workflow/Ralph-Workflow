@@ -94,9 +94,7 @@ def question_find_handler_tests() -> BenchmarkFixture:
             "ralph/mcp/tools/workspace/_read_handlers.py": (
                 "def handle_read_file(...):\n    ...\n"
             ),
-            "tests/test_mcp_read_handler.py": (
-                "def test_handle_read_file_basic():\n    ...\n"
-            ),
+            "tests/test_mcp_read_handler.py": ("def test_handle_read_file_basic():\n    ...\n"),
         },
         baseline_script=(
             ScriptedCall(
@@ -166,9 +164,7 @@ def question_estimate_rename_impact() -> BenchmarkFixture:
         workspace_files={
             "ralph/mcp/explore/store.py": "def open_index():\n    ...\n",
             "ralph/mcp/explore/pipeline.py": "from ralph.mcp.explore.store import open_index\n",
-            "tests/test_explore_pipeline.py": (
-                "from ralph.mcp.explore.store import open_index\n"
-            ),
+            "tests/test_explore_pipeline.py": ("from ralph.mcp.explore.store import open_index\n"),
         },
         baseline_script=(
             ScriptedCall(
@@ -360,9 +356,7 @@ def question_mutation_freshness() -> BenchmarkFixture:
                 tool="edit_file",
                 params={
                     "path": "ralph/tools/foo.py",
-                    "edits": [
-                        {"oldText": "return 'world'", "newText": "return 'world!'"}
-                    ],
+                    "edits": [{"oldText": "return 'world'", "newText": "return 'world!'"}],
                 },
                 expected_evidence_ids=("ev:mutation/foo",),
             ),
@@ -377,9 +371,7 @@ def question_mutation_freshness() -> BenchmarkFixture:
                 tool="edit_file",
                 params={
                     "path": "ralph/tools/foo.py",
-                    "edits": [
-                        {"oldText": "return 'world'", "newText": "return 'world!'"}
-                    ],
+                    "edits": [{"oldText": "return 'world'", "newText": "return 'world!'"}],
                     "reindex": "auto",
                     "return_evidence_updates": True,
                 },

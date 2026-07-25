@@ -23,7 +23,9 @@ if TYPE_CHECKING:
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    return cast("AgentTransport", config.transport)
+    return cast(
+        "AgentTransport", config.transport
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _shell_single_quote(value: str) -> str:

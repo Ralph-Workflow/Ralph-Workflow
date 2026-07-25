@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import pytest
 from pydantic import TypeAdapter
@@ -29,11 +28,11 @@ class _Workspace:
 
 
 def _session() -> CoordinationSessionLike:
-    return cast("CoordinationSessionLike", planning_session())
+    return planning_session()
 
 
 def _workspace() -> WorkspaceLike:
-    return cast("WorkspaceLike", _Workspace())
+    return _Workspace()
 
 
 def _staged_deps() -> ArtifactHandlerDeps:

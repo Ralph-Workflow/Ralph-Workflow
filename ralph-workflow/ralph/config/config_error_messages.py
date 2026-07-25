@@ -49,11 +49,7 @@ def format_config_validation_error(exc: ValidationError, source_path: Path) -> s
     details = format_validation_error_messages(exc)
     # Pydantic raised without per-field details: fall back to a single
     # generic line so the operator still gets a fix path.
-    body = (
-        "\n".join(details)
-        if details
-        else "  - configuration has invalid settings"
-    )
+    body = "\n".join(details) if details else "  - configuration has invalid settings"
     return (
         f"What failed: {source_path} has invalid configuration:\n"
         f"{body}\n"

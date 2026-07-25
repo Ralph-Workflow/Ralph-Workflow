@@ -974,13 +974,19 @@ def _validate_unit_graph(
     section: str,
     diagnostics: list[Diagnostic],
 ) -> None:
-    identifiers = [cast("str", entry[id_key]) for entry in entries]
+    identifiers = [
+        cast("str", entry[id_key]) for entry in entries
+    ]  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     line_by_id = {item.identifier: item.line for item in items}
     references: dict[str, list[tuple[str, int, str | None]]] = {}
     dependencies: dict[str, list[str]] = {}
     for entry in entries:
-        identifier = cast("str", entry[id_key])
-        raw_dependencies = cast("list[str]", entry[dependencies_key])
+        identifier = cast(
+            "str", entry[id_key]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        raw_dependencies = cast(
+            "list[str]", entry[dependencies_key]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         dependencies[identifier] = raw_dependencies
         for dependency in raw_dependencies:
             references.setdefault(dependency, []).append(

@@ -188,9 +188,7 @@ def ux_required(workspace: Workspace, stack: ProjectStack) -> tuple[bool, list[s
         content = _read(workspace, manifest)
         if content:
             matches = [
-                f"{manifest}:{sub}"
-                for sub in markers.UX_ROUTER_DEP_SIGNALS
-                if sub in content
+                f"{manifest}:{sub}" for sub in markers.UX_ROUTER_DEP_SIGNALS if sub in content
             ]
             triggered.extend(matches)
     if triggered:
@@ -198,9 +196,7 @@ def ux_required(workspace: Workspace, stack: ProjectStack) -> tuple[bool, list[s
     return (bool(triggered), triggered)
 
 
-def performance_required(
-    workspace: Workspace, stack: ProjectStack
-) -> tuple[bool, list[str]]:
+def performance_required(workspace: Workspace, stack: ProjectStack) -> tuple[bool, list[str]]:
     """Determine whether a performance policy is required.
 
     Required only when:
@@ -218,16 +214,12 @@ def performance_required(
         content = _read(workspace, manifest)
         if content:
             triggered.extend(
-                f"{manifest}:{sub}"
-                for sub in markers.PERF_DEP_SIGNALS
-                if sub in content
+                f"{manifest}:{sub}" for sub in markers.PERF_DEP_SIGNALS if sub in content
             )
     return (bool(triggered), triggered)
 
 
-def memory_required(
-    workspace: Workspace, stack: ProjectStack
-) -> tuple[bool, list[str]]:
+def memory_required(workspace: Workspace, stack: ProjectStack) -> tuple[bool, list[str]]:
     """Determine whether a memory-usage policy is required.
 
     Required only when:
@@ -244,9 +236,7 @@ def memory_required(
         content = _read(workspace, manifest)
         if content:
             triggered.extend(
-                f"{manifest}:{sub}"
-                for sub in markers.MEMORY_DEP_SIGNALS
-                if sub in content
+                f"{manifest}:{sub}" for sub in markers.MEMORY_DEP_SIGNALS if sub in content
             )
     return (bool(triggered), triggered)
 
@@ -353,17 +343,13 @@ def _doc_has_migrated_marker(content: str) -> str | None:
         markers.CONDITIONAL_POLICY_FILES.values()
     )
     expected_markers = {
-        markers.MIGRATED_MARKER_TEMPLATE.format(target=target).strip()
-        for target in allowed_targets
+        markers.MIGRATED_MARKER_TEMPLATE.format(target=target).strip() for target in allowed_targets
     }
     for raw_line in content.splitlines():
         line = raw_line.strip()
         if line in expected_markers:
             for target in allowed_targets:
-                if (
-                    markers.MIGRATED_MARKER_TEMPLATE.format(target=target).strip()
-                    == line
-                ):
+                if markers.MIGRATED_MARKER_TEMPLATE.format(target=target).strip() == line:
                     return target
     return None
 
@@ -398,7 +384,9 @@ def migration_candidates(workspace: Workspace) -> list[MigrationCandidate]:
         if phrase is None:
             continue
         resolved = _is_migration_resolved(workspace, path, content)
-        candidates.append(MigrationCandidate(path=path, recognized_heading=phrase, resolved=resolved))
+        candidates.append(
+            MigrationCandidate(path=path, recognized_heading=phrase, resolved=resolved)
+        )
 
     # Bounded one-level scan of docs/*.md (skip files already in canonical dir).
     try:
@@ -420,7 +408,9 @@ def migration_candidates(workspace: Workspace) -> list[MigrationCandidate]:
         if phrase is None:
             continue
         resolved = _is_migration_resolved(workspace, path, content)
-        candidates.append(MigrationCandidate(path=path, recognized_heading=phrase, resolved=resolved))
+        candidates.append(
+            MigrationCandidate(path=path, recognized_heading=phrase, resolved=resolved)
+        )
 
     return candidates
 

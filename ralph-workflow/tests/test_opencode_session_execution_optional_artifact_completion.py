@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time as _time_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -30,7 +30,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
@@ -66,7 +65,7 @@ class TestOptionalArtifactCompletion:
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -101,7 +100,7 @@ class TestOptionalArtifactCompletion:
 
         with pytest.raises(OpenCodeResumableExitError):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -145,7 +144,7 @@ class TestOptionalArtifactCompletion:
         sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -199,7 +198,7 @@ class TestOptionalArtifactCompletion:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(

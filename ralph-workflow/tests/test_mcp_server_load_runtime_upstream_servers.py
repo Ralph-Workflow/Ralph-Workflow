@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
@@ -47,14 +47,16 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+    must_str,
+)
 from tests.mcp.test_md_plan_spec import _plan_document
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.agents.chain import ChainManager
-    from ralph.agents.registry import AgentRegistry
-    from ralph.policy.models import AgentsPolicy
 
 # Lazy imports for multimodal tests that require optional dependencies
 # These are only available when the multimodal feature is fully configured
@@ -276,13 +278,13 @@ def test_build_standalone_http_server_falls_back_without_mcp_dependency(
         state,
     )
     assert initialize_response is not None
-    initialize_result = cast("dict[str, object]", initialize_response.result)
-    assert cast("dict[str, object]", initialize_result["serverInfo"])["name"] == "ralph-mcp"
-    assert cast("dict[str, object]", initialize_result["serverInfo"])["version"]
-    assert cast("dict[str, object]", initialize_result["capabilities"])["prompts"] == {
+    initialize_result = must_mapping(initialize_response.result)
+    assert must_mapping(initialize_result["serverInfo"])["name"] == "ralph-mcp"
+    assert must_mapping(initialize_result["serverInfo"])["version"]
+    assert must_mapping(initialize_result["capabilities"])["prompts"] == {
         "listChanged": False
     }
-    assert cast("dict[str, object]", initialize_result["capabilities"])["resources"] == {
+    assert must_mapping(initialize_result["capabilities"])["resources"] == {
         "subscribe": False,
         "listChanged": False,
     }
@@ -311,8 +313,8 @@ def test_build_standalone_http_server_falls_back_without_mcp_dependency(
         state,
     )
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
-    tool_names = {tool["name"] for tool in cast("list[dict[str, object]]", tools_result["tools"])}
+    tools_result = must_mapping(tools_response.result)
+    tool_names = {tool["name"] for tool in must_dict_list(tools_result["tools"])}
     assert {"read_file", "directory_tree", "report_progress", "coordinate"}.issubset(tool_names)
 
 
@@ -337,7 +339,7 @@ def test_build_standalone_http_server_get_probe_avoids_missing_session_id_error(
     assert response.error is None
     assert response.result is not None
     assert state == server_runtime.ServerState.RUNNING
-    assert cast("dict[str, object]", response.result)["capabilities"] == {
+    assert must_mapping(response.result)["capabilities"] == {
         "tools": {"listChanged": False},
         "prompts": {"listChanged": False},
         "resources": {"subscribe": False, "listChanged": False},
@@ -386,7 +388,7 @@ def test_build_standalone_http_server_initialize_sse_omits_null_error_field(
     assert response.error is None
     assert response.result is not None
     assert state == server_runtime.ServerState.RUNNING
-    assert cast("dict[str, object]", response.result)["serverInfo"] == {
+    assert must_mapping(response.result)["serverInfo"] == {
         "name": "ralph-mcp",
         "version": server_runtime.__version__,
     }
@@ -443,9 +445,9 @@ def test_build_standalone_http_server_filters_tools_by_session_capabilities(tmp_
         state,
     )
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
+    tools_result = must_mapping(tools_response.result)
     tool_names = {
-        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
     }
 
     assert "read_file" in tool_names
@@ -474,18 +476,18 @@ def test_build_standalone_http_server_preserves_registry_input_schema(tmp_path: 
         state,
     )
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
-    tools_list = cast("list[dict[str, object]]", tools_result["tools"])
-    tools = {cast("str", t["name"]): t for t in tools_list}
+    tools_result = must_mapping(tools_response.result)
+    tools_list = must_dict_list(tools_result["tools"])
+    tools = {must_str(t["name"]): t for t in tools_list}
 
-    read_env_schema = cast("dict[str, object]", tools["read_env"]["inputSchema"])
-    properties = cast("dict[str, object]", read_env_schema["properties"])
+    read_env_schema = must_mapping(tools["read_env"]["inputSchema"])
+    properties = must_mapping(read_env_schema["properties"])
     assert read_env_schema["required"] == ["name"]
     assert "name" in properties
 
     submit_artifact_schema_raw = tools["ralph_submit_md_artifact"]["inputSchema"]
-    submit_artifact_schema = cast("dict[str, object]", submit_artifact_schema_raw)
-    submit_properties = cast("dict[str, object]", submit_artifact_schema["properties"])
+    submit_artifact_schema = must_mapping(submit_artifact_schema_raw)
+    submit_properties = must_mapping(submit_artifact_schema["properties"])
     assert "partial" not in submit_properties
     assert "content_path" not in submit_properties
     assert submit_artifact_schema["required"] == ["artifact_type", "content"]
@@ -551,7 +553,7 @@ def test_build_standalone_http_server_normalizes_tool_result_payload(tmp_path: P
 
     assert response is not None
     assert response.error is None
-    result = cast("dict[str, object]", response.result or {})
+    result = must_mapping(response.result or {})
     assert isinstance(result, dict)
     assert result["isError"] is False
     assert isinstance(result["content"], list)
@@ -643,9 +645,9 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         state,
     )
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
-    tools_list = cast("list[dict[str, object]]", tools_result["tools"])
-    tool_names = {cast("str", tool["name"]) for tool in tools_list}
+    tools_result = must_mapping(tools_response.result)
+    tools_list = must_dict_list(tools_result["tools"])
+    tool_names = {must_str(tool["name"]) for tool in tools_list}
 
     submit_response, state = mcp_server.handle_request(
         server_runtime.JsonRpcRequest(
@@ -658,7 +660,7 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
                     "artifact_type": "plan",
                     "content": _plan_document().replace(
                         "Concurrent refresh requests can race.",
-                        cast("str", cast("dict[str, object]", payload["summary"])["context"]),
+                        must_str(must_mapping(payload["summary"])["context"]),
                     ),
                 },
             },
@@ -669,10 +671,10 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
     policy = load_policy(tmp_path / ".agent")
     ctx = PhaseContext.model_construct(
         workspace=workspace,
-        registry=cast("AgentRegistry", object()),
-        chain_manager=cast("ChainManager", object()),
+        registry=object(),
+        chain_manager=object(),
         pipeline_policy=policy.pipeline,
-        agents_policy=cast("AgentsPolicy", object()),
+        agents_policy=object(),
         artifacts_policy=policy.artifacts,
     )
     planning_result = handle_execution_phase(
@@ -760,9 +762,9 @@ def test_build_standalone_http_server_lists_proxied_upstream_tools(tmp_path: Pat
     )
 
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
+    tools_result = must_mapping(tools_response.result)
     tool_names = {
-        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
     }
     assert "read_file" in tool_names
     assert "ralph_upstream__myfs__read_remote" in tool_names
@@ -900,11 +902,8 @@ def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
     monkeypatch.setattr(server_runtime, "load_runtime_upstream_servers", lambda cfg: (upstream,))
     monkeypatch.setattr(server_runtime.UpstreamRegistry, "build", fake_build)
 
-    builder = cast(
-        "Callable[..., object]",
-        getattr(server_runtime, builder_name),
-    )
-    kwargs = cast("dict[str, object]", extras_factory(mcp_config))
+    builder = getattr(server_runtime, builder_name)
+    kwargs = must_mapping(extras_factory(mcp_config))
 
     with pytest.raises(UpstreamValidationError, match=server_name):
         builder(tmp_path, **kwargs)
@@ -947,9 +946,9 @@ def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_
         server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=1, params={})
     )
     assert tools_response is not None
-    result = cast("dict[str, object]", tools_response.result)
-    tools = cast("list[dict[str, object]]", result["tools"])
-    tool_names = {cast("str", tool["name"]) for tool in tools}
+    result = must_mapping(tools_response.result)
+    tools = must_dict_list(result["tools"])
+    tool_names = {must_str(tool["name"]) for tool in tools}
     assert custom_proxy_tool_name("docs", "ping") in tool_names
 
 
@@ -993,9 +992,9 @@ def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
     )
 
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
+    tools_result = must_mapping(tools_response.result)
     tool_names = {
-        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
     }
     assert "ralph_upstream__srv__do_thing" not in tool_names
 
@@ -1040,9 +1039,9 @@ def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
     )
 
     assert tools_response is not None
-    tools_result = cast("dict[str, object]", tools_response.result)
+    tools_result = must_mapping(tools_response.result)
     tool_names = {
-        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
     }
     assert "ralph_upstream__srv2__do_thing" in tool_names
 

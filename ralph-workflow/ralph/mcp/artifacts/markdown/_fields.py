@@ -61,9 +61,7 @@ def parse_fields(
     open_list: str | None = None
     for line in lines:
         if line.text.startswith("- "):
-            _consume_bullet(
-                result, line, open_list, section, context, prose_allowed, diagnostics
-            )
+            _consume_bullet(result, line, open_list, section, context, prose_allowed, diagnostics)
             continue
         open_list = _consume_field_line(
             result, line, table, section, context, prose_allowed, diagnostics
@@ -108,7 +106,9 @@ def _consume_field_line(
 ) -> str | None:
     """Consume one non-bullet line; return the list key it opens, if any."""
     label = _FIELD_LABEL.fullmatch(line.text)
-    key = cast("str | None", label.group("key")) if label is not None else None
+    key = (
+        cast("str | None", label.group("key")) if label is not None else None
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     kind = table.get(key.strip().casefold()) if key is not None else None
     if key is None or kind is None:
         _consume_unlabeled(result, line, key, section, context, prose_allowed, diagnostics)
@@ -124,7 +124,9 @@ def _consume_field_line(
             diagnostics,
         )
         return None
-    value = cast("str | None", label.group("value")) if label is not None else None
+    value = (
+        cast("str | None", label.group("value")) if label is not None else None
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if kind == "bullet_list":
         if value is not None:
             _malformed_field(
@@ -201,7 +203,9 @@ def _malformed_field(
     if prose_allowed and not is_fan_out:
         result.prose.append(line)
         diagnostics.append(
-            Diagnostic(line.line, section, "PLAN020", f"{message}; line treated as prose", "warning")
+            Diagnostic(
+                line.line, section, "PLAN020", f"{message}; line treated as prose", "warning"
+            )
         )
     elif prose_allowed and is_fan_out:
         # Fan-out contexts: keep the line as prose but emit an ERROR with

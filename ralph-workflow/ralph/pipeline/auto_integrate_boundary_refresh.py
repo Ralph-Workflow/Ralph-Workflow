@@ -136,9 +136,7 @@ class BoundaryRefreshThrottle:
             return
         self._arm(self._key(root, target), forced_at=None)
 
-    def record_forced_outcome(
-        self, root: Path | str, target: str, outcome: str
-    ) -> None:
+    def record_forced_outcome(self, root: Path | str, target: str, outcome: str) -> None:
         """Record a divergent override, consuming it only when healthy."""
         if not refresh_outcome_is_healthy(outcome):
             return
@@ -161,7 +159,10 @@ class BoundaryRefreshThrottle:
         self._last_refresh.pop(key, None)
         while len(self._last_refresh) >= self._max_tracked_keys:
             self._last_refresh.popitem(last=False)
-        self._last_refresh[key] = (self._clock() if refreshed_at is None else refreshed_at, forced_at)
+        self._last_refresh[key] = (
+            self._clock() if refreshed_at is None else refreshed_at,
+            forced_at,
+        )
 
 
 #: Process-wide throttle shared by every phase-boundary hook, so the

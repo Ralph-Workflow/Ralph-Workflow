@@ -277,8 +277,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{len(violations)} violation(s). See AGENTS.md 'Non-negotiables'.")
         return 1
     print(
-        "Repo-structure audit: OK "
-        "(file size, class-per-module, private imports, bypass comments)"
+        "Repo-structure audit: OK (file size, class-per-module, private imports, bypass comments)"
     )
     return 0
 

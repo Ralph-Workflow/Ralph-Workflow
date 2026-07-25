@@ -107,7 +107,6 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
 
-
     class _StatusBarHost(Protocol):
         """Structural type for the ``display`` reference StatusBar composes against."""
 
@@ -174,6 +173,7 @@ def _safe_single_line(text: str) -> str:
     cleaned = _SAFE_LINE_CONTROL_RE.sub(" ", cleaned)
     cleaned = _SAFE_LINE_NEWLINE_RE.sub(" ", cleaned)
     return cleaned.strip()
+
 
 # Canonical label widths (full form: ``Cycle 1/3`` / ``Analysis 2/5``).
 # These reflect the WORST-CASE actual label length with multi-digit
@@ -320,7 +320,7 @@ def _home_relative(path: str, home: str | None) -> str:
     if path == home_str:
         return _HOME_PREFIX
     if path.startswith(home_str + os.sep):
-        return _HOME_PREFIX + path[len(home_str):]
+        return _HOME_PREFIX + path[len(home_str) :]
     return path
 
 
@@ -339,7 +339,7 @@ def _middle_truncate_path(path: str, budget: int) -> str:
     if len(path) <= budget:
         return path
     last_sep = path.rfind(os.sep)
-    last_segment = path[last_sep + 1:] if last_sep >= 0 else path
+    last_segment = path[last_sep + 1 :] if last_sep >= 0 else path
     last_segment_len = len(last_segment)
     separator_budget = _ELLIPSIS_LEN + 1  # ``.../``
 
@@ -564,12 +564,16 @@ def _field_overhead_and_label_budgets(
     ) -> int:
         """Total chrome excluding phase + path: marker + sep + iter segments."""
         ml = marker_len if with_marker else 0
-        return ml + separator_len + _iter_width(
-            outer_label,
-            inner_label,
-            with_glyph,
-            include_outer=include_outer,
-            include_inner=include_inner,
+        return (
+            ml
+            + separator_len
+            + _iter_width(
+                outer_label,
+                inner_label,
+                with_glyph,
+                include_outer=include_outer,
+                include_inner=include_inner,
+            )
         )
 
     def _allocate(
@@ -795,13 +799,11 @@ def _split_agent_label(label: str) -> tuple[str, str]:
     """
     prefix = "Agent "
     if label.startswith(prefix):
-        return prefix, label[len(prefix):]
+        return prefix, label[len(prefix) :]
     return "", label
 
 
-def _resolve_elapsed_label(
-    model: StatusBarModel, now_monotonic: float | None
-) -> str:
+def _resolve_elapsed_label(model: StatusBarModel, now_monotonic: float | None) -> str:
     """Return the elapsed-time label, recomputed at render time when anchors are set.
 
     P0 (wt-028-display AC-01): when both ``run_started_monotonic`` and
@@ -810,11 +812,7 @@ def _resolve_elapsed_label(
     re-push. The fallback to the snapshot value keeps the existing
     pre-P0 contract for callers that supply only ``elapsed_seconds``.
     """
-    base = (
-        _format_elapsed(model.elapsed_seconds)
-        if model.elapsed_seconds is not None
-        else ""
-    )
+    base = _format_elapsed(model.elapsed_seconds) if model.elapsed_seconds is not None else ""
     if (
         model.run_started_monotonic is not None
         and now_monotonic is not None
@@ -1022,9 +1020,7 @@ def render_status_bar(
     if render_inner_analysis:
         text.append(separator, style="theme.status.path_marker")
         if budgets.render_iter_glyph:
-            text.append(
-                ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis"
-            )
+            text.append(ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis")
         text.append(
             _format_analysis_label(
                 model.inner_analysis or 0,

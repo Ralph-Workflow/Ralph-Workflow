@@ -26,7 +26,7 @@ correct observable outcomes for multimodal-capable workers.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -46,9 +46,7 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.agents.executor import AgentExecutor, WorkerResult
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.parallel.coordinator import WorkerContext
+    from ralph.agents.executor import WorkerResult
 from tests.integration import (
     test_parallel_multimodal_runtime_e2e_helper__capturedcontext as capturedcontext_helper,
 )
@@ -180,7 +178,7 @@ def _run_fan_out_sync(
     )
 
     async def _fake_run_fan_out(**kwargs: object) -> list[Event]:
-        ctx = cast("WorkerContext | None", kwargs.get("ctx"))
+        ctx = kwargs.get("ctx")
         if ctx is not None and ctx.same_workspace is not None:
             captured.session_drain = ctx.same_workspace.session_drain
             captured.session_capabilities = ctx.same_workspace.session_capabilities
@@ -201,8 +199,8 @@ def _run_fan_out_sync(
 
             await coordinator._run_worker(
                 unit,
-                cast("AgentExecutor", fake_executor),
-                cast("ParallelDisplay", _FakeDisplay()),
+                fake_executor,
+                _FakeDisplay(),
                 completion_queue,
                 ctx,
             )
@@ -222,7 +220,7 @@ def _run_fan_out_sync(
     final_state = runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=cast("ParallelDisplay", _FakeDisplay()),
+        display=_FakeDisplay(),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
     )

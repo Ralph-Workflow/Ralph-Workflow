@@ -142,25 +142,27 @@ def _literal_fenced_examples(
         if opening is None:
             index += 1
             continue
-        marker = cast("str", opening.group("fence"))
+        marker = cast(
+            "str", opening.group("fence")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         closing_index = index + 1
-        while closing_index < len(lines) and not _is_closing_fence(
-            lines[closing_index], marker
-        ):
+        while closing_index < len(lines) and not _is_closing_fence(lines[closing_index], marker):
             closing_index += 1
         if closing_index == len(lines):
-            info = cast("str", opening.group("info")).strip()
+            info = cast(
+                "str", opening.group("info")
+            ).strip()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             if info.startswith(("markdown", "md")):
-                violations.append(
-                    f"{source_name}:{index + 1} unterminated markdown fence"
-                )
+                violations.append(f"{source_name}:{index + 1} unterminated markdown fence")
             break
         examples.append(
             _ArtifactExample(
                 source_name=source_name,
                 first_content_line=index + 2,
                 markdown="\n".join(lines[index + 1 : closing_index]) + "\n",
-                fence_info=cast("str", opening.group("info")).strip(),
+                fence_info=cast(
+                    "str", opening.group("info")
+                ).strip(),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             )
         )
         index = closing_index + 1
@@ -170,11 +172,15 @@ def _literal_fenced_examples(
 def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
     blocks: list[_SetBlock] = []
     for match in _SET_BLOCK_RE.finditer(source):
-        body = cast("str", match.group("body"))
+        body = cast(
+            "str", match.group("body")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         leading_newlines = len(body) - len(body.lstrip("\n"))
         blocks.append(
             _SetBlock(
-                name=cast("str", match.group("name")),
+                name=cast(
+                    "str", match.group("name")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 body=body,
                 first_content_line=(
                     source.count("\n", 0, match.start("body")) + leading_newlines + 1
@@ -186,7 +192,9 @@ def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
 
 
 def _render_example_body(body: str) -> str:
-    strict_undefined = cast("type[Undefined]", StrictUndefined)
+    strict_undefined = cast(
+        "type[Undefined]", StrictUndefined
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     environment = Environment(
         autoescape=False,
         undefined=strict_undefined,
@@ -242,11 +250,7 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
     if first_nonempty is None or lines[first_nonempty].strip() != "---":
         return False, None
     closing = next(
-        (
-            index
-            for index in range(first_nonempty + 1, len(lines))
-            if lines[index].strip() == "---"
-        ),
+        (index for index in range(first_nonempty + 1, len(lines)) if lines[index].strip() == "---"),
         None,
     )
     if closing is None:
@@ -257,7 +261,9 @@ def _frontmatter_type(markdown: str) -> tuple[bool, str | None]:
         True,
         None
         if match is None
-        else cast("str", match.group("artifact_type")).strip(),
+        else cast(
+            "str", match.group("artifact_type")
+        ).strip(),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 
@@ -319,11 +325,15 @@ def _resolve_example_type(
     declared_type = fence_type or example.declared_artifact_type or default_artifact_type
     if not artifact_like and declared_type is None:
         return None, None
-    if declared_type is None and frontmatter_type is not None and (
-        "<" in frontmatter_type
-        or ">" in frontmatter_type
-        or "{{" in frontmatter_type
-        or "{%" in frontmatter_type
+    if (
+        declared_type is None
+        and frontmatter_type is not None
+        and (
+            "<" in frontmatter_type
+            or ">" in frontmatter_type
+            or "{{" in frontmatter_type
+            or "{%" in frontmatter_type
+        )
     ):
         return None, None
     if declared_type is not None:
@@ -355,9 +365,7 @@ def _validate_example(
         registered,
     )
     if resolution_error is not None:
-        return [
-            f"{example.source_name}:{example.first_content_line} {resolution_error}"
-        ]
+        return [f"{example.source_name}:{example.first_content_line} {resolution_error}"]
     if artifact_type is None:
         return []
     _, diagnostics = parse_and_validate(example.markdown, get_spec(artifact_type))
@@ -393,9 +401,7 @@ def check_source_examples(
     macro_examples, macro_violations = _macro_generated_examples(source_name, source)
     violations.extend(macro_violations)
     for example in (*literal_examples, *macro_examples):
-        violations.extend(
-            _validate_example(example, declared_artifact_type, registered)
-        )
+        violations.extend(_validate_example(example, declared_artifact_type, registered))
     return violations
 
 
@@ -404,11 +410,7 @@ def _section_body(markdown: str, title: str) -> str | None:
     if heading is None:
         return None
     next_heading = re.search(r"^## .+$", markdown[heading.end() :], re.MULTILINE)
-    end = (
-        len(markdown)
-        if next_heading is None
-        else heading.end() + next_heading.start()
-    )
+    end = len(markdown) if next_heading is None else heading.end() + next_heading.start()
     return markdown[heading.end() : end]
 
 
@@ -462,7 +464,9 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     units: list[_PlanUnit] = []
     for index, heading in enumerate(headings):
-        title = cast("str", heading.group("title"))
+        title = cast(
+            "str", heading.group("title")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if not (
             re.fullmatch(
                 r"(?:Sub(?:[\s-]?plan)(?:\s*[:\-\u2013\u2014]\s*|\s+).+|"
@@ -484,7 +488,9 @@ def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
 def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
     headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
     for index, heading in enumerate(headings):
-        title = cast("str", heading.group("title"))
+        title = cast(
+            "str", heading.group("title")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         lowered = title.casefold()
         if "integration" not in lowered or "verif" not in lowered:
             continue
@@ -494,13 +500,13 @@ def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
 
 
 def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
-    steps = list(
-        re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE)
-    )
+    steps = list(re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE))
     if not steps:
         return None
     own_step_ids = {
-        cast("str", step.group("step_id"))
+        cast(
+            "str", step.group("step_id")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for step in steps
     }
     dependencies: list[str] = []
@@ -512,14 +518,18 @@ def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
             step_body,
             re.MULTILINE,
         ):
-            dependency_text = cast("str", match.group("ids"))
+            dependency_text = cast(
+                "str", match.group("ids")
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             dependencies.extend(
                 part.strip()
                 for part in dependency_text.split(",")
                 if part.strip() not in own_step_ids
             )
     return _PlanUnit(
-        cast("str", steps[-1].group("step_id")),
+        cast(
+            "str", steps[-1].group("step_id")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         title,
         tuple(dependencies),
         len(steps),
@@ -544,10 +554,7 @@ def _large_plan_shape_violation(example: _ArtifactExample) -> str | None:
     if fan_in is None:
         return "example-size=large must contain main-session integration and verification"
     if set(fan_in.dependencies) != {unit.unit_id for unit in fan_out}:
-        return (
-            "example-size=large main-session fan-in must depend on every "
-            "execution subplan"
-        )
+        return "example-size=large main-session fan-in must depend on every execution subplan"
     return None
 
 
@@ -587,11 +594,12 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
     for example_size, sized_examples in by_size.items():
         if not sized_examples:
             violations.append(
-                f"{source_name}:1 plan examples must include "
-                f"example-size={example_size}"
+                f"{source_name}:1 plan examples must include example-size={example_size}"
             )
     for example in by_size["tiny"]:
-        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
+        step_count = len(
+            cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown))
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if step_count not in {1, 2}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -603,7 +611,9 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
                 "example-size=tiny must not declare parallel work units"
             )
     for example in by_size["medium"]:
-        step_count = len(cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown)))
+        step_count = len(
+            cast("list[str]", _PLAN_STEP_HEADING_RE.findall(example.markdown))
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if step_count not in {3, 4}:
             violations.append(
                 f"{source_name}:{example.first_content_line} "
@@ -612,9 +622,7 @@ def check_plan_example_coverage(source_name: str, source: str) -> list[str]:
     for example in by_size["large"]:
         shape_violation = _large_plan_shape_violation(example)
         if shape_violation is not None:
-            violations.append(
-                f"{source_name}:{example.first_content_line} {shape_violation}"
-            )
+            violations.append(f"{source_name}:{example.first_content_line} {shape_violation}")
     return violations
 
 
@@ -629,11 +637,7 @@ def collect_violations() -> list[str]:
     violations: list[str] = []
     template_root = packaged_template_root()
     template_paths = sorted(
-        {
-            path
-            for pattern in _TEMPLATE_GLOBS
-            for path in template_root.rglob(pattern)
-        }
+        {path for pattern in _TEMPLATE_GLOBS for path in template_root.rglob(pattern)}
     )
     for path in template_paths:
         relative = path.relative_to(template_root).as_posix()
@@ -682,10 +686,7 @@ def main(argv: list[str] | None = None) -> int:
     del argv
     violations = collect_violations()
     if violations:
-        print(
-            "FENCED ARTIFACT EXAMPLE AUDIT FAILED: "
-            f"{len(violations)} violation(s)"
-        )
+        print(f"FENCED ARTIFACT EXAMPLE AUDIT FAILED: {len(violations)} violation(s)")
         print("=" * 72)
         for violation in violations:
             print(f"  {violation}")

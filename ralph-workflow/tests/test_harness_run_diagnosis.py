@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -24,7 +24,6 @@ from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 if TYPE_CHECKING:
-    from collections import deque
     from collections.abc import Callable
 
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
@@ -667,14 +666,14 @@ def _fake_execute_agent_effect_for_config(
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text("export const todos = [];\n", encoding="utf-8")
         if raw_sink is not None:
-            cast("deque[str]", raw_sink).extend(raw_lines)
-            cast("deque[str]", raw_sink).append(
+            raw_sink.extend(raw_lines)
+            raw_sink.append(
                 "Task declared complete: session_id=dummy, summary=done\n"
                 if not agent_name.startswith("agy/")
                 else "agy planning line\n"
             )
         if rendered_sink is not None:
-            cast("deque[str]", rendered_sink).append(
+            rendered_sink.append(
                 "Task declared complete\n"
                 if not agent_name.startswith("agy/")
                 else "agy planning line\n"

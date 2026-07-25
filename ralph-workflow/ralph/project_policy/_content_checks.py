@@ -39,25 +39,20 @@ if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
     from ralph.workspace.protocol import Workspace
 
+
 def _fact_key(line: str) -> str | None:
     match = re.fullmatch(r"RALPH-FACT:\s*([^:]+):\s*\S.*", line)
     return str(match.group(1)).strip() if match else None
 
 
-def _check_required_fact_keys(
-    content: str, path: str, filename: str
-) -> list[PolicyFinding]:
+def _check_required_fact_keys(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Require every fact key declared by the bundled contract exactly once."""
     required = {
         key
         for line in starters.read_starter(filename).splitlines()
         if (key := _fact_key(line)) is not None
     }
-    present_keys = [
-        key
-        for line in content.splitlines()
-        if (key := _fact_key(line)) is not None
-    ]
+    present_keys = [key for line in content.splitlines() if (key := _fact_key(line)) is not None]
     findings: list[PolicyFinding] = []
     for key in sorted(required):
         count = present_keys.count(key)
@@ -70,17 +65,13 @@ def _check_required_fact_keys(
                 missing_evidence=(
                     f"required RALPH-FACT key {key!r} occurs {count} times; expected once"
                 ),
-                required_outcome=(
-                    f"record exactly one verified `RALPH-FACT: {key}: <value>` line"
-                ),
+                required_outcome=(f"record exactly one verified `RALPH-FACT: {key}: <value>` line"),
             )
         )
     return findings
 
 
-def _check_template_banner(
-    content: str, path: str, filename: str
-) -> list[PolicyFinding]:
+def _check_template_banner(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Reject a policy file that still carries the starter template banner.
 
     Separate from the PLACEHOLDER_TOKENS scan (which also covers the whole
@@ -92,13 +83,10 @@ def _check_template_banner(
         return []
     return [
         PolicyFinding(
-            requirement_id=(
-                f"{markers.ID_PLACEHOLDER}:{filename}:starter-template-banner"
-            ),
+            requirement_id=(f"{markers.ID_PLACEHOLDER}:{filename}:starter-template-banner"),
             path=path,
             missing_evidence=(
-                f"file still contains the {markers.STARTER_TEMPLATE_TOKEN} "
-                "banner comment"
+                f"file still contains the {markers.STARTER_TEMPLATE_TOKEN} banner comment"
             ),
             required_outcome=(
                 "rewrite the file into verified project policy and delete "
@@ -202,9 +190,7 @@ def _check_research_basis(content: str, path: str, filename: str) -> list[Policy
     return findings
 
 
-def _check_individual_citations(
-    blocks: list[str], path: str, filename: str
-) -> list[PolicyFinding]:
+def _check_individual_citations(blocks: list[str], path: str, filename: str) -> list[PolicyFinding]:
     """Validate every citation block contains the required fields."""
     findings: list[PolicyFinding] = []
     for index, block in enumerate(blocks, start=1):
@@ -219,7 +205,9 @@ def _check_individual_citations(
         url = fields.get("http", "")
         parsed = urlparse(url)
         valid_url = parsed.scheme == "https" and bool(parsed.netloc)
-        valid_date = bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields.get("review date", "")))
+        valid_date = bool(
+            re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields.get("review date", ""))
+        )
         if not missing and valid_url and valid_date:
             continue
         findings.append(
@@ -316,12 +304,12 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
     has_inapplicable = bool(inapplicable_values)
     has_pending = bool(_pending_values(content))
     review_values = [
-        line[len(markers.REVIEW_MARKER):].strip()
+        line[len(markers.REVIEW_MARKER) :].strip()
         for line in content.splitlines()
         if _REVIEW_VALUE_RE.match(line)
     ]
     review_raw_values = [
-        line[len(markers.REVIEW_MARKER):].strip()
+        line[len(markers.REVIEW_MARKER) :].strip()
         for line in content.splitlines()
         if _REVIEW_LINE_RE.match(line)
     ]
@@ -338,8 +326,7 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
                 requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:missing",
                 path=path,
                 missing_evidence=(
-                    "file lacks a runnable RALPH-COMMAND gate or a "
-                    "RALPH-PENDING deferral"
+                    "file lacks a runnable RALPH-COMMAND gate or a RALPH-PENDING deferral"
                     if command_required
                     else "file contains no non-empty RALPH-COMMAND, RALPH-REVIEW, RALPH-INAPPLICABLE, or RALPH-PENDING line"
                 ),
@@ -351,12 +338,8 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
             )
         )
     findings.extend(_check_individual_commands(command_raw_values, path, filename))
-    findings.extend(
-        _check_individual_inapplicables(inapplicable_raw_values, path, filename)
-    )
-    findings.extend(
-        _check_individual_pendings(pending_raw_values, path, filename)
-    )
+    findings.extend(_check_individual_inapplicables(inapplicable_raw_values, path, filename))
+    findings.extend(_check_individual_pendings(pending_raw_values, path, filename))
     for index, value in enumerate(review_raw_values, start=1):
         lowered = value.lower()
         if not value or "evidence:" not in lowered or "owner:" not in lowered:
@@ -436,9 +419,7 @@ def _check_individual_inapplicables(
                 )
             )
         elif filename == "typechecking-policy.md" and not (
-            lowered.startswith(
-                "exceptional case: no suitable maintained checker exists;"
-            )
+            lowered.startswith("exceptional case: no suitable maintained checker exists;")
             or lowered.startswith(
                 "exceptional case: technically non-checkable first-party surface;"
             )
@@ -477,9 +458,7 @@ def _check_individual_inapplicables(
             )
         elif filename == "linting-policy.md" and not (
             lowered.startswith("exceptional case: no suitable maintained linter exists;")
-            or lowered.startswith(
-                "exceptional case: technically non-lintable first-party surface;"
-            )
+            or lowered.startswith("exceptional case: technically non-lintable first-party surface;")
         ):
             findings.append(
                 PolicyFinding(
@@ -517,10 +496,6 @@ def _check_individual_inapplicables(
                 )
             )
     return findings
-
-
-
-
 
 
 def _check_individual_commands(
@@ -609,9 +584,7 @@ def _check_individual_commands(
     return findings
 
 
-def _check_per_language_coverage(
-    workspace: Workspace, stack: ProjectStack
-) -> list[PolicyFinding]:
+def _check_per_language_coverage(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
     """Validate per-language RALPH-LANG coverage in typecheck and lint policies.
 
     Per-language blocks must contain a non-empty ``RALPH-COMMAND`` or
@@ -639,9 +612,7 @@ def _check_per_language_coverage(
                     PolicyFinding(
                         requirement_id=f"{markers.ID_LANG_COVERAGE}:{filename}:{language}",
                         path=path,
-                        missing_evidence=(
-                            f"no RALPH-LANG block for '{language}' in {filename}"
-                        ),
+                        missing_evidence=(f"no RALPH-LANG block for '{language}' in {filename}"),
                         required_outcome=(
                             f"add `RALPH-LANG: {language}` followed by a "
                             "RALPH-COMMAND, RALPH-INAPPLICABLE, or "
@@ -672,8 +643,7 @@ def _check_per_language_coverage(
                 findings.append(
                     PolicyFinding(
                         requirement_id=(
-                            f"{markers.ID_LANG_COVERAGE}:{filename}:{language}:"
-                            f"empty-inapplicable"
+                            f"{markers.ID_LANG_COVERAGE}:{filename}:{language}:empty-inapplicable"
                         ),
                         path=path,
                         missing_evidence=(
@@ -708,10 +678,11 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
             continue
         if current_lang is None:
             continue
-        stripped = line[len(markers.INAPPLICABLE_MARKER):].strip() if line.startswith(
-            markers.INAPPLICABLE_MARKER
-        ) else None
+        stripped = (
+            line[len(markers.INAPPLICABLE_MARKER) :].strip()
+            if line.startswith(markers.INAPPLICABLE_MARKER)
+            else None
+        )
         if line.startswith(markers.INAPPLICABLE_MARKER) and not stripped:
             out.add(current_lang)
     return out
-

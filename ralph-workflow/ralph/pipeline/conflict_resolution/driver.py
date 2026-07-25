@@ -92,9 +92,7 @@ __all__ = [
 ]
 
 
-def resolution_deadline(
-    config: UnifiedConfig, clock: MonotonicClock | None = None
-) -> float:
+def resolution_deadline(config: UnifiedConfig, clock: MonotonicClock | None = None) -> float:
     """Absolute monotonic instant the whole resolution must finish by.
 
     Public because a REBASE resolution spans several stops and every one
@@ -174,12 +172,8 @@ def run_rebase_conflict_resolution_pipeline(
             stop=stop,
         )
     except Exception as exc:
-        logger.warning(
-            "conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc
-        )
-        emit_conflict_phase_line(
-            display, f"rebase conflict resolution failed: {exc}"
-        )
+        logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
+        emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
         return False
 
 
@@ -277,9 +271,7 @@ def _run_rounds(
     marker-scan gate -- the properties that make resolution safe at all.
     """
     round_cap = MAX_ROUNDS_PER_STOP if stop is not None else MAX_RESOLUTION_ROUNDS
-    conflicted = (
-        stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
-    )
+    conflicted = stop.conflicted_files if stop is not None else tuple(unmerged_paths(root))
     if not conflicted or _QUERY_FAILED_SENTINEL in conflicted:
         emit_conflict_phase_line(
             display, "no readable conflicted paths; nothing a resolver can repair"
@@ -288,9 +280,7 @@ def _run_rounds(
 
     candidates = resolution_chain_agents(policy_bundle)[:_MAX_RESOLVER_AGENTS]
     if not candidates:
-        emit_conflict_phase_line(
-            display, "no agent bound to the rebase-conflict-resolution drain"
-        )
+        emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
         return False
 
     runner = invoke or _default_invoker(
@@ -308,11 +298,7 @@ def _run_rounds(
         display,
         f"entering rebase conflict resolution for '{target}' "
         f"({len(conflicted)} conflicted file(s))"
-        + (
-            f" replaying {stop.sha[:8]} {stop.subject}"
-            if stop is not None
-            else ""
-        ),
+        + (f" replaying {stop.sha[:8]} {stop.subject}" if stop is not None else ""),
     )
 
     surviving: tuple[str, ...] = ()
@@ -338,21 +324,15 @@ def _run_rounds(
                 round_cap=round_cap,
                 surviving_marker_paths=surviving,
                 replaying_commit_sha=stop.sha if stop is not None else None,
-                replaying_commit_subject=(
-                    stop.subject if stop is not None else None
-                ),
+                replaying_commit_subject=(stop.subject if stop is not None else None),
                 stop_index=stop.stop_index if stop is not None else None,
                 stop_cap=stop.stop_cap if stop is not None else None,
             )
             if prompt_path is None:
-                emit_conflict_phase_line(
-                    display, "could not materialize the resolution prompt"
-                )
+                emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
 
-            succeeded = _run_one_round(
-                runner, candidates, prompt_path, round_index, display
-            )
+            succeeded = _run_one_round(runner, candidates, prompt_path, round_index, display)
             # The hard gate: what the repository says, not what the agent
             # says. ``git add`` clears a file's unmerged bit even with
             # markers intact, so this textual re-scan is the only proof.
@@ -452,14 +432,10 @@ def _default_invoker(
     multi-stop rebase: every stop shares one instant, so ten stops cost
     the configured ceiling in total rather than ten times over.
     """
-    effective_deadline = (
-        deadline if deadline is not None else clock() + _resolve_ceiling(config)
-    )
+    effective_deadline = deadline if deadline is not None else clock() + _resolve_ceiling(config)
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        budget = _attempt_budget(
-            effective_deadline - clock(), round_index, round_cap
-        )
+        budget = _attempt_budget(effective_deadline - clock(), round_index, round_cap)
         if budget < _MIN_ATTEMPT_SECONDS:
             logger.warning(
                 "conflict_resolution: the auto_integrate_resolve_timeout_seconds "
@@ -511,9 +487,7 @@ def _attempt_budget(
 
 def _resolve_ceiling(config: UnifiedConfig) -> float:
     """Wall-clock ceiling for the whole pipeline, with a safe fallback."""
-    raw: object = getattr(
-        config.general, "auto_integrate_resolve_timeout_seconds", None
-    )
+    raw: object = getattr(config.general, "auto_integrate_resolve_timeout_seconds", None)
     if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
         return float(raw)
     return _DEFAULT_RESOLVE_TIMEOUT_SECONDS

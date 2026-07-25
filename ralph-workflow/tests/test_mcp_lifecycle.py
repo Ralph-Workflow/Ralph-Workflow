@@ -4,7 +4,7 @@ import json
 import pathlib
 import tempfile
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -16,7 +16,11 @@ from ralph.mcp.server import lifecycle
 from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
+from tests._support.typed_accessors import (
+    must_str_dict,
+    must_str_list,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -158,7 +162,7 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         ),
     )
 
-    env = cast("dict[str, str]", seen["env"])
+    env = must_str_dict(seen["env"])
     assert env["RALPH_UPSTREAM_MCP_CONFIG"] == (
         '[{"name":"docs","transport":"http","url":"http://docs"}]'
     )
@@ -193,10 +197,9 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
             return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}
         return {}
 
-    client_factory_fn = cast(
-        "UpstreamClientFactory",
-        lambda srv: HttpUpstreamClient(srv, caller=fake_caller),
-    )
+    def client_factory_fn(srv: UpstreamMcpServer) -> HttpUpstreamClient:
+        return HttpUpstreamClient(srv, caller=fake_caller)
+
     upstream_registry = UpstreamRegistry.build(
         [upstream],
         client_factory=client_factory_fn,
@@ -221,7 +224,7 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
 
     lifecycle.start_mcp_server(session, workspace, upstream_registry=upstream_registry, deps=deps)
 
-    required = cast("list[str]", seen["required_tools"])
+    required = must_str_list(seen["required_tools"])
     assert "ralph_upstream__remote__ping" in required
 
 

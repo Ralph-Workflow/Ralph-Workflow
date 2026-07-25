@@ -49,7 +49,9 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
         match = block.search(text)
         if match is None:
             continue
-        content = cast("str", match.group("content"))
+        content = cast(
+            "str", match.group("content")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         uncommented = "\n".join(
             line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
             for line in content.splitlines()

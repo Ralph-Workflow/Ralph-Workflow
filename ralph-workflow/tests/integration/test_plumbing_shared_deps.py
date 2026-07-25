@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from ralph.agents.registry import AgentRegistry
@@ -198,7 +198,7 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         session_id_prefix="commit",
         model_identity=None,
     )
-    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert bridge.shutdown.call_count == 1
     mock_delete.assert_called_once_with(workspace_root)
     mock_read.assert_called_once_with(workspace_root)
 
@@ -423,7 +423,7 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
     assert len(bridge_calls) == 1
     assert bridge_calls[0]["drain"] == "development"
     assert bridge_calls[0]["session_id_prefix"] == "smoke"
-    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert bridge.shutdown.call_count == 1
     assert len(captured_execute_calls) == 1
     assert captured_execute_calls[0]["pipeline_deps"] is shared_deps
     assert result.artifact_submitted is True
@@ -609,7 +609,7 @@ def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
     assert len(bridge_calls) == 1
     assert bridge_calls[0]["drain"] == "development"
     assert bridge_calls[0]["session_id_prefix"] == "smoke"
-    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert bridge.shutdown.call_count == 1
     assert len(captured_execute_calls) == 1
     executed_deps = captured_execute_calls[0]["pipeline_deps"]
     assert isinstance(executed_deps, PipelineDeps)

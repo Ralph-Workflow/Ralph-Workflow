@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.plan import is_noop_plan
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+)
 from tests.mcp.test_md_plan_spec import _plan_document
 
 
@@ -14,14 +16,14 @@ def test_plan_markdown_maps_to_the_canonical_execution_model() -> None:
     content, diagnostics = parse_and_validate(_plan_document(), get_spec("plan"))
 
     assert diagnostics == []
-    steps = cast("list[dict[str, object]]", content["steps"])
+    steps = must_dict_list(content["steps"])
     assert [step["number"] for step in steps] == [1, 2]
     assert steps[0]["targets"] == [
         {"path": "ralph/mcp/artifacts/markdown/specs/plan.py", "action": "modify"},
         {"path": "tests/mcp/test_md_plan_spec.py", "action": "create"},
     ]
     assert steps[1]["depends_on"] == [1]
-    skills_mcp = cast("dict[str, object]", content["skills_mcp"])
+    skills_mcp = must_mapping(content["skills_mcp"])
     assert skills_mcp["skills"] == ["test-driven-development"]
     assert is_noop_plan(content) is False
 

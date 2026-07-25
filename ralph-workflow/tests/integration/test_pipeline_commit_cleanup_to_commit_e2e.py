@@ -58,7 +58,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -88,7 +88,6 @@ from tests.integration._commit_cleanup_always_loopback_invoker import (
 from tests.plan_fixtures import commit_cleanup_markdown, commit_message_markdown
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     from pytest import MonkeyPatch
 
@@ -123,7 +122,7 @@ EXPECTED_GIT_EXCLUDE_FRAGMENTS: tuple[str, ...] = (
 
 def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict[str, object]) -> None:
     """Write a commit_cleanup artifact to the workspace."""
-    raw_actions = cast("list[dict[str, str]]", content["actions"])
+    raw_actions = content["actions"]
     actions = [
         (action["action"], action.get("path", action.get("pattern", "")))
         for action in raw_actions
@@ -314,10 +313,7 @@ def test_pipeline_cleanup_to_commit_end_to_end(
             )
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
-        commit_event_for = cast(
-            "Callable[[str], PipelineEvent] | None",
-            getattr(invoker, "commit_event_for", None),
-        )
+        commit_event_for = getattr(invoker, "commit_event_for", None),
         if commit_event_for is not None:
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
@@ -506,10 +502,7 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
             )
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
-        commit_event_for = cast(
-            "Callable[[str], PipelineEvent] | None",
-            getattr(invoker, "commit_event_for", None),
-        )
+        commit_event_for = getattr(invoker, "commit_event_for", None),
         if commit_event_for is not None:
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS

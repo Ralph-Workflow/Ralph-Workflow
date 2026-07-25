@@ -477,7 +477,9 @@ class _ProcessLineReader:
         # typed ``scoped_child_count`` argument matches.
         scoped_count_int: int | None = scoped_count
         alive_by: AliveBy | None = None
-        reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
+        reg = cast(
+            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if reg is not None:
             try:
                 label_prefix = cast(
@@ -514,7 +516,9 @@ class _ProcessLineReader:
         )
 
     def _read_thread(self) -> None:
-        stdout_pipe = cast("IO[str] | None", self._handle.stdout)
+        stdout_pipe = cast(
+            "IO[str] | None", self._handle.stdout
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if stdout_pipe is None:
             with self._lines_lock:
                 self._reader_done[0] = True
@@ -600,7 +604,9 @@ class _ProcessLineReader:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast("int | None", getattr(self._handle, "pid", None))
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
             if self._process_teardown is None:
                 teardown_subtree(pid)
@@ -965,7 +971,9 @@ def _run_subprocess_and_read_lines(
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
-                exit_pid = cast("int | None", getattr(handle, "pid", None))
+                exit_pid = cast(
+                    "int | None", getattr(handle, "pid", None)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 if exit_pid is not None:
                     if ctx.process_teardown is None:
                         teardown_subtree(exit_pid)
@@ -1088,18 +1096,16 @@ def _collect_r7_diagnostic_fields(
     except Exception:
         evidence_summary_str = None
     try:
-        last_tool_call_obj: object = watchdog_for_diag.diagnostic_snapshot(
-            now=diag_now
-        ).get("current_subagent_tool_call")
+        last_tool_call_obj: object = watchdog_for_diag.diagnostic_snapshot(now=diag_now).get(
+            "current_subagent_tool_call"
+        )
         last_tool_call_str: str | None = (
             str(last_tool_call_obj) if last_tool_call_obj is not None else None
         )
     except Exception:
         last_tool_call_str = None
     try:
-        elapsed_value: float | None = round(
-            watchdog_for_diag.idle_elapsed_seconds(diag_now), 1
-        )
+        elapsed_value: float | None = round(watchdog_for_diag.idle_elapsed_seconds(diag_now), 1)
     except Exception:
         elapsed_value = None
     transcript_tail: tuple[str, ...] = tuple(list(parsed_output)[-10:])

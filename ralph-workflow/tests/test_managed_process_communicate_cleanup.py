@@ -7,8 +7,7 @@ import itertools
 import subprocess
 import sys
 import threading
-import typing
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -80,7 +79,7 @@ def _make_handle(
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=returncode),
-        psutil=cast("typing.Any", fake_psutil),
+        psutil=fake_psutil,
     )
     return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
 
@@ -385,7 +384,7 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=lambda command, opts: StreamingFakePopen(),
-        psutil=cast("typing.Any", fake_psutil),
+        psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
 
@@ -560,7 +559,7 @@ class _CountingTreeProcess(TreeProcess):
     """A :class:`TreeProcess` that records every recursive-tree scan."""
 
     def __init__(self, pid: int, scans: list[str], **kwargs: object) -> None:
-        super().__init__(pid, **cast("typing.Any", kwargs))
+        super().__init__(pid, **kwargs)
         self._scans = scans
 
     def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
