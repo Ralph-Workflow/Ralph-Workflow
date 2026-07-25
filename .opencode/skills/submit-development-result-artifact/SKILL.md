@@ -1,6 +1,6 @@
 ---
 name: submit-development-result-artifact
-description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact with ID-based proof entries in Plan Items Proven and Analysis Items Addressed, or when a completed result was rejected for a missing section or an unproven plan or analysis item
+description: Use when submitting a development_result artifact as markdown via ralph_submit_md_artifact with ID-based proof entries in Plan Items Proven and Analysis Items Addressed, or when a partial result was rejected for missing Next Steps or Continuation
 version: 2.1.0
 ---
 
@@ -22,20 +22,13 @@ Frontmatter: `type: development_result` and exactly one closed-vocabulary
 status: `completed` or `partial`. Any other status is invalid and must be
 repaired before submission.
 
-The section rules below apply to `status: completed` only. A
-`status: partial` document is free-form below the frontmatter: no
-section is required or shaped, and no proof is demanded. Write whatever
-best hands your unfinished work to the next iteration — `## Summary`,
-`## Next Steps` and `## Continuation` (your session ID) are read when
-present and are the most useful things to include.
-
-| Section | Required (`completed`) | Items |
+| Section | Required | Items |
 |---|---|---|
 | `## Summary` | yes | exactly 1 |
 | `## Files Changed` | yes | 1+ (one file per item) |
 | `## Plan Items Proven` | no | one per plan step proven |
-| `## Next Steps` | no | exactly 1 |
-| `## Continuation` | no | exactly 1: the prior session ID |
+| `## Next Steps` | only for `partial` | exactly 1 |
+| `## Continuation` | only for `partial` | exactly 1: the prior session ID |
 | `## Analysis Items Addressed` | no | one per analysis fix addressed |
 
 ## ID-Based Proof References
@@ -54,11 +47,9 @@ Copy the IDs from the source artifact — do not invent or renumber them.
 
 ## Core Flow
 
-1. Write the document. For `completed`, every section rule and every
-   plan/analysis proof above is enforced. For `partial`, nothing below
-   the frontmatter is enforced — still lead with what you did, what
-   remains (`## Next Steps`) and your session ID (`## Continuation`) so
-   the next iteration can resume.
+1. Write the document. For `partial`, include both `## Next Steps` and
+   `## Continuation` — the canonical validator rejects a partial result
+   without them.
 2. Optionally `ralph_verify_md_artifact`, then
    `ralph_submit_md_artifact({"artifact_type": "development_result", "content": ...})`.
 
@@ -91,9 +82,9 @@ status: completed
 
 ## Error Recovery
 
-- `completed development_result artifacts require summary` (or
-  `... require files_changed`) — fill the missing section, or change
-  `status` to `partial` if the work is not actually done.
+- `partial development_result artifacts require next_steps` (or
+  `... require continuation`) — add the missing single-item section, or
+  change `status` to `completed` if the work is truly done.
 - `Summary must contain exactly one item` / `Next Steps must contain
   exactly one item` / `Continuation must contain exactly one item` —
   these sections are single-item; merge extra items into one line.
