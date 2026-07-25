@@ -24,6 +24,8 @@ The prior plan was rejected by planning analysis.
 Treat the planning-analysis feedback as a starting point, not as the full list of issues.
 The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
 
+{% include 'shared/_planning_thinking.j2' %}
+
 ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
@@ -56,6 +58,7 @@ Your job is to revise the existing plan, not start from a blank slate unless the
 Every analyzer issue must map to concrete revised sections or an explicit verified reason that a section truly remains valid unchanged. Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
 
 Build a closure ledger before submitting the revised plan. At minimum, account for: (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent. Before revising any section, classify the feedback scope as one of:
+
 - local_section
 - cross_section
 - repo_wide
@@ -91,6 +94,7 @@ Do not write `.agent/artifacts/plan.md` directly — the submit and finalize too
 ## REVISION REQUIREMENTS
 
 Your revised plan must remain executor-ready for unattended development. The updated artifact must:
+
 - add any implied core workflow, prerequisite action, or verification coverage that your own analysis finds is required for the product outcome to count as working
 - keep concrete ordered steps, critical files, risks, and exact verification commands
 - eliminate vague or unverifiable instructions
@@ -103,33 +107,27 @@ If the feedback says verification is weak, replace vague checks with exact comma
 If the feedback says the structure is unsound, revise the affected sections systematically rather than patching around the problem.
 Do not make transient .agent handoff files part of the revised plan's execution inputs unless the original request is explicitly about Ralph Workflow's own planning or artifact plumbing.
 
-{% include 'shared/_plan_quality_rubric.j2' %}
-
-Before submitting the revised plan, perform this self-audit:
-- Continuation gate: this continuation exists because the prior planning pass failed. If your runtime provides a subagent mechanism, you MUST run the pre-finalize review fan-out (## PLANNING WITH SUBAGENTS) as a hard stop against ## PLAN QUALITY RUBRIC and this self-audit. Until a subagent review reports no remaining rubric-grounded findings, you MUST NOT submit the revised plan artifact.
-- Closure beyond the citations: every currently known analyzer finding is fully resolved (no partial fixes), and the revised plan closes every additional repo-grounded issue you found during replanning, not just the initially cited sections. Before submitting, proactively search for any additional repo-grounded failure the next planning-analysis pass could still raise against the ORIGINAL REQUEST, current repo state, or surfaced verification output — and close it in this pass
-- Issue-to-section mapping: every analyzer issue is tied to concrete revised sections or to an explicit verified reason that no section change was necessary
-- Closure ledger complete: you have accounted for analyzer-cited issues, the adjacent or implied issues your own analysis discovered, the revised sections that close them, and any dependent sections that had to move with them
-- Prompt coverage: every repository-wide requirement from the ORIGINAL REQUEST is represented
-- Executor readiness: a weaker unattended agent can execute immediately without mid-flight replanning
-- Gap analysis and consistency: summary, scope, steps, critical files, risks, and verification agree with no downstream replanning gaps
-- Repository accuracy: referenced files, paths, tools, commands, and named patterns are real
-- Risk coverage: concrete risks, mitigations, and edge cases are represented
-- Verification breadth: the checks prove the plan's biggest claims, not just a safe subset
-- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant
-- Maintainability and handoff quality: the plan stays concise, non-redundant, and explicit for development handoff
-- Scope derivation: when the task is repo-wide, implementation scope comes from an explicit repo-wide discovery step rather than a guessed subsystem
-- Rule-category inventory: when the ORIGINAL REQUEST imposes repo-wide structural rules, the revised plan inventories every relevant rule category rather than only the first surfaced example
-
-Do not submit a plan that still has any known unresolved analyzer finding, even if some sections improved. If any criterion above is unmet, you are not done — fix or rewrite the plan before submitting.
-
-When a section does not need changes, leave it alone only after verifying that it does not support any remaining analyzer-surfaceable defect.
-When a section does need changes, rewrite it completely enough that the submitted plan stands on its own without the rejected version.
-
 Submission recap:
 - Targeted edits: {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} → {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} → {{GET_MD_DRAFT_TOOL_REFERENCE}} → {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
 - Holistic rewrite: {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} then {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document).
 
 After a valid submission or finalization receipt, call
-{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action when
-available. Do not emit prose after that call.
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
+Do not emit prose after that call.
+
+Do not submit a plan that still has any known unresolved analyzer finding; every analyzer-cited issue must be closed or explicitly addressed in the revised document. Before submitting, proactively search for any additional repo-grounded failure the analyzer could surface next, and revise the document until every such defect is closed.
+
+## SELF-AUDIT
+
+Before submitting the revised plan, perform this self-audit:
+
+- Product criteria compliance: every ORIGINAL REQUEST requirement maps to a concrete step or verification
+- Executor readiness: ordered, literally executable steps; precise targets; no hidden prerequisites or executor research burden
+- Gap analysis and consistency: no missing implementation, migration, cleanup, or verification work; no contradictions between sections
+- Repository accuracy: every referenced file, pattern, command, and integration point is real in the current repository
+- Risk coverage: concrete risks, mitigations, and edge cases are represented
+- Verification quality: exact commands with expected outcomes, covering the plan's biggest claims rather than a safe subset
+- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant
+- Maintainability and handoff quality: the plan stays concise, non-redundant, and explicit for development handoff
+- Parallel execution (agent-driven): any Work Units / Subplans are phrased for the executing agent's sub-agents, not as Ralph-managed fan-out instructions
+- Scope derivation: when the task is repo-wide, implementation scope comes from an explicit repo-wide discovery step rather than a guessed subsystem

@@ -60,6 +60,8 @@ def test_markdown_artifact_handlers_verify_and_submit_through_the_same_gate(tmp_
         "artifact_type": "product_spec",
         "valid": True,
         "diagnostics": [],
+        "counts": {"error": 0, "info": 0, "warning": 0},
+        "overridden": [],
     }
     assert _payload(submitted) == _payload(verified)
 

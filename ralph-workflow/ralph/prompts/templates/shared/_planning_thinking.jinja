@@ -1,0 +1,121 @@
+## How to think about this plan
+
+Before you draft a step, answer four questions in your own head — not as headings
+in the plan itself, but as the framing that drives every section that follows:
+
+1. **What outcome does the user need?** The success state is observable, not a
+   feeling: a passing test, a deployed endpoint, a reproducible CLI behavior,
+   a file in a known path, an inspector-checkable artifact. If you cannot
+   name what someone will see when this plan is done, you do not yet have a
+   plan; you have an intention.
+2. **What does the repository look like today?** Inspect it. Run a directory
+   tree, read the file the request references, open the test file the
+   request implies. The executor will not re-derive what you already saw;
+   anything you assert without verifying is a guess the executor will inherit.
+3. **What risks or coordination costs will the executor hit?** Missing
+   dependencies, hidden shared state, vague test names, brittle verification
+   commands, schema migrations, parallel-edit races. Each risk wants a
+   mitigation in the plan — not a paragraph of fear, but a concrete action
+   the executor takes to stay safe.
+4. **How will anyone know it worked?** The proof has to be runnable or
+   inspectable in the same session the executor runs in. "Code is clean" or
+   "works correctly" is not proof; the plan must name the exact command,
+   expected output, or specific file/artifact the analysis phase will read.
+
+If you cannot answer these four questions for any part of the request, the
+plan needs a discovery step before the implementation step. Discovery steps
+are not optional polish; they are the parts that keep the plan honest.
+
+## Required phase coverage
+
+Every plan — even an "easy" or "obvious" one — covers four phases, in order:
+
+1. **Orient.** Read the user's prompt, the repository, the existing tests,
+   and any code paths the request implies. State what you learned in the
+   `Intent:` paragraph of `## Summary`.
+2. **Characterize current behavior.** Capture the state the executor will
+   change: a failing test, a missing file, an undocumented behavior, a
+   benchmark number. Characterization is mandatory even when the change
+   seems obvious — the analysis phase uses your characterization to decide
+   whether the change actually moved the world. Do not skip this phase for
+   "easy" tasks; the easy-looking ones are where characterization drifts
+   the most.
+3. **Change.** Make the concrete edits in dependency order, with files,
+   targets, and the smallest artifact-level proof at each step.
+4. **Verify.** Run the focused suites, integration tests, smoke checks, or
+   build commands that prove the change. Pair each `Verify:` with a specific
+   `Expect:` result, or name a specific `Evidence:` / `Location:` artifact.
+
+A plan that omits characterization will bounce at analysis, even when the
+implementation step is correct. A plan that runs no verification step will
+bounce at analysis, even when the implementation step is correct.
+
+## Concreteness calibration
+
+Concrete is good on the things the executor can verify on the spot:
+
+- **Outcome**: a single, observable success state.
+- **Files**: real paths under the repository root, with real `modify` /
+  `create` / `inspect` / `coordinate` actions.
+- **Checks**: real commands that exist in this repository, real test names,
+  real paths to inspect. `pytest tests/x.py -q`, `mypy ralph/foo.py`,
+  `grep -r foo ralph/`, `cat reports/api-proof.json | jq .status`.
+- **Risks**: real failure modes, not generic ones. Each risk names the
+  specific command or check the executor runs to detect it.
+
+Honest unknowns become discovery steps, not invented facts. If you have not
+verified a path, pattern, dependency, or verification command, do not present
+it as settled; add a discovery step that inspects it before the step that
+depends on it. Pretending you verified something you did not is the most
+common way plans silently fail at execution.
+
+## Document contract — floor, not form
+
+The plan grammar lives in `.agent/artifact-formats/plan.md`. The hard
+anchors are: `type: plan` frontmatter, at least one unique `### [S-n] Title`
+step block (unless `noop: true`), resolvable `Depends on:` references, and
+non-cyclic dependency graphs. Everything else — Summary, Scope, Skills MCP,
+Critical Files, Risks, Verification — is recommended when it helps the
+executor, optional when the work is small enough to skip without losing
+clarity. Radically different headings are valid when the consumed anchors
+parse.
+
+Validation findings split into three severities:
+
+- **error** — a pipeline-consumed anchor is broken. Each error names the
+  consumer that cannot proceed (development_result proof cross-references,
+  fan-out dispatch, bounded-exec safety, noop routing, the spec registry).
+- **warning** — a shape or meaning check the validator predicts will cost
+  the run something (a missing `Files:`, a vague `Verify:`, an unpaired
+  `Expect:`). Warnings do not block submission; the analysis phase owns the
+  substance check.
+- **info** — an observation worth a second look. Stale overrides surface
+  here so suppressions that no longer suppress anything are flagged.
+
+You can override any non-error finding by recording a reason under
+`## Validation Overrides` (one `- [RULE-ID] reason` line per override;
+optional `Where: <section>` label narrows the match). Overrides and their
+reasons are returned in tool results and persist with the plan. Overriding
+an error is a `PLAN026` warning; the error still blocks.
+
+## Submission mechanics
+
+Author the document, validate it with
+{{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`,
+`content` = the document), repair every diagnostic — each names the line,
+section, rule, and what to fix — in one repair pass, then submit with
+{{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. For a
+targeted step change, stage the complete plan first with
+{{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`,
+`content` = the complete document, `mode="replace_all"`), then call
+{{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against the persisted plan draft with
+`action` and `step_id` only. `replacement` is required for `insert` and `replace`; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument`. Inspect the saved draft
+with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize the edited draft with
+{{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
+IDs are stable and never renumbered.
+
+The submit/finalize tools are the only valid paths to write
+`.agent/artifacts/plan.md`; do not write the file directly. A valid receipt
+is mandatory. After that receipt exists, call
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action;
+do not emit prose after that call.

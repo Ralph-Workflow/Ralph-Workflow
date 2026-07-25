@@ -157,6 +157,31 @@ def _consume_field_line(
     return None
 
 
+# Exact consumed-field labels under ## Work Units / ## Parallel Plan. Every
+# other label falls back to prose. The fan-out parser in
+# ralph/pipeline/work_units.py reads these names verbatim, so a misspelled
+# label there drops the unit's directory set without warning.
+_FAN_OUT_KNOWN_FIELDS = ("Directories", "Paths", "Depends on")
+_FAN_OUT_CONSUMER = (
+    "blocking because the worker fan-out in ralph/pipeline/work_units.py parses "
+    "this field verbatim to scope edits and dispatch units"
+)
+
+
+def _is_fan_out_consumed_field(name: str) -> bool:
+    lowered = name.strip().casefold()
+    return lowered in {"directories", "paths", "depends on"}
+
+
+def _is_fan_out_section(section: str) -> bool:
+    return section in {"Work Units", "Parallel Plan"}
+
+
+def _fan_out_field_message(context: str, message: str) -> str:
+    """Append the fan-out consumer phrase to a consumed-field diagnostic."""
+    return f"{message}; {_FAN_OUT_CONSUMER}; resolve by fixing the field shape"
+
+
 def _malformed_field(
     result: ParsedFields,
     line: ParsedLine,
@@ -165,14 +190,31 @@ def _malformed_field(
     prose_allowed: bool,
     diagnostics: list[Diagnostic],
 ) -> None:
-    """Report a malformed known-label line; tolerant contexts keep it as prose."""
-    if prose_allowed:
+    """Report a malformed known-label line; tolerant contexts keep it as prose.
+
+    Fan-out sections (``## Work Units`` / ``## Parallel Plan``) treat every
+    field-shaped line as consumed structure: missing-value, duplicate, or
+    bullet-as-scalar diagnostics stay blocking and the message names the
+    fan-out consumer so the agent can see why the line is not "just prose".
+    """
+    is_fan_out = _is_fan_out_section(section)
+    if prose_allowed and not is_fan_out:
         result.prose.append(line)
         diagnostics.append(
             Diagnostic(line.line, section, "PLAN020", f"{message}; line treated as prose", "warning")
         )
+    elif prose_allowed and is_fan_out:
+        # Fan-out contexts: keep the line as prose but emit an ERROR with
+        # the consumer phrase so the work-unit graph cannot silently lose a
+        # directories / depends-on / paths value.
+        result.prose.append(line)
+        diagnostics.append(
+            Diagnostic(line.line, section, "PLAN020", _fan_out_field_message("", message), "error")
+        )
     else:
-        diagnostics.append(Diagnostic(line.line, section, "PLAN020", message))
+        diagnostics.append(
+            Diagnostic(line.line, section, "PLAN020", _fan_out_field_message("", message))
+        )
 
 
 def _consume_unlabeled(
@@ -202,7 +244,11 @@ def _consume_unlabeled(
                 line.line,
                 section,
                 "PLAN020",
-                f"{context}: lines must use one of the documented 'Field: value' labels",
+                _fan_out_field_message(
+                    context,
+                    "lines must use one of the documented 'Field: value' labels "
+                    f"({', '.join(_FAN_OUT_KNOWN_FIELDS)})",
+                ),
             )
         )
 

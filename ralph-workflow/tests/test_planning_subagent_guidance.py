@@ -4,6 +4,9 @@ The planning templates must tell the planning agent how to use its own
 subagents (discovery scouts, optional parallel section drafting, pre-finalize
 review fan-out) in addition to the executor-facing ``work_units`` guidance,
 and must surface the exact quality dimensions planning analysis judges on.
+
+The shared rubric lives in the planning-analysis prompt only; planning.jinja
+and planning_edit.jinja delegate to it via the thinking-first rewrite.
 """
 
 from pathlib import Path
@@ -158,23 +161,45 @@ class TestPlannerSubagentGuidance:
 
 
 class TestPlanQualityRubric:
-    """The planner sees the exact dimensions planning analysis judges on."""
+    """The shared rubric lives only in the planning-analysis prompt.
 
-    def test_planning_surfaces_rubric(self, tmp_path: Path) -> None:
+    planning.jinja and planning_edit.jinja delegate to it through the
+    thinking-first partial; the nine dimensions must still be reachable
+    from the analysis prompt verbatim.
+    """
+
+    def test_planning_surfaces_rubric_reference(self, tmp_path: Path) -> None:
+        """The planning prompt references the rubric but does not restate it.
+
+        The nine dimensions live in the planning_analysis.jinja prompt as
+        the single owned home. planning.jinja only references the rubric by
+        name (so subagents can find it) without restating the dimensions.
+        """
         prompt = _render(None, tmp_path)
-        assert RUBRIC_HEADING in prompt
-        _assert_hints(prompt, RUBRIC_DIMENSIONS)
+        # No restatement: the planning prompt mentions "PLAN QUALITY RUBRIC"
+        # only as a pointer to the analysis prompt, not as its own heading
+        # followed by the nine dimensions.
+        assert prompt.count("## PLAN QUALITY RUBRIC") <= 1  # at most a pointer line
+        for dimension in RUBRIC_DIMENSIONS:
+            # The dimension itself never appears as a labelled bullet in the
+            # planning prompt.
+            assert f"**{dimension}**" not in prompt, (
+                f"Planning prompt restates rubric dimension {dimension!r}; "
+                "the analysis prompt owns this content."
+            )
 
-    def test_planning_edit_surfaces_rubric(self, tmp_path: Path) -> None:
+    def test_planning_edit_surfaces_rubric_reference(self, tmp_path: Path) -> None:
         prompt = _render("planning_edit.jinja", tmp_path)
-        assert RUBRIC_HEADING in prompt
-        _assert_hints(prompt, RUBRIC_DIMENSIONS)
+        assert prompt.count("## PLAN QUALITY RUBRIC") <= 1
+        for dimension in RUBRIC_DIMENSIONS:
+            assert f"**{dimension}**" not in prompt
 
-    def test_rubric_dimensions_match_planning_analysis_checklist(self) -> None:
+    def test_planning_analysis_owns_rubric(self) -> None:
         """Every rubric dimension must exist verbatim in the analyzer template."""
         analysis_source = (packaged_template_root() / "planning_analysis.jinja").read_text(
             encoding="utf-8"
         )
+        assert RUBRIC_HEADING in analysis_source
         for dimension in RUBRIC_DIMENSIONS:
             assert dimension.upper() in analysis_source.upper(), (
                 f"Rubric dimension {dimension!r} is missing from "

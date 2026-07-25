@@ -116,16 +116,20 @@ def test_planning_prompt_recommends_verify_without_closing_step_types(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "PROMPT SCOPE CLASSIFICATION" in rendered
-    assert "## Step type and target guidance" in rendered
-    assert "For test-running steps, prefer `Type: verify`" in rendered
-    assert "Project-specific `Type:` values are accepted and preserved verbatim" in rendered
+    # The thinking-first rewrite keeps the type-vocabulary guidance short:
+    # recommend `Type: verify` for test-running steps without coercing
+    # project-specific types into a closed set.
+    assert "Type: verify" in rendered
+    assert "preserved verbatim" in rendered
     assert "Do NOT use `Type: test`" not in rendered
 
 
-def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None:
-    """The planning.jinja template has the '## Plan-artifact scope (planner-meta-task)'
-    callout with the four sub-task bullets and the four worked examples.
+def test_planning_prompt_drops_bloated_subagent_sections(tmp_path: Path) -> None:
+    """The thinking-first rewrite removes the four-worked-example bucket.
+
+    The plan artifact scope callout, the rubric include, and the worked
+    example document are all gone from planning.jinja; the format doc
+    carries them once instead.
     """
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the work")
@@ -142,23 +146,36 @@ def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None
     )
 
     rendered = workspace.read(prompt_path)
-    assert "Plan-artifact scope (planner-meta-task)" in rendered
-    # The four sub-task bullets
-    for sub_task in (
-        "Plan-artifact grammar",
-        "Planning prompt",
-        "Planning MCP tools",
-        "Planning audit checks",
+    assert "PROMPT SCOPE CLASSIFICATION" not in rendered
+    assert "Plan-artifact scope (planner-meta-task)" not in rendered
+    # planning.jinja may reference the rubric by name so subagents know
+    # where to find it, but it must not restate the nine dimensions.
+    assert "## Worked plan example" not in rendered
+    assert "## Step type and target guidance" not in rendered
+    for dimension in (
+        "Product Criteria Compliance",
+        "Executor Readiness",
+        "Gap Analysis and Consistency",
+        "Repository Accuracy",
+        "Risk Coverage",
+        "Verification Quality",
+        "Parallelization Safety",
+        "Maintainability of the Plan",
+        "Parallel Execution (Agent-Driven)",
     ):
-        assert sub_task in rendered, f"Missing sub-task bullet: {sub_task!r}"
-    # The four worked examples
+        assert f"**{dimension}**" not in rendered, (
+            f"Planning prompt restates rubric dimension {dimension!r}; "
+            "the analysis prompt owns this content."
+        )
+    # The four worked-example sub-tasks the previous prompt restated must
+    # not be inlined into planning.jinja anymore.
     for example in (
         "add a labeled field to `## Design`",
         "document planning quality guidance in the format doc",
         "rewrite the planning prompt to be more universal",
         "add an audit check for plan-field drift",
     ):
-        assert example in rendered, f"Missing worked example: {example!r}"
+        assert example not in rendered, f"Worked example leaked back: {example!r}"
 
 
 def test_planning_analysis_prompt_mentions_markdown_step_edit_remediation_flow(

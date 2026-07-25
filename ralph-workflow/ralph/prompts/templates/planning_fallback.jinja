@@ -28,22 +28,20 @@ Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
 
 {{PROMPT}}
 
+{% include 'shared/_planning_thinking.j2' %}
+
 {% if HAS_DOCS_MCP %}
 Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for library/API research during planning.
 {% else %}
 Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
 {% endif %}
 
-Before committing to a path, pattern, dependency, or command, inspect it with
-non-mutating tools. If it is not verified, add an explicit discovery step.
-When subagents are available, fan out read-only discovery and independent
-review; otherwise perform those checks sequentially.
-
-Produce an executor-grade plan: concrete scope, task-relevant skills, ordered
-steps, critical files, risks, acceptance criteria when useful, and exact
-verification commands with expected outcomes. Do not say "follow the existing
-pattern" without naming its verified reference, or "run tests" without the
-exact command.
+When subagents are available, fan out read-only discovery scouts and one
+reviewer per analysis dimension (see the rubric owned by the analysis
+prompt); otherwise run the same checks sequentially. Agent-managed
+sub-agents dispatch the plan's `## Work Units` / `## Parallel Plan` /
+execution Subplans at execution time — Ralph-managed worker fan-out is
+dormant in the bundled default.
 
 Choose the executor-facing shape by delegation size:
 
@@ -56,120 +54,52 @@ Choose the executor-facing shape by delegation size:
   execution Subplans, then uses an ordinary `## Integration and Verification`
   section for main-session integration and verification.
 
-Every acceptance criterion and verification step must be evaluatable: pair a
-concrete `Verify:` command with a specific `Expect:` result, or name a specific
-`Evidence:` / `Location:` artifact. Main-session fan-in steps must retain their
-global `S-n` IDs so the final result can prove them.
-
-For a non-trivial `## Design`, cover Design Constraints, Non-Goals,
-Dependency Injection, Drift Detection, Testability, Refactor Strategy, and
-Acceptance Criteria; omit empty ceremony when a subsection adds no decision.
+Agent-managed sub-agents return implementation and proof to the main
+execution session; Ralph-managed worker fan-out is dormant in the bundled
+default. If the user's request targets Ralph Workflow's own planning
+internals and is not a concrete bug report with a reproduction, plan against
+`ralph/...` paths in this repository; otherwise plan against the user's
+project.
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
 ## Plan artifact contract
 
-The complete grammar and limits live in
-`.agent/artifact-formats/plan.md`.
+The complete grammar, severity model, and `## Validation Overrides` ledger
+live in `.agent/artifact-formats/plan.md`.
 
 Submit one native-markdown document:
 
 1. Use `type: plan` frontmatter. Write context as prose and structured values
-   as labeled fields. Those conventional sections are recommended, not
-   required grammar; unfamiliar headings remain valid. The hard anchors are
-   `type: plan`, unique `### [S-n]` steps, and valid consumed references.
-   An exact, case-sensitive `## Work Units` or `## Parallel Plan` heading opts
-   into fail-closed unit-marker parsing; use arbitrary headings for descriptive
-   prose.
-2. Write each step as a complete `### [S-n] Title` block with description
-   prose and fields such as `Type:`, `Files:`, `Depends on:`, and `Verify:`.
-   IDs are stable and never renumbered.
-   Prefer the built-in `file_change`, `action`, `research`, and `verify` types
-   when they fit. Project-specific `Type:` values are accepted and preserved
-   verbatim; file and critical-file actions are free-form too.
+   as labeled fields. The hard anchors are `type: plan`, unique `### [S-n]`
+   steps, and resolvable consumed references. An exact, case-sensitive
+   `## Work Units` or `## Parallel Plan` heading opts into fail-closed
+   unit-marker parsing; use arbitrary headings for descriptive prose.
+2. Write each step as a complete `### [S-n] Title` block (for example
+   `### [S-1] Title`) with description prose and fields such as `Type:`,
+   `Files:`, `Depends on:`, and `Verify:`. IDs are stable and never
+   renumbered. Recommended built-in `Type:` values
+   are `file_change`, `action`, `research`, and `verify`; project-specific
+   `Type:` values are accepted and preserved verbatim. Pair every `Verify:`
+   with a specific `Expect:` result or name a specific `Evidence:` /
+   `Location:` artifact.
 3. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}
    (`artifact_type="plan"`, `content` = the document), then repair every
-   line/section/rule diagnostic.
+   line/section/rule diagnostic. Override any advisory finding by recording
+   a reason under `## Validation Overrides`; errors cannot be overridden.
 4. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same arguments).
 5. For a targeted step change, stage the complete plan first with
    {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` =
    the complete document, `mode="replace_all"`). Then call
    {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} with `action` and `step_id` only.
-   `replacement` is required for `insert` and `replace`; `index` is required for `move`
-   and optional for a positioned `insert`; `content` is not an accepted argument.
-   The editor saves the draft. Inspect it with
+   `replacement` is required for `insert` and `replace`; `index` is required
+   for `move` and optional for a positioned `insert`; `content` is not an
+   accepted argument. The editor saves the draft. Inspect it with
    {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize it with
    {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
 6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
    {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
    {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.
-7. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
-   After that receipt exists, you MUST call
+7. A valid artifact receipt—or a validated, promoted fallback receipt—is
+   mandatory. After that receipt exists, you MUST call
    {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
-
-Worked example:
-
-```markdown
----
-type: plan
----
-## Summary
-foo() crashes on out-of-range indexes.
-
-Intent: Clamp indexes without changing the public signature.
-Coverage: bugfix, test
-
-## Scope
-- [SC-1] Add a failing regression test
-  Category: test
-- [SC-2] Clamp indexes in src/foo.py
-  Category: bugfix
-- [SC-3] Run focused verification
-  Category: test
-
-## Skills MCP
-Skills: test-driven-development, systematic-debugging
-
-## Steps
-
-### [S-1] Add the regression test
-Add test_clamp_out_of_range before changing production code.
-
-Type: file_change
-Files:
-- modify tests/test_foo.py
-
-### [S-2] Clamp the index
-Clamp negative and oversized indexes while preserving foo()'s signature.
-
-Type: file_change
-Files:
-- modify src/foo.py
-Depends on: S-1
-
-### [S-3] Run the focused suite
-Prove the regression is fixed.
-
-Type: verify
-Depends on: S-2
-Verify: pytest tests/test_foo.py -q
-Expect: test_clamp_out_of_range passes with exit code 0
-
-## Critical Files
-- [CF-1] src/foo.py
-  Action: modify
-- [CF-2] tests/test_foo.py
-  Action: modify
-
-## Risks
-- [R-1] Clamping could mask a caller bug
-  Mitigation: Assert the exact boundary result.
-
-## Verification
-- [V-1] pytest tests/test_foo.py -q
-  Expect: test_clamp_out_of_range passes
-  Timeout: 60
-```
-
-FINAL ACTIONS: validate, submit or finalize, wait for the valid receipt, then
-call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the mandatory final explicit action.

@@ -39,11 +39,13 @@ Consumed-structure map (what stays strict vs. what is descriptive):
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._fields import FieldKind, ParsedFields, parse_fields
+from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
 from ralph.mcp.artifacts.markdown._references import (
     validate_acyclic_dependencies,
     validate_references,
@@ -53,6 +55,8 @@ from ralph.mcp.artifacts.markdown._spec import (
     Content,
     MdArtifactSpec,
     SectionRule,
+    _normalizer_diagnostic,
+    _validate_structure,
 )
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.markdown.specs._plan_design import design_content
@@ -74,6 +78,7 @@ from ralph.mcp.artifacts.markdown.specs._plan_steps import (
 from ralph.mcp.artifacts.markdown.specs._plan_subplans import subplan_units_content
 from ralph.mcp.artifacts.markdown.specs._plan_work_units import attach_owned_step_ids
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_TYPE, normalize_plan_artifact_content
+from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -173,6 +178,73 @@ def _verification_items(document: ParsedDocument) -> list[ParsedItem]:
     ]
 
 
+# Consumer phrases reused by error-severity diagnostic messages so the
+# blocking rationale is unambiguous. Pipeline consumers in scope:
+#
+# - _DEVELOPMENT_RESULT_PROOF_CONSUMER: development_result "Plan Items
+#   Proven" cross-references step numbers; consumers in
+#   ralph/phases/execution.py.
+# - _FAN_OUT_CONSUMER: worker fan-out parses ## Work Units / ## Parallel
+#   Plan IDs in ralph/pipeline/work_units.py and ralph/pipeline/fan_out.py.
+# - _NOOP_ROUTING_CONSUMER: ralph/phases/analysis.py reads 'noop: true' to
+#   short-circuit the planning pipeline.
+# - _BOUNDED_EXEC_SAFETY_CONSUMER: a shell invocation prefix bypasses the
+#   bounded-exec safety policy enforced by every subprocess call site.
+# - _SPEC_REGISTRY_CONSUMER: ralph/mcp/artifacts/markdown/registry.py routes
+#   the parsed 'type: plan' value to the plan validator; an unknown type
+#   means no validator is invoked.
+# - _PYDANTIC_SCHEMA_CONSUMER: ralph/mcp/artifacts/plan/_validation.py
+#   enforces pydantic field schemas on the canonical plan content dict.
+_DEVELOPMENT_RESULT_PROOF_CONSUMER = (
+    "blocking because the development_result 'Plan Items Proven' proof in "
+    "ralph/phases/execution.py cross-references step numbers"
+)
+_FAN_OUT_CONSUMER = (
+    "blocking because the worker fan-out in ralph/pipeline/work_units.py "
+    "(and ralph/pipeline/fan_out.py) parses ## Work Units / ## Parallel "
+    "Plan IDs to scope edits and dispatch units"
+)
+_NOOP_ROUTING_CONSUMER = (
+    "blocking because ralph/phases/analysis.py reads 'noop: true' to "
+    "short-circuit the planning pipeline"
+)
+_BOUNDED_EXEC_SAFETY_CONSUMER = (
+    "blocking because the bounded-exec safety policy forbids shell "
+    "interpreter invocations (subprocess.run is invoked without shell=True)"
+)
+_SPEC_REGISTRY_CONSUMER = (
+    "blocking because the artifact spec registry "
+    "(ralph/mcp/artifacts/markdown/registry.py) routes the parsed "
+    "'type' value to the plan validator; an unknown type means no validator "
+    "is invoked and the artifact is not canonical"
+)
+_PYDANTIC_SCHEMA_CONSUMER = (
+    "blocking because ralph/mcp/artifacts/plan/_validation.py enforces "
+    "pydantic field schemas on the canonical plan content dict; an invalid "
+    "value prevents normalize_plan_artifact_content from returning"
+)
+_OVERRIDE_LEDGER_CONSUMER = (
+    "blocking because ## Validation Overrides is consumed by the validator's "
+    "override ledger; each '- [RULE-ID] reason' entry partitions a matching "
+    "advisory diagnostic into the 'overridden' list returned in tool results"
+)
+
+
+def _consumer_rule_message(rule_id: str, what: str, fix: str, consumer: str) -> str:
+    """Compose a blocking-severity diagnostic that names its downstream consumer.
+
+    The order is deliberate and load-bearing for the message-convention
+    fixture test: agents read the diagnostic in linear order (what →
+    consumer → fix) and any rewording must preserve all three parts.
+    """
+    return f"{what}; {consumer}; resolve by {fix}"
+
+
+def _advisory_message(rule_id: str, what: str, cost: str, fix: str) -> str:
+    """Compose an advisory-severity diagnostic that names the run cost."""
+    return f"{what}; the run cost is {cost}; resolve by {fix}"
+
+
 def _fan_out_unit_items(
     document: ParsedDocument,
     name: str,
@@ -187,7 +259,12 @@ def _fan_out_unit_items(
                     line.line,
                     name,
                     "PLAN024",
-                    f"{name} content must use a '- [unit-ID] description' stable-ID item",
+                    _consumer_rule_message(
+                        "PLAN024",
+                        f"{name} content must use a '- [unit-ID] description' stable-ID item",
+                        "rewriting the line as '- [unit-id] description'",
+                        _FAN_OUT_CONSUMER,
+                    ),
                 )
                 for line in section.lines
             ]
@@ -199,7 +276,12 @@ def _fan_out_unit_items(
                     section.line,
                     name,
                     "PLAN024",
-                    f"{name} must declare at least one stable-ID unit item",
+                    _consumer_rule_message(
+                        "PLAN024",
+                        f"{name} must declare at least one stable-ID unit item",
+                        "adding at least one '- [unit-id] description' item",
+                        _FAN_OUT_CONSUMER,
+                    ),
                 )
             )
         unit_items.extend(section_units)
@@ -423,7 +505,13 @@ def _check_step_contract(
                 line,
                 "Steps",
                 "PLAN010",
-                f"{context} is a file_change step and must declare at least one 'Files:' target",
+                _advisory_message(
+                    "PLAN010",
+                    f"{context} is a file_change step and does not declare any 'Files:' target",
+                    "the executor will not know which file to edit and the step will stall",
+                    "adding at least one 'Files:' entry (modify / create / inspect / coordinate)",
+                ),
+                "warning",
             )
         )
     if effective == "verify" and "verify_command" not in step and "location" not in step:
@@ -432,7 +520,13 @@ def _check_step_contract(
                 line,
                 "Steps",
                 "PLAN011",
-                f"{context} is a verify step and must declare 'Verify:' or 'Location:'",
+                _advisory_message(
+                    "PLAN011",
+                    f"{context} is a verify step and does not declare 'Verify:' or 'Location:'",
+                    "the analysis phase cannot prove completion of this step",
+                    "adding either 'Verify: <concrete command>' or 'Location: <file/artifact>'",
+                ),
+                "warning",
             )
         )
     verify = step.get("verify_command")
@@ -444,7 +538,13 @@ def _check_step_contract(
                     line,
                     "Steps",
                     "PLAN020",
-                    f"{context} verification must not invoke a shell interpreter directly",
+                    _consumer_rule_message(
+                        "PLAN020",
+                        f"{context} verification must not invoke a shell interpreter directly",
+                        "rewriting the command as a direct executable path "
+                        "(e.g. 'pytest tests/x.py -q' instead of 'bash -c ...')",
+                        _BOUNDED_EXEC_SAFETY_CONSUMER,
+                    ),
                 )
             )
         elif not is_concrete_command(verify):
@@ -453,7 +553,14 @@ def _check_step_contract(
                     line,
                     "Steps",
                     "PLAN020",
-                    f"{context} needs a concrete direct 'Verify:' command",
+                    _advisory_message(
+                        "PLAN020",
+                        f"{context} declares a 'Verify:' command but it is not concrete",
+                        "the analysis phase cannot run it as-is and may bounce the plan",
+                        "rewriting the command with a real executable and target "
+                        "(e.g. 'pytest tests/x.py -q' not 'run the tests')",
+                    ),
+                    "warning",
                 )
             )
         if not isinstance(expected, str) or not is_specific_expected_output(expected):
@@ -462,7 +569,15 @@ def _check_step_contract(
                     line,
                     "Steps",
                     "PLAN020",
-                    f"{context} must pair 'Verify:' with a specific 'Expect:' output",
+                    _advisory_message(
+                        "PLAN020",
+                        f"{context} pairs 'Verify:' with a vague or missing 'Expect:'",
+                        "the executor cannot tell success from a hung run without a "
+                        "specific expected output",
+                        "adding an 'Expect: <observable result>' line that names what "
+                        "the command is supposed to print or exit-code",
+                    ),
+                    "warning",
                 )
             )
     location = step.get("location")
@@ -472,7 +587,14 @@ def _check_step_contract(
                 line,
                 "Steps",
                 "PLAN020",
-                f"{context} needs a specific file/artifact in 'Location:'",
+                _advisory_message(
+                    "PLAN020",
+                    f"{context} has 'Location:' but the value is not a specific file/artifact",
+                    "the analysis phase cannot inspect the path to prove completion",
+                    "rewriting 'Location:' with a concrete relative path "
+                    "(e.g. 'reports/api-proof.json' not 'the report')",
+                ),
+                "warning",
             )
         )
 
@@ -585,7 +707,15 @@ def _acceptance_criteria_content(
                         verify.line,
                         "Acceptance Criteria",
                         "PLAN020",
-                        f"criterion {item.identifier!r} needs a concrete command",
+                        _advisory_message(
+                            "PLAN020",
+                            f"criterion {item.identifier!r} declares a 'Verify:' command "
+                            "but it is not concrete",
+                            "the analysis phase cannot run it as-is and may bounce the plan",
+                            "rewriting the command with a real executable and target "
+                            "(e.g. 'pytest tests/x.py -q' not 'run the tests')",
+                        ),
+                        "warning",
                     )
                 )
             if expected_text is None or not is_specific_expected_output(expected_text):
@@ -594,8 +724,16 @@ def _acceptance_criteria_content(
                         verify.line if expect is None else expect.line,
                         "Acceptance Criteria",
                         "PLAN020",
-                        f"criterion {item.identifier!r} must pair 'Verify:' with "
-                        "a specific 'Expect:' output",
+                        _advisory_message(
+                            "PLAN020",
+                            f"criterion {item.identifier!r} pairs 'Verify:' with a "
+                            "vague or missing 'Expect:'",
+                            "the analysis phase cannot tell success from a hung run "
+                            "without a specific expected output",
+                            "adding 'Expect: <observable result>' that names what the "
+                            "command is supposed to print or exit-code",
+                        ),
+                        "warning",
                     )
                 )
         elif expect is not None:
@@ -604,7 +742,13 @@ def _acceptance_criteria_content(
                     expect.line,
                     "Acceptance Criteria",
                     "PLAN020",
-                    f"criterion {item.identifier!r} has 'Expect:' without 'Verify:'",
+                    _advisory_message(
+                        "PLAN020",
+                        f"criterion {item.identifier!r} has 'Expect:' without 'Verify:'",
+                        "an outcome without a command is unevaluatable",
+                        "adding 'Verify: <concrete command>' or removing the 'Expect:' line",
+                    ),
+                    "warning",
                 )
             )
         evidence = fields.scalars.get("evidence")
@@ -616,7 +760,15 @@ def _acceptance_criteria_content(
                         evidence.line,
                         "Acceptance Criteria",
                         "PLAN020",
-                        f"criterion {item.identifier!r} needs a concrete file/artifact",
+                        _advisory_message(
+                            "PLAN020",
+                            f"criterion {item.identifier!r} has 'Evidence:' but the value "
+                            "is not a specific file/artifact",
+                            "the analysis phase cannot inspect the path to prove completion",
+                            "rewriting 'Evidence:' with a concrete relative path "
+                            "(e.g. 'reports/api-proof.json' not 'the report')",
+                        ),
+                        "warning",
                     )
                 )
         if verify is None and evidence is None:
@@ -625,8 +777,15 @@ def _acceptance_criteria_content(
                     item.line,
                     "Acceptance Criteria",
                     "PLAN020",
-                    f"criterion {item.identifier!r} must declare an evaluatable "
-                    "'Verify:' command or specific 'Evidence:' file/artifact",
+                    _advisory_message(
+                        "PLAN020",
+                        f"criterion {item.identifier!r} has no 'Verify:' command and no "
+                        "specific 'Evidence:' file/artifact",
+                        "the analysis phase cannot prove the criterion is satisfied",
+                        "adding either 'Verify: <concrete command>' with 'Expect:' or "
+                        "'Evidence: <concrete file/artifact>'",
+                    ),
+                    "warning",
                 )
             )
         criteria.append(criterion)
@@ -660,7 +819,14 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
                     item.line,
                     "Verification",
                     "PLAN020",
-                    f"verification item {item.identifier!r} must declare an 'Expect:' field",
+                    _advisory_message(
+                        "PLAN020",
+                        f"verification item {item.identifier!r} does not declare an 'Expect:' field",
+                        "the analysis phase cannot tell whether the verification passed",
+                        "adding 'Expect: <observable result>' that names what the method "
+                        "is supposed to print or exit-code",
+                    ),
+                    "warning",
                 )
             )
         else:
@@ -671,7 +837,13 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
                         item.line,
                         "Verification",
                         "PLAN020",
-                        "verification method must not invoke a shell interpreter directly",
+                        _consumer_rule_message(
+                            "PLAN020",
+                            "verification method must not invoke a shell interpreter directly",
+                            "rewriting the method as a direct executable path "
+                            "(e.g. 'pytest tests/x.py -q' instead of 'bash -c ...')",
+                            _BOUNDED_EXEC_SAFETY_CONSUMER,
+                        ),
                     )
                 )
             elif not is_concrete_verification(item.text, expect.text):
@@ -680,8 +852,15 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
                         expect.line,
                         "Verification",
                         "PLAN020",
-                        f"verification item {item.identifier!r} needs a concrete "
-                        "command or file/artifact inspection and expected result",
+                        _advisory_message(
+                            "PLAN020",
+                            f"verification item {item.identifier!r} is not a concrete command "
+                            "or file/artifact inspection and expected result",
+                            "the analysis phase cannot run it as-is and may bounce the plan",
+                            "rewriting the method with a real executable and target "
+                            "(e.g. 'pytest tests/x.py -q' not 'run the tests')",
+                        ),
+                        "warning",
                     )
                 )
         timeout = fields.scalars.get("timeout")
@@ -694,7 +873,14 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
                         timeout.line,
                         "Verification",
                         "PLAN020",
-                        "field 'Timeout' must be an integer number of seconds",
+                        _advisory_message(
+                            "PLAN020",
+                            "field 'Timeout' is not an integer number of seconds",
+                            "the runtime cannot bound the verification and the executor "
+                            "may hang without a usable timeout",
+                            "rewriting 'Timeout:' with an integer number of seconds",
+                        ),
+                        "warning",
                     )
                 )
         cwd = fields.scalars.get("cwd")
@@ -817,7 +1003,15 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
     if type_value != PLAN_ARTIFACT_TYPE:
         diagnostics.append(
             Diagnostic(
-                document.frontmatter_lines.get("type", 1), None, "PLAN020", "type must be 'plan'"
+                document.frontmatter_lines.get("type", 1),
+                None,
+                "PLAN020",
+                _consumer_rule_message(
+                    "PLAN020",
+                    f"frontmatter 'type' must be 'plan' (got {type_value!r})",
+                    "rewriting the frontmatter 'type:' field to the literal value 'plan'",
+                    _SPEC_REGISTRY_CONSUMER,
+                ),
             )
         )
     numbers = step_number_map(document, diagnostics)
@@ -834,8 +1028,13 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
                 1,
                 None,
                 "PLAN022",
-                "plan must contain at least one '### [S-n] Title' step block "
-                "(in any section) unless it is a 'noop: true' plan",
+                _consumer_rule_message(
+                    "PLAN022",
+                    "plan must contain at least one '### [S-n] Title' step block",
+                    "adding at least one '### [S-n] Title' step block in any section, or "
+                    "marking the plan as 'noop: true' in the frontmatter",
+                    _DEVELOPMENT_RESULT_PROOF_CONSUMER,
+                ),
             )
         )
     content: Content = {"steps": steps}
@@ -864,7 +1063,12 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
                     document.frontmatter_lines.get("schema_version", 1),
                     None,
                     "PLAN020",
-                    "schema_version must be an integer",
+                    _consumer_rule_message(
+                        "PLAN020",
+                        "frontmatter 'schema_version' must be an integer",
+                        "rewriting 'schema_version:' with an integer value (e.g. '1')",
+                        _PYDANTIC_SCHEMA_CONSUMER,
+                    ),
                 )
             )
     constraints = _constraints_content(document, diagnostics)
@@ -902,6 +1106,307 @@ def _document_warnings(document: ParsedDocument) -> list[Diagnostic]:
     return [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
 
 
+def analyze_plan_document(
+    text: str,
+) -> tuple[Content, list[Diagnostic], list[_OverrideMatch]]:
+    """Parse and analyze a plan markdown document, returning the override ledger.
+
+    Companion to :func:`parse_and_validate` that also surfaces the validation
+    override ledger. Tool handlers that need ``counts`` and ``overridden`` in
+    the response payload use this entry point. The diagnostic list reflects
+    post-override state: matched advisory diagnostics are removed and the
+    recorded reason appears in ``overridden`` instead. Stale and error-targeted
+    overrides are surfaced back into the diagnostic list as PLAN025/PLAN026.
+    """
+    document, _ = parse_markdown_document(text, allow_nested_headings=PLAN_SPEC.allow_nested_headings)
+    diagnostics, overridden, minimal_content = _collect_diagnostics_with_overrides(document)
+    content: Content
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        content = {}
+    elif minimal_content is not None:
+        # The minimal variant (e.g. noop: true with no sections) already
+        # returned a valid canonical payload; use it instead of running the
+        # full mapper, which would raise PLAN022 for a step-less document.
+        content = minimal_content
+    else:
+        try:
+            content = PLAN_SPEC.to_content(document)
+            content = PLAN_SPEC.normalize_content(content)
+        except MarkdownArtifactError as exc:
+            for diagnostic in exc.diagnostics:
+                if diagnostic not in diagnostics:
+                    diagnostics.append(diagnostic)
+            content = {}
+        except PlanArtifactValidationError as exc:
+            # Canonical pydantic validation rejects the mapped content even
+            # though the markdown side has no blocking diagnostic. Surface it
+            # as a SPEC010 error so the tool payload reflects the failure.
+            diagnostics.append(_normalizer_diagnostic(document, str(exc)))
+            content = {}
+    return content, diagnostics, overridden
+
+
+def _collect_diagnostics_with_overrides(
+    document: ParsedDocument,
+) -> tuple[list[Diagnostic], list[_OverrideMatch], Content | None]:
+    """Collect all plan-spec diagnostics, apply the override ledger, and return both.
+
+    Re-runs the same diagnostic surface :func:`parse_and_validate` collects
+    (structure validation + ``_analyze``) so callers see the same finding list
+    regardless of which entry point they use. Errors are critical for the
+    override ledger because an override targeting an error rule must be
+    flagged as PLAN026, not PLAN025, so we cannot use the warnings-only
+    helper ``_document_warnings`` here. The returned ``minimal_content`` is
+    the canonical payload from the minimal variant (e.g. ``{"noop": True}``)
+    when it produced a valid one; callers use it instead of running the
+    full mapper, which would raise PLAN022 for a step-less document.
+    """
+    diagnostics: list[Diagnostic] = []
+    minimal_content: Content | None = None
+    if PLAN_SPEC.minimal_variant is not None:
+        minimal_content, variant_diagnostics = PLAN_SPEC.minimal_variant(document)
+        diagnostics.extend(variant_diagnostics)
+    diagnostics.extend(
+        _validate_structure(
+            document,
+            document_text_for_validation(document),
+            PLAN_SPEC,
+            require_sections=minimal_content is None,
+        )
+    )
+    if (
+        minimal_content is None
+        and not any(diagnostic.severity == "error" for diagnostic in diagnostics)
+    ):
+        # _analyze emits errors and warnings together; we need both for the
+        # override ledger's error-vs-stale distinction.
+        _content, analyze_diagnostics = _analyze(document)
+        diagnostics.extend(analyze_diagnostics)
+    overridden, _stale = _apply_validation_overrides(document, diagnostics)
+    return diagnostics, overridden, minimal_content
+
+
+def document_text_for_validation(document: ParsedDocument) -> str:
+    """Source text representation suitable for re-running structure validation.
+
+    Used by :func:`_collect_diagnostics_with_overrides` to mirror the size
+    limit and frontmatter checks ``parse_and_validate`` performs. The parsed
+    frontmatter is sufficient for the structural checks we need.
+    """
+    return _reconstructed_text(document)
+
+
+def _reconstructed_text(document: ParsedDocument) -> str:
+    """Render a minimal text representation of the document for size validation."""
+    parts: list[str] = []
+    if document.frontmatter:
+        parts.append("---")
+        for key, value in document.frontmatter.items():
+            parts.append(f"{key}: {value}")
+        parts.append("---")
+    return "\n".join(parts)
+
+
+# Result of the override ledger applied to collected diagnostics. Both lists
+# are produced by ``_apply_validation_overrides``; ``overridden`` carries the
+# diagnostic plus the recorded reason; ``stale`` carries the override items
+# whose rule (and optional section) matched no diagnostic in this document.
+@dataclass(frozen=True)
+class _OverrideMatch:
+    """One recorded override paired with the diagnostic it suppressed."""
+
+    rule_id: str
+    section: str | None
+    reason: str
+    diagnostic: Diagnostic
+
+
+@dataclass(frozen=True)
+class _OverrideOutcome:
+    """The full override-ledger result, split by what it consumed."""
+
+    overridden: tuple[_OverrideMatch, ...]
+    stale: tuple[tuple[str, str | None, str], ...]
+
+
+_OVERRIDE_ITEM_PATTERN = re.compile(
+    r"^\s*-\s*\[(?P<rule>[A-Z][A-Z0-9_-]*)\]"
+    r"(?:\s+Where:\s*(?P<section>[^\s\[][^\[]*?))?"
+    r"\s+(?P<reason>\S.*)$"
+)
+
+
+def _parse_override_items(
+    document: ParsedDocument, diagnostics: list[Diagnostic]
+) -> list[tuple[str, str | None, str]]:
+    """Parse the ``## Validation Overrides`` section, fail closed on bad prose.
+
+    The shared parser extracts the ``[RULE-ID]`` prefix as the item
+    identifier and leaves only the post-ID prose in ``item.text``. We
+    reconstruct the canonical ``- [RULE-ID] reason`` form here so the
+    override grammar can match it.
+    """
+    entries: list[tuple[str, str | None, str]] = []
+    for section in document.sections_named("Validation Overrides"):
+        if section.lines:
+            diagnostics.append(
+                Diagnostic(
+                    section.line,
+                    "Validation Overrides",
+                    "PLAN025",
+                    _consumer_rule_message(
+                        "PLAN025",
+                        "## Validation Overrides allows only '- [RULE-ID] reason' list items",
+                        "rewriting the section so every line is '- [RULE-ID] reason' with "
+                        "an optional 'Where: <section>' label narrowing the match",
+                        _OVERRIDE_LEDGER_CONSUMER,
+                    ),
+                )
+            )
+        for item in section.items:
+            full_text = f"- [{item.identifier}] {item.text}"
+            match = _OVERRIDE_ITEM_PATTERN.match(full_text)
+            if match is None:
+                diagnostics.append(
+                    Diagnostic(
+                        item.line,
+                        "Validation Overrides",
+                        "PLAN025",
+                        _consumer_rule_message(
+                            "PLAN025",
+                            f"override item must be '- [RULE-ID] reason' "
+                            f"(optionally 'Where: <section>'); got {full_text!r}",
+                            "rewriting the line as '- [RULE-ID] reason' with an "
+                            "optional 'Where: <section>' label",
+                            _OVERRIDE_LEDGER_CONSUMER,
+                        ),
+                    )
+                )
+                continue
+            entries.append(
+                (
+                    cast("str", match.group("rule")),
+                    cast("str", match.group("section")).strip()
+                    if match.group("section")
+                    else None,
+                    cast("str", match.group("reason")).strip(),
+                )
+            )
+    return entries
+
+
+# Branch count exceeds the global 14-cap because each override
+# classification (matched, error-targeted, stale) needs a distinct
+# branch; splitting the function across helpers would scatter a single
+# ledger design into 4-5 helpers with worse readability. The complexity
+# is bounded by the ``entries`` list length and is exercised fully by
+# ``tests/mcp/test_md_plan_advisory.py``.
+# ruff: noqa: PLR0912
+def _apply_validation_overrides(
+    document: ParsedDocument,
+    diagnostics: list[Diagnostic],
+) -> tuple[list[_OverrideMatch], list[tuple[str, str | None, str]]]:
+    """Move matched non-error diagnostics into an ``overridden`` list and flag stale entries.
+
+    Errors are never overridable; an override targeting a rule that fired
+    only as error stays visible as PLAN026. Overrides with no matching
+    diagnostic surface as PLAN025 info.
+    """
+    entries = _parse_override_items(document, diagnostics)
+    if not entries:
+        return [], []
+    overridden: list[_OverrideMatch] = []
+    used_entries: set[int] = set()
+    seen_rule_errors: dict[str, list[Diagnostic]] = {}
+    for diagnostic in diagnostics:
+        if diagnostic.severity == "error":
+            seen_rule_errors.setdefault(diagnostic.rule_id, []).append(diagnostic)
+    # Track which diagnostics get consumed by an override so we can remove
+    # them from the diagnostic list (they live in ``overridden`` instead).
+    consumed_diagnostics: list[Diagnostic] = []
+    for index, (rule_id, section, reason) in enumerate(entries):
+        if seen_rule_errors.get(rule_id):
+            # Errors are never overridable; PLAN026 is emitted below for
+            # every override that targets an error rule.
+            continue
+        matches: list[Diagnostic] = []
+        for diagnostic in diagnostics:
+            if diagnostic.severity == "error":
+                continue
+            if diagnostic.rule_id != rule_id:
+                continue
+            if section is not None and diagnostic.section != section:
+                continue
+            matches.append(diagnostic)
+        if not matches:
+            continue
+        for matched in matches:
+            overridden.append(
+                _OverrideMatch(
+                    rule_id=rule_id,
+                    section=section,
+                    reason=reason,
+                    diagnostic=matched,
+                )
+            )
+            consumed_diagnostics.append(matched)
+        used_entries.add(index)
+    if consumed_diagnostics:
+        # Remove the suppressed diagnostics from the list callers see, so a
+        # PLAN010 warning with a recorded override does not also surface as
+        # a live warning in the tool payload.
+        diagnostics[:] = [
+            diagnostic
+            for diagnostic in diagnostics
+            if diagnostic not in consumed_diagnostics
+        ]
+    for index, (rule_id, section, _reason) in enumerate(entries):
+        if index in used_entries:
+            continue
+        if seen_rule_errors.get(rule_id):
+            target_section = (
+                seen_rule_errors[rule_id][0].section if seen_rule_errors[rule_id] else None
+            )
+            diagnostics.append(
+                Diagnostic(
+                    1,
+                    target_section,
+                    "PLAN026",
+                    _consumer_rule_message(
+                        "PLAN026",
+                        f"override targets {rule_id!r}, which fired as an error "
+                        "(errors are not overridable)",
+                        "fixing the underlying error or removing this override entry",
+                        _OVERRIDE_LEDGER_CONSUMER,
+                    ),
+                    "warning",
+                )
+            )
+        else:
+            diagnostics.append(
+                Diagnostic(
+                    1,
+                    section,
+                    "PLAN025",
+                    _consumer_rule_message(
+                        "PLAN025",
+                        f"override targets {rule_id!r} but no diagnostic with that "
+                        "rule_id (and matching section) fired in this document",
+                        "removing the stale override entry or aligning it with a rule "
+                        "that actually fired",
+                        _OVERRIDE_LEDGER_CONSUMER,
+                    ),
+                    "info",
+                )
+            )
+    stale: list[tuple[str, str | None, str]] = [
+        entry
+        for index, entry in enumerate(entries)
+        if index not in used_entries and not seen_rule_errors.get(entry[0])
+    ]
+    return overridden, stale
+
+
 def _minimal_noop_variant(
     document: ParsedDocument,
 ) -> tuple[Content | None, list[Diagnostic]]:
@@ -909,9 +1414,20 @@ def _minimal_noop_variant(
     if value is None:
         return None, []
     if value != "true":
-        message = "frontmatter 'noop' must be 'true' when present"
+        message = _consumer_rule_message(
+            "PLAN023",
+            "frontmatter 'noop' must be the literal value 'true' when present",
+            "setting 'noop: true' (or removing the field for an active plan)",
+            _NOOP_ROUTING_CONSUMER,
+        )
     elif document.frontmatter != {"type": "plan", "noop": "true"} or document.sections:
-        message = "a no-op plan must contain exactly 'type: plan' and 'noop: true' with no sections"
+        message = _consumer_rule_message(
+            "PLAN023",
+            "a no-op plan must contain exactly 'type: plan' and 'noop: true' with no sections",
+            "removing every section and any extra frontmatter so the no-op payload is exactly "
+            "{'type: plan', 'noop: true'}",
+            _NOOP_ROUTING_CONSUMER,
+        )
     else:
         return {"noop": True}, []
     return None, [Diagnostic(document.frontmatter_lines["noop"], None, "PLAN023", message)]
@@ -968,4 +1484,4 @@ PLAN_SPEC = MdArtifactSpec(
 
 register_spec(PLAN_SPEC)
 
-__all__ = ["PLAN_SPEC", "edit_plan_step_markdown"]
+__all__ = ["PLAN_SPEC", "analyze_plan_document", "edit_plan_step_markdown"]

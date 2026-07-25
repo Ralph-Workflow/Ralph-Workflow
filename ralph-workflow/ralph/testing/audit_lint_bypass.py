@@ -160,6 +160,13 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # early-skip block AND the WARNING block; the AST walk is inherently
     # branchy and refactoring it would obscure the placement check.
     ("audit_skill_auto_commit", "PLR0912"),
+    # plan.py: _apply_validation_overrides classifies each ledger entry into
+    # matched / error-targeted / stale in a single pass; the branch count
+    # exceeds the 14-cap because the classification is data-driven and the
+    # alternatives (one helper per classification) scatter a single ledger
+    # design across 4-5 helpers with worse readability. Locked by
+    # tests/mcp/test_md_plan_advisory.py.
+    ("plan", "PLR0912"),
     # wt-034 indexed-exploration: scoped_auto_commit.py wraps its
     # GitPython import (git.Repo / GitCommandError /
     # InvalidGitRepositoryError) inside a try/except so a non-git

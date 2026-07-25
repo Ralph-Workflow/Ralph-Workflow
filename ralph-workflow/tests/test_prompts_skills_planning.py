@@ -40,19 +40,23 @@ DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK = (
 
 DESIGN_SECTION_HINTS = (
     "## Plan-artifact canonical contract",
+    # The thinking-first rewrite collapses the separate Design-section prose
+    # into a one-paragraph canonical-contract pointer; the rendered text
+    # refers to it as `` `## Design` section `` to match the markdown
+    # heading exactly, so the rendered prompt carries ``Design section``
+    # only after stripping the backticks.  Accept either phrasing.
     "Design section",
     ".agent/artifact-formats/plan.md",
 )
 
 
 DESIGN_SECTION_HINTS_FALLBACK = (
-    "Design Constraints",
-    "Non-Goals",
-    "Dependency Injection",
-    "Drift Detection",
-    "Testability",
-    "Refactor Strategy",
-    "Acceptance Criteria",
+    # The fallback prompt is condensed for non-brokered runtimes; the
+    # expanded Design-section vocabulary lives in the format doc and the
+    # canonical planning prompt, not in the fallback. We pin only the
+    # marker that the fallback still owns the design contract reference.
+    "## Plan artifact contract",
+    ".agent/artifact-formats/plan.md",
 )
 
 _PLANNING_FALLBACK_TEMPLATE = (
@@ -98,7 +102,16 @@ def _assert_shipped_skills_discovery(prompt: str) -> None:
 
 def _assert_design_section_hints(prompt: str) -> None:
     for hint in DESIGN_SECTION_HINTS:
-        assert hint in prompt, f"Missing design-section hint: {hint}"
+        # ``## Design`` is rendered as a literal markdown heading, so the
+        # string appears as `` `## Design` section `` with backticks around
+        # the heading; allow either ``Design section`` (normalized) or the
+        # rendered ``## Design` section`` form.
+        if hint == "Design section":
+            assert (
+                "Design section" in prompt or "## Design` section" in prompt
+            ), f"Missing design-section hint: {hint}"
+        else:
+            assert hint in prompt, f"Missing design-section hint: {hint}"
 
 
 def _assert_design_section_hints_fallback(prompt: str) -> None:
@@ -167,8 +180,7 @@ class TestPlanningTemplatesShippedSkills:
             "substantial execution-subagent mini-plan",
             "four or five independent execution Subplans",
             "main-session integration and verification",
-            "Every acceptance criterion and verification step must be evaluatable",
-            "Project-specific `Type:` values are accepted and preserved verbatim",
+            "project-specific `Type:` values are accepted and preserved verbatim",
         ):
             assert phrase in normalized
         assert "normalize to `action`" not in source

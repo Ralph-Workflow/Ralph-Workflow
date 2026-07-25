@@ -82,6 +82,12 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # -- would force the audit to walk more than one file and
         # obscure the per-entry reasoning.
         "ralph/testing/_repo_structure_allowlists.py",
+        # wt-044: the plan spec owns the validator's contract (severity
+        # model, override ledger, fan-out markers, Work Units grammar,
+        # pydantic content mapping) in one place so cross-section
+        # invariants stay consistent. Splitting the file would scatter
+        # the contract across modules with no testable boundary.
+        "ralph/mcp/artifacts/markdown/specs/plan.py",
     }
 )
 
@@ -998,5 +1004,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # consults the live lock holder before allowing reclaim (A9/A10/E9).
         ("ralph/pipeline/auto_integrate_recovery.py", 198),
         ("ralph/pipeline/auto_integrate_recovery.py", 352),
+        # wt-044: _check_pyproject_config branches on each ruff config key
+        # the lint-bypass audit detects; collapsing the branches would
+        # duplicate the violation-builder call site in every arm.
+        ("ralph/testing/audit_lint_bypass.py", 505),
     }
 )

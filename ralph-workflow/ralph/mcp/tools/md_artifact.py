@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
-from ralph.mcp.artifacts.markdown.specs.plan import edit_plan_step_markdown
+from ralph.mcp.artifacts.markdown.specs.plan import (
+    _OverrideMatch,
+    analyze_plan_document,
+    edit_plan_step_markdown,
+)
 from ralph.mcp.artifacts.md_draft_io import (
     delete_md_draft,
     load_md_draft,
@@ -49,8 +52,8 @@ def handle_verify_md_artifact(
     """Check a markdown artifact without writing it."""
     require_capability(session, _PLAN_READ_CAPABILITY, "Markdown artifact verification")
     artifact_type, content = _params(params)
-    _, diagnostics = parse_and_validate(content, get_spec(artifact_type))
-    return _validation_result(artifact_type, diagnostics)
+    diagnostics, overridden = _validate_with_overrides(artifact_type, content)
+    return _validation_result(artifact_type, diagnostics, overridden)
 
 
 def handle_submit_md_artifact(
@@ -63,8 +66,8 @@ def handle_submit_md_artifact(
     """Validate and canonically persist a markdown artifact atomically."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown artifact submission")
     artifact_type, content = _params(params)
-    parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
-    result = _validation_result(artifact_type, diagnostics)
+    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
@@ -164,8 +167,8 @@ def handle_finalize_md_artifact(
             f"no staged draft for {artifact_type!r}; stage content first "
             "or submit the complete document directly"
         )
-    parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
-    result = _validation_result(artifact_type, diagnostics)
+    parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
+    result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
@@ -279,7 +282,7 @@ def _draft_status_result(
     passes ``exists`` and gets the full draft back for resumption.
     """
     document, _ = parse_markdown_document(draft)
-    _, diagnostics = parse_and_validate(draft, get_spec(artifact_type))
+    diagnostics, overridden = _validate_with_overrides(artifact_type, draft)
     payload: dict[str, object] = {"artifact_type": artifact_type}
     if exists is not None:
         payload["exists"] = exists
@@ -288,24 +291,115 @@ def _draft_status_result(
         draft_chars=len(draft),
         sections=[section.name for section in document.sections],
         valid=not any(item.severity == "error" for item in diagnostics),
-        diagnostics=[cast("dict[str, object]", asdict(item)) for item in diagnostics],
+        diagnostics=[_diagnostic_payload(item) for item in diagnostics],
+        counts=_severity_counts(diagnostics),
+        overridden=[_override_payload(item) for item in overridden],
     )
     return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
 
 
-def _validation_result(artifact_type: str, diagnostics: list[Diagnostic]) -> ToolResult:
+def _validation_result(
+    artifact_type: str,
+    diagnostics: list[Diagnostic],
+    overridden: list[object] | None = None,
+) -> ToolResult:
     return ToolResult(
         content=[
             ToolContent.json_content(
                 {
                     "artifact_type": artifact_type,
                     "valid": not any(item.severity == "error" for item in diagnostics),
-                    "diagnostics": [cast("dict[str, object]", asdict(item)) for item in diagnostics],
+                    "diagnostics": [_diagnostic_payload(item) for item in diagnostics],
+                    "counts": _severity_counts(diagnostics),
+                    "overridden": [
+                        _override_payload(item)
+                        for item in (overridden or [])
+                    ],
                 }
             )
         ],
         is_error=any(item.severity == "error" for item in diagnostics),
     )
+
+
+def _validate_with_overrides(
+    artifact_type: str, content: str
+) -> tuple[list[Diagnostic], list[object]]:
+    """Return the diagnostics and override list for a draft, plan-aware.
+
+    For plan artifacts, ``analyze_plan_document`` applies the override ledger
+    and exposes the matched-overrides list. For other artifact types, no
+    overrides exist and the standard parse_and_validate diagnostics are
+    returned with an empty override list.
+    """
+    if artifact_type == "plan":
+        _, diagnostics, overridden = analyze_plan_document(content)
+        return diagnostics, list(overridden)
+    _, diagnostics = parse_and_validate(content, get_spec(artifact_type))
+    return diagnostics, []
+
+
+def _parse_with_overrides(
+    artifact_type: str, content: str
+) -> tuple[dict[str, object], list[Diagnostic], list[object]]:
+    """Return content, diagnostics, and overrides — plan-aware.
+
+    The content is the canonical mapping when validation passes; an empty
+    dict when the artifact fails validation. Tool callers use the same
+    shape whether they got the content from parse_and_validate (other
+    specs) or analyze_plan_document (plan).
+    """
+    if artifact_type == "plan":
+        parsed_content, diagnostics, overridden = analyze_plan_document(content)
+        return parsed_content, diagnostics, list(overridden)
+    parsed_content, diagnostics = parse_and_validate(content, get_spec(artifact_type))
+    return parsed_content, diagnostics, []
+
+
+def _severity_counts(diagnostics: list[Diagnostic]) -> dict[str, int]:
+    """Return per-severity counts so callers can see the warning/Info load at a glance."""
+    counts = {"error": 0, "warning": 0, "info": 0}
+    for diagnostic in diagnostics:
+        if diagnostic.severity in counts:
+            counts[diagnostic.severity] += 1
+    return counts
+
+
+def _diagnostic_payload(diagnostic: Diagnostic) -> dict[str, object]:
+    """Serialize one Diagnostic for the tool response with explicit field types.
+
+    Hand-built to avoid ``dataclasses.asdict``'s ``dict[str, Any]`` return
+    type colliding with the strict ``disallow_any_expr`` mypy policy; the
+    JSON contract is unchanged.
+    """
+    return {
+        "line": diagnostic.line,
+        "section": diagnostic.section,
+        "rule_id": diagnostic.rule_id,
+        "message": diagnostic.message,
+        "severity": diagnostic.severity,
+    }
+
+
+def _override_payload(match: object) -> dict[str, object]:
+    """Serialize an OverrideMatch dataclass for the tool response.
+
+    The tool layer accepts any object the plan validator's analyze entry point
+    produces; we narrow to the OverrideMatch shape via dataclass detection and
+    fall back to a minimal payload for unexpected objects so the tool never
+    raises a serialization error on the hot path.
+    """
+    if isinstance(match, _OverrideMatch):
+        diagnostic_dict: dict[str, object] = (
+            _diagnostic_payload(match.diagnostic) if match.diagnostic is not None else {}
+        )
+        return {
+            "rule_id": match.rule_id,
+            "section": match.section,
+            "reason": match.reason,
+            "diagnostic": diagnostic_dict,
+        }
+    return cast("dict[str, object]", match)
 
 
 __all__ = [

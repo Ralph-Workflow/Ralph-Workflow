@@ -223,12 +223,6 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     assert "ralph_verify_md_artifact" in prompt
     assert "ralph_edit_md_plan_step" in prompt
     assert PLANNING_FIRST_PASS_APPROVAL_TEXT in prompt
-    assert PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT in prompt
-    assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
-    assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
-    assert PLANNING_STABLE_ID_TEXT in prompt
-    assert PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT in prompt
-    assert PLANNING_RUBRIC_RISK_AUDIT_TEXT in prompt
     assert "## SHIPPED SKILLS" in prompt
     assert "skill discovery" in prompt
 

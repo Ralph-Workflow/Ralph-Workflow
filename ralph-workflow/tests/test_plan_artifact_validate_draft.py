@@ -49,6 +49,8 @@ def test_verify_complete_plan_is_valid_without_persisting_it(tmp_path: Path) -> 
         "artifact_type": "plan",
         "valid": True,
         "diagnostics": [],
+        "counts": {"error": 0, "info": 0, "warning": 0},
+        "overridden": [],
     }
     assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 

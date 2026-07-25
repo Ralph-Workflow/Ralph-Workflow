@@ -148,7 +148,7 @@ noop: {value}
     assert any(
         diagnostic.rule_id == "PLAN023"
         and diagnostic.line == 3
-        and "must be 'true'" in diagnostic.message
+        and "must be the literal value 'true'" in diagnostic.message
         for diagnostic in diagnostics
     )
 
@@ -333,7 +333,7 @@ def test_dependency_cycles_are_rejected() -> None:
     )
 
 
-def test_step_type_contracts_hard_fail_with_step_anchored_diagnostics() -> None:
+def test_step_type_contracts_advisely_emit_step_anchored_diagnostics() -> None:
     no_files = _plan_document().replace(
         "Files:\n- modify ralph/mcp/artifacts/markdown/specs/plan.py\n"
         "- create tests/mcp/test_md_plan_spec.py\n",
@@ -346,31 +346,42 @@ def test_step_type_contracts_hard_fail_with_step_anchored_diagnostics() -> None:
         "\n## Critical Files",
     )
 
-    _, files_diagnostics = parse_and_validate(no_files, PLAN_SPEC)
-    _, verify_diagnostics = parse_and_validate(no_verify, PLAN_SPEC)
+    _content_no_files, files_diagnostics = parse_and_validate(no_files, PLAN_SPEC)
+    _content_no_verify, verify_diagnostics = parse_and_validate(no_verify, PLAN_SPEC)
 
+    # PLAN010 / PLAN011 are advisory: warnings, not errors. The pydantic
+    # canonical model still rejects the missing target/command (SPEC010),
+    # but the markdown-side finding is no longer an error.
     assert any(
-        diagnostic.rule_id == "PLAN010" and diagnostic.section == "Steps" and "S-1" in diagnostic.message
+        diagnostic.rule_id == "PLAN010"
+        and diagnostic.severity == "warning"
+        and diagnostic.section == "Steps"
+        and "S-1" in diagnostic.message
         for diagnostic in files_diagnostics
     )
     assert any(
-        diagnostic.rule_id == "PLAN011" and diagnostic.section == "Steps" and "S-2" in diagnostic.message
+        diagnostic.rule_id == "PLAN011"
+        and diagnostic.severity == "warning"
+        and diagnostic.section == "Steps"
+        and "S-2" in diagnostic.message
         for diagnostic in verify_diagnostics
     )
 
 
-def test_only_consumed_verification_expectation_is_enforced_at_the_item_line() -> None:
+def test_only_consumed_verification_expectation_is_advisory_at_the_item_line() -> None:
     document = _plan_document().replace(
         "  Mitigation: Reuse the canonical plan normalizer on the mapped content.\n", ""
     ).replace("  Expect: focused tests pass\n", "")
 
-    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
-    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert {diagnostic.rule_id for diagnostic in errors} == {"PLAN020"}
-    assert {diagnostic.section for diagnostic in errors} == {"Verification"}
-    assert any("Expect" in diagnostic.message for diagnostic in errors)
+    # PLAN020 on the verification expectation gap is advisory; the canonical
+    # schema still raises SPEC010 because expected_outcome is required by
+    # VerificationStep, but the PLAN020 warning fires alongside it.
+    warnings = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
+    assert {diagnostic.rule_id for diagnostic in warnings} == {"PLAN020"}
+    assert {diagnostic.section for diagnostic in warnings} == {"Verification"}
+    assert any("Expect" in diagnostic.message for diagnostic in warnings)
 
 
 def test_malformed_and_duplicate_step_ids_are_rejected() -> None:
@@ -631,7 +642,7 @@ Files:
     assert [step["number"] for step in _steps(content)] == [7, 42]
 
 
-def test_acceptance_criterion_must_name_evaluatable_evidence_or_command() -> None:
+def test_acceptance_criterion_must_advisely_name_evaluatable_evidence_or_command() -> None:
     document = """---
 type: plan
 ---
@@ -646,9 +657,13 @@ Make the behavior observable.
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    # Missing Verify/Evidence is advisory (warning), not blocking: the plan
+    # still maps to canonical content and the analysis phase owns the
+    # substance check.
+    assert content != {}
     assert any(
         diagnostic.rule_id == "PLAN020"
+        and diagnostic.severity == "warning"
         and diagnostic.section == "Acceptance Criteria"
         and "Verify" in diagnostic.message
         and "Evidence" in diagnostic.message

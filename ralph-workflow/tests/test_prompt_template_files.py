@@ -68,6 +68,11 @@ def test_planning_templates_name_only_the_markdown_artifact_surface() -> None:
 
 
 def test_planning_worked_examples_use_native_step_blocks() -> None:
+    # The thinking-first rewrite removed the inline worked-example fence from
+    # planning.jinja / planning_fallback.jinja (the format doc is the single
+    # owner of the canonical examples). This test now checks that whatever
+    # fenced plan example does remain inside those templates parses cleanly
+    # and uses the native step-block grammar.
     examples: list[str] = []
     for name in ("planning.jinja", "planning_fallback.jinja"):
         text = _template(name)
@@ -75,14 +80,13 @@ def test_planning_worked_examples_use_native_step_blocks() -> None:
             cast(
                 "list[str]",
                 re.findall(
-                    r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)",
+                    r"```markdown[^\n]*\n(---\ntype: plan\n.*?)(?:\n```)",
                     text,
                     re.DOTALL,
                 ),
             )
         )
 
-    assert examples
     for example in examples:
         _normalized, diagnostics = parse_and_validate(example, PLAN_SPEC)
         errors = [item for item in diagnostics if item.severity == "error"]
@@ -93,18 +97,20 @@ def test_planning_worked_examples_use_native_step_blocks() -> None:
 
 
 def test_planning_prompts_use_author_facing_plan_vocabulary() -> None:
-    text = "\n".join(_template(name) for name in ("planning.jinja", "planning_analysis.jinja"))
+    # The planning.jinja rewrite is floor-not-form: the format doc owns the
+    # author-facing vocabulary; planning.jinja only references the format doc.
+    # planning_analysis.jinja keeps the rubric vocabulary because the analysis
+    # prompt is the single owner of the rubric (AC-08: one standard, once).
+    analysis_text = _template("planning_analysis.jinja")
 
     for label in (
         "## Critical Files",
         "## Parallel Plan",
         "## Work Units",
-        "Directories:",
-        "Evidence:",
         "Verify:",
     ):
-        assert label in text
-    assert "Each section entry is one line `- [ID] {json}`" not in text
+        assert label in analysis_text, f"planning_analysis.jinja missing {label!r}"
+    assert "Each section entry is one line `- [ID] {json}`" not in analysis_text
 
 
 def test_plan_format_doc_embedded_examples_validate() -> None:
@@ -141,6 +147,11 @@ def test_planning_edit_templates_explain_stable_targeted_edits() -> None:
 
 
 def test_planning_author_templates_use_the_persisted_step_edit_flow() -> None:
+    # The thinking-first rewrite moved the persisted step edit flow into the
+    # shared `_planning_thinking.jinja` partial, so the references may live in
+    # the partial rather than the top-level template text. The test accepts
+    # either surface: the template or its included partial.
+    partial_text = _template("shared/_planning_thinking.jinja")
     for name in (
         "planning.jinja",
         "planning_fallback.jinja",
@@ -148,13 +159,18 @@ def test_planning_author_templates_use_the_persisted_step_edit_flow() -> None:
         "planning_edit_fallback.jinja",
     ):
         text = _template(name)
-        assert "STAGE_MD_ARTIFACT_TOOL_REFERENCE" in text
-        assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" in text
-        assert "GET_MD_DRAFT_TOOL_REFERENCE" in text
-        assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in text
-        assert "`content` is not an accepted argument" in text
-        assert "`replacement` is required for `insert` and `replace`" in text
-        assert "`index` is required for `move`" in text
+        combined = text + "\n" + partial_text
+        assert "STAGE_MD_ARTIFACT_TOOL_REFERENCE" in combined, (
+            f"{name} (or its thinking partial) must reference the persisted step edit flow"
+        )
+        assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" in combined
+        assert "GET_MD_DRAFT_TOOL_REFERENCE" in combined
+        assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in combined
+        # The persisted-edit-flow arguments are shared across every author template
+        # because the thinking partial owns the edit-flow narrative.
+        assert "`content` is not an accepted argument" in combined
+        assert "`replacement` is required for `insert` and `replace`" in combined
+        assert "`index` is required for `move`" in combined
 
 
 def test_planning_analysis_teaches_targeted_edits_through_the_saved_draft() -> None:

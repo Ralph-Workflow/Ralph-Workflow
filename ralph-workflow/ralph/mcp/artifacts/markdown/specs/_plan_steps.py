@@ -16,6 +16,19 @@ if TYPE_CHECKING:
 PLAN_STEP_ID_PATTERN = re.compile(r"^S-(?P<number>[1-9][0-9]*)$")
 _MALFORMED_STEP_LIKE_ID_PATTERN = re.compile(r"^(?:S|STEP)-[A-Za-z0-9_-]*$", re.IGNORECASE)
 
+# Pipeline consumer phrase for step-ID and step-reference errors.
+# Kept in lockstep with ``specs/plan.py`` so every step-shape diagnostic
+# names the same downstream reader.
+_STEP_PROOF_CONSUMER = (
+    "blocking because the development_result 'Plan Items Proven' proof in "
+    "ralph/phases/execution.py cross-references step numbers from this plan"
+)
+
+
+def _consumer_rule_message(what: str, fix: str, consumer: str) -> str:
+    """Compose a blocking-severity diagnostic that names its downstream consumer."""
+    return f"{what}; {consumer}; resolve by {fix}"
+
 
 def step_number_map(
     document: ParsedDocument, diagnostics: list[Diagnostic]
@@ -32,8 +45,13 @@ def step_number_map(
                             block.line,
                             section.name,
                             "PLAN022",
-                            f"step ID {block.identifier!r} must use the "
-                            "S-<positive-number> form",
+                            _consumer_rule_message(
+                                f"step ID {block.identifier!r} must use the "
+                                "S-<positive-number> form",
+                                "rewriting the heading to '### [S-<positive-number>] Title' "
+                                "(e.g. '### [S-1] Title')",
+                                _STEP_PROOF_CONSUMER,
+                            ),
                         )
                     )
                 continue
@@ -43,8 +61,13 @@ def step_number_map(
                         block.line,
                         section.name,
                         "PLAN022",
-                        f"duplicate step ID {block.identifier!r}; "
-                        "step IDs are document-wide",
+                        _consumer_rule_message(
+                            f"duplicate step ID {block.identifier!r}",
+                            "renumbering the duplicated step with a new positive "
+                            "number and updating every 'Depends on:' / 'Satisfied by:' "
+                            "reference to the surviving step",
+                            _STEP_PROOF_CONSUMER,
+                        ),
                     )
                 )
                 continue
@@ -70,7 +93,12 @@ def resolve_step_references(
                     entry.line,
                     section,
                     "PLAN021",
-                    f"{context} references unknown step ID {entry.text!r}",
+                    _consumer_rule_message(
+                        f"{context} references unknown step ID {entry.text!r}",
+                        "renaming the reference to an existing '### [S-n]' heading or "
+                        "adding the missing step",
+                        _STEP_PROOF_CONSUMER,
+                    ),
                 )
             )
             continue

@@ -274,10 +274,13 @@ Type: action
     ],
     ids=["subjective-command", "outcome-as-command", "vague-evidence", "vague-outcome"],
 )
-def test_plan_grammar_regression_evaluatable_claims_must_be_concrete(
+def test_plan_grammar_regression_evaluatable_claims_advisory_must_be_concrete(
     criterion_field: str, verification_expect: str
 ) -> None:
-    """Regression for plan blocker 4: subjective proof text is not evaluatable."""
+    """PLAN020 is advisory: subjective proof text is a warning, not a blocker.
+
+    The analysis phase owns the substance check; the validator advises.
+    """
     document = _single_step_document() + f"""
 
 ## Acceptance Criteria
@@ -291,12 +294,13 @@ def test_plan_grammar_regression_evaluatable_claims_must_be_concrete(
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    # Content still maps; the vague-proof findings are warnings, not errors.
+    assert content != {}
+    warnings = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
     assert any(
         diagnostic.rule_id == "PLAN020"
         and "concrete" in diagnostic.message
-        and diagnostic.severity == "error"
-        for diagnostic in diagnostics
+        for diagnostic in warnings
     )
 
 
@@ -324,8 +328,12 @@ def test_plan_grammar_regression_concrete_commands_and_artifacts_remain_valid() 
     assert len(cast("list[object]", content["verification_strategy"])) == 2
 
 
-def test_semantic_verification_item_under_arbitrary_heading_rejects_vague_proof() -> None:
-    """A V-n proof item stays evaluatable without a conventional heading."""
+def test_semantic_verification_item_under_arbitrary_heading_advisories_vague_proof() -> None:
+    """A V-n proof item stays evaluatable without a conventional heading.
+
+    PLAN020 on the vague verification method is advisory: it warns, it does
+    not block. The analysis phase owns the substance check.
+    """
     document = """---
 type: plan
 ---
@@ -341,12 +349,14 @@ Implement bounded behavior.
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
+    warnings = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
     assert any(
         diagnostic.rule_id == "PLAN020"
+        and diagnostic.severity == "warning"
         and diagnostic.section == "Verification"
         and "concrete command or file/artifact inspection" in diagnostic.message
-        for diagnostic in diagnostics
+        for diagnostic in warnings
     )
 
 
