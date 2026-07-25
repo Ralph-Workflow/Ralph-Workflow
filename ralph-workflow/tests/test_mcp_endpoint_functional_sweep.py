@@ -34,7 +34,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pytest
 
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol._session_drain import SessionDrain
@@ -51,9 +53,6 @@ from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import RalphToolName
 from ralph.workspace.fs import FsWorkspace
 from tests._support.typed_accessors import must_dict_list, must_mapping, must_str_list
-
-if TYPE_CHECKING:
-    import pytest
 
 # Tools that hit the live network — exercised at the contract level
 # (registered, described, parameter-validated) but NEVER called with
@@ -352,6 +351,22 @@ def _assert_call_round_trips(name: str, response: dict[str, Any]) -> None:
     assert result, f"{name}: tools/call result is empty: {response}"
 
 
+#: Per-test budget for the full functional sweep. The sweep issues
+#: one ``tools/call`` per advertised tool (41 calls) through the
+#: production JSON-RPC stack with an in-memory exec runner, which
+#: sits at ~0.7-0.8s of wall-clock in isolation. Under xdist
+#: contention the test can spike past the 1.0s default per-test
+#: cap. The marker opts into a 5s budget — well inside the
+#: immutable 60s combined test budget and far below any per-test
+#: ceiling on the audit_test_policy side (no real subprocess,
+#: no real network). Without the marker the suite fails
+#: intermittently with ``TestExecutionTimeoutError`` on a busy
+#: host, which is a test-design defect: the sweep is the
+#: whole-point test and cannot shed the round-trip work.
+_TEST_TIMEOUT_SECONDS = 5
+
+
+@pytest.mark.timeout_seconds(_TEST_TIMEOUT_SECONDS)
 def test_advertised_tool_set_round_trips(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
