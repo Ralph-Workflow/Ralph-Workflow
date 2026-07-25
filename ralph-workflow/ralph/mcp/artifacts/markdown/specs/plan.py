@@ -70,7 +70,6 @@ from ralph.mcp.artifacts.markdown.specs._plan_evaluatability import (
     is_specific_expected_output,
 )
 from ralph.mcp.artifacts.markdown.specs._plan_evidence import evidence_content
-
 from ralph.mcp.artifacts.markdown.specs._plan_steps import (
     resolve_step_references,
     step_number_map,

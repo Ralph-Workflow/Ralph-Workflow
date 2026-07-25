@@ -563,5 +563,5 @@ def test_format_doc_includes_new_sections() -> None:
     ):
         assert needle in doc, f"format doc missing {needle!r}"
     normalized = " ".join(doc.split())
-    assert "ralph_edit_md_plan_step" not in doc
-    assert "Resubmit the whole document" not in doc
+    assert "ralph_edit_md_plan_step" not in normalized
+    assert "Resubmit the whole document" not in normalized

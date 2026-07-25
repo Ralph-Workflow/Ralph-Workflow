@@ -6,7 +6,6 @@ import pytest
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
-from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,

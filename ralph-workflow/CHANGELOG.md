@@ -43,6 +43,13 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-25
+
+Patch release. `__version__` moved from `0.9.0` to `0.9.1` in
+`ralph/__init__.py` (the canonical version source `pyproject.toml`
+reads via `[tool.hatch.version]`), with `skills-package/package.json`
+kept in parity by `tests/test_skills_package_version_parity.py`.
+
 ### Added
 
 - **feat(cli): `--long` / `-L` depth preset — five developer iterations** — sits between `-Q` (1) and `-T` (10) and pairs with the new default of 2; overrides an explicit `-D`, and the three presets are now mutually exclusive with one another. Locked by `tests/test_cli_long_mode_semantics.py`.
