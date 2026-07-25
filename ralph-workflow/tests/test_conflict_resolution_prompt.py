@@ -82,7 +82,7 @@ def test_exiting_without_declare_complete_is_stated_to_be_a_failed_round(
     """
     rendered = _render(tmp_path)
     assert "mcp__ralph__declare_complete" in rendered
-    assert "WITHOUT calling `declare_complete`" in rendered
+    assert "WITHOUT calling `mcp__ralph__declare_complete`" in rendered
     assert "FAILED" in rendered
 
 

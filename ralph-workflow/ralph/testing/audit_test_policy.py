@@ -178,6 +178,24 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # measurement IS the correctness assertion in both cases.
     "test_no_anti_drift_regression",
     "test_no_anti_drift_recovery_invariants",
+    # Default-gate endpoint sweep wall-clock budget pin (per AC-05,
+    # AC-06). The sweep must complete well inside the immutable
+    # 60-second combined test budget; the per-tool and per-suite
+    # 5s/10s budgets are the correctness assertion, so the test
+    # uses ``time.monotonic()`` to measure real elapsed time.
+    # Production code paths still inject FakeClock for any
+    # timeout-driven flow; the wall-clock measurement here is a
+    # single-point budget pin that cannot be expressed with a
+    # fake clock.
+    "test_mcp_endpoint_sweep",
+    # Realistic-codebase fixture wall-clock budget pin (per AC-02,
+    # AC-06). ``test_indexed_search_completes_under_5s`` measures
+    # the index + grep cycle over a ~50-file synthetic workspace
+    # so a regression that triples the indexed search wall time
+    # cannot slip past the default gate. The wall-clock
+    # measurement IS the assertion; production paths inside the
+    # cycle still use FakeClock for any timeout contract.
+    "test_explore_real_codebase",
 }
 
 # Path I/O methods that indicate real filesystem access.

@@ -613,9 +613,14 @@ def _row_int(row: sqlite3.Row, index: int) -> int:
 # Regex metacharacters that disqualify a pattern from FTS5 indexing
 # without changing match semantics. Phase 1 keeps this list narrow;
 # Phase 2 will broaden it alongside the FTS5 query plan.
+#
+# ``.`` is intentionally NOT in this set: FTS5 phrase queries (the
+# quoted form ``fts_query_for`` emits) treat ``.`` as a literal inside
+# the phrase, so dotted tokens (``os.path``, ``foo.py``) round-trip
+# through the index without changing semantics. Removing ``.`` from
+# the disqualifying set is what unblocks dotted-literal code searches.
 _FTS_DISQUALIFYING_METACHARS: Final[frozenset[str]] = frozenset(
     {
-        ".",
         "*",
         "+",
         "?",
@@ -654,19 +659,15 @@ def is_fts_eligible(
     backreferences, byte-oriented searches, and substring patterns
     that FTS tokenization cannot represent exactly.
 
-    Case-sensitive search: the FTS5 ``unicode61`` tokenizer is
-    case-INsensitive by default, so requesting a ``case_sensitive``
-    literal would change match semantics compared to the live grep
-    path. ``is_fts_eligible`` returns False when ``case_sensitive``
-    is True so the handler falls back to live grep in
-    ``use_index='auto'`` and fails closed in ``use_index='always'``
-    instead of silently returning a case-INsensitive FTS match.
+    Case-sensitive search is eligible: the handler narrows candidates
+    via FTS (case-INsensitive) and re-applies a case-sensitive regex
+    post-filter so the result set equals the live grep path. The
+    helper reports the pattern as eligible in both directions and
+    the case-sensitive flag is communicated through the response
+    metadata so callers can audit which branch ran.
 
-    ``case_sensitive`` defaults to ``False`` because the live grep
-    default is case-sensitive and the prior call site omitted the
-    argument entirely; ``is_fts_eligible`` keeps accepting its
-    legacy ``case_sensitive`` semantics by treating omitted ==
-    case-INsensitive == same as the FTS5 tokenizer.
+    ``case_sensitive`` defaults to ``False`` for backward compatibility
+    with the legacy call site that omitted the argument entirely.
     """
     if is_regex:
         return False
@@ -676,9 +677,7 @@ def is_fts_eligible(
         return False
     # whole_word with literal is supported; reject when combined
     # with multi-word phrase syntax that FTS cannot represent exactly.
-    if whole_word and " " in pattern:
-        return False
-    return not case_sensitive
+    return not (whole_word and " " in pattern)
 
 
 def fts_query_for(pattern: str, *, whole_word: bool) -> str:

@@ -177,10 +177,13 @@ def test_planning_analysis_teaches_standard_revision_flow() -> None:
     text = _template("planning_analysis.jinja")
 
     for tool_name in (
-        "ralph_stage_md_artifact",
-        "ralph_get_md_draft",
-        "ralph_finalize_md_artifact",
+        "STAGE_MD_ARTIFACT",
+        "GET_MD_DRAFT",
+        "FINALIZE_MD_ARTIFACT",
     ):
+        # After S-6 (eliminate template drift), the template references
+        # the canonical vars instead of the literal names; the rendered
+        # prompt still surfaces the names, so the contract holds.
         assert tool_name in text
     assert "ralph_edit_md_plan_step" not in text
     assert "resubmitted via `ralph_submit_md_artifact`" not in text
@@ -234,12 +237,17 @@ def test_mcp_tools_roster_describes_search_tools_correctly() -> None:
     content search (a real prior defect in this partial)."""
     text = _template("shared/_mcp_tools")
 
-    assert "Use {{READ_FILE_TOOL_REFERENCE}} to read a file" in text
-    assert "Use {{SEARCH_FILES_TOOL_REFERENCE}} to find files by glob pattern" in text
-    assert "Use {{GREP_FILES_TOOL_REFERENCE}} to search file contents for a pattern" in text
+    # After S-5 the partial uses concise grouped one-liners; assert the
+    # tools are still surfaced (the names appear via the *_TOOL_REFERENCE
+    # vars) and that the search_tools category keeps the
+    # glob-vs-content distinction (so we never regress to describing
+    # search_files as a content searcher).
+    assert "{{SEARCH_FILES_TOOL_REFERENCE}}" in text
+    assert "{{GREP_FILES_TOOL_REFERENCE}}" in text
+    assert "{{READ_FILE_TOOL_REFERENCE}}" in text
     assert "{{SEARCH_FILES_TOOL_REFERENCE}} to search file contents" not in text
     # report_progress is absent in planning drains; the bullet must be gated
-    # so the prompt never renders "- Use  to report status".
+    # so the prompt never renders an empty tool reference.
     assert "{% if REPORT_PROGRESS_TOOL_NAME %}" in text
 
 

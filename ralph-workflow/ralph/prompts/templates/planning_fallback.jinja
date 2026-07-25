@@ -30,11 +30,9 @@ Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
 
 {% include 'shared/_planning_thinking.j2' %}
 
-{% if HAS_DOCS_MCP %}
-Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for library/API research during planning.
-{% else %}
-Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
-{% endif %}
+{% set DOCS_LOOKUP_VARIANT = 'short' %}
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 When subagents are available, fan out read-only discovery scouts and one
 reviewer per analysis dimension (see the rubric owned by the analysis

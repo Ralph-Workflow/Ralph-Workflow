@@ -34,20 +34,10 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
 - Allowed operations: any non-mutating tools
   (for example file reads/search/listing and image analysis)
 
-{% if HAS_DOCS_MCP %}
-
-## DOCUMENTATION LOOKUP
-
-The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. When researching library APIs, framework behavior, or third-party tooling during planning:
-1. Search documentation first using the docs-mcp search tool from your MCP tool list.
-2. Fall back to `web_search` only if docs-mcp returns no useful results.
-3. Use `visit_url` for pages that docs-mcp surfaces as links.
-
-{% else %}
-
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during planning.
-
-{% endif %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% set DOCS_LOOKUP_INTENT = 'When researching library APIs, framework behavior, or third-party tooling during planning:' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}

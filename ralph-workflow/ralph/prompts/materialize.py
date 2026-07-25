@@ -607,6 +607,7 @@ def _render_template_based_prompt(
     variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
+    variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
     return render_template(
         template,

@@ -82,15 +82,64 @@ def _freshness_for_grep(
         generation_int = int(generation_raw)
     except (TypeError, ValueError):
         generation_int = 0
-    dirty = store.peek_dirty_paths()
+    try:
+        dirty = list(store.peek_dirty_paths())
+    except Exception:
+        dirty = []
     return {
         "index_used": index_used,
         "index_generation": generation_int,
         "is_stale": bool(dirty),
         "dirty_paths_count": len(dirty),
-        "stale_paths_count": 0,
+        "stale_paths_count": len(dirty),
         "fallback_reason": fallback_reason,
     }
+
+
+def _chunk_text_for_id(store: ExploreStore, chunk_id: str) -> str:
+    """Return the full chunk text for ``chunk_id`` (or "" if missing).
+
+    Used by ``_indexed_matches`` so the case-sensitive post-filter
+    can match against the entire chunk content instead of the
+    truncated FTS5 ``snippet()`` window. The full text is stored in
+    the ``chunks_fts`` virtual table (the ``chunks`` table only
+    carries the text hash and span metadata, not the text body).
+    """
+    if not chunk_id:
+        return ""
+    try:
+        fetched: object = store._conn.execute(
+            "SELECT text FROM chunks_fts WHERE chunk_id = ?",
+            (chunk_id,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return ""
+    if fetched is None:
+        return ""
+    try:
+        text_value: object = cast("sqlite3.Row", fetched)["text"]
+    except (KeyError, TypeError):
+        return ""
+    return str(text_value) if text_value is not None else ""
+
+
+def _indexed_committed_generation(store: ExploreStore | None) -> int:
+    """Return the current committed generation, or 0 when the store has none.
+
+    Used by the grep handler to detect cold stores (current_generation
+    == 0 because no reindex has committed) so we fall back to live
+    grep instead of returning an empty result from a never-populated
+    index.
+    """
+    if store is None:
+        return 0
+    try:
+        raw = store.get_setting("current_generation")
+    except Exception:
+        return 0
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return 0
 
 
 def _indexed_matches(
@@ -98,10 +147,12 @@ def _indexed_matches(
     pattern: str,
     *,
     whole_word: bool,
+    case_sensitive: bool,
     limit: int,
     path_prefix: str | None = None,
     include_globs: Sequence[str] | None = None,
     exclude_globs: Sequence[str] | None = None,
+    overscan_multiplier: int = 8,
 ) -> list[dict[str, object]]:
     """Run an FTS5 search and translate rows to the live match shape.
 
@@ -112,20 +163,49 @@ def _indexed_matches(
     inserts (or refreshes) the evidence row keyed by the prompt's
     deterministic evidence-id formula.
 
+    AC-01 case-sensitive post-filter: FTS5 ``unicode61`` is
+    case-INsensitive, so we re-compile the literal as a
+    case-sensitive regex and filter the FTS candidates against it.
+    This keeps result sets identical to live grep for case-sensitive
+    queries while still benefiting from FTS5 narrowing.
+
     AC-02 indexed-grep filter parity: ``path_prefix``,
     ``include_globs``, and ``exclude_globs`` push the legacy
     grep filters into the indexed query so out-of-scope matches
     cannot leak into the indexed branch.
+
+    The ``overscan_multiplier`` widens the FTS5 query so the
+    post-filter still yields ``limit`` matches even when many FTS
+    candidates fail the case-exact test (FTS5 limit caps results
+    before the post-filter runs).
+
+    The post-filter runs against the *full* chunk text (read from
+    ``chunks.text``), not the truncated FTS5 ``snippet()`` output,
+    so multi-line chunks whose matching line falls outside the
+    snippet window still match correctly.
     """
     fts_query = fts_query_for(pattern, whole_word=whole_word)
+    # Case-sensitive parity demands that the FTS query return every
+    # candidate the post-filter could accept. BM25 ordering + a hard
+    # FTS5 limit would silently drop lower-ranked case-exact hits
+    # before the post-filter sees them, breaking the parity
+    # contract. We overscan by a generous factor to keep parity
+    # while still bounding memory for pathological queries.
+    fts_limit = max(limit, 1) * max(overscan_multiplier, 1)
     raw_rows = store.fts_search(
         fts_query,
-        limit=max(limit, 1),
+        limit=fts_limit,
         path_prefix=path_prefix,
         include_globs=include_globs,
         exclude_globs=exclude_globs,
     )
     rows: list[sqlite3.Row] = list(raw_rows)
+    post_filter = _compile_grep_pattern(
+        pattern,
+        is_regex=False,
+        case_sensitive=case_sensitive,
+        whole_word=whole_word,
+    )
     matches: list[dict[str, object]] = []
     for row in rows:
         raw_path_value: object = row["path"]
@@ -137,22 +217,65 @@ def _indexed_matches(
         path_str = str(raw_path_value) if raw_path_value is not None else ""
         chunk_id_str = str(raw_chunk_id_value) if raw_chunk_id_value is not None else ""
         snippet_str = str(snippet_value) if snippet_value is not None else ""
-        evidence_id = _ensure_grep_evidence_row(store, chunk_id_str)
-        evidence_row = store.get_evidence(evidence_id)
-        line = evidence_row.start_line if evidence_row is not None else 0
-        matches.append(
-            {
-                "path": path_str,
-                "line": line,
-                "text": snippet_str,
-                "evidence_id": evidence_id,
-                "chunk_id": chunk_id_str,
-            }
-        )
+        # Case-sensitive parity: FTS narrows candidates; the
+        # post-filter applies the same compiled regex the live
+        # path uses so the indexed match set equals the live
+        # match set for the same literal/case-sensitivity. Run
+        # the post-filter against the full chunk text rather
+        # than the snippet so the case-exact match survives the
+        # FTS5 snippet truncation window.
+        full_text = _chunk_text_for_id(store, chunk_id_str) or snippet_str
+        if not full_text:
+            continue
+        # Per-line parity: find every line inside the chunk that
+        # matches the regex so the indexed branch emits the same
+        # (path, line) pairs the live branch emits, not just one
+        # entry per chunk. ``chunk_start_line`` offsets the
+        # in-chunk line index to the file's line numbers.
+        chunk_start_line = _chunk_start_line(store, chunk_id_str)
+        in_chunk_line = 0
+        for line_text in full_text.splitlines(keepends=False):
+            in_chunk_line += 1
+            if not post_filter.search(line_text):
+                continue
+            file_line = chunk_start_line + in_chunk_line - 1 if chunk_start_line else in_chunk_line
+            evidence_id = _ensure_grep_evidence_row(store, chunk_id_str, file_line)
+            matches.append(
+                {
+                    "path": path_str,
+                    "line": file_line,
+                    "text": line_text,
+                    "evidence_id": evidence_id,
+                    "chunk_id": chunk_id_str,
+                }
+            )
+            if len(matches) >= limit:
+                return matches
     return matches
 
 
-def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
+def _chunk_start_line(store: ExploreStore, chunk_id: str) -> int:
+    """Return the 1-based file start_line for ``chunk_id`` (0 if missing)."""
+    if not chunk_id:
+        return 0
+    try:
+        row: sqlite3.Row | None = store._conn.execute(
+            "SELECT start_line FROM chunks WHERE chunk_id = ?",
+            (chunk_id,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    if row is None:
+        return 0
+    raw_value: object = row["start_line"]
+    return int(raw_value) if isinstance(raw_value, int) else 0
+
+
+def _ensure_grep_evidence_row(
+    store: ExploreStore,
+    chunk_id: str,
+    file_line: int | None = None,
+) -> str:
     """Translate a chunk_id into a real ``evidence_id`` row.
 
     The chunk row carries path/line range/text_hash. We compute the
@@ -161,6 +284,10 @@ def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
     does not exist yet. Returns the evidence_id string (or the
     chunk_id when the chunk row is missing so the caller still has a
     stable handle).
+
+    ``file_line`` narrows the evidence span to a single file line
+    so per-line indexed matches each carry their own evidence row.
+    When omitted the evidence spans the whole chunk range.
     """
     if not chunk_id:
         return ""
@@ -194,12 +321,21 @@ def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
     # store's file row already carries the SHA-256 of the file.
     file_row = store.get_file(path)
     content_hash = file_row.content_hash if file_row is not None else text_hash
+    # Per-line matches narrow the evidence span to a single line so
+    # the read_file(evidence_id=...) handle points at the matching
+    # line instead of the whole chunk range.
+    if file_line is not None and file_line > 0:
+        evidence_start = file_line
+        evidence_end = file_line
+    else:
+        evidence_start = start_line
+        evidence_end = end_line
     evidence_id = _derive_evidence_id_for_span(
         path=path,
         content_hash=content_hash,
-        start_line=start_line,
-        end_line=end_line,
-        kind="chunk",
+        start_line=evidence_start,
+        end_line=evidence_end,
+        kind="chunk_line" if file_line is not None else "chunk",
     )
     # Insert or refresh. ``is_stale=False`` because the chunk row is
     # the source of truth right now; staleness is detected when
@@ -211,12 +347,12 @@ def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
             _EvidenceRowBuilder(
                 evidence_id=evidence_id,
                 path=path,
-                start_line=start_line,
-                end_line=end_line,
+                start_line=evidence_start,
+                end_line=evidence_end,
                 content_hash=content_hash,
                 generation=generation,
                 source_tool="grep_files",
-                evidence_kind="chunk",
+                evidence_kind="chunk_line" if file_line is not None else "chunk",
             ).build()
         )
     return evidence_id
@@ -483,12 +619,10 @@ def handle_grep_files(
         store_value = None
     store: ExploreStore | None = store_value
 
-    # Determine if FTS is eligible.
-    # AC-04 (case-sensitive parity): the FTS5 ``unicode61`` tokenizer
-    # is case-INsensitive by default; we pass ``case_sensitive``
-    # through to ``is_fts_eligible`` so an explicit case-sensitive
-    # search falls back to live grep instead of silently returning a
-    # case-INsensitive FTS match.
+    # Determine if FTS is eligible. Case-sensitive literals are now
+    # eligible: the handler narrows candidates via FTS and
+    # re-applies a case-sensitive regex post-filter so the result
+    # set equals the live grep path's.
     eligible = is_fts_eligible(
         pattern,
         is_regex=is_regex,
@@ -503,6 +637,24 @@ def handle_grep_files(
     indexed_match_rows: list[dict[str, object]] = []
     graph_context: list[dict[str, object]] = []
 
+    # AC-01 cold-index guard: a never-reindexed store carries
+    # ``current_generation == 0`` and would silently return 0
+    # matches. Surface the missing data via fallback_reason and
+    # fall back to live grep so the response still contains
+    # matches. The committed-generation check overrides the
+    # pattern-eligibility reason because the absence of an index
+    # is the more fundamental block.
+    cold_index = store is not None and _indexed_committed_generation(store) <= 0
+    if cold_index:
+        if use_index == "always":
+            raise InvalidParamsError(
+                "use_index='always' requires an indexed workspace; the "
+                "explore index has no committed generation (run "
+                "ralph_reindex first)."
+            )
+        eligible = False
+        fallback_reason = "no_committed_generation"
+
     if use_index != "never" and store is not None and eligible:
         # AC-02 indexed-grep filter parity: push path/include/exclude
         # into the FTS query so the indexed branch never leaks
@@ -511,6 +663,7 @@ def handle_grep_files(
             store,
             pattern,
             whole_word=whole_word,
+            case_sensitive=case_sensitive,
             limit=limit,
             path_prefix=normalized or None,
             include_globs=include,
@@ -613,8 +766,10 @@ def handle_grep_files(
         )
     else:
         # use_index == 'never' OR store missing OR non-eligible pattern.
-        if use_index == "auto":
-            fallback_reason = "pattern_not_fts_eligible" if not eligible else "no_index_handle"
+        if use_index == "auto" and fallback_reason is None:
+            fallback_reason = (
+                "pattern_not_fts_eligible" if not eligible else "no_index_handle"
+            )
         # Fall back to live grep.
         live_matches, skipped, truncated = _live_grep(
             workspace,

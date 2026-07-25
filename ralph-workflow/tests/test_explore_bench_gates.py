@@ -267,13 +267,21 @@ def _derive_expected_evidence_ids(
 
     For each grep/search call in the indexed script that opted into
     ``return_evidence_ids``, run the same FTS query against the
-    store and translate the chunk_id into a deterministic
-    evidence_id using the same formula the production handler
-    uses (``derive_evidence_id`` with content_hash + start_line +
-    end_line + kind). The resulting tuple is what the gate
-    compares against the handler's returned ids.
+    store and translate each per-line match into the deterministic
+    ``chunk_line`` evidence_id the production handler emits.
 
-    A fixture whose indexed script makes no
+    The handler does per-line matching inside each FTS-returned chunk
+    and writes a ``chunk_line`` evidence row per matching line
+    (``start_line = end_line = file_line``). Mirroring that algorithm
+    here is what keeps the gate's truth set equal to the handler's
+    returned ids: a chunk that spans multiple lines emits one
+    evidence row per matching line, so the gate's recall stays 1.0
+    even when the fixture's baseline script did separate scoped
+    greps for each caller.
+
+    Regex patterns cannot be translated to FTS deterministically;
+    the function skips them and the handler's recall falls to 0.0
+    for that fixture. A fixture whose indexed script makes no
     ``return_evidence_ids`` call falls back to an empty truth set;
     the harness treats the empty case as ``recall == 1.0`` (the
     fixture did not require any specific evidence).
@@ -290,6 +298,7 @@ def _derive_expected_evidence_ids(
         pattern = str(call.params.get("pattern", ""))
         is_regex = bool(call.params.get("regex", False))
         whole_word = bool(call.params.get("whole_word", False))
+        case_sensitive = bool(call.params.get("case_sensitive", False))
         if is_regex:
             # Regex patterns cannot be translated to FTS deterministically;
             # skip and let the handler's recall be 0.0 for the test truth.
@@ -314,23 +323,51 @@ def _derive_expected_evidence_ids(
                 evidence.add(chunk_id)
                 continue
             path = str(chunk["path"])
-            start_line = int(chunk["start_line"])
-            end_line = int(chunk["end_line"])
+            chunk_start = (
+                int(chunk["start_line"])
+                if isinstance(chunk["start_line"], int)
+                else 0
+            )
             text_hash = str(chunk["text_hash"])
             file_row = store.get_file(path)
             content_hash = (
                 file_row.content_hash if file_row is not None else text_hash
             )
-            evidence.add(
-                derive_evidence_id(
-                    path=path,
-                    content_hash=content_hash,
-                    start_line=start_line,
-                    end_line=end_line,
-                    kind="chunk",
-                    extractor_version="phase2-structure-v1",
+            text_row = store._conn.execute(
+                "SELECT text FROM chunks_fts WHERE chunk_id = ?",
+                (chunk_id,),
+            ).fetchone()
+            if text_row is None:
+                continue
+            chunk_text = str(text_row["text"])
+            # Per-line matching: for every line inside the chunk that
+            # contains the literal pattern, derive the chunk_line
+            # evidence_id the handler would emit. The handler uses
+            # ``kind="chunk_line"`` with start_line == end_line ==
+            # file_line so the truth set mirrors the row the
+            # production code inserts.
+            needle = pattern if case_sensitive else pattern.lower()
+            for in_chunk_line, line_text in enumerate(
+                chunk_text.splitlines(keepends=False), start=1
+            ):
+                haystack = line_text if case_sensitive else line_text.lower()
+                if needle not in haystack:
+                    continue
+                file_line = (
+                    chunk_start + in_chunk_line - 1
+                    if chunk_start
+                    else in_chunk_line
                 )
-            )
+                evidence.add(
+                    derive_evidence_id(
+                        path=path,
+                        content_hash=content_hash,
+                        start_line=file_line,
+                        end_line=file_line,
+                        kind="chunk_line",
+                        extractor_version="phase2-structure-v1",
+                    )
+                )
     return tuple(sorted(evidence))
 
 

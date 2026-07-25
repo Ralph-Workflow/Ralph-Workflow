@@ -27,11 +27,10 @@ ORIGINAL REQUEST:
 ANALYSIS FEEDBACK:
 {{ANALYSIS_FEEDBACK}}
 
-{% if HAS_DOCS_MCP %}
-Docs MCP is active (localhost:6280). Use docs-mcp search for library/API research before revising the plan.
-{% else %}
-Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
-{% endif %}
+{% set DOCS_LOOKUP_VARIANT = 'short' %}
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% set DOCS_LOOKUP_ACTION = 'revising the plan' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 Not submitting the revised plan is a FAILURE.
 

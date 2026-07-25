@@ -41,15 +41,10 @@ Inspect this history to understand what plans have been tried and rejected befor
 so you do not repeat prior mistakes or revisit already-ruled-out approaches.
 {% endif %}
 
-{% if HAS_DOCS_MCP %}
-
-> **Documentation:** The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Use docs-mcp search for library and API research before revising the plan.
-
-{% else %}
-
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during planning.
-
-{% endif %}
+{% set DOCS_LOOKUP_VARIANT = 'short_block' %}
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% set DOCS_LOOKUP_ACTION = 'revising the plan' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 {% include 'shared/_planning_subagents.j2' %}
 

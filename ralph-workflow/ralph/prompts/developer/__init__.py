@@ -20,6 +20,8 @@ from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
+DEFAULT_DOCS_MCP_PORT = "localhost:6280"
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -78,6 +80,7 @@ def prompt_developer_iteration_xml_with_context(
         "PRIOR_RESULT_CONTINUATION": inputs.prior_result_continuation,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
+        "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
         "unit_id": inputs.work_unit_id,
         "description": inputs.work_unit_description,
         "allowed_directories": inputs.work_unit_directories,
@@ -153,6 +156,7 @@ def prompt_planning_xml_with_context(
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
+        "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
     }
     base_vars.update(
         _product_criteria_variables(
@@ -215,6 +219,7 @@ def prompt_planning_xml_with_context(
                 / "planning_analysis_feedback.txt"
             ),
             "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
+            "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
         }
         fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
         fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir

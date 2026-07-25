@@ -1056,10 +1056,12 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/testing/audit_typecheck_bypass.py", 100),
         ("ralph/testing/audit_typecheck_bypass.py", 340),
         # audit_test_policy.py: pre-existing noqa markers for justifiable
-        # complexity in the test-policy audit walker itself.
-        ("ralph/testing/audit_test_policy.py", 301),
-        ("ralph/testing/audit_test_policy.py", 558),
-        ("ralph/testing/audit_test_policy.py", 608),
+        # complexity in the test-policy audit walker itself. Line numbers
+        # track the wall-clock allowlist insertion at line ~178; bump
+        # them if entries shift above this block again.
+        ("ralph/testing/audit_test_policy.py", 319),
+        ("ralph/testing/audit_test_policy.py", 576),
+        ("ralph/testing/audit_test_policy.py", 626),
         # wt-040 auto-integrate: _reclaim_unowned_stale_rebase fans out
         # across A1/A3/A4/A5/A6/A11 reclaim paths and _lock_holder_is_dead
         # consults the live lock holder before allowing reclaim (A9/A10/E9).

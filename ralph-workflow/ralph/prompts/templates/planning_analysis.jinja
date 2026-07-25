@@ -39,20 +39,10 @@ stronger remediation is needed). Your ONLY deliverable is one markdown
 `artifact_type="planning_analysis_decision"` and sealed with
 {{DECLARE_COMPLETE_TOOL_REFERENCE}}. Not submitting the artifact is a FAILURE.
 
-{% if HAS_DOCS_MCP %}
-
-## DOCUMENTATION LOOKUP
-
-The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. When researching library APIs, framework behavior, or third-party tooling during planning analysis:
-1. Search documentation first using the docs-mcp search tool from your MCP tool list.
-2. Fall back to `web_search` only if docs-mcp returns no useful results.
-3. Use `visit_url` for pages that docs-mcp surfaces as links.
-
-{% else %}
-
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during planning analysis.
-
-{% endif %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% set DOCS_LOOKUP_PHASE = 'planning analysis' %}
+{% set DOCS_LOOKUP_INTENT = 'When researching library APIs, framework behavior, or third-party tooling during planning analysis:' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 ---
 
@@ -187,7 +177,7 @@ finding.
 Before issuing `request_changes`, enumerate all currently visible repo-grounded gaps, not just the first blocking gap.
 Judge the plan against the PRODUCT CRITERIA, not only against the most recent review comments.
 If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
-When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. The recipe for that revision lives once in `## How To Fix` (item 5); reference it by step number rather than restating it. Mechanical shape properties (frontmatter, step syntax, ID stability, dependency shape, work-unit shape) are owned by the validator and must not be re-raised as findings unless they produce a concrete run cost the validator cannot see — findings belong to the user's request and the repository, not to the document grammar. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
+When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. The planner's only valid revision path is the standard stage/replace_all/finalize flow: stage the complete plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`), edit the staged draft directly, inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}. Mechanical shape properties (frontmatter, step syntax, ID stability, dependency shape, work-unit shape) are owned by the validator and must not be re-raised as findings unless they produce a concrete run cost the validator cannot see — findings belong to the user's request and the repository, not to the document grammar. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
 
 The shared defect vocabulary, the per-entry shape, and the closure-ledger discipline are owned by the `## PLAN QUALITY RUBRIC` section below; do not duplicate them here.
 
@@ -253,7 +243,7 @@ For every item in `## What Came Up Short`, provide a corresponding fix entry:
 2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
 3. **Preserve the same stable gap ID from the corresponding `## What Came Up Short` entry** so the planner can prove closure without ambiguity.
 4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
-5. **Step-by-step remediation using the planner's revision flow** (the canonical recipe is stated once here): rewrite the affected document sections, then stage the complete revised plan with `ralph_stage_md_artifact` (`mode="replace_all"`) → edit the staged text → `ralph_get_md_draft` to inspect → `ralph_finalize_md_artifact` to validate and submit; restart only when truly unsalvageable.
+5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, then stage the complete revised plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) → edit the staged text → {{GET_MD_DRAFT_TOOL_REFERENCE}} to inspect → {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} to validate and submit; restart only when truly unsalvageable).
 6. **Commands or checks to validate the revised plan.**
 7. **What passing evidence looks like.**
 
@@ -429,7 +419,7 @@ status: request_changes
 - [PA-003] Dimension: Verification Quality | Defect: Verification gap | Evidence: V-1 method is "run tests" | Missing: exact command and expected passing result | Cost: the executor cannot prove the change is verified and the analysis phase will reject the development_result on Plan Items Proven
 
 ## How To Fix
-- [PA-001] Rewrite the S-2 step block so it names the exact policy, prompt, and artifact files plus the routing behavior to implement. Apply the revision through the standard stage/replace_all/finalize flow (see `## How To Fix` item 5).
+- [PA-001] Rewrite the S-2 step block so it names the exact policy, prompt, and artifact files plus the routing behavior to implement. To apply the revision, stage the complete revised plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`), inspect the saved draft with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit it with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}.
 - [PA-002] Rewrite the affected Steps and Critical Files entries so the nonexistent tests/test_planning_analysis.py reference is replaced with real target files and an existing test file whose pattern should be mirrored.
 - [PA-003] Rewrite the Verification section with exact commands such as `uv run pytest -q tests/test_policy_loader.py` and name the expected passing evidence, then resubmit the document.
 {% endset %}

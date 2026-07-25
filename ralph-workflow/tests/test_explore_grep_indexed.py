@@ -467,3 +467,222 @@ def test_indexed_symbol_ranking_reorders_definition_ahead_of_plain_text(
         assert payload["score_reasons"][0][0] == "+1 bare_match"
     finally:
         store.close()
+
+
+# --- Defect D1: case-sensitive defaults use index (narrow + post-filter) ---
+
+
+def test_indexed_grep_case_sensitive_default_uses_index_with_post_filter(
+    tmp_path: Path,
+) -> None:
+    """AC-01/D1: case-sensitive literal (the default) must use the index.
+
+    The FTS5 ``unicode61`` tokenizer is case-INsensitive, so the
+    handler narrows candidates via FTS and re-applies a
+    case-sensitive regex post-filter. Result sets must equal live
+    grep's case-sensitive parity.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / "upper.py").write_text("FooBar = 'capitalized'\n")
+    (workspace / "lower.py").write_text("foobar = 'lowercase'\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        session = _FakeSession(build_sqlite_index_handle(store))
+        result = handle_grep_files(
+            session,
+            _Workspace(workspace),
+            {
+                "pattern": "FooBar",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": True,
+                "use_index": "auto",
+            },
+        )
+        payload = _decode(result)
+        assert payload["index_used"] is True, payload
+        paths = {m["path"] for m in payload["matches"]}
+        assert "upper.py" in paths
+        assert "lower.py" not in paths
+    finally:
+        store.close()
+
+
+def test_indexed_grep_case_sensitive_parity_with_live(tmp_path: Path) -> None:
+    """AC-01: indexed case-sensitive match set equals live grep's."""
+    workspace = _seed_workspace(tmp_path)
+    files = {
+        "a.py": "FooBar = 'capitalized'\n",
+        "b.py": "no match here\n",
+        "c.py": "FooBar = 'again'\n",
+        "d.py": "foobar = 'lowercase'\n",
+    }
+    for name, content in files.items():
+        (workspace / name).write_text(content)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        handle = build_sqlite_index_handle(store)
+        indexed = _decode(
+            handle_grep_files(
+                _FakeSession(handle),
+                _Workspace(workspace),
+                {
+                    "pattern": "FooBar",
+                    "path": ".",
+                    "regex": False,
+                    "case_sensitive": True,
+                    "use_index": "auto",
+                },
+            )
+        )
+        live = _decode(
+            handle_grep_files(
+                _FakeSession(explore_index=None),
+                _Workspace(workspace),
+                {
+                    "pattern": "FooBar",
+                    "path": ".",
+                    "regex": False,
+                    "case_sensitive": True,
+                    "use_index": "auto",
+                },
+            )
+        )
+        indexed_paths = {(m["path"], m["line"]) for m in indexed["matches"]}
+        live_paths = {(m["path"], m["line"]) for m in live["matches"]}
+        assert indexed_paths == live_paths
+        assert indexed["index_used"] is True
+        assert live["index_used"] is False
+    finally:
+        store.close()
+
+
+# --- Defect D2: cold index falls back to live grep ---
+
+
+def test_indexed_grep_cold_store_falls_back_to_live(tmp_path: Path) -> None:
+    """AC-01/D2: never-reindexed store falls back to live grep with the
+    correct fallback_reason instead of returning 0 matches with index_used=true.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "a.py").write_text("hello world\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        # Do NOT reindex — current_generation stays 0.
+        session = _FakeSession(build_sqlite_index_handle(store))
+        result = handle_grep_files(
+            session,
+            _Workspace(workspace),
+            {
+                "pattern": "hello",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "auto",
+            },
+        )
+        payload = _decode(result)
+        assert payload["index_used"] is False, payload
+        assert payload["fallback_reason"] == "no_committed_generation"
+        # Live fallback still returned the match.
+        assert any("hello" in (m.get("text") or "") for m in payload["matches"])
+    finally:
+        store.close()
+
+
+# --- Defect D3: dotted literals served from index ---
+
+
+def test_indexed_grep_dotted_literal_uses_index(tmp_path: Path) -> None:
+    """AC-01/D3: dotted literals (e.g. ``os.path``) are served from the
+    index via a quoted-phrase FTS query. Live-grep parity required.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "a.py").write_text("os.path.join('x')\n")
+    (workspace / "b.py").write_text("os.environ['HOME']\n")
+    (workspace / "c.py").write_text("unrelated line\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        session = _FakeSession(build_sqlite_index_handle(store))
+        result = handle_grep_files(
+            session,
+            _Workspace(workspace),
+            {
+                "pattern": "os.path",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "auto",
+            },
+        )
+        payload = _decode(result)
+        assert payload["index_used"] is True, payload
+        paths = {m["path"] for m in payload["matches"]}
+        assert "a.py" in paths
+        assert "b.py" not in paths  # FTS phrase must NOT match os.environ
+        assert "c.py" not in paths
+    finally:
+        store.close()
+
+
+# --- Defect D4: stale_paths_count populated ---
+
+
+def test_indexed_grep_freshness_reports_stale_paths_count(tmp_path: Path) -> None:
+    """AC-01/D4: stale_paths_count mirrors the dirty-path queue, not 0."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        # Mark a path dirty via the store's lifecycle hook.
+        handle = build_sqlite_index_handle(store)
+        handle.mark_dirty(["hello.py"], source_tool="test")
+        result = handle_grep_files(
+            _FakeSession(handle),
+            _Workspace(workspace),
+            {
+                "pattern": "hello",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "auto",
+            },
+        )
+        payload = _decode(result)
+        assert payload["stale_paths_count"] >= 1, payload
+        assert payload["dirty_paths_count"] >= 1
+        assert payload["is_stale"] is True
+    finally:
+        store.close()
+
+
+# --- Defect R6: use_index="always" still fail-closes on regex ---
+
+
+def test_indexed_grep_use_index_always_regex_still_fails_closed(tmp_path: Path) -> None:
+    """AC-01: regex pattern with ``use_index='always'`` still raises."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        session = _FakeSession(build_sqlite_index_handle(store))
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_grep_files(
+                session,
+                _Workspace(workspace),
+                {
+                    "pattern": "h.llo",
+                    "path": ".",
+                    "regex": True,
+                    "use_index": "always",
+                },
+            )
+    finally:
+        store.close()

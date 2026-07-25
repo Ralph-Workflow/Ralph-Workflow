@@ -60,11 +60,9 @@ Your submitted result is persisted at
 handoff at `{{WORKER_NAMESPACE}}/handoffs/DEVELOPMENT_RESULT.md`.
 {% endif %}
 
-{% if HAS_DOCS_MCP %}
-Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for library/API implementation research.
-{% else %}
-Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during development.
-{% endif %}
+{% set DOCS_LOOKUP_VARIANT = 'short' %}
+{% set DOCS_LOOKUP_PHASE = 'development' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 {% if ARTIFACT_HISTORY_PATH %}
 ARTIFACT HISTORY:

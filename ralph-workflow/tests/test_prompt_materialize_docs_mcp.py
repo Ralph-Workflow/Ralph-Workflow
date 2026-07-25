@@ -18,7 +18,7 @@ PLANNING_ACTIVE_TEXT = (
     "The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`."
 )
 PLANNING_ACTIVE_INSTRUCTION = (
-    "1. Search documentation first using the docs-mcp search tool from your MCP tool list."
+    "1. Search documentation using the docs-mcp search tool from your MCP tool list."
 )
 PLANNING_FALLBACK_HINT = (
     "> **Documentation hint:** Configuring `arabold/docs-mcp-server` on "
@@ -29,7 +29,7 @@ PLANNING_ANALYSIS_ACTIVE_TEXT = (
     "The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`."
 )
 PLANNING_ANALYSIS_ACTIVE_INSTRUCTION = (
-    "1. Search documentation first using the docs-mcp search tool from your MCP tool list."
+    "1. Search documentation using the docs-mcp search tool from your MCP tool list."
 )
 PLANNING_ANALYSIS_FALLBACK_HINT = (
     "> **Documentation hint:** Configuring `arabold/docs-mcp-server` on "
