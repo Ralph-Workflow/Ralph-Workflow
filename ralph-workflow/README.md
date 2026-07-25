@@ -9,18 +9,41 @@ and come back to reviewable, tested work.
 ```bash
 pipx install ralph-workflow
 ralph --version
-ralph --diagnose   # optional pre-flight check
 ```
 
 `pipx` keeps the install isolated from your other Python projects; the
 post-condition is that `ralph --version` prints the installed package
 version.
 
-The canonical first-run walkthrough — install → init → diagnose → edit
-PROMPT.md → run — is in
-[Getting started](docs/sphinx/getting-started.md). It is the single home
-for the first-run sequence and does not require opening any other config
-file before your first run.
+## First run
+
+The complete first-run path is six short steps and does not require
+opening any other config file before your first run.
+
+1. **Install Ralph Workflow.** Use `pipx install ralph-workflow` (or
+   `pip install ralph-workflow`).
+2. **Start in your project.** `cd /path/to/your/project` and run
+   `ralph --init`. It creates your user-global config and a `PROMPT.md`;
+   project-local config is optional later via `ralph --init-local-config`.
+3. **Confirm a coding agent.** Ralph Workflow looks for supported agents
+   already on your `PATH` and enables the ones it finds. Install and
+   authenticate an agent first if none are found.
+4. **Check the setup.** Run `ralph --diagnose` and fix any reported
+   problem before starting work.
+5. **Describe the task.** Edit `PROMPT.md` with the outcome and checks
+   you expect. For a task-shaped starter, use `ralph --init feature-spec`,
+   `guardrail`, `refactor`, `test-coverage`, or `docs` before a prompt
+   file exists.
+6. **Run Ralph Workflow.** Run `ralph`, then read the finish-receipt
+   artifact: it names the change, checks run, and review focus before you
+   decide what to do next.
+
+The canonical first-run walkthrough — with screenshots of the bundled
+config layout, the per-agent model-string cheat sheet, and what each
+diagnostic flag actually checks — is in
+[Getting started](docs/sphinx/getting-started.md). It is the single
+home for the first-run sequence and does not require opening any other
+config file before your first run.
 
 ## Supported agents
 

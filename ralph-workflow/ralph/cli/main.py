@@ -49,7 +49,7 @@ from ralph.config.bootstrap import (
     regenerate_all,
 )
 from ralph.config.enums import Verbosity
-from ralph.config.loader import load_config
+from ralph.config.loader import ConfigTomlError, load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
@@ -324,6 +324,22 @@ def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
         agent_registry=registry,
         display_context=display_context,
     )
+
+
+def _bootstrap_global_configs_or_exit(display_context: DisplayContext) -> None:
+    """Run ``bootstrap_global_configs`` and render the envelope on config error.
+
+    ``load_toml`` raises ``ConfigTomlError`` when a pre-existing
+    user-global TOML is malformed (the migration path in
+    ``ensure_global_config`` reads the existing file). Render the
+    existing what/why/fix envelope and exit 1 instead of letting the
+    raw ``ValueError`` propagate as a traceback.
+    """
+    try:
+        bootstrap_global_configs(display_context=display_context)
+    except ConfigTomlError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(code=1) from None
 
 
 def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
@@ -958,7 +974,7 @@ def main(
 
     _cli_ctx = _get_cli_context()
 
-    bootstrap_global_configs(display_context=_cli_ctx)
+    _bootstrap_global_configs_or_exit(_cli_ctx)
     _init_telemetry()
     _record_cli_command(ctx)
 
@@ -1517,6 +1533,13 @@ def _run_pipeline(
             logger.warning("Interrupt dispatcher failed during outer CLI catch", exc_info=True)
         _set_outcome("interrupted")
         return 130
+    except ConfigTomlError as e:
+        # A malformed TOML raised during the run path: surface the
+        # existing what/why/fix envelope via the display, NOT via
+        # ``logger.exception`` (which would print a raw traceback).
+        display.emit_warning(str(e))
+        _set_outcome("failure")
+        return 1
     except Exception as e:
         logger.exception("Pipeline failed: {}")
         display.emit_warning(f"Error: {e}")
