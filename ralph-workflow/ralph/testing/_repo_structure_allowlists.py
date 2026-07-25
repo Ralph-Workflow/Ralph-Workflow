@@ -483,6 +483,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.display._plain_constants",
             ("_sanitize",),
         ),
+        (
+            "tests/display/test_markup_parse_containment.py",
+            "ralph.display._plain_constants",
+            ("_sanitize",),
+        ),
         # Tests whose subject IS the internal seam: the
         # wt-028-display P2/P3 contract lives on these private
         # helpers (identity slot assignment, stall threshold,

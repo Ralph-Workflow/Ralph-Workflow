@@ -1,20 +1,18 @@
 MCP TOOLS (Ralph Workflow Brokered)
 
 You MUST use Ralph Workflow's MCP tools for all file and shell operations in
-this brokered session. Some runtimes may still expose native tools; treat them
-as out of scope rather than assuming the runtime technically disables them.
-Runtime-native orchestration and research aids may include subagents/tasks,
-skills, todo tracking, or web access. Availability varies by runtime: use only
-the aids this session actually exposes and do not infer one from this prompt.
-Call each brokered tool through the active runtime's tool mechanism, using the
-exact rendered name below. Tool names are callable identifiers, not shell commands.
+this brokered session. Availability varies by runtime: use only the brokered
+tools from the exact rendered name below. Tool names are callable identifiers,
+not shell commands.
 
 READ / SEARCH: {{READ_FILE_TOOL_REFERENCE}}, {{READ_MULTIPLE_FILES_TOOL_REFERENCE}}{% if STAT_PATH_TOOL_REFERENCE %}, {{STAT_PATH_TOOL_REFERENCE}}{% endif %}{% if LIST_ALLOWED_ROOTS_TOOL_REFERENCE %}, {{LIST_ALLOWED_ROOTS_TOOL_REFERENCE}}{% endif %}, {{LIST_DIRECTORY_TOOL_REFERENCE}}, {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}}{% if DIRECTORY_TREE_TOOL_REFERENCE %}, {{DIRECTORY_TREE_TOOL_REFERENCE}}{% endif %}, {{SEARCH_FILES_TOOL_REFERENCE}}, {{GREP_FILES_TOOL_REFERENCE}} (indexed; FTS5 path is correct-by-default)
+Use these for every workspace read or search; native shell/file commands must not be used to read or search the workspace.
 
 EXPLORE INDEX: {{RALPH_INDEX_STATUS_TOOL_REFERENCE}}, {{RALPH_REINDEX_TOOL_REFERENCE}} (call when results look stale or the index reports cold), {{RALPH_GRAPH_TOOL_REFERENCE}}
 
 {% if HAS_MCP_WRITE %}
 WRITE: {{WRITE_FILE_TOOL_REFERENCE}}{% if EDIT_FILE_TOOL_REFERENCE %}, {{EDIT_FILE_TOOL_REFERENCE}}{% endif %}{% if APPEND_FILE_TOOL_REFERENCE %}, {{APPEND_FILE_TOOL_REFERENCE}}{% endif %}{% if CREATE_DIRECTORY_TOOL_REFERENCE %}, {{CREATE_DIRECTORY_TOOL_REFERENCE}}{% endif %}{% if MOVE_FILE_TOOL_REFERENCE %}, {{MOVE_FILE_TOOL_REFERENCE}}{% endif %}{% if COPY_FILE_TOOL_REFERENCE %}, {{COPY_FILE_TOOL_REFERENCE}}{% endif %}{% if DELETE_PATH_TOOL_REFERENCE %}, {{DELETE_PATH_TOOL_REFERENCE}}{% endif %}
+These Ralph Workflow edit tools are the ONLY permitted write/edit path — native shell redirection, the runtime's Write/Edit tools, and editor commands are all prohibited for mutating the workspace.
 {% endif %}
 {% if HAS_MCP_EXEC %}
 EXEC: {{EXEC_TOOL_REFERENCE}}{% if UNSAFE_EXEC_TOOL_REFERENCE %} (and {{UNSAFE_EXEC_TOOL_REFERENCE}} / {{RAW_EXEC_TOOL_REFERENCE}} when explicitly granted){% endif %}{% if READ_ENV_TOOL_REFERENCE %}; {{READ_ENV_TOOL_REFERENCE}}{% endif %}{% if REPORT_PROGRESS_TOOL_NAME %}; {{REPORT_PROGRESS_TOOL_REFERENCE}}{% endif %}

@@ -468,3 +468,156 @@ def test_indexed_search_completes_under_5s(tmp_path: Path) -> None:
         assert elapsed < 5.0, f"indexed search took {elapsed:.2f}s (>5s budget)"
     finally:
         store.close()
+
+
+def test_real_transport_indexes_real_codebase_through_file_backed_session(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: FileBackedSession (the MCP subprocess session) attaches an engaged index.
+
+    AC-02 / S-4: the in-process subprocess MCP server pathway
+    (``FileBackedSession`` in ``ralph.mcp.server.runtime_session``) used
+    to default ``explore_index = None`` so a real brokered session
+    calling ``ralph_index_status`` always got ``enabled=False,
+    files_indexed=0`` regardless of whether a populated index was on
+    disk. The fix lazy-builds the handle in ``FileBackedSession.__init__``
+    so a real session sees the engaged index through the production
+    handler path.
+
+    Drive the test with the production JSON-RPC handler + tool registry
+    (no sockets, no real subprocess) so the SAME dispatch path that
+    runs in production processes the calls. The session is constructed
+    from an on-disk payload so the lazy-build path runs naturally.
+    """
+    from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+    from ralph.mcp.server._in_memory_transport import (
+        drive_request,
+        parse_sse_data,
+    )
+    from ralph.mcp.server.runtime import McpServer
+    from ralph.mcp.server.runtime_session import FileBackedSession
+    from ralph.mcp.tools.bridge import build_ralph_tool_registry
+    from tests._support.typed_accessors import must_mapping
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    _seed_realistic_codebase(workspace)
+
+    # Pre-populate the on-disk index the same way the orchestrator would.
+    index_dir = workspace / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=10000, mode="full"))
+
+        # Drop a session file at the canonical location
+        # (workspace_root/.agent/...) so the lazy-build path in
+        # FileBackedSession picks up the workspace root.
+        session_file = workspace / ".agent" / "session.json"
+        session_file.write_text(
+            json.dumps(
+                {
+                    "session_id": "e2e-session",
+                    "run_id": "e2e-run",
+                    "drain": "standalone",
+                    "capabilities": sorted(
+                        {
+                            "workspace.read",
+                            "workspace.metadata_read",
+                        }
+                    ),
+                }
+            )
+        )
+
+        session = FileBackedSession(session_file)
+        # The fix: handle is attached at construction (not None).
+        assert session.explore_index is not None, (
+            "FileBackedSession must attach an ExploreIndex handle in __init__"
+        )
+
+        # Wire the production server the same way the orchestrator does.
+        registry = build_ralph_tool_registry(session, workspace)
+        mcp_server = McpServer(session, workspace, registry)
+
+        # 1) tools/list surfaces the explore index tools.
+        list_payload = json.dumps(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+        ).encode()
+        _status, _headers, body = drive_request(mcp_server, list_payload)
+        list_data = parse_sse_data(body)
+        tools_result = must_mapping(list_data.get("result", {}))
+        tool_names = sorted(
+            entry.get("name")
+            for entry in must_mapping(tools_result, field="result")["tools"]
+        )
+        assert "ralph_index_status" in tool_names
+        assert "ralph_reindex" in tool_names
+        assert "ralph_graph" in tool_names
+
+        # 2) tools/call ralph_index_status returns enabled=True on a
+        # populated index through the real production handler.
+        status_payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "ralph_index_status",
+                    "arguments": {},
+                },
+            }
+        ).encode()
+        _status, _headers, body = drive_request(mcp_server, status_payload)
+        status_data = parse_sse_data(body)
+        status_result = must_mapping(status_data.get("result", {}))
+        status_content = must_mapping(
+            next(iter(status_result["content"])), field="content[0]"
+        )
+        status_payload_dict = json.loads(status_content["text"])
+        assert status_payload_dict["enabled"] is True, status_payload_dict
+        assert status_payload_dict["files_indexed"] >= 50, status_payload_dict
+
+        # 3) tools/call grep_files returns indexed results (index_used=True,
+        # no fallback_reason) through the production transport.
+        #
+        # The production ``grep_files`` tool defaults ``regex`` to True; with
+        # use_index="always" the handler rejects regex patterns because FTS5
+        # cannot represent arbitrary regex. The test exercises the literal
+        # indexed path, so it MUST pass ``regex: false`` explicitly — this
+        # mirrors what a real agent would do when it wants an FTS-eligible
+        # phrase search through the index.
+        grep_payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "grep_files",
+                    "arguments": {
+                        "pattern": "helper",
+                        "path": ".",
+                        "regex": False,
+                        "use_index": "always",
+                    },
+                },
+            }
+        ).encode()
+        _status, _headers, body = drive_request(mcp_server, grep_payload)
+        grep_data = parse_sse_data(body)
+        grep_result = must_mapping(grep_data.get("result", {}))
+        grep_content = must_mapping(
+            next(iter(grep_result["content"])), field="content[0]"
+        )
+        grep_payload_dict = json.loads(grep_content["text"])
+        assert grep_payload_dict["index_used"] is True, grep_payload_dict
+        # ``fallback_reason`` may be present in the response as a
+        # ``None`` placeholder; only fail when it carries a real
+        # fallback reason string. ``index_used=True`` already proves
+        # the indexed branch ran.
+        assert grep_payload_dict.get("fallback_reason") in (None, "", "null"), (
+            grep_payload_dict
+        )
+        matched_paths = {m["path"] for m in grep_payload_dict["matches"]}
+        assert any("src/pkg/" in p for p in matched_paths), grep_payload_dict
+    finally:
+        store.close()

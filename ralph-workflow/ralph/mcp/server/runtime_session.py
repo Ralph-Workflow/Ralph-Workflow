@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools._exec_resource_protocol import ExecResourceResolverLike
 
+from ralph.mcp.explore.handlers import build_explore_index
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -94,13 +95,22 @@ class FileBackedSession:
         # return type and at runtime by
         # tests/test_mcp_server_file_backed_session_agent_session_conformance.py.
         self.tool_output_sink_entry: ToolOutputSinkEntry | None = None
-        # Optional ExploreIndex handle attached by
-        # ``ralph.pipeline.session_bridge.build_session_bridge`` (or any
-        # caller that wants the indexed tool surface to share the same
-        # generation/dirty-path state as a session). ``None`` preserves
-        # the legacy contract: handlers fall back to the live
-        # implementation.
-        self.explore_index: object | None = None
+        # AC-03 / S-4 fix: lazy-build one ExploreIndex per FileBackedSession
+        # so the MCP subprocess server's ``ralph_index_status`` /
+        # ``ralph_reindex`` / ``grep_files`` (indexed) handlers report an
+        # engaged index instead of the legacy ``enabled=False`` disabled
+        # payload. The orchestrator-side ``AgentSession`` in
+        # ``ralph.pipeline.session_bridge.build_session_bridge`` already
+        # attaches an ExploreIndex handle on its own session, but the
+        # subprocess MCP server only sees the on-disk session payload and
+        # does NOT inherit that handle. Build the handle from the derived
+        # ``_workspace_root`` (the session file's grandparent directory)
+        # so the index points at the same workspace. The build is
+        # bounded by SQLite open cost only — no cold-start reindex runs
+        # here, so cold-start latency is unchanged. ``None`` is the
+        # fail-open fallback when ``build_explore_index`` raises so a
+        # missing/corrupt index directory cannot wedge session boot.
+        self.explore_index: object | None = self._lazy_build_explore_index()
         # AC-11: optional resolver for ``ralph://exec/<spill-name>``
         # resource URIs. ``None`` keeps the legacy contract: the
         # ``resources/read`` handler returns a structured
@@ -123,6 +133,36 @@ class FileBackedSession:
             # handler returns a structured "resolver not attached"
             # error.
             self._exec_spill_roots = self._discover_exec_spill_roots_from_disk()
+
+    def _lazy_build_explore_index(self) -> object | None:
+        """Construct one ``ExploreIndex`` for the derived workspace root.
+
+        AC-03 / S-4 wiring fix: the MCP subprocess server inherits the
+        ``FileBackedSession`` class which never had an explore index
+        attached, so ``ralph_index_status`` reported
+        ``enabled=False, files_indexed=0`` even when the orchestrator
+        owned a perfectly good index. The orchestrator-side session
+        already attaches the handle on the parent ``AgentSession``;
+        this constructor-time lazy build lets the subprocess MCP server
+        report an engaged index when one is on disk under
+        ``{workspace_root}/.agent/ralph-explore``.
+
+        The build is fail-open: any exception (missing index dir,
+        corrupt SQLite, schema-version mismatch wiped the index per
+        the existing ``build_explore_index`` contract) returns
+        ``None`` so the subprocess boots. ``build_explore_index``
+        itself wipes incompatible persisted indexes as part of its
+        contract, so a stale or hand-written index never wedges boot.
+        """
+        try:
+            workspace_root = self._workspace_root
+        except Exception:
+            return None
+        try:
+            handle = build_explore_index(workspace_root)
+        except Exception:
+            return None
+        return handle
 
     def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
         """Return the sink only when the calling thread owns it (single atomic read)."""
@@ -188,7 +228,27 @@ class FileBackedSession:
 
     @property
     def _workspace_root(self) -> Path:
-        return self._path.parent.parent.parent.resolve()
+        """Return the workspace root by locating the canonical ``.agent/`` marker.
+
+        Production places the session file at
+        ``{workspace}/.agent/ralph-mcp-session-XXXX.json``, so the
+        workspace is the parent of the directory holding the session
+        file. The earlier ``path.parent.parent.parent`` derivation was
+        off by one — it returned the workspace's parent, not the
+        workspace — and made the AC-02 / S-4 explore-index engagement
+        path look in the wrong directory for ``.agent/ralph-explore``.
+
+        Two layouts are accepted:
+
+        * Production: ``{workspace}/.agent/ralph-mcp-session-*.json``
+          (or any direct child of ``.agent/``). Workspace is
+          ``.agent/..``.
+        * Legacy / worker layout: ``{workspace}/.agent/tmp/session.json``.
+          Workspace is found by walking upward until we see a
+          directory containing ``.agent/`` (the workspace IS that
+          directory).
+        """
+        return _resolve_workspace_root(self._path)
 
     @property
     def exec_resource_resolver(self) -> ExecResourceResolverLike | None:
@@ -366,6 +426,45 @@ def _load_session_payload(path: Path) -> dict[str, object]:
     if not isinstance(raw, dict):
         raise ValueError(f"{path} must encode an object")
     return raw
+
+
+def _resolve_workspace_root(path: Path) -> Path:
+    """Return the workspace root for the given session-file path.
+
+    See :attr:`FileBackedSession._workspace_root` for the layout
+    contract. Two accepted layouts:
+
+    * ``{workspace}/.agent/<session-file>`` — workspace is
+      ``.agent/..`` (production layout).
+    * ``{workspace}/.agent/tmp/<session-file>`` — workspace is found
+      by walking upward until we see a directory containing
+      ``.agent/``.
+
+    The legacy three-parent derivation is preserved as the final
+    fallback so a deeply-nested or non-standard session path still
+    resolves to a best-effort value rather than crashing the
+    subprocess boot path.
+    """
+    resolved_path = Path(path).resolve()
+    # Production layout: the session file lives directly under
+    # ``.agent/`` (named ``ralph-mcp-session-*.json`` in production,
+    # but the name is irrelevant — the parent directory name is the
+    # contract). Workspace is the parent of ``.agent/``.
+    if resolved_path.parent.name == ".agent":
+        return resolved_path.parent.parent.resolve()
+    # Worker / legacy layout: walk upward looking for a directory
+    # containing ``.agent/``. The first match is the workspace.
+    cursor = resolved_path.parent
+    while cursor != cursor.parent:
+        if (cursor / ".agent").is_dir():
+            return cursor.resolve()
+        cursor = cursor.parent
+    # Fallback (best-effort): the prior 3-parent derivation. Off by
+    # one for the production layout but harmless for any
+    # path-of-last-resort; it returns ``resolved_path``s
+    # grandparent, which keeps a non-standard layout at least
+    # pointing inside an ancestor directory.
+    return resolved_path.parent.parent.parent.resolve()
 
 
 def session_from_env(
