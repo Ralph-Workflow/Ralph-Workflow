@@ -42,6 +42,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.checked_accessors import as_str, optional_str
 from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._fields import FieldKind, ParsedFields, parse_fields
@@ -1289,13 +1290,12 @@ def _parse_override_items(
                     )
                 )
                 continue
+            override_section = optional_str(match.group("section"), field="section")
             entries.append(
                 (
-                    cast("str", match.group("rule")),
-                    cast("str", match.group("section")).strip()
-                    if match.group("section")
-                    else None,
-                    cast("str", match.group("reason")).strip(),
+                    as_str(match.group("rule"), field="rule"),
+                    override_section.strip() if override_section is not None else None,
+                    as_str(match.group("reason"), field="reason").strip(),
                 )
             )
     return entries
