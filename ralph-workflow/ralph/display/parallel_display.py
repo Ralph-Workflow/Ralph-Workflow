@@ -137,6 +137,7 @@ from ralph.display.artifact_reader import (
 )
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
+from ralph.display.edit_preview import build_edit_preview
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.phase_status import (
@@ -1414,15 +1415,20 @@ class ParallelDisplay:
 
         tool_signature: tuple[str, str] | None = None
 
+        # Hoist the TOOL_USE input_dict to method scope so the additive
+        # edit-preview print (after the header line) can reach it. The
+        # variable is only populated for TOOL_USE events; the preview
+        # builder returns None for non-content events so the value is
+        # only consumed when it matters.
+        input_dict: dict[str, object] = {}
+
         if kind is ActivityEventKind.TOOL_USE:
             # Subscriber delivery still needs the raw tool name +
             # structured input fields so audit/recap paths keep
             # working. Rendering flows through the registry; delivery
             # decisions (record_activity) stay here.
             input_obj = metadata.get("input", metadata.get("args"))
-            input_dict: dict[str, object] = (
-                cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
-            )
+            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
             original_name = text_content
             tool_path = str(input_dict.get("path", "") or "")
             tool_workdir = str(input_dict.get("workdir", "") or "")
@@ -1533,6 +1539,27 @@ class ParallelDisplay:
                     tool_signature=tool_signature,
                 ),
             )
+
+            # wt-046-syntax (P0 / AC-01..AC-05): after the registry-rendered
+            # one-line TOOL_USE header above, surface a syntax-highlighted
+            # preview of the file content the agent is editing. The preview
+            # is purely additive: the header line is byte-identical to the
+            # existing baseline and the preview is gated on (a) the kind
+            # being TOOL_USE (so non-content events never print a preview),
+            # (b) the quiet-mode flag (so single-line / machine-friendly
+            # runs stay clean), and (c) a successful ``build_edit_preview``
+            # call (so non-edit tools and empty payloads cleanly skip).
+            # ``contextlib.suppress(Exception)`` wraps the print so a
+            # pygments / rich renderable failure cannot break the live
+            # display path (R-3) -- the header line is the canonical
+            # surface and must survive even when the preview cannot.
+            if kind is ActivityEventKind.TOOL_USE and not self._is_quiet:
+                preview = build_edit_preview(
+                    text_content, input_dict, width=self._ctx.width
+                )
+                if preview is not None:
+                    with contextlib.suppress(Exception):
+                        self._console.print(preview)
 
         # P0 (wt-028-display S-11 / AC-07): the same event that
         # lands in the live log also lands in the rendered record.

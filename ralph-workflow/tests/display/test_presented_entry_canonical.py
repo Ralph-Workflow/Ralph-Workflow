@@ -320,17 +320,8 @@ def test_record_writer_invalid_indent_level_falls_back_to_zero() -> None:
     """
     from ralph.display.record_writer import _format_entry_line
 
-    entry = PresentedEntry(
-        kind="text",
-        severity="info",
-        identity="claude",
-        body="hi",
-        timestamp="14:29:03",
-        indent_level=0,  # type: ignore[arg-type]
-    )
     # Force a bad value through the dict-like contract.
     bad_entry = {"kind": "text", "severity": "info", "identity": "c", "body": "hi",
                  "timestamp": "14:29:03", "indent_level": "two"}
     line = _format_entry_line(bad_entry)
     assert line.startswith("[14:29:03]"), f"bad indent must clamp to 0; got: {line!r}"
-    _ = entry  # silence unused warning; canonical entry used elsewhere

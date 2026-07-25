@@ -120,7 +120,8 @@ def test_dedup_disabled_by_env_still_emits_one_close_line() -> None:
     )
     # With dedup off, all 3 fragments are buffered; joined passage
     # shows them all. With dedup on (default), only 1 is buffered.
-    assert "3 fragments" in out
+    # The retired 'fragments' footer must NOT surface (machine vocabulary).
+    assert "fragments" not in out
     assert out.count("same content") == 3
 
 

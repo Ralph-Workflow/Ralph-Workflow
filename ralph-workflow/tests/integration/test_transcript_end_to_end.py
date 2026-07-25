@@ -217,14 +217,18 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     assert run_start_idx < planning_idx, "run-start should appear before the first phase transition"
 
     # --- Assert streaming content block structure ---
-    # S-7 (wt-028-display P1): one entry per block close, with the
-    # joined passage plus fragment/char counts. The close-line tag is
-    # ``[content]`` (NOT ``[content-start]`` / ``[content-end]``); there
-    # are no per-fragment ``[content-continue#N]`` markers because the
-    # streaming layer is silent during open / continue.
+    # S-7 / S-9 (wt-028-display P1): one entry per block close, with
+    # the joined passage only. The close-line tag is ``[content]``
+    # (NOT ``[content-start]`` / ``[content-end]``); there are no
+    # per-fragment ``[content-continue#N]`` markers because the
+    # streaming layer is silent during open / continue. The
+    # ``fragments`` / ``chars`` footers are machine vocabulary and
+    # belong on no surface.
     assert "[content]" in out, "Transcript should contain a [content] close line"
-    # Close-line shape carries fragment count + char count joined by `·`.
-    assert "fragments" in out, "Transcript should mention fragment count on close"
+    # The retired fragment-count footer must NOT surface.
+    assert "fragments" not in out, (
+        "Close line must not carry the retired 'fragments' footer; machine vocabulary"
+    )
     # The pre-S-7 per-fragment / preview tokens must NOT surface.
     for forbidden in (
         "[content-start]",

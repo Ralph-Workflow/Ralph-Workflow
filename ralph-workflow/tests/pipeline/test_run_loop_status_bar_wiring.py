@@ -738,12 +738,11 @@ def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
     # test asserts only that the recorded anchor advances with
     # the clock (not the absolute value).
     clock = {"t": 1000.0}
-    monotonic_fn = lambda: clock.__setitem__("t", clock["t"] + 1) or clock["t"]  # noqa: E731
     console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
     pd = ParallelDisplay(
         make_display_context(console=console, env={}),
         workspace_root=Path(tempfile.mkdtemp()),
-        monotonic=monotonic_fn,
+        monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
     )
     # Initial state: no activity yet.
     assert pd.last_activity_monotonic is None
@@ -770,13 +769,12 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
     the same anchor so the bar can drive the stall derivation.
     """
     clock = {"t": 1000.0}
-    monotonic_fn = lambda: clock.__setitem__("t", clock["t"] + 1) or clock["t"]  # noqa: E731
     console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
     workspace_root = Path(tempfile.mkdtemp())
     pd = ParallelDisplay(
         make_display_context(console=console, env={}),
         workspace_root=workspace_root,
-        monotonic=monotonic_fn,
+        monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
     )
     # Seed the producer with a recent activity anchor.
     from ralph.display.activity_event_kind import ActivityEventKind

@@ -504,6 +504,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_DEFAULT_BUFFER_CAP",),
         ),
         (
+            "tests/display/test_presented_entry_canonical.py",
+            "ralph.display.record_writer",
+            ("_format_entry_line",),
+        ),
+        (
             "tests/display/test_status_bar_liveness.py",
             "ralph.display.status_bar",
             ("_STALL_THRESHOLD_SECONDS",),
@@ -619,6 +624,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/pipeline/test_run_loop_waiting_state_real_controller.py",
             "ralph.pipeline.run_loop",
             ("_LoopContext", "_run_inner_loop"),
+        ),
+        (
+            "tests/pipeline/test_run_loop_status_bar_wiring.py",
+            "ralph.pipeline.run_loop",
+            ("_attention_state_for_state",),
         ),
         (
             "tests/recovery/test_unavailability_reason.py",

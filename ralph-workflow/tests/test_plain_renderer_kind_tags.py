@@ -237,30 +237,44 @@ def test_condensed_ref_not_appended_when_not_condensed() -> None:
 
 
 def test_close_line_carries_joined_passage_and_counts() -> None:
-    """S-7 close line carries joined passage + fragment count + char count.
+    """S-7 / S-9 close line carries the joined passage; fragment / char
+    counts are machine vocabulary and were deliberately retired in the
+    post-consolidation revision (``S-7 / S-9`` block in
+    ``ParallelDisplay._close_block``: "The 'fragments' footer and the
+    'CONT' category are machine vocabulary and belong on no surface").
 
-    Format: ``INFO CONT [<tag>][<unit>] \u22ef <tag> \u00b7 <n> fragments \u00b7
-    <chars> chars`` followed by the joined passage on the next line.
+    Format: ``INFO  [<tag>][<unit>] \u22ef <tag>\n<joined passage>``.
     """
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "hello")  # 5 chars
     pd.emit_activity_line("u", "text", "world")  # 5 chars
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "2 fragments" in out
-    assert "10 chars" in out
-    assert "hello world" in out
+    # Joined passage still surfaces (preserves the operator-visible content).
+    assert "hello world" in out, f"joined passage missing from close line:\n{out!r}"
+    # The retired fragment-count footer must NOT surface — machine vocabulary.
+    assert "fragments" not in out, (
+        f"close line must not carry the retired 'fragments' footer; got:\n{out!r}"
+    )
+    # The retired char-count footer must NOT surface either.
+    assert "chars" not in out or "joined passage" in out, (
+        f"close line must not carry the retired char-count footer; got:\n{out!r}"
+    )
 
 
 def test_close_line_uses_bullet_separator_not_comma() -> None:
-    """The close-line fragment/char report uses `\u00b7` (middle dot), not a comma."""
+    """The close-line fragment/char footer was retired entirely (see
+    ``test_close_line_carries_joined_passage_and_counts``); what
+    remains is the bullet-glyph (\u22ef) introducing the joined passage
+    on its own line, with no comma-separated count tuple."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "abc")
     pd.flush_blocks()
     out = buf.getvalue()
-    # New shape: ``\u00b7`` between tags, never a comma.
-    assert "1 fragments" in out
-    assert "3 chars" in out
+    # No fragment-count footer.
+    assert "fragments" not in out, (
+        f"close line must not carry the retired 'fragments' footer; got:\n{out!r}"
+    )
     # No comma-separated (n, m) parenthesis format.
     assert "(1 fragments, 3 chars)" not in out
 
