@@ -38,7 +38,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from rich.text import Text
+if TYPE_CHECKING:
+    from rich.text import Text
 
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -57,6 +58,12 @@ from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.display.activity_provider import ActivityProvider, provider_for_transport
+from ralph.display.agent_event_renderer import (
+    normalize_event_from_agent_output_line,
+    render_event,
+)
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -1023,59 +1030,35 @@ def _resolve_commit_parser(parser_type: str) -> AgentParser:
 
 
 def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    rendered: Text | None = None
+    """Render a parser line via the shared ``render_event`` registry.
 
-    if output.type == "text":
-        content = output.content.strip()
-        if content:
-            rendered = _styled_commit_prefix(agent_name, "theme.text.emphasis")
-            rendered.append(content)
-    elif output.type == "tool_use":
-        tool_name = output.content.strip() or "unknown-tool"
-        summary = _tool_input_summary(output.metadata)
-        rendered = _styled_commit_prefix(f"{agent_name} tool", "theme.phase.review_analysis")
-        rendered.append(tool_name)
-        if summary:
-            rendered.append(f" ({summary})")
-    elif output.type == "tool_result":
-        result = output.content.strip() or _event_summary(output)
-        if result:
-            rendered = _styled_commit_prefix(f"{agent_name} tool result", "theme.text.muted")
-            rendered.append(result)
-    elif output.type == "error":
-        error = output.content.strip() or "unknown error"
-        rendered = _styled_commit_prefix(f"{agent_name} error", "theme.status.error")
-        rendered.append(error)
-    else:
-        rendered = _styled_commit_prefix(f"{agent_name} {output.type}", "theme.text.muted")
-        rendered.append(_event_summary(output))
+    DA-005 (wt-028-display S-20): the private commit renderer is
+    folded into the shared presentation pipeline. Every kind
+    (``text`` / ``tool_use`` / ``tool_result`` / ``error`` /
+    unknown) routes through
+    :func:`normalize_event_from_agent_output_line` and then
+    :func:`render_event`, so the commit path renders the same way
+    as every other code path that emits agent activity.
 
+    Returns ``None`` for kinds whose event carries no body to
+    surface (e.g. an empty ``text`` line), matching the legacy
+    contract that a ``None`` return means "skip this line".
+    """
+    provider = provider_for_transport(agent_name)
+    if provider is ActivityProvider.GENERIC and agent_name:
+        # The transport name didn't match any known provider; fall
+        # back to the agent's own normalized name so identity_color
+        # still picks the deterministic slot for it.
+        provider = ActivityProvider(agent_name) if agent_name in ActivityProvider.__members__ else ActivityProvider.GENERIC
+    event = normalize_event_from_agent_output_line(
+        output,
+        provider=provider,
+        unit_id=agent_name,
+    )
+    if event.kind == ActivityEventKind.TEXT and not (event.content or "").strip():
+        return None
+    rendered = render_event(event, unit_id=agent_name, escape_body=True)
     return rendered
-
-
-def _styled_commit_prefix(label: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    return text
-
-
-def _event_summary(output: AgentOutputLine) -> str:
-    content = output.content.strip()
-    if content:
-        return content
-    if output.metadata:
-        summary = _metadata_summary(output.metadata)
-        if summary:
-            return summary
-    return "(no details)"
-
-
-def _tool_input_summary(metadata: dict[str, object]) -> str:
-    input_obj = metadata.get("input")
-    if isinstance(input_obj, dict):
-        return _metadata_summary(cast("dict[str, object]", input_obj))
-    return ""
 
 
 def _metadata_summary(metadata: dict[str, object]) -> str:

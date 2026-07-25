@@ -223,6 +223,28 @@ _MIN_PATH_BUDGET: int = 4
 _MIN_PHASE_PLUS_PATH: int = _MIN_PHASE_BUDGET + _MIN_PATH_BUDGET
 
 
+# P0 (wt-028-display AC-02): stall threshold in seconds. When
+# ``now_monotonic - last_activity_monotonic`` exceeds this constant,
+# the renderer promotes ``attention`` to ``"stalled"`` (unless an
+# operator-pushed attention state such as ``waiting`` / ``retrying``
+# / ``terminated`` is already set).
+_STALL_THRESHOLD_SECONDS: float = 30.0
+
+# P0 (wt-028-display AC-03): attention-state presentation. The label
+# + glyph + style trio means color is never the only carrier of the
+# ``needs you`` signal -- an operator who cannot distinguish the
+# hues still reads the bare label and glyph. The glyph space is the
+# same one every Status Bar glyph already pulls from, so ASCII
+# consoles degrade the glyph to ``*`` automatically via
+# :meth:`DisplayContext.glyph_for`.
+ATTENTION_PRESENTATION: dict[str, tuple[str, str, str]] = {
+    "waiting": ("WAITING", "waiting", "theme.status.warn"),
+    "stalled": ("STALLED", "stalled", "theme.status.error"),
+    "retrying": ("RETRYING", "retrying", "theme.status.warn"),
+    "terminated": ("DONE", "terminated", "theme.status.info"),
+}
+
+
 @dataclass(frozen=True)
 class StatusBarModel:
     """Immutable view-model for the persistent Status Bar footer.
@@ -255,6 +277,13 @@ class StatusBarModel:
             neutral label, so the bar never claims a phase is something
             it isn't (AC-02). When ``None`` the bar renders ``Cycle N/cap``;
             when set, it renders ``<outer_label> N/cap``.
+        attention: ``None`` (healthy), ``"waiting"``, ``"stalled"``,
+            ``"retrying"``, or ``"terminated"``. P0 (wt-028-display AC-03).
+        last_activity_monotonic: Most recent agent-activity timestamp in
+            ``time.monotonic()`` units, or ``None`` when no activity has
+            been observed yet. P0 (wt-028-display AC-02): the renderer
+            derives ``stalled`` from the gap between this and the
+            ``now_monotonic`` argument.
     """
 
     workspace_root: str
@@ -273,6 +302,11 @@ class StatusBarModel:
     # bar keeps ticking during quiet agent turns without a model
     # re-push. ``None`` keeps the existing snapshot-elapsed contract.
     run_started_monotonic: float | None = None
+    # P0 (wt-028-display AC-02 / AC-03): the typed attention slot is
+    # reserved at every width; ``last_activity_monotonic`` lets the
+    # renderer derive ``stalled`` from the gap to ``now_monotonic``.
+    attention: str | None = None
+    last_activity_monotonic: float | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -810,6 +844,50 @@ def _prune_optional_segments(
     return []
 
 
+def _resolve_attention_state(
+    model: StatusBarModel,
+    now_monotonic: float | None,
+) -> str | None:
+    """Return the active attention state for the bar.
+
+    Operator-pushed states (``waiting``, ``retrying``, ``terminated``)
+    win over the time-derived ``stalled`` signal because they
+    represent deliberate intent that the operator wants to see no
+    matter what the activity timestamp says. ``stalled`` is derived
+    from the gap between ``last_activity_monotonic`` and
+    ``now_monotonic``; when the gap is below the threshold the run
+    is considered ``advancing`` and the slot renders blank.
+
+    Args:
+        model: Status bar view-model carrying the operator-pushed
+            ``attention`` and the ``last_activity_monotonic`` anchor.
+        now_monotonic: Optional wall-clock anchor for the stall
+            computation. ``None`` disables the stall derivation (the
+            existing snapshot contract); operator-pushed states still
+            surface.
+
+    Returns:
+        ``None`` (blank slot, healthy run) or one of the named
+        attention values. The returned value is always a key of
+        :data:`ATTENTION_PRESENTATION` so the renderer can index
+        the presentation table without a defensive fallback.
+    """
+    pushed = model.attention
+    if pushed is not None:
+        # Defensive: an unknown pushed value is ignored so a future
+        # addition to the named state set cannot poison the slot.
+        if pushed in ATTENTION_PRESENTATION:
+            return pushed
+        return None
+    if (
+        now_monotonic is not None
+        and model.last_activity_monotonic is not None
+        and now_monotonic - model.last_activity_monotonic >= _STALL_THRESHOLD_SECONDS
+    ):
+        return "stalled"
+    return None
+
+
 def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
     """Format the inner_analysis label using the form that fits ``max_chars``."""
     if max_chars <= 0:
@@ -902,6 +980,17 @@ def render_status_bar(
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
+    # P0 (wt-028-display AC-03): render the attention slot FIRST so
+    # its arrival never shifts neighbours. The slot is reserved at
+    # every width -- a healthy run renders blank space (the operator
+    # learns the slot is empty by its blank state and gets a visible
+    # label + glyph the moment the run is no longer healthy).
+    attention_state = _resolve_attention_state(model, now_monotonic)
+    if attention_state is not None:
+        label, glyph_key, style = ATTENTION_PRESENTATION[attention_state]
+        glyph = ctx.glyph_for(glyph_key)
+        text.append(f"{glyph} {label}", style=style)
+        text.append(separator, style="theme.status.path_marker")
     if model.integration_alert:
         # The alert LEADS the bar so an unresolved integration conflict
         # is visible at every width; the final width clamp below still

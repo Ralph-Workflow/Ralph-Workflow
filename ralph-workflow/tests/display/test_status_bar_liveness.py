@@ -246,3 +246,168 @@ def test_render_status_bar_purity_preserved_when_now_monotonic_set() -> None:
     assert a.plain == b.plain
     # Returned object is a rich Text (the established public type).
     assert isinstance(a, Text)
+
+
+# ---------------------------------------------------------------------------
+# P0 (wt-028-display AC-02 / AC-03): attention slot + liveness derivation.
+# ---------------------------------------------------------------------------
+
+
+def test_attention_slot_is_blank_when_no_state_set() -> None:
+    """A healthy run renders a blank attention slot; neighbours do not shift."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=100.0,
+    )
+    healthy_text = render_status_bar(model, ctx, now_monotonic=100.0).plain
+    # No attention glyph or label appears on a healthy run.
+    assert "WAITING" not in healthy_text
+    assert "STALLED" not in healthy_text
+    assert "RETRYING" not in healthy_text
+    # The phase label and elapsed segment still render.
+    assert "Development" in healthy_text
+
+
+def test_attention_waiting_label_and_glyph_render() -> None:
+    """``attention="waiting"`` surfaces a distinct label + glyph + style."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        attention="waiting",
+    )
+    rendered = render_status_bar(model, ctx)
+    assert "WAITING" in rendered.plain
+
+
+def test_attention_retrying_label_and_glyph_render() -> None:
+    """``attention="retrying"`` surfaces a distinct label + glyph + style."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        attention="retrying",
+    )
+    rendered = render_status_bar(model, ctx)
+    assert "RETRYING" in rendered.plain
+
+
+def test_attention_terminated_label_renders() -> None:
+    """``attention="terminated"`` surfaces the DONE label."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        attention="terminated",
+    )
+    rendered = render_status_bar(model, ctx)
+    assert "DONE" in rendered.plain
+
+
+def test_attention_stall_derived_from_activity_gap() -> None:
+    """A gap > 30s with no activity flips the attention slot to ``stalled``."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=100.0,
+        last_activity_monotonic=100.0,
+    )
+    # Below threshold: no stall.
+    early_text = render_status_bar(model, ctx, now_monotonic=120.0).plain
+    assert "STALLED" not in early_text
+    # Above threshold: stall appears.
+    late_text = render_status_bar(model, ctx, now_monotonic=200.0).plain
+    assert "STALLED" in late_text
+
+
+def test_attention_stall_threshold_is_named_constant() -> None:
+    """The stall threshold is exposed so a future caller can tune it deliberately."""
+    from ralph.display.status_bar import _STALL_THRESHOLD_SECONDS
+
+    assert _STALL_THRESHOLD_SECONDS > 0
+    assert isinstance(_STALL_THRESHOLD_SECONDS, float)
+
+
+def test_attention_operator_state_wins_over_stall_derivation() -> None:
+    """A pushed ``waiting`` / ``retrying`` / ``terminated`` overrides ``stalled``."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=100.0,
+        last_activity_monotonic=100.0,
+        attention="waiting",
+    )
+    # Gap is large enough to derive stalled, but operator-pushed waiting wins.
+    text = render_status_bar(model, ctx, now_monotonic=200.0).plain
+    assert "WAITING" in text
+    assert "STALLED" not in text
+
+
+def test_attention_unknown_pushed_value_renders_blank() -> None:
+    """Defensive: an unknown pushed attention value is ignored."""
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        attention="not-a-real-state",
+    )
+    text = render_status_bar(model, ctx).plain
+    assert "not-a-real-state" not in text
+
+
+def test_attention_stall_uses_named_constant_for_threshold() -> None:
+    """Exact threshold boundary: at-threshold does NOT stall, just-above does."""
+    from ralph.display.status_bar import _STALL_THRESHOLD_SECONDS
+
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=100.0,
+        last_activity_monotonic=100.0,
+    )
+    boundary = 100.0 + _STALL_THRESHOLD_SECONDS
+    # One second before the boundary: no stall.
+    before_text = render_status_bar(
+        model, ctx, now_monotonic=boundary - 1.0
+    ).plain
+    assert "STALLED" not in before_text
+    # Exactly at the boundary: stall appears.
+    boundary_text = render_status_bar(model, ctx, now_monotonic=boundary).plain
+    assert "STALLED" in boundary_text

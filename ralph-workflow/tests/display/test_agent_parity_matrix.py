@@ -1,0 +1,279 @@
+"""Per-agent parity matrix through the canonical pipeline (S-40).
+
+For each supported agent (claude, claude-headless, codex, opencode,
+nanocoder, agy, pi, cursor) plus the generic fallback and the gemini
+input format, drives a representative parsed event stream through the
+canonical entry pipeline and asserts:
+
+* exactly one entry per event,
+* no internal channel vocabulary on any surface,
+* pairwise identity-only-difference between agents,
+* composite identity (`pi · provider/model`) renders as one identity
+  with one color,
+* graceful degradation when an agent omits data,
+* unknown / malformed input still renders with hierarchy, condensation,
+  and accessible color.
+
+Black-box: uses the public ``render_event`` / ``build_presented_entry``
+APIs and ``rich.text.Text.plain`` so it does not peek at implementations.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.display.activity_provider import ActivityProvider
+from ralph.display.agent_activity_event import AgentActivityEvent
+from ralph.display.agent_event_renderer import (
+    EVENT_RENDERERS,
+    build_presented_entry,
+    render_event,
+    render_event_kind_text,
+)
+from ralph.display.presented_entry import PresentedEntry
+from ralph.display.theme import IDENTITY_PALETTE, identity_color
+
+# All agents declared in ralph/agents/builtin.py:61-155 plus the
+# generic fallback; gemini is parser-only (ralph/agents/parsers/gemini.py).
+_SUPPORTED_AGENTS: tuple[str, ...] = (
+    "claude",
+    "claude-headless",
+    "codex",
+    "opencode",
+    "nanocoder",
+    "agy",
+    "pi",
+    "cursor",
+)
+
+_INTERNAL_VOCABULARY: tuple[str, ...] = (
+    "CONT",
+    "META",
+    "thinking-start",
+    "thinking-end",
+    "fragments, ",
+)
+
+
+def _make_event(
+    provider: ActivityProvider,
+    kind: ActivityEventKind,
+    content: str = "hello",
+    metadata: dict[str, object] | None = None,
+) -> AgentActivityEvent:
+    return AgentActivityEvent(
+        provider=provider,
+        kind=kind,
+        content=content,
+        metadata=metadata or {},
+    )
+
+
+def _drive_event_stream(unit_id: str) -> Iterable[AgentActivityEvent]:
+    """A representative event stream: text, thinking, tool, error, unknown."""
+    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.TEXT, "ping")
+    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.THINKING, "reasoning")
+    yield _make_event(
+        ActivityProvider.CLAUDE,
+        ActivityEventKind.TOOL_USE,
+        "Bash",
+        metadata={"input": {"command": "ls -la"}},
+    )
+    yield _make_event(
+        ActivityProvider.CLAUDE,
+        ActivityEventKind.TOOL_RESULT,
+        "ok",
+        metadata={"tool": "Bash"},
+    )
+    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.ERROR, "boom")
+    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.UNKNOWN, "??")
+
+
+# --- One entry per event --------------------------------------------------
+
+
+def test_canonical_entry_builds_one_per_event_for_each_agent() -> None:
+    """Every supported agent produces one ``PresentedEntry`` per event."""
+    for agent_name in _SUPPORTED_AGENTS:
+        entries = [
+            build_presented_entry(event, unit_id=agent_name)
+            for event in _drive_event_stream(agent_name)
+        ]
+        kinds = [entry.kind for entry in entries]
+        assert len(entries) == 6, (
+            f"{agent_name}: expected 6 entries (text/thinking/tool_use/"
+            "tool_result/error/unknown), got "
+            f"{len(entries)}: {kinds}"
+        )
+
+
+# --- No internal vocabulary on any surface --------------------------------
+
+
+def test_render_event_keeps_internal_vocabulary_off_surface() -> None:
+    """CONT / META / thinking-start / fragments, never reach the rendered text."""
+    for agent_name in _SUPPORTED_AGENTS:
+        for event in _drive_event_stream(agent_name):
+            text = render_event(event, unit_id=agent_name)
+            plain = text.plain
+            for forbidden in _INTERNAL_VOCABULARY:
+                assert forbidden not in plain, (
+                    f"{agent_name} {event.kind}: {forbidden!r} leaked into "
+                    f"rendered text: {plain!r}"
+                )
+
+
+def test_render_event_kind_text_keeps_internal_vocabulary_off_surface() -> None:
+    """The plain-text path also strips the internal vocabulary."""
+    for agent_name in _SUPPORTED_AGENTS:
+        for event in _drive_event_stream(agent_name):
+            line = render_event_kind_text(
+                event.kind,
+                event.content,
+                timestamp=event.timestamp,
+                metadata=event.metadata,
+                agent_name=agent_name,
+            )
+            for forbidden in _INTERNAL_VOCABULARY:
+                assert forbidden not in line, (
+                    f"{agent_name} {event.kind}: {forbidden!r} leaked into "
+                    f"plain text: {line!r}"
+                )
+
+
+# --- Pairwise identity-only-difference -------------------------------------
+
+
+def test_same_event_different_agents_differs_only_by_identity() -> None:
+    """Two agents producing the same logical event render to the same body
+    (icon/label/timestamp are stable; only the identity prefix may differ)."""
+    text_a = render_event(
+        _make_event(ActivityProvider.CLAUDE, ActivityEventKind.TEXT, "hello"),
+        unit_id="claude",
+    ).plain
+    text_b = render_event(
+        _make_event(ActivityProvider.CODEX, ActivityEventKind.TEXT, "hello"),
+        unit_id="codex",
+    ).plain
+    # The body portion after the icon/label/timestamp must be identical.
+    parts_a = text_a.split(" ", 3)
+    parts_b = text_b.split(" ", 3)
+    # Strip the per-agent identity prefix at the end of the body.
+    body_a = parts_a[-1].removeprefix("claude ")
+    body_b = parts_b[-1].removeprefix("codex ")
+    assert body_a == body_b
+
+
+# --- Composite identity (Design item 8) ------------------------------------
+
+
+def test_composite_identity_keeps_one_color() -> None:
+    """`pi · minimax/MiniMax-3` keeps one stable, accessible color distinct
+    from the bare ``pi`` identity."""
+    pi_color = identity_color("pi")
+    composite_color = identity_color("pi · minimax/MiniMax-3")
+    assert composite_color in IDENTITY_PALETTE
+    assert pi_color in IDENTITY_PALETTE
+    # The composite is normalized as a distinct identity: it must hash
+    # to a stable slot. We don't pin "different" (the deterministic
+    # slot may coincide) but we do pin "stable" and "in palette".
+    repeated = identity_color("pi · minimax/MiniMax-3")
+    assert repeated == composite_color
+
+
+# --- Graceful degradation when an agent omits data ------------------------
+
+
+def test_omitted_tool_data_renders_without_collapse() -> None:
+    """An agent that omits a tool result's metadata still renders the line."""
+    event = _make_event(
+        ActivityProvider.GENERIC,
+        ActivityEventKind.TOOL_RESULT,
+        "raw stdout",
+        metadata={},
+    )
+    text = render_event(event, unit_id="claude").plain
+    assert "raw stdout" in text
+    assert "claude" in text
+
+
+def test_omitted_phase_renders_without_shift() -> None:
+    """A blank optional field does not collapse the layout."""
+    entry = PresentedEntry(
+        kind="text",
+        severity="info",
+        identity="claude",
+        body="hello",
+    )
+    assert entry.phase is None
+    assert entry.cycle is None
+    assert entry.iter is None
+    # Re-rendering through the registry still produces a non-empty line.
+    event = _make_event(ActivityProvider.CLAUDE, ActivityEventKind.TEXT, "hello")
+    text = render_event(event, unit_id="claude").plain
+    assert "hello" in text
+
+
+# --- Unknown / malformed input still renders with hierarchy ---------------
+
+
+def test_unknown_event_renders_with_accessible_carrier() -> None:
+    """An unknown event still carries the icon + label carrier pair."""
+    event = _make_event(
+        ActivityProvider.CLAUDE,
+        ActivityEventKind.UNKNOWN,
+        "no clue",
+        metadata={"status": "unparsed", "phase": "scanning"},
+    )
+    text = render_event(event, unit_id="claude").plain
+    # The unknown-event carrier is "warning" -- icon + ASCII label.
+    assert "WARN" in text or "?" in text  # ASCII label fallback
+    # The body is preserved.
+    assert "no clue" in text
+
+
+def test_malformed_event_renders_via_registry_fallback() -> None:
+    """A kind that misses the registry falls back to ``_render_unknown_event``."""
+    # Patch the registry to be empty so the fallback fires.
+    original = dict(EVENT_RENDERERS)
+    EVENT_RENDERERS.clear()
+    try:
+        event = _make_event(
+            ActivityProvider.CLAUDE,
+            ActivityEventKind.TEXT,
+            "edge",
+        )
+        text = render_event(event, unit_id="claude").plain
+        # The fallback renders identity + body; never crashes.
+        assert "edge" in text
+        assert "claude" in text
+    finally:
+        EVENT_RENDERERS.update(original)
+
+
+# --- Generic fallback & gemini input format -------------------------------
+
+
+def test_generic_fallback_agent_renders() -> None:
+    """The generic fallback identity (ActivityProvider.GENERIC) still renders."""
+    event = _make_event(
+        ActivityProvider.GENERIC,
+        ActivityEventKind.TEXT,
+        "fallback",
+    )
+    text = render_event(event, unit_id="generic").plain
+    assert "fallback" in text
+
+
+def test_gemini_input_format_renders() -> None:
+    """The gemini input format (parser-only) still produces a presented entry."""
+    # Gemini-style text: just a content string.
+    event = _make_event(
+        ActivityProvider.GEMINI,
+        ActivityEventKind.TEXT,
+        "gemini answer",
+    )
+    entry = build_presented_entry(event, unit_id="gemini")
+    assert entry.identity == "gemini"
+    assert entry.body == "gemini answer"

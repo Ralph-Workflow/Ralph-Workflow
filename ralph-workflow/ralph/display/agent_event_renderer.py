@@ -49,8 +49,12 @@ not need to be touched.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 from rich.markup import escape
 from rich.text import Text
@@ -61,6 +65,10 @@ from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.line_sanitizer import strip_terminal_control
+from ralph.display.presented_entry import (
+    PresentedEntry,
+    build_presented_entry,
+)
 from ralph.display.theme import STATUS_STYLES, identity_color
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
@@ -152,7 +160,11 @@ def _format_body_with_unit(body: str, unit_id: str | None) -> str:
     return f"{unit_id} {body}"
 
 
-def _identity_style_for(unit_id: str | None) -> str:
+def _identity_style_for(
+    unit_id: str | None,
+    *,
+    active: Iterable[str] | None = None,
+) -> str:
     """Return the Rich style string for a unit identity prefix.
 
     Resolves the deterministic, accessible identity color from
@@ -161,12 +173,20 @@ def _identity_style_for(unit_id: str | None) -> str:
     is always preserved (color only assists recognition), so a
     grayscale / colorblind operator still reads the bare name.
 
+    When ``active`` is supplied (any iterable of identity names
+    currently rendered on the same surface), the collision-aware
+    palette slot is picked so two simultaneously-rendered identities
+    can never share a confusable color under any of the three
+    documented CVD simulations. AC-15 (wt-028-display P3).
+
     Returns ``""`` (no override) when ``unit_id`` is empty so the
     caller's default body style wins.
     """
     if not unit_id:
         return ""
-    return identity_color(unit_id)
+    if active is None:
+        return identity_color(unit_id)
+    return identity_color(unit_id, active=active)
 
 
 def _split_body_with_unit(body: str, unit_id: str | None) -> tuple[str, str]:
@@ -416,6 +436,16 @@ def _render_tool_result_event(
     state = "error" if is_error else "success"
     style, icon, label = _state_payload(state)
     raw_body = _safe_str(event.content)
+    if not raw_body:
+        result_meta = event.metadata.get("result")
+        if isinstance(result_meta, dict):
+            # Structured tool results (codex MCP tool_result, JSON Responses)
+            # carry the dict in metadata rather than as a string body. Surface
+            # the parsed dict so the operator can see why the call failed and
+            # so downstream failure diagnostics (e.g. commit_plumbing's
+            # "Agent output:" lines) preserve the structured payload.
+            serialised = json.dumps(result_meta, sort_keys=True, default=str)
+            raw_body = f"result={serialised}"
     if unit_id and not _has_explicit_unit_prefix(raw_body, unit_id):
         body = _format_body_with_unit(raw_body, unit_id)
     else:
@@ -874,6 +904,8 @@ def normalize_event_from_agent_output_line(
 __all__ = [
     "EVENT_RENDERERS",
     "EventRenderer",
+    "PresentedEntry",
+    "build_presented_entry",
     "make_event_for_emit",
     "normalize_event_from_agent_output_line",
     "render_event",

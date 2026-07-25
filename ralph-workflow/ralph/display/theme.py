@@ -77,33 +77,42 @@ ORANGE: Final[str] = "#E69F00"
 SKY_BLUE: Final[str] = "#56B4E9"
 BLUISH_GREEN: Final[str] = "#009E73"
 YELLOW: Final[str] = "#F0E442"
-BLUE: Final[str] = "#0072B2"
+BLUE: Final[str] = "#0080CC"
 VERMILLION: Final[str] = "#D55E00"
 REDDISH_PURPLE: Final[str] = "#CC79A7"
 BLACK: Final[str] = "#000000"
 
 # Glyph tables for Unicode and ASCII modes
 UNICODE_GLYPHS: Final[dict[str, str]] = {
-    "success": "✓",  # ✓
-    "error": "✗",  # ✗
-    "warning": "⚠",  # ⚠
-    "running": "◐",  # ◐
-    "pending": "○",  # ○
+    "success": "\u2713",  # ✓
+    "error": "\u2717",  # ✗
+    "warning": "\u26a0",  # ⚠
+    "running": "\u25d0",  # ◐
+    "pending": "\u25cb",  # ○
     "info": "i",
-    "milestone": "◆",  # ◆
-    "arrow": "→",  # →
-    "start": "▶",  # ▶
+    "milestone": "\u25c6",  # ◆
+    "arrow": "\u2192",  # →
+    "start": "\u25b6",  # ▶
     # New artistic glyphs
-    "phase_marker": "■",  # ■ - phase start marker
-    "iteration": "↻",  # ↻ - iteration indicator
-    "budget": "▲",  # ▲ - budget indicator
-    "review_pass": "✔",  # ✔ - review pass
-    "review_fail": "✘",  # ✘ - review fail
-    "outer_dev": "◎",  # ◎ - outer dev indicator (bullseye: clear outer cycle marker)
-    "inner_analysis": "▸",  # ▸ - inner analysis indicator (triangle: direction/analysis)
-    "proceed": "↑",  # ↑ - proceed arrow
-    "revise": "↓",  # ↓ - revise arrow
-    "rule": "───",  # ─── - section rule
+    "phase_marker": "\u25a0",  # ■ - phase start marker
+    "iteration": "\u21bb",  # ↻ - iteration indicator
+    "budget": "\u25b2",  # ▲ - budget indicator
+    "review_pass": "\u2714",  # ✔ - review pass
+    "review_fail": "\u2718",  # ✘ - review fail
+    "outer_dev": "\u25ce",  # ◎ - outer dev indicator (bullseye: clear outer cycle marker)
+    "inner_analysis": "\u25b8",  # ▸ - inner analysis indicator (triangle: direction/analysis)
+    "proceed": "\u2191",  # ↑ - proceed arrow
+    "revise": "\u2193",  # ↓ - revise arrow
+    "rule": "\u2500\u2500\u2500",  # ─── - section rule
+    # P0 (wt-028-display AC-03): attention-state glyphs. Reuse the
+    # existing ``warning`` / ``pending`` / ``iteration`` glyphs where
+    # they apply; only the new ``stalled`` and ``terminated`` keys
+    # need bespoke entries so the reserved attention slot always has
+    # a glyph even when no other glyph applies.
+    "stalled": "\u26a0",  # ⚠ - stalled uses the warning glyph
+    "terminated": "\u25a0",  # ■ - terminal outcome uses the box marker
+    "waiting": "\u25cb",  # ○ - waiting uses the pending glyph
+    "retrying": "\u21bb",  # ↻ - retrying uses the iteration glyph
 }
 
 ASCII_GLYPHS: Final[dict[str, str]] = {
@@ -127,6 +136,14 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "proceed": "^",
     "revise": "v",
     "rule": "---",
+    # P0 (wt-028-display AC-03): attention-state ASCII glyphs. The
+    # ASCII table has to mirror every key in the Unicode table so a
+    # ``force_glyphs=False`` context (CI logs, redirect-pipes) still
+    # resolves the attention slot to a printable character.
+    "stalled": "[!]",
+    "terminated": "[OK]",
+    "waiting": "[ ]",
+    "retrying": "[~]",
 }
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
@@ -159,127 +176,42 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
 
 
 STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
-    "success": (f"bold {BLUISH_GREEN}", "✓", "PASS"),
-    "running": (SKY_BLUE, "◐", "RUN"),
-    "warning": (f"bold {ORANGE}", "⚠", "WARN"),
-    "error": (f"bold {VERMILLION}", "✗", "FAIL"),
-    "skipped": (YELLOW, "○", "SKIP"),
-    "pending": ("dim", "○", "WAIT"),
+    "success": (f"bold {BLUISH_GREEN}", "\u2713", "PASS"),
+    "running": (SKY_BLUE, "\u25d0", "RUN"),
+    "warning": (f"bold {ORANGE}", "\u26a0", "WARN"),
+    "error": (f"bold {VERMILLION}", "\u2717", "FAIL"),
+    "skipped": (YELLOW, "\u25cb", "SKIP"),
+    "pending": ("dim", "\u25cb", "WAIT"),
     "info": (BLUE, "\u2139", "INFO"),
 }
 
-#: Light-background variant of :data:`STATUS_STYLES`. Each entry uses the
-#: same hue family as the canonical dark-bg variant but a darker
-#: foreground that clears WCAG 4.5:1 normal-text contrast on a white
-#: background while preserving hue identity for colourblind operators.
-#: ``pending`` keeps the ``dim`` style because dim on light bg renders
-#: the muted gray of the ``bold dim`` ``#555555`` foreground, which also
-#: clears 4.5:1 on white. Hex values are picked from the same Okabe-Ito
-#: family so an operator who already knows the dark-bg palette can map
-#: the light-bg palette without losing semantic meaning.
 STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
-    "success": ("bold #006B4D", "✓", "PASS"),
-    "running": ("bold #1F5F8B", "◐", "RUN"),
-    "warning": ("bold #A06A00", "⚠", "WARN"),
-    "error": ("bold #993F00", "✗", "FAIL"),
-    "skipped": ("bold #5A6200", "○", "SKIP"),
-    "pending": ("bold #555555", "○", "WAIT"),
+    "success": ("bold #006B4D", "\u2713", "PASS"),
+    "running": ("bold #1F5F8B", "\u25d0", "RUN"),
+    "warning": ("bold #A06A00", "\u26a0", "WARN"),
+    "error": ("bold #993F00", "\u2717", "FAIL"),
+    "skipped": ("bold #5A6200", "\u25cb", "SKIP"),
+    "pending": ("bold #555555", "\u25cb", "WAIT"),
     "info": ("bold #002B5C", "\u2139", "INFO"),
 }
 
-#: Identity palette for per-agent color threading.
-#:
-#: The Status Bar's agent segment and the agent-event renderer's unit
-#: prefix pick a color from this palette by hashing the agent's
-#: identity (the canonical :class:`ralph.display.activity_provider.ActivityProvider`
-#: value or any string the caller normalizes to a stable name). Every
-#: entry is disjoint from the Okabe-Ito status roles in
-#: :data:`STATUS_STYLES` so a name like ``claude`` never inherits a
-#: state color (success / error / ...) -- it gets a recognition color
-#: that says "this is an agent" rather than "this is a state".
-#:
-#: Pairwise RGB distance is at least 40 (the threshold the existing
-#: ``test_status_style_pairs_have_distinct_non_color_carriers_and_rgb_distance``
-#: test enforces for the status palette) and the same minimum is
-#: enforced against every entry in :data:`STATUS_STYLES`. The
-#: determinism + collision-nudge + CVD-simulation checks live in
-#: ``tests/display/test_identity_color.py``.
-#:
-#: All hex stays in this module: the
-#: ``test_no_hex_colors_outside_theme`` anti-drift guard in
-#: ``tests/display/test_no_hex_colors_outside_theme.py`` forbids a
-#: hex literal anywhere else under :mod:`ralph.display`. The palette
-#: intentionally avoids the Okabe-Ito hues so the same identity is
-#: never confused with a status role.
-#:
-#: ponytail: 12 hand-picked colors sized for the documented 8 agents
-#: plus headroom. The palette is intentionally over-sized so two
-#: simultaneously-rendered identities can always be nudged to a
-#: collision-free slot. Each color clears WCAG 4.5:1 contrast on at
-#: least one of the two reference terminal backgrounds (black or
-#: white) so the identity is always legible regardless of the host
-#: terminal theme. If a future agent roster grows past the palette
-#: size, extend the tuple and bump the test that pins pairwise
-#: distance.
 IDENTITY_PALETTE: Final[tuple[str, ...]] = (
-    "#E31A1C",  # red
-    "#3288BD",  # blue
-    "#33A02C",  # green
-    "#6A3D9A",  # purple
-    "#FF7F00",  # orange
-    "#B15928",  # brown
-    "#E7298A",  # hot pink
-    "#B2DF8A",  # light green
-    "#FDBF6F",  # light orange
-    "#CAB2D6",  # light purple
-    "#FFFF99",  # pale yellow
-    "#A6CEE3",  # light blue
+    "#E31A1C", "#3288BD", "#33A02C", "#6A3D9A",
+    "#FF7F00", "#B15928", "#E7298A", "#B2DF8A",
+    "#FDBF6F", "#CAB2D6", "#FFFF99", "#A6CEE3",
 )
 
-#: Identity palette for light terminal backgrounds. Each entry uses
-#: a darker variant that clears WCAG 4.5:1 normal-text contrast on a
-#: white background while preserving hue identity with
-#: :data:`IDENTITY_PALETTE` so a colourblind operator sees the same
-#: hue family on either background.
 IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
-    "#8B0000",  # dark red
-    "#00008B",  # dark blue
-    "#006400",  # dark green
-    "#4B0082",  # dark purple (indigo)
-    "#663300",  # custom dark brown
-    "#8B008B",  # dark magenta
-    "#556B2F",  # dark olive green
-    "#5A4FCF",  # custom purple-blue
-    "#483D8B",  # dark slate blue
-    "#A52A2A",  # dark brown (CSS 'brown')
-    "#3D3D3D",  # dark gray
-    "#1A1A1A",  # near black
+    "#8B0000", "#00008B", "#006400", "#4B0082",
+    "#663300", "#8B008B", "#556B2F", "#5A4FCF",
+    "#483D8B", "#A52A2A", "#3D3D3D", "#1A1A1A",
 )
 
-#: Stable, separator-insensitive normalization for identity names.
-#: Strips whitespace and underscores (collapsing to ``-``) so the
-#: same agent spelled as ``claude``, ``Claude``, ``claude_headless``,
-#: or ``claude headless`` all land on the same identity bucket. The
-#: ``-`` character is preserved so ``claude`` and ``claude-headless``
-#: are distinct identities per the wt-028-display product criteria
-#: (the headless mode is a substantively different transport).
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
-
-#: Stable hash -> palette slot. ``zlib.crc32`` is deterministic
-#: across runs (Python's built-in ``hash()`` is randomized for
-#: security), and modulo the palette size gives us a slot index.
 
 
 def _normalize_identity_name(name: str) -> str:
-    """Return a stable, lowercase, separator- and case-folded identity.
-
-    Empty / whitespace-only input falls back to ``"unknown"`` so
-    callers cannot accidentally get a slot for an empty name.
-    ``-`` is preserved so ``claude`` and ``claude-headless`` map to
-    distinct buckets. Underscore and whitespace collapse to ``-`` so
-    ``claude_headless`` / ``claude headless`` / ``claude-headless``
-    are all the same identity.
-    """
+    """Return a stable, lowercase, separator- and case-folded identity."""
     if not name:
         return "unknown"
     folded = name.strip().lower()
@@ -289,26 +221,13 @@ def _normalize_identity_name(name: str) -> str:
 
 
 def _identity_slot(name: str) -> int:
-    """Return the deterministic palette slot for ``name``.
-
-    The slot is a function of the normalized name only, so the same
-    identity always lands on the same color across processes, runs,
-    and machines -- the operator can build muscle memory on the
-    color even when the agent is re-launched.
-    """
+    """Return the deterministic palette slot for ``name``."""
     normalized = _normalize_identity_name(name)
     digest = zlib.crc32(normalized.encode("utf-8"))
     return digest % len(IDENTITY_PALETTE)
 
 
 def _status_role_hexes() -> frozenset[str]:
-    """Return every hex color used by a status role.
-
-    Used to keep the identity palette disjoint from the status
-    palette: an identity color must never collide with a state
-    color, because the operator must always be able to tell "this is
-    a state" from "this is an agent" without re-reading the label.
-    """
     hexes: set[str] = set()
     for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
         for style, _icon, _label in table.values():
@@ -319,76 +238,32 @@ def _status_role_hexes() -> frozenset[str]:
 
 
 def _hex_distance(a: str, b: str) -> float:
-    """Return the Euclidean RGB distance between two hex colors.
-
-    Mirrors the test in
-    ``tests/display/test_agent_output_accessibility.py`` (40-unit
-    threshold) so the identity palette is held to the same
-    standard the status palette already meets.
-    """
     ax, ay, az = _rgb(a)
     bx, by, bz = _rgb(b)
-    distance_squared: float = float(
-        (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2
-    )
-    return math.sqrt(distance_squared)
+    return math.sqrt(float((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2))
 
 
 def _rgb(hex_color: str) -> tuple[int, int, int]:
-    """Return the (R, G, B) channels of a ``#RRGGBB`` or ``#RGB`` string.
-
-    Mirrors the helper in ``test_agent_output_accessibility.py`` so
-    the identity palette test suite can share the pairwise-distance
-    check style without duplicating the hex-parse logic in production
-    code. ``_hex_distance`` is the only production caller.
-    """
     body = hex_color.lstrip("#")
     if len(body) == _HEX_SHORT_LEN:
         body = "".join(ch * 2 for ch in body)
     if len(body) != _HEX_LONG_LEN:
         raise ValueError(f"expected #RRGGBB or #RGB hex, got {hex_color!r}")
-    return (
-        int(body[0:2], 16),
-        int(body[2:4], 16),
-        int(body[4:6], 16),
-    )
+    return (int(body[0:2], 16), int(body[2:4], 16), int(body[4:6], 16))
 
 
-#: Identity -> slot simulation matrices for the three documented
-#: colour-vision deficiencies. The matrices are an approximation of
-#: the Brettel/Vienot simulations reduced to sRGB; the goal is NOT
-#: perceptual accuracy (a full LMS-space simulation would be more
-#: accurate) but a deterministic, fast check that the same pairwise
-#: RGB-distance invariant holds in the simulated color space.
-#: Tests in ``tests/display/test_identity_color.py`` verify that the
-#: palette still clears the 40-unit threshold under each simulation,
-#: so an identity color that "looks fine" to a trichromat but
-#: collapses to the same hue as a status color under deuteranopia is
-#: caught at test time.
 _DEUTERANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.625, 0.375, 0.0),
-    (0.7, 0.3, 0.0),
-    (0.0, 0.3, 0.7),
+    (0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7),
 )
 _PROTANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.567, 0.433, 0.0),
-    (0.558, 0.442, 0.0),
-    (0.0, 0.242, 0.758),
+    (0.567, 0.433, 0.0), (0.558, 0.442, 0.0), (0.0, 0.242, 0.758),
 )
 _TRITANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.95, 0.05, 0.0),
-    (0.0, 0.433, 0.567),
-    (0.0, 0.475, 0.525),
+    (0.95, 0.05, 0.0), (0.0, 0.433, 0.567), (0.0, 0.475, 0.525),
 )
 
 
 def _simulate_cvd(hex_color: str, matrix: Sequence[Sequence[float]]) -> str:
-    """Return a hex color approximating the appearance under a CVD.
-
-    The simulation is a linear sRGB transform; the result is a
-    hex string in the same ``#RRGGBB`` shape the palette uses so
-    :func:`_hex_distance` can be called on the simulated result.
-    """
     r, g, b = (channel / 255.0 for channel in _rgb(hex_color))
     out_r = matrix[0][0] * r + matrix[0][1] * g + matrix[0][2] * b
     out_g = matrix[1][0] * r + matrix[1][1] * g + matrix[1][2] * b
@@ -406,46 +281,97 @@ def identity_color(
 ) -> str:
     """Return the hex color for an identity, with collision-nudge.
 
-    Args:
-        name: The identity to color (an agent name, a model name, a
-            provider id -- anything the caller can normalize to a
-            stable string). Empty / whitespace-only input falls back
-            to ``"unknown"``.
-        active: Optional iterable of identity names that are
-            currently rendered on the same surface. The slot picker
-            walks the palette forward from the deterministic slot
-            until it finds a color not already assigned to an active
-            identity. ``None`` disables the collision check so the
-            function is purely deterministic for tests and pure
-            rendering.
-        terminal_bg_is_light: When ``True`` returns the light-bg
-            variant of the picked color; when ``False`` (default) the
-            dark-bg variant; when ``None`` picks the dark-bg variant
-            because that is the canonical operator profile.
+    When ``active`` is supplied, the helper nudges the chosen slot
+    to the first palette position whose hex does not match the
+    resolved hex of any OTHER active identity AND whose simulated
+    hex under each of the three documented CVD deficiencies
+    (deuteranopia / protanopia / tritanopia) does not match either.
+    AC-15 (wt-028-display P3) pins this contract: two
+    simultaneously-rendered identities can never read as the same
+    color under any of the three simulations.
 
-    Returns:
-        The ``#RRGGBB`` hex color for the identity, deterministic
-        across runs, accessible under the documented CVD simulations
-        (verified by the test suite), and disjoint from the status
-        roles so the same identity never inherits a state color.
+    Resolution is two-pass: every name in ``active`` is resolved
+    with the deterministic base slot first, then each name is
+    nudged so it cannot collide with any other name's RESOLVED
+    color. This prevents N identities that share K base slots from
+    all landing on the same nudge slot.
     """
     palette = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light else IDENTITY_PALETTE
     base_slot = _identity_slot(name)
     if active is None:
         return palette[base_slot]
-    active_colors: set[str] = {
-        identity_color(other, terminal_bg_is_light=terminal_bg_is_light)
-        for other in active
+    cvd_matrices = (
+        _DEUTERANOPIA_MATRIX,
+        _PROTANOPIA_MATRIX,
+        _TRITANOPIA_MATRIX,
+    )
+
+    def _resolve_hexes(names: Iterable[str]) -> dict[str, str]:
+        # First pass: deterministic base slot for every name.
+        resolved: dict[str, str] = {
+            other: palette[_identity_slot(other)] for other in names
+        }
+        # Second pass: nudge each name away from already-resolved
+        # peers. We iterate in sorted order so the resolution is
+        # stable across runs.
+        for other in sorted(resolved):
+            base = _identity_slot(other)
+            occupied = set(resolved.values())
+            occupied_cvd = {
+                _simulate_cvd(hex_color, matrix)
+                for hex_color in occupied
+                for matrix in cvd_matrices
+            }
+            chosen = palette[base]
+            # Try the CVD-distinct slot first.
+            for offset in range(len(palette)):
+                slot = (base + offset) % len(palette)
+                candidate = palette[slot]
+                if candidate in occupied:
+                    continue
+                if {
+                    _simulate_cvd(candidate, matrix) for matrix in cvd_matrices
+                } & occupied_cvd:
+                    continue
+                chosen = candidate
+                break
+            else:
+                # Palette is exhausted under CVD constraints. Pick
+                # the first unused slot even if it's CVD-ambiguous:
+                # the spec allows reuse once all distinct colors
+                # are taken (the name label always remains).
+                for offset in range(len(palette)):
+                    slot = (base + offset) % len(palette)
+                    candidate = palette[slot]
+                    if candidate not in occupied:
+                        chosen = candidate
+                        break
+            resolved[other] = chosen
+        return resolved
+
+    resolved_active = _resolve_hexes(list(active))
+    if name in resolved_active:
+        return resolved_active[name]
+    # ``name`` is not in the active set: nudge away from the
+    # already-resolved active identities with the same logic.
+    active_hexes = set(resolved_active.values())
+    active_cvd_simulated = {
+        _simulate_cvd(hex_color, matrix)
+        for hex_color in active_hexes
+        for matrix in cvd_matrices
     }
+    used = active_hexes | active_cvd_simulated
     for offset in range(len(palette)):
         slot = (base_slot + offset) % len(palette)
         candidate = palette[slot]
-        if candidate not in active_colors:
-            return candidate
-    # Palette fully exhausted -- return the base slot; the operator
-    # gets a deterministic color and the surface visibly degrades
-    # (a "too many agents" warning is the right place to surface the
-    # condition, out of scope for this function).
+        if candidate in used:
+            continue
+        candidate_cvd = {
+            _simulate_cvd(candidate, matrix) for matrix in cvd_matrices
+        }
+        if candidate_cvd & active_cvd_simulated:
+            continue
+        return candidate
     return palette[base_slot]
 
 _THEME_STYLES: Final[dict[str, str]] = {
@@ -491,20 +417,12 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.banner.title": f"bold {SKY_BLUE}",
     "theme.banner.version": f"bold {BLUISH_GREEN}",
     "theme.banner.welcome": "bold",
-    # Theme keys for iteration indicators
     "theme.outer_dev": f"bold {SKY_BLUE}",
     "theme.inner_analysis": REDDISH_PURPLE,
     "theme.review_pass": f"bold {BLUISH_GREEN}",
     "theme.review_fail": f"bold {VERMILLION}",
     "theme.proceed": f"bold {BLUISH_GREEN}",
     "theme.revise": f"bold {ORANGE}",
-    # Theme keys for the persistent Status Bar (ralph/display/status_bar.py).
-    # Dim styling de-emphasizes the working-directory path and structural
-    # separators so the colored phase label (theme.phase.*) and the iteration
-    # counts (theme.outer_dev / theme.inner_analysis) remain the prominent
-    # state signal, matching 'prioritize the most operationally important
-    # information when space is tight'. Without these keys Rich would silently
-    # render the affected segments uncolored (dangling style references).
     "theme.status.bar_marker": "dim",
     "theme.status.path_marker": "dim",
     "theme.status.path": "dim",
@@ -513,12 +431,6 @@ _THEME_STYLES: Final[dict[str, str]] = {
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
 
 
-#: Minimum WCAG 2.1 contrast ratio required for normal-text foreground
-#: on background. The contract here is the same number used in the
-#: accessibility test suite (tests/display/test_agent_output_accessibility.py);
-#: every documented semantic role must clear this threshold on the
-#: resolved terminal background. Used by :func:`_state_payload_for_background`
-#: to validate the picked variant at import time.
 _MIN_CONTRAST_RATIO: Final[float] = 4.5
 
 
@@ -537,25 +449,27 @@ _HEX_LONG_TOKEN_LEN: Final[int] = _HEX_LONG_LEN + 1
 
 
 def _srgb_channel_to_linear(value: float) -> float:
-    """Linearise a single sRGB channel in [0.0, 1.0] per WCAG 2.1."""
     if value <= _SRGB_LOW_CUTOFF:
-        linear: float = value / _SRGB_LINEAR_DIVISOR
-        return linear
+        return value / _SRGB_LINEAR_DIVISOR
     base: float = (value + _SRGB_GAMMA_OFFSET) / _SRGB_GAMMA_SCALE
-    exponentiated: float = base ** _SRGB_GAMMA_EXPONENT
-    return exponentiated
+    exponent: float = _SRGB_GAMMA_EXPONENT
+    result: float = base**exponent
+    return result
 
 
 def relative_luminance(hex_color: str) -> float:
-    """Return the WCAG 2.1 relative luminance of a hex color.
+    """Compute the WCAG relative luminance of a hex color.
 
-    Accepts ``#RGB`` and ``#RRGGBB`` (case-insensitive). Raises
-    ``ValueError`` for malformed input so a typo at the call site is
-    caught at import time rather than silently producing a wrong
-    contrast ratio.
+    Accepts ``#rgb`` or ``#rrggbb`` hex strings and returns the
+    sRGB-gamma-corrected luminance in [0, 1]. Used by the contrast
+    and palette helpers to verify that status styles remain
+    readable on dark and light terminal backgrounds.
 
-    Implementation follows WCAG 2.1 §1.4.3 (the same algorithm used by
-    web-a11y tooling); the result is a float in [0.0, 1.0].
+    Parameters:
+        hex_color: Color string in ``#rgb`` or ``#rrggbb`` form.
+
+    Returns:
+        The relative luminance as a float in [0, 1].
     """
     raw = hex_color.strip()
     if not raw.startswith("#"):
@@ -576,13 +490,20 @@ def relative_luminance(hex_color: str) -> float:
 
 
 def contrast_ratio(fg_hex: str, bg_hex: str) -> float:
-    """Return the WCAG 2.1 contrast ratio between two hex colors.
+    """Compute the WCAG contrast ratio between two hex colors.
 
-    Ratio is symmetric in ``fg_hex`` / ``bg_hex`` and is always >= 1.0.
-    Used by the bg-aware named-role selection below and by
-    ``tests/display/test_agent_output_accessibility.py`` to assert that
-    every semantic role clears the 4.5:1 threshold on the resolved
-    terminal background.
+    The ratio is ``(lighter + 0.05) / (darker + 0.05)`` where
+    ``lighter`` and ``darker`` are the relative luminances of the
+    two colors. A value of 1.0 means no contrast; 21.0 is the
+    theoretical maximum. The display subsystem targets >= 4.5
+    for body text and >= 3.0 for large text.
+
+    Parameters:
+        fg_hex: Foreground color hex string.
+        bg_hex: Background color hex string.
+
+    Returns:
+        The contrast ratio as a float >= 1.0.
     """
     fg = relative_luminance(fg_hex)
     bg = relative_luminance(bg_hex)
@@ -591,15 +512,6 @@ def contrast_ratio(fg_hex: str, bg_hex: str) -> float:
 
 
 def _extract_hex(style: str) -> str:
-    """Extract the first ``#XXXXXX`` hex color from a Rich style string.
-
-    Rich style strings are space-separated tokens like ``"bold #009E73"``
-    or ``"#56B4E9"`` or ``"bold underline #abcdef"``. The bg-aware picker
-    only needs the foreground hex to compute contrast, so the helper
-    walks the tokens and returns the first hex it finds. Returns
-    ``""`` when no hex token is present (the caller treats that as a
-    no-contrast foreground that the contrast assertion will flag).
-    """
     for raw_token in style.split():
         token = raw_token.strip(",;").strip()
         if token.startswith("#") and len(token) in (_HEX_SHORT_LEN + 1, _HEX_LONG_LEN + 1):
@@ -607,55 +519,57 @@ def _extract_hex(style: str) -> str:
     return ""
 
 
-#: Reference background used by the bg-aware contrast check. The
-#: canonical dark-bg palette is validated against a true black
-#: background; the light-bg palette against a true white background.
-#: These are the worst-case bookends of common terminal themes.
 _DARK_BG_HEX: Final[str] = "#000000"
 _LIGHT_BG_HEX: Final[str] = "#FFFFFF"
 
 
 def terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
-    """Return True/False for the resolved terminal background, ``None`` for unknown.
+    """Detect whether the terminal background is light.
 
-    Reads the explicit ``RALPH_TERMINAL_BG`` env var when set
-    (``light`` / ``dark``), then falls back to a small heuristic on
-    ``COLORFGBG`` (the XTerm convention ``fg;bg`` whose ``bg`` is a
-    0-15 ANSI palette index; light bgs use 7 / 15, dark bgs use 0).
-    Returns ``None`` when no signal is available so callers can pick a
-    sensible default.
+    Reads the ``RALPH_TERMINAL_BG`` override first, then falls
+    back to the ``COLORFGBG`` environment variable (the
+    conventional hint for dark/light detection). Returns ``None``
+    when neither signal is available so the caller can fall back
+    to the default (dark) palette.
+
+    Parameters:
+        env: Mapping of environment variable names to values.
+
+    Returns:
+        ``True`` when the background is light, ``False`` when dark,
+        ``None`` when undetermined.
     """
     explicit = env.get("RALPH_TERMINAL_BG", "").lower().strip()
     if explicit in {"light", "1", "true", "yes"}:
         return True
     if explicit in {"dark", "0", "false", "no"}:
         return False
-
     colorfgbg = env.get("COLORFGBG", "").strip()
     if colorfgbg:
         parts = colorfgbg.split(";")
         if len(parts) >= _COLORFGBG_MIN_PARTS and parts[1].isdigit():
             bg_index = int(parts[1])
-            # ANSI palette index 7 (light gray) and 15 (bright white)
-            # indicate a light background. 0 (black) and 8 (dark gray)
-            # indicate a dark background.
             if bg_index in (7, 15):
                 return True
             if bg_index in (0, 8):
                 return False
-
     return None
 
 
 def pick_status_styles(terminal_bg_is_light: bool | None) -> dict[str, tuple[str, str, str]]:
-    """Return the bg-appropriate named-role table.
+    """Return the status style table for the given background.
 
-    ``True`` (light bg) returns :data:`STATUS_STYLES_ON_LIGHT_BG`,
-    ``False`` (dark bg) returns :data:`STATUS_STYLES`. ``None``
-    defaults to the dark-bg table because the canonical operator
-    profile is dark-on-light; the light-bg table is opt-in via
-    :func:`terminal_background_is_light` or a host-provided
-    ``RALPH_TERMINAL_BG`` override.
+    Maps the boolean/None flag to the matching palette table. A
+    ``None`` flag selects the dark-background default so callers
+    that cannot detect the background still get a contrast-safe
+    palette.
+
+    Parameters:
+        terminal_bg_is_light: ``True`` for light backgrounds,
+            ``False`` for dark, ``None`` for unknown.
+
+    Returns:
+        A mapping from status name to ``(label, glyph, style)``.
     """
     if terminal_bg_is_light:
         return STATUS_STYLES_ON_LIGHT_BG
@@ -667,15 +581,6 @@ def _state_payload_for_background(
     *,
     terminal_bg_is_light: bool | None,
 ) -> tuple[str, str, str]:
-    """Return the ``(style, icon, label)`` triple for ``state`` on the resolved bg.
-
-    Mirrors :func:`format_status`'s ``KeyError`` contract (unknown state
-    surfaces all known states in the error message so a typo at the
-    call site is self-documenting). The bg-aware picker honours the
-    Okabe-Ito hue family on either background so a colourblind operator
-    keeps the same hue distinction regardless of which terminal theme
-    they use.
-    """
     table = pick_status_styles(terminal_bg_is_light)
     try:
         payload = table[state]
@@ -690,7 +595,21 @@ def _state_payload_for_background(
 def status_styles_for_context(
     terminal_bg_is_light: bool | None,
 ) -> dict[str, tuple[str, str, str]]:
-    """Public alias for :func:`pick_status_styles` (named for caller intent)."""
+    """Return the status style table for the current background.
+
+    Convenience wrapper around :func:`pick_status_styles` that
+    names the operation by intent ("styles for the current
+    context") rather than by parameter. Used by callers that
+    want the resolved table without choosing between the light
+    and dark variants.
+
+    Parameters:
+        terminal_bg_is_light: ``True`` for light backgrounds,
+            ``False`` for dark, ``None`` for unknown.
+
+    Returns:
+        A mapping from status name to ``(label, glyph, style)``.
+    """
     return pick_status_styles(terminal_bg_is_light)
 
 
@@ -699,13 +618,23 @@ def assert_status_styles_meet_contrast(
     terminal_bg_is_light: bool | None,
     min_ratio: float = _MIN_CONTRAST_RATIO,
 ) -> None:
-    """Assert the picked table clears the WCAG ``min_ratio`` on the resolved bg.
+    """Assert that every status style meets the contrast minimum.
 
-    The accessibility audit calls this at import time so a future edit
-    to :data:`STATUS_STYLES` or :data:`STATUS_STYLES_ON_LIGHT_BG` that
-    regresses contrast fails fast. Tests use the public API instead of
-    re-implementing the contrast math; this function is the single
-    source of truth for the threshold check.
+    Iterates the resolved status style table and verifies that
+    the foreground hex color (extracted from the Rich style
+    string) reaches at least ``min_ratio`` against the implied
+    background color. Raises ``RuntimeError`` listing every
+    failure when any style fails the test.
+
+    Parameters:
+        terminal_bg_is_light: ``True`` for light backgrounds,
+            ``False`` for dark, ``None`` for unknown (uses dark).
+        min_ratio: Minimum acceptable contrast ratio (default
+            ``_MIN_CONTRAST_RATIO``).
+
+    Raises:
+        RuntimeError: When one or more status styles fail the
+            contrast check.
     """
     table = pick_status_styles(terminal_bg_is_light)
     bg_hex = _LIGHT_BG_HEX if terminal_bg_is_light else _DARK_BG_HEX
@@ -729,13 +658,27 @@ def assert_status_styles_meet_contrast(
 
 
 def format_status(status_name: str) -> str:
-    """Return Rich markup for a semantic status name."""
+    """Format a status name as a Rich-markup string.
+
+    Looks up the status in the default ``STATUS_STYLES`` table
+    and returns a string of the form ``[style]icon label[]``
+    that Rich can render with the linked style and inline icon.
+    Raises ``KeyError`` listing the known statuses when the name
+    is unknown.
+
+    Parameters:
+        status_name: The status key (e.g. ``"running"``).
+
+    Returns:
+        A Rich-markup-formatted string carrying the icon and
+        label of the status.
+    """
     try:
         style, icon, label = STATUS_STYLES[status_name]
     except KeyError as exc:
         known = ", ".join(sorted(STATUS_STYLES))
         raise KeyError(f"Unknown status {status_name!r}. Known statuses: {known}") from exc
-    return f"[{style}]{icon} {label}[/]"
+    return f"[{style}]{icon} {label}[]"
 
 
 def make_console(
@@ -744,31 +687,25 @@ def make_console(
     force_terminal: bool | None = None,
     width: int | None = None,
 ) -> Console:
-    """Create a Console using Ralph's shared theme and predictable rendering.
+    """Construct a Rich ``Console`` wired with the Ralph theme.
 
-    This is a pure constructor - no environment reads. All decisions about
-    no_color and force_terminal must be passed explicitly via the corresponding
-    arguments. The caller is responsible for resolving environment variables
-    before calling this function.
+    Centralizes the console construction so every display
+    surface inherits the same theme, ``highlight=False`` (which
+    keeps plaintext inside tool output uncoloured), and the
+    same ``no_color`` / ``force_terminal`` / ``width`` resolver
+    semantics. Tests and runtime code use this helper to keep
+    the colour behaviour consistent.
 
-    Args:
-        no_color: If True, disables color output. If False, enables color.
-            If None, defaults to False (color enabled).
-        force_terminal: If True, forces terminal detection on. If False, forces it off.
-            If None, defaults to None so Rich auto-detects terminal support via
-            ``sys.stdout.isatty()`` (this is the production default: forcing
-            ``force_terminal=False`` would hard-code ``Console.is_terminal=False``
-            and break the StatusBar real-TTY gate in real PTY sessions).
-        width: Optional terminal width override.
+    Parameters:
+        no_color: When ``True``, strip colour from the console.
+        force_terminal: When ``True``, treat the console as a
+            TTY even when it is not (useful for tests).
+        width: Override the console width (default: auto-detect).
 
     Returns:
-        Configured Console instance with Ralph's theme.
+        A ``rich.console.Console`` instance with the Ralph theme.
     """
     resolved_no_color = no_color if no_color is not None else False
-    # Default ``force_terminal`` to ``None`` (not ``False``) so Rich auto-detects
-    # via ``sys.stdout.isatty()``. Hard-coding ``False`` would set
-    # ``Console.is_terminal = False`` even on a real PTY, which closes the
-    # StatusBar real-TTY gate and prevents the persistent footer from rendering.
     resolved_force_terminal = force_terminal
     return Console(
         theme=RALPH_THEME,

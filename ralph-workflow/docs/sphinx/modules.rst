@@ -3311,6 +3311,13 @@ ralph.display.raw_overflow
    :members:
    :show-inheritance:
 
+ralph.display.record_writer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.record_writer
+   :members:
+   :show-inheritance:
+
 ralph.display.ring_buffer
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

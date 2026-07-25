@@ -321,6 +321,12 @@ class DisplayContext:
     streaming_checkpoints_enabled: bool
     thinking_preview_min_chars: int
     tool_result_headline_min_chars: int
+    # P0 (wt-028-display S-5 / AC-06): the vertical dimension of the
+    # terminal is consumed by height-aware presentation -- boxed
+    # panels degrade to unboxed headed text below a row threshold
+    # so the working area remains usable on a 12-row split pane.
+    # ``None`` disables height-aware rendering (the legacy contract).
+    height: int | None = None
     # Captured env mapping used to resolve flags; excluded from equality and hash
     env: Mapping[str, str] = field(default_factory=dict, compare=False, repr=False)
     # Stored overrides for refreshed() — excluded from equality and hash
@@ -338,6 +344,7 @@ class DisplayContext:
     )
     _force_width: int | None = field(default=None, repr=False, compare=False)
     _force_glyphs: bool | None = field(default=None, repr=False, compare=False)
+    _force_height: int | None = field(default=None, repr=False, compare=False)
     _explicit_env: bool = field(default=False, repr=False, compare=False)
 
     def glyph_for(self, name: str) -> str:
@@ -395,10 +402,12 @@ class DisplayContext:
             streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
             thinking_preview_min_chars=self.thinking_preview_min_chars,
             tool_result_headline_min_chars=self.tool_result_headline_min_chars,
+            height=self.height,
             _resolved_env=self._resolved_env,
             env=self.env,
             _force_width=self._force_width,
             _force_glyphs=self._force_glyphs,
+            _force_height=self._force_height,
             _explicit_env=self._explicit_env,
         )
 
@@ -409,6 +418,7 @@ def make_display_context(
     console: Console | None = None,
     force_width: int | None = None,
     force_glyphs: bool | None = None,
+    force_height: int | None = None,
 ) -> DisplayContext:
     """Create a DisplayContext with resolved terminal metrics and adaptive limits.
 
@@ -417,6 +427,11 @@ def make_display_context(
         console: Console to use (defaults to make_console() with env-aware color policy).
         force_width: Override terminal width detection.
         force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
+        force_height: Override terminal height detection. ``None``
+            falls back to ``console.size.height`` (the canonical
+            Rich Console contract); ``None`` disables height-aware
+            rendering for callers that don't consume the height
+            field.
 
     Returns:
         Fully initialised DisplayContext.
@@ -442,6 +457,30 @@ def make_display_context(
         _set_injected_console_width(resolved_console, width)
     mode = _compute_default_mode()
     limits = _DEFAULT_LIMITS
+    # P0 (wt-028-display S-5 / AC-06): height is resolved the same
+    # way as width -- an explicit ``force_height`` wins, otherwise we
+    # read the console's own ``size.height`` (Rich keeps it fresh).
+    # A non-positive or missing height disables height-aware
+    # rendering (the legacy contract); callers that want the
+    # explicit ``None`` contract pass ``force_height=-1`` so the
+    # resolved value is ``None``.
+    if force_height is not None and force_height > 0:
+        height_value = force_height
+    elif force_height is not None:
+        # Explicit ``force_height=0`` or negative is treated as the
+        # legacy ``None`` opt-out (callers that want to disable
+        # height-aware rendering). ``force_height=None`` falls
+        # through to the Console's own ``size.height``.
+        height_value = None
+    else:
+        size_obj: object = getattr(resolved_console, "size", None)
+        height_attr: int | None = None
+        if size_obj is not None:
+            candidate: object = getattr(size_obj, "height", None)
+            if isinstance(candidate, int) and candidate > 0:
+                height_attr = candidate
+        positive_height: int | None = height_attr
+        height_value = positive_height
 
     # NO_COLOR wins over FORCE_COLOR per CLI conventions.
     color_enabled = not resolved_env.no_color and not _console_has_no_color(
@@ -466,6 +505,7 @@ def make_display_context(
         theme=RALPH_THEME,
         width=width,
         mode=mode,
+        height=height_value,
         color_enabled=color_enabled,
         glyphs_enabled=glyphs_enabled,
         headline_max_chars=limits.headline_max_chars,
