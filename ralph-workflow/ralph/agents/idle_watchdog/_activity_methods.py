@@ -411,6 +411,14 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
 
     Does NOT reset _session_started_at (the session ceiling
     remains absolute).
+
+    Deliberately does NOT call ``RepetitionTracker.note_progress()``. A tool
+    result only proves the tool returned, not that the agent advanced — the
+    same reasoning ``record_tool_use_activity`` documents for the call side.
+    Because every tool call is followed by its result, clearing the streak
+    here reset the tool-call dimension after each completed call, so
+    ``REPEATED_IDENTICAL_TOOL_CALL`` could never reach its threshold and an
+    agent re-issuing one identical call forever stayed invisible.
     """
     now = self._clock.monotonic()
     self._accumulate_waiting_run(now)
@@ -419,7 +427,6 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
     self._drain_started_at = None
     self._last_tool_result_at = now
     self._awaiting_post_tool_result_progression = True
-    self._repetition_tracker.note_progress()
 
 
 def record_subagent_work(

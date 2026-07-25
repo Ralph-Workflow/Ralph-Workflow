@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Protocol, cast, get_args, runtime_checkable
 
 import sentry_sdk
 import sentry_sdk.metrics as sentry_metrics
+from sentry_sdk.integrations.dedupe import DedupeIntegration
+from sentry_sdk.integrations.excepthook import ExcepthookIntegration
 
 from ralph import __version__ as ralph_version
 from ralph.config.agent_transport import AgentTransport
@@ -413,7 +415,23 @@ def init_sentry(user_id: str, session_id: str) -> None:
         # Automatic integrations can add HTTP/subprocess spans containing
         # URLs, argv, cwd, or other non-metadata details. Keep tracing
         # limited to the manual ``ralph.session`` transaction below.
+        #
+        # ``default_integrations=False`` disables the WHOLE default set, which
+        # silently included ``ExcepthookIntegration`` — so an unhandled crash
+        # never reached Sentry and the only events this client could ever emit
+        # were the "session start"/"session end" messages below. The two
+        # integrations re-enabled here are opted in EXPLICITLY rather than by
+        # flipping the flag, so the privacy-sensitive defaults stay off:
+        # Argv (forwards sys.argv), Stdlib (HTTP/subprocess spans with URLs),
+        # Logging (application logs may carry prompts, paths, model output),
+        # Modules (installed package inventory), Atexit (Ralph flushes
+        # explicitly via ``finalize_session``). Excepthook events still pass
+        # through ``before_send=_scrub_event`` and carry no local variables
+        # (``include_local_variables=False``), so the metadata-only contract
+        # holds. Dedupe prevents one propagating exception from being reported
+        # twice when both a handled capture and the excepthook observe it.
         default_integrations=False,
+        integrations=[ExcepthookIntegration(always_run=True), DedupeIntegration()],
         auto_enabling_integrations=False,
         traces_sample_rate=1.0,
         # Profiling samples stack frames outside the event scrubber path, so
@@ -725,6 +743,35 @@ def record_agent_invocation(
             message="agent invocation",
             data=attributes,
         )
+
+
+#: Closed set of origins a handled failure may be attributed to. Keeping this
+#: bounded preserves the metadata-only contract: an unknown origin collapses to
+#: ``"unknown"`` rather than forwarding a user-authored label as a tag value.
+_HANDLED_FAILURE_ORIGINS: frozenset[str] = frozenset({"agent_invocation"})
+
+
+def report_handled_exception(exc: BaseException, *, origin: str) -> None:
+    """Capture a failure Ralph handled internally so it still reaches Sentry.
+
+    The excepthook integration only observes exceptions that propagate out of
+    the process. Ralph deliberately catches most failures — a wedged agent, a
+    watchdog fire, a classified transient fault — to retry or degrade, so
+    without an explicit capture those never produced a Sentry event and an
+    operator could not distinguish a clean run from one that churned for hours.
+
+    Fail-soft by contract: never raises, and no-ops when telemetry is disabled
+    or Sentry was never initialized. The event is tagged with a bounded
+    ``ralph.origin`` and passes through the same ``before_send`` scrubber as
+    every other event.
+    """
+    if _telemetry_is_inactive():
+        return
+    safe_origin = origin if origin in _HANDLED_FAILURE_ORIGINS else "unknown"
+    with contextlib.suppress(Exception), sentry_sdk.new_scope() as scope:
+        scope.set_tag("ralph.origin", safe_origin)
+        scope.set_tag("ralph.handled", "true")
+        sentry_sdk.capture_exception(exc)
 
 
 def flush_telemetry(timeout: float = 2.0) -> None:

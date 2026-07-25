@@ -217,15 +217,33 @@ class RepetitionTracker:
         self._prune_tool(now)
 
     def note_progress(self) -> None:
-        """Record genuine forward progress; clears both trip conditions."""
+        """Record genuine forward progress; resets the CONSECUTIVE streaks only.
+
+        Deliberately does NOT clear the time-windowed event deques. The two
+        rules answer different questions and must stay independent:
+
+        - **consecutive** asks "is the agent emitting the same fingerprint
+          back-to-back with nothing productive in between?" — forward progress
+          is exactly the thing that breaks that streak, so it resets here.
+        - **window** asks "has the same fingerprint recurred N times in the
+          trailing window regardless of what interleaved?" — its whole purpose
+          is to catch a wedge whose interleaved cosmetic output keeps resetting
+          the consecutive streak. Clearing the deque here would make the window
+          rule a strictly weaker duplicate of the consecutive rule and it could
+          never fire on the loop it exists to catch.
+
+        Regression guard: a retry storm that emits ordinary content (or a tool
+        result) between each identical error previously wiped both deques on
+        every iteration, so neither rule could ever accumulate and an agent
+        could churn indefinitely. Window entries now age out only via
+        ``_prune`` / ``_prune_tool`` on ``window_seconds``.
+        """
         self._consecutive = 0
         self._last_fingerprint = None
-        self._events.clear()
         self._tool_consecutive = 0
         self._last_tool_fingerprint = None
         self._last_tool_name = None
         self._last_tool_args_preview = None
-        self._tool_events.clear()
 
     def diagnostic(self) -> dict[str, str | int]:
         """Return bounded diagnostic context for any active repetition streak."""

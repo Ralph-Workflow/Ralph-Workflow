@@ -29,6 +29,13 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "econnreset",
     "enotfound",
     "socket hang up",
+    # Node/Bun (undici) raise a bare ``TypeError: fetch failed`` and keep the
+    # real errno on ``.cause``, so the surfaced text carries no ECONNRESET /
+    # ENOTFOUND marker to match on. Node-based agent CLIs (pi, opencode) exit
+    # with exactly this string when their provider endpoint flaps; without it
+    # a transient network fault is misclassified as a non-retryable agent
+    # failure.
+    "fetch failed",
 )
 
 _TURN_LIMIT_MARKERS = ("conversation exceeded 50 turns",)

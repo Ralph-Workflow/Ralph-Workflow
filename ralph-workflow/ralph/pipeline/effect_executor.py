@@ -230,6 +230,13 @@ def execute_agent_effect(
     except KeyboardInterrupt:
         invocation_outcome = "interrupted"
         raise
+    except BaseException as exc:
+        # Report before re-raising: an agent-invocation failure is frequently
+        # caught and converted to a retry further up, so without an explicit
+        # capture here it never reaches Sentry through the excepthook.
+        invocation_outcome = "crashed"
+        _report_agent_invocation_exception(exc)
+        raise
     finally:
         _record_agent_invocation_telemetry(
             effect=effect,
@@ -239,6 +246,20 @@ def execute_agent_effect(
             duration_s=max(0.0, time.monotonic() - invocation_started),
             outcome=invocation_outcome,
         )
+
+
+def _report_agent_invocation_exception(exc: BaseException) -> None:
+    """Forward a crashed agent invocation to Sentry without affecting execution.
+
+    Mirrors ``_record_agent_invocation_telemetry``'s lazy import and
+    swallow-everything contract so telemetry can never change control flow.
+    """
+    try:
+        from ralph.telemetry._sentry import report_handled_exception
+
+        report_handled_exception(exc, origin="agent_invocation")
+    except Exception:
+        return
 
 
 def _record_agent_invocation_telemetry(

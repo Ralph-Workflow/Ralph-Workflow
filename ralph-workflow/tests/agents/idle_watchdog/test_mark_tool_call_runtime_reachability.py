@@ -813,3 +813,42 @@ def test_process_line_reader_silently_skips_unrecognised_tool_envelopes() -> Non
         f"Expected NO tool-call observations for invalid JSON; got"
         f" {watchdog.tool_call_observations}"
     )
+
+
+# ---------------------------------------------------------------------------
+# (5) A tool RESULT must not erase the tool-call repetition streak.
+# ---------------------------------------------------------------------------
+
+
+def test_identical_tool_calls_trip_even_when_each_result_arrives() -> None:
+    """A tool result must NOT reset the tool-call repetition streak.
+
+    Every tool call is followed by its result, so clearing the streak on the
+    result made ``REPEATED_IDENTICAL_TOOL_CALL`` unreachable in practice: the
+    dimension was wiped after each completed call, and an agent re-issuing one
+    identical call forever stayed invisible to the circuit breaker.
+    ``record_tool_use_activity`` already documents that a call is not proof of
+    forward progress; the result side must agree.
+    """
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=3,
+            repeated_error_window_count=None,
+            repeated_error_window_seconds=None,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(3):
+        watchdog.record_tool_call_activity("list_directory", {"path": "."})
+        watchdog.record_tool_result_activity()
+        clock.advance(1.0)
+
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+    assert verdict == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL

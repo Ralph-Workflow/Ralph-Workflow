@@ -81,8 +81,11 @@ def test_n_consecutive_identical_errors_trips() -> None:
 
 
 def test_real_progress_resets_consecutive_streak() -> None:
+    # Window rule disabled so this exercises the CONSECUTIVE rule in isolation
+    # (the sibling window tests cover the other rule). With the window rule
+    # left enabled these 8 same-fingerprint errors would legitimately trip it.
     clock = FakeClock()
-    tracker = _tracker(clock, consecutive_threshold=5)
+    tracker = _tracker(clock, consecutive_threshold=5, window_count=None, window_seconds=None)
     msg = "MCP error -32001: Request timed out"
     for _ in range(4):
         tracker.note_error(msg)
@@ -92,6 +95,54 @@ def test_real_progress_resets_consecutive_streak() -> None:
         tracker.note_error(msg)
         clock.advance(34.0)
         assert not tracker.tripped()
+
+
+def test_window_rule_trips_when_forward_progress_interleaves_errors() -> None:
+    """A retry storm that emits ordinary output between errors must still trip.
+
+    Regression: ``note_progress`` used to clear the window deque, so a wedged
+    agent that produced any content (or a tool result) between each identical
+    error reset both rules on every iteration and could churn indefinitely.
+    This is the exact production shape of a provider outage -- pi emits a
+    content block between each ``fetch failed`` -- which ran ~2.7h without the
+    circuit breaker ever firing.
+    """
+    clock = FakeClock()
+    # Consecutive disabled so ONLY the window rule can trip here.
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=8, window_seconds=600.0)
+    for _ in range(8):
+        tracker.note_error("fetch failed")
+        tracker.note_progress()  # interleaved ordinary output / tool result
+        clock.advance(20.0)
+    assert tracker.tripped()
+
+
+def test_window_rule_trips_on_tool_dimension_when_progress_interleaves() -> None:
+    """Same regression on the tool-call dimension.
+
+    An agent re-issuing one identical call forever, with each call's result
+    reported as progress, must still trip the window rule.
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=4, window_seconds=600.0)
+    for _ in range(4):
+        tracker.mark_tool_call("list_directory", {"path": "."})
+        tracker.note_progress()  # the tool result arriving
+        clock.advance(20.0)
+    assert tracker.tripped()
+    assert tracker.tripped_tool_dimension()
+
+
+def test_progress_does_not_extend_the_window_lifetime() -> None:
+    """Window entries age out on time alone; progress neither clears nor keeps them."""
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=3, window_seconds=100.0)
+    for _ in range(3):
+        tracker.note_error("fetch failed")
+        tracker.note_progress()
+        clock.advance(50.0)
+    # The two oldest occurrences are now outside the 100s window.
+    assert not tracker.tripped()
 
 
 def test_real_progress_resets_tool_call_dimension() -> None:
@@ -429,9 +480,12 @@ def test_window_rule_fires_with_bounded_deque_when_window_enabled() -> None:
     assert len(tracker._events) == 8
 
 
-def test_note_progress_clears_bounded_deques() -> None:
-    """``note_progress`` clears both deques; the cap doesn't change
-    (the deque remains bounded but empties).
+def test_note_progress_preserves_bounded_window_evidence() -> None:
+    """``note_progress`` resets the streak but keeps the capped window deque.
+
+    The deque must stay bounded (memory contract) AND retain its time-window
+    evidence across progress (circuit-breaker contract) -- clearing it here is
+    what let an interleaving retry storm run unbounded.
     """
     clock = FakeClock()
     tracker = RepetitionTracker(
@@ -445,5 +499,5 @@ def test_note_progress_clears_bounded_deques() -> None:
         tracker.note_error("MCP error -32001: Request timed out")
     assert len(tracker._events) == tracker.event_buffer_maxlen
     tracker.note_progress()
-    assert len(tracker._events) == 0
+    assert len(tracker._events) == tracker.event_buffer_maxlen
     assert tracker.event_buffer_maxlen == 256

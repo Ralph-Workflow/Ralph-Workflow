@@ -75,6 +75,143 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     assert kwargs.get("include_local_variables") is False
 
 
+def test_init_sentry_enables_excepthook_so_crashes_are_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unhandled crash MUST be able to reach Sentry.
+
+    ``default_integrations=False`` disables the whole default set, which
+    silently included ``ExcepthookIntegration`` -- leaving a client that could
+    only ever emit the "session start"/"session end" messages. The integration
+    is opted back in EXPLICITLY so the privacy-sensitive defaults stay off.
+    """
+    captured: list[dict[str, object]] = []
+
+    def capture_init(**kwargs: object) -> None:
+        captured.append(dict(kwargs))
+
+    def noop_set_user(arg: object) -> None:
+        pass
+
+    def noop_set_tag(key: object, val: object) -> None:
+        pass
+
+    monkeypatch.setattr("sentry_sdk.init", capture_init)
+    monkeypatch.setattr("sentry_sdk.set_user", noop_set_user)
+    monkeypatch.setattr("sentry_sdk.set_tag", noop_set_tag)
+
+    init_sentry("a" * 32, "b" * 64)
+
+    integrations = captured[0].get("integrations")
+    assert isinstance(integrations, list)
+    names = {type(integration).__name__ for integration in integrations}
+    assert "ExcepthookIntegration" in names
+    # Privacy-sensitive defaults must remain disabled: these forward argv,
+    # HTTP/subprocess spans with URLs, application logs, and the installed
+    # package inventory respectively.
+    assert "ArgvIntegration" not in names
+    assert "StdlibIntegration" not in names
+    assert "LoggingIntegration" not in names
+    assert "ModulesIntegration" not in names
+
+
+class _RecordingScope:
+    """Minimal stand-in for a Sentry scope context manager."""
+
+    def __init__(self, tags: dict[str, str]) -> None:
+        self._tags = tags
+
+    def set_tag(self, key: str, value: str) -> None:
+        self._tags[key] = value
+
+    def __enter__(self) -> _RecordingScope:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+def _patch_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    inactive: bool,
+) -> tuple[list[BaseException], dict[str, str]]:
+    captured: list[BaseException] = []
+    tags: dict[str, str] = {}
+
+    def fake_inactive() -> bool:
+        return inactive
+
+    def fake_new_scope() -> _RecordingScope:
+        return _RecordingScope(tags)
+
+    def fake_capture(exc: object) -> None:
+        assert isinstance(exc, BaseException)
+        captured.append(exc)
+
+    monkeypatch.setattr(_sentry, "_telemetry_is_inactive", fake_inactive)
+    monkeypatch.setattr("sentry_sdk.new_scope", fake_new_scope)
+    monkeypatch.setattr("sentry_sdk.capture_exception", fake_capture)
+    return captured, tags
+
+
+def test_report_handled_exception_captures_a_handled_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failures Ralph catches internally must still produce a Sentry event.
+
+    The excepthook only sees exceptions that propagate out of the process, and
+    Ralph deliberately catches agent failures to retry or degrade -- so without
+    an explicit capture an operator cannot tell a clean run from one that
+    churned for hours on a wedged agent.
+    """
+    captured, tags = _patch_capture(monkeypatch, inactive=False)
+    exc = RuntimeError("fetch failed")
+
+    _sentry.report_handled_exception(exc, origin="agent_invocation")
+
+    assert captured == [exc]
+    assert tags["ralph.origin"] == "agent_invocation"
+    assert tags["ralph.handled"] == "true"
+
+
+def test_report_handled_exception_clamps_unknown_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unbounded origin would forward a user-authored label as a tag."""
+    _captured, tags = _patch_capture(monkeypatch, inactive=False)
+
+    _sentry.report_handled_exception(RuntimeError("boom"), origin="/Users/someone/my-project")
+
+    assert tags["ralph.origin"] == "unknown"
+
+
+def test_report_handled_exception_is_a_noop_when_telemetry_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opting out of telemetry must suppress handled-failure capture too."""
+    captured, _tags = _patch_capture(monkeypatch, inactive=True)
+
+    _sentry.report_handled_exception(RuntimeError("boom"), origin="agent_invocation")
+
+    assert captured == []
+
+
+def test_report_handled_exception_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Telemetry must never change control flow, even when the SDK errors."""
+
+    def fake_inactive() -> bool:
+        return False
+
+    def exploding_new_scope() -> _RecordingScope:
+        raise RuntimeError("sentry is down")
+
+    monkeypatch.setattr(_sentry, "_telemetry_is_inactive", fake_inactive)
+    monkeypatch.setattr("sentry_sdk.new_scope", exploding_new_scope)
+
+    _sentry.report_handled_exception(RuntimeError("boom"), origin="agent_invocation")
+
+
 def test_init_sentry_sets_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
     user_calls: list[object] = []
 
