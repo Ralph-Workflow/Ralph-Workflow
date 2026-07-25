@@ -252,8 +252,11 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
         run_id="test-run",
         probe_fn=probe_fn,
     )
-    restarted = bridge.check_health_and_restart_if_needed()
-    assert restarted is True
+    # A restart takes sustained evidence: one missed probe window means a
+    # server slowed by load, and tearing that down mid-call is the defect
+    # the debounce exists to prevent.
+    restarts = [bridge.check_health_and_restart_if_needed() for _ in range(3)]
+    assert restarts == [False, False, True]
     assert bridge.restart_count == 1
     assert inner.shutdown_calls
 

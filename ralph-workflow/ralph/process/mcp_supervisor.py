@@ -99,7 +99,15 @@ class McpSupervisor:
             try:
                 self._do_check_once()
             except McpServerError:
+                # Budget exhausted: terminal by design, and already stored
+                # on _mcp_error for __exit__ to re-raise on the main thread.
                 return
+            except Exception:
+                # Anything else is a transient supervision failure. Letting
+                # it escape kills this thread, and a dead supervisor means
+                # nothing ever probes or restarts the server again — the run
+                # then hangs until the idle watchdog fires. Keep supervising.
+                logger.exception("MCP supervisor health check failed; continuing to supervise")
 
 
 __all__ = ["DEFAULT_INTERVAL", "McpSupervisor"]

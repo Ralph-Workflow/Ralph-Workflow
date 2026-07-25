@@ -161,6 +161,7 @@ def test_rendered_prompt_advertises_every_visible_tool(
         "ralph_get_md_draft",
         "ralph_discard_md_draft",
         "ralph_finalize_md_artifact",
+        "ralph_edit_md_artifact",
         "coordinate",
         "declare_complete",
     }

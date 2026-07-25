@@ -32,6 +32,12 @@ _IMPORT_CONTEXT_SUFFIX = re.compile(r"\b(?:with|without)\s+context\s*$")
 _VARIABLE_BLANK_LINE = re.compile(r"(?m)^(?=\r?$)")
 _MAX_COMPILED_TEMPLATES = 64
 _TemplateCache = OrderedDict[str, Template]
+_TOOL_VARIABLE_REFERENCE = re.compile(r"\b[A-Z][A-Z0-9_]*_TOOL_(?:NAME|REFERENCE)\b")
+
+
+def _tool_variable_names(text: str) -> set[str]:
+    """Return every ``*_TOOL_NAME`` / ``*_TOOL_REFERENCE`` name ``text`` mentions."""
+    return {match.group() for match in _TOOL_VARIABLE_REFERENCE.finditer(text)}
 
 
 def _raise_template_error(message: str) -> str:
@@ -67,13 +73,16 @@ class TemplateRenderer:
         self._environment.globals["raise_error"] = _raise_template_error
         self._compiled_templates: _TemplateCache = OrderedDict()  # bounded-accumulator-ok: cap=64
         self._active_blank_line_token = ""
+        self._partial_tool_variables: frozenset[str] = frozenset(
+            name for content in templates.values() for name in _tool_variable_names(content)
+        )
 
     def render(self, template_text: str, variables: Mapping[str, str]) -> str:
         """Render one template with the renderer's immutable partial set."""
         try:
             protected_variables, blank_line_token = _protect_variable_blank_lines(
                 template_text,
-                variables,
+                self._with_absent_tool_variables(template_text, variables),
             )
             self._active_blank_line_token = blank_line_token
 
@@ -90,6 +99,34 @@ class TemplateRenderer:
             raise TemplateRenderingError(str(exc)) from exc
         except Exception as exc:  # pragma: no cover - defensive wrapper
             raise TemplateRenderingError(str(exc)) from exc
+
+    def _with_absent_tool_variables(
+        self,
+        template_text: str,
+        variables: Mapping[str, str],
+    ) -> Mapping[str, str]:
+        """Supply an empty value for every tool variable the caller did not.
+
+        Packaged templates are read from disk when a prompt is rendered, but
+        the capability variables feeding them are fixed when the process
+        imports :mod:`ralph.prompts`. A run in flight while its checkout
+        moves underneath it therefore renders *newer* templates against
+        *older* variables, and a strict-undefined failure there kills the
+        run outright — the static fallback template fails the same way, so
+        the pipeline has no recovery path.
+
+        A tool variable the running build has never heard of means exactly
+        "that tool is not available in this session", which is what the
+        empty string already encodes everywhere else and what the
+        templates' own ``{% if %}`` guards are written against. Every other
+        undefined name still raises, so ordinary typos keep failing the
+        render-integrity audit.
+        """
+        referenced = self._partial_tool_variables | _tool_variable_names(template_text)
+        missing = referenced - set(variables)
+        if not missing:
+            return variables
+        return {**dict.fromkeys(missing, ""), **variables}
 
     def _split_items(self, values: str) -> list[str]:
         """Split list input without exposing payload blank-line sentinels."""

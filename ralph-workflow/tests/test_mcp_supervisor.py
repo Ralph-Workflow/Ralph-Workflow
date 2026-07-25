@@ -200,7 +200,11 @@ def test_supervisor_calls_on_error_callback_when_budget_exhausted() -> None:
 
 
 def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
-    """McpSupervisor restarts a bridge whose process is alive but responsiveness probe fails."""
+    """McpSupervisor restarts an alive bridge after sustained probe failure.
+
+    Sustained is the operative word: a single missed probe window means a
+    loaded server, so restarting on it tore down healthy servers mid-call.
+    """
     td = pathlib.Path(tempfile.mkdtemp())
     sf = td / "session.json"
     sf.write_text("{}", encoding="utf-8")
@@ -248,8 +252,13 @@ def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
     supervisor._do_check_once()
     assert bridge.restart_count == 0
 
-    # Process still alive but probe now fails — should restart
+    # Process still alive but probe now fails — restarts once the failure
+    # is repeated, not on the first miss.
     probe_should_fail[0] = True
+    supervisor._do_check_once()
+    assert bridge.restart_count == 0
+    supervisor._do_check_once()
+    assert bridge.restart_count == 0
     supervisor._do_check_once()
 
     assert bridge.restart_count == 1

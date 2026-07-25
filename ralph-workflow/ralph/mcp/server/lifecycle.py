@@ -124,6 +124,12 @@ if TYPE_CHECKING:
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
+#: Consecutive failed probes required before an otherwise-running MCP server
+#: is restarted. A single bounded probe window is not evidence of death: on a
+#: loaded machine a healthy server misses one routinely, and restarting on the
+#: first miss tore down working servers in the middle of agent calls.
+_PROBE_FAILURES_BEFORE_RESTART = 3
+
 
 class RestartAwareMcpBridge:
     """SessionBridgeLike wrapper that auto-restarts the MCP server on crash.
@@ -161,6 +167,14 @@ class RestartAwareMcpBridge:
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
         self._restart_count = 0
+        # Consecutive failed probes. A probe that times out proves the
+        # server is slow, not dead: under load a healthy server routinely
+        # misses one bounded probe window. Restarting on the first miss
+        # killed working servers mid-call, so a restart needs
+        # _PROBE_FAILURES_BEFORE_RESTART misses in a row. A process that
+        # has actually exited still restarts immediately — that signal is
+        # unambiguous.
+        self._consecutive_probe_failures = 0
         # Tool-registry resets are tracked separately from crash
         # restarts so the orchestrator can distinguish a "tool-registry
         # rebuild" event from a "MCP server crashed" event. The cap
@@ -245,7 +259,23 @@ class RestartAwareMcpBridge:
                 except Exception:
                     probe_failed = True
 
+            if probe_failed:
+                self._consecutive_probe_failures += 1
+            else:
+                self._consecutive_probe_failures = 0
+
             if not process_exited and not probe_failed:
+                return False
+
+            if (
+                not process_exited
+                and self._consecutive_probe_failures < _PROBE_FAILURES_BEFORE_RESTART
+            ):
+                logger.debug(
+                    "MCP server probe failed ({}/{} before restart); server still running",
+                    self._consecutive_probe_failures,
+                    _PROBE_FAILURES_BEFORE_RESTART,
+                )
                 return False
 
             if self._restart_count >= self._restart_policy.max_restarts:
@@ -272,6 +302,7 @@ class RestartAwareMcpBridge:
             self._inner.shutdown()
             self._inner = self._restart_fn()
             self._restart_count += 1
+            self._consecutive_probe_failures = 0
             logger.info(
                 "MCP server restarted on stable endpoint {}; restart_count={}",
                 self._inner.endpoint,
@@ -675,7 +706,14 @@ def _spawn_mcp_process(
                 f"(rc={returncode})",
                 restart_count=0,
             ) from exc
-        raise
+        # A live-but-unready process is the same failure class as an exited
+        # one, so it must surface as McpServerError too. Re-raising the raw
+        # preflight error escaped the supervisor's handler and killed the
+        # supervisor thread, leaving the run with nothing probing the server.
+        raise McpServerError(
+            f"MCP server endpoint {endpoint} did not become ready: {exc}",
+            restart_count=0,
+        ) from exc
 
     return bridge
 

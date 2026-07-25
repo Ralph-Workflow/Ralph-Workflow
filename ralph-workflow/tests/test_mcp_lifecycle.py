@@ -457,7 +457,11 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
 
 
 def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> None:
-    """Bridge restarts when process is alive (poll=None) but responsiveness probe fails."""
+    """Bridge restarts an alive process once probe failures are sustained.
+
+    A restart needs repeated evidence: one missed probe window is a slow
+    server under load, not a dead one.
+    """
     inner = _make_standalone(poll_result=None)
     new_inner = _make_standalone(poll_result=None)
     restart_calls: list[int] = []
@@ -474,8 +478,8 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
-    result = bridge.check_health_and_restart_if_needed()
-    assert result is True
+    results = [bridge.check_health_and_restart_if_needed() for _ in range(3)]
+    assert results == [False, False, True]
     assert bridge.restart_count == 1
     assert restart_calls == [1]
 
@@ -496,6 +500,8 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is False
     with pytest.raises(lifecycle.McpServerError) as exc_info:
         bridge.check_health_and_restart_if_needed()
     assert exc_info.value.restart_count == 0
@@ -525,7 +531,8 @@ def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
-    bridge.check_health_and_restart_if_needed()
+    for _ in range(3):
+        bridge.check_health_and_restart_if_needed()
     assert initial_process.terminated is True, "stale process must be terminated before respawn"
 
 
