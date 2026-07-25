@@ -495,7 +495,30 @@ def test_developer_prompt_fallback_states_result_artifact_contract(tmp_path: Pat
     assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
     assert "## SHIPPED SKILLS" in prompt
     assert "skill discovery" in prompt
-    assert "Never invoke Git through the exec tool" in prompt
+    assert "Inspect repository state only through the brokered" in prompt
+    assert "preferred surface for repository-state reads" in prompt
+    # The wrapped lines below are intentional: ``Read-only`` and ``git``
+    # appear on adjacent lines in the rendered template, so we assert the
+    # token set rather than a single phrase to keep the check robust to
+    # line wrapping.
+    assert "Read-only" in prompt
+    assert "git status" in prompt
+    assert "git diff" in prompt
+    assert "git log" in prompt
+    assert "git show" in prompt
+    assert "git grep" in prompt
+    assert "NEVER invoke" in prompt
+    assert "git stash" in prompt
+    assert "git checkout" in prompt
+    assert "git push" in prompt
+    assert "git pull" in prompt
+    assert "git merge" in prompt
+    assert "hg" in prompt
+    assert "svn" in prompt
+    # The final sentence wraps across a line break in the rendered template;
+    # check the words separately so the assertion survives wrapping.
+    assert "Ralph Workflow alone may stage" in prompt
+    assert "commit, or push" in prompt
     assert "If you submit `status: partial`" in prompt
     assert "`## Next Steps`" in prompt
     assert "`## Continuation`" in prompt
@@ -575,7 +598,9 @@ def test_worker_developer_fallback_preserves_scope_and_namespaced_paths(
     assert (worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md").as_posix() in prompt
     assert "`.agent/tmp/development_result.md`" not in prompt
     assert "Do not coordinate or integrate the whole plan." in prompt
-    assert "Never invoke Git through the exec tool" in prompt
+    assert "Inspect repository state only through the brokered" in prompt
+    assert "NEVER invoke" in prompt
+    assert "git stash" in prompt
     assert "If you submit `status: partial`" in prompt
     assert "`## Next Steps`" in prompt
     assert "`## Continuation`" in prompt

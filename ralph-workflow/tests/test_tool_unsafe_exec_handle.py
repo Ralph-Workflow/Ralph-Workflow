@@ -137,10 +137,11 @@ class TestUnsafeExecCapabilityGate:
 
 class TestUnsafeExecVcsBlacklist:
     def test_blocks_git_command(self, tmp_path: Path) -> None:
+        # ``git status`` is whitelisted (read-only); ``push`` is not.
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "git status"})
+            handle_unsafe_exec(session, workspace, {"command": "git push origin main"})
 
     def test_blocks_hg_command(self, tmp_path: Path) -> None:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
@@ -158,7 +159,7 @@ class TestUnsafeExecVcsBlacklist:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError):
-            handle_unsafe_exec(session, workspace, {"command": "GIT status"})
+            handle_unsafe_exec(session, workspace, {"command": "GIT push origin main"})
 
     def test_blocks_git_after_and_operator(self, tmp_path: Path) -> None:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
@@ -181,10 +182,11 @@ class TestUnsafeExecVcsBlacklist:
             handle_unsafe_exec(session, workspace, {"command": "cat patch.diff | git apply"})
 
     def test_blocks_path_prefixed_git(self, tmp_path: Path) -> None:
+        # Path-prefixed git with a mutating subcommand must still be denied.
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "/usr/bin/git status"})
+            handle_unsafe_exec(session, workspace, {"command": "/usr/bin/git push origin main"})
 
     def test_blocks_git_inside_sh_c_string(self, tmp_path: Path) -> None:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
@@ -193,16 +195,18 @@ class TestUnsafeExecVcsBlacklist:
             handle_unsafe_exec(session, workspace, {"command": "sh -c 'git push origin main'"})
 
     def test_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
+        # ``git rev-parse`` is whitelisted; pick a mutating subcommand so the
+        # deep textual scan still has to deny on a substitution.
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "echo $(git rev-parse HEAD)"})
+            handle_unsafe_exec(session, workspace, {"command": "echo $(git push origin main)"})
 
     def test_blocks_git_in_backtick_substitution(self, tmp_path: Path) -> None:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(session, workspace, {"command": "echo `git status`"})
+            handle_unsafe_exec(session, workspace, {"command": "echo `git commit -m x`"})
 
     def test_blocks_git_separated_by_newline(self, tmp_path: Path) -> None:
         """sh -c treats a newline as a command separator; the policy must too."""

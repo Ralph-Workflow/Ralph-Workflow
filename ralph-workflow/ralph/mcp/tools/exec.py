@@ -33,7 +33,12 @@ agent spawn an arbitrary subprocess. It enforces:
 
 - A mandatory capability check (default-deny if the session does not
   declare ``ProcessExecBounded``).
-- A static blacklist applied to every shell pipeline segment.
+- A static blacklist applied to every shell pipeline segment, including a
+  VCS scanner (``_scan_text_for_vcs_violation``) that denies ``hg`` /
+  ``svn`` unconditionally and ``git`` unless the subcommand is in the
+  read-only whitelist (``_GIT_READ_ONLY_SUBCOMMANDS``). The whitelist
+  preserves ``diff`` only when the flag guard rejects output-writing
+  and external-helper flags — see ``_scan_diff_flags_for_writes``.
 - A bounded per-call timeout (``timeout_ms`` capped at
   ``EXEC_MAX_TIMEOUT_MS``); a non-positive or missing value is clamped
   to the default so a direct caller can never produce an unbounded
@@ -52,7 +57,6 @@ boundary — everything else is a hard-coded defence-in-depth layer.
 from __future__ import annotations
 
 import os
-import re
 import shlex
 import subprocess
 from collections.abc import Mapping
@@ -64,6 +68,14 @@ from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_output_spill import SPILL_OUTPUT_LIMIT_BYTES, format_or_spill
 from ralph.mcp.tools._exec_params import ExecParams
 from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, build_effective_exec_deps
+from ralph.mcp.tools._exec_vcs_scanner import (
+    _GIT_READ_ONLY_SUBCOMMANDS,
+    _VCS_COMMANDS,
+    _scan_text_for_vcs_violation,
+    check_version_control,
+    exec_usage_hints,
+    find_vcs_usage_in_scripts,
+)
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -118,25 +130,11 @@ _SHELL_OPERATOR_CHARS = frozenset("|&;<>")
 _REDIRECTION_CHARS = frozenset("<>")
 
 _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
-# Version control never runs through exec (safe OR unsafe): all git writes go
-# through Ralph's commit pipeline and all git reads through the git_* read
-# tools, so an agent cannot mutate repository state out from under the run.
-_VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
-# Deep VCS match: a standalone ``git``/``hg``/``svn`` word ANYWHERE in the
-# command text is denied — including inside quotes, ``$(...)``/backtick
-# substitutions, ``sh -c`` strings, and newline-separated sequences. Word
-# boundaries keep ``github.com`` and ``.gitignore`` out of the net while
-# still catching ``/usr/bin/git`` and ``git@host``. Deliberately fail-closed:
-# a benign mention of the word (``echo git``) is denied rather than risk a
-# textual smuggling path.
-_VCS_USAGE_PATTERN = re.compile(r"\b(" + "|".join(sorted(_VCS_COMMANDS)) + r")\b", re.IGNORECASE)
-# Interpreters whose script-file argument is executed as shell: the script's
-# CONTENT is scanned for VCS usage (``bash deploy.sh`` where deploy.sh runs
-# ``git push`` is denied). ``source``/``.`` execute in-shell the same way.
-_SHELL_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh", "dash", "ksh", "source", "."})
-_SCRIPT_EXTENSIONS = (".sh", ".bash", ".zsh", ".ksh")
-_SCRIPT_SCAN_LIMIT_BYTES = 256 * 1024
-_SHEBANG_PREFIX = b"#!"
+# VCS scanner is split into ``_exec_vcs_scanner`` so this module stays under
+# the 1000-line cap the repo-structure audit enforces. The re-exports above
+# keep the public ``_VCS_COMMANDS`` symbol available for tests / specs that
+# pass over the blacklist categories; the per-segment policy enforcer uses
+# ``_exec_vcs_scanner.check_version_control`` directly.
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
 _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
@@ -434,78 +432,6 @@ def _is_external_url(arg: str) -> bool:
     if "localhost" in lower or "127.0.0.1" in lower:
         return False
     return lower.startswith("http://") or lower.startswith("https://") or "://" in lower
-
-
-def find_vcs_usage(command: str, args: list[str]) -> str | None:
-    """Return the matched VCS word when the command text references one anywhere.
-
-    Matches the whole joined text, not just the command head, so a git call
-    hidden in a quoted ``sh -c`` string, a ``$(...)``/backtick substitution, or
-    a newline-separated sequence is still caught (see ``_VCS_USAGE_PATTERN``).
-    """
-    match = _VCS_USAGE_PATTERN.search(" ".join([command, *args]))
-    return match.group(0) if match else None
-
-
-def check_version_control(command: str, args: list[str]) -> str | None:
-    """Return a denial reason if the command invokes or references a VCS tool."""
-    word = find_vcs_usage(command, args)
-    if word is not None:
-        desc = _description("version_control")
-        return (
-            f"Command references '{word}': {desc} operations are not "
-            "allowed via exec. Use Ralph's git_* read tools; commits go "
-            "through the pipeline's commit phase."
-        )
-    return None
-
-
-def _script_candidate_tokens(segments: list[tuple[str, list[str]]]) -> list[str]:
-    """Return tokens that may name an executed script file.
-
-    Every segment head is a candidate (``./release``); when the head is a
-    shell interpreter, its first non-flag argument is the script it runs
-    (``bash deploy.sh``). An inline ``-c`` string is not a file and is
-    already covered by the textual VCS match.
-    """
-    candidates: list[str] = []
-    for head, args in segments:
-        candidates.append(head)
-        if _command_key(head).rsplit("/", 1)[-1] in _SHELL_INTERPRETERS:
-            for arg in args:
-                if not arg.startswith("-"):
-                    candidates.append(arg)
-                    break
-    return candidates
-
-
-def find_vcs_usage_in_scripts(
-    segments: list[tuple[str, list[str]]], workspace_root: Path
-) -> tuple[str, str] | None:
-    """Return ``(script_token, vcs_word)`` when an executed shell script uses VCS.
-
-    Best-effort static check: each candidate script token is resolved against
-    the workspace root; a readable file that looks like a shell script (a
-    known extension or a ``#!`` shebang) has its first
-    ``_SCRIPT_SCAN_LIMIT_BYTES`` scanned for a VCS word. Unreadable or
-    non-file tokens are skipped — the textual match on the command line
-    remains the primary net.
-    """
-    for token in _script_candidate_tokens(segments):
-        path = Path(token) if Path(token).is_absolute() else workspace_root / token
-        try:
-            if not path.is_file():
-                continue
-            with path.open("rb") as handle:
-                head_bytes = handle.read(_SCRIPT_SCAN_LIMIT_BYTES)
-        except OSError:
-            continue
-        if not (token.endswith(_SCRIPT_EXTENSIONS) or head_bytes.startswith(_SHEBANG_PREFIX)):
-            continue
-        match = _VCS_USAGE_PATTERN.search(head_bytes.decode("utf-8", errors="replace"))
-        if match:
-            return token, match.group(0)
-    return None
 
 
 def check_container_escape(command: str, _args: list[str]) -> str | None:
@@ -913,8 +839,18 @@ def handle_exec_command(
     # shell string for a pipeline, the argv otherwise.
     if parsed.shell_command is not None:
         text = format_exec_result(parsed.shell_command, [], output, parsed.timeout_ms)
+        hint_segments = _shell_command_segments(parsed.shell_command)
     else:
         text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
+        hint_segments = [(parsed.command, parsed.args)]
+    # Append usage hints to the result text BEFORE spilling: a whitelisted
+    # ``git status`` result should mention the dedicated git_* MCP read tools
+    # so the agent learns the preferred surface; a ``grep`` result should
+    # warn that the MCP explore endpoint is more efficient. Both hints go
+    # inside the same text block so a spill still carries them.
+    hints = exec_usage_hints(hint_segments)
+    if hints:
+        text = f"{text}\n\n" + "\n\n".join(hints)
     stdout_text = output.stdout.decode("utf-8", errors="replace")
     stderr_text = output.stderr.decode("utf-8", errors="replace")
     return format_or_spill(
@@ -932,13 +868,22 @@ def handle_exec_command(
 __all__ = [
     "DEFAULT_TIMEOUT_MS",
     "PROCESS_EXEC_BOUNDED_CAPABILITY",
+    # Re-exported from ``_exec_vcs_scanner`` so tests / specs that pass over
+    # the blacklist categories and the unsafe_exec / raw_exec handlers can
+    # import the scanner through the same module surface.
+    "_GIT_READ_ONLY_SUBCOMMANDS",
+    "_VCS_COMMANDS",
     "ExecParams",
     "ExecRunDeps",
     "ExecutionError",
     "WorkspaceWithRoot",
     "_format_exec_error",
+    "_scan_text_for_vcs_violation",
     "apply_exec_policy",
     "check_command",
+    "check_version_control",
+    "exec_usage_hints",
+    "find_vcs_usage_in_scripts",
     "format_exec_result",
     "handle_exec_command",
     "parse_exec_params",

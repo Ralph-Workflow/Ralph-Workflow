@@ -1,7 +1,11 @@
 """MCP unsafe_exec tool handler.
 
-Executes unrestricted shell commands in the real workspace directory.
-Only version control commands (git, hg, svn) are blocked.
+Executes unrestricted shell commands in the real workspace directory. The
+only policy enforcement left on this surface is the VCS policy:
+``hg`` and ``svn`` are never allowed; ``git`` is allowed only for a
+fixed read-only subcommand whitelist (``status``, ``diff``, ``log``,
+``show``, ``grep``, ...). State-mutating VCS is blocked; read-only git
+via the dedicated ``git_*`` MCP read tools is preferred.
 
 Execution goes through the SAME bounded process-manager path as ``exec``
 (``run_command``): output is capped (and spilled to a file when oversized rather
@@ -18,6 +22,12 @@ from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_output_spill import format_or_spill
+from ralph.mcp.tools._exec_vcs_scanner import (
+    _VCS_COMMANDS,
+    _scan_text_for_vcs_violation,
+    exec_usage_hints,
+    find_vcs_usage_in_scripts,
+)
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -27,11 +37,8 @@ from ralph.mcp.tools.coordination import (
     require_capability,
 )
 from ralph.mcp.tools.exec import (
-    _VCS_COMMANDS,
     _shell_command_segments,
     _workspace_root,
-    find_vcs_usage,
-    find_vcs_usage_in_scripts,
     resolve_spill_dir,
     run_command,
 )
@@ -48,22 +55,24 @@ PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
 def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
     """Deny the command when it uses a VCS tool anywhere, however nested.
 
-    The textual match (``find_vcs_usage``) catches a VCS word in any pipeline
-    segment, inside quoted ``sh -c`` strings, in ``$(...)``/backtick
-    substitutions, and across newline-separated sequences — checking only the
-    first token left every shell operator a bypass. Executed shell scripts
-    (``bash deploy.sh``, ``./release``) are additionally content-scanned so a
-    git call cannot be laundered through a file. A string the tokenizer cannot
-    parse raises ``InvalidParamsError`` (fail closed) rather than running
-    unchecked.
+    ``hg`` / ``svn`` are denied unconditionally. ``git`` is denied unless
+    its subcommand is in ``_GIT_READ_ONLY_SUBCOMMANDS`` and (for ``diff``)
+    the flag guard passes; the shared ``_scan_text_for_vcs_violation``
+    scanner enforces the same policy as ``exec``. The scanner walks the
+    whole joined text so a VCS call hidden in a quoted ``sh -c`` string,
+    in ``$(...)`` / backtick substitutions, or across newline-separated
+    sequences is still caught. Executed shell scripts (``bash deploy.sh``,
+    ``./release``) are additionally content-scanned so a state-mutating
+    git call cannot be laundered through a file.
     """
     segments = _shell_command_segments(command)
     for segment_command, segment_args in segments:
-        word = find_vcs_usage(segment_command, segment_args)
-        if word is not None:
+        reason = _scan_text_for_vcs_violation(
+            " ".join([segment_command, *segment_args])
+        )
+        if reason is not None:
             raise CapabilityDeniedError(
-                f"Command references '{word}': version control operations "
-                "are not permitted via unsafe_exec"
+                f"Command '{segment_command}': {reason}"
             )
     script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
     if script_hit is not None:
@@ -128,6 +137,12 @@ def handle_unsafe_exec(
         f"Stdout:\n{stdout}\n\n"
         f"Stderr:\n{stderr}"
     )
+    # Mirror exec: append usage hints so a whitelisted ``git status`` result
+    # mentions the dedicated git_* MCP read tools and a ``grep`` result
+    # warns that the MCP explore endpoint is more efficient.
+    hints = exec_usage_hints(_shell_command_segments(command))
+    if hints:
+        text = f"{text}\n\n" + "\n\n".join(hints)
     return format_or_spill(
         text,
         returncode=output.returncode,

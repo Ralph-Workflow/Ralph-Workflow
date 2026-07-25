@@ -16,13 +16,6 @@ from ralph.mcp.tools.names import (
 )
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 
-# Short pointer kept in the top-level description (which has a ~500-char budget);
-# the full two-meaning guidance lives in the timeout_ms property below.
-_TIMEOUT_SEMANTICS = (
-    "On timeout you get an is_error result (not a retryable error) — see timeout_ms "
-    "before retrying."
-)
-
 # A timeout is ambiguous, so the property hint teaches both readings: a
 # legitimately long command should raise ``timeout_ms``, but an unexpectedly slow
 # one may be genuinely stuck (infinite loop, deadlock, or blocked on input), in
@@ -259,12 +252,11 @@ def git_exec_specs() -> list[ToolSpec]:
                     "Execute a bounded command in the workspace. Accepts command or "
                     "argv, plus optional args, timeout_ms, and format ('raw' or "
                     "'summary'). Shell operators (|, &&, ;, >, <) in a command STRING "
-                    "run through a shell, but the blacklist (sudo, rm -rf /, external "
-                    "curl, git/hg/svn — use git_* tools for reads) is "
-                    "enforced on every pipeline command. format='summary' "
-                    "returns a JSON envelope with a replayable stdout resource id. "
-                    "On timeout you get an is_error result, not retryable — decide "
-                    "WHY first."
+                    "run through a shell; the blacklist (sudo, rm -rf /, external "
+                    "curl, hg/svn, state-mutating git) is enforced on every pipeline "
+                    "command (see the command property for the VCS whitelist). For "
+                    "git reads, prefer git_status/git_diff/git_log/git_show. On "
+                    "timeout you get is_error, not retryable — decide WHY first."
                 ),
                 input_schema={
                     "type": "object",
@@ -279,8 +271,20 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "name, a shell-style command line (pipes/redirections/"
                                 "&&/; work when passed as a string), or an argv-style "
                                 "string array — array items are always literal argv and "
-                                "are never shell-interpreted (example values: 'ls', "
-                                "'grep -r foo . | wc -l', 'python -m pytest "
+                                "are never shell-interpreted. VCS policy: hg/svn are "
+                                "NEVER allowed; git is allowed only for a fixed "
+                                "read-only subcommand whitelist (status, diff, log, "
+                                "show, grep, blame, shortlog, describe, rev-parse, "
+                                "rev-list, ls-files, ls-tree, cat-file, whatchanged, "
+                                "name-rev, for-each-ref, show-ref, count-objects, "
+                                "var). State-mutating git (push, stash, checkout, "
+                                "commit, apply, tag, ...) is denied. For "
+                                "repository-state reads, prefer the dedicated "
+                                "git_status, git_diff, git_log, and git_show MCP "
+                                "tools. ``grep`` is never denied but the result text "
+                                "carries a hint that the MCP explore endpoint "
+                                "(grep_files) is more efficient. (example values: "
+                                "'ls', 'grep -r foo . | wc -l', 'python -m pytest "
                                 "tests/test_tool_exec.py', ['python', '-m', 'pytest'])."
                             ),
                         },
@@ -336,11 +340,12 @@ def git_exec_specs() -> list[ToolSpec]:
                 description=(
                     "DANGEROUS: Execute an unrestricted shell command in the real repository "
                     "directory. All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. "
-                    "Only version control commands (git, hg, svn) are blocked. "
-                    "Required param: command (string, the full shell command). "
-                    "Optional param: timeout_ms. "
-                    "Returns stdout, stderr, and exit_code. "
-                    'Example: {"command": "make build && npm test"}. ' + _TIMEOUT_SEMANTICS
+                    "VCS policy: hg/svn are NEVER allowed; git is allowed only for a "
+                    "read-only subcommand whitelist (see the command property). "
+                    "State-mutating git (push, stash, checkout, commit, apply, tag, "
+                    "...) is denied. Required param: command. Optional param: "
+                    "timeout_ms. Returns stdout, stderr, exit_code. On timeout you get "
+                    "is_error, not retryable — decide WHY first."
                 ),
                 input_schema={
                     "type": "object",
@@ -348,9 +353,15 @@ def git_exec_specs() -> list[ToolSpec]:
                         "command": {
                             "type": "string",
                             "description": (
-                                "Full shell command string. Shell operators (|, &&, ||, ;) work as "
-                                "normal. Version control commands (git, hg, svn) are blocked. "
-                                '(example values: "make build", "npm test && npm lint").'
+                                "Full shell command string. Shell operators (|, &&, ||, ;, &, >, >>, <, <<) "
+                                "work as normal. VCS policy: hg/svn are NEVER allowed; git is allowed "
+                                "only for a fixed read-only subcommand whitelist (status, diff, log, "
+                                "show, grep, blame, shortlog, describe, rev-parse, rev-list, ls-files, "
+                                "ls-tree, cat-file, whatchanged, name-rev, for-each-ref, show-ref, "
+                                "count-objects, var). State-mutating git (push, stash, checkout, commit, "
+                                "apply, tag, ...) is denied. For repository-state reads, prefer the "
+                                "dedicated git_status, git_diff, git_log, and git_show MCP tools. "
+                                "(example values: \"make build\", \"npm test && npm lint\")."
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),
@@ -366,13 +377,14 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=RAW_EXEC_TOOL,
                 description=(
-                    "DANGEROUS: Alias for unsafe_exec. Execute an unrestricted shell command "
-                    "in the real repository directory. All shell operators (|, &&, ||, ;, "
-                    "&, >, >>, <, <<) work. Only version control commands (git, hg, svn) "
-                    "are blocked. Required param: command (string, the full shell command). "
-                    "Optional param: timeout_ms. "
-                    "Returns stdout, stderr, and exit_code. "
-                    'Example: {"command": "make build && npm test"}. ' + _TIMEOUT_SEMANTICS
+                    "Alias for unsafe_exec. DANGEROUS: Execute an unrestricted shell command. "
+                    "All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. VCS policy: "
+                    "hg/svn are NEVER allowed; git is allowed only for a read-only "
+                    "subcommand whitelist (see the command property). State-mutating "
+                    "git (push, stash, checkout, commit, apply, tag, ...) is denied. "
+                    "Required param: command. Optional param: timeout_ms. Returns stdout, "
+                    "stderr, exit_code. On timeout you get is_error, not retryable — "
+                    "decide WHY first."
                 ),
                 input_schema={
                     "type": "object",
@@ -380,9 +392,15 @@ def git_exec_specs() -> list[ToolSpec]:
                         "command": {
                             "type": "string",
                             "description": (
-                                "Full shell command string. Shell operators (|, &&, ||, ;) work as "
-                                "normal. Version control commands (git, hg, svn) are blocked. "
-                                '(example values: "make build", "npm test && npm lint").'
+                                "Full shell command string. Shell operators (|, &&, ||, ;, &, >, >>, <, <<) "
+                                "work as normal. VCS policy: hg/svn are NEVER allowed; git is allowed "
+                                "only for a fixed read-only subcommand whitelist (status, diff, log, "
+                                "show, grep, blame, shortlog, describe, rev-parse, rev-list, ls-files, "
+                                "ls-tree, cat-file, whatchanged, name-rev, for-each-ref, show-ref, "
+                                "count-objects, var). State-mutating git (push, stash, checkout, commit, "
+                                "apply, tag, ...) is denied. For repository-state reads, prefer the "
+                                "dedicated git_status, git_diff, git_log, and git_show MCP tools. "
+                                "(example values: \"make build\", \"npm test && npm lint\")."
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),

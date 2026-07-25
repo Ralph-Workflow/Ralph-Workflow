@@ -58,7 +58,10 @@ class TestHandleExecCommand:
     def test_exec_blocks_git_command(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        params: dict[str, object] = {"command": "git", "args": ["--version"]}
+        # ``--version`` is a git-level flag (not a subcommand) so the
+        # whitelist scanner fails closed and denies — see
+        # ``test_git_version_is_denied`` in the new whitelist test module.
+        params: dict[str, object] = {"command": "git", "args": ["push"]}
 
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_exec_command(session, workspace, params)
@@ -98,7 +101,10 @@ class TestHandleExecCommand:
     def test_exec_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        params: dict[str, object] = {"command": "echo $(git rev-parse HEAD) | wc -c"}
+        # The deep textual scan must catch any VCS word, even in ``$(...)``
+        # substitutions. Use a state-mutating subcommand so the contract is
+        # still a denial under the new whitelist.
+        params: dict[str, object] = {"command": "echo $(git push origin main) | wc -c"}
 
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_exec_command(session, workspace, params)

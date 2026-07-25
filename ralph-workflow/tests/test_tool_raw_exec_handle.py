@@ -131,15 +131,16 @@ def test_raw_exec_handler_requires_unbounded_capability(tmp_path) -> None:
 
 
 def test_raw_exec_handler_blocks_git_command(tmp_path) -> None:
-    """raw_exec blocks VCS commands the same way unsafe_exec does; the
-    alias must not be a back door for git/hg/svn.
+    """raw_exec blocks state-mutating VCS commands the same way unsafe_exec
+    does; the alias must not be a back door for git/hg/svn. The read-only
+    whitelist (``git status``, ``git diff``, ...) is allowed.
     """
     from ralph.mcp.tools.coordination import CapabilityDeniedError
 
     session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
     workspace = MockWorkspaceRoot(tmp_path)
     with __import__("pytest").raises(CapabilityDeniedError, match="git"):
-        handle_unsafe_exec(session, workspace, {"command": "git status"})
+        handle_unsafe_exec(session, workspace, {"command": "git push origin main"})
 
 
 def test_raw_exec_handler_clamps_zero_timeout_to_default(tmp_path) -> None:

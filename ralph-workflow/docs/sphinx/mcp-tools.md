@@ -91,7 +91,7 @@ This pooling behavior is an internal optimization and concurrency contract, not 
 
 ### exec vs unsafe_exec / raw_exec
 
-`exec` interprets shell operators (`&&`, `|`, `||`, `;`, `>`, `<`) in a command string, but keeps its command blacklist enforced against every command in the pipeline. Reach for `unsafe_exec` (or its alias `raw_exec`) only when you need a command the blacklist forbids on the bounded path — those tools run the command directly with **no** blacklist (only version control commands `git`, `hg`, `svn` are blocked) and require the separate `process.exec_unbounded` capability. Use with caution.
+`exec` interprets shell operators (`&&`, `|`, `||`, `;`, `>`, `<`) in a command string, but keeps its command blacklist enforced against every command in the pipeline. Reach for `unsafe_exec` (or its alias `raw_exec`) only when you need a command the blacklist forbids on the bounded path — those tools run the command directly with **no** command blacklist (the only policy enforcement left is the VCS policy: `hg` / `svn` are NEVER allowed; `git` is allowed only for a fixed read-only subcommand whitelist — `status`, `diff`, `log`, `show`, `grep`, `blame`, `shortlog`, `describe`, `rev-parse`, `rev-list`, `ls-files`, `ls-tree`, `cat-file`, `whatchanged`, `name-rev`, `for-each-ref`, `show-ref`, `count-objects`, `var`; any state-mutating subcommand — `push`, `stash`, `checkout`, `commit`, `apply`, `tag`, ... — is denied) and require the separate `process.exec_unbounded` capability. For repository-state reads, prefer the dedicated `git_status`, `git_diff`, `git_log`, and `git_show` MCP tools regardless of which exec surface you choose. Use with caution.
 
 ### read_file response shapes
 
