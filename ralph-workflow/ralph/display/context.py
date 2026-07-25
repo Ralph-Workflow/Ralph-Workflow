@@ -416,18 +416,25 @@ class DisplayContext:
         return ASCII_GLYPHS[name]
 
     def is_height_constrained(self, threshold: int = 12) -> bool:
-        """Return ``True`` when the height is known and below ``threshold``.
+        """Return ``True`` when the height is known and at-or-below ``threshold``.
 
-        P0 (wt-028-display S-6 / AC-05): on a short terminal
-        (``height < threshold``) framed presentation degrades to
-        unboxed headed text. The threshold defaults to 12 rows
-        (the canonical split-pane size where the working area
-        shrinks enough that a bordered panel would crowd the
+        P0 (wt-028-display S-6 / AC-05 / DA-005): on a short
+        terminal (``height <= threshold``) framed presentation
+        degrades to unboxed headed text. The threshold defaults to
+        12 rows (the canonical split-pane size where the working
+        area shrinks enough that a bordered panel would crowd the
         scrollback). When ``height`` is ``None`` (the legacy
         opt-out) the constraint check returns ``False`` so a
         caller without a known height keeps the full boxed
         presentation -- the height is required to make the
         degradation decision at all.
+
+        The check is at-or-below (``<=``) rather than strict
+        less-than (``<``) so the canonical 12-row floor activates
+        the constrained presentation -- a 12-row split pane is
+        the documented accessibility path (large-text / magnified /
+        braille displays) and the framed panels must degrade
+        there, not one row later.
 
         Args:
             threshold: The row count at or below which the
@@ -436,13 +443,13 @@ class DisplayContext:
                 threshold).
 
         Returns:
-            ``True`` when ``self.height`` is set and is strictly
-            less than ``threshold``; ``False`` when ``self.height``
-            is ``None`` or is ``>= threshold``.
+            ``True`` when ``self.height`` is set and is at-or-below
+            ``threshold``; ``False`` when ``self.height`` is
+            ``None`` or is ``> threshold``.
         """
         if self.height is None:
             return False
-        return self.height < threshold
+        return self.height <= threshold
 
     def body_measure(self) -> int:
         """Return the cap for prose / log body text on this console.

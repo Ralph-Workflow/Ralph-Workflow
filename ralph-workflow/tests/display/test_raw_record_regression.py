@@ -652,3 +652,151 @@ def test_production_path_pi_fixture_no_role_progress_duplicate(
     assert "role=progress" not in rendered, (
         f"role=progress echo leaked into record:\n{rendered}"
     )
+
+
+# --- wt-028-display S-2 / DA-001: SUBAGENT_PROGRESS companion is
+# suppressed from the record. The parser pipeline emits a SUBAGENT_PROGRESS
+# companion event for every visible text / thinking / tool line so the
+# watchdog's per-channel evidence surface stays fresh. The watchdog
+# coverage is preserved via the ``invoke_subagent_sink`` contextvar
+# path; the rendered record must NOT carry a separate ``role=progress``
+# echo for the same logical event. The pre-fix corpus showed exactly
+# one duplicate per event; the post-fix contract is one entry per
+# logical event on both surfaces.
+# ---------------------------------------------------------------------------
+
+
+def test_subagent_progress_companion_does_not_duplicate_record_entry(
+    tmp_path: Path,
+) -> None:
+    """DA-001: a TEXT event followed by its SUBAGENT_PROGRESS companion produces
+    exactly one record entry -- no role=progress echo.
+
+    The committed NDJSON fixtures do not exercise the
+    SUBAGENT_PROGRESS companion path (the fixtures were captured
+    before the watchdog pipeline was wired), so the regression must
+    drive the production path directly: TEXT event, then its
+    SUBAGENT_PROGRESS companion with the same body, then close.
+    """
+    from ralph.display.parallel_display import ParallelDisplay
+
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    assert isinstance(pd, ParallelDisplay)
+    pd.start()
+
+    body = "Reading source files for the canonical entry path."
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TEXT,
+        content=body,
+        metadata={},
+    )
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.SUBAGENT_PROGRESS,
+        content=body,
+        metadata={},
+    )
+    pd.stop()
+
+    record_path = tmp_path / ".agent" / "raw" / "pi.rendered.log"
+    assert record_path.exists(), (
+        f"Production-path rendered record missing at {record_path}"
+    )
+    record_body = record_path.read_text(encoding="utf-8")
+    # The record carries the close entry for the TEXT block; the
+    # SUBAGENT_PROGRESS companion does NOT add a separate
+    # ``role=progress`` echo line.
+    assert "role=progress" not in record_body, (
+        f"role=progress echo leaked into record (DA-001):\n{record_body}"
+    )
+    # The body appears once -- in the close entry -- not twice.
+    assert record_body.count(body) == 1, (
+        f"body appears {record_body.count(body)} times in record; "
+        f"expected exactly 1:\n{record_body}"
+    )
+
+
+# --- wt-028-display S-2 / DA-002: the source event's real timestamp
+# is preserved through the canonical PresentedEntry builder. The
+# pre-fix contract ignored ``event.timestamp`` and surfaced as
+# ``[??:??:??]``; the post-fix contract uses the event's ISO-8601
+# timestamp when no authoritative override is supplied.
+# ---------------------------------------------------------------------------
+
+
+def test_source_event_timestamp_preserved_when_no_override(
+    tmp_path: Path,
+) -> None:
+    """DA-002: a timestamped ``AgentActivityEvent`` yields a record entry whose
+    ``[hh:mm:ss]`` slot reflects the event's own timestamp, not ``[??:??:??]``.
+    """
+    from ralph.display.agent_activity_event import AgentActivityEvent
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.presented_entry import build_presented_entry
+
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    assert isinstance(pd, ParallelDisplay)
+    pd.start()
+
+    # Event with a real ISO-8601 timestamp (UTC). No explicit
+    # timestamp arg is supplied at the build site so the source
+    # event's ``timestamp`` is the only authoritative value.
+    event = AgentActivityEvent(
+        provider=ActivityProvider.PI,
+        kind=ActivityEventKind.TEXT,
+        content="hello world",
+        metadata={},
+        timestamp="2026-01-02T03:04:05+00:00",
+    )
+    # Direct builder probe (unit-style): the entry the writer
+    # consumes carries the event's ``03:04:05`` slot.
+    entry = build_presented_entry(event, unit_id="pi")
+    assert entry.timestamp == "2026-01-02T03:04:05+00:00", (
+        f"entry.timestamp={entry.timestamp!r}; expected the event's ISO-8601"
+    )
+
+    pd.stop()
+
+
+# --- wt-028-display S-3 / DA-002: no internal channel token leaks.
+# The pre-fix corpus carried ``text:``, ``thinking:``,
+# ``tool_use:``, ``tool_result:`` prefixes inside the body of
+# ``role=progress`` echo entries. The post-fix contract is that no
+# internal channel name ever appears on either surface.
+# ---------------------------------------------------------------------------
+
+
+def test_production_path_no_internal_channel_tokens_with_subagent_companion(
+    tmp_path: Path,
+) -> None:
+    """DA-002: a SUBAGENT_PROGRESS companion never restores the channel-token
+    leak. The post-fix contract is the same as the pre-fix
+    no-internal-token invariant: even with the companion event in
+    the stream, neither ``text:`` nor ``thinking:`` nor
+    ``tool_use:`` nor ``tool_result:`` appears on the record.
+    """
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TEXT,
+        content="Working on the display redesign.",
+        metadata={},
+    )
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.SUBAGENT_PROGRESS,
+        content="Working on the display redesign.",
+        metadata={},
+    )
+    pd.stop()
+
+    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    for forbidden in ("text:", "thinking:", "tool_use:", "tool_result:"):
+        assert forbidden not in record_body, (
+            f"internal channel token {forbidden!r} leaked into record:\n"
+            f"{record_body}"
+        )

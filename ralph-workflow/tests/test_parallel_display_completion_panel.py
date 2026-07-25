@@ -87,13 +87,18 @@ def test_emit_run_end_non_terminal_phase_no_panel(tmp_path: Path) -> None:
     assert "[run-end]" in out
 
 
-# --- wt-028-display S-6 / AC-05: height-constrained panel
+# --- wt-028-display S-6 / AC-05 / DA-005: height-constrained panel
 # degradation. The shared threshold (12 rows) is honored by every
-# Panel-using emit method: at height=11 the bordered Panel degrades
-# to unboxed headed text; at height=12 the full Panel survives. The
-# tests below pin the degradation for ``emit_info_panel``,
-# ``emit_welcome_banner``, and ``emit_first_run_panel`` so a
-# regression that re-introduces a border on a short terminal fails.
+# Panel-using emit method: at the canonical 12-row floor and below,
+# the bordered Panel degrades to unboxed headed text; above the
+# floor (height=13+) the full Panel survives. The tests below pin
+# the degradation for ``emit_info_panel``, ``emit_welcome_banner``,
+# and ``emit_first_run_panel`` so a regression that re-introduces
+# a border on a short terminal fails. The threshold check is
+# at-or-below (``<=``) so the canonical floor (a 12-row split
+# pane -- the documented accessibility path for large-text /
+# magnified / braille displays) activates the constrained
+# presentation.
 # -------------------------------------------------------------------------
 
 
@@ -166,23 +171,26 @@ def test_emit_info_panel_degrades_to_unboxed_at_11_rows(tmp_path: Path) -> None:
         )
 
 
-def test_emit_info_panel_keeps_box_at_12_rows(tmp_path: Path) -> None:
-    """S-6: at height=12 the bordered info Panel is preserved (12 == floor)."""
+def test_emit_info_panel_degrades_at_12_rows(tmp_path: Path) -> None:
+    """S-6 / DA-005: at the canonical 12-row floor the Panel degrades to unboxed.
+
+    The canonical 12-row floor is the documented accessibility
+    path (large-text / magnified / braille displays); the framed
+    presentation must give way to unboxed headed text there, not
+    one row later.
+    """
     display, console = _make_height_aware_display(tmp_path, height=12)
     display.emit_info_panel(title="Next steps", content="Run ralph --init to bootstrap.")
     out = console.export_text()
-    # Both the title and the body are present.
     assert "Next steps" in out
     assert "Run ralph --init to bootstrap." in out
-    # The full boxed Panel draws at least one box-drawing character
-    # in the rendered output (the border around the panel).
-    has_box = any(
-        char in out
-        for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│")
-    )
-    assert has_box, (
-        f"boxed Panel border missing at 12 rows (the floor):\n{out!r}"
-    )
+    # The unboxed heading uses a plain ``Rule`` (filled with
+    # horizontal box-drawing characters) but no panel corners. The
+    # boxed form carries panel corner characters at the title.
+    for corner in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘"):
+        assert corner not in out, (
+            f"boxed Panel corner character {corner!r} survived at 12 rows (the floor):\n{out!r}"
+        )
 
 
 def test_emit_info_panel_keeps_box_at_24_rows(tmp_path: Path) -> None:
@@ -221,21 +229,29 @@ def test_emit_welcome_banner_degrades_to_heading_at_11_rows(tmp_path: Path) -> N
     )
 
 
-def test_emit_welcome_banner_keeps_box_at_12_rows(tmp_path: Path) -> None:
-    """S-6: at height=12 the welcome banner keeps its full boxed panel."""
+def test_emit_welcome_banner_degrades_at_12_rows(tmp_path: Path) -> None:
+    """S-6 / DA-005: at the canonical 12-row floor the welcome banner degrades.
+
+    The canonical 12-row floor is the documented accessibility
+    path (large-text / magnified / braille displays); the framed
+    banner must give way to unboxed headed text there.
+    """
     display, console = _make_height_aware_display(tmp_path, height=12)
     display.emit_welcome_banner(version="9.9.9")
     out = console.export_text()
-    # At 12 rows the ASCII-art banner IS present (the box is kept).
-    # The banner is identified by the pipe-rail pattern of the
-    # ``_ASCII_ART_BANNER`` lines (Unicode ``\u2502`` rails on
-    # both column edges).
+    # Heading + version line still present (information preserved).
+    assert "Ralph Workflow" in out, f"unboxed banner missing at 12 rows:\n{out!r}"
+    assert "v9.9.9" in out, f"version missing at 12 rows:\n{out!r}"
+    # The ASCII-art banner (the 6-row ``_ASCII_ART_BANNER`` block
+    # with pipe characters at the column edges) is NOT rendered at
+    # the canonical floor; the unboxed banner replaces it with a
+    # single heading line.
     ascii_art_lines = [
         line for line in out.splitlines()
         if line.lstrip().startswith("\u2502") and line.rstrip().endswith("\u2502")
     ]
-    assert len(ascii_art_lines) >= 3, (
-        f"boxed ASCII-art banner missing at 12 rows (the floor):\n{out!r}"
+    assert not ascii_art_lines, (
+        f"boxed ASCII-art banner survived at 12 rows (the floor): {ascii_art_lines!r}"
     )
 
 
@@ -266,8 +282,13 @@ def test_emit_first_run_panel_degrades_to_unboxed_at_11_rows(tmp_path: Path) -> 
         )
 
 
-def test_emit_first_run_panel_keeps_box_at_12_rows(tmp_path: Path) -> None:
-    """S-6: at height=12 the first-run Panel is preserved."""
+def test_emit_first_run_panel_degrades_at_12_rows(tmp_path: Path) -> None:
+    """S-6 / DA-005: at the canonical 12-row floor the first-run Panel degrades.
+
+    The canonical 12-row floor is the documented accessibility
+    path (large-text / magnified / braille displays); the framed
+    Panel must give way to unboxed headed text there.
+    """
     from rich.text import Text
 
     display, console = _make_height_aware_display(tmp_path, height=12)
@@ -275,8 +296,9 @@ def test_emit_first_run_panel_keeps_box_at_12_rows(tmp_path: Path) -> None:
     out = console.export_text()
     assert "Ralph Workflow first-run setup" in out
     assert "body line 1" in out
-    has_box = any(
-        char in out
-        for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│")
-    )
-    assert has_box, f"boxed Panel border missing at 12 rows:\n{out!r}"
+    # The unboxed heading uses a plain ``Rule`` (filled with
+    # horizontal box-drawing characters) but no panel corners.
+    for corner in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘"):
+        assert corner not in out, (
+            f"boxed Panel corner character {corner!r} survived at 12 rows (the floor):\n{out!r}"
+        )

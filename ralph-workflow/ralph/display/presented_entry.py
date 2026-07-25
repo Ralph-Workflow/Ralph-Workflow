@@ -150,12 +150,31 @@ def build_presented_entry(
     grouping_role, indent_level = _KIND_TO_GROUPING.get(
         event.kind, ("agent_text", 0)
     )
+    # S-2 (wt-028-display P1 / AC-01 / DA-002): the canonical entry
+    # carries the source event's real timestamp unless the caller
+    # supplies an explicit authoritative override. The pre-fix
+    # contract ignored ``event.timestamp`` entirely, so an event
+    # whose ``timestamp`` was the only authoritative source still
+    # surfaced as ``[??:??:??]``. The display clock (``clock()``)
+    # is the normal authoritative source in production (see
+    # ``_append_recorded_entry`` in ``parallel_display.py``); the
+    # event's own timestamp is the fallback that lets fixtures and
+    # replay tests preserve the source's stamp end-to-end.
+    effective_timestamp = timestamp
+    if not effective_timestamp:
+        # ``AgentActivityEvent.timestamp`` is ``str | None``; the
+        # attribute read keeps that type narrow rather than the
+        # ``Any`` ``getattr(..., default)`` returns, which mypy
+        # refuses to narrow with ``isinstance``.
+        event_timestamp = event.timestamp
+        if isinstance(event_timestamp, str) and event_timestamp:
+            effective_timestamp = event_timestamp
     return PresentedEntry(
         kind=event.kind.value if hasattr(event.kind, "value") else str(event.kind),
         severity=severity,
         identity=identity,
         body=body,
-        timestamp=timestamp,
+        timestamp=effective_timestamp,
         phase=phase,
         cycle=cycle,
         iter=iter_,

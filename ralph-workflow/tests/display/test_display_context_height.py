@@ -88,12 +88,20 @@ def test_make_display_context_height_is_optional_for_legacy_callers() -> None:
 
 
 def test_is_height_constrained_default_threshold() -> None:
-    """S-6: at height=12 the working area is NOT constrained (12 == 12)."""
+    """S-6: at height=12 the working area IS constrained (12 is the floor).
+
+    DA-005: the canonical 12-row floor activates the constrained
+    presentation -- a 12-row split pane is the documented
+    accessibility path (large-text / magnified / braille
+    displays) and the framed panels must degrade there, not one
+    row later. The check is at-or-below (``<=``) so the floor is
+    inclusive.
+    """
     console = Console(width=80, height=12, force_terminal=True)
     ctx = make_display_context(console=console)
     assert ctx.height == 12
-    assert ctx.is_height_constrained() is False, (
-        "height=12 is the floor; the constraint starts strictly below 12"
+    assert ctx.is_height_constrained() is True, (
+        "height=12 is the canonical floor; the constraint activates at the floor"
     )
 
 

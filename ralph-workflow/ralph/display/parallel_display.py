@@ -92,6 +92,7 @@ from __future__ import annotations
 
 import contextlib
 import queue
+import textwrap
 import time
 import uuid
 from datetime import UTC, datetime
@@ -669,6 +670,69 @@ class ParallelDisplay:
         return t
 
     @staticmethod
+    def _wrap_body_with_hanging_indent(
+        prefix: str,
+        body: str,
+        *,
+        total_width: int,
+        body_measure: int,
+    ) -> str:
+        """Wrap ``body`` so continuation lines hang-indent to ``prefix``.
+
+        S-4 (wt-028-display P1 / AC-03 / DA-003) and S-5 (P1 / AC-04 /
+        DA-004): one shared rendering seam applies two contracts:
+
+        * the wide-terminal measure cap (``body_measure`` -- never
+          wider than 100 cols on a 250-col terminal, never narrower
+          than 40 cols),
+        * the hanging-indent continuation that keeps the body
+          aligned with the prefix column so the reader does not
+          lose the line's structural position on a wrap.
+
+        The available column count for the body is
+        ``min(total_width - len(prefix), body_measure - len(prefix))``
+        with a floor of 20 cols so a single token wider than the
+        budget still flows through ``textwrap`` without crashing on
+        a zero-or-negative effective measure. Rules, tables, and
+        aligned columns that need the full terminal width go
+        through a different emit path (``_console.print`` with
+        ``no_wrap=True``) so this helper does not touch them.
+
+        Returns the body ready to be appended after ``prefix``: the
+        first line carries the original ``body`` text, continuation
+        lines are prefixed with ``len(prefix)`` spaces so the body
+        hangs at the prefix column. When the body fits in one line
+        the original string is returned unchanged so the
+        single-line case has no trailing whitespace.
+        """
+        if not body:
+            return body
+        prefix_len = len(prefix)
+        # Cap by both terminal width and the body measure; both
+        # subtract the prefix so a long prefix can't push the body
+        # below the floor on a short terminal.
+        budget_terminal = total_width - prefix_len
+        budget_measure = body_measure - prefix_len
+        # ponytail: floor at 20 keeps textwrap usable on the
+        # narrowest consoles; the larger floor (40) lives in
+        # ``DisplayContext.body_measure`` for the wider path.
+        budget = max(20, min(budget_terminal, budget_measure))
+        if budget <= 0 or len(body) <= budget:
+            return body
+        hang = " " * prefix_len
+        wrapped = textwrap.wrap(
+            body,
+            width=budget,
+            initial_indent="",
+            subsequent_indent=hang,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+        if not wrapped:
+            return body
+        return "\n".join(wrapped)
+
+    @staticmethod
     def _build_agents_parts(orientation: RunStartOrientation) -> list[str]:
         """Collect developer agent+model tokens for the run-start agents line."""
         parts: list[str] = []
@@ -753,15 +817,48 @@ class ParallelDisplay:
         # still runs so the file surface keeps the same presented
         # entries a non-quiet run would have written.
         if not self._is_quiet:
+            # DA-003 / DA-004 (S-4 + S-5): the live log body hangs at
+            # the prefix column on wrap and is capped at the shared
+            # ``body_measure`` so a 250-col terminal doesn't print
+            # 180-char lines. We split the work into two print calls:
+            # the first prints the full badge-bearing line; the
+            # subsequent continuations carry the badge prefix and a
+            # hanging indent that lands at the body column (not the
+            # full timestamp + level + cat column, which would
+            # overflow the 40-column floor). On a wide terminal the
+            # hang still lines up under the body because the badge
+            # prefix length is the same as on the first line.
+            badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
+            hang_prefix = " " * len(badge_prefix)
+            wrapped_body = self._wrap_body_with_hanging_indent(
+                badge_prefix,
+                sanitized,
+                total_width=self._ctx.width,
+                body_measure=self._ctx.body_measure(),
+            )
+            chunks = wrapped_body.split("\n")
+            first_chunk = chunks[0]
             self._console.print(
-                self._build_line(
-                    timestamp, level, cat, f"[{base_tag}][{rendered_unit_id}] {sanitized}"
-                ),
+                self._build_line(timestamp, level, cat, f"{badge_prefix}{first_chunk}"),
                 markup=False,
                 highlight=False,
                 no_wrap=False,
                 overflow="fold",
             )
+            for chunk in chunks[1:]:
+                # ponytail: continuations keep the badge prefix so
+                # the line still reads as a continuation of the same
+                # entry; the timestamp/level/cat is dropped because
+                # the badge carries the structural information and
+                # the reader can scroll back to the first line for
+                # the timestamp.
+                self._console.print(
+                    f"{hang_prefix}{chunk}",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=False,
+                    overflow="fold",
+                )
 
         self._append_seam_record(unit_id, kind, sanitized, timestamp, opts)
 
@@ -1044,15 +1141,46 @@ class ParallelDisplay:
         # the record append below still runs so the file surface
         # keeps the same close entry.
         if not self._is_quiet:
+            # DA-003 / DA-004 (S-4 + S-5): the close-entry body has
+            # the span header on its own line then the joined
+            # passage. Wrap each line independently so a wide
+            # console stays at the body_measure cap and a narrow
+            # console's continuations hang at the badge column.
+            close_badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
+            close_hang_prefix = " " * len(close_badge_prefix)
+            body_chunks = body.split("\n")
+            wrapped_first = self._wrap_body_with_hanging_indent(
+                close_badge_prefix,
+                body_chunks[0],
+                total_width=self._ctx.width,
+                body_measure=self._ctx.body_measure(),
+            )
             self._console.print(
                 self._build_line(
-                    timestamp, "INFO", "", f"[{base_tag}][{rendered_unit_id}] {body}"
+                    timestamp,
+                    "INFO",
+                    "",
+                    f"{close_badge_prefix}{wrapped_first}",
                 ),
                 markup=False,
                 highlight=False,
                 no_wrap=False,
                 overflow="fold",
             )
+            for continuation in body_chunks[1:]:
+                wrapped_cont = self._wrap_body_with_hanging_indent(
+                    close_badge_prefix,
+                    continuation,
+                    total_width=self._ctx.width,
+                    body_measure=self._ctx.body_measure(),
+                )
+                self._console.print(
+                    f"{close_hang_prefix}{wrapped_cont}",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=False,
+                    overflow="fold",
+                )
 
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
         # also the single record entry for the streaming block. Map the
@@ -1935,21 +2063,18 @@ class ParallelDisplay:
         # upstream of the streaming-block coalescing produced
         # doubled / fragmented rows the operator never saw).
         #
-        # The watchdog companion (``SUBAGENT_PROGRESS``) still needs
-        # an audit-trail entry, but its live console emission is
-        # suppressed inside ``emit_activity_line`` so the file
-        # surface and the terminal surface remain one entry per
-        # visible event. We route that companion through the seam
-        # explicitly with the display clock.
-        if kind is ActivityEventKind.SUBAGENT_PROGRESS:
-            self._append_recorded_entry(
-                unit_id,
-                event_kind=kind,
-                body=visible,
-                timestamp=self._format_timestamp(self._clock()),
-                metadata=metadata,
-            )
-
+        # DA-001 (S-2): SUBAGENT_PROGRESS is a watchdog companion
+        # event. The watchdog's per-channel evidence surface stays
+        # fresh via the ``invoke_subagent_sink`` contextvar path
+        # reached upstream of this function (see
+        # ``ralph.pipeline.activity_stream``); recording an
+        # additional ``role=progress`` audit-trail entry on top of
+        # the visible event's close entry was the duplication the
+        # corpus showed. The live console emission is suppressed
+        # above (the SUBAGENT_PROGRESS guard around the
+        # ``emit_activity_line`` call), so the file surface and the
+        # terminal surface both present one entry per visible
+        # event.
         self._emit_drop_warning(unit_id)
 
     @property
