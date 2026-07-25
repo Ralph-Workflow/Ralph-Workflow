@@ -513,7 +513,8 @@ def test_developer_prompt_fallback_states_result_artifact_contract(tmp_path: Pat
     # check the words separately so the assertion survives wrapping.
     assert "Ralph Workflow alone may stage" in prompt
     assert "commit, or push" in prompt
-    assert "If you submit `status: partial`" in prompt
+    assert "A `status: partial`" in prompt
+    assert "free-form below the frontmatter" in " ".join(prompt.split())
     assert "`## Next Steps`" in prompt
     assert "`## Continuation`" in prompt
     normalized_prompt = " ".join(prompt.split())
@@ -595,7 +596,8 @@ def test_worker_developer_fallback_preserves_scope_and_namespaced_paths(
     assert "Inspect repository state only through the brokered" in prompt
     assert "NEVER invoke" in prompt
     assert "git stash" in prompt
-    assert "If you submit `status: partial`" in prompt
+    assert "A `status: partial`" in prompt
+    assert "free-form below the frontmatter" in " ".join(prompt.split())
     assert "`## Next Steps`" in prompt
     assert "`## Continuation`" in prompt
     assert "Do not invent files or verification results." in prompt

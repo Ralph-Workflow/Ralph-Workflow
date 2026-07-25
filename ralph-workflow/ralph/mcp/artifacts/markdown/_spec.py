@@ -19,15 +19,27 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 type Content = dict[str, object]
+type DocumentPredicate = Callable[[ParsedDocument], bool]
 type DocumentMapper = Callable[[ParsedDocument], Content]
 type ContentNormalizer = Callable[[Content], Content]
 type DocumentValidator = Callable[[ParsedDocument], list[Diagnostic]]
 type MinimalVariantParser = Callable[[ParsedDocument], tuple[Content | None, list[Diagnostic]]]
 
 
+_BODY_GRAMMAR_RULES = frozenset({"MD001", "MD002", "MD003", "MD004"})
+
+
 @dataclass(frozen=True)
 class MdArtifactSpec:
-    """Declarative schema and injected canonical validator for one artifact type."""
+    """Declarative schema and injected canonical validator for one artifact type.
+
+    ``structured_body`` decides, per document, whether the body must
+    satisfy this spec's section grammar. When it returns False the body
+    is free-form prose: section rules, the spec's ``validate_document``
+    hook, and body markdown grammar are all skipped, while frontmatter
+    rules (required fields, closed vocabularies, duplicates) still
+    apply. Leaving it unset keeps every document structured.
+    """
 
     artifact_type: str
     required_frontmatter: frozenset[str]
@@ -44,6 +56,7 @@ class MdArtifactSpec:
     allow_unknown_frontmatter: bool = False
     allow_unknown_sections: bool = False
     allow_nested_headings: bool = False
+    structured_body: DocumentPredicate | None = None
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
@@ -53,6 +66,13 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         allow_nested_headings=spec.allow_nested_headings,
     )
     _teach_duplicate_closed_frontmatter_vocabulary(diagnostics, spec)
+    structured_body = spec.structured_body is None or spec.structured_body(document)
+    if not structured_body:
+        diagnostics = [
+            diagnostic
+            for diagnostic in diagnostics
+            if diagnostic.rule_id not in _BODY_GRAMMAR_RULES
+        ]
     minimal_content: Content | None = None
     if spec.minimal_variant is not None:
         minimal_content, variant_diagnostics = spec.minimal_variant(document)
@@ -63,12 +83,14 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
             text,
             spec,
             require_sections=minimal_content is None,
+            validate_sections=structured_body,
         )
     )
     if (
         not _has_errors(diagnostics)
         and spec.validate_document is not None
         and minimal_content is None
+        and structured_body
     ):
         diagnostics.extend(spec.validate_document(document))
     if not _has_errors(diagnostics):
@@ -91,6 +113,7 @@ def _validate_structure(
     spec: MdArtifactSpec,
     *,
     require_sections: bool,
+    validate_sections: bool = True,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     if spec.max_characters is not None and len(text) > spec.max_characters:
@@ -114,6 +137,8 @@ def _validate_structure(
             diagnostics.append(
                 Diagnostic(line, None, "SPEC003", f"unknown frontmatter field {key!r}")
             )
+    if not validate_sections:
+        return diagnostics
     seen_sections: set[str] = set()
     for section in document.sections:
         rule = spec.sections.get(section.name)

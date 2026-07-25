@@ -180,24 +180,30 @@ def test_consumed_status_missing_or_empty_names_every_accepted_value(
 
 
 @pytest.mark.parametrize(
-    ("artifact_type", "frontmatter", "valid_vocabulary"),
+    ("artifact_type", "frontmatter", "valid_vocabulary", "requires_sections"),
     (
+        # development_result only requires sections for ``status: completed``;
+        # an unknown status leaves the body free-form, so the vocabulary error
+        # is the only one raised.
         pytest.param(
             "development_result",
             ("type: development_result", "status: done"),
             ("completed", "partial"),
+            False,
             id="development-result",
         ),
         pytest.param(
             "smoke_test_result",
             ("type: smoke_test_result", "status: done", "output_file: tmp/smoke.log"),
             ("passed", "failed", "partial"),
+            True,
             id="smoke-test-result",
         ),
         pytest.param(
             "issues",
             ("type: issues", "status: done"),
             ("issues_found", "no_issues"),
+            True,
             id="issues",
         ),
         *(
@@ -205,6 +211,7 @@ def test_consumed_status_missing_or_empty_names_every_accepted_value(
                 spec.artifact_type,
                 (f"type: {spec.artifact_type}", "status: done"),
                 ("completed", "request_changes", "failed"),
+                True,
                 id=spec.artifact_type,
             )
             for spec in ANALYSIS_DECISION_SPECS
@@ -215,6 +222,7 @@ def test_consumed_status_diagnostic_survives_missing_required_sections(
     artifact_type: str,
     frontmatter: tuple[str, ...],
     valid_vocabulary: tuple[str, ...],
+    requires_sections: bool,
 ) -> None:
     content, diagnostics = parse_and_validate(
         _document(frontmatter, ""),
@@ -222,7 +230,7 @@ def test_consumed_status_diagnostic_survives_missing_required_sections(
     )
 
     assert content == {}
-    assert any(
+    assert requires_sections == any(
         diagnostic.rule_id == "SPEC008" and diagnostic.severity == "error"
         for diagnostic in diagnostics
     )

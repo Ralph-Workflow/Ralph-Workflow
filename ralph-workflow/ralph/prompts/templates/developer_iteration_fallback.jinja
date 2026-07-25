@@ -129,13 +129,14 @@ Submit one native-markdown document:
    Copy every bracketed ID EXACTLY from the plan. When analysis feedback exists, add
    `## Analysis Items Addressed` with one item per prior `## How To Fix`
    entry, reusing that entry's stable ID.
-   If you submit `status: partial`, you MUST also include `## Next Steps`
-   (exactly one item naming the remaining work) and `## Continuation`
-   (exactly one item containing your session ID).
+   Every requirement above applies to `status: completed`. A `status: partial`
+   result is free-form below the frontmatter — no section or proof is required.
+   Include `## Next Steps` (the remaining work) and `## Continuation` (your
+   session ID) so the next iteration can resume.
 {% if IS_WORKER %}
    For `status: completed`, cite the files changed and focused verification
-   result. For `status: partial`, use the assigned-unit proof item to state
-   verified progress or the concrete blocker. Do not invent files or verification results.
+   result. For `status: partial`, state verified progress or the concrete
+   blocker. Do not invent files or verification results.
 {% endif %}
 2. Submit with {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} (`artifact_type="development_result"`,
    `content` = the full markdown document — never JSON).

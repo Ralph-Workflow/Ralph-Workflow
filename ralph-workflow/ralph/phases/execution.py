@@ -134,7 +134,13 @@ def handle_execution_phase(
             events = failure
         elif ra.artifact_type == "development_result" and validated_content is not None:
             development_result = DevelopmentResult.model_validate(validated_content)
-            if phase_def is not None and phase_def.artifact_proof_policy is not None:
+            # Proof gating checks a completion claim; a non-completed result
+            # makes none, so its body is free-form and nothing to cross-check.
+            if (
+                development_result.status == "completed"
+                and phase_def is not None
+                and phase_def.artifact_proof_policy is not None
+            ):
                 proof_failure = _validate_development_result_proof(
                     ctx,
                     phase,

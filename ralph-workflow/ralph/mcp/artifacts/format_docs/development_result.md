@@ -44,6 +44,14 @@ status: completed
 
 ## Sections
 
+Every section rule below applies to `status: completed` only — a
+completion claim is the one thing this artifact can check. With
+`status: partial` the document is free-form below the frontmatter: no
+section is required or shaped and no proof is demanded. Still lead with
+what you did, what remains (`## Next Steps`) and your session id
+(`## Continuation`) — they are read when present and are what lets the
+next iteration resume.
+
 - `## Summary` — required; exactly one item.
 - `## Files Changed` — required; one item per modified file, at least one.
 - `## Plan Items Proven` — optional section, but proof policy requires one
@@ -55,15 +63,15 @@ status: completed
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## How To Fix` item, using that item's
   stable ID as the item ID and your proof as the text.
-- `## Next Steps` — exactly one item; required when `status: partial`.
-- `## Continuation` — exactly one item containing the prior session id;
-  required when `status: partial`.
+- `## Next Steps` — optional; exactly one item.
+- `## Continuation` — optional; exactly one item containing the prior
+  session id.
 
 ## Hard errors vs warnings
 
-Hard errors: missing Summary or Files Changed; more than one Summary,
-Next Steps, or Continuation item; `partial` without Next Steps and
-Continuation; duplicate item IDs; and (at proof validation) plan-item IDs
-that do not exactly match a plan step ID or work-unit id, missing proofs,
-or duplicates. An unrecognized `status` is also a hard error and reports
-the valid `completed` / `partial` vocabulary.
+Hard errors, all of them for `status: completed` only: missing Summary
+or Files Changed; more than one Summary, Next Steps, or Continuation
+item; duplicate item IDs; and (at proof validation) plan-item IDs that
+do not exactly match a plan step ID or work-unit id, missing proofs, or
+duplicates. An unrecognized `status` is a hard error at any status and
+reports the valid `completed` / `partial` vocabulary.

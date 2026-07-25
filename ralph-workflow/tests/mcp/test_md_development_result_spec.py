@@ -38,7 +38,7 @@ status: partial
     assert get_spec("development_result") is DEVELOPMENT_RESULT_SPEC
 
 
-def test_development_result_rejects_unknown_status_and_keeps_partial_requirements_strict() -> None:
+def test_development_result_rejects_unknown_status() -> None:
     content, diagnostics = parse_and_validate(
         """---
 type: development_result
@@ -51,7 +51,18 @@ status: uncertain
 """,
         DEVELOPMENT_RESULT_SPEC,
     )
-    partial_content, partial_diagnostics = parse_and_validate(
+
+    assert content == {}
+    assert any(
+        diagnostic.severity == "error"
+        and "completed" in diagnostic.message
+        and "partial" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+def test_development_result_accepts_partial_without_next_steps_or_continuation() -> None:
+    content, diagnostics = parse_and_validate(
         """---
 type: development_result
 status: partial
@@ -64,13 +75,52 @@ status: partial
         DEVELOPMENT_RESULT_SPEC,
     )
 
+    assert diagnostics == []
+    assert content["status"] == "partial"
+    assert "next_steps" not in content
+    assert "continuation" not in content
+
+
+def test_development_result_treats_a_partial_body_as_free_form() -> None:
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: partial
+---
+I ran out of budget before the refactor landed.
+
+## Where I Stopped
+The rename is half applied; nothing else here follows the schema.
+- a plain bullet without a stable ID
+- another one
+
+## Summary
+- [SUM-1] First summary item.
+- [SUM-2] A second item the completed grammar would reject.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
+    assert diagnostics == []
+    assert content["status"] == "partial"
+    assert content["summary"] == "First summary item."
+    assert content["files_changed"] == ""
+
+
+def test_development_result_keeps_the_completed_body_strict() -> None:
+    content, diagnostics = parse_and_validate(
+        """---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Completed the work.
+""",
+        DEVELOPMENT_RESULT_SPEC,
+    )
+
     assert content == {}
     assert any(
-        diagnostic.rule_id == "SPEC010"
-        and diagnostic.severity == "error"
-        and "completed" in diagnostic.message
-        and "partial" in diagnostic.message
+        diagnostic.severity == "error" and "Files Changed" in diagnostic.message
         for diagnostic in diagnostics
     )
-    assert partial_content == {}
-    assert any("require next_steps" in diagnostic.message for diagnostic in partial_diagnostics)

@@ -6,4 +6,6 @@ You MUST submit a `development_result` artifact before declaring completion: a m
 
 **## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
 
-Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt. If you submit `status: partial`, you MUST also include `## Next Steps` (exactly one item: the remaining work) and `## Continuation` (exactly one item: your session id) — a partial result without them fails validation.
+Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt.
+
+Every requirement above applies to `status: completed`. A `status: partial` result is free-form below the frontmatter — no section or proof is required — so submit one the moment you cannot finish rather than forcing a completion claim you cannot prove. Include `## Next Steps` (the remaining work) and `## Continuation` (your session id): they are not required, but they are what lets the next iteration resume your work.

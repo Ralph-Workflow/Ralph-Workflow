@@ -89,15 +89,16 @@ status: completed
 
 ## UNIT RESULT
 
-Submit exactly one proof item under `## Plan Items Proven`: `- [{{ unit_id }}]`.
-Do not submit another plan-step or work-unit ID. For `status: completed`, cite
-the files changed and focused verification result. For `status: partial`, use
-the assigned-unit proof item to state verified progress or the concrete
-blocker. Do not invent files or verification results.
+For `status: completed`, submit exactly one proof item under
+`## Plan Items Proven`: `- [{{ unit_id }}]`, citing the files changed and the
+focused verification result. Do not submit another plan-step or work-unit ID.
+Do not invent files or verification results.
 
-If you submit `status: partial`, you MUST also include `## Next Steps`
-(exactly one item naming the remaining work) and `## Continuation` (exactly one
-item containing your session ID).
+A `status: partial` result is free-form below the frontmatter — no section or
+proof is required, so submit one as soon as you cannot finish rather than
+forcing an unprovable completion claim. State verified progress or the concrete
+blocker, and include `## Next Steps` (the remaining work) and `## Continuation`
+(your session ID) so the next iteration can resume.
 
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example) }}
 

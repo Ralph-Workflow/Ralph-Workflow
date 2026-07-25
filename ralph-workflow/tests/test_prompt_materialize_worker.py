@@ -71,7 +71,7 @@ Implement the behavior.
     assert str(worker_namespace / "artifacts" / "development_result.md") in rendered
     assert str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") in rendered
     assert "`.agent/tmp/development_result.md`" not in rendered
-    assert "If you submit `status: partial`" in rendered
+    assert "A `status: partial` result is free-form below the frontmatter" in rendered
     assert "`## Next Steps`" in rendered
     assert "`## Continuation`" in rendered
     assert "Do not invent files or verification results." in rendered

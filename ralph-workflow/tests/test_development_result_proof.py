@@ -269,6 +269,27 @@ status: completed
     )
 
 
+def test_partial_development_result_skips_proof_validation() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    _write_analysis_feedback(workspace)
+    workspace.write(
+        ".agent/artifacts/development_result.md",
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Ran out of budget mid-refactor; nothing below follows the completed grammar.
+""",
+    )
+    ctx = _make_context(workspace)
+
+    events = handle_execution_phase(_invoke(), ctx)
+
+    assert events == [ExecutionResultEvent(phase="development", status="partial")]
+
+
 def test_schema_invalid_development_result_returns_phase_failure() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
