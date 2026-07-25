@@ -139,7 +139,7 @@ from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
-from ralph.display.line_sanitizer import strip_terminal_control
+from ralph.display.line_sanitizer import strip_markup_safe, strip_terminal_control
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
@@ -384,11 +384,14 @@ def strip_markup(line: str) -> str:
 
 
 def _strip_markup(line: str) -> str:
-    """Reduce valid Rich markup for explicit markup-stripping callers."""
-    try:
-        return strip_terminal_control(Text.from_markup(line).plain)
-    except ValueError:
-        return strip_terminal_control(line)
+    """Reduce valid Rich markup for explicit markup-stripping callers.
+
+    Delegates to :func:`strip_markup_safe` -- the single choke point that owns
+    the markup-parse guard, so malformed agent markup (an unmatched
+    ``[/pdf /text /imageb]`` closing tag in a grep pattern) cannot raise out
+    of the activity emit path.
+    """
+    return strip_markup_safe(line)
 
 
 class ParallelDisplay:

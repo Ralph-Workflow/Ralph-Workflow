@@ -16,9 +16,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from rich.text import Text
-
-from ralph.display.line_sanitizer import strip_terminal_control
+from ralph.display.line_sanitizer import strip_markup_safe
 
 LEVELS: Final[dict[str, str]] = {
     "execution": "MILESTONE",
@@ -163,8 +161,8 @@ def _sanitize(text: str) -> str:
     Literal bracket markup stays copy-pasteable; Rich rendering is disabled at
     every transcript sink. Terminal CSI / OSC / C0 sequences are always removed,
     preventing terminal control in scrollback.
+
+    Delegates to :func:`strip_markup_safe` -- the single choke point that owns
+    the markup-parse guard, so malformed agent markup cannot raise here.
     """
-    try:
-        return strip_terminal_control(Text.from_markup(text).plain)
-    except (ValueError, ConsoleError):
-        return strip_terminal_control(text)
+    return strip_markup_safe(text)

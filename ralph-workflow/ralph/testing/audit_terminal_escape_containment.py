@@ -38,6 +38,27 @@ The escape containment contract:
         ``strip_terminal_control`` on each body line (the
         artifact / handoff body sink).
 
+  - ``ralph/display/line_sanitizer.py`` MUST also expose
+    ``strip_markup_safe`` -- the single guarded
+    ``Text.from_markup`` call site -- whose guard stays TOTAL
+    (``except Exception``). A type-named guard already regressed
+    once: Rich raises ``MarkupError`` from its own
+    ``ConsoleError`` hierarchy, so ``except ValueError`` never
+    matched and a grep pattern carrying ``[/pdf /text /imageb]``
+    (an unmatched closing tag) crashed ``emit_parsed_event``.
+
+  - ``ralph/display/_plain_constants._sanitize`` and
+    ``ralph/display/parallel_display._strip_markup`` MUST
+    delegate to ``strip_markup_safe`` and MUST NOT parse markup
+    themselves.
+
+  - No ``from_markup(...)`` call anywhere under ``ralph/`` may
+    take a non-literal argument outside
+    :data:`_MARKUP_PARSE_ALLOWLIST` (package-wide AST scan via
+    :class:`MarkupParseInvariant`). Guarding at each call site
+    instead of routing through the choke point is exactly the
+    shape that regressed, so it is rejected by construction.
+
   - ``ralph/display/activity_model.render_event_line`` MUST call
     ``strip_terminal_control(content or "")`` BEFORE the
     truncation and rich ``escape`` (the activity_router render
@@ -486,6 +507,104 @@ class PackageWideCallSiteInvariant:
         return problems
 
 
+#: Files allowed to call ``Text.from_markup`` directly, with the reason each
+#: one is provably safe. Every OTHER call site in the package must route
+#: agent-origin text through :func:`ralph.display.line_sanitizer.strip_markup_safe`.
+#: Adding an entry here is a contract change -- ``tests/display/
+#: test_markup_parse_containment.py`` pins the exact contents of this map.
+_MARKUP_PARSE_ALLOWLIST: dict[str, str] = {
+    # The single guarded choke point: wraps from_markup in a total
+    # except-clause and falls back to the literal text.
+    "display/line_sanitizer.py": "the guarded choke point itself",
+    # Author-written banner markup; the only interpolated values are the
+    # module-level GITHUB_REPO / mirror URL constants, never agent output.
+    "cli/commands/contribute.py": "static author-written banner literals",
+}
+
+
+class MarkupParseInvariant:
+    """AST-scoped check: no unguarded ``from_markup`` call anywhere in the package.
+
+    ``Text.from_markup`` is a parser, and Rich rejects malformed input by
+    raising from its own ``ConsoleError`` hierarchy (``MarkupError``,
+    ``StyleSyntaxError``) -- never ``ValueError``. Agent output routinely
+    carries bracket sequences Rich reads as unmatched closing tags (a grep
+    pattern like ``[/pdf /text /imageb]``), so an unguarded call on
+    agent-origin text crashes the display sink and takes the run down.
+
+    A call is accepted only when EITHER
+
+      - it lives in a file listed in :data:`_MARKUP_PARSE_ALLOWLIST`, or
+      - its first argument is a plain string literal (provably not
+        agent-origin -- no name, call, f-string, or concatenation).
+
+    Everything else must go through
+    :func:`ralph.display.line_sanitizer.strip_markup_safe`. Catching the
+    exception at each call site instead is NOT acceptable: that is exactly
+    the shape that already regressed once (``except ValueError`` never
+    matched ``MarkupError``), and it re-opens with every new Rich release.
+    """
+
+    _PACKAGE_FILE_LIST_CACHE: list[str] | None = None
+
+    def __init__(self, *, callee_name: str = "from_markup") -> None:
+        self.callee_name = callee_name
+
+    @classmethod
+    def _package_files(cls) -> list[str]:
+        """Return the package-relative path of every ``*.py`` file (cached)."""
+        if cls._PACKAGE_FILE_LIST_CACHE is None:
+            cls._PACKAGE_FILE_LIST_CACHE = sorted(
+                str(p.relative_to(_PACKAGE_ROOT).as_posix()) for p in _PACKAGE_ROOT.rglob("*.py")
+            )
+        return cls._PACKAGE_FILE_LIST_CACHE
+
+    @classmethod
+    def reset_cache(cls) -> None:
+        """Clear the package file list cache (test helper)."""
+        cls._PACKAGE_FILE_LIST_CACHE = None
+
+    @staticmethod
+    def _is_string_literal(node: ast.expr) -> bool:
+        """True when ``node`` is a plain string literal (adjacent literals fold to one Constant)."""
+        return isinstance(node, ast.Constant) and isinstance(node.value, str)
+
+    def violations(self) -> list[str]:
+        problems: list[str] = []
+        for rel_path in self._package_files():
+            if rel_path in _MARKUP_PARSE_ALLOWLIST:
+                continue
+            try:
+                source = _read(rel_path)
+            except OSError:
+                continue
+            if self.callee_name not in source:
+                continue
+            try:
+                tree = _parse_source(source, rel_path)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                match = (isinstance(func, ast.Name) and func.id == self.callee_name) or (
+                    isinstance(func, ast.Attribute) and func.attr == self.callee_name
+                )
+                if not match:
+                    continue
+                if node.args and self._is_string_literal(node.args[0]):
+                    continue
+                segment = ast.get_source_segment(source, node) or self.callee_name
+                snippet = " ".join(segment.split())[:120]
+                problems.append(
+                    f"{rel_path}:{node.lineno}: unguarded {self.callee_name}() on "
+                    f"non-literal text: {snippet} -- route it through "
+                    f"ralph.display.line_sanitizer.strip_markup_safe"
+                )
+        return problems
+
+
 def logging_configurator_violations() -> list[str]:
     """Return terminal-containment violations in configured logging paths."""
     return [
@@ -498,7 +617,12 @@ def logging_configurator_violations() -> list[str]:
 
 
 _INVARIANTS: tuple[
-    Invariant | FunctionBodyInvariant | CallSiteInvariant | PackageWideCallSiteInvariant, ...
+    Invariant
+    | FunctionBodyInvariant
+    | CallSiteInvariant
+    | PackageWideCallSiteInvariant
+    | MarkupParseInvariant,
+    ...,
 ] = (
     # line_sanitizer.py: the canonical stripper exists, uses the FULL
     # [0-?] CSI parameter-byte class (NOT the narrower [0-9;?] form).
@@ -510,13 +634,48 @@ _INVARIANTS: tuple[
         ),
         absent=("[0-9;?]",),
     ),
+    # line_sanitizer.strip_markup_safe: the ONE guarded from_markup call
+    # site. The guard must stay TOTAL -- ``except ValueError`` never
+    # matched Rich's MarkupError (a ConsoleError), which is the exact
+    # regression that crashed emit_parsed_event. Both paths strip.
+    FunctionBodyInvariant(
+        rel_path="display/line_sanitizer.py",
+        qualname="strip_markup_safe",
+        present=(
+            "Text.from_markup(text)",
+            "except Exception:",
+            "strip_terminal_control(plain)",
+        ),
+        absent=(
+            "except ValueError",
+            "except (ValueError",
+        ),
+    ),
     # _plain_constants.py: the SGR-only regex is gone; stripping goes
-    # through strip_terminal_control (the rewrite target).
+    # through the strip_markup_safe choke point (the rewrite target).
     Invariant(
         rel_path="display/_plain_constants.py",
-        present=("strip_terminal_control",),
+        present=("strip_markup_safe",),
         absent=("[0-9;]*m",),
     ),
+    # _plain_constants._sanitize: delegates to the choke point rather than
+    # re-implementing a from_markup guard of its own.
+    FunctionBodyInvariant(
+        rel_path="display/_plain_constants.py",
+        qualname="_sanitize",
+        present=("strip_markup_safe(text)",),
+        absent=("from_markup",),
+    ),
+    # parallel_display._strip_markup: the sink in the crashing traceback --
+    # delegates to the choke point, never parses markup itself.
+    FunctionBodyInvariant(
+        rel_path="display/parallel_display.py",
+        qualname="_strip_markup",
+        present=("strip_markup_safe(line)",),
+        absent=("from_markup",),
+    ),
+    # Package-wide: no unguarded from_markup on non-literal text anywhere.
+    MarkupParseInvariant(),
     # parallel_display.py file-level: _ANSI_ESCAPE was the hidden second
     # consumer of the SGR-only constant -- deleting the constant without
     # migrating this use site breaks the import. The unsanitized
@@ -726,7 +885,11 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "All terminal-escape containment invariants OK: "
         "line_sanitizer has strip_terminal_control with [0-?] class (not "
-        "[0-9;?]); _plain_constants no longer carries the SGR-only regex; "
+        "[0-9;?]) and the totally-guarded strip_markup_safe choke point "
+        "(no except-ValueError narrowing); _sanitize and _strip_markup "
+        "delegate to it and no from_markup call anywhere under ralph/ "
+        "takes non-literal text outside the allowlist; "
+        "_plain_constants no longer carries the SGR-only regex; "
         "parallel_display.strip_markup / _render_titled_lines and the "
         "module-level emit_activity_line delegate to "
         "strip_terminal_control with markup=False (no _ANSI_ESCAPE, no "

@@ -78,8 +78,7 @@ def _assert_no_escape_leak(output: str, *, sink_label: str) -> None:
     )
     for forbidden in _FORBIDDEN_BODIES:
         assert forbidden not in output, (
-            f"{sink_label}: hostile body {forbidden!r} leaked through sink; "
-            f"output={output!r}"
+            f"{sink_label}: hostile body {forbidden!r} leaked through sink; output={output!r}"
         )
 
 
@@ -98,8 +97,7 @@ def test_sanitize_plain_constants_strips_hostile_line() -> None:
     """
     sanitized = _sanitize(HOSTILE_LINE)
     assert sanitized == "boom", (
-        f"_sanitize must strip the hostile prefixes and keep 'boom'; "
-        f"got {sanitized!r}"
+        f"_sanitize must strip the hostile prefixes and keep 'boom'; got {sanitized!r}"
     )
     _assert_no_escape_leak(sanitized, sink_label="_sanitize")
 
@@ -146,8 +144,7 @@ def test_parallel_display_strip_markup_strips_hostile_line() -> None:
     """
     stripped = strip_markup(HOSTILE_LINE)
     assert stripped == "boom", (
-        f"strip_markup must strip the hostile prefixes and keep 'boom'; "
-        f"got {stripped!r}"
+        f"strip_markup must strip the hostile prefixes and keep 'boom'; got {stripped!r}"
     )
     _assert_no_escape_leak(stripped, sink_label="strip_markup")
 
@@ -167,8 +164,7 @@ def test_parallel_display_strip_markup_survives_unmatched_closing_tag() -> None:
     """
     for line in (BRACKET_HEAVY_LINE, "[/]", "[a][/b]"):
         assert strip_markup(line) == line, (
-            f"strip_markup must keep malformed markup literal; "
-            f"got {strip_markup(line)!r}"
+            f"strip_markup must keep malformed markup literal; got {strip_markup(line)!r}"
         )
 
 
@@ -196,9 +192,7 @@ def test_module_emit_activity_line_strips_hostile_when_unit_id_none() -> None:
     _pd, ctx, buf = _make_parallel_display()
     emit_activity_line(display=None, unit_id=None, line=HOSTILE_LINE, display_context=ctx)
     output = buf.getvalue()
-    assert "boom" in output, (
-        f"the visible 'boom' must survive sanitization; got {output!r}"
-    )
+    assert "boom" in output, f"the visible 'boom' must survive sanitization; got {output!r}"
     _assert_no_escape_leak(output, sink_label="module emit_activity_line (unit_id=None)")
 
 
@@ -207,12 +201,8 @@ def test_module_emit_activity_line_strips_hostile_when_unit_id_set() -> None:
     _pd, ctx, buf = _make_parallel_display()
     emit_activity_line(display=None, unit_id="u7", line=HOSTILE_LINE, display_context=ctx)
     output = buf.getvalue()
-    assert "boom" in output, (
-        f"the visible 'boom' must survive sanitization; got {output!r}"
-    )
-    _assert_no_escape_leak(
-        output, sink_label="module emit_activity_line (unit_id=u7)"
-    )
+    assert "boom" in output, f"the visible 'boom' must survive sanitization; got {output!r}"
+    _assert_no_escape_leak(output, sink_label="module emit_activity_line (unit_id=u7)")
 
 
 # ---------------------------------------------------------------------------
@@ -226,9 +216,7 @@ def test_parallel_display_emit_strips_hostile_line() -> None:
     pd.emit(unit_id="u1", line=HOSTILE_LINE)
     pd.stop()
     output = buf.getvalue()
-    assert "boom" in output, (
-        f"the visible 'boom' must survive sanitization; got {output!r}"
-    )
+    assert "boom" in output, f"the visible 'boom' must survive sanitization; got {output!r}"
     _assert_no_escape_leak(output, sink_label="ParallelDisplay.emit")
 
 
@@ -253,9 +241,7 @@ def test_render_titled_lines_strips_hostile_line() -> None:
         lines=[HOSTILE_LINE],
     )
     output = buf.getvalue()
-    assert "boom" in output, (
-        f"the visible 'boom' must survive sanitization; got {output!r}"
-    )
+    assert "boom" in output, f"the visible 'boom' must survive sanitization; got {output!r}"
     _assert_no_escape_leak(output, sink_label="_render_titled_lines")
 
 
@@ -279,9 +265,7 @@ def test_render_event_line_strips_hostile_line() -> None:
         timestamp="2026-01-01T00:00:00+00:00",
     )
     _assert_no_escape_leak(rendered, sink_label="render_event_line")
-    assert "boom" in rendered, (
-        f"the visible 'boom' must survive; got {rendered!r}"
-    )
+    assert "boom" in rendered, f"the visible 'boom' must survive; got {rendered!r}"
 
 
 def test_render_event_line_preserves_literal_brackets() -> None:

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import re
 
+from rich.text import Text
+
 # Full CSI+OSC+two-char ESC stripper: takes the [0-?] parameter byte range
 # (0x30-0x3F: digits plus ':', ';', '<', '=', '>', '?') so it matches every
 # valid CSI sequence including private-parameter forms.
@@ -75,6 +77,44 @@ def strip_terminal_control(text: str) -> str:
     return cleaned
 
 
+def strip_markup_safe(text: str) -> str:
+    """Reduce Rich markup to plain text and strip terminal control, never raising.
+
+    This is the ONLY place in the package allowed to hand agent-origin text
+    to :meth:`rich.text.Text.from_markup`; every display sink routes through
+    it (the audit's package-wide ``from_markup`` invariant enforces that).
+
+    ``from_markup`` is a *parser*, and arbitrary agent output is adversarial
+    input to it. A grep whose pattern lists PDF filter names emits
+    ``[/pdf /text /imageb]``, which Rich reads as a closing tag with no open
+    tag and rejects with ``MarkupError``. Rich raises from its own
+    ``ConsoleError`` hierarchy (``MarkupError``, ``StyleSyntaxError``) --
+    NOT ``ValueError`` -- so a guard naming a specific exception type has
+    already failed once here, and a new Rich release may add another type.
+    A display sink that raises takes the whole run down with it, so the
+    guard is deliberately total: any parse failure falls back to the
+    literal text, which stays copy-pasteable.
+
+    Terminal control bytes are stripped on BOTH paths -- the fallback must
+    not become an escape-containment hole.
+
+    Args:
+        text: Arbitrary text, possibly carrying Rich markup, malformed
+            bracket sequences, and terminal control bytes.
+
+    Returns:
+        Plain text with valid markup reduced, malformed markup left
+        literal, and every terminal control construct removed.
+    """
+    if not text:
+        return ""
+    try:
+        plain = Text.from_markup(text).plain
+    except Exception:  # a display sink must never raise -- see docstring
+        plain = text
+    return strip_terminal_control(plain)
+
+
 def sanitize_display_line(raw: bytes | str, max_chars: int = 200) -> str:
     """Sanitize a raw agent output line for safe terminal display.
 
@@ -97,4 +137,4 @@ def sanitize_display_line(raw: bytes | str, max_chars: int = 200) -> str:
     return text
 
 
-__all__ = ["sanitize_display_line", "strip_terminal_control"]
+__all__ = ["sanitize_display_line", "strip_markup_safe", "strip_terminal_control"]

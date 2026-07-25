@@ -44,16 +44,17 @@ def test_audit_module_path() -> None:
 
 def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
-    expected = 21
+    # 21 escape-containment invariants + 4 markup-parse containment
+    # invariants (the strip_markup_safe choke point, its two delegating
+    # sinks, and the package-wide from_markup scan).
+    expected = 25
     assert len(audit_module._INVARIANTS) == expected
 
 
 def test_audit_line_sanitizer_invariant_pins_full_csi_class() -> None:
     """The line_sanitizer invariant pins the [0-?] class explicitly."""
     ls_invariant = next(
-        inv
-        for inv in audit_module._INVARIANTS
-        if inv.rel_path == "display/line_sanitizer.py"
+        inv for inv in audit_module._INVARIANTS if inv.rel_path == "display/line_sanitizer.py"
     )
     assert "def strip_terminal_control" in ls_invariant.present
     assert "[0-?]" in ls_invariant.present
@@ -86,7 +87,9 @@ def test_audit_blocks_regression_when_csi_class_is_narrowed(
     )
 
     monkeypatch.setattr(
-        audit_module, "_read", lambda rel_path: fake_source if rel_path == "display/line_sanitizer.py" else ""
+        audit_module,
+        "_read",
+        lambda rel_path: fake_source if rel_path == "display/line_sanitizer.py" else "",
     )
     monkeypatch.setattr(
         audit_module,
@@ -240,8 +243,8 @@ def test_audit_blocks_regression_when_activity_model_render_event_line_drops_str
 
     def _transform(src: str) -> str:
         return src.replace(
-            "safe_content = strip_terminal_control(content or \"\")",
-            "safe_content = content or \"\"",
+            'safe_content = strip_terminal_control(content or "")',
+            'safe_content = content or ""',
         )
 
     _patch_rel(monkeypatch, path, _transform)
@@ -406,9 +409,9 @@ def test_call_site_invariant_reports_missing_callee() -> None:
         present=("stdin=DEVNULL",),
     )
     violations = inv.violations()
-    assert any("not found" in v or "no SpawnOptions" in v.lower() or "call site" in v for v in violations), (
-        violations
-    )
+    assert any(
+        "not found" in v or "no SpawnOptions" in v.lower() or "call site" in v for v in violations
+    ), violations
 
 
 # ---------------------------------------------------------------------------
@@ -524,8 +527,8 @@ def test_audit_blocks_regression_when_cli_configure_logging_drops_sink(
             "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
             "sink = None  # pretend we forgot to wire it",
         ).replace(
-            "logger.add(sink, level=\"ERROR\")",
-            "logger.add(sys.stderr, level=\"ERROR\")",
+            'logger.add(sink, level="ERROR")',
+            'logger.add(sys.stderr, level="ERROR")',
         )
 
     _patch_rel(monkeypatch, path, _transform)
@@ -571,8 +574,8 @@ def test_audit_blocks_regression_when_sanitizing_log_sink_drops_stripper(
 
     def _transform(src: str) -> str:
         return src.replace(
-            "cleaned = strip_terminal_control(message.rstrip(\"\\n\"))",
-            "cleaned = message.rstrip(\"\\n\")",
+            'cleaned = strip_terminal_control(message.rstrip("\\n"))',
+            'cleaned = message.rstrip("\\n")',
         )
 
     _patch_rel(monkeypatch, path, _transform)
@@ -594,8 +597,8 @@ def test_audit_blocks_regression_when_stderr_log_sink_drops_stripper(
 
     def _transform(src: str) -> str:
         return src.replace(
-            "cleaned = strip_terminal_control(message.rstrip(\"\\n\"))",
-            "cleaned = message.rstrip(\"\\n\")",
+            'cleaned = strip_terminal_control(message.rstrip("\\n"))',
+            'cleaned = message.rstrip("\\n")',
         )
 
     _patch_rel(monkeypatch, path, _transform)

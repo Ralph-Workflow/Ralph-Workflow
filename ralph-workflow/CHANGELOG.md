@@ -43,6 +43,17 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-07-25
+
+Patch release. `__version__` moved from `0.9.2` to `0.9.3` in
+`ralph/__init__.py`, with `skills-package/package.json` kept in parity by
+`tests/test_skills_package_version_parity.py`. Carries the markup-parse
+containment fix below.
+
+### Fixed
+
+- **fix(display): bracket-heavy agent output no longer crashes the activity emit path** — `Text.from_markup` rejects an unmatched closing tag (a grep pattern carrying `[/pdf /text /imageb]`) with `MarkupError`, which derives from `ConsoleError` and so slipped past the `except ValueError` guards in `_plain_constants._sanitize` and `parallel_display._strip_markup`, propagating out of `ParallelDisplay.emit_parsed_event`. Both sinks now delegate to the new `ralph/display/line_sanitizer.py::strip_markup_safe` — the single markup-parse site, with a total guard that falls back to literal text and strips terminal control on both paths. The terminal-escape containment audit gained four invariants (the choke point's guard, the two delegating sinks, and a package-wide AST scan rejecting any `from_markup` call on non-literal text outside `_MARKUP_PARSE_ALLOWLIST`), so a new sink cannot re-open the hole with its own guard. Locked by `tests/display/test_markup_parse_containment.py` and `tests/display/test_terminal_escape_containment.py`.
+
 ## [0.9.2] - 2026-07-25
 
 Patch release. `__version__` moved from `0.9.1` to `0.9.2` in
