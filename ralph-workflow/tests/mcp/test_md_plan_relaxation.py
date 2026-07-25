@@ -6,7 +6,7 @@ import pytest
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
-from ralph.mcp.artifacts.markdown.specs.plan import edit_plan_step_markdown
+from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,
@@ -177,17 +177,6 @@ Type: action
     design = must_mapping(content["design"])
     acceptance = must_mapping(design["acceptance_criteria"])
     criteria = must_dict_list(acceptance["criteria"])
-    edited = edit_plan_step_markdown(
-        document,
-        "replace",
-        "S-1",
-        """### [S-1] Implement the API safely
-Add the validated endpoint behavior.
-
-Type: action""",
-        None,
-    )
-    assert "- [AC-01] The API contract is proven" in edited
     assert criteria == [
         {
             "id": "AC-01",
@@ -850,97 +839,6 @@ Expect: the integrated web API test passes with exit code 0
             "step_ids": ["S-20", "S-21"],
         },
     ]
-
-
-def test_plan_editor_regression_replace_resolves_across_repeated_free_sections() -> None:
-    """Regression for plan blocker 2: replacement uses the global step namespace."""
-    replacement = """### [S-3] Third, revised
-Implement the revised third part.
-
-Type: action"""
-
-    edited = edit_plan_step_markdown(
-        _editable_free_shape_document(),
-        "replace",
-        "S-3",
-        replacement,
-        None,
-    )
-
-    assert "### [S-3] Third, revised" in edited
-    assert "### [S-1] First" in edited
-    assert edited.count("## Alpha Subplan") == 2
-
-
-def test_plan_editor_regression_move_resolves_across_repeated_free_sections() -> None:
-    """Regression for plan blocker 2: movement uses document-wide source order."""
-    edited = edit_plan_step_markdown(
-        _editable_free_shape_document(), "move", "S-3", None, 1
-    )
-
-    assert edited.index("### [S-3]") < edited.index("### [S-1]") < edited.index("### [S-2]")
-    assert edited.count("## Alpha Subplan") == 2
-
-
-def test_plan_editor_regression_remove_resolves_across_repeated_free_sections() -> None:
-    """Regression for plan blocker 2: removal finds globally nested step blocks."""
-    edited = edit_plan_step_markdown(
-        _editable_free_shape_document(), "remove", "S-2", None, None
-    )
-
-    assert "### [S-2]" not in edited
-    assert "### [S-1]" in edited
-    assert "### [S-3]" in edited
-
-
-def test_plan_editor_regression_insert_resolves_across_repeated_free_sections() -> None:
-    """Regression for plan blocker 2: insertion honors the global step position."""
-    replacement = """### [S-4] Inserted
-Implement the inserted part.
-
-Type: action"""
-
-    edited = edit_plan_step_markdown(
-        _editable_free_shape_document(), "insert", "S-4", replacement, 3
-    )
-
-    assert edited.index("### [S-2]") < edited.index("### [S-4]") < edited.index("### [S-3]")
-    assert edited.count("## Alpha Subplan") == 2
-
-
-def test_plan_editor_supports_steps_under_genuinely_nested_headings() -> None:
-    """A plan step remains addressable when its heading depth reflects nesting."""
-    document = """---
-type: plan
----
-# Delivery
-## API
-### Authentication
-#### [S-1] Rotate credentials
-Implement credential rotation.
-
-Type: action
-"""
-    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
-
-    assert diagnostics == []
-    assert [step["number"] for step in must_dict_list(content["steps"])] == [
-        1
-    ]
-
-    edited = edit_plan_step_markdown(
-        document,
-        "replace",
-        "S-1",
-        """### [S-1] Rotate credentials safely
-Implement and verify credential rotation.
-
-Type: action""",
-        None,
-    )
-
-    assert "#### [S-1] Rotate credentials safely" in edited
-    assert "\n### [S-1] Rotate credentials safely\n" not in edited
 
 
 def test_plan_grammar_regression_repeated_work_units_retain_nested_step_ownership() -> None:

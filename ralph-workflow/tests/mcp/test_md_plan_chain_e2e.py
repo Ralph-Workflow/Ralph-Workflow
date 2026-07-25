@@ -17,6 +17,13 @@ Three fixtures carry the in-session before/after evidence:
 3. **GOOD** — the conventional medium plan shape from
    ``test_md_plan_advisory.py`` stays silent across all severities.
 
+A fourth fixture, **MALFORMED**, proves the chain now rejects a plan with
+duplicate frontmatter, malformed frontmatter, or top-level prose through
+the actual ``handle_verify_md_artifact`` MCP handler. Pre-``24e66c49f``
+the plan-aware path silently canonicalized these documents; the rewritten
+chain surfaces them as ``is_error=True`` with ``valid=False`` and the
+expected parser-originated error diagnostic.
+
 The prompt-chain assertions prove that the planning prompt orders thinking
 before submission mechanics and the analysis prompt carries the
 overrides-respect sentence exactly once, so the chain states one
@@ -30,29 +37,41 @@ test budget.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
+from ralph.mcp.tools.md_artifact import handle_verify_md_artifact
 from ralph.prompts.template_context import TemplateContext
-
-
-def _validate_with_overrides(content: str) -> tuple[list, list]:
-    """Tool-shape helper that mirrors ``md_artifact._validate_with_overrides``.
-
-    Inlines the plan-aware path of the helper so the test does not import a
-    private (``_``-prefixed) symbol from ``ralph.mcp.tools.md_artifact``.
-    The helper is itself a two-line branch; an inline copy keeps the
-    chain's wire shape (per-severity counts + overridden list) in one
-    readable spot and stays inside the repo's no-private-import rule.
-    """
-    _content, diagnostics, overridden = analyze_plan_document(content)
-    return diagnostics, list(overridden)
+from tests.test_tool_artifact_2_helper_mocksession import MockSession
+from tests.test_tool_artifact_2_helper_mockworkspace import MockWorkspace
 
 _ADVISORY_COST_RE = re.compile(
     r"the run cost is [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$"
 )
+_BLOCKING_CONSUMER_RE = re.compile(
+    r"blocking because [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$"
+)
+
+
+def _verify_payload(plan: str) -> dict[str, object]:
+    """Invoke the public ``handle_verify_md_artifact`` MCP handler.
+
+    The end-to-end test exercises the same handler a real run reaches
+    instead of a private helper, so the chain's wire shape (``valid``,
+    ``counts`` across severities, and ``overridden`` list) is observed
+    from the same code path the runtime uses. The mock session/workspace
+    stand in for the coordination session and the on-disk artifact
+    directory.
+    """
+    session = MockSession()
+    workspace = MockWorkspace(Path("/tmp"))
+    params = {"artifact_type": "plan", "content": plan}
+    result = handle_verify_md_artifact(session, workspace, params)
+    return json.loads(result.content[0].text)
 
 
 # ---------------------------------------------------------------------------
@@ -162,17 +181,24 @@ def test_hollow_plan_surfaces_cost_named_warnings_not_errors() -> None:
 def test_hollow_plan_tool_payload_reports_warnings_and_zero_overrides() -> None:
     """The tool payload shape surfaces warnings and an empty override list.
 
-    ``_validate_with_overrides`` is the same helper the verify / submit
-    / finalize / draft-status handlers use, so the chain demonstrates the
-    exact wire shape a real run returns: per-severity ``counts`` and an
-    ``overridden`` list that is empty for plans with no override ledger.
+    ``_verify_payload`` is the public ``handle_verify_md_artifact``
+    handler, so the chain demonstrates the exact wire shape a real run
+    returns: ``valid``, per-severity ``counts``, and an ``overridden``
+    list that is empty for plans with no override ledger.
     """
-    diagnostics, overridden = _validate_with_overrides(_hollow_plan())
-    warnings = [d for d in diagnostics if d.severity == "warning"]
-    assert warnings, "hollow plan must surface warnings for the chain to advise"
-    assert overridden == [], (
+    payload = _verify_payload(_hollow_plan())
+    counts = payload["counts"]
+    assert isinstance(counts, dict)
+    assert counts["error"] == 0, (
+        f"hollow plan must report zero errors, got {counts!r}"
+    )
+    assert counts["warning"] >= 1, (
+        f"hollow plan must surface at least one cost-named warning, got {counts!r}"
+    )
+    assert payload["valid"] is True
+    assert payload["overridden"] == [], (
         "a plan without ## Validation Overrides must report an empty override list; "
-        f"got {overridden!r}"
+        f"got {payload['overridden']!r}"
     )
 
 
@@ -242,21 +268,21 @@ def test_unconventional_substantive_plan_passes_silently() -> None:
 def test_unconventional_plan_tool_payload_reports_zero_counts() -> None:
     """The tool payload reports ``counts`` of zero across severities.
 
-    ``_validate_with_overrides`` produces the same per-severity counts the
-    wire shape returns; an empty ``counts`` map and an empty ``overridden``
-    list are the chain's proof that an unconventional substantive plan is
-    executor-ready.
+    ``_verify_payload`` calls the public ``handle_verify_md_artifact``
+    handler, so the chain observes the wire shape a real run returns:
+    ``valid=True``, ``counts`` empty across severities, and an empty
+    ``overridden`` list. An unconventional substantive plan is
+    executor-ready; the tool handler must say so.
     """
-    diagnostics, overridden = _validate_with_overrides(_unconventional_plan())
-    severity_counts: dict[str, int] = {"error": 0, "warning": 0, "info": 0}
-    for diagnostic in diagnostics:
-        if diagnostic.severity in severity_counts:
-            severity_counts[diagnostic.severity] += 1
-    assert severity_counts == {"error": 0, "warning": 0, "info": 0}, (
+    payload = _verify_payload(_unconventional_plan())
+    counts = payload["counts"]
+    assert isinstance(counts, dict)
+    assert counts == {"error": 0, "info": 0, "warning": 0}, (
         f"unconventional substantive plan should report zero counts; got "
-        f"{severity_counts!r}"
+        f"{counts!r}"
     )
-    assert overridden == []
+    assert payload["valid"] is True
+    assert payload["overridden"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -316,12 +342,15 @@ Expect: the focused markdown-plan tests pass with exit code 0
 
 def test_good_plan_stays_silent_through_the_chain() -> None:
     """The good plan reports zero counts and an empty override list."""
-    diagnostics, overridden = _validate_with_overrides(_good_plan())
-    assert diagnostics == [], (
-        f"good plan must stay silent; got: "
-        f"{[(d.rule_id, d.severity, d.message) for d in diagnostics]}"
+    payload = _verify_payload(_good_plan())
+    counts = payload["counts"]
+    assert isinstance(counts, dict)
+    assert counts == {"error": 0, "info": 0, "warning": 0}, (
+        f"good plan must report zero counts; got {counts!r}"
     )
-    assert overridden == []
+    assert payload["valid"] is True
+    assert payload["overridden"] == []
+    assert payload["diagnostics"] == []
 
 
 def test_good_plan_analyze_entry_point_returns_empty_diagnostics() -> None:
@@ -329,6 +358,113 @@ def test_good_plan_analyze_entry_point_returns_empty_diagnostics() -> None:
     _content, diagnostics, overridden = analyze_plan_document(_good_plan())
     assert diagnostics == []
     assert overridden == []
+
+
+# ---------------------------------------------------------------------------
+# Fixture MALFORMED: parser-originated errors are now surfaced through the
+# public MCP tool path. Pre-24e66c49f the plan-aware analyze path silently
+# canonicalized a malformed document and reported ``is_error=False``; the
+# rewritten chain keeps the parser diagnostics and fails the tool payload
+# with ``valid=False`` and a consumer-named error so the agent sees why
+# the document cannot proceed.
+# ---------------------------------------------------------------------------
+
+
+def _malformed_duplicate_type_plan() -> str:
+    return """---
+type: plan
+type: plan
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+
+def _malformed_frontmatter_plan() -> str:
+    return """---
+type: plan
+not a field
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+
+def _malformed_top_level_prose_plan() -> str:
+    return """---
+type: plan
+---
+Some prose before any heading.
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+
+def test_malformed_duplicate_type_frontmatter_fails_through_tool() -> None:
+    """Duplicate ``type`` frontmatter fails the public tool path.
+
+    The chain must surface MD006 with a consumer phrase the same way
+    the validator does; the tool handler's ``is_error`` flag carries
+    the failure so a real agent never sees ``valid=True`` for a
+    malformed document.
+    """
+    payload = _verify_payload(_malformed_duplicate_type_plan())
+    assert payload["valid"] is False
+    assert payload["counts"] == {"error": 1, "info": 0, "warning": 0}
+    diagnostics = payload["diagnostics"]
+    assert isinstance(diagnostics, list)
+    md006 = [d for d in diagnostics if d.get("rule_id") == "MD006"]
+    assert md006, f"expected MD006, got {[d.get('rule_id') for d in diagnostics]}"
+    for d in md006:
+        assert _BLOCKING_CONSUMER_RE.search(d.get("message", "")), (
+            f"MD006 from tool path does not name its consumer: {d.get('message')!r}"
+        )
+
+
+def test_malformed_frontmatter_fails_through_tool() -> None:
+    """A malformed frontmatter line fails the public tool path."""
+    payload = _verify_payload(_malformed_frontmatter_plan())
+    assert payload["valid"] is False
+    counts = payload["counts"]
+    assert isinstance(counts, dict)
+    assert counts["error"] >= 1
+    diagnostics = payload["diagnostics"]
+    assert isinstance(diagnostics, list)
+    md005 = [d for d in diagnostics if d.get("rule_id") == "MD005"]
+    assert md005, f"expected MD005, got {[d.get('rule_id') for d in diagnostics]}"
+    for d in md005:
+        assert _BLOCKING_CONSUMER_RE.search(d.get("message", "")), (
+            f"MD005 from tool path does not name its consumer: {d.get('message')!r}"
+        )
+
+
+def test_malformed_top_level_prose_fails_through_tool() -> None:
+    """A body line before the first ``## Heading`` fails the public tool path."""
+    payload = _verify_payload(_malformed_top_level_prose_plan())
+    assert payload["valid"] is False
+    counts = payload["counts"]
+    assert isinstance(counts, dict)
+    assert counts["error"] >= 1
+    diagnostics = payload["diagnostics"]
+    assert isinstance(diagnostics, list)
+    md002 = [d for d in diagnostics if d.get("rule_id") == "MD002"]
+    assert md002, f"expected MD002, got {[d.get('rule_id') for d in diagnostics]}"
+    for d in md002:
+        assert _BLOCKING_CONSUMER_RE.search(d.get("message", "")), (
+            f"MD002 from tool path does not name its consumer: {d.get('message')!r}"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -33,6 +33,18 @@ _ITEM = re.compile(
 )
 _LIST_PREFIX = re.compile(r"^- (?:\[[ xX]\] )?")
 
+# The artifact spec registry (ralph/mcp/artifacts/markdown/registry.py) routes
+# every parsed markdown document to the registered validator. A document
+# whose grammar is broken at the parser level cannot be routed at all — the
+# consumer phrase below is the same one every other blocking diagnostic
+# uses, and ``resolve by`` describes the grammar repair the agent must make.
+_PARSER_ROUTING_CONSUMER = (
+    "blocking because the artifact spec registry "
+    "(ralph/mcp/artifacts/markdown/registry.py) routes the parsed markdown "
+    "structure to the registered validator and a parser-level error blocks "
+    "routing"
+)
+
 
 class _SectionBuilder:
     """Mutable accumulator for one section while the parser scans lines."""
@@ -173,7 +185,13 @@ def parse_markdown_document(
         if current is None:
             diagnostics.append(
                 Diagnostic(
-                    line_number, None, "MD002", "content must be inside a '## Heading' section"
+                    line_number,
+                    None,
+                    "MD002",
+                    "content must be inside a '## Heading' section; "
+                    + _PARSER_ROUTING_CONSUMER
+                    + "; resolve by moving the line into a '## Heading' "
+                    "section so the parser can route it to a validator",
                 )
             )
             continue
@@ -248,18 +266,45 @@ def _parse_frontmatter(
         field = _FRONTMATTER_FIELD.fullmatch(line)
         if field is None:
             diagnostics.append(
-                Diagnostic(line_number, None, "MD005", "frontmatter fields must use 'key: value'")
+                Diagnostic(
+                    line_number,
+                    None,
+                    "MD005",
+                    "frontmatter fields must use 'key: value'; "
+                    + _PARSER_ROUTING_CONSUMER
+                    + "; resolve by rewriting the line as 'key: value' with no "
+                    "leading spaces and a single space after the colon so the "
+                    "parser can route the field to the validator",
+                )
             )
             continue
         key = field.group("key")
         if key in frontmatter:
             diagnostics.append(
-                Diagnostic(line_number, None, "MD006", f"duplicate frontmatter field {key!r}")
+                Diagnostic(
+                    line_number,
+                    None,
+                    "MD006",
+                    f"duplicate frontmatter field {key!r}; "
+                    + _PARSER_ROUTING_CONSUMER
+                    + f"; resolve by removing the duplicate {key!r} field so "
+                    "the parser can route the remaining value to the validator",
+                )
             )
             continue
         frontmatter[key] = field.group("value")
         frontmatter_lines[key] = line_number
-    diagnostics.append(Diagnostic(1, None, "MD007", "unterminated frontmatter block"))
+    diagnostics.append(
+        Diagnostic(
+            1,
+            None,
+            "MD007",
+            "unterminated frontmatter block; "
+            + _PARSER_ROUTING_CONSUMER
+            + "; resolve by adding the closing '---' line after the frontmatter "
+            "fields so the parser can route the document to the validator",
+        )
+    )
     return len(lines)
 
 

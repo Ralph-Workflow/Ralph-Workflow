@@ -625,3 +625,125 @@ Expect: pytest will pass
             f"PLAN020 prose-drop warning does not follow cost/fix convention: "
             f"{d.message!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# (f) Parser-originated errors: MD002 / MD005 / MD006 / MD007 are produced
+# by the shared markdown parser; every one of them must follow the same
+# ``what; blocking because <consumer>; resolve by <fix>`` convention the rest
+# of the blocking surface uses so the agent can read what the error is,
+# who cannot proceed past it, and how to fix it in linear order. A parser
+# error reaching the plan validator must also fail ``content`` to ``{}`` so
+# the tool handler's ``is_error`` check fires — the consumer (spec-registry
+# routing) is upstream of the plan validator and an unparseable document
+# cannot be routed at all.
+# ---------------------------------------------------------------------------
+
+
+def test_md002_top_level_prose_names_consumer() -> None:
+    """A body line before the first ``## Heading`` fails with the convention.
+
+    The parser sees the line first, before any plan-spec rule; the
+    consumer phrase still names the artifact spec registry so the
+    convention is the same one every other blocking diagnostic uses.
+    """
+    document = """---
+type: plan
+---
+Some prose before any heading.
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert content == {}
+    md002_errors = [d for d in diagnostics if d.rule_id == "MD002" and d.severity == "error"]
+    assert md002_errors, "expected MD002 error for top-level prose"
+    for d in md002_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"MD002 top-level prose does not name its consumer: {d.message!r}"
+        )
+
+
+def test_md005_malformed_frontmatter_field_names_consumer() -> None:
+    """A frontmatter line that does not match ``key: value`` follows the convention.
+
+    The parser is the one that reports MD005; the message must still
+    state the routing consumer and the grammar fix the agent should make.
+    """
+    document = """---
+type: plan
+not a field
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert content == {}
+    md005_errors = [d for d in diagnostics if d.rule_id == "MD005" and d.severity == "error"]
+    assert md005_errors, "expected MD005 error for malformed frontmatter"
+    for d in md005_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"MD005 malformed frontmatter does not name its consumer: {d.message!r}"
+        )
+
+
+def test_md007_unterminated_frontmatter_block_names_consumer() -> None:
+    """A frontmatter block that does not close with ``---`` follows the convention.
+
+    The parser reports MD007 when the document ends inside the
+    frontmatter; the message still carries the routing consumer and the
+    closing-line fix.
+    """
+    document = """---
+type: plan
+this never closes
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert content == {}
+    md007_errors = [d for d in diagnostics if d.rule_id == "MD007" and d.severity == "error"]
+    assert md007_errors, "expected MD007 error for unterminated frontmatter"
+    for d in md007_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"MD007 unterminated frontmatter does not name its consumer: {d.message!r}"
+        )
+
+
+def test_parser_errors_block_content_mapping() -> None:
+    """Parser-originated errors must map to an empty content payload.
+
+    A document with a parser-level error cannot be routed to the plan
+    validator because the grammar is broken upstream; the canonical
+    content must be ``{}`` so the tool handler's ``valid=False`` /
+    ``is_error=True`` checks fire. This is the same shape
+    :func:`parse_and_validate` already guarantees for parser errors.
+    """
+    document = """---
+type: plan
+type: plan
+not a field
+---
+Some prose before any heading.
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    error_severity = {d.rule_id for d in diagnostics if d.severity == "error"}
+    assert error_severity >= {"MD005", "MD006"}
+    assert content == {}
+

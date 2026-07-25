@@ -13,7 +13,6 @@ from ralph.skills import get_skill_content
 ARTIFACT_SKILLS = (
     "submit-artifact.md",
     "submit-plan-artifact.md",
-    "submit-plan-step-edits.md",
     "submit-commit-message-artifact.md",
     "submit-development-result-artifact.md",
     "submit-commit-cleanup-artifact.md",
@@ -31,7 +30,7 @@ def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None
         assert frontmatter is not None
         assert "description: Use when" in frontmatter.group(1)
         assert "version: 2.1.0" in frontmatter.group(1)
-        assert "ralph_submit_md_artifact" in text or name == "submit-plan-step-edits.md"
+        assert "ralph_submit_md_artifact" in text
         assert "ralph_submit_artifact" not in text
 
 
@@ -71,16 +70,7 @@ def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:
     assert "Project-specific `Type:` values and target actions are preserved verbatim" in text
     assert "Acceptance-criterion items are criteria, never phantom work units" in text
     assert "exact required section names" not in text
-
-
-def test_plan_edit_skill_teaches_stable_id_targeted_repair() -> None:
-    text = _read("submit-plan-step-edits.md")
-
-    assert "ralph_edit_md_plan_step" in text
-    assert "replacement" in text
-    assert "### [S-" in text
-    assert "never renumber" in text.lower()
-    assert "JSON" not in text
+    assert "ralph_edit_md_plan_step" not in text
 
 
 def test_development_result_skill_teaches_closed_status_vocabulary() -> None:
@@ -107,9 +97,9 @@ def test_prompt_templates_use_markdown_tools_without_retired_json_vocabulary() -
     for variable in (
         "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE",
         "VERIFY_MD_ARTIFACT_TOOL_REFERENCE",
-        "EDIT_MD_PLAN_STEP_TOOL_REFERENCE",
     ):
         assert variable in combined
+    assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" not in combined
     for retired in (
         "ralph_submit_plan_section",
         "ralph_submit_plan_sections",

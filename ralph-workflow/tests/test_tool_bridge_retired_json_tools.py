@@ -24,11 +24,12 @@ _EXPECTED_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("ralph_get_plan_draft", "ralph_get_md_draft"),
     ("ralph_discard_plan_draft", "ralph_discard_md_draft"),
     ("ralph_validate_draft", "ralph_verify_md_artifact"),
-    ("ralph_patch_step", "ralph_edit_md_plan_step"),
-    ("ralph_insert_plan_step", "ralph_edit_md_plan_step"),
-    ("ralph_replace_plan_step", "ralph_edit_md_plan_step"),
-    ("ralph_remove_plan_step", "ralph_edit_md_plan_step"),
-    ("ralph_move_plan_step", "ralph_edit_md_plan_step"),
+    ("ralph_patch_step", "ralph_stage_md_artifact"),
+    ("ralph_insert_plan_step", "ralph_stage_md_artifact"),
+    ("ralph_replace_plan_step", "ralph_stage_md_artifact"),
+    ("ralph_remove_plan_step", "ralph_stage_md_artifact"),
+    ("ralph_move_plan_step", "ralph_stage_md_artifact"),
+    ("ralph_edit_md_plan_step", "ralph_stage_md_artifact"),
 )
 
 

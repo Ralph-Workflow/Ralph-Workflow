@@ -50,7 +50,6 @@ The table below uses a few drain groupings:
 | `ralph_get_md_draft` | `artifact.plan_read` | all | Return the staged markdown draft and its current diagnostics (resume after interruption) |
 | `ralph_discard_md_draft` | `artifact.submit` | all | Discard the staged markdown draft for one artifact type |
 | `ralph_finalize_md_artifact` | `artifact.submit` | all | Validate the assembled draft with the submission gate and submit it canonically; on failure the draft is kept for repair |
-| `ralph_edit_md_plan_step` | `artifact.submit` | all | Edit one step by stable S-id in the persisted markdown plan draft |
 | `ralph_index_status` | `workspace.metadata_read` | all | Report the indexed exploration index health and freshness (lexical + Python/Markdown structure + graph) |
 | `ralph_reindex` | `workspace.read` | all | Run a bounded changed/full reindex of the indexed exploration index |
 | `report_progress` | `run.report_progress` | write drains, commit drains | Report progress to the pipeline |
@@ -182,9 +181,10 @@ diagnostic rejects the submission and nothing is persisted; `warning` diagnostic
 reported but do not block. The repair loop is: fix the markdown the diagnostics point
 at (the format docs under `.agent/artifact-formats/` describe each type's expected
 shape), optionally re-check with `ralph_verify_md_artifact`, then retry
-`ralph_submit_md_artifact`. For staged `plan` documents,
-`ralph_edit_md_plan_step` applies and persists a single step edit by stable
-`S-<n>` ID.
+`ralph_submit_md_artifact`. For staged `plan` documents, revisions go through
+`ralph_stage_md_artifact` (`mode="replace_all"`) → `ralph_get_md_draft` →
+`ralph_finalize_md_artifact` — the whole document is the unit of revision; there
+is no per-step edit endpoint.
 
 Large documents can be authored incrementally: `ralph_stage_md_artifact` accumulates
 markdown into a persisted per-type draft (reporting a section outline and non-gating
@@ -253,7 +253,7 @@ callable. The capability strings are:
 | `workspace.edit` | `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file` |
 | `workspace.delete` | `delete_path` (distinct destructive capability) |
 | `process.exec_bounded` | `exec` (with command blacklist enforced) |
-| `artifact.submit` | `ralph_submit_md_artifact`, `ralph_stage_md_artifact`, `ralph_finalize_md_artifact`, `ralph_discard_md_draft`, `ralph_edit_md_plan_step`, `declare_complete` |
+| `artifact.submit` | `ralph_submit_md_artifact`, `ralph_stage_md_artifact`, `ralph_finalize_md_artifact`, `ralph_discard_md_draft`, `declare_complete` |
 | `artifact.plan_read` | `ralph_verify_md_artifact`, `ralph_get_md_draft` |
 | `artifact.plan_write` | `coordinate` |
 | `run.report_progress` | `report_progress` |

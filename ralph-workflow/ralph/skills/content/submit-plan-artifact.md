@@ -13,8 +13,10 @@ values use labeled fields. Steps are `### [S-n] Title` blocks with stable IDs
 that are never renumbered.
 
 Validate with `ralph_verify_md_artifact`, submit with
-`ralph_submit_md_artifact` (`artifact_type: plan`), and use
-`ralph_edit_md_plan_step` for targeted edits.
+`ralph_submit_md_artifact` (`artifact_type: plan`). To revise a submitted plan,
+stage the complete revised document with `ralph_stage_md_artifact`
+(`mode="replace_all"`), edit the staged text directly, inspect with
+`ralph_get_md_draft`, then submit with `ralph_finalize_md_artifact`.
 
 ## Document shape
 
@@ -163,8 +165,7 @@ For a long plan:
 1. Append chunks with `ralph_stage_md_artifact` (`mode: append`), or replace
    the draft with `mode: replace_all`.
 2. Inspect the full draft with `ralph_get_md_draft`.
-3. Edit a step by stable ID with `ralph_edit_md_plan_step`; the tool saves the
-   updated draft.
+3. Edit the staged draft directly — there is no per-step edit endpoint.
 4. Submit the assembled draft with `ralph_finalize_md_artifact`. Failed
    validation preserves the draft.
 5. Use `ralph_discard_md_draft` only when intentionally starting over.

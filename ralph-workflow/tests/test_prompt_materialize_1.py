@@ -134,5 +134,5 @@ def test_planning_edit_preserves_current_markdown_plan(tmp_path: Path) -> None:
     rendered = workspace.read(path)
 
     assert workspace.exists(".agent/artifacts/plan.md")
-    assert "ralph_edit_md_plan_step" in rendered
+    assert "ralph_edit_md_plan_step" not in rendered
     assert "ralph_verify_md_artifact" in rendered

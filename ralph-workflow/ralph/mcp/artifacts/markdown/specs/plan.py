@@ -57,6 +57,7 @@ from ralph.mcp.artifacts.markdown._spec import (
     MdArtifactSpec,
     SectionRule,
     _normalizer_diagnostic,
+    _teach_duplicate_closed_frontmatter_vocabulary,
     _validate_structure,
 )
 from ralph.mcp.artifacts.markdown.registry import register_spec
@@ -69,9 +70,7 @@ from ralph.mcp.artifacts.markdown.specs._plan_evaluatability import (
     is_specific_expected_output,
 )
 from ralph.mcp.artifacts.markdown.specs._plan_evidence import evidence_content
-from ralph.mcp.artifacts.markdown.specs._plan_step_edit import (
-    edit_plan_step_markdown as _edit_plan_step_markdown,
-)
+
 from ralph.mcp.artifacts.markdown.specs._plan_steps import (
     resolve_step_references,
     step_number_map,
@@ -1124,9 +1123,20 @@ def analyze_plan_document(
     post-override state: matched advisory diagnostics are removed and the
     recorded reason appears in ``overridden`` instead. Stale and error-targeted
     overrides are surfaced back into the diagnostic list as PLAN025/PLAN026.
+
+    Parser-originated diagnostics (MD002, MD005, MD006, MD007) are retained
+    in the returned list so a malformed document fails before canonical
+    mapping the same way :func:`parse_and_validate` does; the closed
+    vocabulary teach pass runs here too so ``type`` frontmatter duplicates
+    carry the consumer phrase the rest of the message convention uses.
     """
-    document, _ = parse_markdown_document(text, allow_nested_headings=PLAN_SPEC.allow_nested_headings)
-    diagnostics, overridden, minimal_content = _collect_diagnostics_with_overrides(document)
+    document, parser_diagnostics = parse_markdown_document(
+        text, allow_nested_headings=PLAN_SPEC.allow_nested_headings
+    )
+    _teach_duplicate_closed_frontmatter_vocabulary(parser_diagnostics, PLAN_SPEC)
+    diagnostics, overridden, minimal_content = _collect_diagnostics_with_overrides(
+        document, parser_diagnostics=parser_diagnostics
+    )
     content: Content
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         content = {}
@@ -1155,6 +1165,8 @@ def analyze_plan_document(
 
 def _collect_diagnostics_with_overrides(
     document: ParsedDocument,
+    *,
+    parser_diagnostics: list[Diagnostic] | None = None,
 ) -> tuple[list[Diagnostic], list[_OverrideMatch], Content | None]:
     """Collect all plan-spec diagnostics, apply the override ledger, and return both.
 
@@ -1167,8 +1179,13 @@ def _collect_diagnostics_with_overrides(
     the canonical payload from the minimal variant (e.g. ``{"noop": True}``)
     when it produced a valid one; callers use it instead of running the
     full mapper, which would raise PLAN022 for a step-less document.
+
+    ``parser_diagnostics`` carries the MD002/MD005/MD006/MD007 messages
+    ``parse_markdown_document`` produced; they are prepended so a document
+    with a parser-level error fails the override ledger and the canonical
+    mapping just like :func:`parse_and_validate` would.
     """
-    diagnostics: list[Diagnostic] = []
+    diagnostics: list[Diagnostic] = list(parser_diagnostics or [])
     minimal_content: Content | None = None
     if PLAN_SPEC.minimal_variant is not None:
         minimal_content, variant_diagnostics = PLAN_SPEC.minimal_variant(document)
@@ -1439,31 +1456,6 @@ def _minimal_noop_variant(
     return None, [Diagnostic(document.frontmatter_lines["noop"], None, "PLAN023", message)]
 
 
-def edit_plan_step_markdown(
-    text: str,
-    action: str,
-    step_id: str,
-    replacement: str | None = None,
-    index: int | None = None,
-) -> str:
-    """Apply one ID-addressed plan-step edit and return a valid document.
-
-    ``replacement`` is a markdown step block — a ``### [S-n] Title``
-    heading followed by its body — not a JSON object. Stable step IDs are
-    never renumbered by an edit, so ``Depends on:`` and ``Satisfied by:``
-    references survive insert, move, and replace; removing a step that is
-    still referenced fails re-validation with a dangling-reference error.
-    """
-    return _edit_plan_step_markdown(
-        text,
-        action,
-        step_id,
-        replacement,
-        index,
-        spec=PLAN_SPEC,
-    )
-
-
 # Plan-specific mappers validate consumed fan-out fields and dependency graphs.
 _FAN_OUT_SECTION_RULE = SectionRule(
     required=False, repeatable=True, allow_body=True, allow_blocks=True, allow_items=True
@@ -1490,4 +1482,4 @@ PLAN_SPEC = MdArtifactSpec(
 
 register_spec(PLAN_SPEC)
 
-__all__ = ["PLAN_SPEC", "analyze_plan_document", "edit_plan_step_markdown"]
+__all__ = ["PLAN_SPEC", "analyze_plan_document"]

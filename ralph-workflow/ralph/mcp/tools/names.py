@@ -39,7 +39,6 @@ class RalphToolName(StrEnum):
     RAW_EXEC = "raw_exec"
     SUBMIT_MD_ARTIFACT = "ralph_submit_md_artifact"
     VERIFY_MD_ARTIFACT = "ralph_verify_md_artifact"
-    EDIT_MD_PLAN_STEP = "ralph_edit_md_plan_step"
     STAGE_MD_ARTIFACT = "ralph_stage_md_artifact"
     GET_MD_DRAFT = "ralph_get_md_draft"
     DISCARD_MD_DRAFT = "ralph_discard_md_draft"
@@ -99,7 +98,6 @@ UNSAFE_EXEC_TOOL = RalphToolName.UNSAFE_EXEC
 RAW_EXEC_TOOL = RalphToolName.RAW_EXEC
 SUBMIT_MD_ARTIFACT_TOOL = RalphToolName.SUBMIT_MD_ARTIFACT
 VERIFY_MD_ARTIFACT_TOOL = RalphToolName.VERIFY_MD_ARTIFACT
-EDIT_MD_PLAN_STEP_TOOL = RalphToolName.EDIT_MD_PLAN_STEP
 STAGE_MD_ARTIFACT_TOOL = RalphToolName.STAGE_MD_ARTIFACT
 GET_MD_DRAFT_TOOL = RalphToolName.GET_MD_DRAFT
 DISCARD_MD_DRAFT_TOOL = RalphToolName.DISCARD_MD_DRAFT
@@ -146,7 +144,6 @@ ARTIFACT_SUBMIT_TOOLS: tuple[str, ...] = (
     STAGE_MD_ARTIFACT_TOOL,
     FINALIZE_MD_ARTIFACT_TOOL,
     DISCARD_MD_DRAFT_TOOL,
-    EDIT_MD_PLAN_STEP_TOOL,
     DECLARE_COMPLETE_TOOL,
 )
 ARTIFACT_COORDINATE_TOOLS: tuple[str, ...] = (COORDINATE_TOOL,)
@@ -154,7 +151,6 @@ ARTIFACT_TOOLS: tuple[str, ...] = (*ARTIFACT_SUBMIT_TOOLS, *ARTIFACT_COORDINATE_
 PLANNING_DRAFT_TOOLS: tuple[str, ...] = (
     VERIFY_MD_ARTIFACT_TOOL,
     GET_MD_DRAFT_TOOL,
-    EDIT_MD_PLAN_STEP_TOOL,
 )
 PROGRESS_TOOLS: tuple[str, ...] = (REPORT_PROGRESS_TOOL,)
 ENV_READ_TOOLS: tuple[str, ...] = (READ_ENV_TOOL,)

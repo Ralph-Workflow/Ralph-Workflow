@@ -56,23 +56,8 @@ def test_staging_descriptions_cover_resume_repair_and_atomic_finalization() -> N
     assert "kept for repair" in finalize.description
 
 
-def test_plan_edit_schema_uses_stable_ids_and_markdown_replacements() -> None:
-    definition = _specs()["ralph_edit_md_plan_step"]
-    schema = definition.input_schema
-    properties = schema["properties"]
-    assert isinstance(properties, dict)
-    typed_properties = must_mapping(properties)
-    action = typed_properties["action"]
-    assert isinstance(action, dict)
-    typed_action = must_mapping(action)
-
-    assert typed_action["enum"] == ["insert", "replace", "remove", "move"]
-    assert typed_properties["replacement"] == {"type": "string"}
-    assert "content" not in typed_properties
-    assert schema["required"] == ["action", "step_id"]
-    assert "persisted markdown plan draft" in definition.description
-    assert "stable S-id" in definition.description
-    assert "markdown step block" in definition.description
-    assert "never JSON" in definition.description
-    assert "Depends on:" in definition.description
-    assert "Satisfied by:" in definition.description
+def test_plan_edit_tool_is_not_exposed() -> None:
+    """Plan edits now go through the standard stage/replace_all/finalize flow."""
+    specs = _specs()
+    assert "ralph_edit_md_plan_step" not in specs
+    assert "replace_all" in specs["ralph_stage_md_artifact"].input_schema["properties"]["mode"]["enum"]

@@ -72,11 +72,21 @@ def validate_unique_ids(
         key = normalize_id(item.identifier, case_sensitive=case_sensitive)
         if key is None:
             diagnostics.append(
-                Diagnostic(item.line, section, "REF001", f"malformed ID {item.identifier!r}")
+                Diagnostic(
+                    item.line,
+                    section,
+                    "REF001",
+                    f"malformed ID {item.identifier!r}; blocking because the validator cannot resolve a non-identifier; resolve by writing the identifier in the canonical `### [S-n]` / `- [AC-n]` shape.",
+                )
             )
         elif key in seen:
             diagnostics.append(
-                Diagnostic(item.line, section, "REF002", f"duplicate ID {item.identifier!r}")
+                Diagnostic(
+                    item.line,
+                    section,
+                    "REF002",
+                    f"duplicate ID {item.identifier!r}; blocking because two references resolve to the same target and downstream consumers cannot pick one; resolve by keeping exactly one canonical identifier and rewriting the others.",
+                )
             )
         else:
             seen.add(key)

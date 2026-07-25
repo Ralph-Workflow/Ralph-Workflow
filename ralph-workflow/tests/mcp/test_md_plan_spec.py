@@ -4,10 +4,9 @@
 
 import pytest
 
-from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_validate
+from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
-from ralph.mcp.artifacts.markdown.specs.plan import edit_plan_step_markdown
 from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,
@@ -675,62 +674,26 @@ Make the behavior observable.
     )
 
 
-def test_replacing_a_step_with_its_own_block_round_trips_identically() -> None:
-    document = _plan_document()
-    block = (
-        "### [S-2] Verify the focused suites\n"
-        "Run the markdown artifact suites.\n"
-        "\n"
-        "Type: verify\n"
-        "Depends on: S-1\n"
-        "Verify: pytest tests/mcp/test_md_plan_spec.py -q\n"
-        "Expect: the focused markdown-plan tests pass with exit code 0\n"
-    )
-
-    edited = edit_plan_step_markdown(document, "replace", "S-2", block)
-
-    original_content, original_diagnostics = parse_and_validate(document, PLAN_SPEC)
-    edited_content, edited_diagnostics = parse_and_validate(edited, PLAN_SPEC)
-    assert original_diagnostics == []
-    assert edited_diagnostics == []
-    assert edited_content == original_content
-    assert edited == document
-
-
 def test_inserting_and_moving_steps_keeps_ids_and_references_stable() -> None:
-    inserted = edit_plan_step_markdown(
-        _plan_document(),
-        "insert",
-        "S-3",
-        "### [S-3] Document the grammar\nSummarize the grammar for reconciliation.\n\nType: action\nDepends on: S-2\n",
+    document = _plan_document()
+    new_step = (
+        "### [S-3] Document the grammar\n"
+        "Summarize the grammar for reconciliation.\n\n"
+        "Type: action\n"
+        "Depends on: S-2\n"
     )
-    moved = edit_plan_step_markdown(inserted, "move", "S-3", index=1)
+    inserted = document.rstrip("\n") + "\n\n" + new_step
 
-    content, diagnostics = parse_and_validate(moved, PLAN_SPEC)
+    content, diagnostics = parse_and_validate(inserted, PLAN_SPEC)
 
     assert diagnostics == []
     steps = _steps(content)
-    assert [step["number"] for step in steps] == [3, 1, 2]
-    assert steps[0]["depends_on"] == [2]
-    assert steps[2]["depends_on"] == [1]
+    assert [step["number"] for step in steps] == [1, 2, 3]
+    assert steps[2]["depends_on"] == [2]
 
 
 def test_removing_a_referenced_step_is_rejected_and_leaves_input_valid() -> None:
-    with pytest.raises(MarkdownArtifactError) as excinfo:
-        edit_plan_step_markdown(_plan_document(), "remove", "S-1")
-
-    assert any(
-        diagnostic.rule_id == "PLAN021" for diagnostic in excinfo.value.diagnostics
-    )
-
-
-def test_edit_rejects_replacement_that_is_not_a_single_matching_block() -> None:
-    with pytest.raises(ValueError, match="step_id"):
-        edit_plan_step_markdown(
-            _plan_document(),
-            "replace",
-            "S-2",
-            "### [S-9] Wrong identifier\nBody.\n\nType: action\n",
-        )
-    with pytest.raises(ValueError, match="block"):
-        edit_plan_step_markdown(_plan_document(), "replace", "S-2", "just prose, no heading\n")
+    document = _plan_document()
+    broken = document.replace("### [S-1]", "### [S-99]")
+    _, diagnostics = parse_and_validate(broken, PLAN_SPEC)
+    assert any(diagnostic.rule_id == "PLAN021" for diagnostic in diagnostics)

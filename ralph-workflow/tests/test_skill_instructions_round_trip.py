@@ -42,9 +42,9 @@ def test_plan_skill_documents_the_complete_markdown_workflow() -> None:
         "ralph_get_md_draft",
         "ralph_finalize_md_artifact",
         "ralph_discard_md_draft",
-        "ralph_edit_md_plan_step",
     ):
         assert tool in body
     assert "### [S-" in body
     assert "Depends on:" in body
     assert "JSON" not in body
+    assert "ralph_edit_md_plan_step" not in body
