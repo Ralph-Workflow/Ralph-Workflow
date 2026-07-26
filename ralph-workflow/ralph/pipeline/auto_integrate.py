@@ -88,6 +88,12 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
+from ralph.pipeline.auto_integrate_remote_sync import (
+    REMOTE_PUSH_REJECTED,
+    pull_and_reconcile_target,
+    reconcile_after_rejected_push,
+    remote_sync_enabled,
+)
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
@@ -362,6 +368,12 @@ def _auto_integrate_after_commit_inner(
         return None
     root, _current_branch, target = usable_ctx
 
+    # Remote sync is deliberately opt-in.  Run its pull side before the
+    # ordinary feature rebase so a fetched remote tip becomes the base this
+    # seam integrates against.  A remote failure is only operator state: the
+    # local transaction below remains authoritative and fail-open.
+    remote_record = pull_and_reconcile_target(config, root, target)
+
     # Budget check BEFORE any git mutation: an exhausted budget still
     # runs the rebase and the endpoint merge (and still aborts them
     # cleanly), it merely stops paying for another agent invocation.
@@ -460,9 +472,16 @@ def _auto_integrate_after_commit_inner(
             resolver_offered=effective_resolver is not None,
         )
     if record is None:
-        # R2/AC8: ladder rung 3 -- _integrate_once already logged and
-        # retained/reconciled its durable state; the next seam retries.
-        return None
+        # The normal local seam can be a no-op while remote sync still has a
+        # useful visible outcome (for example a failed fetch). Preserve it.
+        return remote_record
+    if remote_record is not None:
+        record = record.model_copy(
+            update={
+                "last_remote_sync": remote_record.last_remote_sync,
+                "last_reason": record.last_reason or remote_record.last_reason,
+            }
+        )
     if attempts_exhausted:
         record = _record_attempt_budget_spent(record)
     return apply_conflict_budget(
@@ -637,6 +656,11 @@ def _integrate_once(
         # ``maybe_push_target`` so every successful advance of the local
         # target reaches every configured remote when push is enabled.
         record = maybe_push_target(config, root, target, record)
+        if record.last_remote_sync == REMOTE_PUSH_REJECTED:
+            # A non-fast-forward push is a remote race, not a failed local
+            # landing. Spend only this seam's bounded retry budget trying to
+            # reconcile and publish; the returned record remains fail-open.
+            record = reconcile_after_rejected_push(config, root, target, record)
         return record, False
     except BaseException:
         # R6/AC-06: terminal-state verification on the EXCEPTION
@@ -756,14 +780,10 @@ def _auto_integrate_resolve_context(
     current_branch: str | None = _current_branch_or_detached_marker(root)
     target: str | None = resolve_integration_target(config, root)
     refresh: str | None = None
-    if target is not None:
-        # BEFORE the skip table reads branch_sha: the 'no commits
-        # beyond target' and 'on target branch' decisions must be made
-        # against the refreshed pointer, never a stale one. The outcome
-        # is carried out of here rather than discarded: those skip
-        # decisions inherit whatever staleness the refresh could not
-        # rule out, and the fail-open contract means nothing else will
-        # report it.
+    if target is not None and not remote_sync_enabled(config):
+        # Local-only runs retain the historical observe-only refresh. The
+        # opted-in path performs its one configured-remote fetch below, so it
+        # never issues an extra origin probe before remote preflight.
         refresh = _refresh_target(config, root, target)
 
     return root, current_branch, target, refresh
