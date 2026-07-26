@@ -235,12 +235,12 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
 
 
-def test_auto_worker_count_scales_with_cores_between_floor_and_ceiling(
+def test_auto_worker_count_returns_empirical_sweet_spot_on_adequate_hosts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    for cores, expected in ((4, "8"), (8, "8"), (12, "12"), (64, "16")):
+    for cores, expected in ((4, "8"), (8, "16"), (12, "16"), (16, "16"), (64, "16")):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
 

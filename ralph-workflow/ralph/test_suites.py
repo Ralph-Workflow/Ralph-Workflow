@@ -68,20 +68,13 @@ if TYPE_CHECKING:
 # workers and the suite runs past the immutable 60-second combined budget,
 # too many and a trivial test is starved past its own 1 s cap.
 #
-# The cap was 2 when the suite held ~11.8k tests. At 12,137 collected tests
-# that no longer clears the floor -- measured on a 12-core host, two workers
-# need ~160 s and four reach only ~50 % of the suite before the 60 s cap
-# fires. Eight workers complete the same suite (12111 passed, 26 skipped)
-# in 38.09 s with zero per-test SIGALRM failures, so 8 is the FLOOR.
-#
-# Eight is only a floor, not the answer for every host: a shard runs its
-# assignment sequentially, so pinning 8 shards on a 12-core host leaves
-# four cores idle and stretches each shard. On a 12-core host with the
-# checkout on an external volume, 8 shards run past the 60 s parent
-# deadline while 12 shards finish the same suite in ~36 s with zero
-# per-test SIGALRM failures. ``auto`` therefore scales with the host --
-# ``min(max(cpu_count, 8), 16)`` -- never dropping below the measured
-# floor and never oversubscribing beyond the core count.
+# 14k-test suite measured on a 12-core host: 12 shards (~46-58 s slowest
+# shard) blow the 60 s budget, 16 shards (~30-50 s slowest shard) stay
+# inside it. The 1.33x oversubscription at 16 shards is amortised by the
+# per-shard setup cost and the heavy real-git subprocess tests being
+# I/O-bound (the worker count is the floor; the cap is the observed
+# empirical sweet spot). ``auto`` therefore returns ``_MAX_PYTEST_WORKERS``
+# (16) on every host with at least the MIN worker count of cores.
 # The maintained profile partitions test files before pytest starts so each
 # process imports and collects only its disjoint assignment. Shards intentionally
 # do not run xdist.
@@ -219,7 +212,9 @@ def _pytest_workers() -> str:
         cores = multiprocessing.cpu_count()
     except Exception:
         return str(_MIN_PYTEST_WORKERS)
-    return str(min(max(cores, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
+    if cores < _MIN_PYTEST_WORKERS:
+        return str(_MIN_PYTEST_WORKERS)
+    return str(_MAX_PYTEST_WORKERS)
 
 
 def _default_spawner(

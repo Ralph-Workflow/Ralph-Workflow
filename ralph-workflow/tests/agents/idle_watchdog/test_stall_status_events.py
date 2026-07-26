@@ -330,7 +330,17 @@ def test_suspected_frozen_emits_stalled_event() -> None:
 
 
 def test_fire_verdict_emits_stalled_event() -> None:
-    """A FIRE verdict (non-absolute reason) flips the watchdog's stall state."""
+    """A FIRE verdict (non-absolute reason) emits one STALLED listener event.
+
+    The captured ``WaitingStatusListener`` is the contract surface the
+    status bar subscribes to. The previous version of this test
+    only asserted ``is_stalled`` and ``verdict == FIRE`` -- it never
+    inspected the listener, so a regression that emitted a STALLED
+    on the gate path without firing the listener would have
+    silently passed. Drive the production ``evaluate()`` path with
+    a capturing listener, assert exactly one ``WaitingStatusKind.STALLED``
+    event, and repeat ``evaluate()`` to confirm the dedupe.
+    """
     captured: list[WaitingStatusEvent] = []
     # Override the policy via the constructor so the frozen dataclass
     # is constructed with drain_window_seconds=0 (the active branch
@@ -349,6 +359,89 @@ def test_fire_verdict_emits_stalled_event() -> None:
     assert verdict == WatchdogVerdict.FIRE
     # FIRING implies STALLED state.
     assert _stall_state(watchdog) is True
+
+    # The capturing listener MUST have received exactly one STALLED
+    # transition event (DA-001: the listener is the contract surface
+    # the status bar subscribes to, not just the internal flag).
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled_events) == 1, (
+        f"Expected exactly one STALLED event on FIRE; got {len(stalled_events)}: "
+        f"{[e.kind for e in _events(captured)]}"
+    )
+
+    # A second evaluate on the same tick MUST NOT emit a duplicate
+    # STALLED event (the _set_stall helper dedupes by the runtime flag).
+    watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled_events) == 1, (
+        f"Repeated evaluate() must NOT emit duplicate STALLED events; "
+        f"got {len(stalled_events)}"
+    )
+
+
+def test_silent_subagent_emits_stalled_event() -> None:
+    """A SILENT_SUBAGENT gate verdict emits one STALLED listener event.
+
+    The SILENT_SUBAGENT branch of the classifier is a post-mortem
+    LABEL, not a veto: the gate fires when the branch matches (no
+    live child, stale subagent evidence). The fire path is
+    ``_gate_fire -> StuckKind.SILENT_SUBAGENT -> _set_stall(active=True)``.
+    The status bar subscribes to the WaitingStatusListener, so the
+    STALLED transition MUST surface as a captured event -- not just
+    flip the internal ``_stall_active`` flag.
+
+    DA-001 fix: the previous coverage pinned the gate verdict but
+    never inspected the listener. This test wires the production
+    listener through ``_gate_fire`` and asserts the captured STALLED.
+    """
+    captured: list[WaitingStatusEvent] = []
+    watchdog, clock = _make_watchdog(listener=captured.append)
+
+    # Patch _classify_stuck_now to return SILENT_SUBAGENT deterministically.
+    _attr = "_classify_stuck_now"
+
+    def _silent_subagent_now(
+        *,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
+    ) -> StuckKind:
+        return StuckKind.SILENT_SUBAGENT
+
+    setattr(watchdog, _attr, _silent_subagent_now)
+
+    # Drive _gate_fire directly. The SILENT_SUBAGENT branch must
+    # return FIRE AND emit exactly one STALLED listener event.
+    _now = clock.monotonic() + 181.0
+    gate_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=_now,
+        idle_elapsed=181.0,
+    )
+    assert gate_verdict == WatchdogVerdict.FIRE, (
+        f"SILENT_SUBAGENT must FIRE (the kind is a post-mortem LABEL, not a veto); "
+        f"got {gate_verdict}"
+    )
+
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled_events) == 1, (
+        f"Expected exactly one STALLED listener event on SILENT_SUBAGENT gate fire; "
+        f"got {len(stalled_events)}: {[e.kind for e in _events(captured)]}"
+    )
+    assert _stall_state(watchdog) is True
+
+    # A second _gate_fire on the same tick MUST NOT emit a duplicate.
+    gate_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=_now,
+        idle_elapsed=181.0,
+    )
+    assert gate_verdict == WatchdogVerdict.FIRE
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled_events) == 1, (
+        f"Repeated _gate_fire must NOT emit duplicate STALLED events; "
+        f"got {len(stalled_events)}"
+    )
 
 
 def test_fire_session_ceiling_does_not_emit_stalled() -> None:
