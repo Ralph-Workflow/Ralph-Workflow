@@ -800,3 +800,43 @@ def test_production_path_no_internal_channel_tokens_with_subagent_companion(
             f"internal channel token {forbidden!r} leaked into record:\n"
             f"{record_body}"
         )
+
+
+def test_production_path_two_distinct_identical_tool_use_events_both_recorded(
+    tmp_path: Path,
+) -> None:
+    """DA-002 (wt-028-display): two distinct identical ``tool_use`` events
+    must each get their own record entry.
+
+    The pre-fix ``_append_recorded_entry`` dropped any consecutive
+    entry whose body equaled the previous body's, regardless of
+    event identity or kind. A self-run production-path probe
+    emitting two identical ``TOOL_USE`` events (the tool-call
+    flood pattern from 2026-07-25) therefore produced one rendered
+    record line instead of two, violating the one-entry-per-event
+    contract. The post-fix dedup is keyed on ``(event_kind, body)``
+    AND restricted to the text/thinking companion pair, so two
+    identical tool_use events both land in the record.
+    """
+    from ralph.display.parallel_display import ParallelDisplay
+
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    assert isinstance(pd, ParallelDisplay)
+    pd.start()
+    tool_body = "bash pytest tests/display -q"
+    for _ in range(2):
+        pd.emit_parsed_event(
+            unit_id="pi",
+            kind=ActivityEventKind.TOOL_USE,
+            content=tool_body,
+            metadata={"tool_name": "bash", "tool_path": None},
+        )
+    pd.stop()
+
+    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    assert record_body.count(tool_body) == 2, (
+        f"two distinct identical tool_use events should produce two record "
+        f"entries; got {record_body.count(tool_body)}:\n{record_body}"
+    )

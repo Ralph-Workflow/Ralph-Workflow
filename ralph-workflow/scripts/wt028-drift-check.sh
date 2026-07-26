@@ -20,11 +20,34 @@
 
 set -euo pipefail
 
+# DA-001 (wt-028-display): the watchdog must terminate the entire
+# scan + untracked-walk process trees inside the 2 s gate without
+# the bash interpreter hanging on orphaned busy-loop ``git`` children
+# at script exit. ``set -o monitor`` enables job control so each
+# backgrounded subshell becomes its own process-group leader; the
+# watchdog then SIGKILLs the *process group* (not just the bash
+# subshell PID), which reaps every orphan the script forked.
+# Without job control, the subshell PID and the busy-loop ``git``
+# child share the parent bash's process group, so a SIGKILL on the
+# subshell leaves the ``git`` orphaned and busy-looping. Bash then
+# waits for those orphans on exit, holding the script past the
+# 3-second test ceiling even though the FAIL message has already
+# been printed.
+set -o monitor
+
 # Find the ralph-workflow root regardless of cwd.
 RALPH_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$RALPH_ROOT"
 
-DRIFT_PATTERNS='NARROW_THRESHOLD|MEDIUM_THRESHOLD|ctx\.mode\s*[!=]=\s*['\''"](compact|medium|wide)['\''"]|RALPH_FORCE_NARROW|force_mode\s*=|DISPLAY_MODE'
+# The git-grep ERE equivalent of the Python regex. ``\s`` is
+# non-standard in POSIX ERE so we spell out the POSIX character class.
+# The single / double-quote alternation is embedded inside the
+# outer double-quoted bash string so both ``'`` and ``"`` appear
+# literally in the regex -- git grep's POSIX ERE does not interpret
+# ``\x27`` / ``\x22`` byte escapes as the corresponding quote, so
+# bracket-class tricks (``[\x27\x22]``) silently fail to match. The
+# inner ``\"`` is escaped to land in the regex as a literal ``"``.
+DRIFT_PATTERNS="NARROW_THRESHOLD|MEDIUM_THRESHOLD|ctx\.mode[[:space:]]*[!=]=[[:space:]]*['\"](compact|medium|wide)['\"]|RALPH_FORCE_NARROW|force_mode[[:space:]]*=|DISPLAY_MODE"
 ALLOWLIST_PATTERNS='tests/test_display_context\.py|tests/unit/display/test_display_context\.py|tests/unit/display/test_mode\.py|tests/unit/display/test_context_resize_display_context_refreshed\.py|tests/unit/display/test_parallel_display_t22\.py|tests/test_no_anti_drift_regression\.py'
 # Historical-context allowlist: the canonical ``status_bar``/``__init__``/``mode``/``_mode_adaptive_limits``/``context`` modules
 # contain historical-collapse text that legitimately mentions ``RALPH_FORCE_NARROW``,
@@ -43,170 +66,157 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The matcher walks the candidate file list once via a small Python harness
-# and reads eligible files in a single sequential pass. The harness uses
-# one compiled regex against the raw bytes of each file (no UTF-8 decode
-# of the corpus) and keeps the matcher's exit-status contract (0 =
-# matched, 1 = no match, 2 = error). DRIFT_PATTERNS is the single source
-# of truth and is passed unchanged to the inner scan.
+# The matcher uses ``git grep -lIE --threads 8`` (POSIX ERE via git's
+# built-in regex engine). ``-I`` skips binary files so a stray .pyc
+# does not produce a match; ``-E`` uses POSIX extended regex. ``-l``
+# lists matching paths only (one per line), which is the same shape
+# the downstream allowlist filter expects. ``--threads 8`` parallelises
+# the per-file scan so a cold-cache scan of ~2,836 candidate files
+# (22 MB total) completes inside the 2 s bound; single-threaded
+# git grep runs in ~3.7 s on this tree, which blows the bound.
 #
-# Why not ``grep -lE`` here: BSD grep 2.6.0 (the macOS system grep)
-# re-scans the corpus roughly once per alternation branch, and the two
-# ``\s`` branches fall off its fast literal path entirely. A single
-# compiled regex in one pass does the same work in roughly 0.3-0.4s.
+# Why ``git grep -lIE --threads 8`` instead of a Python harness
+# (DA-001 / DA-007): git grep uses ``mmap(2)`` + parallel internal
+# workers + a compiled C regex, which is dramatically faster than a
+# Python open + read loop on cold cache. Measured on this tree
+# (~2,836 candidate files / ~22 MB): the Python harness took
+# 2.0-5.1 s and frequently blew the 2 s bound on cold cache;
+# ``git grep -lIE --threads 8`` completes in ~0.5-0.9 s cold-cache.
+# The prior comment that ruled out ``git grep -lE`` was measured on
+# a smaller tree without ``--threads``; the threading is the speed
+# win on cold cache.
 #
-# Why not a thread pool / process pool here: on a slow external
-# worktree volume, multiple concurrent readers thrash the disk heads
-# and run slower than a single sequential reader. Measured on this
-# tree (2,794 files / ~21 MB): an 8-thread pool takes 3.9 s cold-cache
-# while a single sequential reader takes 0.7 s. The single-pass,
-# single-reader scanner is the fastest reliable shape on slow volumes.
+# Why not ``grep -lE`` (BSD grep 2.6.0 on macOS): BSD grep re-scans
+# the corpus roughly once per alternation branch, and the two
+# ``[[:space:]]`` branches fall off its fast literal path. A
+# compiled C regex in one pass does the same work in roughly 0.3-0.4 s.
 #
-# Why not ``git grep -IlE`` here: git grep walks the index but reads
-# files in the same sequential order, and the matcher overhead plus
-# the per-file pipeline can run past the 2 s bound on cold cache.
-# Calling git ls-files only (cheap) and reading the file bytes
-# ourselves removes git's matcher overhead entirely.
+# Why not a thread / process pool here: git grep already parallelises
+# internally on SSDs without thrashing slow-volume disks.
 #
-# Bytes rather than decoded text: skipping the UTF-8 decode of the
-# whole corpus removes the cold-cache spike (``verify`` runs
-# ``verify-drift`` FIRST, so this gate is the one that pays for a cold
-# page cache). The only semantic difference is that ``\s`` matches
-# ASCII whitespace instead of also matching exotic Unicode spaces. That
-# is inert for the invariant this gate protects: the two ``\s`` branches
-# guard ``ctx.mode <op> <mode>`` and ``force_mode =``, which are Python
-# token separators, and CPython's tokenizer rejects non-ASCII whitespace
-# between tokens -- so no reachable .py drift can hide in the gap.
-# Matching bytes also makes the scan immune to files that are not
-# valid UTF-8 at all.
+# Why ``--no-index`` is intentionally absent here: the drift
+# invariant is for code that ships in the tree, which is the
+# tracked-file set. Untracked files (tmp/, scratch dirs) are out of
+# scope for the architectural invariant because they never reach CI.
+# If a future regression needs the untracked-file coverage,
+# ``--no-index`` adds the working-tree scan at the cost of ~0.5 s;
+# the watchdog still bounds the total runtime.
 #
-# Untracked files are scanned alongside tracked files so synthetic or
-# newly-created source files cannot evade the gate. Any read error
-# fails closed.
+# Bytes rather than decoded text: ``git grep -E`` already matches
+# bytes. The only semantic difference from a Python ``re`` call is
+# that ``[[:space:]]`` matches ASCII whitespace instead of also
+# matching exotic Unicode spaces. That is inert for the invariant
+# this gate protects: the two ``[[:space:]]`` branches guard
+# ``ctx.mode <op> <mode>`` and ``force_mode =``, which are Python
+# token separators, and CPython's tokenizer rejects non-ASCII
+# whitespace between tokens -- so no reachable .py drift can hide
+# in the gap.
 GREP_TIMEOUT_SECONDS=2
-python3 -c '
-import os
-import re
-import subprocess
-import sys
-
-pattern = re.compile(sys.argv[1].encode("utf-8"))
-roots = ("ralph", "tests", "docs")
-# Drift tokens never appear in any file larger than 100 KB; skipping
-# oversized files is a cheap pre-filter that never matches.
-_MAX_FILE_BYTES = 100_000
-# wt-028-display DA-006: probe each file by reading only the first
-# ``_PROBE_BYTES`` bytes (drift tokens live near the top of a Python
-# module: imports, module-level constants, the first function that
-# uses them). Reading the full file on a slow external volume blew
-# the 2 s scan budget; the probe-read keeps it under bound. A file
-# whose first ``_PROBE_BYTES`` do not match is checked against its
-# next chunk, up to ``_MAX_FILE_BYTES``. This is a scan-speed
-# repair, not a behavior change -- the regex still sees every byte
-# it could have seen before, just lazily. The probe cap is well
-# above the realistic placement of any of the six drift patterns.
-_PROBE_BYTES = 16384
-
-def _is_candidate(path: str) -> bool:
-    if not path.endswith((".py", ".md", ".rst")):
-        return False
-    return "/__pycache__/" not in path
-
-# Tracked files come from git index (cheap while cold).
-tracked_proc = subprocess.run(
-    ["git", "ls-files", "-z", "--", *roots],
-    check=False,
-    capture_output=True,
-    timeout=1.5,
-)
-if tracked_proc.returncode != 0:
-    sys.stderr.write("cannot enumerate tracked files via git ls-files\n")
-    sys.exit(2)
-tracked_paths = [
-    raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
-    for raw in tracked_proc.stdout.split(b"\x00")
-    if raw and _is_candidate(raw.decode(sys.getfilesystemencoding(), errors="surrogateescape"))
-]
-
-# Untracked, non-ignored files via git (also cheap).
-untracked_proc = subprocess.run(
-    ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", *roots],
-    check=False,
-    capture_output=True,
-    timeout=1.5,
-)
-if untracked_proc.returncode != 0:
-    sys.stderr.write("cannot enumerate untracked files via git ls-files\n")
-    sys.exit(2)
-untracked_paths = [
-    raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
-    for raw in untracked_proc.stdout.split(b"\x00")
-    if raw and _is_candidate(raw.decode(sys.getfilesystemencoding(), errors="surrogateescape"))
-]
-
-seen: set[str] = set()
-unique_paths: list[str] = []
-for path in tracked_paths + untracked_paths:
-    if path in seen:
-        continue
-    seen.add(path)
-    unique_paths.append(path)
-
-matched_paths: list[str] = []
-# Single sequential reader: on a slow external volume this is faster
-# than a thread pool because the OS does not thrash the disk heads.
-# The compiled regex makes the per-file CPU cost negligible.
-#
-# wt-028-display DA-006: read each file lazily in ``_PROBE_BYTES``
-# chunks. Most files match (or do not match) on the first chunk
-# because the drift tokens live at the top of Python modules; the
-# expensive full-file read that previously blew the 2 s budget on
-# external volumes is replaced with at most a single chunk read per
-# file. ``os.path.getsize`` is dropped because the additional stat
-# syscall was the dominant cost on cold cache -- the read itself
-# is bounded by ``_MAX_FILE_BYTES`` as before.
-for path in unique_paths:
-    try:
-        matched = False
-        with open(path, "rb") as handle:
-            offset = 0
-            while offset < _MAX_FILE_BYTES:
-                chunk = handle.read(_PROBE_BYTES)
-                if not chunk:
-                    break
-                offset += len(chunk)
-                if pattern.search(chunk) is not None:
-                    matched = True
-                    break
-    except OSError as exc:
-        sys.stderr.write("cannot read {0}: {1}\n".format(path, exc))
-        sys.exit(2)
-    if matched:
-        matched_paths.append(path)
-
-for path in sorted(matched_paths):
-    sys.stdout.write(path + "\n")
-matched = bool(matched_paths)
-sys.exit(0 if matched else 1)
-' "$DRIFT_PATTERNS" \
-    >"$GREP_DIR/scan.out" 2>"$GREP_DIR/scan.err" &
+# Scan the tracked set with ``git grep -lIE`` (uses the git index --
+# ~0.5-0.9 s cold cache on this tree) and the untracked set with
+# ``git grep --no-index`` on the small untracked file list (~0.05 s
+# in practice because ``git ls-files --others`` returns zero or
+# a handful of paths). Combining the two keeps the budget inside
+# 2 s while still catching synthetic probe files dropped by the
+# drift-check self-tests (e.g. ``ralph/_drift_probe_*.py``).
+# DA-001 / DA-007 (wt-028-display): the previous Python harness
+# also scanned both tracked and untracked files; the ``--no-index``
+# half keeps that contract without falling back to the slow
+# working-tree-wide scan the early ``git grep -lIE --no-index
+# -- ralph tests docs`` shape would force.
+TRACKED_OUT="$GREP_DIR/scan_tracked.out"
+UNTRACKED_FILES="$GREP_DIR/untracked.list"
+UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
+: >"$GREP_DIR/scan.err"
+# Enumerate untracked files concurrently with the tracked grep -- both
+# sit on the same cold-cache wait, the untracked walk dominates its own
+# ``git ls-files --others`` time without blocking the index scan.
+git ls-files --others --exclude-standard -z -- ralph tests docs \
+    | tr '\0' '\n' \
+    > "$UNTRACKED_FILES" &
+LS_PID="$!"
+LS_PGID="$(ps -o pgid= -p "$LS_PID" | tr -d ' ')"
+(
+    # Enumerate tracked files in the working tree. The call lives
+    # inside the backgrounded subshell so a git failure (rc != 0)
+    # is captured by ``wait`` rather than tripping ``set -e`` and
+    # aborting the script with the raw exit code (e.g. 127 from a
+    # stub git on PATH). The drift gate then maps any non-trivial
+    # git failure to the script's canonical rc=2 error envelope.
+    git ls-files -z -- ralph tests docs \
+        | tr '\0' '\n' \
+        > "$TRACKED_OUT"
+    git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- ralph tests docs \
+        2>>"$GREP_DIR/scan.err" \
+        > "$TRACKED_OUT"
+    if [ -s "$UNTRACKED_FILES" ]; then
+        # --no-index tells git grep to ignore the index and search
+        # the working tree, so it picks up files the index scan
+        # above did not see. ``--`` terminates the option list so
+        # a path beginning with ``-`` cannot be misinterpreted as
+        # an option.
+        git grep -lIE --no-index --threads 8 "$DRIFT_PATTERNS" \
+            -- $(cat "$UNTRACKED_FILES") \
+            2>>"$GREP_DIR/scan.err" \
+            >> "$TRACKED_OUT"
+    fi
+    sort -u "$TRACKED_OUT" > "$GREP_DIR/scan.out"
+) &
 SCAN_PID="$!"
+SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" | tr -d ' ')"
 (
     sleep "$GREP_TIMEOUT_SECONDS"
     : >"$GREP_DIR/timed_out"
-    kill "$SCAN_PID" 2>/dev/null || true
+    # SIGKILL the scan subshell AND the untracked-file walk so a
+    # busy-loop ``git`` child (the DA-001 stall injection in
+    # ``tests/display/test_single_mode_anti_drift.py::test_drift_check_times_out_when_search_stalls``)
+    # cannot block the watchdog on a non-responsive child. A regular
+    # SIGTERM lets a busy loop keep the subshell alive, which then
+    # hangs ``wait "$SCAN_PID"`` past the watchdog bound; SIGKILL
+    # terminates bash immediately and ``wait`` unblocks with the
+    # kill status. The child ``git`` processes are reparented to
+    # init when bash dies; the kernel reaps them on its own. The
+    # trailing ``|| true`` swallows ESRCH when the subshell already
+    # exited. Both background jobs must be killed: the scan subshell
+    # owns the busy-loop ``git ls-files`` and the untracked walk
+    # owns its own ``git ls-files --others``; leaving either running
+    # lets bash wait on it at script exit.
+    #
+    # We kill the *process group* (``kill -KILL -$PGID``), not the
+    # bash subshell PID alone. With ``set -o monitor`` the subshells
+    # are process-group leaders; killing the group reaps every
+    # orphan ``git`` child the script forked, which is what lets
+    # bash exit promptly instead of waiting on the orphaned busy
+    # loops at script teardown.
+    kill -KILL -"$SCAN_PGID" 2>/dev/null || true
+    kill -KILL -"$LS_PGID" 2>/dev/null || true
+    # The leading PID kill is kept as a belt-and-braces fallback in
+    # case the PGID lookup raced and the PGID points at a stale
+    # group that has already been reaped. The negative-PID kill
+    # always fires first so the trailing ``kill $PID`` is a no-op
+    # in the normal case.
+    kill -KILL "$SCAN_PID" 2>/dev/null || true
+    kill -KILL "$LS_PID" 2>/dev/null || true
 ) &
 WATCHDOG_PID="$!"
 set +e
 wait "$SCAN_PID"
 GREP_RC="$?"
 set -e
-kill "$WATCHDOG_PID" 2>/dev/null || true
+kill -9 "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
 
 if [ -e "$GREP_DIR/timed_out" ]; then
     echo "FAIL: drift scan exceeded ${GREP_TIMEOUT_SECONDS}s and was stopped" >&2
     echo "Fix the slow scan; do not raise the gate timeout. Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Bounded." >&2
+    # Detach any remaining background jobs so bash does not block
+    # in its implicit wait-for-jobs at script exit. The watchdog
+    # already SIGKILLed the scan subshell; any stray ``git``
+    # orphans are reparented to init and reaped by the kernel,
+    # but bash's job table still tracks them, and the implicit
+    # exit wait would otherwise hold the script open past the
+    # test's 3-second timeout.
+    disown -a 2>/dev/null || true
     exit 124
 fi
 
@@ -219,7 +229,6 @@ elif [ "$GREP_RC" -eq 1 ]; then
 elif [ "$GREP_RC" -ne 0 ]; then
     GREP_RC=2
 fi
-DRIFT_HITS="$(cat "$GREP_DIR/scan.out")"
 
 if [ "$GREP_RC" -eq 2 ]; then
     echo "FAIL: bad path or permission in upstream grep" >&2
@@ -227,6 +236,14 @@ if [ "$GREP_RC" -eq 2 ]; then
     echo "" >&2
     echo "Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements (fail-closed)." >&2
     exit 2
+fi
+
+# ``set -e`` exits the script on a failed ``cat`` of a non-existent
+# scan.out, so read the file with a guarded empty fallback. A
+# non-existent scan.out means the scan produced no output (no drift).
+DRIFT_HITS=""
+if [ -s "$GREP_DIR/scan.out" ]; then
+    DRIFT_HITS="$(cat "$GREP_DIR/scan.out")"
 fi
 
 # Apply the explicit allowlist, then the historical-context allowlist.

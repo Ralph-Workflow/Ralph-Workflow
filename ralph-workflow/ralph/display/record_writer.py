@@ -38,7 +38,19 @@ from typing import Final
 #: while still buffering enough entries to amortise the file flush.
 #: The bound is enforced by ``collections.deque(maxlen=...)`` per
 #: ``audit_resource_lifecycle`` so the accumulator is fail-closed.
+#: DA-003 (wt-028-display): a chatty long-running run may produce
+#: more than ``_DEFAULT_BUFFER_CAP`` entries between two explicit
+#: ``flush()`` calls; ``append()`` flushes eagerly when the buffer
+#: reaches ``_BUFFER_FLUSH_THRESHOLD`` so the ``deque`` never
+#: silently evicts an accepted entry.
 _DEFAULT_BUFFER_CAP: Final[int] = 512
+
+#: Threshold for the eager-flush guard in ``append()``. Fires when
+#: the buffer has this many entries waiting, leaving room for a few
+#: more before the deque evicts its oldest item. The gap between
+#: ``_BUFFER_FLUSH_THRESHOLD`` and ``_DEFAULT_BUFFER_CAP`` is small
+#: so the flush overhead stays amortised into normal file-write cost.
+_BUFFER_FLUSH_THRESHOLD: Final[int] = 480
 
 #: Length of the ``hh:mm:ss`` timestamp portion extracted from an
 #: ISO-8601 timestamp. Eight characters: hh, ``:``, mm, ``:``, ss.
@@ -344,13 +356,59 @@ class RenderedRecordWriter:
         """Return the number of buffered lines not yet flushed to disk."""
         return len(self._buffer)
 
+    @property
+    def buffer_capacity(self) -> int:
+        """Return the maximum number of entries the in-memory buffer can hold.
+
+        DA-003 (wt-028-display): the in-memory ``deque`` lives behind
+        a private ``_DEFAULT_BUFFER_CAP`` constant; tests and
+        out-of-process consumers need a stable public name to size
+        their stress probes (the regression case in
+        ``tests/display/test_record_writer.py`` exercises
+        ``cap + 1`` events to prove the eager-flush guard fires
+        before the deque silently evicts an accepted entry).
+        Returning the deque's own ``maxlen`` keeps the public
+        property in lock-step with the actual buffer; the value
+        is the same integer ``_DEFAULT_BUFFER_CAP`` would return.
+        ``deque.maxlen`` is typed as ``int | None`` for unbounded
+        deques; the writer constructs its deque with a finite cap
+        (see ``__init__``), so the ``or _DEFAULT_BUFFER_CAP``
+        fallback is unreachable in production but the type system
+        needs a concrete ``int`` return path -- the fallback
+        returns the canonical cap so the contract is never
+        silently violated if a future change ever relaxes the
+        deque bound.
+        """
+        # bounded-accumulator-ok: deque(maxlen=_DEFAULT_BUFFER_CAP) per
+        # audit_resource_lifecycle; ``maxlen`` is the source of truth.
+        return self._buffer.maxlen or _DEFAULT_BUFFER_CAP
+
     def append(self, entry: object) -> None:
-        """Format ``entry`` and buffer the resulting line."""
+        """Format ``entry`` and buffer the resulting line.
+
+        DA-003 (wt-028-display): flush eagerly when the buffered
+        count reaches ``_BUFFER_FLUSH_THRESHOLD`` so the underlying
+        ``deque(maxlen=_DEFAULT_BUFFER_CAP)`` never silently evicts
+        an accepted entry on a chatty long-running run. The eager
+        flush reuses ``flush()`` -- which holds ``_lock`` only for
+        the buffer swap and not for the file write -- so concurrent
+        ``append()`` callers from other threads do not block on
+        disk I/O. The lock is acquired once to add the line and
+        decide whether to flush; the threshold check itself runs
+        under the lock so a burst of concurrent ``append()`` calls
+        cannot collectively push the buffer past ``_DEFAULT_BUFFER_CAP``
+        between the check and the flush.
+        """
         if self._disabled:
             return
         line = _format_entry_line(entry)
+        should_flush = False
         with self._lock:
             self._buffer.append(line)
+            if len(self._buffer) >= _BUFFER_FLUSH_THRESHOLD:
+                should_flush = True
+        if should_flush:
+            self.flush()
 
     def extend(self, entries: Iterable[object]) -> None:
         """Buffer every entry in ``entries`` in order."""

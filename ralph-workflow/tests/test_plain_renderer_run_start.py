@@ -175,3 +175,83 @@ def test_emit_run_start_prompt_workspace_grouped_on_one_line() -> None:
     prompt_line = next((ln for ln in run_start_lines if "prompt=" in ln), None)
     assert prompt_line is not None, "expected a line with prompt= in default mode"
     assert "workspace=" in prompt_line, "workspace= must be on the same line as prompt="
+
+
+def _make_height_constrained_display(
+    *, height: int
+) -> tuple[ParallelDisplay, StringIO]:
+    """Build a ParallelDisplay whose Console reports the requested ``height``.
+
+    The Console is constructed with ``height=...`` so
+    :meth:`DisplayContext.is_height_constrained` returns
+    ``True`` at-or-below the canonical 12-row floor (the
+    documented accessibility path for large-text / magnified /
+    braille displays).
+    """
+    buf = StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=False,
+        highlight=False,
+        color_system=None,
+        width=200,
+        height=height,
+    )
+    return ParallelDisplay(make_display_context(console=console, env={})), buf
+
+
+def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
+    """DA-005: at the canonical 12-row floor the run-start section rule is suppressed.
+
+    The visual chrome (blank section rule + glyph banner) compresses
+    before any information is dropped. The orientation rows stay
+    visible, condensed into a single unboxed headed block, so the
+    same information reaches the operator on a 12-row split pane.
+    """
+    pd, buf = _make_height_constrained_display(height=12)
+    pd.emit_run_start(
+        _orientation(
+            prompt_path="PROMPT.md",
+            workspace_root="/workspace",
+            plan_present=True,
+            verbosity="verbose",
+            legend_enabled=True,
+        )
+    )
+    out = buf.getvalue()
+    # The section rule line is the canonical visual chrome and must
+    # be suppressed on the height-constrained surface; the rule
+    # itself is the blank line + rule glyph block emitted by
+    # ``_emit_section_rule``.
+    assert "─── [run-start]" not in out, (
+        f"section rule must be suppressed at 12 rows (the floor):\n{out!r}"
+    )
+    # The information is preserved: the milestone header line
+    # still carries the run-start banner title; the condensed
+    # orientation body still surfaces every key=value field.
+    assert "Ralph Workflow run start" in out, (
+        f"banner title missing at 12 rows:\n{out!r}"
+    )
+    assert "prompt=PROMPT.md" in out
+    assert "workspace=/workspace" in out
+    assert "plan=ready" in out
+    assert "verbosity=verbose" in out
+    # The legend line is also part of the visual chrome and must
+    # be suppressed on the height-constrained surface.
+    assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" not in out, (
+        f"legend line must be suppressed at 12 rows:\n{out!r}"
+    )
+
+
+def test_emit_run_start_keeps_section_rule_at_24_rows() -> None:
+    """DA-005: at height=24 the section rule is preserved (default layout)."""
+    pd, buf = _make_height_constrained_display(height=24)
+    pd.emit_run_start(_orientation(legend_enabled=True))
+    out = buf.getvalue()
+    # The default-mode visual hierarchy keeps the section rule.
+    assert "─── [run-start]" in out, (
+        f"section rule must survive at 24 rows (default layout):\n{out!r}"
+    )
+    assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" in out, (
+        f"legend line must survive at 24 rows:\n{out!r}"
+    )

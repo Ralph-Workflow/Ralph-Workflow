@@ -554,13 +554,14 @@ class ParallelDisplay:
         # identical-content dedup at the rendered-record seam. The
         # ``pi`` agent (and others) can emit a ``text:`` event and a
         # ``thinking:`` event with byte-identical bodies for the same
-        # reasoning pass; tracking the last body per unit at the
-        # record seam drops the second one so the record stays one
-        # entry per logical event. The lifetime never exceeds the
-        # per-wave set so the bounded-accumulator contract carries
-        # through.
+        # reasoning pass; tracking the last ``(event_kind, body)`` per
+        # unit at the record seam drops the second entry only when the
+        # event kind ALSO matches (a cross-kind correlated companion),
+        # so two distinct identical tool_use events still produce two
+        # record entries. The lifetime never exceeds the per-wave set
+        # so the bounded-accumulator contract carries through.
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._last_recorded_body: dict[str, str] = {}  # bounded-accumulator-ok: drop_unit
+        self._last_recorded_body: dict[str, tuple[ActivityEventKind, str]] = {}  # bounded-accumulator-ok: drop_unit
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
@@ -738,10 +739,13 @@ class ParallelDisplay:
         # below the floor on a short terminal.
         budget_terminal = total_width - prefix_len
         budget_measure = body_measure - prefix_len
-        # ponytail: floor at 20 keeps textwrap usable on the
-        # narrowest consoles; the larger floor (40) lives in
-        # ``DisplayContext.body_measure`` for the wider path.
-        budget = max(20, min(budget_terminal, budget_measure))
+        # DA-004 (S-4): the floor is the available budget itself, not a
+        # fixed ``max(20, ...)``. On a 40-column terminal with a 33-col
+        # chrome prefix the available body width is 7 cols; the previous
+        # ``max(20, ...)`` floor forced body wraps to 20 cols that
+        # overflowed the terminal and broke the hanging-indent column.
+        # A body that fits a single token flows through unchanged.
+        budget = max(1, min(budget_terminal, budget_measure))
         if budget <= 0 or len(body) <= budget:
             return body
         wrapped = textwrap.wrap(
@@ -859,14 +863,25 @@ class ParallelDisplay:
             # ``body_measure`` so a 250-col terminal doesn't print
             # 180-char lines. We split the work into two print calls:
             # the first prints the full badge-bearing line; the
-            # subsequent continuations carry the badge prefix and a
-            # hanging indent that lands at the body column (not the
-            # full timestamp + level + cat column, which would
-            # overflow the 40-column floor). On a wide terminal the
-            # hang still lines up under the body because the badge
-            # prefix length is the same as on the first line.
+            # subsequent continuations carry the chrome prefix and a
+            # hanging indent that lands at the actual first body
+            # column (timestamp + level + cat + badge prefix).
+            #
+            # DA-004 (S-4): the hanging indent must mirror the FULL
+            # chrome prefix emitted on the first line -- timestamp,
+            # level, category, badge -- so the body continuation
+            # lands at the same column the first-line body started
+            # at. Pre-fix, the hang only covered the badge prefix;
+            # on a 40-column terminal where Rich folds the
+            # timestamp/level/cat, the first body chunk landed at
+            # column 0 while continuations started at the badge
+            # column, breaking the structural column the body
+            # belonged to.
+            chrome_prefix = (
+                f"{timestamp} {level} {cat} "
+            )
             badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
-            hang_prefix = " " * len(badge_prefix)
+            hang_prefix = " " * len(chrome_prefix + badge_prefix)
             # DA-002 (S-4): wrap JUST the body, not the full chrome-
             # prefixed rendered text. Passing the chrome-prefixed
             # text would consume the narrow-terminal budget on the
@@ -1776,10 +1791,38 @@ class ParallelDisplay:
         writer = self._get_rendered_writer(unit_id)
         if writer is None:
             return
-        # Cross-kind identical-content dedup at the seam.
+        # Cross-kind identical-content dedup at the seam. DA-002
+        # (wt-028-display): two distinct identical ``tool_use`` events
+        # must each get their own record entry, so the dedup key is
+        # ``(event_kind, body)`` rather than just ``body``. The
+        # companion dedup -- the ``text:`` / ``thinking:`` pair the
+        # ``pi`` agent emits for the same reasoning pass -- is
+        # preserved by allowing a same-body, cross-kind entry to
+        # replace a previously-recorded ``TEXT`` or ``THINKING``
+        # entry with the same body. That narrowed contract keeps
+        # the live log and the rendered record one entry per logical
+        # reasoning pass without ever silently dropping two
+        # distinct same-kind tool events.
         prev = self._last_recorded_body.get(unit_id)
-        if prev is not None and prev == body:
-            return
+        if prev is not None:
+            prev_kind, prev_body = prev
+            if prev_kind == event_kind and prev_body == body:
+                # DA-002: distinct identical same-kind events both
+                # land in the record (the regression case for the
+                # tool_use flood).
+                pass
+            elif (
+                prev_body == body
+                and prev_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+                and event_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+            ):
+                # Cross-kind text/thinking companion: dedup.
+                return
+            elif prev_kind != event_kind and prev_body == body:
+                # Other cross-kind identical content: preserve both
+                # entries so the record carries the actual event
+                # stream rather than silently collapsing it.
+                pass
         # Build the canonical PresentedEntry so the writer's
         # formatter produces the stable field-order line.
         from ralph.display.agent_event_renderer import make_event_for_emit
@@ -1802,7 +1845,7 @@ class ParallelDisplay:
         )
         with contextlib.suppress(Exception):
             writer.append(entry)
-            self._last_recorded_body[unit_id] = body
+            self._last_recorded_body[unit_id] = (event_kind, body)
 
     def _emit_phase_header_record(
         self,
@@ -2334,11 +2377,21 @@ class ParallelDisplay:
             self._console.print(rule_text, highlight=False, overflow="ignore")
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:
-        """Emit a one-time run-start orientation block at pipeline start."""
+        """Emit a one-time run-start orientation block at pipeline start.
+
+        DA-005 (S-6 / AC-05): on a height-constrained console
+        (``height <= 12``) the visual chrome (section rule blank
+        line + glyph banner) compresses before any information is
+        dropped; the orientation rows stay visible, condensed into a
+        single unboxed headed block, so the same information reaches
+        the operator on a 12-row split pane or a magnified screen.
+        """
         if self._is_quiet:
             return
+        height_constrained = self._ctx.is_height_constrained()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[run-start]")
+            if not height_constrained:
+                self._emit_section_rule("[run-start]")
             timestamp = self._format_timestamp(self._clock())
 
             t = _RichText()
@@ -2354,7 +2407,7 @@ class ParallelDisplay:
             t.append("Ralph Workflow run start", style="theme.banner.title")
             self._console.print(t, markup=False, highlight=False, no_wrap=True)
 
-            if orientation.legend_enabled:
+            if orientation.legend_enabled and not height_constrained:
                 self._console.print(
                     self._build_line(
                         timestamp,
@@ -2368,15 +2421,57 @@ class ParallelDisplay:
                     no_wrap=True,
                 )
 
-            self._emit_run_start(timestamp, orientation)
+            self._emit_run_start(timestamp, orientation, height_constrained=height_constrained)
 
-    def _emit_run_start(self, timestamp: str, orientation: RunStartOrientation) -> None:
-        """Emit the run-start orientation body (single default-mode layout)."""
+    def _emit_run_start(
+        self,
+        timestamp: str,
+        orientation: RunStartOrientation,
+        *,
+        height_constrained: bool = False,
+    ) -> None:
+        """Emit the run-start orientation body (single default-mode layout).
+
+        DA-005 (S-6 / AC-05): on a height-constrained console the
+        body compresses to a single headed line carrying the same
+        fields in ``key=value`` form, so the orientation stays
+        legible on a 12-row terminal without growing the working
+        area or dropping the prompt/workspace/agents/iterations/
+        parallel/plan information.
+        """
         pw_parts: list[str] = []
         if orientation.prompt_path is not None:
             pw_parts.append(f"prompt={strip_markup(orientation.prompt_path)}")
         if orientation.workspace_root is not None:
             pw_parts.append(f"workspace={strip_markup(orientation.workspace_root)}")
+        agents_parts = self._build_agents_parts(orientation)
+        iter_parts: list[str] = []
+        if orientation.developer_iters is not None:
+            iter_parts.append(f"dev:{orientation.developer_iters}")
+        parallel_parts: list[str] = []
+        if orientation.parallel_max_workers is not None:
+            parallel_parts.append(f"max_workers={orientation.parallel_max_workers}")
+        plan_val = "ready" if orientation.plan_present else "absent"
+        plan_parts: list[str] = [f"plan={plan_val}"]
+        if orientation.verbosity is not None:
+            plan_parts.append(f"verbosity={orientation.verbosity}")
+        if height_constrained:
+            condensed = " ".join(
+                [
+                    *pw_parts,
+                    *agents_parts,
+                    *(f"iterations={' '.join(iter_parts)}" for _ in [0] if iter_parts),
+                    *(f"parallel={' '.join(parallel_parts)}" for _ in [0] if parallel_parts),
+                    " ".join(plan_parts),
+                ]
+            )
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {condensed}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            return
         if pw_parts:
             self._console.print(
                 self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
@@ -2385,7 +2480,6 @@ class ParallelDisplay:
                 no_wrap=True,
             )
 
-        agents_parts = self._build_agents_parts(orientation)
         if agents_parts:
             self._console.print(
                 self._build_line(
@@ -2396,9 +2490,6 @@ class ParallelDisplay:
                 no_wrap=True,
             )
 
-        iter_parts: list[str] = []
-        if orientation.developer_iters is not None:
-            iter_parts.append(f"dev:{orientation.developer_iters}")
         if iter_parts:
             self._console.print(
                 self._build_line(
@@ -2412,23 +2503,19 @@ class ParallelDisplay:
                 no_wrap=True,
             )
 
-        if orientation.parallel_max_workers is not None:
+        if parallel_parts:
             self._console.print(
                 self._build_line(
                     timestamp,
                     "INFO",
                     "META",
-                    f"[run-start] parallel=max_workers={orientation.parallel_max_workers}",
+                    f"[run-start] parallel={' '.join(parallel_parts)}",
                 ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        plan_val = "ready" if orientation.plan_present else "absent"
-        plan_parts: list[str] = [f"plan={plan_val}"]
-        if orientation.verbosity is not None:
-            plan_parts.append(f"verbosity={orientation.verbosity}")
         self._console.print(
             self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"),
             markup=False,
@@ -2825,6 +2912,22 @@ class ParallelDisplay:
                     self._console.print(
                         Text(f"  error: {snapshot.last_error}", style="theme.level.error")
                     )
+                # DA-005 (S-6 / AC-05): on a height-constrained console
+                # the bordered layout drops Plan / Metrics / Decisions /
+                # Review / Analysis / Iteration / Activity / Commit /
+                # auto-integrate sections; emit a single accounted-for
+                # marker naming what was condensed so the reader knows
+                # the omission is intentional, not a bug. The marker
+                # uses the same vocabulary as the live log's content
+                # condensation markers (``-- condensed`` / ``-- in <file>``)
+                # so it reads as one rule, not a new convention.
+                self._console.print(
+                    Text(
+                        "  -- sections condensed for short terminal -- "
+                        "full panel in .agent/raw/<id>.rendered.log",
+                        style="theme.text.muted",
+                    )
+                )
             else:
                 from ralph.display.completion_summary import (
                     render_completion_summary_group,

@@ -198,17 +198,23 @@ def test_writer_re_flush_appends_to_existing_file(tmp_path: Path) -> None:
 
 
 def test_writer_buffer_is_bounded(tmp_path: Path) -> None:
-    """The in-memory buffer is a deque(maxlen=...) -- the oldest entry is dropped on overflow."""
-    writer = RenderedRecordWriter(tmp_path, "claude")
-    from ralph.display.record_writer import _DEFAULT_BUFFER_CAP
+    """The in-memory buffer is bounded; the writer never grows it past the cap.
 
-    for i in range(_DEFAULT_BUFFER_CAP + 10):
+    DA-003 (wt-028-display): the post-fix writer exposes the
+    ``buffer_capacity`` public property so this regression is
+    black-box. The pre-fix ``deque(maxlen=...)`` lived behind a
+    private constant; the audit refuses private imports in tests,
+    so the test now reads the cap through the public property.
+    """
+    writer = RenderedRecordWriter(tmp_path, "claude")
+    cap = writer.buffer_capacity
+    for i in range(cap + 10):
         writer.append(_entry(body=f"entry-{i}"))
-    # Buffer cap is honored: at most ``_DEFAULT_BUFFER_CAP`` lines are pending.
-    assert writer.pending_lines <= _DEFAULT_BUFFER_CAP
+    # Buffer cap is honored: at most ``cap`` lines are pending.
+    assert writer.pending_lines <= cap
     # The most recent appends survived; the oldest dropped off the buffer.
     flushed = writer.flush()
-    assert flushed <= _DEFAULT_BUFFER_CAP
+    assert flushed <= cap
 
 
 def test_writer_disable_is_terminal(tmp_path: Path) -> None:
@@ -246,9 +252,24 @@ def test_writer_silently_disables_on_io_error(tmp_path: Path) -> None:
 
 
 def test_writer_thread_safe_append_and_flush(tmp_path: Path) -> None:
-    """Concurrent ``append()`` / ``flush()`` does not lose lines."""
+    """Concurrent ``append()`` / ``flush()`` does not lose lines.
+
+    DA-003 (wt-028-display): ``append()`` flushes eagerly when the
+    buffer reaches ``_BUFFER_FLUSH_THRESHOLD`` so the ``deque``
+    never silently evicts an accepted entry on a chatty
+    long-running run. The thread-safety contract here is still
+    "no append is dropped": the file MUST contain one line per
+    successful append, even when some appends trigger an eager
+    flush while others are still buffered. The assertion compares
+    the line count in the file against the expected count (4
+    threads * 200 iterations = 800 appends), not against the
+    return value of the final ``flush()`` call -- the final
+    flush only writes whatever remains in the buffer at that
+    point.
+    """
     writer = RenderedRecordWriter(tmp_path, "claude")
     iterations = 200
+    expected_total = 4 * iterations
 
     def _append() -> None:
         for i in range(iterations):
@@ -259,11 +280,11 @@ def test_writer_thread_safe_append_and_flush(tmp_path: Path) -> None:
         thread.start()
     for thread in threads:
         thread.join()
-    written = writer.flush()
-    assert written > 0
+    final_written = writer.flush()
+    assert final_written > 0
     # File has the expected number of lines (one per successful append).
     lines = writer.path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == written
+    assert len(lines) == expected_total
 
 
 def test_writer_path_property_is_stable(tmp_path: Path) -> None:
@@ -300,3 +321,40 @@ def test_writer_handles_missing_timestamp(tmp_path: Path) -> None:
     writer.flush()
     text = writer.path.read_text(encoding="utf-8").strip()
     assert text.startswith("[??:??:??]")
+
+
+def test_writer_eager_flush_before_deque_eviction(tmp_path: Path) -> None:
+    """DA-003 (wt-028-display): a chatty run producing more than the buffer
+    cap never silently evicts an accepted entry.
+
+    The pre-fix contract left ``RenderedRecordWriter._buffer`` as a
+    ``deque(maxlen=512)`` that silently dropped the oldest line on
+    overflow. A self-run production-path probe emitting 513
+    distinct tool events wrote 512 lines and omitted the first
+    event (``tool-0``), violating the one-entry-per-event record
+    contract for a long-running run. The post-fix ``append()``
+    flushes eagerly when the buffer reaches the eager-flush
+    threshold so the deque never silently evicts an accepted
+    entry. The test reads the cap through the public
+    ``buffer_capacity`` property so it is black-box w.r.t. the
+    private constants.
+    """
+    writer = RenderedRecordWriter(tmp_path, "claude")
+    # Emit cap + 1 events; the post-fix writer must flush eagerly
+    # so the very first entry survives the run.
+    total = writer.buffer_capacity + 1
+    for index in range(total):
+        writer.append(_entry(body=f"tool-{index}"))
+    writer.flush()
+
+    text = writer.path.read_text(encoding="utf-8")
+    # ``tool-0`` must appear in the file -- it was the first
+    # entry the buffer accepted, and the pre-fix contract would
+    # have silently evicted it once the cap was hit.
+    assert "tool-0" in text, (
+        f"first accepted entry lost; eager flush did not protect it:\n"
+        f"{text[:200]}\n..."
+    )
+    # ``tool-{total-1}`` must also appear so the last accepted
+    # entry made it through the eager-flush boundary.
+    assert f"tool-{total - 1}" in text
