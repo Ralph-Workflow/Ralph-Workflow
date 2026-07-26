@@ -175,10 +175,43 @@ _PI_PASSTHROUGH_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
         "queue_update",
         "compaction_start",
         "compaction_end",
-        "auto_retry_start",
-        "auto_retry_end",
     }
 )
+
+
+#: ``message.stopReason`` value pi sets when the model turn failed
+#: outright (provider unreachable, model rejected, transport error).
+#: On this path ``message.content`` is EMPTY and the human-readable
+#: cause lives in ``message.errorMessage`` -- so the content walk in
+#: :meth:`_PiDispatch._emit_message_content` yields nothing and the
+#: failure is invisible unless ``errorMessage`` is surfaced
+#: explicitly.  Distinct from ``"length"`` (context exhaustion),
+#: which :meth:`_PiDispatch._handle_done` already handles.
+_PI_ERROR_STOP_REASON = "error"
+
+
+def _message_failure_text(message: object) -> str:
+    """Return the human-readable cause of a failed pi model turn.
+
+    Returns ``""`` unless ``message`` is a dict whose ``stopReason``
+    is :data:`_PI_ERROR_STOP_REASON`.  When the stop reason marks a
+    failure but ``errorMessage`` is missing or blank, a generic
+    fallback is returned so the failure still surfaces as an error
+    line rather than being silently dropped -- an unexplained
+    failure is still a failure.
+    """
+    if not isinstance(message, dict):
+        return ""
+    message_dict = cast("dict[str, object]", message)
+    stop_reason = message_dict.get("stopReason")
+    if not isinstance(stop_reason, str):
+        return ""
+    if stop_reason.casefold() != _PI_ERROR_STOP_REASON:
+        return ""
+    error_message = message_dict.get("errorMessage")
+    if isinstance(error_message, str) and error_message.strip():
+        return error_message
+    return "model turn failed (stopReason=error)"
 
 
 _PI_STOP_EVENTS: frozenset[str] = frozenset({"agent_end", "turn_end"})
@@ -221,6 +254,8 @@ class _PiDispatch:
             "tool_execution_update": self._handle_tool_execution_update,
             "tool_execution_end": self._handle_tool_execution_end,
             "extension_error": self._handle_extension_error,
+            "auto_retry_start": self._handle_auto_retry_start,
+            "auto_retry_end": self._handle_auto_retry_end,
         }
         for _evt in _PI_PASSTHROUGH_TOP_LEVEL_EVENTS:
             self._top_level_handlers[_evt] = _make_passthrough(_evt)
@@ -286,7 +321,88 @@ class _PiDispatch:
         for key in list(self._owner._accumulators.keys()):
             self._owner._accumulators.pop(key, None)
         yield from self._emit_message_content(obj, stripped)
+        # A failed turn carries an EMPTY ``content`` array, so the walk
+        # above yields nothing and the cause would be lost.  Surface it
+        # here -- ``message_end`` is the authoritative terminal snapshot
+        # for the message, so this fires exactly once per failed turn.
+        # ``turn_end`` / ``agent_end`` carry copies of the SAME message
+        # object and deliberately do NOT re-emit it (see
+        # ``_PI_STOP_EVENTS`` handling in :meth:`dispatch`).
+        failure_text = _message_failure_text(obj.get("message"))
+        if failure_text:
+            yield AgentOutputLine(
+                type="error",
+                content=failure_text,
+                raw=stripped,
+                metadata=obj,
+            )
         self._owner.reset_emission_flags()
+
+    def _handle_auto_retry_start(
+        self,
+        obj: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Announce a retry attempt with an operator-readable body.
+
+        Emitted with a populated ``content`` because a content-free
+        line renders as a bodiless ``WARN`` banner downstream, which
+        tells the operator nothing about why the retry happened.
+        This stays a non-``error`` line: pi is still inside its own
+        bounded retry ladder and may yet succeed; only the exhausted
+        ladder (``auto_retry_end`` with ``success=false``) is terminal.
+        """
+        attempt = obj.get("attempt")
+        max_attempts = obj.get("maxAttempts")
+        error_message = obj.get("errorMessage")
+        parts: list[str] = []
+        if isinstance(attempt, int) and isinstance(max_attempts, int):
+            parts.append(f"retry {attempt}/{max_attempts}")
+        elif isinstance(attempt, int):
+            parts.append(f"retry {attempt}")
+        else:
+            parts.append("retry")
+        delay_ms = obj.get("delayMs")
+        if isinstance(delay_ms, int) and not isinstance(delay_ms, bool):
+            parts.append(f"after {delay_ms}ms")
+        if isinstance(error_message, str) and error_message.strip():
+            parts.append(f"- {error_message}")
+        yield AgentOutputLine(
+            type="auto_retry_start",
+            content=" ".join(parts),
+            raw=stripped,
+            metadata=obj,
+        )
+
+    def _handle_auto_retry_end(
+        self,
+        obj: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Close the retry ladder; an exhausted ladder is a hard error.
+
+        ``success=false`` means pi gave up after ``maxAttempts`` and
+        will exit rc=0 with no useful work done.  That MUST surface as
+        ``type='error'`` carrying ``finalError`` so the completion gate
+        and the failure classifier can see a real cause instead of a
+        generic "no completion evidence" exit.
+        """
+        success = obj.get("success")
+        if success is False:
+            final_error = obj.get("finalError")
+            content = (
+                final_error
+                if isinstance(final_error, str) and final_error.strip()
+                else "agent retries exhausted"
+            )
+            yield AgentOutputLine(
+                type="error",
+                content=content,
+                raw=stripped,
+                metadata=obj,
+            )
+            return
+        yield AgentOutputLine(type="auto_retry_end", raw=stripped, metadata=obj)
 
     def _handle_message_update(
         self,

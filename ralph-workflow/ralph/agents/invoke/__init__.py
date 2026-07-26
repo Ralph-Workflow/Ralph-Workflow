@@ -46,6 +46,7 @@ from ralph.agents.invoke._errors import (
     InteractivePermissionPromptError,
     OpenCodeResumableExitError,
     PiContextExhaustedExitError,
+    PiProviderFailureExitError,
     UnsupportedMcpTransportError,
     _IdleStreamTimeoutError,
 )
@@ -694,6 +695,7 @@ __all__ = [
     "InvokeRuntimeOptions",
     "OpenCodeResumableExitError",
     "PiContextExhaustedExitError",
+    "PiProviderFailureExitError",
     "ProcessReaderCtx",
     "ResolvedInvocationRuntime",
     "UnsupportedMcpTransportError",

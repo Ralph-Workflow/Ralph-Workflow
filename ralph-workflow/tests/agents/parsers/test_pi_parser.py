@@ -1403,3 +1403,194 @@ class TestPiParserFlushAccumulators:
         flushed = list(parser.flush_accumulators())
         text_lines = [r for r in flushed if r.type == "text"]
         assert any(r.content == "buffered" for r in text_lines)
+
+
+class TestPiParserProviderFailure:
+    """A failed model turn must surface as ``type='error'``, not silence.
+
+    When the configured provider/model is unreachable, pi does NOT
+    emit ``extension_error`` or an ``assistantMessageEvent.error``.
+    It reports the failure on the *message* object carried by
+    ``message_end`` / ``turn_end`` / ``agent_end``::
+
+        {"type": "message_end",
+         "message": {"content": [],
+                     "stopReason": "error",
+                     "errorMessage": "Connection error."}}
+
+    and then drives its own bounded retry ladder via
+    ``auto_retry_start`` / ``auto_retry_end`` before exiting rc=0.
+
+    Because ``message.content`` is empty on this path, the
+    ``message_end`` content walk emits nothing, so before this
+    contract the entire failure was invisible downstream: the run
+    produced zero ``type='error'`` lines and the completion gate saw
+    only a generic "no completion evidence" exit, which it retried
+    indefinitely.
+
+    The single rule: ``stopReason == 'error'`` surfaces the
+    ``errorMessage`` exactly once per failed message (at
+    ``message_end``, the authoritative terminal snapshot), and the
+    exhausted retry ladder surfaces ``finalError`` at
+    ``auto_retry_end``.  ``turn_end`` / ``agent_end`` carry copies of
+    the SAME message object and MUST NOT re-emit it.
+    """
+
+    def test_message_end_error_stop_reason_yields_error_line(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [],
+                    "provider": "codex-pooler",
+                    "model": "gpt-5.6-terra",
+                    "stopReason": "error",
+                    "errorMessage": "Connection error.",
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        errors = [r for r in results if r.type == "error"]
+        assert len(errors) == 1
+        assert "Connection error." in errors[0].content
+
+    def test_message_end_without_error_stop_reason_yields_no_error(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "all good"}],
+                    "stopReason": "stop",
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        assert not [r for r in results if r.type == "error"]
+
+    def test_turn_end_and_agent_end_do_not_duplicate_message_error(self) -> None:
+        """The same failed message appears on all three terminal events."""
+        failed_message: dict[str, object] = {
+            "role": "assistant",
+            "content": [],
+            "stopReason": "error",
+            "errorMessage": "Connection error.",
+        }
+        parser = PiParser()
+        results = list(
+            parser.parse(
+                _lines(
+                    _line({"type": "message_end", "message": failed_message}),
+                    _line(
+                        {
+                            "type": "turn_end",
+                            "message": failed_message,
+                            "toolResults": [],
+                        }
+                    ),
+                    _line({"type": "agent_end", "messages": [failed_message], "willRetry": True}),
+                )
+            )
+        )
+        errors = [r for r in results if r.type == "error"]
+        assert len(errors) == 1, f"expected exactly one error line, got {errors}"
+        # The terminal lifecycle events still emit their stop lines.
+        assert len([r for r in results if r.type == "stop"]) == 2
+
+    def test_auto_retry_start_carries_human_readable_content(self) -> None:
+        """An empty-content line renders as a bodiless ``WARN`` banner."""
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "auto_retry_start",
+                "attempt": 2,
+                "maxAttempts": 3,
+                "delayMs": 4000,
+                "errorMessage": "Connection error.",
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        retry_lines = [r for r in results if r.type == "auto_retry_start"]
+        assert len(retry_lines) == 1
+        content = retry_lines[0].content
+        assert content, "auto_retry_start must not emit an empty body"
+        assert "2" in content
+        assert "3" in content
+        assert "Connection error." in content
+
+    def test_auto_retry_end_failure_yields_error_line(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "auto_retry_end",
+                "success": False,
+                "attempt": 3,
+                "finalError": "Connection error.",
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        errors = [r for r in results if r.type == "error"]
+        assert len(errors) == 1
+        assert "Connection error." in errors[0].content
+
+    def test_auto_retry_end_success_yields_no_error_line(self) -> None:
+        parser = PiParser()
+        line = _line({"type": "auto_retry_end", "success": True, "attempt": 2})
+        results = list(parser.parse(_lines(line)))
+        assert not [r for r in results if r.type == "error"]
+
+    def test_full_provider_outage_stream_surfaces_error(self) -> None:
+        """End-to-end shape of a real unreachable-provider run."""
+        failed_message: dict[str, object] = {
+            "role": "assistant",
+            "content": [],
+            "stopReason": "error",
+            "errorMessage": "Connection error.",
+        }
+        raw: list[str] = []
+        for attempt in (1, 2, 3):
+            raw.extend(
+                [
+                    _line({"type": "agent_start"}),
+                    _line({"type": "turn_start"}),
+                    _line({"type": "message_start", "message": failed_message}),
+                    _line({"type": "message_end", "message": failed_message}),
+                    _line({"type": "turn_end", "message": failed_message, "toolResults": []}),
+                    _line(
+                        {
+                            "type": "agent_end",
+                            "messages": [failed_message],
+                            "willRetry": attempt < 3,
+                        }
+                    ),
+                ]
+            )
+            if attempt < 3:
+                raw.append(
+                    _line(
+                        {
+                            "type": "auto_retry_start",
+                            "attempt": attempt + 1,
+                            "maxAttempts": 3,
+                            "delayMs": 4000,
+                            "errorMessage": "Connection error.",
+                        }
+                    )
+                )
+        raw.append(
+            _line(
+                {
+                    "type": "auto_retry_end",
+                    "success": False,
+                    "attempt": 3,
+                    "finalError": "Connection error.",
+                }
+            )
+        )
+        results = list(PiParser().parse(_lines(*raw)))
+        errors = [r for r in results if r.type == "error"]
+        assert errors, "a fully failed provider run must not be silent"
+        assert all("Connection error." in r.content for r in errors)

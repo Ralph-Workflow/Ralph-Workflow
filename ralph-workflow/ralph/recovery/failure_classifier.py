@@ -52,6 +52,12 @@ _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
         "Connection timed out",
         "Name or service not known",
         "nodename nor servname provided",
+        # The literal string pi reports in ``message.errorMessage`` /
+        # ``auto_retry_end.finalError`` when its configured provider is
+        # unreachable. Deliberately narrower than a bare "connection":
+        # this matches pi's exact phrasing so an offline provider routes
+        # to connectivity backoff instead of burning the retry budget.
+        "connection error",
     }
 )
 

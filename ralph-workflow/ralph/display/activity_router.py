@@ -120,6 +120,22 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
         "status": ActivityEventKind.STATUS,
         "lifecycle": ActivityEventKind.LIFECYCLE,
         "subagent_progress": ActivityEventKind.SUBAGENT_PROGRESS,
+        # Transport lifecycle / retry-ladder types. Without these
+        # entries they fall through to ``UNKNOWN``, whose renderer
+        # (``agent_event_renderer._render_unknown_event``) paints a
+        # ``WARN`` banner -- and because these lines carry little or no
+        # body, the operator sees a wall of bodiless
+        # "WARN <agent>" lines that hides any real error alongside them.
+        # ``UNKNOWN`` stays reserved for types nobody has classified.
+        "stop": ActivityEventKind.LIFECYCLE,
+        "session": ActivityEventKind.LIFECYCLE,
+        "auto_retry_end": ActivityEventKind.LIFECYCLE,
+        # Forward-compat: not a member of pi's documented 15-event
+        # AgentSessionEvent union, but emitted by real pi builds as the
+        # final line of a run (see ``ralph.agents.parsers.pi``).
+        "agent_settled": ActivityEventKind.LIFECYCLE,
+        # An in-progress retry is live status, not a completed step.
+        "auto_retry_start": ActivityEventKind.STATUS,
     }
     return mapping.get(parser_type, ActivityEventKind.UNKNOWN)
 
