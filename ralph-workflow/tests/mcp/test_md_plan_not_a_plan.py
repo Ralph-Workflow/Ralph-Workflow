@@ -232,14 +232,25 @@ noop: true
 
 
 def test_plan_with_dangling_depends_on_is_a_plan() -> None:
-    """A dangling Depends on is a warning, never a PLAN001 error."""
+    """A dangling Depends on is a warning, never a PLAN001 error.
+
+    The plan is substantive (>100 chars of actual content) so the
+    closed-list length floor does not reject it on its way to the
+    advisory findings.
+    """
     text = """---
 type: plan
 ---
 ## Steps
 
 ### [S-1] First step
+Implements the validating reducer that splits the buffer into headed and
+non-headed sections before emitting a single normalized output structure.
 Depends on: S-99
+
+### [S-2] Second step
+Lints the output structure against the canonical schema and surfaces any
+deviation as a single warning diagnostic that names the line and the rule.
 """
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
     plan001_errors = [
@@ -258,16 +269,24 @@ Depends on: S-99
 
 
 def test_plan_with_dependency_cycle_is_a_plan() -> None:
-    """A dependency cycle is a warning, never a PLAN001 error."""
+    """A dependency cycle is a warning, never a PLAN001 error.
+
+    Substantive (>100 chars of actual content) so the length floor does
+    not reject it on its way to the advisory findings.
+    """
     text = """---
 type: plan
 ---
 ## Steps
 
 ### [S-1] First
+The first step outlines the data flow from the input buffer to the parser
+and captures the headline dependencies for downstream consumers.
 Depends on: S-2
 
 ### [S-2] Second
+The second step captures the schema validation pipeline and documents the
+ordering invariant that downstream readers depend on for cycle detection.
 Depends on: S-1
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
@@ -287,13 +306,20 @@ Depends on: S-1
 
 
 def test_file_change_step_without_files_is_a_plan() -> None:
-    """A missing Files: line is a warning, never a PLAN001 error."""
+    """A missing Files: line is a warning, never a PLAN001 error.
+
+    Substantive (>100 chars of actual content) so the length floor does
+    not reject it on its way to the advisory findings.
+    """
     text = """---
 type: plan
 ---
 ## Steps
 
 ### [S-1] Apply the change
+The apply-the-change step rewrites the central router to call the new
+helper in place of the legacy redirect, while keeping the public route
+table byte-for-byte identical to the previous release.
 Type: file_change
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
@@ -308,15 +334,20 @@ Type: file_change
 
 
 def test_plan_with_malformed_step_id_is_a_plan() -> None:
-    """A malformed step ID is a warning, never a PLAN001 error."""
+    """A malformed step ID is a warning, never a PLAN001 error.
+
+    Substantive (>100 chars of actual content) so the length floor does
+    not reject it on its way to the advisory findings.
+    """
     text = """---
 type: plan
 ---
 ## Steps
 
 ### [STEP-1] Mistyped step
-This heading is intended to be a plan step but uses the wrong prefix.
-
+This heading is intended to be a plan step but uses the wrong prefix,
+which the validator flags as a content-shape warning rather than as a
+blocking plan-rejection diagnostic.
 Type: action
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
@@ -327,6 +358,43 @@ Type: action
         f"malformed step ID should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# (c) Plan-shaped under-100-character error case — the floor must fire even
+#     when a single step block is present, since a truncated response
+#     cannot state an outcome.
+# ---------------------------------------------------------------------------
+
+
+def test_plan_shaped_under_100_chars_emits_plan001_error() -> None:
+    """A plan-shaped document whose body is under 100 chars is not a plan.
+
+    The plan-shape bypass only protects the recognizably-other-text
+    checks; the actual-content 100-character floor fires before the
+    bypass so a truncated response that happens to include a single
+    step block cannot avoid rejection on a shape coincidence.
+    """
+    text = """---
+type: plan
+---
+## Steps
+
+### [S-1] Do
+"""
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    plan001_errors = [
+        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
+    ]
+    assert plan001_errors, (
+        f"expected PLAN001 error for plan-shaped under-100-char text, got: "
+        f"{[(d.rule_id, d.severity) for d in diagnostics]}"
+    )
+    for d in plan001_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"PLAN001 for plan-shaped under-100-char text does not name its "
+            f"consumer: {d.message!r}"
+        )
 
 
 def test_analyze_plan_document_propagates_plan001_error() -> None:

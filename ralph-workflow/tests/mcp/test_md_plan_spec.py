@@ -563,10 +563,11 @@ type: plan
 ---
 ## Steps
 ### [S-1] Implement the change
-Apply the bounded change.
+Apply the bounded change across the validation entry points so the
+existing tests in the regression suite continue to pass after the change.
 
 ## {section}
-- [alpha] Implement alpha
+- [alpha] Implement alpha across the existing endpoints and tests
   Directories: src/alpha
   Depends on: missing
 """
@@ -597,10 +598,11 @@ type: plan
 ---
 ## Steps
 ### [S-1] Implement the change
-Apply the bounded change.
+Apply the bounded change across the validation entry points so the
+existing tests in the regression suite continue to pass after the change.
 
 ## {section}
-- [alpha] Implement alpha
+- [alpha] Implement alpha across the existing endpoints and tests
   Directories:
 """
 
@@ -664,11 +666,13 @@ type: plan
 ---
 ## Alpha Mini Plan
 ### [S-1] Implement alpha
-Alpha work.
+Alpha work across the validation entry points so the existing tests in
+the regression suite continue to pass after the change.
 
 ## Beta Mini Plan
 ### [S-1] Implement beta
-Beta work.
+Beta work across the validation entry points so the existing tests in
+the regression suite continue to pass after the change.
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
@@ -716,10 +720,11 @@ type: plan
 ---
 ## Any Shape
 ### [S-1] Implement the change
-Make the behavior observable.
+Make the behavior observable across the validation entry points so the
+existing tests in the regression suite continue to pass after the change.
 
 ## Acceptance Criteria
-- [AC-01] The code is clean
+- [AC-01] The code is clean across the validation entry points
   Satisfied by: S-1
 """
 

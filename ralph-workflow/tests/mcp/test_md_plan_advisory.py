@@ -252,6 +252,8 @@ type: plan
 ## Steps
 
 ### [S-1] Step one
+Implements the validating reducer that splits the buffer into headed and
+non-headed sections before emitting a single normalized output structure.
 Depends on: S-99
 """
 
@@ -282,19 +284,19 @@ type: nonsense
 ## Steps
 
 ### [S-1] Step
-Body.
+The step body explains what the change is, the existing entry point it
+touches, and the verification approach the analysis phase will use to
+prove the criterion satisfied.
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     errors = [d for d in diagnostics if d.severity == "error"]
 
-    assert content == {}
-    type_errors = [d for d in errors if "type" in d.message.lower()]
-    assert type_errors
-    for d in type_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"frontmatter 'type' error does not name its consumer: {d.message!r}"
-        )
+    assert content != {}
+    assert errors == []
+    type_warnings = [d for d in diagnostics if d.rule_id == "PLAN020"]
+    assert type_warnings
+    assert all(_ADVISORY_COST_RE.search(d.message) for d in type_warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -400,15 +402,12 @@ length grounds and we can exercise the override-on-error contract.
 """
 
     content, diagnostics, overridden = analyze_plan_document(document)
-    spec002_errors = [d for d in diagnostics if d.rule_id == "SPEC002"]
-    plan026_warnings = [d for d in diagnostics if d.rule_id == "PLAN026"]
+    spec002_warnings = [d for d in diagnostics if d.rule_id == "SPEC002"]
 
-    assert len(spec002_errors) == 1
-    assert spec002_errors[0].severity == "error"
-    assert len(plan026_warnings) == 1
-    assert plan026_warnings[0].severity == "warning"
-    assert content == {}  # the routing error still blocks content mapping
-    assert overridden == []  # errors are never overridable
+    assert len(spec002_warnings) == 1
+    assert spec002_warnings[0].severity == "warning"
+    assert content != {}
+    assert overridden == []  # no live matching advisory was requested
 
 
 def test_override_with_section_label_narrows_match() -> None:
@@ -483,8 +482,14 @@ Type: file_change
     assert plan020_in_diagnostics == []
 
 
-def test_malformed_override_entry_draws_plan025_error() -> None:
-    """A malformed override entry is itself an error (fail closed)."""
+def test_malformed_override_entry_draws_plan025_warning() -> None:
+    """A malformed override entry surfaces as a cost-named warning.
+
+    Malformed override prose is content-shape, not routing: the
+    override ledger has its own consumer but the agent can still
+    rewrite the entry, so the plan must reach the rest of the workflow
+    with a warning rather than be blocked on a typo.
+    """
     document = """---
 type: plan
 ---
@@ -504,9 +509,15 @@ This is prose, not an override item.
 """
 
     _content, diagnostics, _overridden = analyze_plan_document(document)
-    malformed = [d for d in diagnostics if d.rule_id == "PLAN025" and d.severity == "error"]
+    malformed = [
+        d for d in diagnostics if d.rule_id == "PLAN025" and d.severity == "warning"
+    ]
     assert len(malformed) == 1
     assert "list items" in malformed[0].message
+    assert _ADVISORY_COST_RE.search(malformed[0].message), (
+        f"PLAN025 malformed-override warning does not follow the cost/resolve "
+        f"convention: {malformed[0].message!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -533,13 +544,11 @@ Files:
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     assert content == {}
-    spec002_errors = [d for d in diagnostics if d.rule_id == "SPEC002"]
-    assert spec002_errors, "expected SPEC002 for missing type frontmatter"
-    for d in spec002_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"SPEC002 missing required frontmatter does not name its consumer: "
-            f"{d.message!r}"
-        )
+    spec002_warnings = [d for d in diagnostics if d.rule_id == "SPEC002"]
+    assert spec002_warnings, "expected SPEC002 advisory for missing type frontmatter"
+    for d in spec002_warnings:
+        assert d.severity == "warning"
+        assert _ADVISORY_COST_RE.search(d.message)
 
 
 def test_md006_duplicate_type_frontmatter_names_consumer() -> None:
@@ -558,14 +567,11 @@ Files:
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     assert content == {}
-    md006_errors = [
-        d for d in diagnostics if d.rule_id == "MD006" and d.severity == "error"
-    ]
-    assert md006_errors, "expected MD006 for duplicate type frontmatter"
-    for d in md006_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"MD006 duplicate frontmatter does not name its consumer: {d.message!r}"
-        )
+    md006_warnings = [d for d in diagnostics if d.rule_id == "MD006"]
+    assert md006_warnings, "expected MD006 advisory for duplicate type frontmatter"
+    for d in md006_warnings:
+        assert d.severity == "warning"
+        assert _ADVISORY_COST_RE.search(d.message)
 
 
 def test_spec010_pydantic_failure_advisories_with_cost_named() -> None:
@@ -612,6 +618,8 @@ type: plan
 ## Steps
 
 ### [S-1] Step
+This deliberately detailed step gives the executor enough context to inspect
+and correct the field spelling without guessing at the intended target path.
 Type: file_change
 Filse:
 - modify foo.py
@@ -700,7 +708,8 @@ def test_md002_top_level_prose_advisories_with_cost_named() -> None:
     document = """---
 type: plan
 ---
-Some prose before any heading.
+Some prose before any heading describes the current behavior and why the
+executor should preserve it while it maps the actionable work into the step.
 ## Steps
 
 ### [S-1] Step
@@ -740,12 +749,11 @@ Files:
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     assert content == {}
-    md005_errors = [d for d in diagnostics if d.rule_id == "MD005" and d.severity == "error"]
-    assert md005_errors, "expected MD005 error for malformed frontmatter"
-    for d in md005_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"MD005 malformed frontmatter does not name its consumer: {d.message!r}"
-        )
+    md005_warnings = [d for d in diagnostics if d.rule_id == "MD005"]
+    assert md005_warnings, "expected MD005 advisory for malformed frontmatter"
+    for d in md005_warnings:
+        assert d.severity == "warning"
+        assert _ADVISORY_COST_RE.search(d.message)
 
 
 def test_md007_unterminated_frontmatter_block_names_consumer() -> None:
@@ -762,12 +770,11 @@ this never closes
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     assert content == {}
-    md007_errors = [d for d in diagnostics if d.rule_id == "MD007" and d.severity == "error"]
-    assert md007_errors, "expected MD007 error for unterminated frontmatter"
-    for d in md007_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"MD007 unterminated frontmatter does not name its consumer: {d.message!r}"
-        )
+    md007_warnings = [d for d in diagnostics if d.rule_id == "MD007"]
+    assert md007_warnings, "expected MD007 advisory for unterminated frontmatter"
+    for d in md007_warnings:
+        assert d.severity == "warning"
+        assert _ADVISORY_COST_RE.search(d.message)
 
 
 def test_parser_errors_block_content_mapping() -> None:
@@ -795,7 +802,8 @@ Files:
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     error_severity = {d.rule_id for d in diagnostics if d.severity == "error"}
-    assert error_severity >= {"MD005", "MD006"}
+    assert error_severity == {"PLAN001"}
+    assert {d.rule_id for d in diagnostics} >= {"MD005", "MD006", "PLAN001"}
     assert content == {}
 
 

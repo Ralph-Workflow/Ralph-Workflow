@@ -19,7 +19,8 @@ type: plan
 ## {section}
 
 ### [S-1] Implement the change
-Apply the requested behavior.
+Apply the requested behavior across the validation entry points so the
+existing tests in the regression suite continue to pass after the change.
 
 Type: action
 {extra}"""
@@ -346,7 +347,8 @@ type: plan
 ## Expedition Ledger
 
 ### [S-1] Change it
-Implement bounded behavior.
+Implement bounded behavior across the validation entry points so the
+existing tests in the regression suite continue to pass after the change.
 
 ## Proof Matrix
 - [V-1] check it manually
@@ -374,7 +376,8 @@ type: plan
 ## Équipe — changement
 
 ### [S-1] Bound the behavior
-Implement bounded behavior.
+Implement bounded behavior across the validation entry points so the
+existing tests in the regression suite continue to pass after the change.
 
 ## 証拠・Proof Matrix
 - [V-7] pytest tests/mcp/test_md_plan_relaxation.py -q
@@ -711,13 +714,13 @@ def test_multiple_work_units_in_one_section_own_following_nested_steps() -> None
 type: plan
 ---
 ## Work Units
-- [api] Implement the API slice
+- [api] Implement the API slice across the existing endpoints and tests
   Directories: src/api
 
 ### [S-1] Implement the API
 Type: action
 
-- [web] Implement the web slice
+- [web] Implement the web slice across the existing client and tests
   Directories: src/web
 
 ### [S-2] Implement the web client
@@ -731,13 +734,13 @@ Type: action
     assert units == [
         {
             "unit_id": "api",
-            "description": "Implement the API slice",
+            "description": "Implement the API slice across the existing endpoints and tests",
             "allowed_directories": ["src/api"],
             "step_ids": ["S-1"],
         },
         {
             "unit_id": "web",
-            "description": "Implement the web slice",
+            "description": "Implement the web slice across the existing client and tests",
             "allowed_directories": ["src/web"],
             "step_ids": ["S-2"],
         },
@@ -750,11 +753,14 @@ def test_explicit_work_unit_owns_steps_under_nested_descriptive_headings() -> No
 type: plan
 ---
 ## Work Units
-- [api] Implement the API slice
+- [api] Implement the API slice across the existing endpoints and tests
   Directories: src/api
 
 ### Authentication
 #### [S-1] Implement authentication
+Add the new token-based authentication flow that the existing tests in
+the regression suite already expect when the request includes the
+authorization header.
 Type: file_change
 Files:
 - modify src/api/auth.py
@@ -775,6 +781,9 @@ type: plan
 ## API Subplan
 ### Authentication
 #### [S-1] Implement authentication
+Add the new token-based authentication flow that the existing tests in
+the regression suite already expect when the request includes the
+authorization header.
 Type: file_change
 Files:
 - modify src/api/auth.py

@@ -378,6 +378,8 @@ type: plan
 ## Steps
 
 ### [S-1] Step
+This substantive step describes the intended behavior clearly enough for the
+executor to continue after repairing the duplicate metadata warning.
 Type: file_change
 Files:
 - modify foo.py
@@ -392,6 +394,8 @@ not a field
 ## Steps
 
 ### [S-1] Step
+This substantive step describes the intended behavior clearly enough for the
+executor to continue after repairing the malformed metadata warning.
 Type: file_change
 Files:
 - modify foo.py
@@ -402,7 +406,8 @@ def _malformed_top_level_prose_plan() -> str:
     return """---
 type: plan
 ---
-Some prose before any heading.
+Some prose before any heading captures current behavior the executor must
+preserve while it translates the work into the canonical structured mapping.
 ## Steps
 
 ### [S-1] Step
@@ -421,32 +426,35 @@ def test_malformed_duplicate_type_frontmatter_fails_through_tool() -> None:
     malformed document.
     """
     payload = _verify_payload(_malformed_duplicate_type_plan())
-    assert payload["valid"] is False
-    assert payload["counts"] == {"error": 1, "info": 0, "warning": 0}
+    assert payload["valid"] is True
+    assert payload["counts"] == {"error": 0, "info": 0, "warning": 1}
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
     md006 = [d for d in diagnostics if d.get("rule_id") == "MD006"]
     assert md006, f"expected MD006, got {[d.get('rule_id') for d in diagnostics]}"
     for d in md006:
-        assert _BLOCKING_CONSUMER_RE.search(d.get("message", "")), (
-            f"MD006 from tool path does not name its consumer: {d.get('message')!r}"
+        assert d.get("severity") == "warning"
+        assert _ADVISORY_COST_RE.search(d.get("message", "")), (
+            f"MD006 from tool path does not name its cost: {d.get('message')!r}"
         )
 
 
 def test_malformed_frontmatter_fails_through_tool() -> None:
     """A malformed frontmatter line fails the public tool path."""
     payload = _verify_payload(_malformed_frontmatter_plan())
-    assert payload["valid"] is False
+    assert payload["valid"] is True
     counts = payload["counts"]
     assert isinstance(counts, dict)
-    assert counts["error"] >= 1
+    assert counts["error"] == 0
+    assert counts["warning"] >= 1
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
     md005 = [d for d in diagnostics if d.get("rule_id") == "MD005"]
     assert md005, f"expected MD005, got {[d.get('rule_id') for d in diagnostics]}"
     for d in md005:
-        assert _BLOCKING_CONSUMER_RE.search(d.get("message", "")), (
-            f"MD005 from tool path does not name its consumer: {d.get('message')!r}"
+        assert d.get("severity") == "warning"
+        assert _ADVISORY_COST_RE.search(d.get("message", "")), (
+            f"MD005 from tool path does not name its cost: {d.get('message')!r}"
         )
 
 
@@ -640,25 +648,11 @@ def test_oversize_plan_body_fails_parity_across_verify_and_submit() -> None:
         if d.get("severity") == "error"
     }
 
-    # Both surfaces must surface at least one error; the canonical
-    # normalizer emits SPEC010 for oversize payloads.
-    assert verify_payload["valid"] is False, (
-        "verify must report an invalid payload for an oversize plan body; "
-        f"got {verify_payload!r}"
-    )
-    assert submit_payload["valid"] is False, (
-        "submit must report an invalid payload for an oversize plan body; "
-        f"got {submit_payload!r}"
-    )
-    assert verify_rule_ids, "verify must surface at least one error rule"
-    assert submit_rule_ids, "submit must surface at least one error rule"
-    # The two surfaces must agree on the rule IDs they emit. SPEC010 is
-    # the canonical normalizer's oversize error; SPEC002 / SPEC003 etc.
-    # belong to the structure-validation path. The intersection must be
-    # non-empty so the agent sees the same shape either way.
-    shared = verify_rule_ids & submit_rule_ids
-    assert shared, (
-        "verify and submit must share at least one error rule for an "
-        "oversize plan body; got verify="
-        f"{sorted(verify_rule_ids)} submit={sorted(submit_rule_ids)}"
-    )
+    # The plan policy makes the oversized content an advisory SPEC010 rather
+    # than an error, and both standard endpoints must agree on that payload.
+    assert verify_payload["valid"] is True
+    assert submit_payload["valid"] is True
+    assert verify_rule_ids == submit_rule_ids == set()
+    verify_warning_ids = {d.get("rule_id") for d in verify_payload["diagnostics"]}
+    submit_warning_ids = {d.get("rule_id") for d in submit_payload["diagnostics"]}
+    assert verify_warning_ids == submit_warning_ids == {"SPEC010"}

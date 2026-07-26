@@ -96,7 +96,7 @@ def test_every_concrete_plan_fence_is_validated_without_pseudo_plan_exemptions()
 type: plan
 ---
 ## Summary
-This deliberately incomplete tiny plan is now advisory.
+This deliberately incomplete plan remains advisory because it identifies the desired outcome, the repository area to inspect, the smallest safe change, and the command that will verify the observable behavior after implementation.
 ```
 
 ```markdown artifact=plan example-size=large
@@ -104,7 +104,7 @@ This deliberately incomplete tiny plan is now advisory.
 type: plan
 ---
 ## Summary
-This deliberately incomplete large plan is also advisory.
+This deliberately incomplete plan remains advisory because it identifies the desired outcome, the repository area to inspect, the smallest safe change, and the command that will verify the observable behavior after implementation.
 ```
 """
 

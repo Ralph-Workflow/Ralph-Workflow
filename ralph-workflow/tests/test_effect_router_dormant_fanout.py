@@ -265,12 +265,16 @@ type: plan
 
 ### [S-1] Implement A
 Type: action
+Files: src/a
+Verify: run the focused A test and inspect its observable output.
 
 - [unit-b] Implement B
   Directories: src/b
 
 ### [S-2] Implement B
 Type: action
+Files: src/b
+Verify: run the focused B test and inspect its observable output.
 """,
         encoding="utf-8",
     )

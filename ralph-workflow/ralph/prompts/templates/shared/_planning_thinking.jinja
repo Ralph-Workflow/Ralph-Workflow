@@ -71,14 +71,11 @@ common way plans silently fail at execution.
 
 ## Document contract — floor, not form
 
-The plan grammar lives in `.agent/artifact-formats/plan.md`. The hard
-anchors are: `type: plan` frontmatter, at least one unique `### [S-n] Title`
-step block (unless `noop: true`), resolvable `Depends on:` references, and
-non-cyclic dependency graphs. Everything else — Summary, Scope, Skills MCP,
-Critical Files, Risks, Verification — is recommended when it helps the
-executor, optional when the work is small enough to skip without losing
-clarity. Radically different headings are valid when the consumed anchors
-parse.
+The plan grammar lives in `.agent/artifact-formats/plan.md`. The only blocking condition is `PLAN001`: no real plan was submitted
+(empty/markup-only, under 100 actual-content characters, or recognizably a
+refusal, question, status, tool output, stack trace, or placeholder). The
+usual headings, IDs, references, and fields are recommended structure, not
+submission gates. Use them when they make the executor's work clearer.
 
 State each commitment once, next to the step it describes; the executor
 will re-read this document mid-run under context pressure, and restating
@@ -89,9 +86,8 @@ the code belongs in a comment, not in the plan.
 
 Validation findings split into three severities:
 
-- **error** — a pipeline-consumed anchor is broken. Each error names the
-  consumer that cannot proceed (development_result proof cross-references,
-  fan-out dispatch, bounded-exec safety, noop routing, the spec registry).
+- **error** — only `PLAN001`: the submitted text is not a plan, so analysis
+  and execution have nothing to follow.
 - **warning** — a shape or meaning check the validator predicts will cost
   the run something (a missing `Files:`, a vague `Verify:`, an unpaired
   `Expect:`). Warnings do not block submission; the analysis phase owns the
@@ -99,11 +95,10 @@ Validation findings split into three severities:
 - **info** — an observation worth a second look. Stale overrides surface
   here so suppressions that no longer suppress anything are flagged.
 
-You can override any non-error finding by recording a reason under
+You can override any advisory finding by recording a reason under
 `## Validation Overrides` (one `- [RULE-ID] reason` line per override;
-optional `Where: <section>` label narrows the match). Overrides and their
-reasons are returned in tool results and persist with the plan. Overriding
-an error is a `PLAN026` warning; the error still blocks.
+optional `Where: <section>` label narrows the match). Overrides and their reasons are returned in tool results and persist with
+the plan. Treat an override as normal recorded judgement, not defiance.
 
 ## Submission mechanics
 

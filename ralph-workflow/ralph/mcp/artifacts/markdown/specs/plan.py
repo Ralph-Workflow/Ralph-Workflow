@@ -1079,17 +1079,26 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
         try:
             content["schema_version"] = int(schema_version)
         except ValueError:
+            # A non-integer schema_version is content-shape, not routing
+            # — the markdown side already routes the document to the
+            # plan validator on the frontmatter 'type' field, and the
+            # pydantic normalizer is the canonical schema source. Emit
+            # a cost-named warning so the agent sees the cost but the
+            # plan still reaches downstream consumers.
             diagnostics.append(
                 Diagnostic(
                     document.frontmatter_lines.get("schema_version", 1),
                     None,
                     "PLAN020",
-                    _consumer_rule_message(
+                    _advisory_message(
                         "PLAN020",
-                        "frontmatter 'schema_version' must be an integer",
+                        "frontmatter 'schema_version' is not an integer",
+                        "the canonical plan pydantic schema expects an integer "
+                        "schema_version; a non-integer value is dropped at "
+                        "normalization time and the executor sees a default of 0",
                         "rewriting 'schema_version:' with an integer value (e.g. '1')",
-                        _PYDANTIC_SCHEMA_CONSUMER,
                     ),
+                    "warning",
                 )
             )
     constraints = _constraints_content(document, diagnostics)
@@ -1167,13 +1176,13 @@ def analyze_plan_document(
         text, allow_nested_headings=PLAN_SPEC.allow_nested_headings
     )
     _teach_duplicate_closed_frontmatter_vocabulary(parser_diagnostics, PLAN_SPEC)
-    # Closed-list not-a-plan detection runs first: a document that
-    # fails the four ``is this a plan?`` classes is rejected with
-    # PLAN001 errors and no canonical content, regardless of any other
-    # validation outcome.
+    # PLAN001 blocks canonical submission but does not erase parser advice:
+    # a truncated or misrouted response can also show recoverable markdown
+    # mistakes the agent should see when it repairs the actual plan.
     not_a_plan_diagnostics = detect_not_a_plan(text)
     if not_a_plan_diagnostics:
-        return {}, not_a_plan_diagnostics, []
+        apply_plan_severity_policy(parser_diagnostics)
+        return {}, [*not_a_plan_diagnostics, *parser_diagnostics], []
     diagnostics, overridden, minimal_content, analyzed_content = (
         _collect_diagnostics_with_overrides(
             document, parser_diagnostics=parser_diagnostics
@@ -1195,11 +1204,18 @@ def analyze_plan_document(
         # full mapper, which would raise PLAN022 for a step-less document.
         content = minimal_content
     elif analyzed_content is None:
-        # ``_collect_diagnostics_with_overrides`` did not run ``_analyze``
-        # because a blocking error was already present in the structure
-        # validation output. No canonical content is available; the empty
-        # content signals to callers that the plan cannot be persisted.
-        content = {}
+        # Structure findings were originally emitted as errors, so collection
+        # deferred mapping. The final plan policy makes them advisory; map the
+        # document now so a warning-only plan retains best-effort content.
+        analyzed_content, analysis_diagnostics = _analyze(document)
+        diagnostics.extend(analysis_diagnostics)
+        apply_plan_severity_policy(diagnostics)
+        try:
+            content = PLAN_SPEC.normalize_content(analyzed_content)
+        except PlanArtifactValidationError as exc:
+            diagnostics.append(_normalizer_diagnostic(document, str(exc), "plan"))
+            apply_plan_severity_policy(diagnostics)
+            content = analyzed_content
     else:
         # The analyzed content is reused as the best-effort payload when
         # pydantic normalization rejects; we deliberately do not re-run
@@ -1340,18 +1356,26 @@ def _parse_override_items(
     entries: list[tuple[str, str | None, str]] = []
     for section in document.sections_named("Validation Overrides"):
         if section.lines:
+            # Malformed override prose is content-shape, not routing.
+            # The override ledger has its own consumer; the agent can
+            # still see and rewrite a malformed entry because the
+            # warning names the consumer and the cost. Errors would
+            # re-block the run on a typo.
             diagnostics.append(
                 Diagnostic(
                     section.line,
                     "Validation Overrides",
                     "PLAN025",
-                    _consumer_rule_message(
+                    _advisory_message(
                         "PLAN025",
                         "## Validation Overrides allows only '- [RULE-ID] reason' list items",
+                        "the override ledger cannot read a non-list-item line; the "
+                        "matching advisory diagnostic is left in the live warning list "
+                        "instead of being moved to the 'overridden' set",
                         "rewriting the section so every line is '- [RULE-ID] reason' with "
                         "an optional 'Where: <section>' label narrowing the match",
-                        _OVERRIDE_LEDGER_CONSUMER,
                     ),
+                    "warning",
                 )
             )
         for item in section.items:
@@ -1363,14 +1387,17 @@ def _parse_override_items(
                         item.line,
                         "Validation Overrides",
                         "PLAN025",
-                        _consumer_rule_message(
+                        _advisory_message(
                             "PLAN025",
                             f"override item must be '- [RULE-ID] reason' "
                             f"(optionally 'Where: <section>'); got {full_text!r}",
+                            "the override ledger cannot read the malformed prose; the "
+                            "matching advisory diagnostic is left in the live warning "
+                            "list instead of being moved to the 'overridden' set",
                             "rewriting the line as '- [RULE-ID] reason' with an "
                             "optional 'Where: <section>' label",
-                            _OVERRIDE_LEDGER_CONSUMER,
                         ),
+                        "warning",
                     )
                 )
                 continue

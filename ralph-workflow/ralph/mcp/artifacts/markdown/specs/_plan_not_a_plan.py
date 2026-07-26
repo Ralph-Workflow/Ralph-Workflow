@@ -318,6 +318,14 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
     resolves in favor of the plan. The ``noop: true`` exemption short-
     circuits before any other check so the canonical no-op plan always
     validates.
+
+    The actual-content length floor runs *before* the plan-shape bypass
+    so a truncated agent response that happens to include a single step
+    block cannot bypass the 100-character floor on a shape coincidence.
+    The plan-shape bypass only protects the recognizably-other-text
+    checks (``_is_refusal``, ``_is_tool_output``, etc.) where a real
+    plan body can incidentally match a crude prefix while still being a
+    plan.
     """
     # Noop exemption short-circuit: the canonical zero-content plan.
     try:
@@ -326,80 +334,57 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
         )
     except Exception:  # pragma: no cover - parser never raises
         return []
-    if _is_noop_only(document):
-        return []
-    # Plan-shape evidence bypasses every closed-list check.
-    if _has_plan_shape(document):
-        return []
-
     body_text = _extract_body_text(text)
     content_chars = _content_char_count(body_text)
     text_lower = body_text.lower()
     first_line = _first_content_line(body_text)
+    message: str | None = None
 
-    # (why, message) — first match wins; doubt-in-favor means only one
-    # closed-list reason can fire per document.
-    reasons: tuple[tuple[bool, str], ...] = (
-        (content_chars == 0, _empty_message()),
-        (
-            content_chars < _MIN_CONTENT_CHARS,
-            _too_short_message(content_chars),
-        ),
-        (_is_refusal(first_line), _other_text_message("a refusal or apology")),
-        (_is_stack_trace(text_lower), _other_text_message("a stack trace")),
-        (
-            _is_placeholder(text_lower),
-            _other_text_message("a placeholder such as 'TODO' or 'plan goes here'"),
-        ),
-        (_is_progress(first_line), _other_text_message("a status or progress message")),
-        (
-            _is_tool_output(text_lower, first_line),
-            _other_text_message("raw tool output"),
-        ),
-        (
-            _is_question_back(first_line, document),
-            _other_text_message("a question back to the user"),
-        ),
-    )
-    for matched, message in reasons:
-        if not matched:
-            continue
-        return [Diagnostic(1, None, RULE_ID, message, "error")]
-    return []
+    # Length floor runs before the plan-shape bypass. A document that
+    # happens to include ``### [S-1] Do`` and nothing else cannot be a plan.
+    if _is_noop_only(document):
+        pass
+    elif content_chars == 0:
+        message = _empty_message()
+    elif content_chars < _MIN_CONTENT_CHARS:
+        message = _too_short_message(content_chars)
+    # Plan-shape evidence bypasses recognizably-other-text checks: doubt
+    # resolves in favor of a real plan that incidentally matches a prefix.
+    elif not _has_plan_shape(document):
+        reasons: tuple[tuple[bool, str], ...] = (
+            (_is_refusal(first_line), _other_text_message("a refusal or apology")),
+            (_is_stack_trace(text_lower), _other_text_message("a stack trace")),
+            (
+                _is_placeholder(text_lower),
+                _other_text_message("a placeholder such as 'TODO' or 'plan goes here'"),
+            ),
+            (_is_progress(first_line), _other_text_message("a status or progress message")),
+            (_is_tool_output(text_lower, first_line), _other_text_message("raw tool output")),
+            (
+                _is_question_back(first_line, document),
+                _other_text_message("a question back to the user"),
+            ),
+        )
+        message = next((reason for matched, reason in reasons if matched), None)
+
+    return [Diagnostic(1, None, RULE_ID, message, "error")] if message else []
 
 
 def apply_plan_severity_policy(diagnostics: list[Diagnostic]) -> None:
-    """In-place demote plan-scoped shape findings from error to warning.
+    """Make ``PLAN001`` the plan spec's sole blocking diagnostic.
 
-    The policy is plan-scoped: only ``PLAN001`` plus the rule_ids a
-    downstream pipeline consumer does not actually need (step IDs,
-    consumed references, dependency graphs, work-unit markers) are
-    demoted. Routing / transport classes (``SPEC002``, ``MD005``,
-    ``MD006``, ``MD007``, ``SPEC001``, ``PLAN020`` type mismatch and
-    schema_version, ``PLAN023``, ``PLAN025`` malformed override entry)
-    stay blocking because a downstream consumer genuinely cannot
-    proceed without them.
-
-    SPEC010 emitted from the pydantic normalizer is also demoted: a
-    pydantic schema rejection is content-shape, not routing, and the
-    plan has the markdown-side routing check standing beside it.
-
-    The function is intentionally narrow. Other artifact types' severities
-    are byte-for-byte unchanged because the policy only runs for plans.
+    A downstream consumer can recover from malformed markdown, unknown
+    fields, and incomplete structure by reading the submitted text; it cannot
+    recover when no plan exists. Therefore every other plan finding is advice.
+    This policy is invoked only by ``PLAN_SPEC`` and cannot affect other
+    artifact types.
     """
     for index, diagnostic in enumerate(diagnostics):
-        if diagnostic.severity != "error":
-            continue
-        if diagnostic.rule_id in _PLAN_DEMOTED_RULES:
-            new_message = _reword_as_advisory(diagnostic)
+        if diagnostic.severity == "error" and diagnostic.rule_id != RULE_ID:
             diagnostics[index] = replace(
-                diagnostic, severity="warning", message=new_message
-            )
-            continue
-        if diagnostic.rule_id == "SPEC010" and _is_pydantic_branch(diagnostic.message):
-            new_message = _reword_as_advisory(diagnostic)
-            diagnostics[index] = replace(
-                diagnostic, severity="warning", message=new_message
+                diagnostic,
+                severity="warning",
+                message=_reword_as_advisory(diagnostic),
             )
 
 
@@ -417,60 +402,16 @@ def _reword_as_advisory(diagnostic: Diagnostic) -> str:
     resolve_marker = "; resolve by "
     blocking_index = message.find(blocking_marker)
     resolve_index = message.find(resolve_marker)
-    if blocking_index < 0 or resolve_index < 0 or resolve_index < blocking_index:
-        return message
-    what = message[:blocking_index].rstrip(" ;")
-    cost_and_fix = message[resolve_index + len("; "):]
-    return f"{what}; the run cost is the finding is now advisory so the agent may proceed past it; {cost_and_fix}"
-
-
-# Rule IDs that should demote from error to warning for plan-scoped
-# flows. Anything not in this set stays blocking.
-_PLAN_DEMOTED_RULES = frozenset(
-    {
-        # Markdown body grammar — parser-originated.
-        "MD001",  # block under items-only section
-        "MD002",  # top-level prose
-        # Section shape mismatches that are not routing.
-        "SPEC011",  # items in items-only section
-        "SPEC012",  # blocks in blocks-only section
-        # Reference / graph findings — content-shape, not routing.
-        "REF001",  # malformed stable ID
-        "REF002",  # duplicate stable ID
-        "REF003",  # unknown reference
-        "REF004",  # dependency cycle
-        # Plan-shape findings — content-shape, not routing.
-        "PLAN021",  # dangling step reference
-        "PLAN022",  # malformed / duplicate step ID
-        "PLAN024",  # malformed work-unit marker
-    }
-)
-
-
-def _is_pydantic_branch(message: str) -> bool:
-    """True iff the SPEC010 message is a content-shape pydantic rejection.
-
-    The brief keeps the bounded-MCP-payload size bound blocking
-    ("the plan-size transport bound" is a named consumer) and only
-    demotes the content-shape pydantic rejections. Size violations
-    show up two ways:
-
-    - The plan-artifact size guard emits ``plan size violation: ...``.
-    - Per-field pydantic ``max_length=...`` constraints emit
-      ``String should have at most N characters; rejected value has M``.
-
-    Both are transport bound, not content shape, so neither is
-    demoted. The policy stays advisory-only on the remaining
-    pydantic / schema rejections (the content-shape classes the
-    brief lists as advisory).
-    """
-    lowered = message.lower()
-    if lowered.startswith("plan size violation"):
-        return False
-    if "string should have at most" in lowered:
-        # Per-field pydantic max_length rejection — transport bound.
-        return False
-    return "pydantic" in lowered or "schema" in lowered
+    if blocking_index >= 0 and resolve_index >= blocking_index:
+        what = message[:blocking_index].rstrip(" ;")
+        fix = message[resolve_index + len(resolve_marker) :]
+    else:
+        what = message.rstrip(".")
+        fix = "repairing the noted markdown or recording an override with the reason"
+    return (
+        f"{what}; the run cost is canonical plan mapping may omit or misread "
+        f"this part of the plan; resolve by {fix}"
+    )
 
 
 __all__ = [
