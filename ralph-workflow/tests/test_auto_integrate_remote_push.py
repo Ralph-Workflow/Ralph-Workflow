@@ -181,6 +181,7 @@ def _config(*, enabled: bool, timeout: float = 3.0) -> UnifiedConfig:
             "general": {
                 "auto_integrate_push_enabled": enabled,
                 "auto_integrate_push_timeout_seconds": timeout,
+                "auto_integrate_remote_target": "origin",
             }
         }
     )
@@ -190,13 +191,16 @@ def test_successful_landing_records_push_summary_for_normal_and_recovery_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The shared hook annotates either landing path with the push outcome."""
-    calls: list[tuple[Path, str, float]] = []
+    calls: list[tuple[Path, str, str, float]] = []
 
-    def push(repo: Path, branch: str, *, timeout_seconds: float) -> str:
-        calls.append((repo, branch, timeout_seconds))
-        return "pushed release to 2/2 remotes"
+    def push(repo: Path, branch: str, *, remote: str, timeout_seconds: float) -> str:
+        calls.append((repo, branch, remote, timeout_seconds))
+        return "pushed release to origin"
 
-    monkeypatch.setattr(auto_integrate_ff, "push_branch_to_all_remotes", push)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync._remote_push_module.push_branch_to_single_remote",
+        push,
+    )
     state = RebaseState(
         last_action="rebased",
         last_target="release",
@@ -216,11 +220,11 @@ def test_successful_landing_records_push_summary_for_normal_and_recovery_paths(
         state,
     )
 
-    assert normal.last_push == "pushed release to 2/2 remotes"
-    assert recovery.last_push == "pushed release to 2/2 remotes"
+    assert normal.last_push == "pushed release to origin"
+    assert recovery.last_push == "pushed release to origin"
     assert calls == [
-        (Path("/repo"), "release", 3.0),
-        (Path("/repo"), "release", 3.0),
+        (Path("/repo"), "release", "origin", 3.0),
+        (Path("/repo"), "release", "origin", 3.0),
     ]
 
 
@@ -233,8 +237,7 @@ def test_disabled_push_preserves_landing_without_contacting_remote(
         raise AssertionError("disabled push contacted a remote")
 
     monkeypatch.setattr(
-        auto_integrate_ff,
-        "push_branch_to_all_remotes",
+        "ralph.pipeline.auto_integrate_remote_sync._remote_push_module.push_branch_to_single_remote",
         unexpected_push,
     )
     state = RebaseState(

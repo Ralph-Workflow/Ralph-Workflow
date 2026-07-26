@@ -20,7 +20,11 @@ import pytest
 
 from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
-from ralph.pipeline.auto_integrate_sync import REFRESH_LOCAL_FLEET, REFRESH_ORIGIN_AHEAD
+from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_DIVERGED,
+    REFRESH_LOCAL_FLEET,
+    REFRESH_ORIGIN_AHEAD,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -138,6 +142,27 @@ def test_remote_strictly_ahead_records_pulled(
     out = remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
     assert out is not None
     assert out.last_remote_sync == remote_sync.REMOTE_PULLED
+
+
+def test_diverged_target_rebases_in_owning_worktree_before_feature_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression S-1: diverged pull uses the safe target reconciliation seam."""
+    from ralph.pipeline import auto_integrate_remote_reconcile as reconcile
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_DIVERGED)
+    calls: list[tuple[Path, str, str]] = []
+
+    def fake_reconcile(root: Path, target: str, remote: str) -> tuple[bool, str]:
+        calls.append((root, target, remote))
+        return True, ""
+
+    monkeypatch.setattr(reconcile, "reconcile_target_onto_remote", fake_reconcile)
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+    assert out is not None
+    assert out.last_remote_sync == remote_sync.REMOTE_RECONCILED
+    assert calls == [(Path("/repo"), "main", "origin")]
 
 
 def test_remote_strictly_ahead_records_reconciled(

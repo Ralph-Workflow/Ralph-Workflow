@@ -61,6 +61,7 @@ from loguru import logger
 from ralph.git import remote_push as _remote_push_module
 from ralph.pipeline.auto_integrate_sync import (
     DEFAULT_REFRESH_REMOTE,
+    REFRESH_DIVERGED,
     REFRESH_LOCAL_FLEET,
     REFRESH_NO_LOCAL_BRANCH,
     REFRESH_NO_REMOTE,
@@ -319,7 +320,7 @@ def pull_and_reconcile_target(
     return _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock)
 
 
-def _dispatch_pull_outcome(  # noqa: PLR0911 - one early return per documented refresh-outcome mapping (LOCAL_FLEET/UNREACHABLE/NO_REMOTE/NO_LOCAL_BRANCH/ORIGIN_AHEAD/default)
+def _dispatch_pull_outcome(
     refresh: str,
     repo_root: Path,
     target: str,
@@ -347,21 +348,21 @@ def _dispatch_pull_outcome(  # noqa: PLR0911 - one early return per documented r
       outcome; the throttle is armed so a healthy "nothing changed"
       read still counts as a fresh observation.
     """
+    state: RebaseState | None = None
     if refresh == REFRESH_LOCAL_FLEET:
         _arm_throttle(repo_root, chosen_remote, target, clock)
-        return None
-    if refresh == REFRESH_UNREACHABLE:
+    elif refresh == REFRESH_UNREACHABLE:
         logger.debug("auto_integrate: remote sync pull unreachable on '{}'", target)
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
-        return _record_remote_state(
+        state = _record_remote_state(
             target,
             last_remote_sync=REMOTE_PULL_FAILED,
             last_refresh=refresh,
             reason=REMOTE_REMOTE_UNREACHABLE,
         )
-    if refresh in (REFRESH_NO_REMOTE, REFRESH_NO_REMOTE_BRANCH):
+    elif refresh in (REFRESH_NO_REMOTE, REFRESH_NO_REMOTE_BRANCH):
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
-        return _record_remote_state(
+        state = _record_remote_state(
             target,
             last_remote_sync=(
                 REMOTE_NO_REMOTE_BRANCH if refresh == REFRESH_NO_REMOTE_BRANCH else REMOTE_NO_REMOTE
@@ -369,39 +370,51 @@ def _dispatch_pull_outcome(  # noqa: PLR0911 - one early return per documented r
             last_refresh=refresh,
             reason=None,
         )
-    if refresh == REFRESH_NO_LOCAL_BRANCH:
-        # No local target -- the local-only contract takes over and
-        # the caller's skip reason applies.
+    elif refresh == REFRESH_NO_LOCAL_BRANCH:
         _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
-        return None
-    if refresh == REFRESH_ORIGIN_AHEAD:
-        # Remote strictly ahead -- fast-forward the local target ref
-        # via Part-A's landing machinery. This is the deliberate
-        # reversal of the historical REFRESH_REFRESHED outcome, now
-        # gated on remote-sync-enabled only.
+    elif refresh == REFRESH_ORIGIN_AHEAD:
         try:
             _fast_forward_local_target_to_remote(repo_root, target, chosen_remote)
         except Exception as exc:
             logger.warning("auto_integrate: pull-side ff failed: {}", exc)
             _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
-            return _record_remote_state(
+            state = _record_remote_state(
                 target,
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=refresh,
                 reason=str(exc),
             )
+        else:
+            _arm_throttle(repo_root, chosen_remote, target, clock)
+            state = _record_remote_state(
+                target,
+                last_remote_sync=REMOTE_PULLED,
+                last_refresh=refresh,
+                reason=None,
+            )
+    elif refresh == REFRESH_DIVERGED:
+        from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
+
+        reconciled, reason = reconcile_target_onto_remote(repo_root, target, chosen_remote)
+        if reconciled:
+            _arm_throttle(repo_root, chosen_remote, target, clock)
+            state = _record_remote_state(
+                target,
+                last_remote_sync=REMOTE_RECONCILED,
+                last_refresh=refresh,
+                reason=None,
+            )
+        else:
+            _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
+            state = _record_remote_state(
+                target,
+                last_remote_sync=REMOTE_PULL_FAILED,
+                last_refresh=refresh,
+                reason=reason,
+            )
+    else:
         _arm_throttle(repo_root, chosen_remote, target, clock)
-        return _record_remote_state(
-            target,
-            last_remote_sync=REMOTE_PULLED,
-            last_refresh=refresh,
-            reason=None,
-        )
-    # Already current OR an unknown outcome (future-proof). Arm the
-    # throttle so a healthy "nothing changed" read still counts as a
-    # fresh observation.
-    _arm_throttle(repo_root, chosen_remote, target, clock)
-    return None
+    return state
 
 
 def _fast_forward_local_target_to_remote(
@@ -636,18 +649,10 @@ def reconcile_after_rejected_push(
         return record
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     final_record = record
-    for attempt in range(max_attempts):
-        if attempt:
-            backoff_state = RemoteBackoffState.instance()
-            sleep_seconds = backoff_state.next_gap(
-                repo_root=repo_root,
-                remote=chosen_remote,
-                target=target,
-                config=config,
-                jitter=jitter,
-            )
-            if sleep_seconds > 0.0:
-                sleep(float(sleep_seconds))
+    for _attempt in range(max_attempts):
+        # Normal seams never sleep: retry eligibility belongs to the next
+        # seam's clock-based throttle. Terminal waiting is the only path that
+        # deliberately sleeps for remote retry backoff.
         outcome = _attempt_reconcile_and_push(
             repo_root=repo_root,
             target=target,
@@ -695,6 +700,12 @@ def _attempt_reconcile_and_push(
             summary=f"push of {target} to {remote} failed: {REMOTE_REMOTE_UNREACHABLE}",
             pushed=True,
         )
+    if refresh == REFRESH_DIVERGED:
+        from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
+
+        reconciled, reason = reconcile_target_onto_remote(repo_root, target, remote)
+        if not reconciled:
+            return _PushOutcome(success=False, summary=reason, pushed=False)
     summary = _remote_push_module.push_branch_to_single_remote(
         repo_root,
         target,

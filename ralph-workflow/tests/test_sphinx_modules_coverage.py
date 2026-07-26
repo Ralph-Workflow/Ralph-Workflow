@@ -60,6 +60,7 @@ _EXCLUDED: dict[str, str] = {
     "pipeline.agent_chain_state": "internal pipeline state, not public API",
     "pipeline.auto_integrate_catalog_rationales": "internal catalog rationale registry, not public API",
     "pipeline.auto_integrate_recovery_lock": "internal lock-liveness helper, not public API",
+    "pipeline.auto_integrate_remote_reconcile": "internal remote reconciliation helper, not public API",
     "pipeline.auto_integrate_worktree_state": "internal worktree-state probe, not public API",
     "pipeline.agent_execution_deps": "internal pipeline type, not public API",
     "pipeline.agent_recovery_input": "internal pipeline type, not public API",
