@@ -407,7 +407,15 @@ def test_remediation_label_at_40_columns_preserves_attempt_and_cap(attempt: int)
 
 
 def test_round_label_at_40_columns_preserves_attempt_and_cap() -> None:
-    """The Round label keeps ``Round 2/3`` visible at 40 cols (AC-04)."""
+    """The Round label keeps attempt+cap visible at 40 cols.
+
+    wt-028-display S-3: at the 40-col floor the canonical
+    ``Round 2/3`` (8 chars) cannot fit alongside the new
+    liveness glyph + elapsed short form + the rest of the
+    5-segment floor contract. The bar degrades to the
+    compact form ``R2/3`` (4 chars) so attempt+cap is
+    still readable.
+    """
     ctx = _ctx(width=40)
     model = StatusBarModel(
         workspace_root="/tmp/conflict-probe",
@@ -422,7 +430,8 @@ def test_round_label_at_40_columns_preserves_attempt_and_cap() -> None:
     assert len(text.plain) <= 40, (
         f"status bar exceeded width=40: {len(text.plain)} > 40"
     )
-    assert "Round" in text.plain, f"Round carrier missing at width=40: {text.plain!r}"
-    assert "2/3" in text.plain, (
+    # attempt+cap must survive in some form (canonical, compact, or minimal).
+    payload_forms = ("Round 2/3", "R2/3", "2/3")
+    assert any(form in text.plain for form in payload_forms), (
         f"round attempt+cap missing at width=40: {text.plain!r}"
     )

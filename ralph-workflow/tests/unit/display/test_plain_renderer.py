@@ -97,15 +97,16 @@ def test_emit_snapshot_for_development_outputs_phase_and_placeholders() -> None:
 
     # DA-002 (wt-028-display): the live-log chrome column carries a
     # compact ``HH:MM:SS`` token (8 chars) so it fits on a 40-column
-    # terminal alongside the level + cat + badge. The full ISO-8601
-    # timestamp still appears in the rendered record (see
-    # ``ralph.display.record_writer``) so the file surface stays
-    # lossless; only the live-log chrome column is compacted.
+    # terminal. The full ISO-8601 timestamp still appears in the
+    # rendered record (see ``ralph.display.record_writer``) so the
+    # file surface stays lossless. wt-028-display S-4: the chrome
+    # prefix no longer carries the LEVEL+CAT badge — severity is
+    # carried by the milestone glyph in the body.
     assert stream.getvalue().splitlines() == [
-        "12:00:00 MILESTONE META [phase] ◆ development",
-        "12:00:00 INFO META [plan] (no plan loaded yet)",
-        "12:00:00 INFO META [activity] (no active agent yet)",
-        "12:00:00 INFO META [analysis] (no decisions recorded yet)",
+        "12:00:00 [phase] ◆ development",
+        "12:00:00 [plan] (no plan loaded yet)",
+        "12:00:00 [activity] (no active agent yet)",
+        "12:00:00 [analysis] (no decisions recorded yet)",
     ]
 
 
@@ -117,10 +118,10 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     pd.emit_snapshot(snapshot)
 
     assert stream.getvalue().splitlines() == [
-        "12:00:00 MILESTONE META [phase] ◆ development",
-        "12:00:00 INFO META [plan] (no plan loaded yet)",
-        "12:00:00 INFO META [activity] (no active agent yet)",
-        "12:00:00 INFO META [analysis] (no decisions recorded yet)",
+        "12:00:00 [phase] ◆ development",
+        "12:00:00 [plan] (no plan loaded yet)",
+        "12:00:00 [activity] (no active agent yet)",
+        "12:00:00 [analysis] (no decisions recorded yet)",
     ]
 
 
@@ -130,8 +131,12 @@ def test_emit_log_line_preserves_literal_rich_markup_for_copy_paste() -> None:
 
     pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
+    # wt-028-display S-4: the chrome prefix is bare — the line is
+    # just the timestamp + bracket tag + unit + body. No LEVEL
+    # (INFO) or CAT (OUT) plumbing vocabulary reaches the
+    # operator surface.
     assert stream.getvalue().splitlines() == [
-        "12:00:00 INFO OUT [content][worker-1] hello"
+        "12:00:00 [content][worker-1] hello"
     ]
 
 

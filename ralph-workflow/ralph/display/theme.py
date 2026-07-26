@@ -113,6 +113,13 @@ UNICODE_GLYPHS: Final[dict[str, str]] = {
     "terminated": "\u25a0",  # ■ - terminal outcome uses the box marker
     "waiting": "\u25cb",  # ○ - waiting uses the pending glyph
     "retrying": "\u21bb",  # ↻ - retrying uses the iteration glyph
+    # wt-028-display S-3: liveness glyph (a spinning-cursor frame)
+    # sits between phase and elapsed. The Unicode form is the
+    # braille-pattern dot 8 (\u280b) - a low-noise spinner frame
+    # that is byte-stable in width across frames (each frame is one
+    # cell). The Live tick rewrites the cell per refresh; the
+    # byte-stable width is what keeps the neighbours stationary.
+    "liveness": "\u280b",  # braille dot 8 (spinner frame 0)
 }
 
 ASCII_GLYPHS: Final[dict[str, str]] = {
@@ -144,6 +151,9 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "terminated": "[OK]",
     "waiting": "[ ]",
     "retrying": "[~]",
+    # wt-028-display S-3: ASCII parity for the liveness glyph
+    # (mirrors the braille-spinner entry in UNICODE_GLYPHS).
+    "liveness": "*",  # ASCII liveness fallback (a single asterisk)
 }
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})

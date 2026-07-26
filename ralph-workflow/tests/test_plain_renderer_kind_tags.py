@@ -61,20 +61,28 @@ def test_tool_use_kind_emits_call_tag() -> None:
     assert "bash" in out
 
 
-def test_tool_result_kind_emits_result_tag_and_success_level() -> None:
+def test_tool_result_kind_emits_result_tag() -> None:
+    """A tool_result event emits a [result] line; the SUCCESS LEVEL text is retired (S-4).
+
+    The chrome prefix no longer carries the level/category badges.
+    Severity is communicated by the renderer's own icon+label
+    carrier (e.g. ``\u2713 PASS``); the activity line itself is
+    text-only, with the [result][u] bracket and the body.
+    """
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_result", "output")
     out = buf.getvalue()
     assert "[result][u]" in out
-    assert "SUCCESS" in out
+    assert "SUCCESS" not in out
 
 
-def test_error_kind_emits_error_tag_and_error_level() -> None:
+def test_error_kind_emits_error_tag() -> None:
+    """An error event emits a [error] line; the ERROR LEVEL text is retired (S-4)."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "error", "something went wrong")
     out = buf.getvalue()
     assert "[error][u]" in out
-    assert "ERROR" in out
+    assert "ERROR" not in out
     assert "something went wrong" in out
 
 
@@ -103,35 +111,48 @@ def test_emit_log_line_delegates_to_emit_activity_line() -> None:
 # --- Level badge tests --------------------------------------------------
 
 
-def test_lifecycle_kind_emits_milestone_level() -> None:
+def test_lifecycle_kind_emits_lifecycle_line() -> None:
+    """A lifecycle event emits a line carrying the lifecycle carrier; no MILESTONE chrome.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    MILESTONE LEVEL text. Lifecycle events are still routed to the
+    same [status-content] (lifecycle) tag and the line carries the
+    body. The surviving carrier (a milestone glyph) is rendered by
+    the panel-level surface, not by the activity line.
+    """
     pd, buf = _make_display()
     pd.emit_activity_line("u", "lifecycle", "agent started")
     out = buf.getvalue()
-    assert "MILESTONE" in out
+    assert "MILESTONE" not in out, f"retired MILESTONE chrome leaked: {out!r}"
 
 
-def test_tool_use_kind_emits_info_level() -> None:
+def test_tool_use_kind_emits_tool_use_line() -> None:
+    """A tool_use event emits a [call] line; the INFO LEVEL text is retired (S-4)."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_use", "bash")
     out = buf.getvalue()
-    assert "INFO" in out
+    assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
+    assert "[call][u]" in out
+    assert "bash" in out
 
 
 # --- Category prefix tests (non-streaming kinds surface CONT/META) ------
 
 
-def test_tool_result_tag_gets_out_category() -> None:
+def test_tool_result_tag_does_not_leak_category_chrome() -> None:
+    """A tool_result line never carries OUT category chrome (S-4 retirement)."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_result", "ok")
     out = buf.getvalue()
-    assert "OUT" in out
+    assert "OUT" not in out, f"retired OUT category chrome leaked: {out!r}"
 
 
-def test_progress_kind_gets_meta_category() -> None:
+def test_progress_kind_does_not_leak_category_chrome() -> None:
+    """A progress line never carries META category chrome (S-4 retirement)."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "progress", "50%")
     out = buf.getvalue()
-    assert "META" in out
+    assert "META" not in out, f"retired META category chrome leaked: {out!r}"
 
 
 # --- Streaming kinds: silent during open/continue, single close line ---
@@ -142,6 +163,7 @@ def test_text_kind_emits_content_tag_on_close() -> None:
 
     S-7: streaming layer is silent during open / continue. ``flush_blocks``
     emits one ``[content]`` close line carrying the joined passage.
+    The chrome prefix no longer carries the INFO LEVEL text.
     """
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "hello")
@@ -150,7 +172,7 @@ def test_text_kind_emits_content_tag_on_close() -> None:
     assert "[content][u]" in out
     assert "[u]" in out
     assert "hello" in out
-    assert "INFO" in out
+    assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
     # No per-fragment/preview tokens surface.
     for forbidden in (
         "[content-start]",

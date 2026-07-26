@@ -150,8 +150,6 @@ def test_plain_log_renderer_status_line_uses_build_line() -> None:
     pd.set_status("unit-1", "running")
     pd.stop()
     output = buffer.getvalue()
-    assert "INFO" in output, f"status line missing INFO badge: {output!r}"
-    assert "META" in output, f"status line missing META badge: {output!r}"
     assert "[status][unit-1]" in output, f"status line missing [status][unit-1] tag: {output!r}"
     assert "running" in output, f"status text 'running' missing: {output!r}"
 

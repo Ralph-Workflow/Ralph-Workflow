@@ -236,6 +236,15 @@ _PATH_DROP_THRESHOLD: int = 60
 # redirected to recognisable segments.
 _PHASE_ABBREVIATE_THRESHOLD: int = 80
 
+# wt-028-display S-2/S-3 (AC-01/AC-02): the 40-col rung is the spec's
+# floor below which the liveness glyph + elapsed segment drop
+# entirely. At every width >= 40 the liveness glyph and the elapsed
+# short form survive (spec: "At 40 -- the floor -- attention,
+# phase, liveness, position, and elapsed survive"). The constant
+# lands every ``if ctx.width >= 40`` check in this module on the
+# same spec source.
+_FLOOR_THRESHOLD: int = 40
+
 # Minimum readable budget for the workspace path and the phase label.
 # The single default-mode Status Bar ALWAYS reserves at least this much
 # space for the workspace path and the phase label so the operator can
@@ -663,14 +672,18 @@ def _field_overhead_and_label_budgets(
         # it lands cleanly in the chrome sum rather than the per-iter
         # allocation.
         attention_chrome = _attention_slot_reserved_width(ctx)
-        # DA-002 (wt-028-display AC-01): subtract the elapsed display
-        # fixed-width chrome when the bar is wide enough to render it
-        # (the renderer drops elapsed below the 60-col rung).
-        elapsed_chrome = (
-            _ELAPSED_FIXED_WIDTH + separator_len
-            if ctx.width >= _PATH_DROP_THRESHOLD
-            else 0
-        )
+        # DA-002 (wt-028-display AC-01) / S-2 (S-3): subtract the
+        # elapsed display chrome when the bar is wide enough to
+        # render it. The renderer now keeps the elapsed segment at
+        # every width >= 40 (the spec floor) and drops it below 40.
+        # Above 60 the wide form (Time H:MM:SS, 13 chars) is used;
+        # at 40-59 the short form (XmXXs / XhXXm, 5 chars) is used.
+        if ctx.width >= _PATH_DROP_THRESHOLD:
+            elapsed_chrome = _ELAPSED_FIXED_WIDTH + separator_len
+        elif ctx.width >= _FLOOR_THRESHOLD:
+            elapsed_chrome = 5 + separator_len  # short form + separator
+        else:
+            elapsed_chrome = 0
         available = ctx.width - _chrome(
             outer_label,
             inner_label,
@@ -896,6 +909,44 @@ def _format_elapsed_fixed(seconds: float | None) -> str:
     return _format_elapsed(seconds).ljust(_ELAPSED_FIXED_WIDTH)
 
 
+def _resolve_elapsed_seconds(
+    model: StatusBarModel, now_monotonic: float | None
+) -> float | None:
+    """Return the recomputed elapsed seconds, or the snapshot fallback.
+
+    wt-028-display S-2: extract the recompute logic from
+    ``_resolve_elapsed_label`` so the fixed-width column can
+    format the recomputed numeric value (in seconds) rather
+    than the formatted string. The label-string variant is
+    retained for any caller that still wants the pre-formatted
+    label.
+    """
+    if (
+        model.run_started_monotonic is not None
+        and now_monotonic is not None
+        and now_monotonic >= model.run_started_monotonic
+    ):
+        return now_monotonic - model.run_started_monotonic
+    return model.elapsed_seconds
+
+
+def _format_elapsed_short(seconds: float | None) -> str:
+    """Return a compact elapsed label that fits at the 40-col floor.
+
+    wt-028-display S-2 (AC-01): the spec 40-col rung keeps the
+    elapsed segment in a short form (12m41s / 1h02m) so the
+    bar stays first-class at the floor size.
+    """
+    if seconds is None or seconds < 0:
+        return " " * 5
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    return f"{minutes}m{secs:02d}s"
+
+
 def _split_agent_label(label: str) -> tuple[str, str]:
     """Split ``"Agent <name>"`` into the ``"Agent "`` prefix and the name.
 
@@ -932,23 +983,28 @@ def _resolve_elapsed_label(model: StatusBarModel, now_monotonic: float | None) -
 
 
 def _prune_optional_segments(
-    candidates: tuple[str, str], separator: str, path_budget: int
+    candidates: tuple[str, ...], separator: str, path_budget: int
 ) -> list[str]:
     """Drop optional segments (elapsed, agent) when they would crowd the path.
 
-    Priority: keep both, then only ``elapsed``, then drop both. The
-    prune ladder is the canonical AC-04 / AC-05 narrow-width contract:
-    the workspace path stays readable at every width.
+    Priority: keep all non-empty, then drop in order until the path
+    has at least ``_MIN_PATH_BUDGET`` columns. The prune ladder is
+    the canonical narrow-width contract: the workspace path stays
+    readable at every width.
+
+    wt-028-display S-2: ``elapsed`` is no longer a candidate here
+    -- it is rendered in the fixed-width column and must never
+    participate in the optional trailing pool. The signature now
+    accepts a variable-length tuple so callers that pass only the
+    agent label (or only a future optional) still typecheck.
     """
     keep: list[str] = [label for label in candidates if label]
     keep_width = sum(len(separator) + len(label) for label in keep)
-    if keep_width <= path_budget - _MIN_PATH_BUDGET:
-        return keep
-    only_elapsed = [candidates[0]] if candidates[0] else []
-    only_elapsed_width = sum(len(separator) + len(label) for label in only_elapsed)
-    if only_elapsed_width <= path_budget - _MIN_PATH_BUDGET:
-        return only_elapsed
-    return []
+    while keep and keep_width > path_budget - _MIN_PATH_BUDGET:
+        # Drop the lowest-priority trailing segment.
+        keep.pop()
+        keep_width = sum(len(separator) + len(label) for label in keep)
+    return keep
 
 
 def _resolve_attention_state(
@@ -1121,12 +1177,16 @@ def render_status_bar(
         outer_label_canonical_chars=_outer_label_canonical_chars(model.outer_label),
     )
 
-    elapsed_label = _resolve_elapsed_label(model, now_monotonic)
+    # wt-028-display S-2 (AC-01): elapsed NO LONGER participates in
+    # the optional trailing pool. The elapsed segment renders ONCE
+    # in the fixed-width column (recomputed at render time via
+    # ``_resolve_elapsed_seconds``).
     agent_label = f"Agent {_safe_single_line(model.agent_name)}" if model.agent_name else ""
-    # Optional trailing context yields before path/phase/cycle context. Reserve
-    # only path surplus so the established narrow-width contract is unchanged.
+    # Optional trailing context yields before path/phase/cycle context.
+    # Reserve only path surplus so the established narrow-width
+    # contract is unchanged.
     optional_segments = _prune_optional_segments(
-        (elapsed_label, agent_label), separator, budgets.path_budget
+        (agent_label,), separator, budgets.path_budget
     )
     optional_width = sum(len(separator) + len(label) for label in optional_segments)
     path_budget = budgets.path_budget
@@ -1180,8 +1240,28 @@ def render_status_bar(
     # below the supported floor (``At 40 -- the floor -- attention,
     # phase, liveness, position, and elapsed survive``; widths below
     # 40 are below the floor).
-    if ctx.width >= _PATH_DROP_THRESHOLD:
-        text.append(_format_elapsed_fixed(model.elapsed_seconds), style="theme.status.info")
+    # wt-028-display S-2/S-3 (AC-01/AC-02): render the liveness
+    # glyph and the elapsed segment between phase and cycle.
+    if ctx.width >= _FLOOR_THRESHOLD:
+        # Liveness glyph sits BETWEEN phase and elapsed (spec
+        # order: attention -> phase -> liveness -> elapsed ->
+        # cycle -> iter -> agent -> cwd). Single-cell glyph
+        # (byte-stable in width) so the Live tick can rotate
+        # the frame without shifting neighbours.
+        text.append(separator, style="theme.status.path_marker")
+        liveness_glyph = ctx.glyph_for("liveness")
+        text.append(liveness_glyph, style="theme.status.info")
+        text.append(" ", style="theme.status.info")
+        if ctx.width >= _PATH_DROP_THRESHOLD:
+            text.append(
+                _format_elapsed_fixed(_resolve_elapsed_seconds(model, now_monotonic)),
+                style="theme.status.info",
+            )
+        else:
+            text.append(
+                _format_elapsed_short(_resolve_elapsed_seconds(model, now_monotonic)),
+                style="theme.status.info",
+            )
         text.append(separator, style="theme.status.path_marker")
     if render_outer_dev:
         text.append(separator, style="theme.status.path_marker")

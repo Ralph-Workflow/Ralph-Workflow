@@ -1,4 +1,15 @@
-"""Tests for PlainLogRenderer level and category badge styling."""
+"""Tests for the activity-line chrome contract after wt-028-display S-4.
+
+wt-028-display S-4 retires the LEVEL and CAT plumbing-vocabulary
+badges on the activity-line chrome prefix. Severity is now carried
+exactly once per entry by the renderer's own icon+label carrier
+(sketch H), not by a duplicated level/category badge. This file
+pins the new contract: the activity line carries the timestamp, the
+[tag][unit] bracket, the body, and the color the theme applies via
+the surviving carrier -- nothing else. The retired ``INFO``,
+``WARN``, ``ERROR``, ``SUCCESS``, ``MILESTONE``, ``META``, ``OUT``
+text must NEVER appear on the chrome prefix.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +21,9 @@ from rich.console import Console
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import RALPH_THEME
+
+_RETIRED_LEVEL_BADGES = ("INFO", "WARN", "ERROR", "SUCCESS", "MILESTONE")
+_RETIRED_CAT_BADGES = ("META", "OUT")
 
 
 def _make_color_renderer() -> tuple[ParallelDisplay, StringIO]:
@@ -38,74 +52,78 @@ def _make_plain_renderer() -> tuple[ParallelDisplay, StringIO]:
     return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
-def test_level_badge_produces_ansi_when_color_enabled() -> None:
-    renderer, buf = _make_color_renderer()
-    renderer.emit_activity_line("u", "error", "bad")
-    out = buf.getvalue()
-    assert "\x1b[" in out
-    assert "ERROR" in out
+def _emit(renderer: ParallelDisplay, kind: str, body: str) -> None:
+    """Drive the activity-line seam end-to-end so the chrome is captured."""
+    renderer.start()
+    renderer.emit_activity_line("u", kind, body)
+    renderer.stop()
 
 
-def test_level_badge_plain_when_color_system_none() -> None:
+@pytest.mark.parametrize("kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"])
+def test_activity_line_chrome_carries_no_level_badge_plain(kind: str) -> None:
+    """The plain (color-off) activity line never carries a LEVEL badge.
+
+    The chrome prefix is now just the timestamp + the [tag][unit]
+    bracket + the body. ``INFO``/``WARN``/``ERROR``/``SUCCESS``/
+    ``MILESTONE`` are retired chrome vocabulary and must never
+    reach the operator surface.
+    """
     renderer, buf = _make_plain_renderer()
-    renderer.emit_activity_line("u", "error", "bad")
+    _emit(renderer, kind, "msg")
     out = buf.getvalue()
-    assert "\x1b[" not in out
-    assert "ERROR" in out
+    for forbidden in _RETIRED_LEVEL_BADGES:
+        assert forbidden not in out, (
+            f"wt-028-display S-4: {kind!r} line must not carry "
+            f"{forbidden!r} LEVEL chrome; got: {out!r}"
+        )
 
 
-@pytest.mark.parametrize(
-    ("kind", "expected_level"),
-    [
-        ("tool_result", "SUCCESS"),
-        ("lifecycle", "MILESTONE"),
-        ("error", "ERROR"),
-        ("progress", "INFO"),
-    ],
-)
-def test_level_badge_text_present_plain(kind: str, expected_level: str) -> None:
+@pytest.mark.parametrize("kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"])
+def test_activity_line_chrome_carries_no_cat_badge_plain(kind: str) -> None:
+    """The plain activity line never carries a CAT (META/OUT) badge either."""
     renderer, buf = _make_plain_renderer()
-    renderer.emit_activity_line("u", kind, "msg")
+    _emit(renderer, kind, "msg")
     out = buf.getvalue()
-    assert expected_level in out
+    for forbidden in _RETIRED_CAT_BADGES:
+        assert forbidden not in out, (
+            f"wt-028-display S-4: {kind!r} line must not carry "
+            f"{forbidden!r} CAT chrome; got: {out!r}"
+        )
 
 
-@pytest.mark.parametrize(
-    ("kind", "expected_level"),
-    [
-        ("tool_result", "SUCCESS"),
-        ("lifecycle", "MILESTONE"),
-        ("error", "ERROR"),
-        ("progress", "INFO"),
-    ],
-)
-def test_level_badge_produces_ansi_for_all_levels(kind: str, expected_level: str) -> None:
-    renderer, buf = _make_color_renderer()
-    renderer.emit_activity_line("u", kind, "msg")
-    out = buf.getvalue()
-    assert "\x1b[" in out
-    assert expected_level in out
-
-
-def test_cat_badge_meta_present_on_tty() -> None:
-    renderer, buf = _make_color_renderer()
-    renderer.emit_activity_line("u", "progress", "50%")
-    out = buf.getvalue()
-    assert "\x1b[" in out
-    assert "META" in out
-
-
-def test_cat_badge_out_present_on_tty() -> None:
-    renderer, buf = _make_color_renderer()
-    renderer.emit_activity_line("u", "raw", "data")
-    out = buf.getvalue()
-    assert "\x1b[" in out
-    assert "OUT" in out
-
-
-def test_cat_badge_plain_when_color_system_none() -> None:
+def test_activity_line_body_survives_with_tag_and_unit() -> None:
+    """The [tag][unit] bracket and the body are still on every line."""
     renderer, buf = _make_plain_renderer()
-    renderer.emit_activity_line("u", "progress", "50%")
+    _emit(renderer, "text", "hello world")
     out = buf.getvalue()
-    assert "\x1b[" not in out
-    assert "META" in out
+    assert "[content][u]" in out, f"[content][u] tag must survive: {out!r}"
+    assert "hello world" in out, f"body must survive: {out!r}"
+
+
+def test_activity_line_keeps_no_plumbing_chrome_under_truecolor() -> None:
+    """The truecolor renderer's activity line still carries no LEVEL/CAT chrome.
+
+    Severity coloring now comes from the renderer's own icon+label
+    carrier (sketch H), not from a duplicated level/category
+    badge. The plain ``emit_activity_line`` path emits the line
+    without ANSI codes -- the icon+label carrier lives in the
+    rich-rendered surfaces (panels, tables). What is pinned here
+    is the no-leak contract: even under color, the retired
+    LEVEL/CAT chrome does not reach the operator surface.
+    """
+    renderer, buf = _make_color_renderer()
+    _emit(renderer, "error", "bad")
+    out = buf.getvalue()
+    for forbidden in _RETIRED_LEVEL_BADGES + _RETIRED_CAT_BADGES:
+        assert forbidden not in out, (
+            f"wt-028-display S-4: error line must not carry {forbidden!r} "
+            f"chrome even under color; got: {out!r}"
+        )
+
+
+def test_activity_line_plain_output_has_no_ansi() -> None:
+    """The plain renderer emits no ANSI escape sequences."""
+    renderer, buf = _make_plain_renderer()
+    _emit(renderer, "progress", "50%")
+    out = buf.getvalue()
+    assert "\x1b[" not in out, f"plain renderer must not emit ANSI; got: {out!r}"

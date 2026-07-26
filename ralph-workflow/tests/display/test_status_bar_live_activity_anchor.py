@@ -25,8 +25,11 @@ truth).
 
 from __future__ import annotations
 
+import re
+
 from ralph.display.context import make_display_context
-from ralph.display.status_bar import StatusBar, StatusBarModel
+from ralph.display.parallel_display import phase_style_for_phase
+from ralph.display.status_bar import StatusBar, StatusBarModel, render_status_bar
 
 
 def _ctx(width: int = 160) -> object:
@@ -232,3 +235,161 @@ def test_legacy_host_anchor_less_does_not_invent_stalled() -> None:
 
     rendered = bar._renderable().plain
     assert "STALLED" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# wt-028-display S-1 / AC-01: the live P0 defect — elapsed frozen
+# during quiet agent turns at width >= 60, AND the dual rendering
+# of the elapsed segment (fixed-width column + optional-label trail).
+#
+# These are TDD-RED regression tests: the plan pins the spec ("the
+# elapsed timer advances visibly, about once a second") and these
+# tests prove the contract is in force from now on. They MUST fail
+# against the pre-fix implementation and pass against the fix.
+# ---------------------------------------------------------------------------
+
+
+def _elapsed_model(*, started_at: float = 0.0) -> StatusBarModel:
+    return StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        inner_analysis=1,
+        inner_analysis_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=started_at,
+        agent_name="claude",
+    )
+
+
+def test_elapsed_fixed_column_uses_recomputed_value_at_width_120() -> None:
+    """S-1: at width 120, the visible elapsed text advances across two clock values.
+
+    Pre-fix the fixed-width column at status_bar.py:_format_elapsed_fixed
+    was driven by ``model.elapsed_seconds`` (the stale push snapshot).
+    A re-render at a later ``now_monotonic`` left the visible text
+    frozen on the snapshot, then the optional trailing label was the
+    only thing that changed -- which is why AC-01 explicitly requires
+    the visible text to advance (not just one of two copies).
+    """
+    ctx = _ctx(width=120)
+    model = _elapsed_model(started_at=0.0)
+    text_t0 = render_status_bar(model, ctx, now_monotonic=0.0)
+    text_t61 = render_status_bar(model, ctx, now_monotonic=61.0)
+    # Pin the exact transition: t=0 -> Time 00:00, t=61 -> Time 01:01.
+    assert "Time 00:00" in text_t0.plain, (
+        f"baseline render must include Time 00:00, got {text_t0.plain!r}"
+    )
+    assert "Time 01:01" in text_t61.plain, (
+        f"fixed column at width 120 must have advanced to Time 01:01; "
+        f"got {text_t61.plain!r}"
+    )
+
+
+def test_elapsed_renders_exactly_once_at_width_120() -> None:
+    """S-1: the elapsed label appears exactly once at width 120 (no dual rendering).
+
+    Pre-fix the optional trailing label could also carry an
+    ``elapsed_label`` (recomputed at render time), so the bar showed
+    the elapsed twice -- once in the fixed-width column (frozen) and
+    once in the optional trail. The spec requires ONE elapsed
+    rendering per entry.
+    """
+    ctx = _ctx(width=120)
+    model = _elapsed_model(started_at=0.0)
+    plain = render_status_bar(model, ctx, now_monotonic=65.0).plain
+    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    assert len(matches) == 1, (
+        f"S-1: elapsed must render exactly once at width 120; got "
+        f"{len(matches)} matches: {matches!r} in plain={plain!r}"
+    )
+
+
+def test_elapsed_renders_exactly_once_at_width_60() -> None:
+    """S-1: the elapsed label appears exactly once at width 60 (no dual rendering)."""
+    ctx = _ctx(width=60)
+    model = _elapsed_model(started_at=0.0)
+    plain = render_status_bar(model, ctx, now_monotonic=0.0).plain
+    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    assert len(matches) == 1, (
+        f"S-1: elapsed must render exactly once at width 60; got "
+        f"{len(matches)} matches: {matches!r} in plain={plain!r}"
+    )
+
+
+def test_elapsed_renders_exactly_once_at_width_80() -> None:
+    """S-1: the elapsed label appears exactly once at width 80 (no dual rendering)."""
+    ctx = _ctx(width=80)
+    model = _elapsed_model(started_at=0.0)
+    plain = render_status_bar(model, ctx, now_monotonic=0.0).plain
+    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    assert len(matches) == 1, (
+        f"S-1: elapsed must render exactly once at width 80; got "
+        f"{len(matches)} matches: {matches!r} in plain={plain!r}"
+    )
+
+
+def test_elapsed_first_occurrence_is_recomputed_at_width_120() -> None:
+    """S-1: at width 120, the FIRST 'Time' label is the recomputed one.
+
+    The pre-fix code rendered the stale snapshot in the fixed-width
+    column FIRST, then appended the recomputed value as the optional
+    trailing label. The operator's eye lands on the leading bar
+    segment first, so the FIRST occurrence is the one that has to
+    tick. This test pins the spec.
+    """
+    ctx = _ctx(width=120)
+    model = _elapsed_model(started_at=0.0)
+    plain = render_status_bar(model, ctx, now_monotonic=61.0).plain
+    # The first 'Time' label must be the recomputed value (1:01),
+    # not the stale snapshot (0:00).
+    first_time_idx = plain.find("Time ")
+    assert first_time_idx >= 0, f"no 'Time' label found in {plain!r}"
+    first_time_value = plain[first_time_idx:first_time_idx + 12]
+    assert "01:01" in first_time_value, (
+        f"S-1: first 'Time' label at width 120 must be the recomputed "
+        f"value (Time 01:01); got first_time_value={first_time_value!r} "
+        f"in plain={plain!r}"
+    )
+    # And there must be exactly one Time label.
+    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    assert len(matches) == 1, (
+        f"S-1: elapsed must render exactly once at width 120; got "
+        f"{len(matches)} matches: {matches!r} in plain={plain!r}"
+    )
+
+
+def test_elapsed_survives_at_width_40_floor() -> None:
+    """S-1 / S-3: the 40-col floor MUST keep the elapsed segment."""
+    import re as _re
+    ctx = _ctx(width=40)
+    model = _elapsed_model(started_at=0.0)
+    plain = render_status_bar(model, ctx, now_monotonic=761.0).plain
+    short_forms = (
+        _re.search(r"Time \d{1,2}:\d{2}", plain),
+        _re.search(r"\d+m\d{2}s", plain),
+        _re.search(r"\d+:\d{2}:\d{2}", plain),
+    )
+    assert any(short_forms), (
+        f"S-1/S-3: 40-col floor must keep an elapsed short form "
+        f"(mm:ss / XmXXs / H:MM:SS); got plain={plain!r}"
+    )
+
+
+def test_liveness_glyph_between_phase_and_elapsed_at_width_120() -> None:
+    """S-3: a distinct liveness glyph segment sits between phase and elapsed."""
+    ctx = _ctx(width=120)
+    model = _elapsed_model(started_at=0.0)
+    plain = render_status_bar(model, ctx, now_monotonic=0.0).plain
+    phase_idx = plain.find("Development")
+    time_idx = plain.find("Time ")
+    assert phase_idx >= 0
+    assert time_idx >= 0
+    between = plain[phase_idx + len("Development"):time_idx]
+    non_space = [c for c in between if not c.isspace() and c not in chr(9670) + chr(9632) + chr(9646)]
+    assert len(non_space) >= 1, (
+        f"S-3: a liveness glyph must sit between phase and elapsed; "
+        f"between={between!r} plain={plain!r}"
+    )

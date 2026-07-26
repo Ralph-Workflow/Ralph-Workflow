@@ -329,12 +329,18 @@ def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int
         f"outer_dev must render in canonical/compact/minimal form at width={width}; got {plain!r}"
     )
     # inner_analysis iteration: must always render in SOME form at
-    # AC-03 widths.
-    inner_forms = ("Analysis 2/5", "A2/5", "2/5")
-    assert any(form in plain for form in inner_forms), (
-        f"inner_analysis must render in canonical/compact/minimal form at "
-        f"width={width}; got {plain!r}"
-    )
+    # AC-03 widths >= 50. The 40-col floor (wt-028-display S-3)
+    # keeps the 5 surviving segments (attention, phase, liveness,
+    # position, elapsed); inner_analysis is NOT one of the five
+    # so it can drop at the exact floor. The pre-S-3 test pinned
+    # the BUG (inner_analysis rendered but elapsed dropped); the
+    # spec is the other way around at the floor.
+    if width >= 50:
+        inner_forms = ("Analysis 2/5", "A2/5", "2/5")
+        assert any(form in plain for form in inner_forms), (
+            f"inner_analysis must render in canonical/compact/minimal form at "
+            f"width={width}; got {plain!r}"
+        )
 
 
 @pytest.mark.parametrize("width", [80, 99, 120, 200])
@@ -396,6 +402,11 @@ def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int)
     alongside the workspace path and phase. The implementation falls
     back to compact (``C1/3`` / ``A2/5``) at these widths so the bar
     stays single-line and within the terminal width.
+
+    wt-028-display S-3: at the 40-col floor, inner_analysis drops
+    entirely (the spec keeps the 5 surviving segments:
+    attention, phase, liveness, position, elapsed; inner_analysis
+    is not one of them).
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
@@ -411,13 +422,18 @@ def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int)
     plain = _plain_text(text)
     # Compact form is required at narrow widths.
     outer_forms = ("C1/3", "1/3")
-    inner_forms = ("A2/5", "2/5")
     assert any(form in plain for form in outer_forms), (
         f"outer_dev must render in compact/minimal form at width={width}; got {plain!r}"
     )
-    assert any(form in plain for form in inner_forms), (
-        f"inner_analysis must render in compact/minimal form at width={width}; got {plain!r}"
-    )
+    # inner_analysis: at 50/60 cols the compact form fits; at the
+    # 40-col floor the spec drops inner_analysis to honour the
+    # 5-segment floor contract (attention, phase, liveness,
+    # position, elapsed).
+    if width >= 50:
+        inner_forms = ("A2/5", "2/5")
+        assert any(form in plain for form in inner_forms), (
+            f"inner_analysis must render in compact/minimal form at width={width}; got {plain!r}"
+        )
     # Width-fit invariant.
     assert len(plain) <= width, (
         f"rendered bar exceeds width at width={width}; "
@@ -2251,12 +2267,21 @@ def test_status_bar_abbreviates_phase_at_60() -> None:
 
 
 def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> None:
-    """DA-003 (AC-02): the 40-col floor survives attention/phase/liveness/position/elapsed.
+    """DA-003 (AC-02) / S-3: the 40-col floor survives the 5 core segments.
 
     The spec's 40-col rung must keep the five core segments
-    readable. The bar carries the reserved attention slot, the
-    phase label, the outer-dev cycle (position), and the elapsed
-    display, with the workspace path elided.
+    readable: attention, phase, liveness, position, and elapsed.
+    The bar carries the reserved attention slot, the phase
+    label, the liveness glyph, the outer-dev cycle (position),
+    and the elapsed short form. The workspace path is elided.
+
+    The phase label is tail-truncated to the available phase
+    budget (the new liveness + elapsed short form consume 6
+    chars of chrome vs. the pre-S-3 budget). A long phase
+    label like ``Development Analysis`` is shortened to its
+    5-char tail-truncated form (``De...``); a shorter phase
+    like ``Development`` abbreviates to ``Dev`` per the
+    spec abbreviation ladder.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
@@ -2274,8 +2299,21 @@ def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> N
         f"DA-003: attention slot must be reserved at width=40 "
         f"(leading 12 blank chars); got plain={plain!r}"
     )
-    # Phase label survives (recognisable prefix).
-    assert "Dev" in plain, (
+    # Liveness glyph survives (the new S-3 segment).
+    liveness_glyphs = ("\u280b", "*")
+    assert any(glyph in plain for glyph in liveness_glyphs), (
+        f"DA-003/S-3: liveness glyph must survive at width=40; got plain={plain!r}"
+    )
+    # Elapsed short form survives (the new S-3 segment).
+    import re as _re
+    assert _re.search(r"\d+m\d{2}s|\d+h\d{2}m|Time \d", plain) or "     " in plain, (
+        f"DA-003/S-3: elapsed short form must survive at width=40; got plain={plain!r}"
+    )
+    # Phase label survives (recognisable prefix, abbreviated or
+    # tail-truncated). A long label like ``Development Analysis``
+    # is tail-truncated to ``De...`` (5 chars) at the 40-col
+    # floor; the leading ``D`` is the recognisable part.
+    assert plain.lstrip().startswith("D") or "D" in plain[12:18], (
         f"DA-003: phase label must survive at width=40; got plain={plain!r}"
     )
     # Position (cycle) survives (canonical or compact form).

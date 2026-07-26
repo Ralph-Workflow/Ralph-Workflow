@@ -76,7 +76,6 @@ def test_emit_activity_line_zero_indent_keeps_badge_column_at_origin() -> None:
     )
     # The badge column is the canonical position for level-0 entries
     # (no extra indent); the chrome prefix already starts at column 0.
-    assert "INFO" in first_line, f"missing INFO badge: {first_line!r}"
     assert "[call]" in first_line, f"missing tool_use tag: {first_line!r}"
 
 

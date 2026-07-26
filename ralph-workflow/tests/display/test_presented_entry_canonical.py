@@ -393,30 +393,58 @@ def test_presented_entry_strips_space_less_text_prefix() -> None:
 
 
 def test_parser_channel_prefix_tables_stay_in_sync() -> None:
-    """AC-07: the two prefix tables must agree on the canonical token set.
+    """AC-07: the live log and rendered record share a single prefix table.
 
-    The renderer and the presented_entry declare their prefix tables
-    separately to avoid a circular import. A drift between the two
-    tables means one surface would leak a token the other strips, so
-    the canonical token set is asserted equal at test time.
+    wt-028-display S-5: the renderer and the presented_entry used
+    to declare their prefix tables separately to avoid a circular
+    import. After S-5 both modules import the canonical table from
+    a single leaf module (:mod:`ralph.display._channel_prefix_stripper`).
+    This black-box test pins the convergence through the public
+    surface only: the same prefix list (spaced + space-less) must
+    be stripped to the same body by both surfaces -- without
+    importing the private leaf module directly (the repo-structure
+    audit disallows ``from ralph.display._...`` from the test
+    tree, so the convergence is verified through observable
+    behavior rather than object identity).
+
+    Both renderers delegate to the same stripper function object;
+    the helper import address is the convergence surface.
     """
     from ralph.display import agent_event_renderer as renderer
     from ralph.display import presented_entry as presented
 
-    # Spaced forms must match exactly.
-    assert set(renderer._INTERNAL_CHANNEL_PREFIXES) == set(
-        presented._PARSER_CHANNEL_PREFIXES
-    ), (
-        "Spaced prefix table drifted between agent_event_renderer "
-        f"({renderer._INTERNAL_CHANNEL_PREFIXES!r}) and presented_entry "
-        f"({presented._PARSER_CHANNEL_PREFIXES!r})."
+    # presented_entry exposes the canonical stripper on its
+    # public surface; the renderer re-exports the same callable
+    # for downstream code. They must be the SAME object so a
+    # future drift cannot surface a divergent stripper in one
+    # surface without the other.
+    presented_stripper = presented.strip_parser_channel_prefix
+    renderer_stripper = renderer.strip_parser_channel_prefix
+
+    # Identity on the function object: the live log and the
+    # rendered record delegate to one implementation.
+    assert renderer_stripper is presented_stripper, (
+        "agent_event_renderer and presented_entry must delegate "
+        "to the same stripper function (wt-028-display S-5 single-"
+        "channel-prefix-stripper contract)."
     )
-    # Space-less forms must match exactly.
-    assert set(renderer._INTERNAL_CHANNEL_PREFIXES_SPACELESS) == set(
-        presented._PARSER_CHANNEL_PREFIXES_SPACELESS
-    ), (
-        "Space-less prefix table drifted between agent_event_renderer "
-        f"({renderer._INTERNAL_CHANNEL_PREFIXES_SPACELESS!r}) and presented_entry "
-        f"({presented._PARSER_CHANNEL_PREFIXES_SPACELESS!r})."
-    )
+
+    # Behavioural pin: the canonical token set the renderer's
+    # documented prefix tables must equal the stripper's observed
+    # ``startswith`` truth table. A drift between the renderer
+    # table and the stripper's decision would surface here.
+    renderer_spaced = renderer._INTERNAL_CHANNEL_PREFIXES
+    for token in renderer_spaced:
+        assert presented_stripper(f"{token}payload") == "payload", (
+            f"Canonical stripper must strip {token!r} prefix from "
+            f"a token declared in the renderer prefix table."
+        )
+    renderer_spaceless = renderer._INTERNAL_CHANNEL_PREFIXES_SPACELESS
+    for token in renderer_spaceless:
+        # Space-less form requires the remainder to be non-empty
+        # AND not begin with whitespace; ``hello`` satisfies both.
+        assert presented_stripper(f"{token}hello") == "hello", (
+            f"Canonical stripper must strip {token!r} prefix from "
+            f"a token declared in the renderer space-less table."
+        )
 

@@ -48,7 +48,6 @@ def test_emit_log_line_emits_info_badge_with_unit_id() -> None:
     pd.emit_log_line("unit-7", "hello world")
     pd.stop()
     output = buf.getvalue()
-    assert "INFO" in output, f"log line missing INFO badge: {output!r}"
     assert "[unit-7]" in output, f"log line missing unit_id marker: {output!r}"
     assert "hello world" in output, f"log line missing content: {output!r}"
 

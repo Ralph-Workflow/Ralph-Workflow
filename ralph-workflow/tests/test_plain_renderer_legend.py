@@ -25,7 +25,11 @@ def test_run_start_emits_legend_line_by_default() -> None:
         ln for ln in out.splitlines() if "legend: levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" in ln
     ]
     assert len(legend_lines) == 1
-    assert "INFO META [run-start]" in legend_lines[0]
+    # wt-028-display S-4: the legend line is now bare — no leading
+    # LEVEL or CAT badge in the chrome prefix. The line still
+    # carries the [run-start] tag and the level/tag vocabulary the
+    # renderer exposes to operators.
+    assert "[run-start]" in legend_lines[0]
 
 
 def test_run_start_legend_can_be_disabled() -> None:
@@ -36,17 +40,13 @@ def test_run_start_legend_can_be_disabled() -> None:
     assert "Ralph Workflow run start" in out
 
 
-def test_run_start_legend_contains_cat_format() -> None:
-    pd, buf = _make_display()
-    pd.emit_run_start(RunStartOrientation())
-    out = buf.getvalue()
-    assert "cats: META|CONT" in out
-
-
 def test_run_start_legend_contains_tag_format() -> None:
     pd, buf = _make_display()
     pd.emit_run_start(RunStartOrientation())
     out = buf.getvalue()
+    # wt-028-display S-4: the legend enumerates the public tag
+    # vocabulary; the retired META|CONT category chrome is gone.
+    assert "tags: content|think|call|result|error" in out
     assert "[tag][unit] message" in out
 
 

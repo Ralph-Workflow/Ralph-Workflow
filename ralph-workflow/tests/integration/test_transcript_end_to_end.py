@@ -213,7 +213,11 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     )
 
     # --- Assert run-start comes before first phase ---
-    run_start_idx = out.index("MILESTONE META [run-start]")
+    # wt-028-display S-4: the chrome prefix no longer carries the
+    # MILESTONE LEVEL and META category badges; the match anchors
+    # on the [run-start] tag and the "Ralph Workflow run start"
+    # body text instead.
+    run_start_idx = out.index("Ralph Workflow run start")
     assert run_start_idx < planning_idx, "run-start should appear before the first phase transition"
 
     # --- Assert streaming content block structure ---
@@ -251,8 +255,12 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         assert "content_blocks=" in pc_line, f"[phase-close] missing content_blocks=: {pc_line}"
 
     # --- Assert [run-end] appears after last [phase-close] and before completion ---
-    assert "MILESTONE META [run-end]" in out, "Transcript should contain [run-end] MILESTONE"
-    run_end_idx = out.index("MILESTONE META [run-end]")
+    # wt-028-display S-4: the chrome prefix no longer carries the
+    # MILESTONE LEVEL and META category badges; the [run-end] tag
+    # and the "Ralph Workflow run end" body text are the
+    # remaining anchors.
+    assert "Ralph Workflow run end" in out, "Transcript should contain [run-end] header"
+    run_end_idx = out.index("Ralph Workflow run end")
     last_phase_close_idx = out.rindex("[phase-close]")
     assert last_phase_close_idx < run_end_idx, "[run-end] should appear after last [phase-close]"
     # Completion summary should appear after run-end

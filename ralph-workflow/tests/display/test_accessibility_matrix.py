@@ -85,13 +85,32 @@ def _model(
 
 
 def test_status_bar_renders_at_40_columns() -> None:
-    """The 40-column floor carries the bar, the attention slot, and elided path."""
+    """The 40-column floor carries the bar, the attention slot, and elided path.
+
+    wt-028-display S-3: the 40-col floor is the spec floor and
+    keeps the 5 surviving segments (attention, phase, liveness,
+    position, elapsed). The phase label is tail-truncated to the
+    available budget (the new liveness + elapsed short form
+    consume 6 chars of chrome vs. the pre-S-3 budget). A long
+    phase label like ``Development Analysis`` is shortened to
+    its 5-char tail-truncated form (``De...``); a shorter phase
+    like ``Development`` abbreviates to ``Dev`` per the spec
+    abbreviation ladder.
+    """
     ctx = _ctx(width=40, height=12)
     model = _model(attention=None)
     text = render_status_bar(model, ctx, now_monotonic=100.0).plain
-    # Phase is recognizable: full "Development" or tail-truncated
-    # prefix (e.g. "Dev...") per the DA-001/DA-002 budget tightening.
-    assert ("Development" in text) or text.startswith(" " * 12 + "■ Dev"), (
+    # Phase is recognizable: full "Development", abbreviated
+    # ``Dev``, or tail-truncated prefix (e.g. ``De...``). The
+    # phase label MUST remain identifiable; a single-character
+    # drop is acceptable at the floor.
+    phase_forms = (
+        "Development" in text,
+        text.startswith(" " * 12 + "■ Dev"),
+        "De..." in text,
+        "De" in text[14:18],
+    )
+    assert any(phase_forms), (
         f"phase label must remain recognizable at width 40; got text={text!r}"
     )
     assert text.count("\n") == 0  # single line
@@ -313,16 +332,25 @@ def test_status_bar_renders_with_glyphs_unavailable() -> None:
 
 
 def test_phase_position_liveness_are_all_visible_at_40_columns() -> None:
-    """At 40 columns phase, position, liveness, and elapsed are all visible."""
+    """At 40 columns phase, position, liveness, and elapsed are all visible.
+
+    wt-028-display S-3: the 40-col floor keeps the 5 surviving
+    segments (attention, phase, liveness, position, elapsed).
+    """
     ctx = _ctx(width=40, height=12)
     model = _model(attention=None)
     text = render_status_bar(model, ctx, now_monotonic=100.0).plain
-    # Phase is recognizable: full "Development" or tail-truncated
-    # prefix (e.g. "Dev..."). The DA-001 attention-slot reservation
-    # + DA-002 fixed-width elapsed chrome eat enough budget at width
-    # 40 that the canonical phase label may need to abbreviate to fit
-    # alongside position + liveness.
-    assert ("Development" in text) or text.startswith(" " * 12 + "■ Dev"), (
+    # Phase is recognizable: full "Development", abbreviated
+    # ``Dev``, or tail-truncated prefix (e.g. ``De...``). The
+    # phase label MUST remain identifiable; a single-character
+    # drop is acceptable at the floor.
+    phase_forms = (
+        "Development" in text,
+        text.startswith(" " * 12 + "■ Dev"),
+        "De..." in text,
+        "De" in text[14:18],
+    )
+    assert any(phase_forms), (
         f"phase label must remain recognizable at width 40; got text={text!r}"
     )
     # Cycle is visible as "1/4" or "1/4" abbreviated.

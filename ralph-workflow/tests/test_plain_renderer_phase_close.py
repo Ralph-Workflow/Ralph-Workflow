@@ -30,8 +30,16 @@ def test_phase_close_emits_body_line() -> None:
     body_lines = [ln for ln in out.splitlines() if "[phase-close]" in ln and "───" not in ln]
     assert len(body_lines) == 1
     milestone = UNICODE_GLYPHS["milestone"]
-    expected = f"INFO META [phase-close] {milestone} phase=planning plan: 5 step(s), 2 risk(s)"
-    assert expected in body_lines[0]
+    # wt-028-display S-4: chrome prefix no longer carries INFO META
+    # (level/category) badges -- severity is carried by the
+    # renderer's own icon+label carrier. The line still carries the
+    # [phase-close] tag, the milestone glyph, and the body.
+    line = body_lines[0]
+    assert f"[phase-close] {milestone} phase=planning plan: 5 step(s), 2 risk(s)" in line
+    for forbidden in ("INFO META", "WARN META", "ERROR META", "MILESTONE META"):
+        assert forbidden not in line, (
+            f"wt-028-display S-4: phase-close line must not leak {forbidden!r} chrome; got: {line!r}"
+        )
 
 
 def test_phase_close_flushes_open_streaming_block() -> None:
@@ -48,8 +56,10 @@ def test_phase_close_flushes_open_streaming_block() -> None:
     pd.emit_phase_close("development", "development: result artifact present")
     out = buf.getvalue()
     # The streaming-block close line ([content] tag) must appear before
-    # the [phase-close] body line.
-    body_phase_close_idx = out.index("INFO META [phase-close] phase=development")
+    # the [phase-close] body line. wt-028-display S-4: chrome prefix
+    # no longer carries the INFO META badge, so the phase-close line
+    # is matched on the body content alone.
+    body_phase_close_idx = out.index("[phase-close] phase=development")
     content_close_idx = out.index("[content][u]")
     assert "[content][u]" in out
     # Pre-S-7 retired token must NOT appear.

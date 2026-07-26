@@ -115,11 +115,9 @@ from ralph.display._phase_close_counters import _PhaseCloseCounters
 from ralph.display._phase_close_options import PhaseCloseOptions
 from ralph.display._phase_counters import PhaseCounters as _PhaseCounters
 from ralph.display._plain_constants import (
-    _CAT_THEME_KEYS,
     _EMPTY_PLAN_SIGNATURE,
     _KIND_TO_LEVEL,
     _KIND_TO_TAG,
-    _LEVEL_THEME_KEYS,
     _STREAMING_BLOCK_TAGS,
     _STREAMING_KINDS,
     LEVELS,
@@ -434,6 +432,7 @@ class ParallelDisplay:
         "_last_phase",
         "_last_phase_artifact_outcome",
         "_last_phase_elapsed_seconds",
+        "_last_phase_per_unit",
         "_last_phase_saved_counters",
         "_last_plan_signature",
         "_last_recorded_body",
@@ -582,6 +581,15 @@ class ParallelDisplay:
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._last_text_thinking_block_close: dict[str, tuple[ActivityEventKind, str]] = {}  # bounded-accumulator-ok: drop_unit
 
+        # wt-028-display S-5 (AC-04): the most recent (phase, cycle,
+        # iter_) seen per active unit, refreshed by
+        # ``_emit_phase_header_record``. Ordinary activity events
+        # read this in ``_append_recorded_entry`` so the rendered
+        # record's ``phase`` / ``cycle`` / ``iter_`` fields are
+        # populated instead of ``None``. Keyed per unit and
+        # bounded by ``drop_unit`` (S-23).
+        self._last_phase_per_unit: dict[str, tuple[str, int | None, str | None]] = {}  # bounded-accumulator-ok: drop_unit
+
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
         # Per-unit raw overflow logs, lazy-created on first oversized emit
@@ -715,26 +723,21 @@ class ParallelDisplay:
         *,
         leading_indent: str = "",
     ) -> Text:
-        """Build a styled Text line with level and category badge segments.
+        """Build a styled Text line with no LEVEL/CAT badge.
 
-        ``leading_indent`` (wt-028-display S-12 / DA-002): the
-        optional whitespace prefix that hangs the entire line at
-        the requested indent column. The pre-fix contract always
-        rendered the timestamp flush with column 0; DA-002 needs
-        a level-1 entry to start at column ``_INDENT_WIDTH`` (2)
-        so the badge column lines up with the continuation column
-        beneath it. The indent is plain whitespace -- it carries
-        no style and is collapsed on a wrap (the wrap emits the
-        indent separately via ``hang_prefix``).
+        wt-028-display S-4: the rendered line shape is
+        ``HH:MM:SS [tag][unit] body`` -- no LEVEL or CAT
+        plumbing-vocabulary badge in the chrome. Severity is
+        carried by the renderer icon+label carrier. ``level``
+        and ``cat`` parameters are kept (so existing call sites
+        still typecheck) but rendered as nothing.
         """
+        del level
+        del cat
         t = Text()
         if leading_indent:
             t.append(leading_indent)
         t.append(timestamp + " ")
-        t.append(level, style=_LEVEL_THEME_KEYS.get(level, ""))
-        t.append(" ")
-        t.append(cat, style=_CAT_THEME_KEYS.get(cat, ""))
-        t.append(" ")
         t.append(suffix)
         return t
 
@@ -990,9 +993,16 @@ class ParallelDisplay:
             # column 0 while continuations started at the badge
             # column, breaking the structural column the body
             # belonged to.
-            chrome_prefix = (
-                f"{timestamp} {level} {cat} "
-            )
+            # wt-028-display S-4: the chrome prefix is now just
+            # ``HH:MM:SS `` -- no LEVEL or CAT badge. Severity
+            # is carried by the renderer's own icon+label carrier
+            # (e.g. ``✓ PASS`` / ``✗ FAIL``) which already
+            # survives color-off, so the second copy of severity
+            # in the chrome prefix was the duplication AC-03
+            # explicitly forbids. The plumbing vocabulary
+            # (``META``/``OUT``) never reaches the operator
+            # surface.
+            chrome_prefix = f"{timestamp} "
             badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
             # DA-002 (S-4 / S-12 / AC-07): the canonical
             # ``PresentedEntry`` hierarchy data drives the live log's
@@ -2076,6 +2086,23 @@ class ParallelDisplay:
         from ralph.display.agent_event_renderer import make_event_for_emit
         from ralph.display.presented_entry import build_presented_entry
 
+        # wt-028-display S-5 (AC-04): when the caller did not supply
+        # explicit phase / cycle / iter_, read the unit's last-known
+        # run state from ``_last_phase_per_unit`` so the rendered
+        # record line carries real values. Explicit caller-provided
+        # values still win (e.g. ``_flush_pending_phase_headers``
+        # stamps the buffered header values verbatim).
+        if phase is None or cycle is None or iter_ is None:
+            cached = self._last_phase_per_unit.get(unit_id)
+            if cached is not None:
+                cached_phase, cached_cycle, cached_iter = cached
+                if phase is None:
+                    phase = cached_phase
+                if cycle is None:
+                    cycle = cached_cycle
+                if iter_ is None:
+                    iter_ = cached_iter
+
         event = make_event_for_emit(
             event_kind,
             body,
@@ -2129,6 +2156,15 @@ class ParallelDisplay:
         body = f"{transition} phase={phase}"
         if agent_name is not None:
             body = f"{body} agent={agent_name}"
+        # wt-028-display S-5 (AC-04): every unit's last-known phase
+        # state is cached here so subsequent ``_append_recorded_entry``
+        # calls (for ordinary activity events) can populate their
+        # ``phase`` / ``cycle`` / ``iter_`` fields with the live run
+        # state instead of leaving them ``None``. The cache is keyed
+        # per unit and bounded by ``drop_unit``.
+        self._last_phase_per_unit.clear()
+        for unit_id in self._rendered_writers:
+            self._last_phase_per_unit[unit_id] = (phase, cycle, iter_)
         if not self._rendered_writers:
             # No writer yet: buffer the header so the first writer
             # spawn can flush it (S-15 / AC-05). The header carries
@@ -2707,11 +2743,11 @@ class ParallelDisplay:
             timestamp = self._format_timestamp(self._clock())
 
             t = _RichText()
+            # wt-028-display S-4: the run-start header drops the
+            # MILESTONE LEVEL and META category chrome — severity
+            # is carried by the milestone glyph in the body, exactly
+            # once per the AC-03 single-severity contract.
             t.append(f"{timestamp} ")
-            t.append("MILESTONE", style="theme.level.milestone")
-            t.append(" ")
-            t.append("META", style="theme.cat.meta")
-            t.append(" ")
             t.append(
                 f"[run-start] {self._ctx.glyph_for('milestone')} ",
                 style="theme.banner.ascii",
@@ -2726,7 +2762,8 @@ class ParallelDisplay:
                         "INFO",
                         "META",
                         "[run-start] legend: levels: INFO|SUCCESS|WARN|ERROR|MILESTONE"
-                        "  cats: META|CONT  format: [tag][unit] message",
+                        "  tags: content|think|call|result|error"
+                        "  format: [tag][unit] message",
                     ),
                     markup=False,
                     highlight=False,
@@ -3203,11 +3240,11 @@ class ParallelDisplay:
             elapsed_str = format_elapsed_seconds(total_elapsed_s)
 
             t = _RichText()
+            # wt-028-display S-4: the run-end header drops the
+            # MILESTONE LEVEL and META category chrome — severity is
+            # carried by the milestone glyph in the body, exactly
+            # once per the AC-03 single-severity contract.
             t.append(f"{timestamp} ")
-            t.append("MILESTONE", style="theme.level.milestone")
-            t.append(" ")
-            t.append("META", style="theme.cat.meta")
-            t.append(" ")
             t.append(
                 f"[run-end] {self._ctx.glyph_for('milestone')} ",
                 style="theme.banner.ascii",
@@ -4543,6 +4580,10 @@ class ParallelDisplay:
         self._last_checkpoint_chars.pop(unit_id, None)
         self._last_recorded_body.pop(unit_id, None)
         self._last_text_thinking_block_close.pop(unit_id, None)
+        # wt-028-display S-5 (AC-04): clear the per-unit last-phase
+        # cache so a re-spawned worker does not carry a stale
+        # phase / cycle / iter_ across drop_unit boundaries.
+        self._last_phase_per_unit.pop(unit_id, None)
         # S-23 (wt-028-display P1): close the overflow log AFTER
         # the streaming-block close so the buffered full payload
         # lands in the same handle drop_unit is about to close.

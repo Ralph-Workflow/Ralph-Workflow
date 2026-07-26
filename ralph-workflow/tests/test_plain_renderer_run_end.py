@@ -19,13 +19,26 @@ def _make_display() -> tuple[ParallelDisplay, StringIO]:
 
 
 def test_emit_run_end_emits_milestone_header() -> None:
-    """emit_run_end emits a MILESTONE header line."""
+    """emit_run_end emits a MILESTONE [run-end] header line.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    INFO/MILESTONE LEVEL badge or the META category badge; the
+    milestone glyph in the body is the only severity carrier.
+    """
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
-    milestone_line = next((ln for ln in out.splitlines() if "MILESTONE META [run-end]" in ln), None)
+    milestone_line = next(
+        (ln for ln in out.splitlines() if "[run-end]" in ln and "Ralph Workflow run end" in ln),
+        None,
+    )
     assert milestone_line is not None
     assert "Ralph Workflow run end" in milestone_line
+    for forbidden in ("MILESTONE META", "INFO META"):
+        assert forbidden not in milestone_line, (
+            f"wt-028-display S-4: run-end header must not leak {forbidden!r} chrome; "
+            f"got: {milestone_line!r}"
+        )
 
 
 def test_emit_run_end_emits_phase_and_elapsed() -> None:
@@ -98,10 +111,16 @@ def test_emit_run_end_flushes_open_streaming_block() -> None:
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
     # The streaming-block close line ([content] · 1 fragments) must
-    # appear before the [run-end] MILESTONE header.
+    # appear before the [run-end] header. wt-028-display S-4: the
+    # header no longer carries the MILESTONE META badge; the
+    # match anchors on the [run-end] tag and the body text.
     assert "[content][u]" in out
-    assert "MILESTONE META [run-end]" in out
-    assert out.index("[content][u]") < out.index("MILESTONE META [run-end]")
+    run_end_line = next(
+        (ln for ln in out.splitlines() if "[run-end]" in ln and "Ralph Workflow run end" in ln),
+        None,
+    )
+    assert run_end_line is not None
+    assert out.index("[content][u]") < out.index(run_end_line)
 
 
 def test_emit_run_end_includes_all_counter_lines() -> None:
@@ -123,14 +142,30 @@ def test_emit_run_end_includes_all_counter_lines() -> None:
     assert "agent_calls=7" in out
 
 
-def test_emit_run_end_continuation_lines_use_info_level() -> None:
-    """All continuation lines after the MILESTONE header use INFO level."""
+def test_emit_run_end_continuation_lines_carry_no_level_badge() -> None:
+    """Continuation lines after the [run-end] header carry no LEVEL chrome.
+
+    wt-028-display S-4: the chrome prefix no longer carries a
+    level/category badge; severity is carried by the body text
+    (the counter suffix, the milestone glyph, etc.). The
+    continuation lines must not leak retired INFO/WARN/ERROR/
+    MILESTONE/META/OUT chrome.
+    """
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=1)
     out = buf.getvalue()
-    info_lines = [ln for ln in out.splitlines() if " INFO " in ln]
-    # The continuation lines should all be INFO
-    assert info_lines, "Expected at least one INFO continuation line"
+    body_lines = [
+        ln
+        for ln in out.splitlines()
+        if ln and "Ralph Workflow run end" not in ln and "[run-end]" in ln
+    ]
+    assert body_lines, f"Expected at least one [run-end] continuation line; got: {out!r}"
+    for ln in body_lines:
+        for forbidden in ("INFO", "WARN", "ERROR", "MILESTONE", "META", "OUT"):
+            assert f" {forbidden} " not in ln, (
+                f"wt-028-display S-4: [run-end] continuation line must not carry "
+                f"{forbidden!r} level chrome; got: {ln!r}"
+            )
 
 
 def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:

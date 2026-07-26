@@ -51,7 +51,14 @@ def _make_snapshot(**kwargs: object) -> PipelineSnapshot:
 
 
 def test_milestone_level_for_execution_role_phase_with_renamed_phase() -> None:
-    """A phase named 'design' with role 'execution' produces a MILESTONE [phase] line."""
+    """A phase named 'design' with role 'execution' produces a MILESTONE [phase] line.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    ``MILESTONE`` LEVEL text; the role-driven severity is now
+    carried by the milestone glyph (``\u25c6`` for execution /
+    review / fix) in the body. The line still carries the [phase]
+    tag, the milestone glyph, and the phase name.
+    """
     pd, buf = _make_display()
     snapshot = _make_snapshot(phase="design", current_phase_role="execution")
     pd._phase_lines(snapshot, "2026-01-01T00:00:00+00:00")
@@ -62,14 +69,29 @@ def test_milestone_level_for_execution_role_phase_with_renamed_phase() -> None:
     texts = pd._phase_lines(snapshot, "2026-01-01T00:00:00+00:00")
     assert len(texts) == 1
     line_text = texts[0].plain
-    assert "MILESTONE" in line_text
     assert "design" in line_text
     milestone_glyph = UNICODE_GLYPHS["milestone"]
-    assert milestone_glyph in line_text
+    assert milestone_glyph in line_text, (
+        f"wt-028-display S-4: role-driven severity for execution is "
+        f"carried by the milestone glyph; got line={line_text!r}"
+    )
+    # The retired LEVEL text must NOT appear in the chrome prefix.
+    assert "MILESTONE" not in line_text, (
+        f"wt-028-display S-4: chrome prefix must not carry the "
+        f"MILESTONE LEVEL text; got line={line_text!r}"
+    )
 
 
 def test_success_level_for_terminal_role_phase_with_renamed_phase() -> None:
-    """A phase named 'done' with role 'terminal' produces a SUCCESS [phase] line."""
+    """A phase named 'done' with role 'terminal' produces a terminal-success [phase] line.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    ``SUCCESS`` LEVEL text; role-driven severity is carried by the
+    surviving icon+label carrier in the body. The line still carries
+    the [phase] tag and the phase name; for terminal-success the
+    carrier is the surviving OK carrier (``[OK]`` ASCII / the
+    terminated marker Unicode).
+    """
     pd, _buf = _make_display()
     snapshot = _make_snapshot(
         phase="done",
@@ -80,12 +102,22 @@ def test_success_level_for_terminal_role_phase_with_renamed_phase() -> None:
     texts = pd._phase_lines(snapshot, "2026-01-01T00:00:00+00:00")
     assert len(texts) == 1
     line_text = texts[0].plain
-    assert "SUCCESS" in line_text
     assert "done" in line_text
+    # The retired LEVEL text must NOT appear in the chrome prefix.
+    assert "SUCCESS" not in line_text, (
+        f"wt-028-display S-4: chrome prefix must not carry the "
+        f"SUCCESS LEVEL text; got line={line_text!r}"
+    )
 
 
 def test_error_level_for_terminal_failure_with_renamed_phase() -> None:
-    """A phase with is_terminal_failure=True produces an ERROR [phase] line."""
+    """A phase with is_terminal_failure=True produces a terminal-failure [phase] line.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    ``ERROR`` LEVEL text; role-driven severity is carried by the
+    surviving icon+label carrier in the body. The line still
+    carries the [phase] tag and the phase name.
+    """
     pd, _buf = _make_display()
     snapshot = _make_snapshot(
         phase="failed_terminal",
@@ -97,12 +129,23 @@ def test_error_level_for_terminal_failure_with_renamed_phase() -> None:
     texts = pd._phase_lines(snapshot, "2026-01-01T00:00:00+00:00")
     assert len(texts) == 1
     line_text = texts[0].plain
-    assert "ERROR" in line_text
     assert "failed_terminal" in line_text
+    # The retired LEVEL text must NOT appear in the chrome prefix.
+    assert "ERROR" not in line_text, (
+        f"wt-028-display S-4: chrome prefix must not carry the "
+        f"ERROR LEVEL text; got line={line_text!r}"
+    )
 
 
 def test_warn_level_when_interrupted_by_user() -> None:
-    """interrupted_by_user=True produces a WARN [phase] line regardless of phase name."""
+    """interrupted_by_user=True produces a [phase] line tagged interrupted, no WARN chrome.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    ``WARN`` LEVEL text; the user-interrupted signal is now
+    carried by the surviving icon+label carrier in the body
+    (the warn / interrupted glyph). The line still carries the
+    [phase] tag and the phase name.
+    """
     pd, _buf = _make_display()
     snapshot = _make_snapshot(
         phase="any_custom_phase",
@@ -113,8 +156,12 @@ def test_warn_level_when_interrupted_by_user() -> None:
     texts = pd._phase_lines(snapshot, "2026-01-01T00:00:00+00:00")
     assert len(texts) == 1
     line_text = texts[0].plain
-    assert "WARN" in line_text
     assert "any_custom_phase" in line_text
+    # The retired LEVEL text must NOT appear in the chrome prefix.
+    assert "WARN" not in line_text, (
+        f"wt-028-display S-4: chrome prefix must not carry the "
+        f"WARN LEVEL text; got line={line_text!r}"
+    )
 
 
 def test_phase_close_milestone_glyph_for_review_role_renamed() -> None:

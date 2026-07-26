@@ -17,6 +17,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ralph.display._channel_prefix_stripper import (
+    strip_parser_channel_prefix,
+)
 from ralph.display.activity_event_kind import ActivityEventKind
 
 if TYPE_CHECKING:
@@ -152,11 +155,11 @@ def build_presented_entry(
     # the prefix at its own seam (see
     # :func:`ralph.display.agent_event_renderer._normalized_event_content`);
     # the record writer reads the body off the event directly, so
-    # the same normalization has to run here. Importing the
-    # helper at module scope would create a circular import
-    # (presented_entry <-> agent_event_renderer), so the
-    # normalization is done inline.
-    body = _strip_parser_channel_prefixes(body)
+    # the same normalization has to run here. wt-028-display S-5
+    # consolidated the stripper into a single leaf module
+    # (:mod:`ralph.display._channel_prefix_stripper`) so the live
+    # log and the rendered record cannot drift.
+    body = strip_parser_channel_prefix(body)
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
@@ -269,61 +272,22 @@ def _code_value_is_failure(value: object) -> bool:
 
 
 #: Parser-channel prefixes that must NEVER reach an operator-facing
-#: surface (DA-001 / AC-02). Mirrors
-#: :data:`ralph.display.agent_event_renderer._INTERNAL_CHANNEL_PREFIXES`;
-#: declared locally so :mod:`ralph.display.presented_entry` does not
-#: import :mod:`ralph.display.agent_event_renderer` (which would
-#: create a circular import -- the renderer imports
-#: :class:`PresentedEntry`).
+#: surface (DA-001 / AC-02).
+#:
+#: wt-028-display S-5: the prefix lists and the stripper now live
+#: in a single leaf module
+#: (:mod:`ralph.display._channel_prefix_stripper`). Both the live
+#: log and the rendered record import the canonical stripper from
+#: there so a parser that changes one set of prefixes cannot leave
+#: the other behind. The historical local copies were deleted --
+#: this comment block documents why no per-module redefinition
+#: exists.
 #:
 #: AC-07 (wt-028-display S-6): the SPACE-LESS form
 #: (``text:hello``) is also a known accumulator key shape used by
 #: pi/claude when the first content fragment lacks a separating
 #: space. The space-less stripper only fires when the remainder is
 #: non-empty AND does not begin with whitespace.
-_PARSER_CHANNEL_PREFIXES: tuple[str, ...] = (
-    "text: ",
-    "thinking: ",
-    "tool_use: ",
-    "tool_result: ",
-)
-_PARSER_CHANNEL_PREFIXES_SPACELESS: tuple[str, ...] = (
-    "text:",
-    "thinking:",
-    "tool_use:",
-    "tool_result:",
-)
-
-
-def _strip_parser_channel_prefixes(content: str) -> str:
-    """Strip a leading parser-channel prefix from ``content``.
-
-    DA-001 (wt-028-display S-3 / AC-02): the canonical
-    :class:`PresentedEntry` seam strips the four recognized parser
-    channel prefixes (``text: ``, ``thinking: ``, ``tool_use: ``,
-    ``tool_result: ``) when they appear at the START of the body.
-    Ordinary prose that happens to begin with the word ``text:``
-    followed by prose (rare in agent output but possible in tool
-    results that quote a payload) keeps its leading characters
-    unchanged because the registry only matches an EXACT
-    four-character prefix from the canonical set followed by a
-    single space.
-
-    AC-07 (wt-028-display S-6): the space-less form
-    (``text:hello``) is also stripped when the remainder is
-    non-empty, so the accumulator key shape used by pi/claude
-    cannot leak the prefix even if the first content fragment
-    lacks a separating space.
-    """
-    for prefix in _PARSER_CHANNEL_PREFIXES:
-        if content.startswith(prefix):
-            return content[len(prefix):]
-    for prefix in _PARSER_CHANNEL_PREFIXES_SPACELESS:
-        if content.startswith(prefix):
-            remainder = content[len(prefix):]
-            if remainder and not remainder[0].isspace():
-                return remainder
-    return content
 
 
 #: Map ``ActivityEventKind`` to ``(grouping_role, indent_level)`` for

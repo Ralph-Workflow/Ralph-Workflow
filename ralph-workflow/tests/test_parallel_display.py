@@ -130,8 +130,11 @@ def test_parallel_display_set_status_writes_line() -> None:
     pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.set_status("unit-1", WorkerStatus.RUNNING)
     text = console.export_text()
-    assert "INFO" in text
-    assert "META" in text
+    # wt-028-display S-4: the chrome prefix no longer carries the
+    # INFO LEVEL or META category badge. The [status][unit-1] tag
+    # and the body are what the operator sees.
+    assert "INFO" not in text
+    assert "META" not in text
     assert "[status][unit-1]" in text
     assert "RUNNING" in text
 
@@ -368,7 +371,12 @@ def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
     rendered = buf.getvalue()
     assert "dropped" in rendered
     assert "unit-drop" in rendered
-    assert "WARN META [progress]" in rendered
+    # wt-028-display S-4: chrome prefix no longer carries the
+    # WARN LEVEL or META category badge. The [progress] tag and
+    # the body are what the operator sees.
+    assert "WARN META" not in rendered
+    assert "[progress]" in rendered
+    assert "dropped" in rendered
 
 
 def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:

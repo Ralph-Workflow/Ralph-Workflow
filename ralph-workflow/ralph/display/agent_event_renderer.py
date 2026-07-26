@@ -59,6 +59,11 @@ if TYPE_CHECKING:
 from rich.markup import escape
 from rich.text import Text
 
+from ralph.display._channel_prefix_stripper import (
+    _PARSER_CHANNEL_PREFIXES,
+    _PARSER_CHANNEL_PREFIXES_SPACELESS,
+    strip_parser_channel_prefix,
+)
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
@@ -122,45 +127,29 @@ def _safe_str(content: object) -> str:
 #: (e.g. ``"text: internal prefix payload"``); the registry strips
 #: them at the canonical event-content normalization seam so the
 #: severity word, tool name, and outcome carry the information
-#: instead (DA-001 / AC-02). The space-less sibling
-#: :data:`_INTERNAL_CHANNEL_PREFIXES_SPACELESS` covers the
-#: ``"text:hello"`` accumulator key shape (AC-07 / S-6).
-_INTERNAL_CHANNEL_PREFIXES: tuple[str, ...] = (
-    "text: ",
-    "thinking: ",
-    "tool_use: ",
-    "tool_result: ",
-)
-_INTERNAL_CHANNEL_PREFIXES_SPACELESS: tuple[str, ...] = (
-    "text:",
-    "thinking:",
-    "tool_use:",
-    "tool_result:",
-)
+#: instead (DA-001 / AC-02).
+#:
+#: wt-028-display S-5: the stripper and prefix lists now live in a
+#: single leaf module (:mod:`ralph.display._channel_prefix_stripper`)
+#: so the live log and the rendered record cannot drift. This
+#: module re-exports the public helper for backwards compatibility
+#: with the existing call sites; the canonical definition lives
+#: in the leaf module.
+_INTERNAL_CHANNEL_PREFIXES = _PARSER_CHANNEL_PREFIXES
+_INTERNAL_CHANNEL_PREFIXES_SPACELESS = _PARSER_CHANNEL_PREFIXES_SPACELESS
 
 
 def _strip_internal_channel_prefix(content: str) -> str:
     """Remove a leading parser-channel prefix from ``content``.
 
-    DA-001 (S-3 / AC-02): strips the four recognized parser
-    channel prefixes (``text: ``, ``thinking: ``, ``tool_use: ``,
-    ``tool_result: ``) at the START of the body. AC-07 (S-6):
-    the space-less form (``text:hello``) is also stripped when
-    the remainder is non-empty, so the accumulator key shape used
-    by pi/claude cannot leak the prefix. A body whose first token
-    is a different word, or whose remainder is empty / whitespace
-    prefixed, is returned unchanged so legitimate prose is
-    preserved.
+    Thin compatibility wrapper over
+    :func:`ralph.display._channel_prefix_stripper.strip_parser_channel_prefix`.
+    wt-028-display S-5 consolidated the stripper into a single
+    leaf module so the live log and the rendered record cannot
+    drift; this alias exists only so existing call sites in this
+    module still typecheck.
     """
-    for prefix in _INTERNAL_CHANNEL_PREFIXES:
-        if content.startswith(prefix):
-            return content[len(prefix):]
-    for prefix in _INTERNAL_CHANNEL_PREFIXES_SPACELESS:
-        if content.startswith(prefix):
-            remainder = content[len(prefix):]
-            if remainder and not remainder[0].isspace():
-                return remainder
-    return content
+    return strip_parser_channel_prefix(content)
 
 
 def _normalized_event_content(event: AgentActivityEvent) -> str:

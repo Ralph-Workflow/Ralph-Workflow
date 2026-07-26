@@ -18,7 +18,6 @@ import rich_click as click
 import typer
 import typer.testing
 from loguru import logger
-from rich.text import Text
 
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
@@ -260,14 +259,26 @@ _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
 def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
-    """Print version information."""
+    """Print version information.
+
+    wt-028-display S-7: this callback is the LAST private display
+    path -- the only ``console.print`` outside :mod:`ralph.display`.
+    The S-7 work routes the output through the canonical
+    :func:`ralph.display.parallel_display.resolve_active_display`
+    factory and the existing ``emit_welcome_banner`` panel (its
+    height-constrained presentation already prints the version
+    line on a single row, exactly what ``--version`` wants on a
+    12-row split pane or a magnified
+    screen). A new presentation variant is intentionally NOT
+    added: the welcome banner IS the version line on the height-
+    constrained surface that ``--version`` typically runs on.
+    """
     if version:
-        c = ctx.console if ctx is not None else _get_cli_context().console
-        version_text = Text()
-        version_text.append("Ralph Workflow", style="theme.banner.title")
-        version_text.append(" version ")
-        version_text.append(__version__, style="theme.banner.version")
-        c.print(version_text)
+        from ralph.display.parallel_display import resolve_active_display
+
+        resolved_ctx = ctx if ctx is not None else _get_cli_context()
+        display = resolve_active_display(None, resolved_ctx)
+        display.emit_welcome_banner(version=__version__)
         raise typer.Exit()
 
 

@@ -27,18 +27,31 @@ def _orientation(**kwargs: object) -> RunStartOrientation:
 
 
 def test_emit_run_start_prints_milestone_header() -> None:
+    """emit_run_start prints a [run-start] header line.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    ``MILESTONE`` LEVEL or ``META`` category badges. The
+    run-start header line is now identified by the [run-start] tag
+    and the "Ralph Workflow run start" body text. The milestone
+    glyph (◆ Unicode / ``*`` ASCII) is the surviving severity
+    carrier.
+    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(plan_present=True))
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     assert lines, "expected at least one non-empty line"
-    # The section rule "─── [run-start]" is now emitted first by ParallelDisplay.
-    # The milestone header is the next non-empty line.
-    milestone_line = next((ln for ln in lines if "MILESTONE META [run-start]" in ln), None)
+    milestone_line = next((ln for ln in lines if "Ralph Workflow run start" in ln), None)
     assert milestone_line is not None, (
-        f"expected a line with 'MILESTONE META [run-start]', got: {lines!r}"
+        f"expected a run-start header line, got: {lines!r}"
     )
+    assert "[run-start]" in milestone_line
     assert "Ralph Workflow run start" in milestone_line
+    for forbidden in ("MILESTONE META", "INFO META"):
+        assert forbidden not in milestone_line, (
+            f"wt-028-display S-4: run-start header must not carry "
+            f"{forbidden!r} chrome; got: {milestone_line!r}"
+        )
 
 
 def test_emit_run_start_emits_prompt_line_when_present() -> None:
@@ -135,12 +148,17 @@ def test_emit_run_start_milestone_glyph_ascii_fallback() -> None:
 
 
 def test_emit_run_start_legend_format() -> None:
-    """emit_run_start legend uses new pipe-separated format."""
+    """emit_run_start legend uses the new S-4 pipe-separated format.
+
+    The retired ``cats: META|CONT`` chrome is gone; the legend
+    now enumerates the public tag vocabulary (content / think /
+    call / result / error).
+    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation())
     out = buf.getvalue()
     assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" in out
-    assert "cats: META|CONT" in out
+    assert "tags: content|think|call|result|error" in out
     assert "format: [tag][unit] message" in out
 
 
