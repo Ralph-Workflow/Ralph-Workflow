@@ -77,6 +77,7 @@ def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
         content: str | None,
         raw_ref: str | None,
         metadata: dict[str, object] | None = None,
+        timestamp: str | None = None,
     ) -> None:
         _capture(unit_id, kind, content, raw_ref, metadata)
 
@@ -204,6 +205,7 @@ def test_subagent_progress_event_for_every_provider(
         content: str | None,
         raw_ref: str | None,
         metadata: dict[str, object] | None = None,
+        timestamp: str | None = None,
     ) -> None:
         captured.append((unit_id, kind, content or "", metadata or {}))
 

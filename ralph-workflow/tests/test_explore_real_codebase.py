@@ -674,17 +674,18 @@ def test_worker_session_attaches_explore_index_handle(tmp_path: Path) -> None:
     from ralph.workspace.scope import WorkspaceScope
     from tests._support.typed_accessors import must_mapping
 
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
+    # Resolve before creating the store so the test's index
+    # path matches ``build_explore_index``'s resolved path
+    # (``Path.resolve()`` expands macOS /tmp -> /private/tmp
+    # symlinks; otherwise the bridge writes to one index file
+    # and the test's ``store`` reads from another). Do NOT
+    # pre-populate the explore index -- the bridge-driven
+    # ``ralph_reindex`` below does the real work (a pre-call
+    # would add ~+0.5s against the tight 60s budget).
+    workspace = (tmp_path / "ws").resolve()
+    workspace.mkdir(exist_ok=True)
     _seed_realistic_codebase(workspace)
     index_dir = workspace / ".agent" / "ralph-explore"
-    # NOTE: we deliberately do NOT pre-populate the explore
-    # index here. The test's purpose is to prove the worker
-    # session's ExploreIndex handle is engaged end-to-end; the
-    # bridge-driven ``ralph_reindex`` below does the real
-    # work. A pre-call would double the per-test wall-clock
-    # (~+0.5s) and the 60s combined test budget is already
-    # tight against the new AC-04 / S-6 / S-8 coverage.
     store = ExploreStore(index_dir)
     try:
         unit = WorkUnit(

@@ -340,6 +340,36 @@ def _swap_staged_index(
                 if tmp_aux.exists():
                     tmp_aux.unlink()
             continue
+    # AC-02 (correctness): drop any stale WAL/SHM files left
+    # behind from connections that were open to the prior
+    # main DB at swap time. ``os.replace`` only swaps the main
+    # DB; the WAL/SHM frames reference page numbers in the
+    # OLD main DB. If a sibling connection (e.g. a test's
+    # extra ``ExploreStore`` or a previous ``store`` instance)
+    # wrote to the old main DB, its WAL frames remain on
+    # disk and a subsequent reopen would replay them against
+    # the NEW main DB pages -- corrupting settings and index
+    # rows. SQLite recovers automatically: the next
+    # ``connect`` re-checks the WAL/SHM and ignores frames
+    # whose pages no longer match the live main DB. To be
+    # fail-safe (and avoid the slow replay path), unlink any
+    # leftover main_wal / main_shm before the reopen. The
+    # unlink is best-effort: if a sibling connection is
+    # still actively writing, the unlink raises ``FileNotFoundError``
+    # on a follow-up reopen; the reopen path then re-opens
+    # without a WAL until the writer flushes. The check
+    # uses ``is_relative_to`` so the unlink cannot escape
+    # the index directory via a symlinked ``swap_dir``.
+    for aux in (main_wal, main_shm):
+        if not aux.exists():
+            continue
+        try:
+            if not aux.resolve().is_relative_to(swap_dir.resolve()):
+                continue
+        except (OSError, AttributeError):
+            continue
+        with suppress(FileNotFoundError):
+            aux.unlink()
     # Reopen the live connection against the new main DB.
     # Even if the post-publish cancel/timeout fires
     # immediately above, the reopen itself is mandatory so

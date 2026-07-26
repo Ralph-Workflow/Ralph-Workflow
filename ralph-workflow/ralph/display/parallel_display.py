@@ -129,6 +129,7 @@ from ralph.display._plain_constants import (
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.agent_event_renderer import _format_timestamp as _format_iso_timestamp_hh_mm_ss
 from ralph.display.agent_event_renderer import (
     make_event_for_emit,
     render_event,
@@ -644,8 +645,21 @@ class ParallelDisplay:
     # -- Pure helpers (inlined from _PlainLogRendererBase) ----------------
 
     def _format_timestamp(self, ts: datetime) -> str:
-        """Format a datetime as an ISO 8601 timestamp string (single default mode)."""
-        return ts.isoformat()
+        """Format a wall-clock datetime as ``HH:MM:SS`` for the line chrome.
+
+        DA-002 (wt-028-display P1 / S-4 / AC-03): the line chrome
+        column carries a compact ``HH:MM:SS`` token (8 chars) so the
+        chrome fits on a 40-column terminal alongside the badge
+        and at least one body token. Pre-fix, the chrome used the
+        full ISO-8601 string (33 chars) which left zero room for
+        the body on a 40-column terminal -- Rich truncated the
+        line to the chrome and dropped the body / continuation
+        badge. The full ISO-8601 timestamp still appears in the
+        rendered record (see :mod:`ralph.display.record_writer`)
+        so the file surface stays lossless; only the live-log
+        chrome column is compacted.
+        """
+        return ts.strftime("%H:%M:%S")
 
     @staticmethod
     def _format_hh_mm_ss(ts: datetime) -> str:
@@ -824,6 +838,7 @@ class ParallelDisplay:
         ai_summary_line: str | None = None,
         tool_signature: tuple[str, str] | None = None,
         body_text: str | None = None,
+        source_timestamp: str | None = None,
     ) -> None:
         """Emit a kind-tagged, level-badged content line.
 
@@ -837,6 +852,15 @@ class ParallelDisplay:
         (timestamp + level + cat + badge + rendered chrome) on its
         own row, so a continuation at the floor carries readable
         multiword body chunks instead of one-character fragments.
+
+        ``source_timestamp`` (DA-003 / wt-028-display): the
+        source-event ISO-8601 timestamp the parser pipeline
+        extracted from the agent output. When supplied, it
+        replaces the display clock fallback so the rendered
+        record carries the source time instead of the moment
+        ``emit_activity_line`` happened to run. ``None`` (the
+        default) keeps the pre-fix behaviour -- the display
+        clock stamps the line.
         """
         if options is None:
             options = _ActivityLineOptions(
@@ -847,7 +871,16 @@ class ParallelDisplay:
                 tool_signature=tool_signature,
             )
         opts = options
-        timestamp = self._format_timestamp(self._clock())
+        # DA-003 (wt-028-display): when the caller supplied a
+        # source-event ISO-8601 timestamp, use it; otherwise stamp
+        # the display clock. The chrome column reads the same
+        # ``HH:MM:SS`` token either way so the visual contract
+        # is unchanged; only the rendered record carries the
+        # source time end-to-end when the caller had one.
+        if source_timestamp is not None:
+            timestamp = _format_iso_timestamp_hh_mm_ss(source_timestamp)
+        else:
+            timestamp = self._format_timestamp(self._clock())
         rendered_unit_id = _render_unit_id(unit_id)
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
@@ -888,7 +921,7 @@ class ParallelDisplay:
         # still runs so the file surface keeps the same presented
         # entries a non-quiet run would have written.
         if not self._is_quiet:
-            # DA-003 / DA-004 (S-4 + S-5): the live log body hangs at
+            # DA-002 / DA-004 (S-4 + S-5): the live log body hangs at
             # the prefix column on wrap and is capped at the shared
             # ``body_measure`` so a 250-col terminal doesn't print
             # 180-char lines. We split the work into two print calls:
@@ -896,6 +929,11 @@ class ParallelDisplay:
             # subsequent continuations carry the chrome prefix and a
             # hanging indent that lands at the actual first body
             # column (timestamp + level + cat + badge prefix).
+            # ``no_wrap=True`` prevents Rich from reflowing the
+            # already-wrapped first line (the pre-fix bug dropped
+            # the chrome into one or more column-0 rows on a 40-col
+            # console and put the body on a continuation row that
+            # Rich re-wrapped to column 0).
             #
             # DA-004 (S-4): the hanging indent must mirror the FULL
             # chrome prefix emitted on the first line -- timestamp,
@@ -941,17 +979,50 @@ class ParallelDisplay:
             # timestamp/level/cat text -- the leading indent is
             # applied via ``_build_line(leading_indent=...)`` and
             # via the leading-spaces in ``hang_prefix``.
-            hang_prefix = level_indent + " " * len(chrome_prefix + badge_prefix)
-            # DA-002 (S-4): wrap JUST the body, not the full chrome-
-            # prefixed rendered text. Passing the chrome-prefixed
-            # text would consume the narrow-terminal budget on the
-            # chrome prefix and force ``textwrap`` to break natural
-            # words into one-character fragments. The first line
-            # still carries the chrome prefix; only the body is
-            # wrapped standalone at the badge column.
+            # DA-002 (S-4): the hang column is the FIRST body
+            # token's column on the first line, which equals
+            # the leading_indent + the chrome_prefix length +
+            # the badge_prefix length (because the body itself
+            # starts immediately after the badge). On a 40-col
+            # console the chrome (18) + badge (14) consumes 32
+            # cols, leaving only 8 cols for the body on the
+            # first line; the manual wrap must use the SAME
+            # budget so the first body token column equals the
+            # hang column on every continuation.
+            full_chrome_prefix = chrome_prefix + badge_prefix
+            # DA-002 (S-4): the wrap budget must subtract the
+            # LEVEL indent too, because the first line is
+            # ``level_indent + chrome + badge + first_chunk`` --
+            # ignoring the level indent caused the wrapped
+            # first line to overshoot the terminal width and
+            # Rich truncated the body (the pre-fix bug on
+            # level-1 entries like ``[result]``).
+            effective_prefix_for_wrap = level_indent + full_chrome_prefix
+            # DA-002 (S-4): the continuation lines carry ONLY the
+            # hanging indent (spaces matching the chrome column),
+            # NOT a fresh chrome prefix. The pre-fix bug stamped
+            # ``10:27:44 SUCCESS OUT [result][u1]`` on every
+            # continuation line, which broke the one-entry-per-event
+            # invariant for multi-line bodies and turned a single
+            # tool_result into N records. The hang column is still
+            # the badge column on the first line; the chrome is
+            # dropped because the badge itself is the structural
+            # marker and the reader can scroll back to the first
+            # line for the timestamp. The wrap budget below still
+            # uses the FULL prefix so the body lands at the same
+            # column on the first line.
+            hang_prefix = level_indent + " " * len(full_chrome_prefix)
+            # DA-002 (S-4): wrap the body against the FULL
+            # chrome+badge prefix so the first body token column
+            # on the first line equals the hang column on every
+            # continuation. Pre-fix, the wrap budget was computed
+            # against ``badge_prefix`` only (14 chars), but the
+            # actual first-line chrome is 32 chars long; Rich then
+            # re-wrapped the resulting 32 + 26 = 58-char first
+            # line at 40 cols, dropping continuations to column 0.
             wrap_target = body_text if body_text is not None else sanitized
             wrapped_body = self._wrap_body_with_hanging_indent(
-                badge_prefix,
+                effective_prefix_for_wrap,
                 wrap_target,
                 total_width=self._ctx.width,
                 body_measure=self._ctx.body_measure(),
@@ -968,8 +1039,8 @@ class ParallelDisplay:
                 ),
                 markup=False,
                 highlight=False,
-                no_wrap=False,
-                overflow="fold",
+                no_wrap=True,
+                overflow="ignore",
             )
             for chunk in chunks[1:]:
                 # ponytail: continuations keep the badge prefix so
@@ -981,13 +1052,16 @@ class ParallelDisplay:
                 # alongside the badge column so a downstream grep
                 # can recover the structural position even when the
                 # leading whitespace is stripped (e.g. a screen
-                # reader or a braille display).
+                # reader or a braille display). ``no_wrap=True`` so
+                # Rich cannot re-wrap our already-wrapped continuation
+                # (the pre-fix bug dropped continuations to column 0
+                # on a 40-col console).
                 self._console.print(
                     f"{hang_prefix}{chunk}",
                     markup=False,
                     highlight=False,
-                    no_wrap=False,
-                    overflow="fold",
+                    no_wrap=True,
+                    overflow="ignore",
                 )
 
         self._append_seam_record(unit_id, kind, sanitized, timestamp, opts)
@@ -1271,11 +1345,17 @@ class ParallelDisplay:
         # the record append below still runs so the file surface
         # keeps the same close entry.
         if not self._is_quiet:
-            # DA-003 / DA-004 (S-4 + S-5): the close-entry body has
+            # DA-002 / DA-004 (S-4 + S-5): the close-entry body has
             # the span header on its own line then the joined
             # passage. Wrap each line independently so a wide
             # console stays at the body_measure cap and a narrow
             # console's continuations hang at the badge column.
+            # ``no_wrap=True`` prevents Rich from reflowing our
+            # manually wrapped lines (the pre-fix bug dropped
+            # continuations to column 0 on a 40-col console because
+            # Rich re-wrapped the ``close_hang_prefix + wrapped_cont``
+            # embedded-newline string and only the first embedded
+            # line carried the prefix).
             close_badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
             close_hang_prefix = " " * len(close_badge_prefix)
             body_chunks = body.split("\n")
@@ -1294,8 +1374,8 @@ class ParallelDisplay:
                 ),
                 markup=False,
                 highlight=False,
-                no_wrap=False,
-                overflow="fold",
+                no_wrap=True,
+                overflow="ignore",
             )
             for continuation in body_chunks[1:]:
                 wrapped_cont = self._wrap_body_with_hanging_indent(
@@ -1304,13 +1384,19 @@ class ParallelDisplay:
                     total_width=self._ctx.width,
                     body_measure=self._ctx.body_measure(),
                 )
-                self._console.print(
-                    f"{close_hang_prefix}{wrapped_cont}",
-                    markup=False,
-                    highlight=False,
-                    no_wrap=False,
-                    overflow="fold",
-                )
+                # Each embedded line in ``wrapped_cont`` must
+                # carry the hang prefix so the body stays at the
+                # badge column on wrap. Print each line as its
+                # own console.write so the prefix lands on every
+                # row, not just the first (the pre-fix bug).
+                for cont_line in wrapped_cont.split("\n"):
+                    self._console.print(
+                        f"{close_hang_prefix}{cont_line}",
+                        markup=False,
+                        highlight=False,
+                        no_wrap=True,
+                        overflow="ignore",
+                    )
 
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
         # also the single record entry for the streaming block. Map the
@@ -2039,6 +2125,7 @@ class ParallelDisplay:
         content: str | None,
         _raw_ref: str | None,
         metadata: dict[str, object] | None = None,
+        timestamp: str | None = None,
     ) -> None:
         """Render an agent event through the single registry and emit it.
 
@@ -2060,6 +2147,13 @@ class ParallelDisplay:
         ``render_event_line`` so the same logical event renders
         identically regardless of which path produced it
         (AC-06/AC-07/AC-08).
+
+        ``timestamp`` (DA-003 / wt-028-display): the optional
+        source-event ISO-8601 timestamp the parser pipeline
+        extracted from the agent output. When supplied, it
+        replaces the ``datetime.now(UTC)`` fallback at the
+        boundary so the rendered record carries the source
+        event's real time instead of the display clock.
         """
         metadata = {} if metadata is None else metadata
         text_content = content or ""
@@ -2068,10 +2162,14 @@ class ParallelDisplay:
         # :class:`AgentActivityEvent` BEFORE rendering so the registry
         # owns every presentation decision and this ingestion site
         # cannot drift from the pipeline runner / activity-router
-        # paths.
+        # paths. ``timestamp`` (DA-003): when the caller supplies a
+        # source-event ISO-8601 timestamp we forward it into the
+        # canonical event so the rendered record carries the source
+        # time instead of the display clock fallback.
         event = make_event_for_emit(
             kind,
             text_content,
+            timestamp=timestamp,
             metadata=metadata,
             source=unit_id,
         )
@@ -2210,10 +2308,20 @@ class ParallelDisplay:
             # mapping is defined.
             from ralph.display.presented_entry import build_presented_entry
 
+            # DA-003 (wt-028-display): the canonical
+            # ``PresentedEntry`` carries the source-event timestamp
+            # when one was supplied, and the display clock only when
+            # the source genuinely omitted it. ``timestamp`` is the
+            # ``event.timestamp`` (already normalised by
+            # ``make_event_for_emit``) so we prefer the event's own
+            # value over ``self._clock().isoformat()``.
+            entry_timestamp = (
+                event.timestamp if event.timestamp else self._clock().isoformat()
+            )
             _entry = build_presented_entry(
                 event,
                 unit_id=unit_id,
-                timestamp=self._clock().isoformat(),
+                timestamp=entry_timestamp,
             )
             self.emit_activity_line(
                 unit_id,
@@ -2229,6 +2337,10 @@ class ParallelDisplay:
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
                 ),
+                # DA-003 (wt-028-display): forward the
+                # source-event timestamp so the rendered record
+                # carries the parser time, not the display clock.
+                source_timestamp=event.timestamp or None,
                 # DA-002 (S-4): pass the wrap-target body so the wrap
                 # uses the standalone body instead of the full
                 # chrome-prefixed rendered text. The chrome prefix
@@ -2382,8 +2494,16 @@ class ParallelDisplay:
         kind: ActivityEventKind,
         content: str | None,
         metadata: dict[str, object],
+        timestamp: str | None = None,
     ) -> None:
-        """Route a pre-parsed agent event through the structured activity path."""
+        """Route a pre-parsed agent event through the structured activity path.
+
+        ``timestamp`` (DA-003 / wt-028-display): the optional
+        source-event ISO-8601 timestamp the parser pipeline
+        extracted from the agent output. When supplied, it is
+        forwarded all the way to ``_emit_activity_event`` and
+        from there into the rendered record line.
+        """
         if (
             kind in (ActivityEventKind.LIFECYCLE, ActivityEventKind.UNKNOWN)
             and content is not None
@@ -2398,7 +2518,18 @@ class ParallelDisplay:
         # The LIVE console emission is suppressed inside
         # ``_emit_activity_event`` itself (the watchdog's audit trail still
         # records the event via the rendered record writer path).
-        self._emit_activity_event(unit_id, kind, content, None, metadata)
+        #
+        # DA-003 (wt-028-display S-2): when the caller did not supply a
+        # source-event timestamp, default to the display clock (NOT
+        # ``datetime.now(UTC)``) so the rendered record carries the
+        # injected test clock and the production-time clock both stay
+        # deterministic. ``make_event_for_emit`` still falls back to
+        # ``datetime.now(UTC)`` for callers that bypass this seam (e.g.
+        # direct registry calls), but the production path goes through
+        # here.
+        if timestamp is None:
+            timestamp = self._clock().isoformat()
+        self._emit_activity_event(unit_id, kind, content, None, metadata, timestamp)
 
     def _on_activity_router_event(
         self,
