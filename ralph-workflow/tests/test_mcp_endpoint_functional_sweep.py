@@ -5,25 +5,35 @@ through the real bridge with a well-formed response (no unknown-tool /
 capability-denied for advertised names)."
 
 This module stands up the production MCP server (in-process, in-memory
-transport — no sockets, no real subprocess, no live network) and issues
-one ``tools/call`` per advertised tool name with minimal valid
-arguments. A response counts as "the endpoint works" when:
+transport — no sockets, no real subprocess, no live network) and
+issues one ``tools/call`` per advertised tool name with minimal
+valid arguments. The advertised set is ``tools/list`` itself, so the
+sweep naturally widens every time a new tool is added.
+
+Coverage shape:
+
+* For every advertised *canonical* name we have a SWEEP_CALLS entry
+  with minimal valid arguments.
+* For every advertised *alias* (the strict-MCP ``mcp__ralph__<tool>``
+  form) we generate a sweep entry from the canonical entry — same
+  arguments, different name going through ``_resolve_alias_to_canonical``.
+* The ``declare_complete`` tool finalizes its own session, so the
+  test runs it as the terminal call against a freshly built
+  server/session. This pins its real-bridge behavior without
+  poisoning the rest of the sweep with a completion sentinel.
+
+A response counts as "the endpoint works" when:
 
 * The JSON-RPC reply carries a ``result`` block (success or a
-  structured ``isError: true`` domain error such as file-not-found).
+  structured ``is_error: true`` domain error such as file-not-found).
 * The response is NOT a JSON-RPC ``error`` envelope with a code from
   ``-32601`` (Method not found / unknown tool) or
   ``-32602`` (Invalid params) caused by a malformed argument shape.
-* The response is NOT a capability-denial rendered as a top-level
-  ``-32603`` (Internal server error) when ``is_error: false`` would
-  have been a domain result.
 
-Tools that hit the live network (``web_search``, ``visit_url``,
-``download_url``) are NOT called in this suite — the contract gate for
-those is "registered, described, and parameter-validated", which the
-``tools/list`` invocation already proves. Plan-artifact-specific tools
-are out of scope (the artifact branch removes them) — only generic
-artifact tools are exercised here.
+Web tools (``web_search`` / ``visit_url`` / ``download_url``) are
+exercised against mocked backends so the sweep never opens a
+real network socket — the dispatcher is the production handler,
+only the upstream boundary is faked.
 
 Runtime budget: in-process, tmp_path workspace, no sockets, no
 subprocess, no network. Targets <5s wall clock to stay inside the
@@ -51,20 +61,10 @@ from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import RalphToolName
+from ralph.mcp.webvisit.extractor import ExtractedPage
+from ralph.mcp.webvisit.fetcher import FetchOutcome
 from ralph.workspace.fs import FsWorkspace
 from tests._support.typed_accessors import must_dict_list, must_mapping, must_str_list
-
-# Tools that hit the live network — exercised at the contract level
-# (registered, described, parameter-validated) but NEVER called with
-# a real query/URL in this sweep. Adding them here would inject
-# network into a unit-tier test and balloon the 60s budget.
-LIVE_NETWORK_TOOLS: frozenset[str] = frozenset(
-    {
-        RalphToolName.WEB_SEARCH,
-        RalphToolName.VISIT_URL,
-        RalphToolName.DOWNLOAD_URL,
-    }
-)
 
 
 def _all_capabilities() -> set[str]:
@@ -74,18 +74,21 @@ def _all_capabilities() -> set[str]:
 
 def _build_server(
     workspace_root: Path,
+    *,
+    session_id: str = "sweep-session",
+    run_id: str = "sweep-run",
 ) -> tuple[McpServer, AgentSession]:
-    """Build the production McpServer bound to a tmp_path workspace.
+    """Build the production McpServer bound to ``workspace_root``.
 
     The session is granted every internal Ralph capability so the
-    full tool surface is advertised and visible. The workspace is a
-    real :class:`FsWorkspace` rooted at ``workspace_root``; the test
-    seeds a few representative files so read/search/grep calls have
-    something to find.
+    full tool surface is advertised and visible. The session /
+    run id pair is parameterised so the terminal ``declare_complete``
+    call can be served by a freshly built server without colliding
+    with another server's identifier.
     """
     session = AgentSession(
-        session_id="sweep-session",
-        run_id="sweep-run",
+        session_id=session_id,
+        run_id=run_id,
         drain=SessionDrain.DEVELOPMENT.value,
         capabilities=_all_capabilities(),
     )
@@ -95,7 +98,7 @@ def _build_server(
 
 
 def _seed_workspace(workspace: Path) -> None:
-    """Populate the workspace with one file each for read/edit/delete-style tools."""
+    """Populate the workspace with files for read/edit/delete-style tools."""
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "hello.txt").write_text("hello world\n", encoding="utf-8")
     (workspace / "subdir").mkdir(exist_ok=True)
@@ -114,27 +117,15 @@ def _drive_tools_list(server: McpServer) -> list[str]:
     return sorted(must_str_list([entry["name"] for entry in tools_block]))
 
 
-def _canonical_tool_names(advertised: list[str]) -> set[str]:
-    """Strip the strict-MCP ``mcp__<server>__<tool>`` aliases from a tools/list payload.
-
-    The bridge advertises each tool under its canonical name and
-    under the alias a strict-MCP client (Claude Code) expects. The
-    coverage gate is about canonical names: an agent can call
-    either form, the server resolves aliases to canonical names,
-    so the sweep only needs to cover the canonical set.
-    """
-    return {name for name in advertised if not name.startswith("mcp__ralph__")}
-
-
 def _make_in_memory_runner() -> Any:
     """Return a deterministic in-memory runner for ``ExecRunDeps``.
 
     The runner swallows whatever argv the handler receives and
-    returns an empty completed-process adapter with exit code 0. It
-    is used to assert that the sweeP covers the exec tool
+    returns an empty completed-process adapter with exit code 0.
+    It is used to assert that the sweep covers the exec tool
     *end-to-end through the bridge* (capability check, parameter
-    parsing, output formatting, spill policy) without spawning a real
-    OS process.
+    parsing, output formatting, spill policy) without spawning a
+    real OS process.
     """
 
     def runner(
@@ -187,135 +178,188 @@ def _patch_exec_handlers_with_in_memory_runner(monkeypatch: Any) -> None:
         return real_handle_unsafe_exec(session, workspace, params, deps=deps)
 
     monkeypatch.setattr(_exec_mod, "handle_exec_command", patched_exec_command)
-    monkeypatch.setattr(
-        _unsafe_exec_mod, "handle_unsafe_exec", patched_unsafe_exec
+    monkeypatch.setattr(_unsafe_exec_mod, "handle_unsafe_exec", patched_unsafe_exec)
+
+
+# Mocked web backend fixtures — provided to the production handlers
+# via the same module-attribute seam the existing web-access tests
+# use (``monkeypatch.setattr(<handler_module>, "fetch_url", ...``).
+# These keep the sweep in-process; the production handler dispatch
+# chain stays live, only the upstream boundary is faked.
+
+
+class _FakeWebSearchBackend:
+    """Stand-in for a real ``WebSearchBackend`` (no network)."""
+
+    @staticmethod
+    def search(query: str, *, limit: int = 10) -> list[Any]:
+        del query, limit
+        return []
+
+
+def _fake_web_search_backend_factory(name: str, config: Any) -> Any:
+    """Replacement factory for ``ralph.mcp.tools.websearch.build_backend``."""
+    del name, config
+    return _FakeWebSearchBackend()
+
+
+def _fake_web_visit_fetch(url: str, **_kwargs: Any) -> FetchOutcome:
+    """Replacement for ``ralph.mcp.tools.webvisit.fetch_url``."""
+    return FetchOutcome(
+        status="ok",
+        effective_url=url,
+        http_status=200,
+        content_type="text/html; charset=utf-8",
+        body=b"<html><body>mocked</body></html>",
     )
 
 
-# Minimal-valid-args per tool. Each entry is ``(name, arguments)``;
-# the sweep issues one call per entry. Tools not in this table are
-# asserted at the contract level (registration + tools/list presence)
-# via the list-based test below; live-network tools are also in this
-# exclusion set.
-SWEEP_CALLS: tuple[tuple[str, dict[str, Any]], ...] = (
+def _fake_web_visit_extract(*_args: Any, **_kwargs: Any) -> Any:
+    """Replacement for ``ralph.mcp.tools.webvisit.extract_readable``."""
+    return ExtractedPage(
+        title="Mocked page",
+        text="mocked content body",
+        links=(),
+    )
+
+
+def _install_web_backends(monkeypatch: Any) -> None:
+    """Install in-process replacements for the web tool backends.
+
+    The web search backend factory, the URL fetcher, and the
+    readability extractor are all swapped at the public handler
+    module attribute (``ralph.mcp.tools.websearch`` /
+    ``ralph.mcp.tools.webvisit``). The handler bodies still run on
+    the real production code path — capability check, parameter
+    parsing, JSON envelope construction — only the upstream
+    network/extractor boundary is faked.
+    """
+    import ralph.mcp.tools.websearch as _websearch_handler_module
+    import ralph.mcp.tools.webvisit as _webvisit_handler_module
+
+    monkeypatch.setattr(
+        _websearch_handler_module,
+        "build_backend",
+        _fake_web_search_backend_factory,
+    )
+    monkeypatch.setattr(
+        _webvisit_handler_module, "fetch_url", _fake_web_visit_fetch
+    )
+    monkeypatch.setattr(
+        _webvisit_handler_module, "extract_readable", _fake_web_visit_extract
+    )
+
+
+# Minimal valid arguments for every advertised canonical tool. Each
+# entry pairs with its ``mcp__ralph__<name>`` alias when the alias
+# is advertised — the alias sweep reuses these arguments verbatim,
+# driving a real ``tools/call`` through the alias dispatch resolver
+# (``McpServer._resolve_alias_to_canonical``) so a regression that
+# drops alias emission or alias resolution fails closed.
+#
+# ``declare_complete`` is intentionally excluded from this table; the
+# terminal call sweep covers it on a freshly built server so a
+# prior completion sentinel cannot poison the call.
+SWEEP_CALLS: dict[str, dict[str, Any]] = {
     # Workspace read.
-    (RalphToolName.READ_FILE, {"path": "hello.txt"}),
-    (RalphToolName.READ_MULTIPLE_FILES, {"paths": ["hello.txt", "subdir/nested.txt"]}),
-    (RalphToolName.STAT_PATH, {"path": "hello.txt"}),
-    (RalphToolName.LIST_ALLOWED_ROOTS, {}),
-    (RalphToolName.LIST_DIRECTORY, {"path": "."}),
-    (RalphToolName.LIST_DIRECTORY_RECURSIVE, {"path": "."}),
-    (RalphToolName.DIRECTORY_TREE, {"path": "."}),
-    (RalphToolName.SEARCH_FILES, {"pattern": "hello", "path": "."}),
-    (
-        RalphToolName.GREP_FILES,
-        {"pattern": "hello", "path": ".", "regex": False},
-    ),
+    RalphToolName.READ_FILE: {"path": "hello.txt"},
+    RalphToolName.READ_MULTIPLE_FILES: {"paths": ["hello.txt", "subdir/nested.txt"]},
+    RalphToolName.STAT_PATH: {"path": "hello.txt"},
+    RalphToolName.LIST_ALLOWED_ROOTS: {},
+    RalphToolName.LIST_DIRECTORY: {"path": "."},
+    RalphToolName.LIST_DIRECTORY_RECURSIVE: {"path": "."},
+    RalphToolName.DIRECTORY_TREE: {"path": "."},
+    RalphToolName.SEARCH_FILES: {"pattern": "hello", "path": "."},
+    RalphToolName.GREP_FILES: {"pattern": "hello", "path": ".", "regex": False},
     # Workspace write/edit/delete. The sweep issues these against
     # the tmp_path root so the FsWorkspace path checks pass.
-    (RalphToolName.WRITE_FILE, {"path": "sweep.txt", "content": "sweep\n"}),
-    (
-        RalphToolName.EDIT_FILE,
-        {
-            "path": "hello.txt",
-            "edits": [{"oldText": "hello world\n", "newText": "hello sweep\n"}],
-        },
-    ),
-    (
-        RalphToolName.APPEND_FILE,
-        {"path": "hello.txt", "content": "sweep line\n"},
-    ),
-    (RalphToolName.CREATE_DIRECTORY, {"path": "sweep_subdir"}),
-    (RalphToolName.MOVE_FILE, {"src": "sweep.txt", "dest": "sweep_moved.txt"}),
-    (RalphToolName.COPY_FILE, {"src": "sweep_moved.txt", "dest": "sweep_copy.txt"}),
-    (RalphToolName.DELETE_PATH, {"path": "sweep_copy.txt"}),
+    RalphToolName.WRITE_FILE: {"path": "sweep.txt", "content": "sweep\n"},
+    RalphToolName.EDIT_FILE: {
+        "path": "hello.txt",
+        "edits": [{"oldText": "hello world\n", "newText": "hello sweep\n"}],
+    },
+    RalphToolName.APPEND_FILE: {"path": "hello.txt", "content": "sweep line\n"},
+    RalphToolName.CREATE_DIRECTORY: {"path": "sweep_subdir"},
+    RalphToolName.MOVE_FILE: {"src": "sweep.txt", "dest": "sweep_moved.txt"},
+    RalphToolName.COPY_FILE: {"src": "sweep_moved.txt", "dest": "sweep_copy.txt"},
+    RalphToolName.DELETE_PATH: {"path": "sweep_copy.txt"},
     # Git read. The repo may or may not be initialized; both cases
     # are valid domain responses — what matters is the call is
     # answered without a "Tool is not registered" or capability-denial
     # error.
-    (RalphToolName.GIT_STATUS, {}),
-    (RalphToolName.GIT_DIFF, {}),
-    (RalphToolName.GIT_LOG, {"count": 1}),
-    (RalphToolName.GIT_SHOW, {"ref": "HEAD"}),
-    # Exec / unsafe_exec / raw_exec — echo a single-character string
-    # so the bounded exec handler cannot wedge on a missing binary.
-    (RalphToolName.EXEC, {"command": "true"}),
-    (RalphToolName.UNSAFE_EXEC, {"command": "true", "timeout_ms": 5000}),
-    (RalphToolName.RAW_EXEC, {"command": "true", "timeout_ms": 5000}),
+    RalphToolName.GIT_STATUS: {},
+    RalphToolName.GIT_DIFF: {},
+    RalphToolName.GIT_LOG: {"count": 1},
+    RalphToolName.GIT_SHOW: {"ref": "HEAD"},
+    # Exec / unsafe_exec / raw_exec — `true` is a single-character
+    # builtin so the bounded exec handler cannot wedge on a missing
+    # binary. The handler is wrapped with an in-memory runner so the
+    # sweep never reaches the real ``ProcessManager.spawn`` path; the
+    # runner returns an empty completed-process with exit code 0.
+    RalphToolName.EXEC: {"command": "true"},
+    RalphToolName.UNSAFE_EXEC: {"command": "true", "timeout_ms": 5000},
+    RalphToolName.RAW_EXEC: {"command": "true", "timeout_ms": 5000},
     # Explore index — handlers are exercised against the workspace
     # root with the default options. They answer with structured
     # payloads; we do not need to assert specific content here.
-    (RalphToolName.RALPH_INDEX_STATUS, {}),
-    (RalphToolName.RALPH_REINDEX, {"mode": "changed"}),
-    (
-        RalphToolName.RALPH_GRAPH,
-        {"query_type": "hubs", "limit": 1},
-    ),
+    RalphToolName.RALPH_INDEX_STATUS: {},
+    RalphToolName.RALPH_REINDEX: {"mode": "changed"},
+    RalphToolName.RALPH_GRAPH: {"query_type": "hubs", "limit": 1},
     # Coordination.
-    (RalphToolName.REPORT_PROGRESS, {"status": "ok", "note": "sweep"}),
-    (RalphToolName.READ_ENV, {"name": "PATH"}),
-    # Declare complete is excluded: it finalizes the session and would
-    # interfere with subsequent calls in the same sweep. The contract
-    # gate below still proves its registration.
+    RalphToolName.REPORT_PROGRESS: {"status": "ok", "note": "sweep"},
+    RalphToolName.READ_ENV: {"name": "PATH"},
+    # Workspace coordination — gated on ``artifact.plan_write``,
+    # which the all-capability session declares.
+    RalphToolName.COORDINATE: {"action": "sweep_probe"},
     # Generic artifact tools — handled by the artifact tool surface
-    # in :mod:`ralph.mcp.tools.md_artifact`. The handlers run
-    # end-to-end against the in-memory ArtifactBackend. Each call
-    # has its own minimal valid arguments; the response shape is a
-    # domain result, not a capability denial.
-    (
-        RalphToolName.SUBMIT_MD_ARTIFACT,
-        {
-            "artifact_type": "development_result",
-            "content": (
-                "---\n"
-                "type: development_result\n"
-                "status: completed\n"
-                "---\n\n"
-                "## Summary\n- [SUM-1] sweep\n"
-                "## Files Changed\n- [F-1] tmp/sweep.txt\n"
-                "## Plan Items Proven\n- [S-1] sweep\n"
-            ),
-        },
-    ),
-    (RalphToolName.VERIFY_MD_ARTIFACT, {"artifact_type": "development_result", "content": ""}),
-    (
-        RalphToolName.STAGE_MD_ARTIFACT,
-        {"artifact_type": "development_result", "content": "draft", "mode": "replace_all"},
-    ),
-    (
-        RalphToolName.GET_MD_DRAFT,
-        {"artifact_type": "development_result"},
-    ),
-    (
-        RalphToolName.DISCARD_MD_DRAFT,
-        {"artifact_type": "development_result"},
-    ),
-    (
-        RalphToolName.FINALIZE_MD_ARTIFACT,
-        {"artifact_type": "development_result"},
-    ),
-    (
-        RalphToolName.EDIT_MD_ARTIFACT,
-        {
-            "artifact_type": "development_result",
-            "edits": [
-                {
-                    "oldText": "## Summary\n- [SUM-1] sweep\n",
-                    "newText": "## Summary\n- [SUM-1] sweep\n- [SUM-2] edited\n",
-                }
-            ],
-        },
-    ),
-    # Coordination — plan-Write-gated action that emits a coordination
-    # line. The session holds every capability (including
-    # ``artifact.plan_write``), so the live call resolves with a
-    # well-formed text result. Keeping it in the sweep proves the
-    # tool is reachable through the real bridge, not just registered.
-    (
-        RalphToolName.COORDINATE,
-        {"action": "sweep_probe"},
-    ),
-)
+    # in :mod:`ralph.mcp.tools.md_artifact`. Each call has its own
+    # minimal valid arguments; the response shape is a domain
+    # result (success or ``is_error`` rejection), not a capability
+    # denial.
+    RalphToolName.SUBMIT_MD_ARTIFACT: {
+        "artifact_type": "development_result",
+        "content": (
+            "---\n"
+            "type: development_result\n"
+            "status: completed\n"
+            "---\n\n"
+            "## Summary\n- [SUM-1] sweep\n"
+            "## Files Changed\n- [F-1] tmp/sweep.txt\n"
+            "## Plan Items Proven\n- [S-1] sweep\n"
+        ),
+    },
+    RalphToolName.VERIFY_MD_ARTIFACT: {
+        "artifact_type": "development_result",
+        "content": "",
+    },
+    RalphToolName.STAGE_MD_ARTIFACT: {
+        "artifact_type": "development_result",
+        "content": "draft",
+        "mode": "replace_all",
+    },
+    RalphToolName.GET_MD_DRAFT: {"artifact_type": "development_result"},
+    RalphToolName.DISCARD_MD_DRAFT: {"artifact_type": "development_result"},
+    RalphToolName.FINALIZE_MD_ARTIFACT: {"artifact_type": "development_result"},
+    RalphToolName.EDIT_MD_ARTIFACT: {
+        "artifact_type": "development_result",
+        "edits": [
+            {
+                "oldText": "## Summary\n- [SUM-1] sweep\n",
+                "newText": "## Summary\n- [SUM-1] sweep\n- [SUM-2] edited\n",
+            }
+        ],
+    },
+    # Network tools — handlers run on the real production code path
+    # against mocked backends installed by ``_install_web_backends``.
+    # The dispatch chain is live; only the upstream boundary (HTTP
+    # fetch, search backend, readability extraction) is faked.
+    RalphToolName.WEB_SEARCH: {"query": "ralph workflow"},
+    RalphToolName.VISIT_URL: {"url": "https://example.com/page"},
+    RalphToolName.DOWNLOAD_URL: {
+        "url": "https://example.com/data.txt",
+        "output_path": "sweep_dl.txt",
+    },
+}
 
 
 def _drive_call(server: McpServer, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -351,34 +395,80 @@ def _assert_call_round_trips(name: str, response: dict[str, Any]) -> None:
     assert result, f"{name}: tools/call result is empty: {response}"
 
 
-#: Per-test budget for the full functional sweep. The sweep issues
-#: one ``tools/call`` per advertised tool (41 calls) through the
-#: production JSON-RPC stack with an in-memory exec runner, which
-#: sits at ~0.7-0.8s of wall-clock in isolation. Under xdist
-#: contention the test can spike past the 1.0s default per-test
-#: cap. The marker opts into a 5s budget — well inside the
+def _alias_names_for_canonical(canonical_names: set[str], advertised: set[str]) -> list[str]:
+    """Return the advertised alias names whose canonical counterpart is in ``canonical_names``.
+
+    Aliases are emitted by ``McpServer._alias_for_tool_name`` for every
+    known ``RalphToolName``. The strict-MCP alias form is
+    ``mcp__<server>__<tool>``; this helper only keeps aliases whose
+    canonical ``<tool>`` part is in the requested set AND whose full
+    advertised name is present (so a brand-new tool whose alias emission
+    silently regresses still fails the coverage gap assertion, not the
+    round-trip assertion).
+    """
+    prefix = "mcp__ralph__"
+    return sorted(
+        name for name in advertised
+        if name.startswith(prefix) and name[len(prefix):] in canonical_names
+    )
+
+
+def _covered_advertised_names(advertised: set[str]) -> set[str]:
+    """Compute the canonical+alias names the sweep will actually call.
+
+    ``SWEEP_CALLS`` provides canonical coverage; the alias sweep
+    auto-generates ``mcp__ralph__<tool>`` entries for every alias
+    whose canonical form has a SWEEP_CALLS entry; ``declare_complete``
+    is covered by the terminal call on a freshly built server.
+
+    Together these must equal the advertised set. The equality check
+    lives in ``test_every_advertised_name_has_real_call``.
+    """
+    canonical = set(SWEEP_CALLS.keys()) | {RalphToolName.DECLARE_COMPLETE}
+    return (
+        canonical
+        | set(_alias_names_for_canonical(canonical, advertised))
+    )
+
+
+#: Per-test budget for the full functional sweep. With ~80 advertised
+#: names (canonical + aliases) plus the network-aliased sweep, the
+#: in-process round-trips sit at ~1.5-2.0s of wall-clock in isolation.
+#: Under xdist contention the test can spike past the 1.0s default
+#: per-test cap. The marker opts into a 5s budget — well inside the
 #: immutable 60s combined test budget and far below any per-test
-#: ceiling on the audit_test_policy side (no real subprocess,
-#: no real network). Without the marker the suite fails
-#: intermittently with ``TestExecutionTimeoutError`` on a busy
-#: host, which is a test-design defect: the sweep is the
-#: whole-point test and cannot shed the round-trip work.
+#: ceiling on the audit_test_policy side (no real subprocess, no
+#: real network). Without the marker the suite fails intermittently
+#: with ``TestExecutionTimeoutError`` on a busy host.
 _TEST_TIMEOUT_SECONDS = 5
 
 
 @pytest.mark.timeout_seconds(_TEST_TIMEOUT_SECONDS)
-def test_advertised_tool_set_round_trips(
+def test_every_advertised_endpoint_round_trips(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """AC-03 / S-5: every advertised tool name round-trips through the real bridge.
 
-    The sweep seeds a tmp_path workspace, stands up a real McpServer
-    with the full capability set, and issues one ``tools/call`` per
-    advertised tool with minimal valid arguments. Each call must
-    return a well-formed response (no unknown-tool /
-    capability-denied). Live-network tools are skipped here and
-    asserted at the contract level by the
-    ``test_live_network_tools_have_contract_coverage`` test below.
+    Coverage is computed from the complete ``tools/list`` payload — both
+    canonical names and the strict-MCP ``mcp__ralph__<tool>`` aliases.
+    For each canonical name with a SWEEP_CALLS entry we additionally
+    issue the same call under the alias form when the alias is
+    advertised. The bridge resolves the alias to its canonical handler
+    via ``_resolve_alias_to_canonical``; if the alias is broken the
+    dispatch falls through to the standard "Tool is not registered"
+    error and the test fails closed.
+
+    The ``declare_complete`` tool finalizes its own session (it writes
+    a completion sentinel under ``.agent/`` and emits the
+    ``[Completion event emitted to pipeline]`` marker). The sweep runs
+    it as the terminal call against a freshly built server/session
+    so a prior completion sentinel cannot poison the call or pollute
+    later assertions.
+
+    Web tools (``web_search`` / ``visit_url`` / ``download_url``) are
+    exercised against mocked backends — the production handler
+    dispatch chain is live; only the upstream boundary (HTTP fetch,
+    search backend) is faked. See :func:`_install_web_backends`.
 
     The exec / unsafe_exec / raw_exec handlers are wrapped with an
     in-memory :class:`ExecRunDeps` runner so the sweep exercises the
@@ -389,125 +479,91 @@ def test_advertised_tool_set_round_trips(
     """
     _seed_workspace(tmp_path)
     _patch_exec_handlers_with_in_memory_runner(monkeypatch)
-    server, _session = _build_server(tmp_path)
-    advertised = _canonical_tool_names(_drive_tools_list(server))
+    _install_web_backends(monkeypatch)
+    server, _ = _build_server(tmp_path)
+    advertised = set(_drive_tools_list(server))
 
-    sweep_targets = {name for name, _ in SWEEP_CALLS}
-    # Every sweep target must be in the advertised set — the sweep is
-    # only useful if it covers the surface that the prompt advertises.
-    missing_in_advertised = sweep_targets - advertised
-    assert not missing_in_advertised, (
-        f"sweep targets missing from tools/list: "
-        f"{sorted(missing_in_advertised)}"
+    # Shared sweep: every canonical name with a SWEEP_CALLS entry.
+    shared_targets = list(SWEEP_CALLS.items())
+    for canonical_name, arguments in shared_targets:
+        response = _drive_call(server, canonical_name, arguments)
+        _assert_call_round_trips(canonical_name, response)
+
+    # Alias sweep: every advertised alias whose canonical name has a
+    # SWEEP_CALLS entry. Alias dispatch resolves to the canonical
+    # handler — coverage of the canonical handler was already proven
+    # above; this step proves the alias emission and resolver.
+    alias_targets = _alias_names_for_canonical(set(SWEEP_CALLS.keys()), advertised)
+    for alias_name in alias_targets:
+        canonical_name = alias_name[len("mcp__ralph__"):]
+        arguments = SWEEP_CALLS[canonical_name]
+        response = _drive_call(server, alias_name, arguments)
+        _assert_call_round_trips(alias_name, response)
+
+    # Terminal call: declare_complete on a freshly built server so the
+    # completion sentinel does not leak into the shared server state.
+    # The terminal call uses a distinct session_id and run_id from the
+    # shared server so any sentinel written by this call is uniquely
+    # attributable to this test run.
+    fresh_server, _ = _build_server(
+        tmp_path,
+        session_id="sweep-terminal-session",
+        run_id="sweep-terminal-run",
     )
+    response = _drive_call(
+        fresh_server,
+        RalphToolName.DECLARE_COMPLETE,
+        {"summary": "functional sweep complete"},
+    )
+    _assert_call_round_trips(RalphToolName.DECLARE_COMPLETE, response)
 
-    for name, arguments in SWEEP_CALLS:
-        response = _drive_call(server, name, arguments)
-        _assert_call_round_trips(name, response)
 
-
-def test_every_advertised_tool_round_trips_or_has_contract_coverage(
+@pytest.mark.timeout_seconds(_TEST_TIMEOUT_SECONDS)
+def test_every_advertised_name_has_real_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-03: every tool in ``tools/list`` either round-trips or has documented coverage.
+    """AC-03 contract: every advertised name is called, no coverage gap.
 
-    The sweep table above covers every tool that can be exercised
-    in-process without the live network or per-tool fixture setup.
-    Live-network tools (``web_search`` / ``visit_url`` /
-    ``download_url``) and the finalizing ``declare_complete`` are
-    excluded from the live-call sweep; this test pins that:
-
-    * every advertised tool is either in ``SWEEP_CALLS``, or
-    * is explicitly in ``LIVE_NETWORK_TOOLS`` (asserted at contract
-      level by ``test_live_network_tools_have_contract_coverage``), or
-    * is ``declare_complete`` (registration proven; live call would
-      finalize the session and break later tests).
-
-    No tool is left in a coverage gap — if a new tool lands in
-    ``RalphToolName`` without a SWEEP_CALL or an exclusion here, this
-    test fails closed.
-
-    The exec handler is wrapped with the in-memory runner (see
-    :func:`_patch_exec_handlers_with_in_memory_runner`) so the
-    coverage gate for ``exec`` / ``unsafe_exec`` / ``raw_exec`` does
-    not depend on a real subprocess.
+    Asserts the sweep-internal coverage map equals the full advertised
+    tool set. The shared sweep covers every canonical name with a
+    SWEEP_CALLS entry; the alias sweep covers every advertised
+    ``mcp__ralph__<tool>`` whose canonical name is in SWEEP_CALLS; the
+    terminal sweep covers ``declare_complete`` on a freshly built
+    server. Together those must equal the advertised set — if a new
+    tool lands in ``RalphToolName`` and gets registered with the
+    production registry without a SWEEP_CALLS entry, this test fails
+    closed rather than letting the gap drift silently into the
+    default-gate verification contract.
     """
     _seed_workspace(tmp_path)
     _patch_exec_handlers_with_in_memory_runner(monkeypatch)
-    server, _session = _build_server(tmp_path)
-    advertised = _canonical_tool_names(_drive_tools_list(server))
+    _install_web_backends(monkeypatch)
+    server, _ = _build_server(tmp_path)
+    advertised = set(_drive_tools_list(server))
 
-    sweep_targets = {name for name, _ in SWEEP_CALLS}
-    documented_exclusions = LIVE_NETWORK_TOOLS | {RalphToolName.DECLARE_COMPLETE}
-    covered = sweep_targets | documented_exclusions
-
+    covered = _covered_advertised_names(advertised)
     gap = advertised - covered
     assert not gap, (
-        f"advertised tools with no coverage: {sorted(gap)} "
-        f"(add a SWEEP_CALLS entry, add a documented exclusion, or "
-        f"verify the exclusion in LIVE_NETWORK_TOOLS)"
+        f"advertised tools with no real bridge call: {sorted(gap)}. "
+        "Add a SWEEP_CALLS entry for the canonical name; the alias "
+        "sweep auto-generates for ``mcp__ralph__<canonical>`` when "
+        "the alias is advertised. ``declare_complete`` is covered by "
+        "the terminal-call sweep on a freshly built server."
     )
-
-
-def test_live_network_tools_have_contract_coverage(tmp_path: Path) -> None:
-    """``web_search`` / ``visit_url`` / ``download_url`` are registered and described.
-
-    Live network calls are explicitly excluded from the sweep
-    (network in a unit-tier test bloats the 60s budget). Their
-    end-to-end behavior is covered by separate live-integration
-    suites; here we only prove the registration surface is intact
-    and the input schema is non-degenerate, so an agent that wants
-    one of these tools can find it in ``tools/list``.
-    """
-    _seed_workspace(tmp_path)
-    server, _session = _build_server(tmp_path)
-    advertised = _canonical_tool_names(_drive_tools_list(server))
-
-    for tool in LIVE_NETWORK_TOOLS:
-        assert tool in advertised, (
-            f"{tool}: registered in RalphToolName but not advertised "
-            f"through the live bridge"
-        )
-
-    # tools/list for the live-network tools carries a non-empty
-    # description and an input schema with required parameters —
-    # the same contract as every other tool.
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
-    _status, _headers, body = drive_request(server, payload)
-    data = parse_sse_data(body)
-    result = must_mapping(data.get("result", {}))
-    tools_block = must_dict_list(must_mapping(result, field="result")["tools"])
-    tool_entries = {entry["name"]: entry for entry in tools_block}
-    for tool in LIVE_NETWORK_TOOLS:
-        entry = tool_entries.get(tool)
-        assert entry is not None, f"{tool}: missing from tools/list"
-        description = entry.get("description", "")
-        assert description, f"{tool}: empty description in tools/list"
-        input_schema = entry.get("inputSchema", {})
-        assert isinstance(input_schema, dict), (
-            f"{tool}: inputSchema is not a dict"
-        )
-        assert input_schema.get("required"), (
-            f"{tool}: inputSchema has no required parameter — agents "
-            f"cannot call this tool without it"
-        )
 
 
 def test_unknown_tool_returns_documented_error(tmp_path: Path) -> None:
     """The well-formed error path for unknown tools is preserved.
 
-    This is the negative-space contract: when an agent (or test)
-    calls a tool that the bridge does not register, the response
-    must be a JSON-RPC ``error`` envelope — never a silent success
-    or a panic. The negative test guards against future regressions
-    that accidentally swallow unknown-tool errors and would mask
-    silent endpoint drift.
+    Negative-space contract: when an agent (or test) calls a tool that
+    the bridge does not register, the response must be a JSON-RPC
+    ``error`` envelope — never a silent success or a panic. The
+    negative test guards against future regressions that accidentally
+    swallow unknown-tool errors and would mask silent endpoint drift.
     """
     _seed_workspace(tmp_path)
-    server, _session = _build_server(tmp_path)
+    server, _ = _build_server(tmp_path)
     response = _drive_call(server, "ralph_does_not_exist", {})
     assert "error" in response, (
         f"unknown tool returned a non-error response: {response}"
