@@ -175,6 +175,16 @@ def test_render_event_kind_text_backend_neutral_tool_use() -> None:
     """The plain-text path also produces identical output across backends."""
     metadata: dict[str, object] = {"input": {"path": "src/foo.py"}}
     plains: dict[str, str] = {}
+    # DA-003 (wt-028-display P1 / AC-08 / S-13): pin every backend
+    # iteration to the same fixed timestamp so the 1-second-resolution
+    # ``HH:MM:SS`` formatter cannot drift the rendered text across
+    # iterations of ``CLAUDE`` -> ``CODEX`` -> ``OPENCODE``. Without
+    # this pin the test is wall-clock-bound and intermittently
+    # fails under parallel load when iteration crosses a second
+    # boundary; the assertion is purely about backend parity, not
+    # the live timestamp, so a deterministic timestamp preserves
+    # the contract.
+    fixed_timestamp = "2024-01-01T00:00:00+00:00"
     for provider in (
         ActivityProvider.CLAUDE,
         ActivityProvider.CODEX,
@@ -191,7 +201,7 @@ def test_render_event_kind_text_backend_neutral_tool_use() -> None:
         plains[provider.value] = render_event_kind_text(
             ActivityEventKind.TOOL_USE,
             content,
-            timestamp=event.timestamp,
+            timestamp=fixed_timestamp,
             metadata=metadata,
             agent_name=source,
         )

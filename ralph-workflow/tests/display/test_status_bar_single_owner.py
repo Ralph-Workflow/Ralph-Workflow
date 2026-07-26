@@ -158,6 +158,13 @@ def _site_is_in_method(
 @pytest.mark.timeout_seconds(5)
 def test_parallel_display_exclusively_owns_status_bar_lifecycle() -> None:
     """All constructor, start, stop, CLI, and runtime ownership clauses hold."""
+    # DA-003 (wt-028-display P1 / AC-08 / S-13): this test does an AST
+    # scan over ralph/display, ralph/pipeline, and ralph/cli, which
+    # costs ~0.5 s of CPU alone. Under 1.5x oversubscription on a
+    # 12-core host, the wall-clock push can exceed the default 1 s
+    # SIGALRM cap even when the test would pass instantly with no
+    # contention. The 5 s ceiling keeps the contract intact under
+    # both 1.0x and 1.5x partitions without raising the global budget.
     violations: list[str] = []
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
 

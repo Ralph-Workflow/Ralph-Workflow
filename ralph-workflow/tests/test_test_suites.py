@@ -343,7 +343,32 @@ def test_auto_worker_count_returns_empirical_sweet_spot_on_adequate_hosts(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    for cores, expected in ((4, "8"), (8, "24"), (12, "24"), (16, "24"), (64, "24")):
+    # DA-003 (wt-028-display P1 / AC-08 / S-13): the auto-resolution
+    # now targets ``cpu_count * 1.5`` (capped at ``_MAX_PYTEST_WORKERS``).
+    # On a 12-core host this yields 18 workers; the ``min`` floor
+    # of 8 still bounds the small-core case. The 1.5x ratio stays
+    # just under the per-test 1 s SIGALRM contention threshold
+    # (the heavy AST-scanning test ``test_status_bar_single_owner``
+    # takes 0.54 s of CPU alone and becomes ~0.81 s wall under 1.5x
+    # oversubscription, still under the 1 s cap; lower tiers like
+    # 1.17x and 1.33x gave straggler shards that exceeded the
+    # cumulative 60 s budget on this host).
+    # Probes (cores -> expected): 4 -> 8 (floor), 5 -> 8 (floor),
+    # 6 -> 9 (1.5x of 6), 7 -> 10 (1.5x of 7), 8 -> 12 (1.5x of 8),
+    # 12 -> 18 (1.5x of 12), 16 -> 24 (1.5x of 16, capped),
+    # 20 -> 24 (cap), 21 -> 24 (cap), 64 -> 24 (cap).
+    for cores, expected in (
+        (4, "8"),
+        (5, "8"),
+        (6, "9"),
+        (7, "10"),
+        (8, "12"),
+        (12, "18"),
+        (16, "24"),
+        (20, "24"),
+        (21, "24"),
+        (64, "24"),
+    ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
 

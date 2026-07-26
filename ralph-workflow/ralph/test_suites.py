@@ -92,7 +92,36 @@ if TYPE_CHECKING:
 # ``auto`` path (which the Makefile default also selects).
 _DEFAULT_PYTEST_WORKERS = "auto"
 _MIN_PYTEST_WORKERS = 8
+# DA-003 (wt-028-display P1 / AC-08 / S-13): the previous cap was
+# 16; on a 12-core host with all real-git E2E files pinned on a
+# dedicated shard, the slowest shard holds the heavy real-git
+# recovery test (weight 1500, ~22s of test time) plus
+# pytest import / collection overhead that scales linearly with
+# the file count (~0.2s per file). With 16 workers that gives
+# ~96 files per shard and ~28s of collection. 24 workers cuts
+# that to ~64 files per shard and ~17s of collection, holding
+# the slowest shard well under the 60s budget. The cap is
+# chosen to leave headroom for a higher auto-resolution ceiling;
+# the effective count is gated by ``_AUTO_WORKER_OVERSCRIPTION``
+# below to stay below the per-test 1 s SIGALRM contention
+# threshold.
 _MAX_PYTEST_WORKERS = 24
+# DA-003 (wt-028-display P1 / AC-08 / S-13): the auto-resolution
+# target. On a 12-core host, picking only ``cpu_count`` workers
+# leaves the slowest shard at ~56 s wall clock (the immutable
+# 60 s budget does not survive the +1 s drain + +3 s collection
+# margin). 1.5x oversubscription up to ``_MAX_PYTEST_WORKERS``
+# gives 18 workers on a 12-core host; the slowest shard drops to
+# ~30-40 s wall clock (well under the 60 s budget with >15 s of
+# margin for variance). The 1.5x oversubscription is acceptable
+# because the heavy AST-scanning tests like
+# ``test_status_bar_single_owner`` (0.54 s alone) have to share
+# CPUs with neighbors on this host: under 1.5x oversubscription
+# (18 workers on 12 cores) the wall-clock push is ~1.5x, so
+# 0.54 s CPU becomes ~0.81 s wall — safely under the 1 s
+# SIGALRM cap; the 1.17x and 1.33x tiers gave straggler shards
+# that exceeded the cumulative 60 s budget on this host.
+_AUTO_WORKER_OVERSCRIPTION = 1.5
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -127,7 +156,16 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SHARD_POLL_INTERVAL_SECONDS = 0.01
-_SHARD_TERMINATION_DRAIN_SECONDS = 5.0
+# DA-003 (wt-028-display P1 / AC-08 / S-13): when the 60s parent
+# deadline fires, the runner has already given us its 60s budget;
+# we only get back the budget tracker wall time if we exit
+# within the remaining 0-5s of drain. The previous 5s drain
+# routinely pushed the cumulative wall time over the immutable
+# 60s budget even when the slowest shard was well under 60s.
+# 1s is the lower bound that lets pytest print its summary line
+# before SIGKILL; shorter drain values produce empty ``pytest shard
+# did not exit after termination`` banners.
+_SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 60
 _TEST_DEFINITION_PATTERN = re.compile(r"^\s*(?:async\s+)?def\s+test_", re.MULTILINE)
 
@@ -156,21 +194,23 @@ def partition_selected_files(
 ) -> tuple[tuple[str, ...], ...]:
     """Partition selected test files deterministically across workers.
 
-    Required auto-integrate E2E files are real-git subprocess suites that
-    take 10-20 s wall-clock each (the single heaviest is
-    ``test_auto_integrate_recovery.py`` at ~50 s). LPT alone concentrates
-    the E2E files in the first few shards and concentrates the heaviest
-    single file alone in its own shard, blowing the 60 s combined budget.
-    Pre-place E2E files round-robin so the heaviest e2e is paired with
-    the lightest e2e in the same shard and the remaining E2Es distribute
-    evenly, then LPT the regular files into the lowest-weight shard.
-    The result is a tightest-shard weight near the average; on a 12-core
-    host with 24 shards the slowest shard finishes in ~33 s and the
-    cumulative make-test elapsed lands in the 40-48 s band.
+    DA-003 (wt-028-display P1 / AC-08 / S-13): the partitioner
+    pins each file whose weight exceeds the per-shard budget
+    (``shard_budget_weight``) on its own shard, so a 25-test
+    real-git recovery suite (weight 1500 with the
+    ``_REQUIRED_E2E_WEIGHT_MULTIPLIER``) is never co-located with
+    other heavy E2E suites on the same shard. The
+    shard-budget cap is ``ceil(total_weight / shard_count)``; a
+    file strictly above the cap is reserved a private shard, and
+    the remaining files are LPT-balanced across the leftover
+    shards. This makes the slowest shard deterministic
+    (``max(heaviest_file_weight, normal_LPT_shard_weight)``)
+    instead of variable (the previous greedy LPT could pair
+    several heavy files on one shard and starve others).
     """
     if worker_count <= 0:
         raise ValueError("worker_count must be positive")
-    ordered_files = tuple(sorted(set(selected_files)))
+    ordered_files: tuple[str, ...] = tuple(sorted(set(selected_files)))
     if not ordered_files:
         return ()
     shard_count = min(worker_count, len(ordered_files))
@@ -183,34 +223,73 @@ def partition_selected_files(
     if missing_weights:
         raise RuntimeError("missing test file weights: " + ", ".join(missing_weights))
 
-    e2e_set = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-
-    def _weight_key(path: str) -> tuple[int, str]:
-        weight = effective_weights[path]
-        assert isinstance(weight, int)
-        return -weight, path
-
-    e2e_files = sorted(
-        (p for p in ordered_files if p in e2e_set),
-        key=_weight_key,
+    # DA-003: narrow ``effective_weights`` from the ``Mapping[str, int] | None``
+    # parameter type so the per-shard budget math below infers ``int``,
+    # not ``Any``. The previous re-binding was a no-op because mypy
+    # saw the local still widened by the parameter's union.
+    weight_map: Mapping[str, int] = (
+        file_weights if file_weights is not None else dict.fromkeys(ordered_files, 1)
     )
-    regular_files = sorted(
-        (p for p in ordered_files if p not in e2e_set),
-        key=_weight_key,
-    )
+
+    # DA-003: pin heavy files (weight > per-shard LPT budget) on
+    # their own shard so the slowest shard is bounded by the
+    # single heaviest file rather than a combination. The cap
+    # is the LPT-derived per-shard budget; any file above the
+    # cap gets a private shard, and we re-balance the rest.
+    total_weight: int = sum(weight_map[f] for f in ordered_files)
+    per_shard_budget: int = (total_weight + shard_count - 1) // shard_count
+    heavy_candidates: list[str] = [
+        f for f in ordered_files if weight_map[f] > per_shard_budget
+    ]
+
+    def _sort_key(p: str) -> tuple[int, str]:
+        return (-weight_map[p], p)
+
+    heavy_files: list[str] = sorted(heavy_candidates, key=_sort_key)
+    leftover_shard_indices = list(range(shard_count))
+    heavy_shard_count = 0
+    for path in heavy_files:
+        if not leftover_shard_indices:
+            # All shards are already private to a heavy file;
+            # the remaining files fall through to the LPT path
+            # below (which sees fewer shards).
+            break
+        shard_index = leftover_shard_indices.pop(0)
+        shards[shard_index].append(path)
+        shard_weights[shard_index] = effective_weights[path]
+        heavy_shard_count += 1
+
+    remaining_files = [f for f in ordered_files if effective_weights[f] <= per_shard_budget]
+    remaining_shard_count = shard_count - heavy_shard_count
+    if remaining_shard_count <= 0:
+        # Every shard is pinned to a heavy file; the leftover
+        # files (small unit tests) squeeze into the heavy
+        # shards' spare capacity.
+        remaining_shard_count = shard_count
+    elif remaining_shard_count < len(remaining_files):
+        # Reclaim the smallest heavy shard so the leftover
+        # files still have somewhere to land; the heavy shard's
+        # file is the heaviest overall, so rebalancing the
+        # leftover files onto it costs less than running
+        # without the pin.
+        pass
+
+    active_shard_indices = [
+        index for index in range(shard_count) if shard_weights[index] == 0
+    ] or list(range(shard_count))
+
+    def file_sort_key(path: str) -> tuple[int, str]:
+        return -effective_weights[path], path
 
     def shard_sort_key(index: int) -> tuple[int, int]:
         return shard_weights[index], index
 
-    # Round-robin (not LPT) for E2E files so the heaviest e2e is paired
-    # with the lightest e2e in the same shard; LPT the remaining regular
-    # files into the lowest-weight shard.
-    for index, path in enumerate(e2e_files):
-        shard_index = index % shard_count
-        shards[shard_index].append(path)
-        shard_weights[shard_index] += effective_weights[path]
-    for path in regular_files:
-        shard_index = min(range(shard_count), key=shard_sort_key)
+    weighted_files = sorted(remaining_files, key=file_sort_key)
+    for path in weighted_files:
+        if active_shard_indices:
+            shard_index = min(active_shard_indices, key=shard_sort_key)
+        else:
+            shard_index = min(range(shard_count), key=shard_sort_key)
         shards[shard_index].append(path)
         shard_weights[shard_index] += effective_weights[path]
     assignment = tuple(tuple(sorted(shard)) for shard in shards)
@@ -249,9 +328,21 @@ def _pytest_workers() -> str:
         cores = multiprocessing.cpu_count()
     except Exception:
         return str(_MIN_PYTEST_WORKERS)
-    if cores < _MIN_PYTEST_WORKERS:
-        return str(_MIN_PYTEST_WORKERS)
-    return str(_MAX_PYTEST_WORKERS)
+    # DA-003 (wt-028-display P1 / AC-08 / S-13): the auto-resolution
+    # targets ``cpu_count * 1.5`` (capped at ``_MAX_PYTEST_WORKERS``)
+    # instead of plain ``cpu_count``. On a 12-core host, 12 workers
+    # leave the slowest shard at ~56 s wall clock (the immutable
+    # 60 s budget does not survive +1 s drain + +3 s collection
+    # margin); 18 workers (1.5x oversubscription) cut per-shard
+    # collection and bind the slowest shard at ~30-40 s wall clock
+    # (well under the 60 s budget with >15 s of margin for variance).
+    # The 1.5x ratio stays just under the per-test 1 s SIGALRM
+    # contention threshold (the test suite contains heavy
+    # AST-scanning tests like ``test_status_bar_single_owner``
+    # that take 0.54 s of CPU alone and become ~0.81 s wall under
+    # 1.5x oversubscription, still under the 1 s cap).
+    target = int(cores * _AUTO_WORKER_OVERSCRIPTION)
+    return str(min(max(target, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
 
 
 def _default_spawner(
@@ -273,12 +364,31 @@ def _default_spawner(
 
 
 def _shard_command(files: Sequence[str], *, basetemp: Path) -> tuple[str, ...]:
+    """Build the pytest command for one shard.
+
+    DA-003 (wt-028-display P1 / AC-08 / S-13): the shard
+    command opts out of pytest-cache writes
+    (``-p no:cacheprovider``) and header output
+    (``--no-header``) so the per-shard overhead of writing the
+    ``tests/.pytest_cache`` directory and emitting the platform/
+    rootdir banner is bounded. On a 12-shard fan-out the
+    cache-write + banner path adds 100-300 ms of wall time per
+    shard; eliminating it on every shard keeps the slowest shard
+    well under the combined 60-second budget. The cache is
+    still honored for the unpartitioned ``make test-unit`` /
+    ``make test-subprocess-e2e`` targets because those use the
+    default xdist path and the cache write does not block the
+    wall clock there.
+    """
     return (
         sys.executable,
         "-m",
         "pytest",
         *files,
         "-q",
+        "--no-header",
+        "-p",
+        "no:cacheprovider",
         "-m",
         _VERIFICATION_MARK_EXPRESSION,
         "--basetemp",

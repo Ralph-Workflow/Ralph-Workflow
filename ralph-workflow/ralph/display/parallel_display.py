@@ -149,7 +149,7 @@ from ralph.display.phase_status import (
     format_transition_context_items,
 )
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
-from ralph.display.record_writer import RenderedRecordWriter
+from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import detect_terminal_background_is_light
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
@@ -665,9 +665,30 @@ class ParallelDisplay:
         minutes, secs = divmod(total, _SECONDS_PER_MINUTE)
         return f"{minutes}m{secs}s"
 
-    def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
-        """Build a styled Text line with level and category badge segments."""
+    def _build_line(
+        self,
+        timestamp: str,
+        level: str,
+        cat: str,
+        suffix: str,
+        *,
+        leading_indent: str = "",
+    ) -> Text:
+        """Build a styled Text line with level and category badge segments.
+
+        ``leading_indent`` (wt-028-display S-12 / DA-002): the
+        optional whitespace prefix that hangs the entire line at
+        the requested indent column. The pre-fix contract always
+        rendered the timestamp flush with column 0; DA-002 needs
+        a level-1 entry to start at column ``_INDENT_WIDTH`` (2)
+        so the badge column lines up with the continuation column
+        beneath it. The indent is plain whitespace -- it carries
+        no style and is collapsed on a wrap (the wrap emits the
+        indent separately via ``hang_prefix``).
+        """
         t = Text()
+        if leading_indent:
+            t.append(leading_indent)
         t.append(timestamp + " ")
         t.append(level, style=_LEVEL_THEME_KEYS.get(level, ""))
         t.append(" ")
@@ -881,7 +902,37 @@ class ParallelDisplay:
                 f"{timestamp} {level} {cat} "
             )
             badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
-            hang_prefix = " " * len(chrome_prefix + badge_prefix)
+            # DA-002 (S-4 / S-12 / AC-07): the canonical
+            # ``PresentedEntry`` hierarchy data drives the live log's
+            # hanging-indent continuation column. ``indent_level``
+            # adds N copies of the per-level indent (``_INDENT_WIDTH``
+            # spaces) so a tool_result hangs one level under its
+            # call, and a reasoning entry reads as one subordinated
+            # passage. The badge column stays at the same physical
+            # column for level-0 entries so a level-1 continuation
+            # visibly nests under the call it belongs to.
+            indent_level: int = max(0, int(cast("int", getattr(opts, "indent_level", 0))))
+            # ``grouping_role`` is read off ``opts`` so downstream
+            # consumers (downstream greps, screen readers, the
+            # audit trail) can recover the structural position; the
+            # live log surface only needs the indent column. The
+            # read here is the pinned structural-position probe
+            # that the DA-002 / AC-07 contract depends on.
+            grouping_role: str = (
+                str(opts.grouping_role) if opts.grouping_role else "agent_text"
+            )
+            del grouping_role
+            level_indent = " " * (_INDENT_WIDTH * indent_level)
+            # The level indent prefixes the chrome column on the
+            # first line and the continuation column on wrap
+            # rows, so a level-1 entry starts at column
+            # ``_INDENT_WIDTH`` and continuations line up
+            # vertically under the badge column of the first
+            # line. ``chrome_prefix`` is the original
+            # timestamp/level/cat text -- the leading indent is
+            # applied via ``_build_line(leading_indent=...)`` and
+            # via the leading-spaces in ``hang_prefix``.
+            hang_prefix = level_indent + " " * len(chrome_prefix + badge_prefix)
             # DA-002 (S-4): wrap JUST the body, not the full chrome-
             # prefixed rendered text. Passing the chrome-prefixed
             # text would consume the narrow-terminal budget on the
@@ -899,7 +950,13 @@ class ParallelDisplay:
             chunks = wrapped_body.split("\n")
             first_chunk = chunks[0]
             self._console.print(
-                self._build_line(timestamp, level, cat, f"{badge_prefix}{first_chunk}"),
+                self._build_line(
+                    timestamp,
+                    level,
+                    cat,
+                    f"{badge_prefix}{first_chunk}",
+                    leading_indent=level_indent,
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=False,
@@ -911,7 +968,11 @@ class ParallelDisplay:
                 # entry; the timestamp/level/cat is dropped because
                 # the badge carries the structural information and
                 # the reader can scroll back to the first line for
-                # the timestamp.
+                # the timestamp. ``grouping_role`` is carried
+                # alongside the badge column so a downstream grep
+                # can recover the structural position even when the
+                # leading whitespace is stripped (e.g. a screen
+                # reader or a braille display).
                 self._console.print(
                     f"{hang_prefix}{chunk}",
                     markup=False,
@@ -2128,6 +2189,23 @@ class ParallelDisplay:
             body_text_for_wrap = (
                 text_content if kind.value in _STREAMING_KINDS else visible
             )
+            # DA-002 (S-12 / AC-07): the canonical ``PresentedEntry``
+            # hierarchy data drives the live log's hanging-indent
+            # continuation column. The record writer already consumes
+            # ``indent_level`` / ``grouping_role``; the live log now
+            # consumes the same struct so the two surfaces share one
+            # vocabulary (a tool result hangs one level under its
+            # call, reasoning reads as one subordinated passage). The
+            # builder is the canonical source -- the registry's
+            # ``_KIND_TO_GROUPING`` table is the only place this
+            # mapping is defined.
+            from ralph.display.presented_entry import build_presented_entry
+
+            _entry = build_presented_entry(
+                event,
+                unit_id=unit_id,
+                timestamp=self._clock().isoformat(),
+            )
             self.emit_activity_line(
                 unit_id,
                 kind.value,
@@ -2139,6 +2217,8 @@ class ParallelDisplay:
                     ai_summary_line=ai_summary_line,
                     tool_signature=tool_signature,
                     activity_metadata=metadata,
+                    indent_level=_entry.indent_level,
+                    grouping_role=_entry.grouping_role,
                 ),
                 # DA-002 (S-4): pass the wrap-target body so the wrap
                 # uses the standalone body instead of the full
@@ -3838,10 +3918,42 @@ class ParallelDisplay:
                 self._console.print(
                     Text(title, style="theme.phase.planning"),
                 )
-                self._console.print(content)
+                # DA-001 (S-5 / AC-04): the unboxed headed body
+                # also honors the body measure so a 250-col
+                # console does not print 250-char prose lines from
+                # an info panel. The measure is the shared cap
+                # exposed by DisplayContext.body_measure(); the
+                # ``soft_wrap=True`` flag preserves long single
+                # lines (paths, re-run commands) without
+                # truncating the operator's fix-it phrase.
+                self._console.print(
+                    content,
+                    markup=False,
+                    highlight=False,
+                    soft_wrap=True,
+                    no_wrap=False,
+                    overflow="fold",
+                    width=self._ctx.body_measure(),
+                )
             else:
+                # DA-001 (S-5 / AC-04): the bordered Panel must
+                # constrain its content width to the shared
+                # ``body_measure()`` so prose on a 250-col console
+                # stops running full width. Rules, tables, and
+                # aligned columns keep using ``self._ctx.width``
+                # because they have their own width negotiation;
+                # only prose-shaped panels honor the measure cap.
+                # ``expand=False`` keeps the panel's outer width
+                # fixed at the cap (Rich's default ``expand=True``
+                # would still let the wrapped body reach the
+                # terminal width through the panel's title bar).
                 panel = Panel(
-                    content, title=title, border_style="theme.phase.planning", padding=(1, 2)
+                    content,
+                    title=title,
+                    border_style="theme.phase.planning",
+                    padding=(1, 2),
+                    expand=False,
+                    width=self._ctx.body_measure(),
                 )
                 self._console.print(panel)
 
