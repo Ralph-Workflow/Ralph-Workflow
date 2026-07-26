@@ -165,7 +165,6 @@ def test_rendered_prompt_advertises_every_visible_tool(
         "ralph_discard_md_draft",
         "ralph_finalize_md_artifact",
         "ralph_edit_md_artifact",
-        "coordinate",
         "declare_complete",
     }
 
@@ -292,6 +291,7 @@ _ALL_MCP_INCLUSION_TEMPLATES: tuple[tuple[str, SessionDrain], ...] = (
     ("planning", SessionDrain.PLANNING),
     ("planning_analysis", SessionDrain.ANALYSIS),
     ("planning_edit", SessionDrain.PLANNING),
+    ("review", SessionDrain.REVIEW),
     ("review_analysis", SessionDrain.REVIEW_ANALYSIS),
     ("worker_developer", SessionDrain.DEVELOPMENT),
 )
@@ -477,7 +477,6 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
         "ralph_discard_md_draft",
         "ralph_finalize_md_artifact",
         "ralph_edit_md_artifact",
-        "coordinate",
         "declare_complete",
     }
     skip_artifact_tools = template_stem in {
@@ -558,6 +557,21 @@ def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
             f"{template_stem} (drain {drain.value}, no write) still "
             f"asserts the edit-tools-only rule"
         )
+
+    # The UNIVERSAL brokered-only sentence must render exactly
+    # once for every inclusion template — this is the AC-02 / S-4
+    # guarantee that read-only phases and write-granted phases
+    # both tell the agent the brokered path is the only permitted
+    # one. A regression that drops the universal sentence leaves
+    # a read-only phase unable to reject native write tools.
+    universal_brokered_count = section.count(
+        "BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path"
+    )
+    assert universal_brokered_count == 1, (
+        f"{template_stem} (drain {drain.value}) rendered the universal "
+        f"BROKERED-ONLY sentence {universal_brokered_count} times "
+        f"(expected exactly 1)"
+    )
 
     # The MCP section is bounded: existing byte budget for the
     # 5-phase set must also hold for the 10-phase set; we re-apply

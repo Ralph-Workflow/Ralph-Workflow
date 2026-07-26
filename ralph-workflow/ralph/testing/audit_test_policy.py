@@ -186,8 +186,12 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # Production code paths still inject FakeClock for any
     # timeout-driven flow; the wall-clock measurement here is a
     # single-point budget pin that cannot be expressed with a
-    # fake clock.
-    "test_mcp_endpoint_sweep",
+    # fake clock. The ``test_mcp_endpoint_functional_sweep`` file
+    # is the surviving single sweep after the zero-dead-code
+    # consolidation (the legacy
+    # ``tests/integration/test_mcp_endpoint_sweep.py`` was deleted
+    # and its unique wall-clock assertions ported here).
+    "test_mcp_endpoint_functional_sweep",
     # Realistic-codebase fixture wall-clock budget pin (per AC-02,
     # AC-06). ``test_indexed_search_completes_under_5s`` measures
     # the index + grep cycle over a ~50-file synthetic workspace

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol._session_drain import SessionDrain
 from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL
+from ralph.prompts import template_variables
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import (
@@ -61,6 +63,17 @@ def render_review_prompt(
             template = _load_packaged_review_template()
 
     try:
+        # wt-034-mcp-opti: include the shared MCP partial, so the
+        # reviewer's rendered prompt advertises the brokered tool
+        # surface (the prompt now includes ``shared/_mcp_tools.j2``).
+        # Capability-driven variables come from the REVIEW drain's
+        # bundled defaults so every ``*_TOOL_REFERENCE`` slot the
+        # partial references is filled (StrictUndefined is on; a
+        # missing slot raises and the prompt fails to render).
+        caps, flags = template_variables.default_caps_and_flags_for_drain(
+            SessionDrain.REVIEW
+        )
+        capability_vars = template_variables.capability_template_variables(caps, flags)
         return render_template(
             template,
             {
@@ -76,6 +89,7 @@ def render_review_prompt(
                 "DECLARE_COMPLETE_TOOL_NAME": _DECLARE_COMPLETE_TOOL_NAME,
                 "DECLARE_COMPLETE_TOOL_REFERENCE": _DECLARE_COMPLETE_TOOL_REFERENCE,
                 "WRITE_FILE_TOOL_REFERENCE": "",
+                **capability_vars,
             },
             partials,
         )

@@ -11,6 +11,8 @@ import ast
 import pathlib
 from functools import lru_cache
 
+import pytest
+
 _DISPLAY_ROOT = pathlib.Path(__file__).parent.parent / "ralph" / "display"
 
 
@@ -33,14 +35,17 @@ def _function_def_count(name: str) -> int:
     )
 
 
+@pytest.mark.timeout_seconds(2)
 def test_make_badge_text_defined_once() -> None:
     assert _function_def_count("make_badge_text") == 1
 
 
+@pytest.mark.timeout_seconds(2)
 def test_format_elapsed_seconds_defined_once() -> None:
     assert _function_def_count("format_elapsed_seconds") == 1
 
 
+@pytest.mark.timeout_seconds(2)
 def test_analysis_decision_badge_defined_once() -> None:
     assert _function_def_count("analysis_decision_badge") == 1
 
