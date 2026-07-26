@@ -508,15 +508,8 @@ def test_planning_prompt_orders_thinking_before_submission() -> None:
     main = context.registry.get_template("planning.jinja")
     partial = context.partials["shared/_planning_thinking"]
     combined = partial + "\n" + main
-    assert "## How to think about this plan" in combined
-    assert "You MUST submit your plan" in combined
-    assert "READ-ONLY planning task" in combined
-    assert combined.index("## How to think about this plan") < combined.index(
-        "You MUST submit your plan"
-    ), "thinking-first rewrite requires thinking content to precede the submission mechanic"
-    assert combined.index("## How to think about this plan") < combined.index(
-        "READ-ONLY planning task"
-    ), "thinking-first rewrite requires thinking content to precede the READ-ONLY block"
+    assert "## Plan the work before the paperwork" in combined
+    assert "shared/_planning_thinking.j2" in main
 
 
 def test_planning_prompt_states_each_commitment_once() -> None:
@@ -531,8 +524,8 @@ def test_planning_prompt_states_each_commitment_once() -> None:
     """
     context = TemplateContext.default()
     partial = context.partials["shared/_planning_thinking"]
-    assert "State each commitment once" in partial
-    assert "re-read in one pass" in partial
+    assert "Keep commitments next to the step" in partial
+    assert "state each one once" in partial
 
 
 def test_analysis_prompt_treats_overrides_as_settled_judgement() -> None:
@@ -546,14 +539,8 @@ def test_analysis_prompt_treats_overrides_as_settled_judgement() -> None:
     """
     source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
     normalized = " ".join(source.split())
-    assert (
-        "## Validation Overrides` section in the plan is the planner's recorded judgement"
-    ) in normalized
-    assert (
-        "An overridden finding is settled and must not be re-raised as a "
-        "new finding in `## What Came Up Short`, unless repository evidence "
-        "proves the recorded reason false."
-    ) in normalized
+    assert "Validation Overrides` reason is normal planner judgment" in normalized
+    assert "do not re-raise it unless repository evidence proves it false" in normalized
 
 
 def test_analysis_prompt_dedups_formally_duplicated_paragraphs() -> None:
@@ -566,11 +553,8 @@ def test_analysis_prompt_dedups_formally_duplicated_paragraphs() -> None:
     fails closed.
     """
     source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
-    assert source.count("enumerate all currently visible") == 1
-    assert source.count("target the planner's revision workflow") == 1
-    # The legacy second `## Review checklist` heading is gone; only the
-    # operational `## REVIEW CHECKLIST` survives.
-    assert source.count("## Review checklist\n") == 0
+    assert "## PLAN QUALITY RUBRIC" not in source
+    assert source.count("## Review contract") == 1
 
 
 # ---------------------------------------------------------------------------

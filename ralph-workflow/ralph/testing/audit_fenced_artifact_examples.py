@@ -18,11 +18,6 @@ Every resolved example is passed to
 ``ralph.mcp.artifacts.markdown.parse_and_validate`` with the registered spec.
 Warnings are permitted because the artifact grammar explicitly uses warnings
 for tolerated descriptive vocabulary; any error diagnostic fails the audit.
-The plan format reference must additionally retain complete examples tagged
-``example-size=tiny``, ``example-size=medium``, and ``example-size=large``. The
-large example must model a four- or five-way execution-Subplan fan-out followed
-by one main-session fan-in verification section. Each Subplan contains both an
-implementation step and its own proof gate.
 
 Usage:
     python -m ralph.testing.audit_fenced_artifact_examples
@@ -56,21 +51,19 @@ _FENCE_OPEN_RE: re.Pattern[str] = re.compile(
 _FENCE_ARTIFACT_TYPE_RE: re.Pattern[str] = re.compile(
     r"(?:^|\s)artifact(?:-type|_type)?=(?P<artifact_type>[a-z][a-z0-9_]*)"
 )
-_FENCE_EXAMPLE_SIZE_RE: re.Pattern[str] = re.compile(
-    r"(?:^|\s)example-size=(?P<example_size>tiny|medium|large)(?=\s|$)"
-)
 _FRONTMATTER_TYPE_RE: re.Pattern[str] = re.compile(
     r"^type:\s*(?P<artifact_type>[^\n]+?)\s*$",
     re.MULTILINE,
 )
 _CONCRETE_ARTIFACT_TYPE_RE: re.Pattern[str] = re.compile(r"^[a-z][a-z0-9_]*$")
+_FENCE_EXAMPLE_SIZE_RE: re.Pattern[str] = re.compile(
+    r"(?:^|\s)example-size=(?P<example_size>tiny|medium|large)(?=\s|$)"
+)
 _PLAN_STEP_HEADING_RE: re.Pattern[str] = re.compile(
-    r"^### \[S-[1-9][0-9]*\] .+$",
-    re.MULTILINE,
+    r"^### \[S-[1-9][0-9]*\] .+$", re.MULTILINE
 )
 _PLAN_UNIT_ITEM_RE: re.Pattern[str] = re.compile(
-    r"^- \[(?P<unit_id>[A-Za-z0-9][A-Za-z0-9_-]*)\] "
-    r"(?P<description>.+)$"
+    r"^- \[(?P<unit_id>[A-Za-z0-9][A-Za-z0-9_-]*)\] (?P<description>.+)$"
 )
 _SET_BLOCK_RE: re.Pattern[str] = re.compile(
     r"{%\s*set\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*%}"
@@ -661,8 +654,6 @@ def collect_violations() -> list[str]:
                 declared_artifact_type=artifact_type,
             )
         )
-        if artifact_type == "plan":
-            violations.extend(check_plan_example_coverage(source_name, document))
     violations.extend(
         check_source_examples(
             "ralph/mcp/artifacts/format_docs/artifact_formats_index.md",

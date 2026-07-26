@@ -1,93 +1,22 @@
-"""Tests for capability-neutral planning-edit skill and docs-MCP guidance."""
+"""Planning-edit prompts reuse the concise shared planning standard."""
 
-import tempfile
-from pathlib import Path
+from __future__ import annotations
 
-from ralph.prompts.developer import (
-    PlanningPromptInputs,
-    prompt_planning_xml_with_context,
-)
 from ralph.prompts.template_context import TemplateContext
-from ralph.prompts.types import SessionCapabilities, SessionDrain
-from ralph.workspace.memory import MemoryWorkspace
-
-SHIPPED_SKILLS_DISCOVERY_HINTS = (
-    "## SHIPPED SKILLS",
-    "for runtimes that support",
-    "If this runtime exposes a skill mechanism",
-    "Read a selected `SKILL.md`",
-)
-
-DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (
-    "arabold/docs-mcp-server",
-    "localhost:6280",
-    ".agent/mcp.toml",
-    "improves library and API documentation lookup quality",
-)
-
-DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK = (
-    "arabold/docs-mcp-server",
-    "localhost:6280",
-    ".agent/mcp.toml",
-    "improves documentation lookup quality",
-)
 
 
-def _shared_render_planning(
-    has_docs_mcp: bool,
-    template: str | None = None,
-    tmp_path: Path | None = None,
-) -> str:
-    """Render a planning prompt with optional has_docs_mcp."""
-    if tmp_path is None:
-        with tempfile.TemporaryDirectory() as td:
-            tmp_path = Path(td)
-    context = TemplateContext.default()
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
-    inputs = PlanningPromptInputs(
-        prompt_content="Implement the feature",
-        has_docs_mcp=has_docs_mcp,
-    )
-    kwargs: dict = {
-        "context": context,
-        "inputs": inputs,
-        "workspace": workspace,
-        "session_caps": session_caps,
-    }
-    if template is not None:
-        kwargs["template_name"] = template
-    return prompt_planning_xml_with_context(**kwargs)
+def _source(name: str) -> str:
+    return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
 
 
-def _assert_shipped_skills_discovery(prompt: str) -> None:
-    for hint in SHIPPED_SKILLS_DISCOVERY_HINTS:
-        assert hint in prompt, f"Missing shipped-skills hint: {hint}"
+def test_planning_edit_variants_reuse_shared_thinking_guidance() -> None:
+    for name in ("planning_edit.jinja", "planning_edit_fallback.jinja"):
+        source = _source(name)
+        assert "shared/_planning_thinking.j2" in source
+        assert "ralph_edit_md_plan_step" not in source
 
 
-class TestPlanningEditTemplatesShippedSkills:
-    """planning_edit.jinja and planning_edit_fallback.jinja."""
-
-    def test_planning_edit_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
-        _assert_shipped_skills_discovery(prompt)
-
-    def test_planning_edit_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
-        for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
-            assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
-
-    def test_planning_edit_fallback_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(
-            False, template="planning_edit_fallback.jinja", tmp_path=tmp_path
-        )
-        _assert_shipped_skills_discovery(prompt)
-
-    def test_planning_edit_fallback_jinja_docs_mcp_false_branch_visible(
-        self, tmp_path: Path
-    ) -> None:
-        prompt = _shared_render_planning(
-            False, template="planning_edit_fallback.jinja", tmp_path=tmp_path
-        )
-        for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK:
-            assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
+def test_planning_edit_treats_analysis_as_evidence_not_a_checklist() -> None:
+    source = _source("planning_edit.jinja")
+    assert "fresh repository\nevidence" in source
+    assert "not a document-shape checklist" in source

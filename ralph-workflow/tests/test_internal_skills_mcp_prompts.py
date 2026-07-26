@@ -68,16 +68,9 @@ def test_plan_skill_native_markdown_example_matches_validator() -> None:
 def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:
     text = _read("submit-plan-artifact.md")
 
-    assert "Everything else is a recommended authoring pattern, not required grammar." in text
-    assert "radically different headings" in text
-    assert "Work Units` for small bounded tasks or verification gates" in text
-    assert "Subplan: <Name>` sections when each" in text
-    assert "four or five independent execution Subplans" in text
-    assert "`Verify:` command must have a specific" in text
-    assert "exact, case-sensitive `## Work Units` or `## Parallel Plan`" in text
-    assert "Project-specific `Type:` values and target actions are preserved verbatim" in text
-    assert "Acceptance-criterion items are criteria, never phantom work units" in text
-    assert "exact required section names" not in text
+    assert "recommended authoring pattern, not required grammar" in text
+    assert "Orient, Characterize, Change, and Verify" in text
+    assert "ralph_edit_md_artifact" in text
     assert "ralph_edit_md_plan_step" not in text
 
 
@@ -131,14 +124,8 @@ def test_planning_analysis_prompt_requires_cost_element_per_finding() -> None:
     assert "Cost:" in source, (
         "planning_analysis.jinja must require a `Cost:` element per finding"
     )
-    # The per-entry form must include the cost class in the same line
-    # that names the dimension / defect / evidence / missing / cost.
-    assert "Dimension:" in source
-    assert "Defect:" in source
-    assert "Evidence:" in source
-    assert "Missing:" in source
-    # The form must keep the cost/fix contract to one finding each.
-    assert "Cost:" in source
+    assert "Observation:" in source
+    assert "Fix:" in source
     # The form must NOT regress to the legacy ``MCP plan-edit tools``
     # vocabulary that no longer exists in the runtime.
     assert "MCP plan-edit tools" not in source

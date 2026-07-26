@@ -13,10 +13,6 @@ _ANALYSIS_TEMPLATES = ["development_analysis.jinja", "review_analysis.jinja"]
 _SUBAGENT_ANALYSIS_INPUTS = {
     "development_analysis.jinja": "PROMPT, PLAN, and the latest artifact",
     "review_analysis.jinja": "PROMPT, PLAN, and the latest artifact",
-    "planning_analysis.jinja": (
-        "PRODUCT CRITERIA (provided through the PROMPT payload) "
-        "and the current finalized plan or staged draft"
-    ),
 }
 
 _RETRY_HINT_TEMPLATES = [

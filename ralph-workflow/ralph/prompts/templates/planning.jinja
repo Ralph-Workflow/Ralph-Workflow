@@ -1,118 +1,32 @@
-You are in PLANNING MODE. Create a detailed, structured execution plan.
+You are in PLANNING MODE. Produce the current best execution plan for the request.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
-{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
-
 {% include 'shared/_unattended_mode.j2' %}
-
 {% include 'shared/_session_capabilities.j2' %}
-
-{% set show_plan_edit_guidance = true %}
-{% set HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true %}
 {% include 'shared/_mcp_tools.j2' %}
-
-{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
-
 {% set shipped_skills_mode = 'planning' %}
 {% include 'shared/_shipped_skills.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
-
-{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
-{% endif %}
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 {% include 'shared/_planning_thinking.j2' %}
 
-CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
-- Creating, modifying, or deleting any files
-- Running any commands that modify system state
-- Installing dependencies or packages
+{% if LAST_RETRY_ERROR %}
+Previous attempt error: {{ LAST_RETRY_ERROR }}
+Repair the missing submission or validation issue before completing this plan.
+{% endif %}
 
-You MUST submit your plan via Ralph Workflow's planning MCP tools.
-- Not submitting the plan is a FAILURE.
-- Allowed operations: any non-mutating tools
-  (for example file reads/search/listing and image analysis)
+This is read-only planning: inspect the repository and run only non-mutating
+commands. Do not edit files or install dependencies.
 
-{% set DOCS_LOOKUP_VARIANT = 'long' %}
-{% set DOCS_LOOKUP_PHASE = 'planning' %}
-{% set DOCS_LOOKUP_INTENT = 'When researching library APIs, framework behavior, or third-party tooling during planning:' %}
-{% include 'shared/_docs_lookup.j2' %}
-
-USER REQUIREMENTS:
+USER REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 {% if ARTIFACT_HISTORY_PATH %}
-ARTIFACT HISTORY:
-Prior planning artifacts from previous development iterations are archived under:
-`{{ARTIFACT_HISTORY_DIR}}`
-Canonical history index file:
-`{{ARTIFACT_HISTORY_PATH}}`
-Inspect this history when you want to understand what plans have been tried before
-and what planning-analysis feedback they received.
+Prior plan history is available at `{{ARTIFACT_HISTORY_PATH}}` when it helps.
 {% endif %}
 
-## Misroute check
-
-If the user prompt targets Ralph Workflow's own planning internals (the plan
-artifact grammar, the planning prompt, the planning MCP tools, or the planning
-audit checks) AND is not a concrete bug report with a reproduction, classify
-the request as a planner-internal task and plan against `ralph/...` paths in
-this repository. If an MCP server, planner, or plan format belongs to the
-user's own project rather than to Ralph Workflow itself, plan against the
-user's project; self-referential-sounding keywords alone do not make a task
-a planner task.
-
-## Agent-Driven Parallel Execution
-
-The bundled default uses `[phases.<phase>.parallelization] dispatch_mode =
-'agent_subagents'`: parallel plan execution is delegated to the executing AI
-agent, which dispatches its own sub-agents or runs the plan sequentially if it
-has no sub-agent capability. The optional `ralph_fan_out` mode uses
-Ralph-managed isolated workers as described in rule 8.
-
-Choose the executor-facing shape by delegation size:
-
-- `## Work Units` contains small bounded tasks or verification gates.
-- A substantial execution sub-agent gets a complete mini-plan under repeatable
-  `## <Name> Subplan` or `## Subplan: <Name>` headings, with its own scope,
-  targets, ordered steps, dependencies, and proof.
-- For a large multi-surface task, normally fan out four or five independent
-  execution Subplans. Keep cross-subplan fan-in, conflict resolution, and final
-  verification in an ordinary main-session `## Integration and Verification`
-  section after those Subplans; do not label that fan-in section as a Subplan.
-
-Work Units, Parallel Plan, and execution Subplans remain optional. A plan with
-no parallel work is valid; the executing agent runs `### [S-n]` steps in
-dependency order.
-
-When you do include `## Work Units` or `## Parallel Plan`, follow these
-constraints (the format doc carries the rest):
-
-- Declare `Directories:` for every Work Unit; keep values disjoint; never
-  list `.agent`, `.git`, or the repo root.
-- Use `- [unit-ID] description` stable-ID list items; loose prose directly
-  under those headings is an error.
-- Acceptance-criterion items are criteria, not work units.
-- Agent-managed sub-agents return implementation and proof to the main
-  execution session. Ralph-managed worker fan-out is dormant in the bundled
-  default and creates `.agent/workers/<work-unit-ID>/` only when explicitly
-  opted into via `[phases.<phase>.parallelization] dispatch_mode =
-  'ralph_fan_out'`.
-
-{{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
-
-## Plan-artifact canonical contract
-
-The plan is ONE markdown document. Full document grammar, step guidance,
-acceptance-criteria linking, severity model, the `## Validation Overrides`
-ledger, and `## Design` section conventions live in
-`.agent/artifact-formats/plan.md`. The validator reports the exact field,
-line, and rule for every error and warning; repair the named field rather
-than guessing at another schema. Override any advisory finding by recording
-a reason under `## Validation Overrides`; errors cannot be overridden and
-will still block submission.
-
-Your target is to submit a plan that planning analysis can approve on the first pass. For test-running steps, prefer `Type: verify` with a concrete `Verify:` command and a specific `Expect:` result; a specific `Location:` artifact is the non-command alternative. Project-specific `Type:` values are accepted and preserved verbatim, so do not relabel useful domain vocabulary merely to fit the recommended built-ins. Use `### [S-n] Title` step blocks (e.g. `### [S-1] Title`) for each ordered step.
-
-{% include 'shared/_planning_subagents.j2' %}
+Use subagents only when independent repository discovery genuinely reduces
+uncertainty. A compact linear plan is valid; use work units only for disjoint
+implementation work.

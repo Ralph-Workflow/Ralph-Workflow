@@ -1,124 +1,38 @@
-## How to think about this plan
+## Plan the work before the paperwork
 
-Before you draft a step, answer four questions in your own head — not as headings
-in the plan itself, but as the framing that drives every section that follows:
+Inspect the request and repository before writing the plan. Ground claims about
+files, behavior, commands, and patterns in evidence; turn unknowns into a discovery step rather than guessing.
 
-1. **What outcome does the user need?** The success state is observable, not a
-   feeling: a passing test, a deployed endpoint, a reproducible CLI behavior,
-   a file in a known path, an inspector-checkable artifact. If you cannot
-   name what someone will see when this plan is done, you do not yet have a
-   plan; you have an intention.
-2. **What does the repository look like today?** Inspect it. Run a directory
-   tree, read the file the request references, open the test file the
-   request implies. The executor will not re-derive what you already saw;
-   anything you assert without verifying is a guess the executor will inherit.
-3. **What risks or coordination costs will the executor hit?** Missing
-   dependencies, hidden shared state, vague test names, brittle verification
-   commands, schema migrations, parallel-edit races. Each risk wants a
-   mitigation in the plan — not a paragraph of fear, but a concrete action
-   the executor takes to stay safe.
-4. **How will anyone know it worked?** The proof has to be runnable or
-   inspectable in the same session the executor runs in. "Code is clean" or
-   "works correctly" is not proof; the plan must name the exact command,
-   expected output, or specific file/artifact the analysis phase will read.
+Plan the full arc in this order, even for easy-looking work:
 
-If you cannot answer these four questions for any part of the request, the
-plan needs a discovery step before the implementation step. Discovery steps
-are not optional polish; they are the parts that keep the plan honest.
+1. **Orient** — identify the requested outcome, relevant code, and constraints.
+2. **Characterize** — establish current behavior with an existing test,
+   reproduction, or inspected artifact.
+3. **Change** — name the smallest concrete edits and their dependencies.
+4. **Verify** — name runnable checks or inspectable evidence that proves the
+   outcome.
 
-## Required phase coverage
+Be concrete where it survives contact with the repository: outcome, real
+files, current behavior, proof, and known risks. Let implementation detail
+change as discovery teaches you more. Keep commitments next to the step they
+describe and state each one once so the plan remains readable mid-run.
 
-Every plan — even an "easy" or "obvious" one — covers four phases, in order:
+## Plan validation and revision
 
-1. **Orient.** Read the user's prompt, the repository, the existing tests,
-   and any code paths the request implies. State what you learned in the
-   `Intent:` paragraph of `## Summary`.
-2. **Characterize current behavior.** Capture the state the executor will
-   change: a failing test, a missing file, an undocumented behavior, a
-   benchmark number. Characterization is mandatory even when the change
-   seems obvious — the analysis phase uses your characterization to decide
-   whether the change actually moved the world. Do not skip this phase for
-   "easy" tasks; the easy-looking ones are where characterization drifts
-   the most.
-3. **Change.** Make the concrete edits in dependency order, with files,
-   targets, and the smallest artifact-level proof at each step.
-4. **Verify.** Run the focused suites, integration tests, smoke checks, or
-   build commands that prove the change. Pair each `Verify:` with a specific
-   `Expect:` result, or name a specific `Evidence:` / `Location:` artifact.
+The plan format guide at `.agent/artifact-formats/plan.md` offers a useful
+default structure; it does not require a uniform document. A step may use
+`### [S-n] Title`; IDs are stable and never renumbered when your plan needs
+them. Use `Type: verify` for a test-running step when useful; step types are
+preserved verbatim. `PLAN001` is the only blocking plan diagnostic: the submission is empty, too short, or plainly
+not a plan. Warnings and info are advice. Record a normal, reasoned decision
+to proceed past advice under `## Validation Overrides`; tool results retain
+those reasons.
 
-A plan that omits characterization will bounce at analysis, even when the
-implementation step is correct. A plan that runs no verification step will
-bounce at analysis, even when the implementation step is correct.
-
-## Concreteness calibration
-
-Concrete is good on the things the executor can verify on the spot:
-
-- **Outcome**: a single, observable success state.
-- **Files**: real paths under the repository root, with real `modify` /
-  `create` / `inspect` / `coordinate` actions.
-- **Checks**: real commands that exist in this repository, real test names,
-  real paths to inspect. `pytest tests/x.py -q`, `mypy ralph/foo.py`,
-  `grep -r foo ralph/`, `cat reports/api-proof.json | jq .status`.
-- **Risks**: real failure modes, not generic ones. Each risk names the
-  specific command or check the executor runs to detect it.
-
-Honest unknowns become discovery steps, not invented facts. If you have not
-verified a path, pattern, dependency, or verification command, do not present
-it as settled; add a discovery step that inspects it before the step that
-depends on it. Pretending you verified something you did not is the most
-common way plans silently fail at execution.
-
-## Document contract — floor, not form
-
-The plan grammar lives in `.agent/artifact-formats/plan.md`. The only blocking condition is `PLAN001`: no real plan was submitted
-(empty/markup-only, under 100 actual-content characters, or recognizably a
-refusal, question, status, tool output, stack trace, or placeholder). The
-usual headings, IDs, references, and fields are recommended structure, not
-submission gates. Use them when they make the executor's work clearer.
-
-State each commitment once, next to the step it describes; the executor
-will re-read this document mid-run under context pressure, and restating
-the same promise in Summary, Critical Files, and Verification costs the
-attention the executor needs for the step itself. Keep the plan short
-enough to re-read in one pass — detail that does not survive contact with
-the code belongs in a comment, not in the plan.
-
-Validation findings split into three severities:
-
-- **error** — only `PLAN001`: the submitted text is not a plan, so analysis
-  and execution have nothing to follow.
-- **warning** — a shape or meaning check the validator predicts will cost
-  the run something (a missing `Files:`, a vague `Verify:`, an unpaired
-  `Expect:`). Warnings do not block submission; the analysis phase owns the
-  substance check.
-- **info** — an observation worth a second look. Stale overrides surface
-  here so suppressions that no longer suppress anything are flagged.
-
-You can override any advisory finding by recording a reason under
-`## Validation Overrides` (one `- [RULE-ID] reason` line per override;
-optional `Where: <section>` label narrows the match). Overrides and their reasons are returned in tool results and persist with
-the plan. Treat an override as normal recorded judgement, not defiance.
-
-## Submission mechanics
-
-Author the document, validate it with
-{{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`,
-`content` = the document), repair every diagnostic — each names the line,
-section, rule, and what to fix — in one repair pass, then submit with
-{{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. To
-revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}
-(`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs),
-which submits the plan as soon as the edited draft validates — no separate
-{{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} call — and inspect the draft with
-{{GET_MD_DRAFT_TOOL_REFERENCE}}. Every submission stages its
-document as the draft, so this works after a rejected submit; resend the
-whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}}
-(`mode="replace_all"`) only for a wholesale rewrite. IDs are
-stable and never renumbered.
-
-The submit/finalize tools are the only valid paths to write
-`.agent/artifacts/plan.md`; do not write the file directly. A valid receipt
-is mandatory. After that receipt exists, call
-{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action;
-do not emit prose after that call.
+Submit a complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
+(`artifact_type="plan"`). For a similar revision, use
+{{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} on the staged draft; it resubmits once
+validates. Use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} with `mode="replace_all"`
+only for a wholesale rewrite. {{GET_MD_DRAFT_TOOL_REFERENCE}} shows the draft,
+and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} submits an assembled staged draft.
+Do not write canonical plan files directly. After a valid receipt, call
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action.

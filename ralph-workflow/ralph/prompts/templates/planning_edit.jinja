@@ -1,28 +1,13 @@
-You are in PLANNING EDIT MODE. Revise the existing execution plan in response to planning-analysis feedback.
+You are in PLANNING EDIT MODE. Revise the current plan using fresh repository
+evidence and the analysis feedback.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
-{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
-
 {% include 'shared/_unattended_mode.j2' %}
-
 {% include 'shared/_session_capabilities.j2' %}
-
-{% set show_plan_edit_guidance = true %}
-{% set HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true %}
 {% include 'shared/_mcp_tools.j2' %}
-
-{% set shipped_skills_mode = 'planning' %}
-{% include 'shared/_shipped_skills.j2' %}
-
-{% if LAST_RETRY_ERROR %}
-IMPORTANT: The previous attempt did not submit the required revised plan before declaring completion.
-
-{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
-{% endif %}
-
-The prior plan was rejected by planning analysis.
-Treat the planning-analysis feedback as a starting point, not as the full list of issues.
-The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% include 'shared/_docs_lookup.j2' %}
 
 {% include 'shared/_planning_thinking.j2' %}
 
@@ -31,96 +16,6 @@ ORIGINAL REQUEST:
 
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
-{% if ARTIFACT_HISTORY_PATH %}
-ARTIFACT HISTORY:
-Prior planning artifacts from earlier iterations are archived under:
-`{{ARTIFACT_HISTORY_DIR}}`
-Canonical history index file:
-`{{ARTIFACT_HISTORY_PATH}}`
-Inspect this history to understand what plans have been tried and rejected before
-so you do not repeat prior mistakes or revisit already-ruled-out approaches.
-{% endif %}
-
-{% set DOCS_LOOKUP_VARIANT = 'short_block' %}
-{% set DOCS_LOOKUP_PHASE = 'planning' %}
-{% set DOCS_LOOKUP_ACTION = 'revising the plan' %}
-{% include 'shared/_docs_lookup.j2' %}
-
-{% include 'shared/_planning_subagents.j2' %}
-
-Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable. Preserve still-valid sections only after you have re-validated them against the ORIGINAL REQUEST, repository reality, and the full analysis feedback set. Do not localize your revision pass to only the sections explicitly cited by the analyzer. You must perform your own repo-grounded analysis before submitting.
-
-Every analyzer issue must map to concrete revised sections or an explicit verified reason that a section truly remains valid unchanged. Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
-
-Build a closure ledger before submitting the revised plan. At minimum, account for: (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent. Before revising any section, classify the feedback scope as one of:
-
-- local_section
-- cross_section
-- repo_wide
-
-This classification is diagnostic only; it does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
-
-If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan against the ORIGINAL REQUEST and current repository reality before editing sections. Treat the latest analysis feedback as evidence about what the current plan missed, not the full task. If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan narrowed scope before running repository-wide discovery, treat that as a scope-invalidating defect and do not preserve the prior target cluster as the starting scope. For repo-wide defects: replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery; recompute the full inventory, critical files, verification breadth, and risks; then rewrite every affected section so the submitted plan is globally coherent.
-
-{{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
-
-## MCP PLAN EDIT WORKFLOW
-
-Not submitting the revised plan is a FAILURE.
-
-The plan is ONE markdown document; the canonical copy lives at `.agent/artifacts/plan.md` (grammar: `.agent/artifact-formats/plan.md`). Revise the document, then either resubmit the whole document or finalize its staged draft — either path replaces the prior plan.
-Your target is to submit the strongest revised plan you can so the next planning-analysis pass returns `completed`, not another partial patch cycle.
-
-Recommended edit flow:
-1. Read the current plan document at `.agent/artifacts/plan.md` with your read-only file tools.
-2. Re-check the ORIGINAL REQUEST, the full current plan, and the planning-analysis feedback together before deciding what must change.
-3. If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised document.
-4. When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.
-5. Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before you decide the revision is ready.
-6. When subagents are available, fan out one scout per analyzer finding to verify its closure against the repository, plus one reviewer per rubric dimension to hunt for the next rejection (see ## PLANNING WITH SUBAGENTS); without subagents, run the same checks sequentially yourself.
-7. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then rewrite every affected section in the document.
-8. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs); it submits the plan for you as soon as the edited draft validates, so no separate {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} call is needed, and you can inspect the draft with {{GET_MD_DRAFT_TOOL_REFERENCE}}. Every submission stages its document as the draft, so this works after a rejected submit. Resend the whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a wholesale rewrite.
-9. For a holistic document revision that does not use the staged flow, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. Use either this direct path or the staged path only after the revised plan passes the self-audit below.
-
-Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. Do not throw away valid sections just because one part of the plan was rejected, but do rewrite every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
-
-## REVISION REQUIREMENTS
-
-Your revised plan must remain executor-ready for unattended development. The updated artifact must:
-
-- add any implied core workflow, prerequisite action, or verification coverage that your own analysis finds is required for the product outcome to count as working
-- keep concrete ordered steps, critical files, risks, and exact verification commands
-- eliminate vague or unverifiable instructions
-- make every acceptance criterion and verification step evaluatable by the analysis phase — a concrete command with expected output or a specific file/artifact to inspect; un-evaluatable criteria ("code is clean", "works correctly") will be rejected
-- Do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them
-- re-derive and fix all repo-grounded issues your own analysis finds in this revision pass, not only the analyzer's explicitly cited examples
-
-If the feedback says the plan is missing detail, add that detail.
-If the feedback says verification is weak, replace vague checks with exact commands and expected outcomes.
-If the feedback says the structure is unsound, revise the affected sections systematically rather than patching around the problem.
-Do not make transient .agent handoff files part of the revised plan's execution inputs unless the original request is explicitly about Ralph Workflow's own planning or artifact plumbing.
-
-Submission recap:
-- In-place revision and submission in one step: {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} (`oldText`/`newText` edits, `artifact_type="plan"`) — submits once the edited draft validates.
-- Holistic rewrite: {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} then {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document).
-
-After a valid submission or finalization receipt, call
-{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
-Do not emit prose after that call.
-
-Do not submit a plan that still has any known unresolved analyzer finding; every analyzer-cited issue must be closed or explicitly addressed in the revised document. Before submitting, proactively search for any additional repo-grounded failure the analyzer could surface next, and revise the document until every such defect is closed.
-
-## SELF-AUDIT
-
-Before submitting the revised plan, perform this self-audit:
-
-- Product criteria compliance: every ORIGINAL REQUEST requirement maps to a concrete step or verification
-- Executor readiness: ordered, literally executable steps; precise targets; no hidden prerequisites or executor research burden
-- Gap analysis and consistency: no missing implementation, migration, cleanup, or verification work; no contradictions between sections
-- Repository accuracy: every referenced file, pattern, command, and integration point is real in the current repository
-- Risk coverage: concrete risks, mitigations, and edge cases are represented
-- Verification quality: exact commands with expected outcomes, covering the plan's biggest claims rather than a safe subset
-- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant
-- Maintainability and handoff quality: the plan stays concise, non-redundant, and explicit for development handoff
-- Parallel execution (agent-driven): any Work Units / Subplans are phrased for the executing agent's sub-agents, not as Ralph-managed fan-out instructions
-- Scope derivation: when the task is repo-wide, implementation scope comes from an explicit repo-wide discovery step rather than a guessed subsystem
+Read the current plan and verify feedback against the request and repository.
+Keep valid material, but update every affected commitment together. Analysis
+feedback is advice from a fresh reviewer, not a document-shape checklist.

@@ -24,11 +24,6 @@ from ralph.mcp.artifacts.format_docs import (
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from ralph.mcp.artifacts.markdown.specs import ANALYSIS_DECISION_SPECS
-from ralph.pipeline.work_units import (
-    parse_work_units_from_artifact,
-    validate_for_same_workspace,
-)
-from tests._support.typed_accessors import must_dict_list
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
@@ -253,92 +248,21 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
         )
 
 
-def test_plan_doc_teaches_recommended_outline_without_requiring_a_skeleton() -> None:
+def test_plan_doc_teaches_concise_advisory_contract() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for phrase in (
-        "strongly recommended",
-        "optional",
-        "repeatable",
-        "any order",
-        "separate subplans",
-        "nested mini-plans",
-        "globally unique",
-        "resolvable",
-        "evaluatable",
-        "Tiny task: compact checklist",
-        "Medium task: conventional linear plan",
-        "Large task: four-subplan fan-out with main-session fan-in",
-        "explicit fan-in integration and verification",
+        "`PLAN001` is the sole error",
+        "Warnings and info never make a plan invalid",
+        "Validation Overrides",
+        "Orient, Characterize current behavior, Change, and Verify",
+        "ralph_edit_md_artifact",
+        "wholesale rewrite",
     ):
         assert phrase in doc
-    assert doc.count("```markdown") >= 3
+    assert doc.count("```markdown") == 1
+    assert "Hard contract" not in doc
     assert "Required sections:" not in doc
-    assert "closed shapes" not in doc
-
-
-def test_large_plan_example_has_four_independent_subplans_then_fan_in() -> None:
-    doc = load_bundled_format_doc("plan")
-    assert doc is not None
-    large = doc.split("```markdown artifact=plan example-size=large\n", 1)[1].split("```", 1)[0]
-
-    content, diagnostics = parse_and_validate(large, get_spec("plan"))
-
-    assert diagnostics == []
-    steps = must_dict_list(content["steps"])
-    assert [step["number"] for step in steps] == [
-        10,
-        11,
-        20,
-        21,
-        30,
-        31,
-        40,
-        41,
-        50,
-        51,
-    ]
-    units = must_dict_list(content["work_units"])
-    assert [unit["unit_id"] for unit in units] == [
-        "subplan-s-10",
-        "subplan-s-20",
-        "subplan-s-30",
-        "subplan-s-40",
-    ]
-    assert [unit["step_ids"] for unit in units] == [
-        ["S-10", "S-11"],
-        ["S-20", "S-21"],
-        ["S-30", "S-31"],
-        ["S-40", "S-41"],
-    ]
-    assert not {unit["unit_id"] for unit in units} & {f"S-{step['number']}" for step in steps}
-    work_units_plan = parse_work_units_from_artifact(content)
-    assert work_units_plan is not None
-    validate_for_same_workspace(work_units_plan)
-    assert large.count(" Subplan\n") == 4
-    assert "## Integration and Verification\n" in large
-
-
-def test_plan_doc_teaches_fail_closed_consumed_sections_and_free_form_vocabularies() -> None:
-    doc = load_bundled_format_doc("plan")
-    assert doc is not None
-    normalized = " ".join(doc.split())
-
-    for phrase in (
-        "exact, case-sensitive `## Work Units` or `## Parallel Plan` heading",
-        "fails closed",
-        "Acceptance-criterion items are criteria, never phantom work units",
-        "project-specific `Type:` values and target actions are preserved verbatim",
-        "built-in `file_change` and `verify` contracts",
-        "arbitrary headings remain descriptive",
-    ):
-        assert phrase in normalized
-
-    # The project-specific ``Type:`` / target-action preservation promise is
-    # a single commitment, not a restated one. A future edit that drifts back
-    # to two occurrences of the same substring would re-introduce a
-    # duplication the format-doc rewrite was supposed to remove.
-    assert doc.count("target actions are preserved verbatim") == 1
 
 
 @pytest.mark.parametrize(

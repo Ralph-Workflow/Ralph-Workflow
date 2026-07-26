@@ -12,10 +12,11 @@ frontmatter, sections, and stable-ID items.
    diagnostics the submission gate uses.
 3. Call `ralph_submit_md_artifact` with `artifact_type` and `content`.
 
-For large plans you can stage incrementally: `ralph_stage_md_artifact` to
-save a draft, `ralph_get_md_draft` to read it back, `ralph_discard_md_draft`
-to drop it, and `ralph_finalize_md_artifact` to validate and submit the
-staged document.
+For a similar revision, use `ralph_edit_md_artifact` to repair the staged
+draft and submit it when valid. Stage incrementally with
+`ralph_stage_md_artifact`, inspect with `ralph_get_md_draft`, and use
+`ralph_finalize_md_artifact` to submit an assembled draft. Reserve
+`ralph_discard_md_draft` or `mode="replace_all"` for a wholesale restart.
 
 Every submission also stages its document as that artifact's draft, whether
 or not it validated. To revise a submitted or rejected plan, edit that draft
@@ -54,10 +55,8 @@ key: value
 - Named sections commonly use list items shaped `- [ID] text` (checkbox form
   `- [ ] [ID] text` is also accepted). The per-type document says which known
   sections require items and which accept descriptive body prose.
-- The plan format extends this grammar as documented in `plan.md`: `### [S-n]`
-  step blocks with description prose, Summary prose, labeled field lines
-  (`Intent:`, `Skills:`, `Directories:`, `Depends on:`, `Expect:`,
-  `Satisfies:`, …), and indented per-item fields under list items.
+- `plan.md` describes an optional planning shape. A plan remains valid unless
+  it triggers that type's sole not-a-plan error (`PLAN001`).
 - IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within each consumed
   section that validates list items.
 - Blank lines are ignored. Content outside a section, malformed frontmatter,
@@ -68,14 +67,8 @@ key: value
 
 ## Errors vs warnings
 
-Hard errors (submission rejected): malformed core grammar; missing required
-consumed fields, sections, or items; invalid values in closed consumed
-vocabularies such as `type` and `status`; duplicate known sections or IDs;
-references to unknown IDs; size caps; and each type's canonical content
-rules.
-
-Warnings are limited to fields each type explicitly documents as descriptive
-and lenient; accepted descriptive values are preserved rather than rewritten.
+Each type defines its own errors and advisory findings. For `plan`, only
+`PLAN001` rejects a submission; warnings and info remain visible but valid.
 Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
 
 ## Supported artifact types

@@ -201,8 +201,8 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
     )
 
     rendered = workspace.read(prompt_path)
-    assert "ARTIFACT HISTORY" in rendered
-    assert str(plan_history_file) in rendered
+    assert "PLANNING EDIT MODE" in rendered
+    assert str(plan_history_file) not in rendered
 
 
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
@@ -239,32 +239,12 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     rendered = workspace.read(prompt_path)
     assert "PLANNING EDIT MODE" in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
-    assert PLANNING_EDIT_GET_DRAFT_TEXT in rendered
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
-    assert "Read the complete analysis feedback from file at" in rendered
-    assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
-    assert PLANNING_EDIT_GET_DRAFT_TEXT in rendered
-    assert PLANNING_EDIT_DEFECT_SCOPE_TEXT in rendered
-    assert PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT in rendered
-    assert PLANNING_EDIT_FINALIZE_TEXT in rendered
-    assert PLANNING_EDIT_SELF_AUDIT_TEXT in rendered
-    assert PLANNING_EDIT_RISK_COVERAGE_TEXT in rendered
-    assert PLANNING_EDIT_PARALLELIZATION_TEXT in rendered
-    assert PLANNING_EDIT_MAINTAINABILITY_TEXT in rendered
-    assert PLANNING_EDIT_SCOPE_INVALIDATION_TEXT in rendered
-    assert PLANNING_EDIT_DISCOVERY_FIRST_TEXT in rendered
-    assert PLANNING_EDIT_SCOPE_DERIVATION_TEXT in rendered
-    assert PLANNING_EDIT_PASS_TARGET_TEXT in rendered
-    assert PLANNING_EDIT_NO_KNOWN_GAPS_TEXT in rendered
-    assert PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT in rendered
-    assert PLANNING_EDIT_NEXT_ANALYZER_TEXT in rendered
-    assert PLANNING_EDIT_SURFACED_BLOCKER_TEXT in rendered
-    assert PLANNING_EDIT_RULE_CATEGORY_TEXT in rendered
-    assert PLANNING_EDIT_NO_EXCEPTION_TEXT in rendered
-    assert PLANNING_EDIT_STARTING_POINT_TEXT in rendered
-    assert PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT in rendered
-    assert PLANNING_EDIT_SELF_ANALYSIS_TEXT in rendered
-    assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in rendered
+    assert "ANALYSIS FEEDBACK:" in rendered
+    assert "Read the current plan and verify feedback against the request and repository." in rendered
+    assert "feedback is advice from a fresh reviewer" in rendered
+    assert "Plan the full arc in this order" in rendered
+    assert "PLAN001" in rendered
     assert "Feedback for the planner" not in rendered
     assert workspace.exists(".agent/artifacts/plan.md") is True
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.md") is True
@@ -617,7 +597,7 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
     assert "Read the complete latest artifact from file at" not in rendered
     assert "Fresh plan context." not in rendered
     assert "`.agent/artifacts/plan.md`" in rendered
-    assert "authoritative markdown document" in rendered
+    assert "Read the current plan at `.agent/artifacts/plan.md`" in rendered
     assert ".agent/artifacts/plan.json" not in rendered
 
 

@@ -1,65 +1,30 @@
 PLANNING EDIT MODE
 
-{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
-
 {% include 'shared/_unattended_mode.j2' %}
-
-BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path; native file/shell write tools are prohibited.
-
 {% set shipped_skills_mode = 'planning' %}
 {% include 'shared/_shipped_skills.j2' %}
 
-{% if LAST_RETRY_ERROR %}
-Recent retry context:
-{{ LAST_RETRY_ERROR }}
-{% endif %}
-
-The prior plan was rejected by planning analysis. Treat the planning-analysis feedback as a starting point, not as the full list of issues. The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
-
-Canonical request file: `{{PROMPT_PATH}}`
-The current plan must be read from `.agent/artifacts/plan.md`; it is not inlined in this prompt.
-Canonical analysis feedback file: `{{ANALYSIS_FEEDBACK_PATH}}`
-{% if ARTIFACT_HISTORY_PATH %}Canonical artifact history directory: `{{ARTIFACT_HISTORY_DIR}}`
-Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
-Inspect this history to understand what plans have been tried and rejected before{% endif %}
-
-ORIGINAL REQUEST:
-{{PROMPT}}
-
-ANALYSIS FEEDBACK:
-{{ANALYSIS_FEEDBACK}}
-
-{% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
-{% set DOCS_LOOKUP_ACTION = 'revising the plan' %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
 {% include 'shared/_docs_lookup.j2' %}
 
-Not submitting the revised plan is a FAILURE.
+Read the current plan, the request, and the analysis feedback. Use only the
+brokered tools available in this runtime; do not edit workspace files while
+replanning.
 
-{{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
+REQUEST (`{{PROMPT_PATH}}`):
+{{PROMPT}}
 
-Analysis rules:
-- Do not localize your revision pass to only the sections explicitly cited by the analyzer; you must perform your own repo-grounded analysis before submitting.
-- Build a closure ledger before submitting the revised plan. At minimum, account for (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent.
-- Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
-- Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the revision is ready; if your runtime provides a subagent mechanism, fan out read-only scouts to verify each analyzer finding's closure and review from independent angles, otherwise run the same checks sequentially yourself.
-- Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
+ANALYSIS FEEDBACK (`{{ANALYSIS_FEEDBACK_PATH}}`):
+{{ANALYSIS_FEEDBACK}}
 
-Scope rules:
-- Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve. The classification is diagnostic only and does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
-- When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example.
-- If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files; do not preserve the prior target cluster as the starting scope.
+{% include 'shared/_planning_thinking.j2' %}
 
-Submission gates:
-- This continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against the plan-quality rubric and your replanning self-audit; until a subagent review reports no remaining rubric-grounded findings, you MUST NOT submit the revised plan artifact.
-- Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent.
-- Do not submit a plan that still has any known unresolved analyzer finding, even if some sections improved. Rewrite every affected section of the document when that is the simplest way to restore global coherence.
+ARTIFACT SUBMISSION: Use {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} with `artifact_type="plan"` and the complete markdown document. Validate first with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}.
 
-Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan.md`):
-1. Read the current plan at `.agent/artifacts/plan.md` with read-only tools and rewrite every section the feedback invalidates.
-2. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs); it submits the plan as soon as the edited draft validates, so no separate {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} call is needed, and you can inspect the draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`). Every submission stages its document as the draft, so this works after a rejected submit. Resend the whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a wholesale rewrite.
-4. For a holistic rewrite that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments.
-5. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
-   After that receipt exists, you MUST call
-   {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
-Your target is a revised plan that returns `completed` on the next planning-analysis pass.
+Revise from repository evidence. Preserve sound work, fix demonstrated gaps,
+and submit the complete updated plan through the standard markdown artifact
+path. Use a subagent only for independent discovery; otherwise work sequentially.
+
+A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
+After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

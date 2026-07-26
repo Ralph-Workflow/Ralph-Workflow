@@ -1,105 +1,26 @@
-PLANNING MODE
-
-Use only tools the active runtime actually exposes.
-Runtime-native file, shell, orchestration, skill, todo, and web tools vary by
-transport. When this prompt names a Ralph Workflow brokered tool below, call that exact
-name through the runtime's tool mechanism.
-
-{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
+You are in PLANNING MODE
 
 {% include 'shared/_unattended_mode.j2' %}
-
-BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path; native file/shell write tools are prohibited.
-
 {% set shipped_skills_mode = 'planning' %}
 {% include 'shared/_shipped_skills.j2' %}
 
-{% if LAST_RETRY_ERROR %}
-Recent retry context:
-{{ LAST_RETRY_ERROR }}
-Fix the cause of the error above, then submit the artifact this time.
-{% endif %}
+{% set DOCS_LOOKUP_PHASE = 'planning' %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% include 'shared/_docs_lookup.j2' %}
 
-Create an execution plan for:
+Use only tools the active runtime exposes. Ralph Workflow's brokered tools are
+the only workspace path; native write tools are prohibited.
 
-Canonical request file: `{{PROMPT_PATH}}`
-{% if ARTIFACT_HISTORY_PATH %}
-Canonical artifact history directory: `{{ARTIFACT_HISTORY_DIR}}`
-Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
-{% endif %}
-
+REQUEST (`{{PROMPT_PATH}}`):
 {{PROMPT}}
 
 {% include 'shared/_planning_thinking.j2' %}
 
-{% set DOCS_LOOKUP_VARIANT = 'short' %}
-{% set DOCS_LOOKUP_PHASE = 'planning' %}
-{% include 'shared/_docs_lookup.j2' %}
+ARTIFACT SUBMISSION: Use {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} with `artifact_type="plan"` and the complete markdown document. Validate first with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}.
 
-When subagents are available, fan out read-only discovery scouts and one
-reviewer per analysis dimension (see the rubric owned by the analysis
-prompt); otherwise run the same checks sequentially. Agent-managed
-sub-agents dispatch the plan's `## Work Units` / `## Parallel Plan` /
-execution Subplans at execution time — Ralph-managed worker fan-out is
-dormant in the bundled default.
+Inspect the repository before making claims. Do not edit files or run
+state-changing commands while planning. Use work units only for disjoint work;
+a concise linear plan is otherwise preferred. Use a subagent only for independent discovery; otherwise work sequentially.
 
-Choose the executor-facing shape by delegation size:
-
-- `## Work Units` contains small bounded tasks or verification gates. Keep
-  every executable step, including a final integration gate, inside a declared
-  unit.
-- A substantial execution-subagent mini-plan belongs under a repeatable
-  `## <Name> Subplan` or `## Subplan: <Name>` heading.
-- A large multi-surface plan normally fans out four or five independent
-  execution Subplans, then uses an ordinary `## Integration and Verification`
-  section for main-session integration and verification.
-
-Agent-managed sub-agents return implementation and proof to the main
-execution session; Ralph-managed worker fan-out is dormant in the bundled
-default. If the user's request targets Ralph Workflow's own planning
-internals and is not a concrete bug report with a reproduction, plan against
-`ralph/...` paths in this repository; otherwise plan against the user's
-project.
-
-{{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
-
-## Plan artifact contract
-
-The complete grammar, severity model, and `## Validation Overrides` ledger
-live in `.agent/artifact-formats/plan.md`.
-
-Submit one native-markdown document:
-
-1. Use `type: plan` frontmatter. Write context as prose and structured values
-   as labeled fields. The hard anchors are `type: plan`, unique `### [S-n]`
-   steps, and resolvable consumed references. An exact, case-sensitive
-   `## Work Units` or `## Parallel Plan` heading opts into fail-closed
-   unit-marker parsing; use arbitrary headings for descriptive prose.
-2. Write each step as a complete `### [S-n] Title` block (for example
-   `### [S-1] Title`) with description prose and fields such as `Type:`,
-   `Files:`, `Depends on:`, and `Verify:`. IDs are stable and never
-   renumbered. Recommended built-in `Type:` values
-   are `file_change`, `action`, `research`, and `verify`; project-specific
-   `Type:` values are accepted and preserved verbatim. Pair every `Verify:`
-   with a specific `Expect:` result or name a specific `Evidence:` /
-   `Location:` artifact.
-3. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}
-   (`artifact_type="plan"`, `content` = the document), then repair every
-   line/section/rule diagnostic. Override any advisory finding by recording
-   a reason under `## Validation Overrides`; errors cannot be overridden.
-4. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same arguments).
-5. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}
-   (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs).
-   That call submits the plan as soon as the edited draft validates, so no
-   separate {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} call is needed; inspect
-   the draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} when you need its current
-   text. Every submission stages its document as the draft, so this works
-   after a rejected submit. Resend the whole document via
-   {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a
-   wholesale rewrite.
-6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
-   {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
-   {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.
-7. A valid artifact receipt—or a validated, promoted fallback receipt—is
-   mandatory. After that receipt exists, you MUST call
-   {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
+A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
+After it exists, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.

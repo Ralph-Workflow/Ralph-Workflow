@@ -547,21 +547,16 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
     }
 
 
-def test_format_doc_includes_new_sections() -> None:
-    """The bundled format_docs/plan.md teaches the markdown plan grammar surfaces."""
+def test_format_doc_describes_the_advisory_plan_contract() -> None:
+    """The concise guide teaches the sole blocking rule and normal revision path."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for needle in (
-        "## Steps",
-        "S-1",
-        "Depends on:",
-        "Verify:",
-        "Timeout:",
-        "Evidence:",
+        "PLAN001",
+        "Validation Overrides",
+        "ralph_edit_md_artifact",
         "ralph_stage_md_artifact",
-        "must not start with `bash -c`, `sh -c`, or `eval`",
+        "replace_all",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
-    normalized = " ".join(doc.split())
-    assert "ralph_edit_md_plan_step" not in normalized
-    assert "Resubmit the whole document" not in normalized
+    assert "ralph_edit_md_plan_step" not in doc

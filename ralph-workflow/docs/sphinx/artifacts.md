@@ -51,6 +51,7 @@ Agents submit artifacts through the markdown artifact tools. The handlers live i
 | `ralph_submit_md_artifact` | Validate one complete markdown artifact document and persist it canonically |
 | `ralph_verify_md_artifact` | Run the same validation without persisting anything; returns the same diagnostics submission would |
 | `ralph_stage_md_artifact` | Append to (or replace) a persisted markdown draft for one artifact type, without gating on validity |
+| `ralph_edit_md_artifact` | Repair a similar staged draft in place and submit it when valid |
 | `ralph_get_md_draft` | Return the staged draft and its current diagnostics (resume after interruption) |
 | `ralph_discard_md_draft` | Delete the staged draft for one artifact type |
 | `ralph_finalize_md_artifact` | Validate the assembled draft with the submission gate and submit it canonically |
@@ -58,12 +59,11 @@ Agents submit artifacts through the markdown artifact tools. The handlers live i
 Every artifact type — including `plan` — is submitted as one markdown document via
 `ralph_submit_md_artifact` (parameters: `artifact_type`, `content`).
 `ralph_verify_md_artifact` takes the same parameters and lets an agent check a draft
-cheaply before submitting. To revise a staged plan, `ralph_stage_md_artifact`
-(`mode="replace_all"`) replaces the persisted draft with the complete updated
-document; `ralph_get_md_draft` returns it for inspection, and
-`ralph_finalize_md_artifact` revalidates the whole document and submits it.
-Stable step IDs are preserved because the author keeps them stable — the
-revision flow is the whole document, not per-step edits.
+cheaply before submitting. To revise a plan, use `ralph_edit_md_artifact` for `oldText`/`newText` edits
+when most of the draft remains useful; it submits automatically when valid.
+Use `ralph_stage_md_artifact` with `mode="replace_all"` only for a wholesale
+rewrite, then inspect with `ralph_get_md_draft` and submit with
+`ralph_finalize_md_artifact`.
 
 ### Staging large documents
 
@@ -75,8 +75,8 @@ outline, and the same diagnostics submission would produce — but never fails o
 since a partial document is expected to be incomplete. The draft survives an MCP
 server restart; `ralph_get_md_draft` returns it with fresh diagnostics for resumption.
 `ralph_finalize_md_artifact` runs the full submission gate over the assembled draft:
-on success it persists the artifact canonically and deletes the draft, on validation
-failure it keeps the draft intact for repair. A draft that would exceed the type's
+on success it persists the artifact canonically and retains the draft for later
+in-phase revision; on validation failure it also keeps the draft for repair. A draft that would exceed the type's
 character cap is rejected without modifying the existing draft. Draft persistence
 lives in `ralph.mcp.artifacts.md_draft_io`.
 

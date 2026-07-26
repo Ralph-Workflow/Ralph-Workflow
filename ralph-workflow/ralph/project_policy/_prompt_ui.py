@@ -21,8 +21,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from importlib import import_module
+from typing import Protocol, cast
 
-import questionary
 from loguru import logger
 
 
@@ -48,6 +49,34 @@ class PromptChoice:
 SelectFn = Callable[[str, Sequence[PromptChoice], str], str]
 
 
+class _Question:
+    def ask(self) -> object: ...
+
+
+class _ChoiceFactory(Protocol):
+    def __call__(self, *, title: str, value: str, description: str) -> object: ...
+
+
+class _Questionary(Protocol):
+    Choice: _ChoiceFactory
+
+    def select(
+        self,
+        question: str,
+        *,
+        choices: Sequence[object],
+        default: str,
+        show_description: bool,
+        instruction: str,
+    ) -> _Question: ...
+
+
+def _load_questionary() -> _Questionary:
+    return cast(
+        "_Questionary", import_module("questionary")
+    )  # cast-policy: seam: lazy third-party UI module boundary
+
+
 def select(question: str, choices: Sequence[PromptChoice], default: str) -> str:
     """Ask ``question`` as an arrow-key menu and return the chosen key.
 
@@ -55,15 +84,17 @@ def select(question: str, choices: Sequence[PromptChoice], default: str) -> str:
     user aborts it. ``default`` must be one of the choice keys; the caller
     is responsible for that invariant.
     """
-    items = [
-        questionary.Choice(
-            title=choice.title,
-            value=choice.key,
-            description=choice.description,
-        )
-        for choice in choices
-    ]
     try:
+        # Keep policy-module imports cheap in non-interactive pipeline runs.
+        questionary = _load_questionary()
+        items = [
+            questionary.Choice(
+                title=choice.title,
+                value=choice.key,
+                description=choice.description,
+            )
+            for choice in choices
+        ]
         answer: object = questionary.select(
             question,
             choices=items,
