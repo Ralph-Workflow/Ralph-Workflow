@@ -117,6 +117,19 @@ def gate_fire(
     the watchdog consults ``classify_stuck`` and returns CONTINUE
     (with a debug log naming the kind) for any non-STUCK kind.
 
+    The SESSION_CEILING_EXCEEDED bypass DOES still transition the
+    runtime stall flag (wt-047-stall-label / DA-001): the watchdog
+    is the sole owner of the ``STALLED`` label, and a session that
+    hit the operator-set cap is also a stalled run from the
+    operator's perspective (the cap fired because the run was
+    alive but un-killable by any other rule). The Status Bar must
+    surface the same stall signal here as for a STUCK classifier
+    verdict or a SILENT_SUBAGENT fire. ``_set_stall`` is idempotent
+    so the absolute-ceiling path emits exactly one STALLED
+    transition on entry and a single STALL_RESUMED on the next
+    baseline reset (``record_activity`` / EXITED / invocation
+    start), preserving the exactly-once contract.
+
     When the caller supplies a live ``corroboration`` snapshot, it
     is threaded into the classifier as the canonical "live child"
     input (the analysis-feedback contract for
@@ -140,6 +153,17 @@ def gate_fire(
     whether the fire is actually allowed.
     """
     if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
+        # wt-047-stall-label / DA-001: the operator-set session cap
+        # is one of the ``STALLED`` trigger sites. The watchdog is
+        # the sole owner of the ``STALLED`` label, so the bypass
+        # path here still has to transition the runtime stall flag
+        # BEFORE returning FIRE -- otherwise the Status Bar stays
+        # blank for a session that the watchdog just declared
+        # un-killable by every other rule. ``_set_stall`` is
+        # idempotent: redundant calls (a later retry on the same
+        # tick, or a pre-existing ``_stall_active=True``) emit no
+        # duplicate ``STALLED`` event.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         return WatchdogVerdict.FIRE
     kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed, corroboration=corroboration)
     if kind == StuckKind.STUCK:

@@ -500,7 +500,7 @@ value are no-ops (no per-tick spam).
 
 ### `STALLED` trigger sites
 
-All five production sites are inside the watchdog's single
+All six production sites are inside the watchdog's single
 evaluation path; each flips the runtime flag and emits `STALLED`
 via `_set_stall`:
 
@@ -515,11 +515,27 @@ via `_set_stall`:
 - `ralph/agents/idle_watchdog/_gate.py:184-190` — at the
   `SILENT_SUBAGENT` gate-deferral site (the gate allows the FIRE,
   so the stall signal must ride on the FIRE).
+- `ralph/agents/idle_watchdog/_gate.py:155` — at the
+  `SESSION_CEILING_EXCEEDED` bypass path (DA-001). The bypass
+  skips the StuckClassifier (the cap is not a stuck-detection
+  signal) but still transitions the runtime stall flag before
+  returning FIRE so the Status Bar's `STALLED` slot lights up
+  identically to a STUCK classifier verdict or a SILENT_SUBAGENT
+  fire.
 
-`SESSION_CEILING_EXCEEDED` is deliberately NOT a `STALLED` trigger:
-the operator-set cap is not a stall signal, it is a deliberate
-ceiling, and a session that hit the cap is not "stalled" in the
-liveness sense.
+`SESSION_CEILING_EXCEEDED` IS a `STALLED` trigger (DA-001): the
+operator-set cap is an absolute ceiling, but the watchdog is the
+sole owner of the `STALLED` label and a session that hit the cap
+is a stalled run from the operator's perspective (the cap fired
+because the run was alive but un-killable by every other rule).
+The bypass path at `ralph/agents/idle_watchdog/_gate.py:142`
+transitions the runtime stall flag via
+`_set_stall(active=True, ...)` before returning FIRE, so the
+Status Bar's `STALLED` slot lights up identically to a STUCK
+classifier verdict or a SILENT_SUBAGENT fire. The SESSION_CEILING
+bypass still bypasses the StuckClassifier (the cap is not a
+stuck-detection signal), it just preserves the stall-state
+transition that the Status Bar subscribes to.
 
 ### `STALL_RESUMED` trigger sites
 

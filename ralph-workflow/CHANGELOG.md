@@ -51,6 +51,10 @@ tag exists yet — a link to one would be a dead link.
 
 - **refactor(display): delete the display-side 30s stall derivation (`_STALL_THRESHOLD_SECONDS`, `StatusBarModel.last_activity_monotonic`, and the producer write at `ParallelDisplay._emit_activity_event`)** — zero dead code; the watchdog owns the stall label end-to-end and surfaces its state via the host's `watchdog_attention` slot. The `test_status_bar_live_activity_anchor.py` module is rewritten in place to test the new `_model_with_live_attention` host substitution (the old `_model_with_live_activity_anchor` symbol is gone). Locked by `tests/display/test_status_bar_liveness.py` (`test_stall_threshold_named_constant_removed`), `tests/pipeline/test_run_loop_status_bar_wiring.py`, and `tests/display/test_status_bar_live_activity_anchor.py`.
 
+### Fixed
+
+- **fix(idle_watchdog): `SESSION_CEILING_EXCEEDED` FIRE now transitions the runtime stall flag (DA-001)** — the `SESSION_CEILING_EXCEEDED` bypass path in `_gate.py:155` (the only `WatchdogFireReason` that bypasses the `StuckClassifier`) previously returned `WatchdogVerdict.FIRE` without calling `_set_stall(active=True, ...)`, so the watchdog's `STALLED` label was silent on an operator-set session-cap fire even though every other fire path transitioned the flag. The bypass now transitions the runtime flag via `_set_stall(active=True, now=now, idle_elapsed=idle_elapsed)` before returning FIRE; `_set_stall` is idempotent so a redundant call (e.g. a retry on the same tick) emits no duplicate `STALLED` event, preserving the exactly-once contract. The session-ceiling exemption language in `docs/agents/watchdog-spec.md` is updated to reflect the new behavior, and the `STALLED` trigger-sites list gains a sixth bullet naming the SESSION_CEILING bypass. Locked by `tests/agents/idle_watchdog/test_stall_status_events.py::test_fire_session_ceiling_emits_stalled_event`.
+
 ## [0.9.3] - 2026-07-25
 
 Patch release. `__version__` moved from `0.9.2` to `0.9.3` in

@@ -439,13 +439,29 @@ def test_silent_subagent_emits_stalled_event() -> None:
     )
 
 
-def test_fire_session_ceiling_does_not_emit_stalled() -> None:
-    """A SESSION_CEILING_EXCEEDED fire is ABSOLUTE: it does NOT flip
-    the stall state because the operator-set cap is not a stall signal.
+def test_fire_session_ceiling_emits_stalled_event() -> None:
+    """A SESSION_CEILING_EXCEEDED FIRE emits exactly one STALLED transition.
 
-    The watchdog's stall state is the run's stall, not the operator's
-    cap. A session that hit the cap is not "stalled" in the liveness
-    sense; the cap is a deliberate ceiling.
+    DA-001 contract: the SESSION_CEILING_EXCEEDED bypass path inside
+    ``_gate_fire`` (``_gate.py:142``) transitions the runtime stall
+    flag via ``_set_stall(active=True, ...)`` BEFORE returning FIRE.
+    The watchdog is the sole owner of the ``STALLED`` label, and a
+    session that hit the operator-set cap is also a stalled run from
+    the operator's perspective (the cap fired because the run was
+    alive but un-killable by every other rule). The Status Bar must
+    surface the same stall signal here as for a STUCK classifier
+    verdict or a SILENT_SUBAGENT fire.
+
+    The previous version of this test asserted the OPPOSITE (no
+    STALLED event, ``is_stalled is False``) because the SESSION_CEILING
+    bypass path returned FIRE without calling ``_set_stall`` -- the
+    DA-001 gap. The fix flips the bypass path to transition the
+    runtime flag; the test now pins the listener contract and the
+    runtime flag.
+
+    Repeated ``evaluate()`` calls on the same tick MUST NOT emit a
+    duplicate STALLED event (``_set_stall`` is idempotent on the
+    runtime flag).
     """
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _make_watchdog(
@@ -458,9 +474,25 @@ def test_fire_session_ceiling_does_not_emit_stalled() -> None:
     _clock.advance(61.0)
     verdict = watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
     assert verdict == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
     stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
-    assert len(stalled_events) == 0
-    assert _stall_state(watchdog) is False
+    assert len(stalled_events) == 1, (
+        f"Expected exactly one STALLED listener event on SESSION_CEILING_EXCEEDED FIRE; "
+        f"got {len(stalled_events)}: {[e.kind for e in _events(captured)]}"
+    )
+    assert _stall_state(watchdog) is True, (
+        "SESSION_CEILING_EXCEEDED FIRE MUST transition the runtime stall flag; "
+        "watchdog is the sole owner of the STALLED label (DA-001)."
+    )
+
+    # A second evaluate() on the same tick MUST NOT emit a duplicate
+    # STALLED event (the _set_stall helper dedupes by the runtime flag).
+    watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled_events) == 1, (
+        f"Repeated evaluate() on SESSION_CEILING_EXCEEDED MUST NOT emit duplicate "
+        f"STALLED events; got {len(stalled_events)}"
+    )
 
 
 # ---------------------------------------------------------------------------
