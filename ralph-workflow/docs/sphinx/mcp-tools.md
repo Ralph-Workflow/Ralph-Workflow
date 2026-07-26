@@ -47,6 +47,7 @@ The table below uses a few drain groupings:
 | `ralph_submit_md_artifact` | `artifact.submit` | all | Validate and submit one complete markdown artifact document |
 | `ralph_verify_md_artifact` | `artifact.plan_read` | all | Check a markdown artifact without persisting it; diagnostics match submission |
 | `ralph_stage_md_artifact` | `artifact.submit` | all | Stage a large markdown artifact incrementally: append to (or replace) a persisted draft; returns section outline and non-gating diagnostics |
+| `ralph_edit_md_artifact` | `artifact.submit` | all | Edit a staged markdown artifact in place via `oldText`/`newText` pairs; the edit is itself a canonical submission |
 | `ralph_get_md_draft` | `artifact.plan_read` | all | Return the staged markdown draft and its current diagnostics (resume after interruption) |
 | `ralph_discard_md_draft` | `artifact.submit` | all | Discard the staged markdown draft for one artifact type |
 | `ralph_finalize_md_artifact` | `artifact.submit` | all | Validate the assembled draft with the submission gate and submit it canonically; on failure the draft is kept for repair |
