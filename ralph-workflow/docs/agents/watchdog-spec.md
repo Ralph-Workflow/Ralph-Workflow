@@ -656,11 +656,17 @@ here is the safest cleanup step (no leaked state across runs).
 
 The 30 s `STALLED` label for a healthy agent with a quiet stdout
 is gone (the previous false positive). A stalled run now flips to
-`STALLED` only when the watchdog has actually fired
-(`SUSPECTED_FROZEN` / `HARD_STOP` / non-absolute `FIRE`), and the
-bar stays clean for a healthy agent indefinitely (until the
-watchdog itself raises the alarm). Documented under the
-`### Changed` header in `CHANGELOG.md` `[Unreleased]`.
+`STALLED` when the watchdog emits the stall-state transition —
+i.e. the pre-fire `SUSPECTED_FROZEN` suspect-threshold cross, the
+`HARD_STOP` ceiling cross, or a non-absolute `FIRE` verdict —
+and the bar stays clean for a healthy agent indefinitely (until
+the watchdog itself raises the alarm). `SUSPECTED_FROZEN` is a
+stall assessment (the watchdog has not yet returned a `FIRE`
+verdict — the second ``evaluate()`` still returns
+``WAITING_ON_CHILD``) and is paired with `STALLED` because the
+operator-visible signal is "the watchdog believes this is a
+stall", not "the watchdog has actually fired". Documented under
+the `### Changed` header in `CHANGELOG.md` `[Unreleased]`.
 
 ---
 
