@@ -934,6 +934,14 @@ def _resolve_elapsed_seconds(
     return model.elapsed_seconds
 
 
+def _liveness_frame(ctx: DisplayContext, now_monotonic: float | None) -> str:
+    """Return a one-cell activity frame derived from the injected render clock."""
+    if now_monotonic is None:
+        return ctx.glyph_for("liveness")
+    frames = ("⠋", "⠙", "⠹", "⠸") if ctx.glyphs_enabled else ("-", "\\", "|", "/")
+    return frames[int(now_monotonic) % len(frames)]
+
+
 def _format_elapsed_short(seconds: float | None) -> str:
     """Return a compact elapsed label that fits at the 40-col floor.
 
@@ -1253,7 +1261,7 @@ def render_status_bar(
         # (byte-stable in width) so the Live tick can rotate
         # the frame without shifting neighbours.
         text.append(separator, style="theme.status.path_marker")
-        liveness_glyph = ctx.glyph_for("liveness")
+        liveness_glyph = _liveness_frame(ctx, now_monotonic)
         text.append(liveness_glyph, style="theme.status.info")
         text.append(" ", style="theme.status.info")
         if ctx.width >= _PATH_DROP_THRESHOLD:

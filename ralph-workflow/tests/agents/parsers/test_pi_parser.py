@@ -1038,7 +1038,8 @@ class TestPiParserToolExecution:
         assert len(tool_use_lines) == 1
         assert tool_use_lines[0].content == "bash"
 
-    def test_tool_execution_update_yields_tool_result(self) -> None:
+    def test_tool_execution_update_does_not_emit_terminal_result(self) -> None:
+        """S-3: partial provider updates stay in verbatim capture, not human results."""
         parser = PiParser()
         line = _line(
             {
@@ -1050,9 +1051,7 @@ class TestPiParserToolExecution:
             }
         )
         results = list(parser.parse(_lines(line)))
-        tool_result_lines = [r for r in results if r.type == "tool_result"]
-        assert len(tool_result_lines) == 1
-        assert tool_result_lines[0].content == "partial"
+        assert not results
 
     def test_tool_execution_end_success_yields_tool_result(self) -> None:
         parser = PiParser()

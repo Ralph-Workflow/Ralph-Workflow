@@ -12,7 +12,6 @@ from rich.text import Text
 from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.config.enums import AgentTransport
-from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -180,28 +179,6 @@ def stream_parsed_agent_activity(
             record_on_subscriber = True
         if subscriber is not None and record_on_subscriber:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
-
-        # Surface the sanitized subagent summary as a SUBAGENT_PROGRESS
-        # event on the parallel display so the operator sees
-        # real-time per-tool progress on the console transcript.  We
-        # only fire when (a) we are using a parallel display, (b) the
-        # parser hook emitted a summary for this line, and (c) the
-        # summary is non-empty.  The summary was already sanitized by
-        # the parser hook so no further sanitization is needed here.
-        if isinstance(display, parallel_display_cls) and last_subagent_summary:
-            summary = last_subagent_summary[0]
-            try:
-                display.emit_parsed_event(
-                    agent_name,
-                    ActivityEventKind.SUBAGENT_PROGRESS,
-                    summary,
-                    parsed_line.metadata or {},
-                )
-            except Exception:
-                logger.debug(
-                    "display.emit_parsed_event for SUBAGENT_PROGRESS failed",
-                    exc_info=True,
-                )
 
 
 def _capture_summary_into(

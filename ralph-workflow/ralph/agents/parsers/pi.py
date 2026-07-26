@@ -433,7 +433,7 @@ class _PiDispatch:
             type="tool_use",
             content=tool_name,
             raw=stripped,
-            metadata={"tool": tool_name, "args": args},
+            metadata={"tool": tool_name, "args": args, "tool_call_id": obj.get("toolCallId")},
         )
 
     def _handle_tool_execution_update(
@@ -441,14 +441,9 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        partial = obj.get("partialResult", "")
-        content = partial if isinstance(partial, str) else _extract_tool_result_text(partial)
-        yield AgentOutputLine(
-            type="tool_result",
-            content=content,
-            raw=stripped,
-            metadata=obj,
-        )
+        """Keep partial tool updates in raw capture until the terminal event arrives."""
+        del obj, stripped
+        return iter(())
 
     def _handle_tool_execution_end(
         self,
@@ -463,14 +458,22 @@ class _PiDispatch:
                 type="error",
                 content=extracted if extracted else "tool execution failed",
                 raw=stripped,
-                metadata=obj,
+                metadata={
+                    **obj,
+                    "tool": str(obj.get("toolName", "unknown")),
+                    "tool_call_id": obj.get("toolCallId"),
+                },
             )
             return
         yield AgentOutputLine(
             type="tool_result",
             content=extracted,
             raw=stripped,
-            metadata=obj,
+            metadata={
+                **obj,
+                "tool": str(obj.get("toolName", "unknown")),
+                "tool_call_id": obj.get("toolCallId"),
+            },
         )
 
     def _handle_extension_error(

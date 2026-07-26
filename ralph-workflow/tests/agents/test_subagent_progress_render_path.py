@@ -102,20 +102,7 @@ def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
     finally:
         _pd_module.ParallelDisplay._emit_activity_event = original_emit
 
-    progress_events = [
-        (name, kind, summary)
-        for name, kind, summary, _meta in captured
-        if kind == ActivityEventKind.SUBAGENT_PROGRESS
-    ]
-    assert len(progress_events) >= 1, (
-        "stream_parsed_agent_activity MUST surface a SUBAGENT_PROGRESS"
-        f" event for a tool_use line; captured={captured}"
-    )
-    # The summary must be the exact sanitized parser-layer summary.
-    assert any(summary == "tool_use:Bash" for _, _, summary in progress_events), (
-        "SUBAGENT_PROGRESS event summary MUST be the exact sanitized"
-        f" 'tool_use:Bash' summary; captured={captured}"
-    )
+    assert [kind for _name, kind, _content, _meta in captured] == [ActivityEventKind.TOOL_USE]
 
 
 _PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
@@ -220,16 +207,4 @@ def test_subagent_progress_event_for_every_provider(
     finally:
         _pd_module.ParallelDisplay._emit_activity_event = original_emit
 
-    progress_events = [
-        (name, kind, summary)
-        for name, kind, summary, _meta in captured
-        if kind == ActivityEventKind.SUBAGENT_PROGRESS
-    ]
-    assert progress_events, (
-        f"provider={provider.value!r} MUST emit SUBAGENT_PROGRESS via "
-        f"stream_parsed_agent_activity; captured={captured}"
-    )
-    assert any(summary.startswith("tool_use:") for _, _, summary in progress_events), (
-        f"provider={provider.value!r} SUBAGENT_PROGRESS summary MUST carry "
-        f"the 'tool_use:' prefix; progress_events={progress_events}"
-    )
+    assert [kind for _name, kind, _content, _meta in captured] == [ActivityEventKind.TOOL_USE]

@@ -422,8 +422,6 @@ def test_attention_unknown_pushed_value_renders_blank() -> None:
 
 
 
-
-
 @pytest.mark.parametrize(
     ("attention", "expected"),
     [
@@ -454,5 +452,10 @@ def test_status_bar_regression_liveness_frame_advances_without_reflow() -> None:
     model = _model(started_at=0.0)
     first = render_status_bar(model, _ctx(), now_monotonic=0.0).plain
     second = render_status_bar(model, _ctx(), now_monotonic=1.0).plain
-    assert first != second
+    first_liveness = first[first.index("Development") + len("Development") : first.index("Time")]
+    second_liveness = second[
+        second.index("Development") + len("Development") : second.index("Time")
+    ]
+    assert first_liveness != second_liveness
+    assert len(first_liveness) == len(second_liveness)
     assert first.index("Time") == second.index("Time")
