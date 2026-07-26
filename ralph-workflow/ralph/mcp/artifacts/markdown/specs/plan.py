@@ -299,7 +299,6 @@ def _item_fields(
     diagnostics: list[Diagnostic],
     *,
     prose_allowed: bool = True,
-    strict_known_fields: bool = False,
 ) -> ParsedFields:
     fields = parse_fields(
         item.fields,
@@ -309,12 +308,6 @@ def _item_fields(
         prose_allowed=prose_allowed,
         diagnostics=diagnostics,
     )
-    # ``strict_known_fields`` is kept as a parameter for downstream callers
-    # that still want to be told the field was consumed, but the
-    # advisory-by-default policy (see ``_plan_not_a_plan``) demotes
-    # fan-out PLAN020 findings to warning rather than re-promoting them
-    # to error. The plan-scoped severity policy covers the demotion
-    # uniformly; this hook stays a no-op for warning-severity findings.
     return fields
 
 
@@ -919,7 +912,6 @@ def _parallel_plan_content(
             _PARALLEL_FIELDS,
             "Parallel Plan",
             diagnostics,
-            strict_known_fields=True,
         )
         entries.append(
             {
@@ -959,7 +951,6 @@ def _work_units_content(
             _WORK_UNIT_FIELDS,
             "Work Units",
             diagnostics,
-            strict_known_fields=True,
         )
         entry: Content = {
             "unit_id": item.identifier,

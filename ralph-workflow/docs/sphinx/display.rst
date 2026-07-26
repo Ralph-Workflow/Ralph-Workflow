@@ -163,22 +163,22 @@ through ``pd.status_bar``. The lifecycle has exactly one owner:
 
 - **One constructor.** :class:`~ralph.display.status_bar.StatusBar` is
   instantiated in exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.__init__`` at line 521
+  ``ralph.display.parallel_display.ParallelDisplay.__init__``
   (``self._status_bar: StatusBar = StatusBar(self)``). No other module under
   ``ralph/display/``, ``ralph/pipeline/``, or ``ralph/cli/`` constructs a
   ``StatusBar``.
 
 - **One start site.** :meth:`~ralph.display.status_bar.StatusBar.start` is
   called from exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.start`` at line 1382.
+  ``ralph.display.parallel_display.ParallelDisplay.start``.
   The pipeline reaches the bar through the production context manager
-  ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py`` at
-  line 873, which invokes ``ParallelDisplay.start`` (and therefore
+  ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py``,
+  which invokes ``ParallelDisplay.start`` (and therefore
   ``self._status_bar.start()``) exactly once per run.
 
 - **One stop site.** :meth:`~ralph.display.status_bar.StatusBar.stop` is
   called from exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.stop`` at line 1390.
+  ``ralph.display.parallel_display.ParallelDisplay.stop``.
   ``ParallelDisplay.__exit__`` invokes ``ParallelDisplay.stop``, so the
   Live region is torn down exactly once per run.
 
@@ -351,62 +351,31 @@ environment after that.
      - Set to ``0``/``false``/``no``/``off`` to disable AI-based headline
        generation for long content blocks.
 
-Display mode (single default)
------------------------------
+Responsive Status Bar
+---------------------
 
-Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
-width-based dispatch and no per-mode limits table. The persistent bottom
-Status Bar renders all applicable fields (working directory, active phase,
-applicable outer development iteration, applicable inner analysis
-iteration) at every terminal width where they fit. At widths >= 40 cols
-the canonical ``Dev N/cap`` / ``Analysis N/cap`` labels render in full and
-only path middle-truncation and phase tail-truncation budgets adapt to
-width. Below 40 cols the implementation may degrade to compact
-(``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below
-14 cols the iteration segments drop one at a time (outer_dev first, then
-inner_analysis, then both) so the bar never overflows the working area;
-phase and path remain visible at every applicable width.
+Ralph Workflow exposes one display mode. The persistent one-row Status Bar
+uses a single responsive layout rather than separate narrow and wide modes.
+Its segment priority is attention, phase, liveness, elapsed time, run
+position, agent identity, then working directory. Attention reserves its slot
+while healthy, so a waiting, stalled, retrying, completed, failed, or cancelled
+state does not shift neighbouring fields.
 
-.. note::
+At 120 columns every segment is shown. At 80 columns the directory is
+left-elided; at 60 it drops and the phase abbreviates; at the supported
+40-column floor attention, phase, liveness, elapsed time, and position remain.
+The footer never wraps. Below that floor it uses a plain minimal form until the
+terminal recovers. Resizing reflows the footer immediately in both width and
+height; it remains one row on a 12-row viewport.
 
-   What changed and why it belongs here
+The liveness cell advances from the injected monotonic clock during quiet work,
+while the watchdog remains the sole authority for the ``STALLED`` state. The
+live footer suppresses an unchanged rendered frame, preserving scrollback and
+avoiding redundant live-region announcements. ``NO_COLOR`` and
+``RALPH_FORCE_ASCII`` preserve the same labels and hierarchy.
 
-   The historical three-tier mode split (narrow / medium / wide), the
-   legacy env-var override, and the three-tier mode limits table were
-   collapsed into a single ``default`` mode. The persistent bottom
-   Status Bar renders all applicable fields at every terminal width
-   where they fit. At widths >= 40 cols the canonical ``Dev N/cap`` /
-   ``Analysis N/cap`` labels render in full and only path
-   middle-truncation and phase tail-truncation adapt to width. Below
-   40 cols the implementation may degrade to compact (``D1/3`` /
-   ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below 14
-   cols the iteration segments drop one at a time (outer_dev first,
-   then inner_analysis, then both) so the bar never overflows the
-   working area; phase and path remain visible at every applicable
-   width. This belongs on the operator-facing reference page because
-   operators who relied on the legacy override need to know the
-   public API has changed; the consolidated single mode is one clear
-   surface to learn instead of three. The persistent bottom Status Bar
-   renders one consistent layout at every supported terminal width.
-
-The single default-mode layout:
-
-- Renders ``[phase]`` / ``[run-start]`` / ``[run-end]`` / ``[run-completion]``
-  section rules unconditionally.
-- Renders the full Status Bar fields (phase + dir + outer_dev +
-  inner_analysis) at every terminal width where they fit. At widths
-  >= 40 cols the canonical ``Dev N/cap`` / ``Analysis N/cap`` iteration
-  labels always render in full and only path middle-truncation and
-  phase tail-truncation adapt to width. Below 40 cols the
-  implementation may degrade to compact / minimal forms to fit. Below
-  14 cols the iteration segments drop one at a time so the bar never
-  overflows the working area; phase and path remain visible at every
-  applicable width.
-- Always emits section rules around phase-close banners and completion
-  panels.
-
-The historical env-var override that selected a narrower mode is silently
-ignored.
+The single layout keeps phase, cycle/iter (or round), elapsed time, and identity
+vocabulary consistent with the live activity feed and rendered record.
 
 Iteration context labels
 ------------------------

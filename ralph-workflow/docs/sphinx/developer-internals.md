@@ -116,9 +116,16 @@ show_phase_start("planning", display_context=ctx)
 | 2 | `COLUMNS=<N>` env var (positive int) | Overrides console.width |
 | 3 | `console.width` (actual terminal width) | Default fallback |
 
-### Display mode (single default)
+### Responsive Status Bar
 
-Ralph Workflow exposes exactly ONE display mode: ``default``. There is no width-based dispatch and no per-mode limits table. The persistent bottom Status Bar renders all applicable fields (working directory, active phase, applicable outer development iteration, applicable inner analysis iteration) at every terminal width where they fit. At widths >= 40 cols the canonical ``Dev N/cap`` / ``Analysis N/cap`` labels render in full and only path middle-truncation and phase tail-truncation budgets adapt to width. Below 40 cols the implementation may degrade to compact (``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below 14 cols the iteration segments drop one at a time (outer_dev first, then inner_analysis, then both) so the bar never overflows the working area; phase and path remain visible at every applicable width.
+The persistent one-row Status Bar uses one responsive layout. At 120 columns
+it shows attention, phase, liveness, elapsed time, run position, agent, and
+working directory. At 80 columns the directory left-elides; at 60 it drops and
+the phase abbreviates; at the 40-column floor attention, phase, liveness,
+elapsed time, and position remain. The watchdog alone supplies `STALLED`; the
+injected monotonic clock advances the liveness frame during quiet work without
+repainting an unchanged frame. Width and height changes reflow the footer
+immediately, including 12-row and temporarily below-floor terminals.
 
 ### Color Precedence
 
@@ -129,74 +136,50 @@ Ralph Workflow exposes exactly ONE display mode: ``default``. There is no width-
 
 `NO_COLOR` takes precedence over `FORCE_COLOR` per standard CLI conventions.
 
-### Line Format
+### Canonical activity presentation
 
-```
-<ISO-TS> <LEVEL> <CAT> [<tag>][<unit>] <content>
-```
+Providers first write every original line to verbatim `.agent/raw/<id>.log`.
+They then normalize each logical event once before the live display and the
+ANSI-free `.agent/raw/<id>.rendered.log` record consume it. A rendered entry
+uses a stable order: timestamp, phase/position context, identity, event kind,
+and outcome or content. It never exposes parser channel names or repeats
+identity, time, or severity.
 
-| Field | Example | Notes |
-|-------|---------|-------|
-| `<ISO-TS>` | `2026-04-25T12:00:00Z` | ISO-8601 timestamp |
-| `<LEVEL>` | `INFO` | One of the five levels below |
-| `<CAT>` | `META` | `META` or `CONT` |
-| `[<tag>]` | `[phase]` | Sub-operation tag (see table below) |
-| `[<unit>]` | `[unit-1]` | Work unit ID in parallel runs; omitted otherwise |
-| `<content>` | `Planning started` | Human-readable message |
+Tool calls and terminal results correlate by provider call ID, so a partial
+update cannot look like a completed result and two identical-looking calls stay
+distinct. Continuous reasoning is coalesced into one passage. Unknown or
+malformed provider input uses the generic parser and retains the same hierarchy
+rather than becoming a raw dump.
 
-### Levels
+Oversized content follows the shared size-based condenser on both human
+surfaces. Its marker reports hidden amount, size, and the corresponding
+verbatim raw-log destination. File operations retain an operation-and-path
+header; recognized source, diff, shell, JSON, YAML, and traceback content is
+syntax-highlighted only in the live display. `NO_COLOR`, ASCII fallback, and
+rendered records retain the structural header and indentation without ANSI.
 
-| Level | Meaning |
-|-------|---------|
-| `INFO` | Routine update or progress |
-| `SUCCESS` | Phase or pipeline completed successfully |
-| `WARN` | Non-fatal issue or degraded state |
-| `ERROR` | Fatal error or malformed input |
-| `MILESTONE` | Major phase transition (planning, development, commit) |
+### Long-content summary configuration
 
-Verbosity controls which levels are shown. Use `--quiet` to suppress everything except `ERROR`, or `--debug` to show all levels.
+The deterministic headline summary layer is default-on for completed
+content above 4000 display cells. It keeps the entry readable before the shared
+condenser accounts for omitted content. If no headline is available, it emits
+`(no headline available)`; inline summaries are capped at 200 characters.
 
-### Categories
+Set `RALPH_LONG_CONTENT_SUMMARY` to `0`, `false`, `no`, or `off` to disable the
+deterministic headline. `RALPH_LONG_CONTENT_AI_SUMMARY` is a separate opt-in
+for an `ai-summary:` line. The normalizer still produces one human entry per
+logical event; these are entry details, never parser-channel rows.
 
-| Category | Meaning |
-|----------|---------|
-| `META` | Workflow metadata: phase transitions, plans, activity, worker events, run summary |
-| `CONT` | Agent-produced content: text, thinking blocks, tool calls, tool results, errors |
+### Display environment variables
 
-### Streaming Blocks and Long-Content Display
-
-Long agent outputs (for example code, plans, or long prose) are emitted as streaming blocks bounded by `content-start` / `content-end` tags. Within a block:
-
-- `content-continue` lines carry the raw streamed chunks.
-- `content-checkpoint` lines appear at configurable intervals to allow progressive display without buffering the entire block.
-
-Ralph Workflow also applies a deterministic headline summary layer when a completed block exceeds **4000** display cells. That layer is **enabled by default**. It appears before the condensed output so operators get a stable summary instead of scrolling through a giant block.
-
-If no clean headline can be extracted, Ralph Workflow shows **`(no headline available)`**. Inline summary lines are capped at **200** characters, and streaming end-line summaries are capped at **120** characters.
-
-Disable the deterministic headline layer with `RALPH_LONG_CONTENT_SUMMARY` values `0`, `false`, `no`, or `off`. There is no special opt-in value because the feature is already on by default.
-
-When a block ends, Ralph Workflow may append summary lines depending on configuration:
-
-- `⇳ summary:` — static truncation summary (always present for very long blocks)
-- `⇳ preview:` — first *N* characters of the block content
-- `⇳ ai-summary:` — LLM-generated one-line summary (requires `RALPH_LONG_CONTENT_AI_SUMMARY`)
-
-The optional AI-generated layer is separate from the deterministic headline layer. Use `RALPH_LONG_CONTENT_AI_SUMMARY` only when you want the additional `↳ ai-summary:` style output.
-
-The single-entry contract above the deterministic-summary layer is unchanged: streaming blocks emit exactly one entry per block close on the live log, and the per-block headline is informational, not a separate line.
-
-### Environment Variables (display)
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `RALPH_STREAMING_DEDUP` | `1` | Deduplicate identical consecutive streaming chunks |
-| `RALPH_STREAMING_CHECKPOINTS` | `0` | Emit `content-checkpoint` lines during streaming |
-| `RALPH_LONG_CONTENT_SUMMARY` | `1` | Append `⇳ summary:` after very long content blocks |
-| `RALPH_LONG_CONTENT_AI_SUMMARY` | `0` | Append `⇳ ai-summary:` (requires LLM round-trip) |
-| `NO_COLOR` | unset | Disable all ANSI colour output (any value) |
-| `FORCE_COLOR` | unset | Force ANSI colour even when stdout is not a TTY (any value) |
-| `COLUMNS` | unset | Override terminal width; positive integer |
+| Variable | Effect |
+|----------|--------|
+| `NO_COLOR` | Disables color while retaining labels and hierarchy. |
+| `FORCE_COLOR` | Forces terminal color where supported. |
+| `COLUMNS` | Overrides terminal width with a positive integer. |
+| `RALPH_FORCE_ASCII` | Uses ASCII glyph fallbacks. |
+| `RALPH_LONG_CONTENT_SUMMARY` | Enables the deterministic headline by default. |
+| `RALPH_LONG_CONTENT_AI_SUMMARY` | Opts into an `ai-summary:` detail. |
 
 ## Supervising API
 

@@ -30,7 +30,7 @@ _ENVELOPE_TEXT = (
 )
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def captured_stderr() -> None:
     """Pin a loguru sink on the dynamically-resolved ``sys.stderr``.
 
@@ -58,7 +58,7 @@ class TestConfigErrorEnvelope:
     """Config errors must render the envelope with no Python traceback."""
 
     def test_bootstrap_boundary_renders_envelope_without_traceback(
-        self, monkeypatch: pytest.MonkeyPatch, captured_stderr: None
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A ``ConfigTomlError`` from bootstrap exits 1 with the envelope, no traceback."""
         monkeypatch.setattr(
@@ -79,7 +79,7 @@ class TestConfigErrorEnvelope:
         assert "Traceback" not in combined
 
     def test_run_path_renders_envelope_without_traceback(
-        self, monkeypatch: pytest.MonkeyPatch, captured_stderr: None
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A ``ConfigTomlError`` raised inside ``run_pipeline`` returns 1 with the envelope, no traceback."""
         monkeypatch.setattr(
