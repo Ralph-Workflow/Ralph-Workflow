@@ -289,11 +289,16 @@ def _render_text_event(
 ) -> Text:
     """Render a plain-text agent message.
 
-    Carries an icon + label redundant prefix so the meaning survives
-    when color is disabled (AC-10); the timestamp is muted, the body
-    is the content string (sanitized; escaped when ``escape_body``
-    is True so the rich Text path can safely print through a Console
-    with ``markup=True``).
+    DA-001 (wt-028-display P1 / AC-21): the timestamp is intentionally
+    NOT rendered here. The chrome prefix the caller assembles in
+    :class:`ParallelDisplay.emit_activity_line` already stamps every
+    emitted line with ``hh:mm:ss``; rendering the timestamp in the
+    body too would duplicate it on both the live log and the
+    rendered record (the defect the analysis feedback flagged).
+    The icon + label redundant prefix is preserved so the meaning
+    survives when color is disabled (AC-10), and the body carries
+    the unit identity so the plain-text path's
+    ``"{unit_id} {content}"`` grep contract is held.
     """
     style_name = "info"
     if event.kind is ActivityEventKind.THINKING:
@@ -302,8 +307,6 @@ def _render_text_event(
     body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
-    text.append(" ", style="theme.text.muted")
     _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     return text
 
@@ -317,17 +320,20 @@ def _render_status_event(
 ) -> Text:
     """Render a status / progress / heartbeat event.
 
+    DA-001 (wt-028-display P1 / AC-21): the timestamp is intentionally
+    NOT rendered here -- the chrome prefix the caller assembles in
+    :class:`ParallelDisplay.emit_activity_line` already stamps every
+    emitted line with ``hh:mm:ss``; rendering it in the body too
+    duplicates the timestamp on the live log and the rendered record.
     Status, progress, subagent_progress, and heartbeat all render
-    identically: an icon + label prefix (state-driven), a muted
-    timestamp, and the message. Heartbeat uses the ``info`` carrier;
-    progress uses ``running``; subagent_progress uses ``info``.
+    identically: an icon + label prefix (state-driven) and the
+    message. Heartbeat uses the ``info`` carrier; progress uses
+    ``running``; subagent_progress uses ``info``.
     """
     style, icon, label = _state_payload("info")
     body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
-    text.append(" ", style="theme.text.muted")
     _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     return text
 
@@ -360,18 +366,24 @@ def _render_tool_use_event(
 ) -> Text:
     """Render a tool call.
 
-    Layout: ``<icon><label> <ts> <unit_id> <friendly-tool-name> (<args>)``.
+    DA-001 (wt-028-display P1 / AC-21): the timestamp is intentionally
+    NOT rendered here -- the chrome prefix the caller assembles in
+    :class:`ParallelDisplay.emit_activity_line` already stamps every
+    emitted line with ``hh:mm:ss``; rendering it in the body too
+    duplicates the timestamp on the live log and the rendered record
+    (the defect the analysis feedback flagged). The unit identity
+    stays in the body so the plain-text path's ``"{unit_id} ..."``
+    grep contract is held.
+
+    Layout: ``<icon><label> <unit_id> <friendly-tool-name> (<args>)``.
 
     The friendly tool name (e.g. ``mcp__ralph__read_file`` ->
     ``ralph.read_file``) and the formatted input come from
     :mod:`ralph.display.tool_args` so the agent-specific quirks are
     removed BEFORE rendering. State carried as ``running`` (the tool
-    call is in flight). The line carries the same timestamp cue as the
-    text/status paths so a tool call is identifiable in scrollback
-    without the operator having to inspect the registry kind, and
-    ends with the stable :data:`_TOOL_PAIR_MARKER` so the operator
-    can pair this line with its follow-up TOOL_RESULT in grep /
-    scrollback.
+    call is in flight). The line ends with the stable
+    :data:`_TOOL_PAIR_MARKER` so the operator can pair this line
+    with its follow-up TOOL_RESULT in grep / scrollback.
 
     When ``unit_id`` is set the unit prefix threads into the body so
     the plain-text path matches the legacy ``agent_name`` contract.
@@ -389,8 +401,6 @@ def _render_tool_use_event(
     body = " ".join(body_segments)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
-    text.append(" ", style="theme.text.muted")
     _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)
     text.append(f" {_TOOL_PAIR_MARKER}", style=style)
     return text
@@ -453,8 +463,12 @@ def _render_tool_result_event(
     tool_ref = _tool_name_for_result(event)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
-    text.append(" ", style="theme.text.muted")
+    # DA-001 (wt-028-display P1 / AC-21): the timestamp is intentionally
+    # NOT rendered here -- the chrome prefix the caller assembles in
+    # :class:`ParallelDisplay.emit_activity_line` already stamps every
+    # emitted line with ``hh:mm:ss``; rendering it in the body too
+    # duplicates the timestamp on the live log and the rendered record
+    # (the defect the analysis feedback flagged).
     text.append(_TOOL_RESULT_INDENT, style=style)
     if tool_ref:
         text.append(

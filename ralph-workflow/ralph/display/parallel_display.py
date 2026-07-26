@@ -437,6 +437,7 @@ class ParallelDisplay:
         "_last_phase_saved_counters",
         "_last_plan_signature",
         "_last_recorded_body",
+        "_last_text_thinking_block_close",
         "_last_waiting_signature",
         "_last_worker_states",
         "_monotonic",
@@ -563,6 +564,23 @@ class ParallelDisplay:
         # so the bounded-accumulator contract carries through.
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._last_recorded_body: dict[str, tuple[ActivityEventKind, str]] = {}  # bounded-accumulator-ok: drop_unit
+        # DA-002 (wt-028-display S-2 / S-3): the streaming-block
+        # live-log dedup. When a ``TEXT`` streaming block closes and
+        # the next event opens a ``THINKING`` streaming block with
+        # the same body (the cross-kind companion the ``pi`` agent
+        # emits for one logical reasoning pass), the close-time live
+        # print must also dedup so the live log and the rendered
+        # record stay one entry per logical event -- the
+        # ``_append_recorded_entry`` dedup covers the file surface
+        # but the live console prints in ``_close_block`` BEFORE the
+        # dedup check fires, so the live log would carry the
+        # duplicate. The companion body is keyed on
+        # ``(kind, body)`` per unit; the dedup only fires on a
+        # cross-kind text/thinking pair with the same body, so two
+        # distinct identical ``text`` events (the tool_use flood
+        # case adapted for streaming) both keep their live entries.
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._last_text_thinking_block_close: dict[str, tuple[ActivityEventKind, str]] = {}  # bounded-accumulator-ok: drop_unit
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
@@ -792,14 +810,41 @@ class ParallelDisplay:
         budget = max(1, min(budget_terminal, budget_measure))
         if budget <= 0 or len(body) <= budget:
             return body
+        # DA-003 (wt-028-display S-4): prefer ``break_long_words=False``
+        # so chrome tokens such as ``PASS``, ``read_file``, or the
+        # ``↳ read_file`` result marker survive a narrow-terminal wrap
+        # intact (the pre-fix ``break_long_words=True`` broke those
+        # tokens into 1-2 char fragments at the 40-col floor, e.g.
+        # ``↳ re``, ``ad_f``, ``ile`` for ``↳ read_file`` -- a
+        # 40-column tool_result header that did not name the tool or
+        # its outcome). When the body has a single token longer than
+        # the budget (an oversized file path or a single word wider
+        # than the floor), fall back to ``break_long_words=True`` so
+        # the line still flows through rather than overflowing past
+        # the terminal width -- the single long token is the only
+        # thing that gets broken, and the surrounding chrome tokens
+        # (``PASS``, ``read_file``, the result marker) are preserved
+        # on the line that introduces them.
         wrapped = textwrap.wrap(
             body,
             width=budget,
             initial_indent="",
             subsequent_indent="",
-            break_long_words=True,
+            break_long_words=False,
             break_on_hyphens=False,
         )
+        if not wrapped:
+            # All chrome tokens survived but the longest one
+            # overflowed the budget; allow ``break_long_words`` for
+            # this single edge case so the line still flows.
+            wrapped = textwrap.wrap(
+                body,
+                width=budget,
+                initial_indent="",
+                subsequent_indent="",
+                break_long_words=True,
+                break_on_hyphens=False,
+            )
         if not wrapped:
             return body
         return "\n".join(wrapped)
@@ -1330,6 +1375,44 @@ class ParallelDisplay:
         # condensation marker the condenser already produced; the
         # verbatim overflow log under .agent/raw/<safe_id>.log
         # remains the destination the marker points to.
+        # DA-002 (wt-028-display S-2 / S-3): the cross-kind text/
+        # thinking companion dedup at close time. When the previous
+        # closed block for this unit was a TEXT streaming block
+        # whose visible body equals THIS block's visible body (and
+        # the kind differs -- a THINKING companion), the pre-fix
+        # contract fired the live console print here and the record
+        # append below, leaving the live log with two entries for
+        # one logical reasoning pass even though the record already
+        # dedup'd at ``_append_recorded_entry``. The dedup runs
+        # BEFORE the live print and the record append so the live
+        # log and the rendered record stay one entry per logical
+        # event. State is left unchanged when a dedup fires so a
+        # third identical event still dedups against the original
+        # (the tool_use flood contract adapted for streaming).
+        _base_tag_to_record_kind = {
+            "content": ActivityEventKind.TEXT,
+            "think": ActivityEventKind.THINKING,
+        }
+        close_record_kind = _base_tag_to_record_kind.get(
+            base_tag, ActivityEventKind.TEXT
+        )
+        if (
+            close_record_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+            and visible.strip()
+        ):
+            prev_close = self._last_text_thinking_block_close.get(unit_id)
+            if (
+                prev_close is not None
+                and prev_close[1] == visible
+                and prev_close[0] in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+                and prev_close[0] != close_record_kind
+            ):
+                # Drop the live print and the record append; the
+                # previous entry already represents this logical
+                # reasoning pass. State is left unchanged so a
+                # follow-up identical event still dedups against
+                # the SAME previous entry.
+                return
         start_str = (
             self._format_hh_mm_ss(open_wall) if open_wall is not None else "??:??:??"
         )
@@ -1416,6 +1499,15 @@ class ParallelDisplay:
             body=visible,
             timestamp=timestamp,
         )
+        # DA-002 (wt-028-display S-2 / S-3): record the close on
+        # the per-unit live-log dedup key so a follow-up
+        # cross-kind text/thinking companion dedups against THIS
+        # block on the next close. Only set when the close actually
+        # surfaced on at least one surface; the dedup at the top
+        # of this function returns early before this point when the
+        # live print and record append are both suppressed.
+        if record_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING):
+            self._last_text_thinking_block_close[unit_id] = (record_kind, visible)
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks and refresh display context."""
@@ -4324,6 +4416,7 @@ class ParallelDisplay:
         self._active_block_chars.pop(unit_id, None)
         self._last_checkpoint_chars.pop(unit_id, None)
         self._last_recorded_body.pop(unit_id, None)
+        self._last_text_thinking_block_close.pop(unit_id, None)
         # S-23 (wt-028-display P1): close the overflow log AFTER
         # the streaming-block close so the buffered full payload
         # lands in the same handle drop_unit is about to close.

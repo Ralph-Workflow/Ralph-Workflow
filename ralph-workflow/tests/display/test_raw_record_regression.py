@@ -840,3 +840,55 @@ def test_production_path_two_distinct_identical_tool_use_events_both_recorded(
         f"two distinct identical tool_use events should produce two record "
         f"entries; got {record_body.count(tool_body)}:\n{record_body}"
     )
+
+
+def test_production_path_text_thinking_companion_deduped_on_live_and_record(
+    tmp_path: Path,
+) -> None:
+    """DA-002: a TEXT event followed by its THINKING companion produces
+    exactly one entry on BOTH the live log and the rendered record.
+
+    Pre-fix, the live log carried the duplicate body twice while the
+    rendered record carried it once -- the "record-only text/thinking
+    companion suppression" defect. The fix moves the cross-kind
+    text/thinking dedup to BEFORE the live print so the live log and
+    the rendered record stay in lockstep.
+    """
+    from ralph.display.parallel_display import ParallelDisplay
+
+    pd, buf, _advance = _make_display_with_injected_clock(tmp_path)
+    assert isinstance(pd, ParallelDisplay)
+    pd.start()
+
+    dup_body = "Session's master prompt: please read it carefully."
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TEXT,
+        content=dup_body,
+        metadata={},
+    )
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.THINKING,
+        content=dup_body,
+        metadata={},
+    )
+    pd.stop()
+
+    # Record surface: identical-body dedup drops the cross-kind
+    # THINKING companion.
+    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    assert record_body.count(dup_body) == 1, (
+        f"DA-002: record body appears {record_body.count(dup_body)} times; "
+        f"expected exactly 1:\n{record_body}"
+    )
+
+    # Live surface: the dedup also fires at close time so the operator
+    # scrolling back sees the body once, not twice.
+    live_log = buf.getvalue()
+    assert live_log.count(dup_body) == 1, (
+        f"DA-002: live log body appears {live_log.count(dup_body)} times; "
+        f"expected exactly 1:\n{live_log}"
+    )
