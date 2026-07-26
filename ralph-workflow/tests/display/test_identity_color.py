@@ -97,9 +97,7 @@ def test_identity_color_is_stable_across_palette_hits() -> None:
         ("claude headless", "claude-headless"),
     ],
 )
-def test_normalize_identity_name_preserves_dash_distinction(
-    variant: str, expected: str
-) -> None:
+def test_normalize_identity_name_preserves_dash_distinction(variant: str, expected: str) -> None:
     """``claude`` and ``claude-headless`` are distinct identities.
 
     Underscore and whitespace collapse to ``-``; the ``-`` separator
@@ -164,9 +162,7 @@ def test_identity_palette_disjoint_from_status_palette() -> None:
             if extracted:
                 status_hexes.add(extracted.lower())
     for ident in IDENTITY_PALETTE:
-        assert ident.lower() not in status_hexes, (
-            f"identity {ident} collides with a status role"
-        )
+        assert ident.lower() not in status_hexes, f"identity {ident} collides with a status role"
 
 
 # --- CVD distinguishability ---------------------------------------------
@@ -362,9 +358,39 @@ def test_event_renderer_unit_prefix_carries_identity_color() -> None:
     # covers the unit prefix substring (e.g. ``"claude "``).
     identity_spans = [s for s in rendered.spans if s.style == expected_color]
     assert identity_spans
+    assert any(rendered.plain[s.start : s.end].rstrip() == "claude" for s in identity_spans)
+
+
+def test_event_renderer_uses_light_background_identity_palette() -> None:
+    """A light DisplayContext selects the light identity palette in event output."""
+    ctx = make_display_context(env={"RALPH_TERMINAL_BG": "light"}, force_width=200)
+    event = make_event(
+        provider=ActivityProvider.CLAUDE,
+        kind=ActivityEventKind.TEXT,
+        options=EventOptions(content="hello world"),
+    )
+    rendered = render_event(event, ctx, unit_id="claude")
     assert any(
-        rendered.plain[s.start:s.end].rstrip() == "claude"
-        for s in identity_spans
+        span.style == identity_color("claude", terminal_bg_is_light=True) for span in rendered.spans
+    )
+
+
+def test_status_bar_uses_light_background_identity_palette() -> None:
+    """A light DisplayContext selects the light identity palette in the footer."""
+    ctx = make_display_context(
+        env={"RALPH_TERMINAL_BG": "light"}, force_width=200, force_glyphs=True
+    )
+    rendered = render_status_bar(
+        StatusBarModel(
+            workspace_root="/tmp/probe",
+            phase_label="Development",
+            phase_style="theme.phase.development",
+            agent_name="claude",
+        ),
+        ctx,
+    )
+    assert any(
+        span.style == identity_color("claude", terminal_bg_is_light=True) for span in rendered.spans
     )
 
 
@@ -405,9 +431,9 @@ def test_status_bar_agent_segment_carries_identity_color() -> None:
     assert "claude" in rendered.plain
     # The agent segment is colored with the identity color.
     expected_color = identity_color("claude")
-    assert any(
-        span.style == expected_color for span in rendered.spans
-    ), f"Status Bar agent segment missing identity color {expected_color}"
+    assert any(span.style == expected_color for span in rendered.spans), (
+        f"Status Bar agent segment missing identity color {expected_color}"
+    )
 
 
 # --- Module surface ----------------------------------------------------

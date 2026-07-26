@@ -33,7 +33,6 @@ the test completes in <3s combined.
 
 from __future__ import annotations
 
-import ast
 import tempfile
 from pathlib import Path
 
@@ -493,64 +492,21 @@ def test_recovery_does_not_call_enter_phase_failed_in_unavailability_branch() ->
     """
     controller_path = REPO_ROOT / "ralph" / "recovery" / "controller.py"
     source = controller_path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(controller_path))
-
-    # Locate ``_handle_retry_progression`` function.
-    target_func: ast.FunctionDef | None = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_handle_retry_progression":
-            target_func = node
-            break
-    assert target_func is not None, "could not find _handle_retry_progression in controller.py"
-
-    # Find the all-agents-unavailable branch and the
-    # _enter_phase_failed call within the function body.  The
-    # call appears in an Assign statement (the return value is
-    # captured into ``failed_state``), so we walk the function
-    # body and look for any statement that contains a
-    # ``self._enter_phase_failed`` call.
-    body = target_func.body
-    unavailable_branch_start: int | None = None
-    enter_phase_failed_call: int | None = None
-    for idx, stmt in enumerate(body):
-        if isinstance(stmt, ast.If):
-            test = ast.unparse(stmt.test)
-            # The all-agents-unavailable test renders as
-            # ``all((not self._is_agent_available(phase, agent) for agent in chain.agents))``
-            # in the AST (note the extra outer parens wrapping the
-            # generator).  Match the substring ``self._is_agent_available``
-            # inside the test source.
-            if "self._is_agent_available" in test and "all(" in test:
-                unavailable_branch_start = idx
-        for child in ast.walk(stmt):
-            if (
-                isinstance(child, ast.Call)
-                and isinstance(child.func, ast.Attribute)
-                and child.func.attr == "_enter_phase_failed"
-            ):
-                enter_phase_failed_call = idx
-                break
-
-    assert unavailable_branch_start is not None, (
-        "could not find the all-agents-unavailable branch in _handle_retry_progression"
+    method_start = source.index("    def _handle_retry_progression(")
+    method_end = source.index("\n    def ", method_start + 1)
+    method_source = source[method_start:method_end]
+    unavailable_branch = (
+        "if all(not self._is_agent_available(phase, agent) for agent in chain.agents):"
     )
-    assert enter_phase_failed_call is not None, (
-        "could not find the _enter_phase_failed call in _handle_retry_progression"
-    )
-    assert unavailable_branch_start < enter_phase_failed_call, (
-        f"unavailability branch (idx {unavailable_branch_start}) must come BEFORE the"
-        f" _enter_phase_failed call (idx {enter_phase_failed_call}) in the function body"
-    )
+    unavailable_start = method_source.index(unavailable_branch)
+    failure_start = method_source.index("self._enter_phase_failed")
 
-    # The unavailability branch itself must return. Walk the branch
-    # body and confirm at least one Return statement is reachable.
-    unavail_stmt = body[unavailable_branch_start]
-    assert isinstance(unavail_stmt, ast.If)
-    branch_returns = [n for n in ast.walk(unavail_stmt) if isinstance(n, ast.Return)]
-    assert branch_returns, (
-        "all-agents-unavailable branch in _handle_retry_progression must contain"
-        " a Return statement so the wait branch never falls through to"
-        " _enter_phase_failed"
+    assert unavailable_start < failure_start, (
+        "the all-agents-unavailable branch must precede _enter_phase_failed"
+    )
+    wait_branch = method_source[unavailable_start:failure_start]
+    assert "return (" in wait_branch, (
+        "all-agents-unavailable branch must return before phase failure"
     )
 
 

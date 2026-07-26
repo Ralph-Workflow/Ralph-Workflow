@@ -136,6 +136,14 @@ immediately, including 12-row and temporarily below-floor terminals.
 
 `NO_COLOR` takes precedence over `FORCE_COLOR` per standard CLI conventions.
 
+### Background-aware presentation
+
+`DisplayContext` resolves `RALPH_TERMINAL_BG` (`light`, `dark`, or a hex
+background) once during construction. Event identities and the Status Bar use
+the matching identity palette; unknown backgrounds keep the dark-safe default.
+The text label remains the identity carrier, so color is never required to
+understand an entry.
+
 ### Canonical activity presentation
 
 Providers first write every original line to verbatim `.agent/raw/<id>.log`.

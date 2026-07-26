@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import re
+from datetime import UTC, datetime
 
 from rich.console import Console
 
@@ -41,7 +42,7 @@ def _make_display(*, force_terminal: bool) -> tuple[ParallelDisplay, io.StringIO
         width=120,
     )
     ctx = make_display_context(console=console, env={"CI": "1"})
-    return ParallelDisplay(ctx), buf
+    return ParallelDisplay(ctx, clock=lambda: datetime(2026, 7, 26, tzinfo=UTC)), buf
 
 
 def _run_lifecycle(pd: ParallelDisplay) -> None:

@@ -45,6 +45,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(display): resolve identity colors from the shared terminal background** — `DisplayContext` now selects the matching dark/light identity palette once, and both event entries and the Status Bar consume it; labels remain the non-color identity carrier. Locked by `tests/display/test_identity_color.py` and `tests/display/test_terminal_background.py`.
+
 - **docs(display): document the responsive Status Bar and canonical activity surfaces** — the maintainer references now describe the 120/80/60/40 width ladder, 12-row behavior, watchdog-owned `STALLED` state, rendered/verbatim record distinction, generic fallback, syntax/file hierarchy, and `NO_COLOR`/ASCII fallbacks; stale private transcript vocabulary and line-number claims are removed. Locked by `tests/display/test_status_bar.py`, `tests/display/test_raw_record_regression.py`, and `tests/display/test_accessibility_matrix.py`.
 
 - **refactor(mcp)!: `PLAN001` is the sole blocking plan diagnostic** — only empty/markup-only, under-100-character, or recognizably non-plan submissions fail. Every parser, schema, reference, and shape finding is actionable advisory, with a concrete run cost and fix; warning-only plans retain canonical content, standard artifact lifecycle support, and recorded override reasons. Locked by `tests/mcp/test_md_plan_not_a_plan.py`, `tests/mcp/test_md_plan_advisory.py`, and `tests/mcp/test_md_plan_chain_e2e.py`.

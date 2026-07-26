@@ -49,6 +49,7 @@ from ralph.display.theme import (
     UNICODE_GLYPHS,
     detect_glyph_capability,
     make_console,
+    terminal_background_is_light,
 )
 
 if TYPE_CHECKING:
@@ -370,6 +371,9 @@ class DisplayContext:
     # readable on a 250-column monitor; the value is also the upper
     # bound of ``body_measure()`` so the cap is honored on any width.
     body_measure_cap: int = 100
+    # Resolved once at context construction so every renderer selects the
+    # same accessible palette without probing the terminal independently.
+    terminal_background_is_light: bool | None = None
     # P0 (wt-028-display S-5 / AC-06): the vertical dimension of the
     # terminal is consumed by height-aware presentation -- boxed
     # panels degrade to unboxed headed text below a row threshold
@@ -518,6 +522,7 @@ class DisplayContext:
             thinking_preview_min_chars=self.thinking_preview_min_chars,
             tool_result_headline_min_chars=self.tool_result_headline_min_chars,
             body_measure_cap=self.body_measure_cap,
+            terminal_background_is_light=self.terminal_background_is_light,
             height=new_height,
             _resolved_env=self._resolved_env,
             env=self.env,
@@ -634,6 +639,7 @@ def make_display_context(
         thinking_preview_min_chars=limits.thinking_preview_min_chars,
         tool_result_headline_min_chars=limits.tool_result_headline_min_chars,
         body_measure_cap=limits.body_measure_cap,
+        terminal_background_is_light=terminal_background_is_light(env_dict),
         env=env_dict,
         _resolved_env=resolved_env,
         _force_width=force_width,

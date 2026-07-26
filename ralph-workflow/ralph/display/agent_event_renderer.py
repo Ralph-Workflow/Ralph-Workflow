@@ -218,6 +218,7 @@ def _identity_style_for(
     unit_id: str | None,
     *,
     active: Iterable[str] | None = None,
+    ctx: DisplayContext | None = None,
 ) -> str:
     """Return the Rich style string for a unit identity prefix.
 
@@ -238,9 +239,10 @@ def _identity_style_for(
     """
     if not unit_id:
         return ""
+    terminal_bg_is_light = ctx.terminal_background_is_light if ctx is not None else None
     if active is None:
-        return identity_color(unit_id)
-    return identity_color(unit_id, active=active)
+        return identity_color(unit_id, terminal_bg_is_light=terminal_bg_is_light)
+    return identity_color(unit_id, active=active, terminal_bg_is_light=terminal_bg_is_light)
 
 
 def _split_body_with_unit(body: str, unit_id: str | None) -> tuple[str, str]:
@@ -268,6 +270,7 @@ def _append_body_with_unit(
     unit_id: str | None,
     body_style: str,
     *,
+    ctx: DisplayContext | None = None,
     escape_body: bool = True,
 ) -> None:
     """Append ``body`` to ``text`` with the unit prefix colored distinctly.
@@ -281,7 +284,7 @@ def _append_body_with_unit(
     prefix, rest = _split_body_with_unit(body, unit_id)
     if prefix:
         prefix_rendered = escape(prefix) if escape_body else prefix
-        text.append(prefix_rendered, style=_identity_style_for(unit_id))
+        text.append(prefix_rendered, style=_identity_style_for(unit_id, ctx=ctx))
     if rest:
         rest_rendered = escape(rest) if escape_body else rest
         text.append(rest_rendered, style=body_style)
@@ -361,7 +364,7 @@ def _render_text_event(
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, ctx=ctx, escape_body=escape_body)
     return text
 
 
@@ -455,7 +458,7 @@ def _render_tool_use_event(
     body = " ".join(body_segments)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     text.append(f" {_TOOL_PAIR_MARKER}", style=style)
     return text
 
@@ -531,7 +534,7 @@ def _render_tool_result_event(
         )
         text.append(" ", style=style)
     body_style = "theme.text.muted" if not is_error else style
-    _append_body_with_unit(text, body, unit_id, body_style, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, body_style, ctx=ctx, escape_body=escape_body)
     return text
 
 
@@ -603,7 +606,9 @@ def _render_heartbeat_event(
     body = _format_body_with_unit(_normalized_event_content(event) or "alive", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, "theme.text.muted", escape_body=escape_body)
+    _append_body_with_unit(
+        text, body, unit_id, "theme.text.muted", ctx=ctx, escape_body=escape_body
+    )
     return text
 
 

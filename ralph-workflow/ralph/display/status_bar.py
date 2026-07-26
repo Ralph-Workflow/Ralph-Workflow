@@ -308,9 +308,12 @@ def _attention_slot_reserved_width(ctx: DisplayContext) -> int:
     """
     separator = _field_separator(ctx)
     max_glyph_len = max(
-        (len(ctx.glyph_for(glyph_key)) for glyph_key in (
-            glyph_key for _label, glyph_key, _style in ATTENTION_PRESENTATION.values()
-        )),
+        (
+            len(ctx.glyph_for(glyph_key))
+            for glyph_key in (
+                glyph_key for _label, glyph_key, _style in ATTENTION_PRESENTATION.values()
+            )
+        ),
         default=0,
     )
     # ``{glyph} {label}{separator}`` is the rendered string when populated.
@@ -688,14 +691,19 @@ def _field_overhead_and_label_budgets(
             elapsed_chrome = 5 + separator_len  # short form + separator
         else:
             elapsed_chrome = 0
-        available = ctx.width - _chrome(
-            outer_label,
-            inner_label,
-            with_marker,
-            with_glyph,
-            include_outer=include_outer,
-            include_inner=include_inner,
-        ) - attention_chrome - elapsed_chrome
+        available = (
+            ctx.width
+            - _chrome(
+                outer_label,
+                inner_label,
+                with_marker,
+                with_glyph,
+                include_outer=include_outer,
+                include_inner=include_inner,
+            )
+            - attention_chrome
+            - elapsed_chrome
+        )
         if available < _MIN_PHASE_PLUS_PATH:
             return None
         # Allocate remaining space to phase + path. Phase gets up to
@@ -913,9 +921,7 @@ def _format_elapsed_fixed(seconds: float | None) -> str:
     return _format_elapsed(seconds).ljust(_ELAPSED_FIXED_WIDTH)
 
 
-def _resolve_elapsed_seconds(
-    model: StatusBarModel, now_monotonic: float | None
-) -> float | None:
+def _resolve_elapsed_seconds(model: StatusBarModel, now_monotonic: float | None) -> float | None:
     """Return the recomputed elapsed seconds, or the snapshot fallback.
 
     wt-028-display S-2: extract the recompute logic from
@@ -1197,9 +1203,7 @@ def render_status_bar(
     # Optional trailing context yields before path/phase/cycle context.
     # Reserve only path surplus so the established narrow-width
     # contract is unchanged.
-    optional_segments = _prune_optional_segments(
-        (agent_label,), separator, budgets.path_budget
-    )
+    optional_segments = _prune_optional_segments((agent_label,), separator, budgets.path_budget)
     optional_width = sum(len(separator) + len(label) for label in optional_segments)
     path_budget = budgets.path_budget
     path_display = _middle_truncate_path(path_display, path_budget - optional_width)
@@ -1299,7 +1303,7 @@ def render_status_bar(
             )
         )
     for label in optional_segments:
-        _append_optional_segment(text, label, model, separator)
+        _append_optional_segment(text, label, model, separator, ctx)
     # DA-004 (wt-028-display AC-02): cwd path renders LAST (after
     # agent) so it is the trailing optional segment that elides /
     # drops first at narrow widths.
@@ -1321,6 +1325,7 @@ def _append_optional_segment(
     label: str,
     model: StatusBarModel,
     separator: str,
+    ctx: DisplayContext,
 ) -> None:
     """Render one optional segment (elapsed or agent) after a leading separator.
 
@@ -1334,7 +1339,13 @@ def _append_optional_segment(
     if label.startswith("Agent ") and model.agent_name:
         agent_prefix, agent_rest = _split_agent_label(label)
         if agent_prefix:
-            text.append(agent_prefix, style=identity_color(model.agent_name))
+            text.append(
+                agent_prefix,
+                style=identity_color(
+                    model.agent_name,
+                    terminal_bg_is_light=ctx.terminal_background_is_light,
+                ),
+            )
         if agent_rest:
             text.append(agent_rest, style="theme.status.info")
     else:
