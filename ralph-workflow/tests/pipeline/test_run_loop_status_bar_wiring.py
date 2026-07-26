@@ -819,11 +819,11 @@ def test_attention_state_for_state_returns_retrying() -> None:
     assert _attention_state_for_state(state) == "retrying"
 
 
-def test_attention_state_for_state_returns_terminated() -> None:
-    """S-2 / AC-01: a failed run pushes ``attention='terminated'`` through the run loop."""
+def test_attention_state_for_state_returns_failed() -> None:
+    """S-2 / AC-01: a failed run keeps its outcome in the Status Bar."""
     from ralph.pipeline.run_loop import _attention_state_for_state
     state = _StubState(phase="development", run_outcome="failed")
-    assert _attention_state_for_state(state) == "terminated"
+    assert _attention_state_for_state(state) == "failed"
 
 
 def test_attention_state_for_state_returns_none_when_healthy() -> None:

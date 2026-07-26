@@ -270,10 +270,14 @@ _MIN_PHASE_PLUS_PATH: int = _MIN_PHASE_BUDGET + _MIN_PATH_BUDGET
 # consoles degrade the glyph to ``*`` automatically via
 # :meth:`DisplayContext.glyph_for`.
 ATTENTION_PRESENTATION: dict[str, tuple[str, str, str]] = {
+    "starting": ("STARTING", "liveness", "theme.status.info"),
     "waiting": ("WAITING", "waiting", "theme.status.warn"),
     "stalled": ("STALLED", "stalled", "theme.status.error"),
     "retrying": ("RETRYING", "retrying", "theme.status.warn"),
     "terminated": ("DONE", "terminated", "theme.status.info"),
+    "completed": ("COMPLETE", "terminated", "theme.status.info"),
+    "failed": ("FAILED", "terminated", "theme.status.error"),
+    "cancelled": ("CANCELLED", "terminated", "theme.status.warn"),
 }
 
 

@@ -523,18 +523,22 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
     status bar push.
     """
     run_outcome: object = getattr(state, "run_outcome", None)
-    if isinstance(run_outcome, str) and run_outcome:
-        if run_outcome in ("failed", "error", "cancelled"):
-            return "terminated"
-        if run_outcome == "completed":
-            return "terminated"
+    outcome_attention = {
+        "failed": "failed",
+        "error": "failed",
+        "cancelled": "cancelled",
+        "completed": "completed",
+    }
+    if isinstance(run_outcome, str) and run_outcome in outcome_attention:
+        return outcome_attention[run_outcome]
     run_phase: object = getattr(state, "phase", None)
-    if isinstance(run_phase, str) and run_phase.startswith("waiting"):
-        return "waiting"
+    if isinstance(run_phase, str):
+        if run_phase.startswith("waiting"):
+            return "waiting"
+        if run_phase in ("", "starting", "startup"):
+            return "starting"
     retrying: object = getattr(state, "retrying", None)
-    if isinstance(retrying, bool) and retrying:
-        return "retrying"
-    return None
+    return "retrying" if isinstance(retrying, bool) and retrying else None
 
 
 def _push_status_bar_if_changed(

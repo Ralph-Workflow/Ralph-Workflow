@@ -422,3 +422,37 @@ def test_attention_unknown_pushed_value_renders_blank() -> None:
 
 
 
+
+
+@pytest.mark.parametrize(
+    ("attention", "expected"),
+    [
+        ("starting", "STARTING"),
+        ("completed", "COMPLETE"),
+        ("failed", "FAILED"),
+        ("cancelled", "CANCELLED"),
+    ],
+)
+def test_status_bar_regression_terminal_and_startup_states_are_truthful(
+    attention: str, expected: str
+) -> None:
+    """S-1: startup and each terminal outcome remain textually distinct."""
+    rendered = render_status_bar(
+        StatusBarModel(
+            workspace_root="/tmp/probe",
+            phase_label="Development",
+            phase_style=phase_style_for_phase("development"),
+            attention=attention,
+        ),
+        _ctx(),
+    ).plain
+    assert expected in rendered
+
+
+def test_status_bar_regression_liveness_frame_advances_without_reflow() -> None:
+    """S-1: quiet live ticks rotate a fixed-width liveness cell."""
+    model = _model(started_at=0.0)
+    first = render_status_bar(model, _ctx(), now_monotonic=0.0).plain
+    second = render_status_bar(model, _ctx(), now_monotonic=1.0).plain
+    assert first != second
+    assert first.index("Time") == second.index("Time")
