@@ -685,7 +685,7 @@ class ParallelDisplay:
     ) -> str:
         """Wrap ``body`` so continuation lines hang-indent to ``prefix``.
 
-        S-4 (wt-028-display P1 / AC-03 / DA-003) and S-5 (P1 / AC-04 /
+        S-4 (wt-028-display P1 / AC-03 / DA-002) and S-5 (P1 / AC-04 /
         DA-004): one shared rendering seam applies two contracts:
 
         * the wide-terminal measure cap (``body_measure`` -- never
@@ -694,6 +694,24 @@ class ParallelDisplay:
         * the hanging-indent continuation that keeps the body
           aligned with the prefix column so the reader does not
           lose the line's structural position on a wrap.
+
+        P0 (wt-028-display S-4 / DA-002): the body passed in is the
+        raw body content, NOT the full chrome-prefixed rendered text.
+        Passing the full rendered text would consume most of the
+        narrow-terminal budget on the chrome prefix and force
+        ``textwrap`` to break the body's natural words into
+        one-character fragments (the pre-fix bug). The first line
+        of the line carries the timestamp + level + cat + badge
+        chrome separately; the body is wrapped as a standalone
+        string at the ``prefix`` column, and the caller hangs
+        continuations at ``prefix`` via the matching ``hang_prefix``
+        in ``emit_activity_line``.
+
+        DA-002 (S-4): no built-in ``subsequent_indent`` is emitted
+        by ``textwrap.wrap`` here. The continuation print path in
+        ``emit_activity_line`` prefixes every continuation line with
+        the matching ``hang_prefix``, so a built-in indent would
+        double-count (the pre-fix bug doubled the indent at 40 cols).
 
         The available column count for the body is
         ``min(total_width - len(prefix), body_measure - len(prefix))``
@@ -706,10 +724,11 @@ class ParallelDisplay:
 
         Returns the body ready to be appended after ``prefix``: the
         first line carries the original ``body`` text, continuation
-        lines are prefixed with ``len(prefix)`` spaces so the body
-        hangs at the prefix column. When the body fits in one line
-        the original string is returned unchanged so the
-        single-line case has no trailing whitespace.
+        lines are NOT prefixed with any indent here -- the caller
+        applies the matching hang prefix when emitting. When the
+        body fits in one line the original string is returned
+        unchanged so the single-line case has no trailing
+        whitespace.
         """
         if not body:
             return body
@@ -725,12 +744,11 @@ class ParallelDisplay:
         budget = max(20, min(budget_terminal, budget_measure))
         if budget <= 0 or len(body) <= budget:
             return body
-        hang = " " * prefix_len
         wrapped = textwrap.wrap(
             body,
             width=budget,
             initial_indent="",
-            subsequent_indent=hang,
+            subsequent_indent="",
             break_long_words=True,
             break_on_hyphens=False,
         )
@@ -771,8 +789,21 @@ class ParallelDisplay:
         summary_line: str | None = None,
         ai_summary_line: str | None = None,
         tool_signature: tuple[str, str] | None = None,
+        body_text: str | None = None,
     ) -> None:
-        """Emit a kind-tagged, level-badged content line."""
+        """Emit a kind-tagged, level-badged content line.
+
+        ``body_text`` (wt-028-display S-4 / DA-002): the body content
+        to wrap on continuations. When ``None`` (the default) the
+        function falls back to ``sanitized`` (the full rendered
+        text) -- the pre-fix behavior that broke the 40-column wrap
+        by consuming the budget on the chrome prefix. When a caller
+        passes the raw body separately, the wrap uses it as a
+        standalone string and the first line keeps the chrome prefix
+        (timestamp + level + cat + badge + rendered chrome) on its
+        own row, so a continuation at the floor carries readable
+        multiword body chunks instead of one-character fragments.
+        """
         if options is None:
             options = _ActivityLineOptions(
                 condensed_ref=condensed_ref,
@@ -836,9 +867,17 @@ class ParallelDisplay:
             # prefix length is the same as on the first line.
             badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
             hang_prefix = " " * len(badge_prefix)
+            # DA-002 (S-4): wrap JUST the body, not the full chrome-
+            # prefixed rendered text. Passing the chrome-prefixed
+            # text would consume the narrow-terminal budget on the
+            # chrome prefix and force ``textwrap`` to break natural
+            # words into one-character fragments. The first line
+            # still carries the chrome prefix; only the body is
+            # wrapped standalone at the badge column.
+            wrap_target = body_text if body_text is not None else sanitized
             wrapped_body = self._wrap_body_with_hanging_indent(
                 badge_prefix,
-                sanitized,
+                wrap_target,
                 total_width=self._ctx.width,
                 body_measure=self._ctx.body_measure(),
             )
@@ -1194,7 +1233,10 @@ class ParallelDisplay:
         # carries the same kind vocabulary as the live log.
         _base_tag_to_kind = {
             "content": ActivityEventKind.TEXT,
-            "thinking": ActivityEventKind.THINKING,
+            # wt-028-display S-3 (DA-001): the public base tag is
+            # ``think``; the close path must follow the same key so
+            # the record line carries the correct kind.
+            "think": ActivityEventKind.THINKING,
         }
         record_kind = _base_tag_to_kind.get(base_tag, ActivityEventKind.TEXT)
         self._append_recorded_entry(
@@ -2033,6 +2075,16 @@ class ParallelDisplay:
         # close-path entry that already carries the same content -- one
         # event, one visible line.
         if kind is not ActivityEventKind.SUBAGENT_PROGRESS:
+            # wt-028-display S-3 (DA-001): for non-streaming kinds the
+            # body the wrap should use is the registry-rendered visible
+            # text (so the friendly tool name ``ralph.read_file``
+            # survives instead of the raw ``mcp__ralph__read_file``
+            # parser-kind identifier). For streaming kinds we keep the
+            # raw fragment text so the close path can join the buffered
+            # passage without the registry's per-fragment chrome.
+            body_text_for_wrap = (
+                text_content if kind.value in _STREAMING_KINDS else visible
+            )
             self.emit_activity_line(
                 unit_id,
                 kind.value,
@@ -2045,6 +2097,16 @@ class ParallelDisplay:
                     tool_signature=tool_signature,
                     activity_metadata=metadata,
                 ),
+                # DA-002 (S-4): pass the wrap-target body so the wrap
+                # uses the standalone body instead of the full
+                # chrome-prefixed rendered text. The chrome prefix
+                # (``icon label ts ↳ read_file u1``) is rendered on
+                # the first line by ``emit_activity_line``; the
+                # continuation wraps the body alone at the badge
+                # column so the 40-col floor produces readable
+                # multiword chunks rather than one-character
+                # fragments.
+                body_text=body_text_for_wrap,
             )
 
             # wt-046-syntax (P0 / AC-01..AC-05): after the registry-rendered
@@ -2719,16 +2781,61 @@ class ParallelDisplay:
             self._emit_section_rule("[run-completion]")
             from ralph.display.completion_summary import (
                 CompletionSummaryOptions,
-                render_completion_summary_group,
+                _exit_trigger_label,
+                style_for_role,
+                style_for_terminal_failure,
             )
+            from ralph.display.phase_status import format_elapsed_seconds
 
             resolved_options = options if options is not None else CompletionSummaryOptions()
-            group = render_completion_summary_group(
-                snapshot,
-                display_context=self._ctx,
-                options=resolved_options,
-            )
-            self._console.print(group, markup=False, highlight=False)
+            # DA-003 (wt-028-display S-6 / AC-05): on a height-constrained
+            # console (``height <= 12``) the full Rich Group of
+            # rules/sections collapses to an unboxed condensed heading.
+            # The bordered layout (Plan / Metrics / Decisions / Review /
+            # Analysis / Iteration Context / Activity / Commit /
+            # auto-integrate / tail / closing rule) would consume the
+            # entire 12-row working area; the condensed heading keeps
+            # the outcome + essential counts in 4 rows or fewer so the
+            # status bar / scrollback stay usable. The information is
+            # the same; the visual chrome is dropped.
+            if self._ctx.is_height_constrained():
+                failed = snapshot.is_terminal_failure
+                style = (
+                    style_for_terminal_failure(resolved_options.pipeline_policy)
+                    if failed
+                    else style_for_role("terminal", resolved_options.pipeline_policy)
+                )
+                title = "Pipeline Failed" if failed else "Pipeline Complete"
+                heading = Text()
+                heading.append(title, style=style)
+                self._console.print(heading)
+                self._console.print(
+                    Text(
+                        f"  exit={_exit_trigger_label(snapshot)}"
+                        + (
+                            f"  elapsed={format_elapsed_seconds(resolved_options.elapsed_seconds)}"
+                            if resolved_options.elapsed_seconds is not None
+                            else ""
+                        )
+                        + f"  agent_calls={snapshot.total_agent_calls}",
+                        style="theme.text.muted",
+                    )
+                )
+                if snapshot.is_terminal_failure and snapshot.last_error:
+                    self._console.print(
+                        Text(f"  error: {snapshot.last_error}", style="theme.level.error")
+                    )
+            else:
+                from ralph.display.completion_summary import (
+                    render_completion_summary_group,
+                )
+
+                group = render_completion_summary_group(
+                    snapshot,
+                    display_context=self._ctx,
+                    options=resolved_options,
+                )
+                self._console.print(group, markup=False, highlight=False)
 
     # -- Phase banner methods (port of phase_banner.py) ---------------------
     # All four methods route through self._console.print. Each method calls
@@ -3292,12 +3399,17 @@ class ParallelDisplay:
 
         Port of the retired ralph.display.first_run_panel.render_first_run_panel helper.
 
-        P0 (wt-028-display S-6 / AC-05): on a height-constrained
-        console (``self._ctx.height < 12``) the bordered Panel
-        degrades to unboxed headed text so the welcome takes fewer
-        rows in the working area. The information is the same; the
-        visual chrome is dropped because the panel border + padding
-        would crowd a 12-row split pane.
+        P0 (wt-028-display S-6 / AC-05 / DA-005): on a height-constrained
+        console (``self._ctx.height <= 12`` per
+        :meth:`DisplayContext.is_height_constrained`) the bordered
+        Panel degrades to unboxed headed text so the welcome takes
+        fewer rows in the working area. The information is the same;
+        the visual chrome is dropped because the panel border +
+        padding would crowd a 12-row split pane. The threshold is
+        ``<=`` (not strict ``<``) so the canonical 12-row floor
+        activates the constrained presentation -- the 12-row split
+        pane is the documented accessibility path and must trigger
+        the degradation on the boundary itself.
         """
         if self._is_quiet:
             return
@@ -3418,19 +3530,53 @@ class ParallelDisplay:
         """Render the effective config panel for --check-config.
 
         Port of the retired ralph.display.tables.show_config helper.
+
+        DA-004 (wt-028-display S-6 / AC-05): on a height-constrained
+        console (``height <= 12``) the bordered ``Panel`` around the
+        full config JSON degrades to an unboxed headed summary that
+        lists the top-level config keys (without the giant nested
+        JSON body). The bordered form would consume the entire
+        12-row working area; the heading-only form keeps the section
+        rule + a condensed key list so the operator still sees the
+        effective configuration structure without scrolling past a
+        90+ row bordered panel.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[config]")
-            config_json = config.model_dump_json(indent=2)
-            self._console.print(
-                Panel(
-                    config_json,
-                    title="Effective Configuration",
-                    border_style="theme.phase.planning",
+            if self._ctx.is_height_constrained():
+                # Unboxed heading + condensed key list: title rule,
+                # then the top-level keys of the dumped config.
+                # ``model_dump`` returns a dict; ``dict.keys()`` are
+                # the top-level field names. The values are dropped
+                # on the constrained surface because a 12-row
+                # working area cannot fit the nested JSON body and
+                # the field names already document the structure.
+                self._console.rule(
+                    "Effective Configuration",
+                    style="theme.phase.planning",
+                    align="left",
                 )
-            )
+                top_level_keys = list(config.model_dump().keys())
+                if top_level_keys:
+                    self._console.print(
+                        Text(
+                            "  " + ", ".join(top_level_keys),
+                            style="theme.text.muted",
+                        )
+                    )
+                else:
+                    self._console.print(Text("(no fields)", style="theme.text.muted"))
+            else:
+                config_json = config.model_dump_json(indent=2)
+                self._console.print(
+                    Panel(
+                        config_json,
+                        title="Effective Configuration",
+                        border_style="theme.phase.planning",
+                    )
+                )
 
     def emit_capability_summary(
         self,

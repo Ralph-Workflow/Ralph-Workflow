@@ -51,7 +51,7 @@ class TestToolResultSingleEntry:
     """S-7: tool_result is one entry, no ↳ summary: supplement."""
 
     def test_short_tool_result_emits_one_line_with_content(self, tmp_path: Path) -> None:
-        """Short tool_result content surfaces as exactly one [tool-result] entry."""
+        """Short tool_result content surfaces as exactly one [result] entry."""
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
@@ -64,7 +64,7 @@ class TestToolResultSingleEntry:
 
         out = buf.getvalue()
         lines = _plain_lines(out)
-        result_lines = [line for line in lines if "[tool-result]" in line and "[u1]" in line]
+        result_lines = [line for line in lines if "[result][u1]" in line]
 
         assert len(result_lines) == 1, (
             f"Expected exactly 1 tool_result entry, got {len(result_lines)}: "
@@ -101,7 +101,7 @@ class TestToolResultSingleEntry:
 
         out = buf.getvalue()
         lines = _plain_lines(out)
-        result_lines = [line for line in lines if "[tool-result]" in line and "[u1]" in line]
+        result_lines = [line for line in lines if "[result][u1]" in line]
 
         assert len(result_lines) == 1, (
             f"Expected exactly 1 tool_result entry, got {len(result_lines)}: "

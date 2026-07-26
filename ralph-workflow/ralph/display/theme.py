@@ -399,6 +399,7 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.level.milestone": f"bold {SKY_BLUE}",
     "theme.cat.meta": "dim",
     "theme.cat.cont": BLUE,
+    "theme.cat.out": BLUE,
     "theme.log.error": f"bold {VERMILLION}",
     "theme.log.info": BLUE,
     "theme.log.milestone": f"bold {SKY_BLUE}",

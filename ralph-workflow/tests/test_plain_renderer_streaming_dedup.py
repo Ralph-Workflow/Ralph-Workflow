@@ -204,7 +204,7 @@ def test_dedup_works_for_thinking_kind() -> None:
     pd.emit_activity_line("u", "thinking", "same thought")
     pd.flush_blocks()
     out = buf.getvalue()
-    thinking_lines = [ln for ln in out.splitlines() if "[thinking][u]" in ln]
+    thinking_lines = [ln for ln in out.splitlines() if "[think][u]" in ln]
     assert len(thinking_lines) == 1, (
         f"Expected 1 thinking close line, got {len(thinking_lines)}: {out!r}"
     )
@@ -219,11 +219,11 @@ def test_different_kind_resets_block() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     # The text block closed (single [content] line) before the
-    # thinking block closed (single [thinking] line on flush).
+    # thinking block closed (single [think] line on flush).
     assert "[content][u]" in out
-    assert "[thinking][u]" in out
+    assert "[think][u]" in out
     content_idx = out.index("[content][u]")
-    thinking_idx = out.index("[thinking][u]")
+    thinking_idx = out.index("[think][u]")
     assert content_idx < thinking_idx
 
 

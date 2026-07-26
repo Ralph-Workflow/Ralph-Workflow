@@ -53,19 +53,19 @@ def _plain_lines(output: str) -> list[str]:
 # --- Per-event (non-streaming) kinds: single line on emit --------------
 
 
-def test_tool_use_kind_emits_tool_tag() -> None:
+def test_tool_use_kind_emits_call_tag() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_use", "bash")
     out = buf.getvalue()
-    assert "[tool][u]" in out
+    assert "[call][u]" in out
     assert "bash" in out
 
 
-def test_tool_result_kind_emits_tool_result_tag_and_success_level() -> None:
+def test_tool_result_kind_emits_result_tag_and_success_level() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_result", "output")
     out = buf.getvalue()
-    assert "[tool-result][u]" in out
+    assert "[result][u]" in out
     assert "SUCCESS" in out
 
 
@@ -120,11 +120,11 @@ def test_tool_use_kind_emits_info_level() -> None:
 # --- Category prefix tests (non-streaming kinds surface CONT/META) ------
 
 
-def test_tool_result_tag_gets_cont_category() -> None:
+def test_tool_result_tag_gets_out_category() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_result", "ok")
     out = buf.getvalue()
-    assert "CONT" in out
+    assert "OUT" in out
 
 
 def test_progress_kind_gets_meta_category() -> None:
@@ -161,12 +161,12 @@ def test_text_kind_emits_content_tag_on_close() -> None:
         assert forbidden not in out, f"forbidden token {forbidden!r} leaked: {out!r}"
 
 
-def test_thinking_kind_emits_thinking_tag_on_close() -> None:
+def test_thinking_kind_emits_think_tag_on_close() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "thinking", "I think therefore I am")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[thinking][u]" in out
+    assert "[think][u]" in out
     assert "[u]" in out
     assert "I think therefore I am" in out
     for forbidden in (
@@ -309,10 +309,10 @@ def test_streaming_block_closed_by_non_streaming_event() -> None:
     out = buf.getvalue()
     # The text block closed before tool_use surfaced.
     assert "[content][u]" in out
-    assert "[tool][u]" in out
+    assert "[call][u]" in out
     assert "bash" in out
     # The text close line appears before the tool_use line.
-    assert out.index("[content][u]") < out.index("[tool][u]")
+    assert out.index("[content][u]") < out.index("[call][u]")
 
 
 def test_different_unit_id_closes_previous_block() -> None:
@@ -343,8 +343,8 @@ def test_non_streaming_kind_closes_other_unit_block() -> None:
     out = buf.getvalue()
     # unit-a's block closed before unit-b's tool_use surfaced.
     assert "[content][unit-a]" in out
-    assert "[tool][unit-b]" in out
-    assert out.index("[content][unit-a]") < out.index("[tool][unit-b]")
+    assert "[call][unit-b]" in out
+    assert out.index("[content][unit-a]") < out.index("[call][unit-b]")
 
 
 # --- Phase level tests -------------------------------------------------

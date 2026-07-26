@@ -162,9 +162,9 @@ class TestStreamingBlockCoalescingSingleEntry:
             f"Output:\n{out}"
         )
 
-        # Exactly one streaming-block close line carries the thinking tag.
+        # Exactly one streaming-block close line carries the think tag.
         thinking_lines = [
-            line for line in _plain_lines(out) if "[thinking]" in line and "[u1]" in line
+            line for line in _plain_lines(out) if "[think][u1]" in line
         ]
         assert len(thinking_lines) == 1, (
             f"Expected exactly 1 thinking close line, got {len(thinking_lines)}. "
@@ -259,10 +259,10 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         out = buf.getvalue()
         tool_use_lines = [
-            line for line in _plain_lines(out) if "[tool][u1]" in line
+            line for line in _plain_lines(out) if "[call][u1]" in line
         ]
         tool_result_lines = [
-            line for line in _plain_lines(out) if "[tool-result][u1]" in line
+            line for line in _plain_lines(out) if "[result][u1]" in line
         ]
         assert len(tool_use_lines) == 1, (
             f"Expected 1 tool_use entry, got {len(tool_use_lines)}:\n{out}"
@@ -298,7 +298,7 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         out = buf.getvalue()
         thinking_lines = [
-            line for line in _plain_lines(out) if "[thinking]" in line and "[u1]" in line
+            line for line in _plain_lines(out) if "[think][u1]" in line
         ]
         assert len(thinking_lines) == 1, (
             f"Long thinking must still emit exactly one close line, "

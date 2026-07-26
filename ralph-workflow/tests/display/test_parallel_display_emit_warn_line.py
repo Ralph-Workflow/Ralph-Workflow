@@ -15,7 +15,9 @@ Note on the contract:
     ``emit_warn_line(unit_id, tag, message)`` composes a ``WARN``
     level badge line using ``[tag][unit_id] <message>``. The
     category is ``TAG_CATEGORY.get(tag, "META")`` so unknown tags
-    fall back to ``META``. Tags like ``error`` map to ``CONT``.
+    fall back to ``META``. Tags like ``error`` map to ``OUT``
+    (the public-content category; ``CONT`` was the internal
+    parser-kind name retired by S-3).
 """
 
 from __future__ import annotations
@@ -56,14 +58,15 @@ def test_emit_warn_line_uses_meta_category_for_unknown_tag() -> None:
     assert "WARN" in output, f"WARN level missing: {output!r}"
     assert "META" in output, f"unknown tag must default to META category: {output!r}"
     assert "CONT" not in output, f"unknown tag must NOT pick CONT category: {output!r}"
+    assert "OUT" not in output, f"unknown tag must NOT pick OUT category: {output!r}"
 
 
-def test_emit_warn_line_uses_cont_category_for_error_tag() -> None:
-    """The mapped ``error`` tag routes through ``TAG_CATEGORY['error'] = 'CONT'``.
+def test_emit_warn_line_uses_out_category_for_error_tag() -> None:
+    """The mapped ``error`` tag routes through ``TAG_CATEGORY['error'] = 'OUT'``.
 
     Pins the mapped-category contract for ``emit_warn_line``: tags
     that appear in ``TAG_CATEGORY`` use their mapped category, not the
-    ``META`` fallback. ``error`` is the canonical mapped-CONT tag and
+    ``META`` fallback. ``error`` is the canonical mapped-OUT tag and
     is used here because it covers the runtime check surfaced in the
     wt-028-display review feedback.
     """
@@ -72,18 +75,18 @@ def test_emit_warn_line_uses_cont_category_for_error_tag() -> None:
     pd.stop()
     output = buf.getvalue()
     assert "WARN" in output, f"WARN level missing: {output!r}"
-    assert "CONT" in output, (
-        f"mapped 'error' tag must use CONT category per TAG_CATEGORY; got: {output!r}"
+    assert "OUT" in output, (
+        f"mapped 'error' tag must use OUT category per TAG_CATEGORY; got: {output!r}"
     )
     assert "[error][u1]" in output, f"[error][u1] tag missing: {output!r}"
     assert "boom" in output, f"message body missing: {output!r}"
 
 
-def test_emit_warn_line_uses_cont_category_for_content_tag() -> None:
-    """The mapped ``content`` tag routes through ``TAG_CATEGORY['content'] = 'CONT'``.
+def test_emit_warn_line_uses_out_category_for_content_tag() -> None:
+    """The mapped ``content`` tag routes through ``TAG_CATEGORY['content'] = 'OUT'``.
 
-    Companion to ``test_emit_warn_line_uses_cont_category_for_error_tag``
-    that exercises a second mapped-CONT tag so the contract is pinned
+    Companion to ``test_emit_warn_line_uses_out_category_for_error_tag``
+    that exercises a second mapped-OUT tag so the contract is pinned
     across more than one entry.
     """
     pd, buf = _make_display()
@@ -91,8 +94,8 @@ def test_emit_warn_line_uses_cont_category_for_content_tag() -> None:
     pd.stop()
     output = buf.getvalue()
     assert "WARN" in output, f"WARN level missing: {output!r}"
-    assert "CONT" in output, (
-        f"mapped 'content' tag must use CONT category per TAG_CATEGORY; got: {output!r}"
+    assert "OUT" in output, (
+        f"mapped 'content' tag must use OUT category per TAG_CATEGORY; got: {output!r}"
     )
 
 

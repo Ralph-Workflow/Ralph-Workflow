@@ -64,9 +64,9 @@ TAGS: Final[tuple[str, ...]] = (
 
 _KIND_TO_TAG: Final[dict[str, str]] = {
     "text": "content",
-    "thinking": "thinking",
-    "tool_use": "tool",
-    "tool_result": "tool-result",
+    "thinking": "think",
+    "tool_use": "call",
+    "tool_result": "result",
     "error": "error",
     "progress": "progress",
     "subagent_progress": "progress",
@@ -95,7 +95,6 @@ TAG_CATEGORY: Final[dict[str, str]] = {
     "activity": "META",
     "worker": "META",
     "analysis": "META",
-    "result": "META",
     "pr": "META",
     "failure": "META",
     "artifact": "META",
@@ -103,20 +102,26 @@ TAG_CATEGORY: Final[dict[str, str]] = {
     "run-start": "META",
     "run-end": "META",
     "waiting": "META",
-    "content": "CONT",
-    "thinking": "CONT",
-    "tool": "CONT",
-    "tool-result": "CONT",
-    "error": "CONT",
-    "status-content": "CONT",
-    "content-start": "CONT",
-    "content-continue": "CONT",
-    "content-end": "CONT",
-    "content-checkpoint": "CONT",
-    "thinking-start": "CONT",
-    "thinking-continue": "CONT",
-    "thinking-end": "CONT",
-    "thinking-checkpoint": "CONT",
+    # wt-028-display S-3 (DA-001): the public base tag for tool_result
+    # is ``result`` (not the parser-kind identifier ``tool_result``);
+    # the result tag is the human-facing category for tool outcomes and
+    # inherits the OUT (content) category the retired ``tool-result``
+    # tag carried -- the category badge on a successful tool result
+    # still reads OUT, not META.
+    "content": "OUT",
+    "think": "OUT",
+    "call": "OUT",
+    "result": "OUT",
+    "error": "OUT",
+    "status-content": "OUT",
+    "content-start": "OUT",
+    "content-continue": "OUT",
+    "content-end": "OUT",
+    "content-checkpoint": "OUT",
+    "thinking-start": "OUT",
+    "thinking-continue": "OUT",
+    "thinking-end": "OUT",
+    "thinking-checkpoint": "OUT",
 }
 
 _LEVEL_THEME_KEYS: Final[dict[str, str]] = {
@@ -129,7 +134,7 @@ _LEVEL_THEME_KEYS: Final[dict[str, str]] = {
 
 _CAT_THEME_KEYS: Final[dict[str, str]] = {
     "META": "theme.cat.meta",
-    "CONT": "theme.cat.cont",
+    "OUT": "theme.cat.out",
 }
 
 _COMPACT_LEVEL_BADGES: Final[dict[str, str]] = {
@@ -142,14 +147,19 @@ _COMPACT_LEVEL_BADGES: Final[dict[str, str]] = {
 
 _COMPACT_CAT_BADGES: Final[dict[str, str]] = {
     "META": "M",
-    "CONT": "C",
+    "OUT": "O",
 }
 
 _STREAMING_KINDS: Final[frozenset[str]] = frozenset({"text", "thinking"})
 
 _STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str, str]]] = {
     "content": ("content-start", "content-continue", "content-end"),
-    "thinking": ("thinking-start", "thinking-continue", "thinking-end"),
+    # wt-028-display S-3 (DA-001): the public base tag is ``think`` (not
+    # the parser-kind identifier ``thinking``); the streaming plumbing
+    # must follow the same key so ``_route_streaming`` and
+    # ``_close_block`` look up the (start, continue, end) triple
+    # against the live base_tag, not the retired internal kind name.
+    "think": ("thinking-start", "thinking-continue", "thinking-end"),
 }
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)

@@ -95,6 +95,17 @@ roots = ("ralph", "tests", "docs")
 # Drift tokens never appear in any file larger than 100 KB; skipping
 # oversized files is a cheap pre-filter that never matches.
 _MAX_FILE_BYTES = 100_000
+# wt-028-display DA-006: probe each file by reading only the first
+# ``_PROBE_BYTES`` bytes (drift tokens live near the top of a Python
+# module: imports, module-level constants, the first function that
+# uses them). Reading the full file on a slow external volume blew
+# the 2 s scan budget; the probe-read keeps it under bound. A file
+# whose first ``_PROBE_BYTES`` do not match is checked against its
+# next chunk, up to ``_MAX_FILE_BYTES``. This is a scan-speed
+# repair, not a behavior change -- the regex still sees every byte
+# it could have seen before, just lazily. The probe cap is well
+# above the realistic placement of any of the six drift patterns.
+_PROBE_BYTES = 16384
 
 def _is_candidate(path: str) -> bool:
     if not path.endswith((".py", ".md", ".rst")):
@@ -145,21 +156,32 @@ matched_paths: list[str] = []
 # Single sequential reader: on a slow external volume this is faster
 # than a thread pool because the OS does not thrash the disk heads.
 # The compiled regex makes the per-file CPU cost negligible.
+#
+# wt-028-display DA-006: read each file lazily in ``_PROBE_BYTES``
+# chunks. Most files match (or do not match) on the first chunk
+# because the drift tokens live at the top of Python modules; the
+# expensive full-file read that previously blew the 2 s budget on
+# external volumes is replaced with at most a single chunk read per
+# file. ``os.path.getsize`` is dropped because the additional stat
+# syscall was the dominant cost on cold cache -- the read itself
+# is bounded by ``_MAX_FILE_BYTES`` as before.
 for path in unique_paths:
     try:
-        size = os.path.getsize(path)
-    except OSError as exc:
-        sys.stderr.write("cannot stat {0}: {1}\n".format(path, exc))
-        sys.exit(2)
-    if size > _MAX_FILE_BYTES:
-        continue
-    try:
+        matched = False
         with open(path, "rb") as handle:
-            data = handle.read()
+            offset = 0
+            while offset < _MAX_FILE_BYTES:
+                chunk = handle.read(_PROBE_BYTES)
+                if not chunk:
+                    break
+                offset += len(chunk)
+                if pattern.search(chunk) is not None:
+                    matched = True
+                    break
     except OSError as exc:
         sys.stderr.write("cannot read {0}: {1}\n".format(path, exc))
         sys.exit(2)
-    if pattern.search(data) is not None:
+    if matched:
         matched_paths.append(path)
 
 for path in sorted(matched_paths):

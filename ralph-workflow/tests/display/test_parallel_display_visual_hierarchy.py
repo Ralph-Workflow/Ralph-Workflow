@@ -331,7 +331,7 @@ def test_visual_hierarchy_grouping_survives_at_40_columns() -> None:
     inside the body; the marker is the structural position, not
     a glyph-only prefix.
 
-    At 40 cols the call line ``[tool][u1] \u25d0 RUN <ts> u1 read_file
+    At 40 cols the call line ``[call][u1] \u25d0 RUN <ts> u1 read_file
     /tmp/example.py \u21b3`` exceeds the width so Rich wraps the body
     onto a continuation line. The tag stays on the first line and
     the tool name + result marker span the wrap. The structural
@@ -345,8 +345,8 @@ def test_visual_hierarchy_grouping_survives_at_40_columns() -> None:
     # Rich wraps long lines at 40 cols; search the joined output
     # for the structural pieces (call tag, result tag, pair marker,
     # tool name) instead of a single line containing all of them.
-    assert "[tool]" in plain, f"tool_call tag not found at 40 cols:\n{plain!r}"
-    assert "[tool-result]" in plain, f"tool_result tag not found at 40 cols:\n{plain!r}"
+    assert "[call]" in plain, f"tool_call tag not found at 40 cols:\n{plain!r}"
+    assert "[result]" in plain, f"tool_result tag not found at 40 cols:\n{plain!r}"
     assert "read_file" in plain, f"tool name not found in wrapped output:\n{plain!r}"
     # The pair correlation marker is the structural position, not
     # a glyph-only prefix. The result line carries it because the
@@ -363,9 +363,9 @@ def test_visual_hierarchy_grouping_survives_at_40_columns() -> None:
 def test_visual_hierarchy_grouping_survives_color_off() -> None:
     """S-4: hanging indent and grouping survive with color disabled."""
     plain = _hierarchy_emits_grouping_and_indent(force_terminal=False, width=120)
-    call_lines = [line for line in plain.splitlines() if "[tool]" in line and "read_file" in line]
+    call_lines = [line for line in plain.splitlines() if "[call]" in line and "read_file" in line]
     result_lines = [
-        line for line in plain.splitlines() if "[tool-result]" in line and "read_file" in line
+        line for line in plain.splitlines() if "[result]" in line and "read_file" in line
     ]
     assert call_lines, f"tool_call line not found:\n{plain!r}"
     assert result_lines, f"tool_result line not found:\n{plain!r}"
@@ -382,7 +382,7 @@ def test_visual_hierarchy_grouping_survives_at_40_columns_color_off() -> None:
     """S-4: 40-column AND color-off simultaneously (the worst case).
 
     Rich may wrap the long tool_call body across multiple lines at
-    40 cols; the structural tags (``[tool]`` / ``[tool-result]``)
+    40 cols; the structural tags (``[call]`` / ``[result]``)
     are the invariant we assert. The call / result pair correlation
     marker (``\u21b3``) survives the wrap because it is part of
     the semantic content, not the layout.
@@ -391,8 +391,8 @@ def test_visual_hierarchy_grouping_survives_at_40_columns_color_off() -> None:
     # At 40 cols / color off the call and result tags still appear
     # and the pair marker is preserved (the call tag and the
     # result tag are the structural position, not glyph-only).
-    assert "[tool]" in plain, f"tool_call tag not found:\n{plain!r}"
-    assert "[tool-result]" in plain, f"tool_result tag not found:\n{plain!r}"
+    assert "[call]" in plain, f"tool_call tag not found:\n{plain!r}"
+    assert "[result]" in plain, f"tool_result tag not found:\n{plain!r}"
     assert "read_file" in plain, f"tool name not found in wrapped output:\n{plain!r}"
     assert "\u21b3" in plain, f"pair marker lost at 40 cols / color off:\n{plain!r}"
     # No ANSI escape sequences in the color-off surface.

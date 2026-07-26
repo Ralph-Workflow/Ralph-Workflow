@@ -302,3 +302,84 @@ def test_emit_first_run_panel_degrades_at_12_rows(tmp_path: Path) -> None:
         assert corner not in out, (
             f"boxed Panel corner character {corner!r} survived at 12 rows (the floor):\n{out!r}"
         )
+
+
+# --- DA-003 (wt-028-display S-6 / AC-05): height-constrained
+# completion panel degradation. The full Rich Group of
+# rules/sections (Plan / Decisions / Activity / Commit / tail) collapses
+# to an unboxed condensed heading at the canonical 12-row floor.
+# -------------------------------------------------------------------------
+
+
+def test_emit_completion_summary_panel_degrades_to_heading_at_12_rows(
+    tmp_path: Path,
+) -> None:
+    """DA-003: at the canonical 12-row floor the completion panel collapses.
+
+    The full Rich Group of rules/sections (Plan / Decisions / Activity
+    / Commit / tail / closing rule) would consume the entire 12-row
+    working area; the condensed heading keeps the outcome title +
+    essential counts (exit trigger + agent_calls) in 4 rows or fewer.
+    """
+    from ralph.display.completion_summary import CompletionSummaryOptions
+    from ralph.display.snapshot import SnapshotContext, snapshot_from_state
+
+    display, console = _make_height_aware_display(tmp_path, height=12)
+    state = PipelineState(phase="complete")
+    display.subscriber.notify(state)
+    snapshot = snapshot_from_state(
+        state,
+        SnapshotContext(run_id="test-run", pipeline_policy=_DEFAULT_POLICY.pipeline),
+    )
+    display.emit_completion_summary_panel(
+        snapshot,
+        options=CompletionSummaryOptions(elapsed_seconds=42.0),
+    )
+    out = console.export_text()
+    assert "[run-completion]" in out, (
+        f"section rule missing at 12 rows:\n{out!r}"
+    )
+    assert "Pipeline Complete" in out, (
+        f"outcome title must survive at 12 rows:\n{out!r}"
+    )
+    assert "agent_calls=" in out, (
+        f"agent_calls count must survive at 12 rows:\n{out!r}"
+    )
+    # The Plan / Decisions / Activity / Commit rules are dropped on
+    # the constrained surface.
+    assert "Plan" not in out, (
+        f"Plan rule must be dropped at 12 rows:\n{out!r}"
+    )
+    assert "Decisions" not in out, (
+        f"Decisions rule must be dropped at 12 rows:\n{out!r}"
+    )
+    assert "Activity" not in out, (
+        f"Activity rule must be dropped at 12 rows:\n{out!r}"
+    )
+
+
+def test_emit_completion_summary_panel_keeps_full_layout_at_24_rows(
+    tmp_path: Path,
+) -> None:
+    """DA-003: at height=24 the full Rich Group layout survives."""
+    from ralph.display.completion_summary import CompletionSummaryOptions
+    from ralph.display.snapshot import SnapshotContext, snapshot_from_state
+
+    display, console = _make_height_aware_display(tmp_path, height=24)
+    state = PipelineState(phase="complete")
+    display.subscriber.notify(state)
+    snapshot = snapshot_from_state(
+        state,
+        SnapshotContext(run_id="test-run", pipeline_policy=_DEFAULT_POLICY.pipeline),
+    )
+    display.emit_completion_summary_panel(
+        snapshot,
+        options=CompletionSummaryOptions(),
+    )
+    out = console.export_text()
+    assert "[run-completion]" in out
+    assert "Pipeline Complete" in out
+    # The full layout has Decisions and Activity rules at 24 rows.
+    assert "Decisions" in out, (
+        f"Decisions rule must survive at 24 rows:\n{out!r}"
+    )

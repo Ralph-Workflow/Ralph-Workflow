@@ -102,7 +102,7 @@ def test_bare_lifecycle_tokens_produce_no_content_activity_lines(tmp_path: Path)
 
 
 def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None:
-    """A tool_use event must produce exactly one [tool] line containing tool name and path=."""
+    """A tool_use event must produce exactly one [call] line containing tool name and path=."""
     pd, buf = _make_display(tmp_path)
 
     tool_event = json.dumps(
@@ -128,10 +128,10 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
     )
     _assert_no_internal_vocabulary(out)
 
-    # Exactly one [tool] entry — no duplicate activity.
-    tool_lines = [line for line in out.splitlines() if "[tool][main]" in line]
+    # Exactly one [call] entry — no duplicate activity.
+    tool_lines = [line for line in out.splitlines() if "[call][main]" in line]
     assert len(tool_lines) == 1, (
-        f"Expected exactly 1 [tool] entry, got {len(tool_lines)}:\n{out}"
+        f"Expected exactly 1 [call] entry, got {len(tool_lines)}:\n{out}"
     )
 
 
@@ -223,7 +223,7 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
 
     # Exactly one thinking close entry — no per-fragment or preview lines.
     thinking_lines = [
-        line for line in out.splitlines() if "[thinking][main]" in line
+        line for line in out.splitlines() if "[think][main]" in line
     ]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking close line, got {len(thinking_lines)}:\n{out}"
@@ -232,10 +232,10 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
 
 
 def test_whitespace_only_thinking_delta_produces_no_thinking_output(tmp_path: Path) -> None:
-    """Whitespace-only thinking delta must not produce [thinking] output.
+    """Whitespace-only thinking delta must not produce [think] output.
 
     A whitespace-only block has zero accumulated fragments after close
-    and the close path returns early, so no [thinking] entry surfaces.
+    and the close path returns early, so no [think] entry surfaces.
     """
     pd, buf = _make_display(tmp_path)
 
@@ -257,8 +257,8 @@ def test_whitespace_only_thinking_delta_produces_no_thinking_output(tmp_path: Pa
     pd.stop()
     out = buf.getvalue()
 
-    assert "[thinking" not in out, (
-        f"[thinking tag found for whitespace content in:\n{out}"
+    assert "[think" not in out, (
+        f"[think tag found for whitespace content in:\n{out}"
     )
 
 
@@ -290,7 +290,7 @@ def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -
 
     # Exactly one thinking close entry.
     thinking_lines = [
-        line for line in out.splitlines() if "[thinking][main]" in line
+        line for line in out.splitlines() if "[think][main]" in line
     ]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking close line, got {len(thinking_lines)}:\n{out}"

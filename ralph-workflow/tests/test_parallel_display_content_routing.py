@@ -76,12 +76,12 @@ def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
     # S-7: stop() flushes the still-open thinking block as one coalesced entry.
     pd.stop()
     out = buf.getvalue()
-    assert "[thinking" in out
+    assert "[think" in out
     assert "[u]" in out
     assert "deep thought" in out
-    thinking_lines = [line for line in out.splitlines() if "[thinking][u]" in line]
+    thinking_lines = [line for line in out.splitlines() if "[think][u]" in line]
     assert len(thinking_lines) == 1, (
-        f"Expected exactly 1 [thinking] entry on close, got {len(thinking_lines)}:\\n{out}"
+        f"Expected exactly 1 [think] entry on close, got {len(thinking_lines)}:\\n{out}"
     )
 
 
@@ -212,7 +212,7 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
 
 
 def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) -> None:
-    """tool_use with input metadata renders path= on the [tool] line."""
+    """tool_use with input metadata renders path= on the [call] line."""
     pd, buf = _make_display(tmp_path)
     event = json.dumps(
         {
@@ -277,7 +277,7 @@ def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> N
     pd.stop()
     out = buf.getvalue()
     assert "[content][main]" not in out
-    assert "[thinking][main]" not in out
+    assert "[think][main]" not in out
 
 
 def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Path) -> None:
@@ -337,10 +337,10 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     out = buf.getvalue()
     assert "[content][activity]" not in out
     assert "deep reasoning here" in out
-    assert "[thinking" in out
-    thinking_lines = [line for line in out.splitlines() if "[thinking]" in line]
+    assert "[think" in out
+    thinking_lines = [line for line in out.splitlines() if "[think]" in line]
     assert len(thinking_lines) == 1, (
-        f"Expected exactly 1 [thinking] entry on close, got {len(thinking_lines)}:\\n{out}"
+        f"Expected exactly 1 [think] entry on close, got {len(thinking_lines)}:\\n{out}"
     )
 
 
@@ -371,6 +371,10 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
     assert "[content][activity]" not in out
     assert "ralph.read_file" in out
     assert out.count("ralph.read_file") == 1
+    # wt-028-display S-3 (DA-001): the public tool_use tag is ``call``,
+    # not the retired ``[tool]`` parser-kind identifier.
+    assert "[call]" in out
+    assert "[tool]" not in out
 
 
 def test_stream_parsed_agent_activity_session_sink_ignores_nested_tool_payload_session_id(

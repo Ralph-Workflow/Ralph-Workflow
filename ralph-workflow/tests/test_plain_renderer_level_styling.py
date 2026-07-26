@@ -95,12 +95,12 @@ def test_cat_badge_meta_present_on_tty() -> None:
     assert "META" in out
 
 
-def test_cat_badge_cont_present_on_tty() -> None:
+def test_cat_badge_out_present_on_tty() -> None:
     renderer, buf = _make_color_renderer()
     renderer.emit_activity_line("u", "raw", "data")
     out = buf.getvalue()
     assert "\x1b[" in out
-    assert "CONT" in out
+    assert "OUT" in out
 
 
 def test_cat_badge_plain_when_color_system_none() -> None:
