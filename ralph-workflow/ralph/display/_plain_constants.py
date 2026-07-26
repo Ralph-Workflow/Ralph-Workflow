@@ -29,6 +29,16 @@ LEVELS: Final[dict[str, str]] = {
     "fanout_join": "INFO",
 }
 
+# wt-028-display S-4 (DA-001): retired machine-vocabulary tags
+# (``content-start``/``content-continue``/``content-end``/
+# ``content-checkpoint``/``thinking-start``/``thinking-continue``/
+# ``thinking-end``/``thinking-checkpoint``/``tool-result``) deleted --
+# no emission path reads them after the close-only coalescing landed in
+# S-7. The public-facing tags that survive are the ones still emitted
+# (``phase``, ``phase-close``, ``plan``, ``plan-scope``, ``plan-steps``,
+# ``activity``, ``analysis``, ``worker``, ``result``, ``pr``, ``failure``,
+# ``artifact``, ``content``, ``thinking``, ``tool``, ``error``,
+# ``progress``, ``run-start``, ``run-end``, ``waiting``, ``status-content``).
 TAGS: Final[tuple[str, ...]] = (
     "phase",
     "phase-close",
@@ -45,21 +55,12 @@ TAGS: Final[tuple[str, ...]] = (
     "content",
     "thinking",
     "tool",
-    "tool-result",
     "error",
     "progress",
     "run-start",
     "run-end",
     "waiting",
     "status-content",
-    "content-start",
-    "content-continue",
-    "content-end",
-    "content-checkpoint",
-    "thinking-start",
-    "thinking-continue",
-    "thinking-end",
-    "thinking-checkpoint",
 )
 
 _KIND_TO_TAG: Final[dict[str, str]] = {
@@ -114,14 +115,15 @@ TAG_CATEGORY: Final[dict[str, str]] = {
     "result": "OUT",
     "error": "OUT",
     "status-content": "OUT",
-    "content-start": "OUT",
-    "content-continue": "OUT",
-    "content-end": "OUT",
-    "content-checkpoint": "OUT",
-    "thinking-start": "OUT",
-    "thinking-continue": "OUT",
-    "thinking-end": "OUT",
-    "thinking-checkpoint": "OUT",
+    # wt-028-display S-4 (DA-001): the retired machine-vocabulary
+    # entries that previously lived here (``content-start`` /
+    # ``content-continue`` / ``content-end`` / ``content-checkpoint`` /
+    # ``thinking-start`` / ``thinking-continue`` / ``thinking-end`` /
+    # ``thinking-checkpoint``) are removed -- nothing reads them
+    # after the close-only coalescing landed, and any tag the
+    # ``_build_line`` chrome consults now falls through to the
+    # default ``META`` (the chrome no longer renders the badge so
+    # the look-up result is computed-but-discarded in any case).
 }
 
 _LEVEL_THEME_KEYS: Final[dict[str, str]] = {
@@ -152,14 +154,19 @@ _COMPACT_CAT_BADGES: Final[dict[str, str]] = {
 
 _STREAMING_KINDS: Final[frozenset[str]] = frozenset({"text", "thinking"})
 
-_STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str, str]]] = {
-    "content": ("content-start", "content-continue", "content-end"),
+# wt-028-display S-4 (DA-001): the third tuple element (the retired
+# ``end_tag``) is dropped -- S-7's close-only coalescing emits one
+# coalesced entry on close and never uses the start/continue/end
+# triple as a per-line emission trio. The remaining pair carries the
+# start and continue tags the streaming-block dispatch still needs.
+_STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str]]] = {
+    "content": ("content-start", "content-continue"),
     # wt-028-display S-3 (DA-001): the public base tag is ``think`` (not
     # the parser-kind identifier ``thinking``); the streaming plumbing
     # must follow the same key so ``_route_streaming`` and
-    # ``_close_block`` look up the (start, continue, end) triple
+    # ``_close_block`` look up the (start, continue) pair
     # against the live base_tag, not the retired internal kind name.
-    "think": ("thinking-start", "thinking-continue", "thinking-end"),
+    "think": ("thinking-start", "thinking-continue"),
 }
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)

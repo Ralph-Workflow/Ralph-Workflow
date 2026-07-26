@@ -1589,10 +1589,10 @@ class ParallelDisplay:
     def _process_streaming_block(
         self,
         ctx: _StreamingCtx,
-        block_tags: tuple[str, str, str],
+        block_tags: tuple[str, str],
     ) -> tuple[str, str | None] | None:
         """Dispatch streaming block state; returns (tag, override) or None on dedup/early-return."""
-        start_tag, continue_tag, _end_tag = block_tags
+        start_tag, continue_tag = block_tags
         for other_uid in [uid for uid in self._active_block if uid != ctx.unit_id]:
             self._close_block(other_uid, ctx.timestamp)
         if ctx.unit_id not in self._active_block:
