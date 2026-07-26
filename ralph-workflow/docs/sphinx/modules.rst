@@ -1134,6 +1134,13 @@ ralph.pipeline.auto_integrate_refresh
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_remote_sync
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_remote_sync
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_terminal
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

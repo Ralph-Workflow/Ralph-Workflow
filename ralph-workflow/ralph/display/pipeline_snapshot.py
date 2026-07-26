@@ -94,3 +94,6 @@ class PipelineSnapshot:
     #: the value here -- not an error -- and the operator-facing line
     #: shows the summary so a partial push is visible.
     auto_integrate_push: str | None = None
+    #: Latest opt-in remote-sync outcome, kept separate from the free-form
+    #: push summary so both live and completion surfaces render it uniformly.
+    auto_integrate_remote_sync: str | None = None

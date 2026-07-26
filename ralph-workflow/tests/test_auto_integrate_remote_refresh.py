@@ -124,11 +124,11 @@ def test_unreachable_remote_degrades_to_local_integration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AC-03 fail-open: an unreachable origin must not fail the run."""
-    monkeypatch.setattr(auto_integrate_sync, "_has_origin", lambda _root: True)
+    monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda _root, _remote="origin": True)
     monkeypatch.setattr(
         auto_integrate_sync,
         "_fetch_target",
-        lambda _root, _target, _timeout: False,
+        lambda _root, _target, _timeout, *, remote=None: False,
     )
 
     assert (
@@ -145,14 +145,14 @@ def _inject_remote_position(
     ancestor: bool,
 ) -> None:
     """Inject a successful fetch and deterministic local/remote tips."""
-    monkeypatch.setattr(auto_integrate_sync, "_has_origin", lambda _root: True)
+    monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda _root, _remote="origin": True)
     monkeypatch.setattr(
         auto_integrate_sync,
         "_fetch_target",
-        lambda _root, _target, _timeout: True,
+        lambda _root, _target, _timeout, *, remote=None: True,
     )
     monkeypatch.setattr(
-        auto_integrate_sync, "_remote_tracking_sha", lambda _root, _target: "remote"
+        auto_integrate_sync, "_remote_tracking_sha", lambda _root, _target, _remote="origin": "remote"
     )
     monkeypatch.setattr(auto_integrate_sync, "branch_sha", lambda _root, _target: "local")
     monkeypatch.setattr(
@@ -270,11 +270,11 @@ def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(
     pointer that can be arbitrarily old. The only outcome an
     unreachable origin may produce is ``origin unreachable``.
     """
-    monkeypatch.setattr(auto_integrate_sync, "_has_origin", lambda _root: True)
+    monkeypatch.setattr(auto_integrate_sync, "_has_remote", lambda _root, _remote="origin": True)
     monkeypatch.setattr(
         auto_integrate_sync,
         "_fetch_target",
-        lambda _root, _target, _timeout: False,
+        lambda _root, _target, _timeout, *, remote=None: False,
     )
     monkeypatch.setattr(
         auto_integrate_sync,

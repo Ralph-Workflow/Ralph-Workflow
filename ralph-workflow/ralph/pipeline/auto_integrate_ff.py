@@ -295,7 +295,7 @@ def is_retryable_fast_forward_failure(reason: str) -> bool:
     return reason in _RETRYABLE_REASONS
 
 
-def maybe_push_target(
+def maybe_push_target(  # noqa: PLR0911 - one early return per None/missing-config guard; the function's contract is a chain of defensive checks before the actual push
     config: UnifiedConfig | None,
     repo_root: Path,
     target: str,
@@ -343,15 +343,33 @@ def maybe_push_target(
     general_obj: object = config.general
     if general_obj is None:
         return record
-    push_enabled_raw: object = getattr(general_obj, "auto_integrate_push_enabled", False)
-    if not (isinstance(push_enabled_raw, bool) and push_enabled_raw):
-        return record
     push_timeout_raw: object = getattr(general_obj, "auto_integrate_push_timeout_seconds", 30.0)
     push_timeout_seconds: float = (
         float(push_timeout_raw)
         if isinstance(push_timeout_raw, (int, float)) and not isinstance(push_timeout_raw, bool)
         else 30.0
     )
+    # Opt-in remote sync tier narrows the push to a single remote.
+    # When the new flag is set, route to the single-remote helper in
+    # ``auto_integrate_remote_sync``; the legacy ``auto_integrate_push_enabled``
+    # keeps fanning out across every configured remote (its deprecation
+    # warning is emitted by ``ralph.config.loader``).
+    remote_sync_raw: object = getattr(general_obj, "auto_integrate_remote_sync_enabled", False)
+    if isinstance(remote_sync_raw, bool) and remote_sync_raw:
+        from ralph.pipeline.auto_integrate_remote_sync import (
+            push_target_after_landing as _remote_push_hook,
+        )
+        try:
+            return _remote_push_hook(config, repo_root, target, record)
+        except Exception as push_exc:  # pragma: no cover -- defensive
+            logger.warning(
+                "auto_integrate: remote-sync push hook raised unexpectedly: {}",
+                push_exc,
+            )
+            return record
+    push_enabled_raw: object = getattr(general_obj, "auto_integrate_push_enabled", False)
+    if not (isinstance(push_enabled_raw, bool) and push_enabled_raw):
+        return record
     push_summary: str | None = None
     try:
         push_summary = push_branch_to_all_remotes(

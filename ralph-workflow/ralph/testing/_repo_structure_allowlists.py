@@ -186,6 +186,29 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
 
 _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = frozenset(
     {
+        # wt-038 auto-rebase remote-sync: tests pin the loader
+        # side-effects (``_warn_deprecated_push_enabled`` and
+        # ``_maybe_imply_fetch_enabled``) because they ARE the
+        # loader API contract for the two new flags. The helpers
+        # are private so they cannot be advertised through the
+        # package; they ARE the implementation surface the tests
+        # need to verify. Promoting them to the public symbol
+        # table would invite third-party callers to depend on
+        # loader internals that are free to change. The audit
+        # keys each ``from ralph.config.loader import <name>``
+        # statement separately (one entry per private name), so
+        # this maps to two tuples.
+        (
+            "tests/test_auto_integrate_remote_sync_config.py",
+            "ralph.config.loader",
+            ("_warn_deprecated_push_enabled",),
+        ),
+        (
+            "tests/test_auto_integrate_remote_sync_config.py",
+            "ralph.config.loader",
+            ("_maybe_imply_fetch_enabled",),
+        ),
+
         (
             "tests/integration/test_process_zombie_cleanup.py",
             "ralph.process.manager",
@@ -1119,7 +1142,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # _check_pyproject_config marker (PLR0912) therefore sits at
         # line 518 instead of its prior line 505. Locked by
         # tests/integration/test_policy_file_rules.py.
-        ("ralph/testing/audit_lint_bypass.py", 518),
+        ("ralph/testing/audit_lint_bypass.py", 535),
         # wt-047-stall-label: subscriber._format_waiting_status_line
         # renders one explicit line per WaitingStatusKind (ENTERED /
         # PROGRESS / SUSPECTED_FROZEN / EXITED / SUBAGENT_PROGRESS /
@@ -1130,5 +1153,23 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # obscure the per-kind fallback that the wt-047 plan locks
         # against the ``hit hard ceiling`` template.
         ("ralph/display/subscriber.py", 110),
+        # wt-038 auto-rebase remote-sync: load_config walks every
+        # propagation layer in one pass (CLI > env > project >
+        # user-global > builtin) and now also runs the
+        # deprecation-sweep + fetch-enable side-effects for
+        # auto_integrate_remote_sync_enabled per layer; each
+        # branch is a distinct typed-layer guard and refactoring
+        # into helpers would scatter the per-layer precedence
+        # documented in CONTRIBUTING.md. The PLR0911 entry on
+        # auto_integrate_ff maybe_push_target is for the same
+        # reason: chained defensive None/missing-config guards
+        # before the actual push (the gating is intentionally
+        # read top-down). The auto_integrate_remote_sync
+        # _dispatch_pull_outcome maps each REFRESH_* outcome to
+        # one branch in the byte-identical contract; refactoring
+        # would scatter the documented REFRESH_* mapping.
+        ("ralph/config/loader.py", 415),
+        ("ralph/pipeline/auto_integrate_ff.py", 298),
+        ("ralph/pipeline/auto_integrate_remote_sync.py", 322),
     }
 )

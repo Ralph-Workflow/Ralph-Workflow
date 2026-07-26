@@ -64,6 +64,17 @@ class RebaseState(RalphBaseModel):
     # legacy checkpoints load unchanged.
     last_push: str | None = None
 
+    # ``last_remote_sync`` carries the latest opt-in remote-sync
+    # outcome produced by
+    # :mod:`ralph.pipeline.auto_integrate_remote_sync`. Distinct from
+    # ``last_push`` (which is the free-form summary string) and from
+    # ``last_refresh`` (which is the observe-only outcome); the value
+    # is one of the ``REMOTE_*`` constants in that module and names
+    # the higher-level verb (`pulled`, `reconciled`, `pushed`,
+    # `push rejected`, `pending push`, ...). Defaults to ``None`` so
+    # legacy checkpoints load unchanged.
+    last_remote_sync: str | None = None
+
     # ``consecutive_conflicts`` counts unresolved integration conflicts
     # against ``last_target`` in a row. It bounds how often the
     # dev-agent conflict resolver is invoked for the same conflict (see

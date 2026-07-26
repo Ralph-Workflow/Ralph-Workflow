@@ -31,6 +31,13 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_auto_integrate_local_fleet_target_e2e.py",
     "tests/test_auto_integrate_remote_push.py",
     "tests/test_auto_integrate_remote_refresh.py",
+    "tests/test_auto_integrate_remote_sync_default_off.py",
+    "tests/test_auto_integrate_remote_sync_config.py",
+    "tests/test_auto_integrate_remote_sync_pull.py",
+    "tests/test_auto_integrate_remote_sync_push.py",
+    "tests/test_auto_integrate_remote_sync_reconcile.py",
+    "tests/test_auto_integrate_remote_sync_retry.py",
+    "tests/test_auto_integrate_remote_wait.py",
     "tests/test_auto_integrate_stateless_seam.py",
     "tests/test_auto_integrate_env_pinning.py",
     "tests/test_auto_integrate_markerless_conflicts.py",
@@ -210,16 +217,16 @@ def test_partition_selected_files_round_robin_pair_heaviest_with_lightest_at_pro
     the heaviest alone (the LPT-only failure mode that broke the 60 s
     budget on 16 workers).
 
-    With 26 E2E files and 24 shards, indices 0-25 mod 24 means shards 0
-    and 1 each receive a second E2E (file indices 24 and 25). The e2e_set
-    is sorted weight-DESC, so file index 0 (heaviest) goes to shard 0 and
-    file index 25 (lightest) also goes to shard 1. Net effect: the
-    heaviest e2e is paired with a small e2e in shard 0 instead of sitting
-    alone with a 50 s wall-clock penalty.
+    With 33 E2E files and 24 shards, indices 0-32 mod 24 mean the first 9
+    shards (indices 24-32 hit shards 0-8) each receive a second E2E. The
+    e2e_set is sorted weight-DESC, so file index 0 (heaviest) goes to
+    shard 0 and one of the lightest e2e files (indices 24-32) also lands
+    in shard 0. Net effect: the heaviest e2e is paired with another e2e
+    in shard 0 instead of sitting alone with a 50 s wall-clock penalty.
     """
     e2e_set = test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    assert len(e2e_set) == 26, (
-        "production required-auto-integrate registry has 26 files; "
+    assert len(e2e_set) == 33, (
+        "production required-auto-integrate registry has 33 files; "
         "update this test if the count changes"
     )
     # Mirror the real production weights used by partition_selected_files.
@@ -236,9 +243,9 @@ def test_partition_selected_files_round_robin_pair_heaviest_with_lightest_at_pro
     e2e_per_shard = tuple(
         sum(1 for f in shard if f in e2e_actual) for shard in shards
     )
-    # 26 E2E files round-robin across 24 shards: 2 shards get 2, 22 get 1.
-    assert e2e_per_shard.count(2) == 2
-    assert e2e_per_shard.count(1) == 22
+    # 33 E2E files round-robin across 24 shards: 9 shards get 2, 15 get 1.
+    assert e2e_per_shard.count(2) == 9
+    assert e2e_per_shard.count(1) == 15
 
     # The heaviest e2e (test_auto_integrate_recovery.py at weight ~1500)
     # must share its shard with another e2e, not sit alone.

@@ -16,6 +16,7 @@
     "fast_forwarded": false,
     "last_refresh": null,
     "last_push": null,
+    "last_remote_sync": null,
     "consecutive_conflicts": 0,
     "last_conflict_feature_sha": null,
     "last_conflict_target_sha": null,

@@ -268,6 +268,61 @@ commit = "commit"
 # [general] -- Core workflow settings
 # -----------------------------------------------------------------------------
 [general]
+# =============================================================================
+# AUTO-INTEGRATION (auto-rebase) -- keep the feature branch and the mainline
+# in lockstep.
+# ----------------------------------------------------------------------------
+# What the feature does: rebase the feature branch onto the live local target
+# at every seam, fall back to an endpoint merge on conflict (optionally
+# agent-resolved), and fast-forward the local target to the integrated feature
+# tip. On-by-default local tier (rebase + merge + fast-forward) runs at every
+# auto-integrate seam: the commit seam, every phase boundary whose worktree is
+# clean, run startup, and inside each parallel worker. The opt-in remote tier
+# (auto_integrate_remote_sync_enabled = true) extends the on-by-default local
+# tier to also keep <remote_target>/<target> in step with the local mainline
+# and to push every successful landing to the configured remote.
+#
+# When it runs (the seams): startup, pre/post planning, before/after
+# development, after a commit phase that produced a commit, every successful
+# phase boundary whose worktree is clean, and inside each manifest-launched
+# parallel worker (crash recovery, a startup catch-up and a per-phase
+# boundary of its own). A fifth seam at the Ralph-managed parallel fan-out
+# join is wired but DORMANT under bundled dispatch_mode = "agent_subagents".
+#
+# What it never does: never force-pushes; never rewrites remote history
+# (`refs/heads/<target>` only ever advances); never creates a branch from a
+# remote-tracking ref (the target is a STATELESS local-refs-only check);
+# never moves past a non-fast-forward push without first running the bounded
+# reconcile loop; never blocks pipeline work in the end-of-run waiting
+# state; never fails the run on a remote error -- transient remote
+# failures degrade to local-only integration with a recorded reason and
+# the run continues. The remote-sync tier is OFF by default.
+#
+# On-by-default local tier (auto_integrate_enabled = true): the strict-local
+# integration described above. Setting auto_integrate_enabled = false keeps
+# git behavior byte-identical to runs without auto-integration.
+#
+# Opt-in remote tier (auto_integrate_remote_sync_enabled = true): adds a
+# throttled pull that reconciles the local mainline with the configured
+# remote mainline, a push of the local mainline to the configured remote
+# after every successful local landing, and a bounded
+# fetch -> rebase-target-onto-remote -> push reconcile loop on non-fast-forward
+# rejections, with exponential jittered backoff. Never block pipeline work.
+# =============================================================================
+# auto_integrate_enabled = true            # ON by default; the on-by-default local tier. Rebases onto the current local target, falls back to endpoint merge on conflict, and fast-forwards the local target. Equality/ancestor cases are fast-forward-or-noop outcomes. Set to false for byte-identical manual git control.
+# auto_integrate_target = ""               # shared integration branch name. The default value (None) is unset -- auto-detect from origin/HEAD -> main -> master. Set to a non-empty string (e.g. "develop") to force a specific local branch; resolution is a stateless local-refs-only check.
+# auto_integrate_fetch_enabled = false     # when false (default) the auto-integration probe is local-only. When true, a bounded read-only `git fetch origin <target>` runs before each attempt purely to OBSERVE origin's position; the fetch never moves a local ref, never pushes, never affects the rebase/merge/landing.
+# auto_integrate_fetch_timeout_seconds = 10.0    # per-fetch wall-clock budget; > 0, <= 120. On timeout or any remote failure the step falls back to local-only integration and the run is never failed.
+# auto_integrate_push_enabled = false     # DEPRECATED alias for remote sync. When true it selects the single remote below; it never fans out to every configured remote.
+# auto_integrate_push_timeout_seconds = 30.0  # per-push wall-clock budget; > 0, <= 300. A timeout records an unpublished local landing and never fails the run.
+# --- opt-in remote-sync tier: setting the next key to true implies auto_integrate_fetch_enabled = true ---
+# auto_integrate_remote_sync_enabled = false   # OFF by default; the opt-in remote-sync tier. When true a throttled pull reconciles the local mainline with the configured remote mainline, every successful local landing is pushed to the configured remote, a rejected push runs the bounded reconcile-onto-remote loop with exponential jittered backoff, and a run that finishes with an unpushed target can opt into a visible end-of-run waiting state.
+# auto_integrate_remote_target = "origin"      # configured remote name to sync the local target branch against. Any configured remote is accepted; the push side only ever touches this one remote.
+# auto_integrate_remote_sync_interval_seconds = 300.0  # minimum wall-clock seconds between two PULLS for a given `(root, remote, target)` triple; 0 means every seam. A failed fetch does NOT arm the next window; only a healthy fetch arms it.
+# auto_integrate_remote_backoff_max_seconds = 300.0    # per-remote exponential jittered backoff ceiling after consecutive remote-side failures; base is auto_integrate_remote_sync_interval_seconds. Bounds the GAP between attempts; never the NUMBER of attempts.
+# auto_integrate_remote_wait_seconds = 0.0     # how long a FINISHED run may sit in the visible waiting-for-remote state when it still holds an unpushed target. 0 (default) preserves today's exit behavior verbatim -- record "landed locally, not published to <remote>: <reason>" and exit. Positive opt-ins to wait: retry on the backoff until this cap or success; interruptible.
+# auto_integrate_resolve_timeout_seconds = 900.0  # ONE wall-clock ceiling SHARED by the complete conflict-resolution operation; > 0, <= 7200. Every rebase stop, every round within a stop, and every sequential candidate agent invocation draw down this single budget.
+
 # verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
 # telemetry_enabled = true              # anonymous metadata-only telemetry is on by default. Set false to opt out. Ralph Workflow uses this data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising.
 # Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
@@ -297,11 +352,6 @@ commit = "commit"
 # agent_log_growth_seconds = 30.0                  # log-growth probe: per-run .agent/raw/{safe_id}.log not grown for this long is reported as LOG_STALE_WHILE_ALIVE. None disables.
 # agent_idle_activity_evidence_ttl_seconds = 30.0   # per-channel activity TTL; defers NO_OUTPUT_DEADLINE while MCP tool calls, subagent work, or workspace events are fresher than this TTL. Workspace evidence is collected whenever a run has a workspace_path, even when show_progress is disabled. A subagent that is alive but silent on every channel is NOT treated as activity. Set to 0.0 to disable and restore legacy stdout-only behavior. (>=0)
 # agent_workspace_change_weights = { source = 1.0, log = 0.0, cache = 0.0, artifact = 0.0, other = 0.0 }   # per-kind workspace file-change weights; values are BINARY (0.0 = drop, 1.0 = full activity). The default is conservative: only source-code changes count. Operators who relied on log-file activity to defer the verdict can opt in by setting `agent_workspace_change_weights = { log = 1.0, source = 1.0 }`. The five keys are: source (source code / documentation), log (*.log / *.tmp / *.bak / *.swp / *~ / *.pyc / *.pyo), cache (.git / __pycache__ / .pytest_cache / .mypy_cache / .ruff_cache / node_modules / .venv / .agent/tmp / .agent/raw / completion_seen_*.json), artifact (.agent/artifacts), and other (anything else). See docs/agents/timeout-policy.md for the full migration note.
-# auto_integrate_enabled = true          # enable auto-integration of feature branches with the local mainline. When true (default), the step runs at four live seams -- after every commit phase that creates a commit, at every successful phase boundary whose worktree is clean, once at run startup, and inside each manifest-launched parallel worker (crash recovery, a startup catch-up and a per-phase boundary of its own) -- rebasing onto the shared mainline (with an endpoint-merge fallback on conflict, optionally agent-resolved) and fast-forwarding the mainline ref to the feature tip. The step is a no-op in single-branch workflows via the existing skip conditions (on-target, no-commits-beyond-target, detached HEAD, missing target branch, rebase preconditions not met). A fifth seam at the Ralph-managed parallel fan-out join is wired but DORMANT under the bundled dispatch_mode = "agent_subagents", which suppresses the fan-out effect; it applies only when an operator overrides dispatch_mode. Set to false to keep git behavior byte-identical to runs without auto-integration -- useful when an operator manages integration manually.
-# auto_integrate_target = "develop"      # shared integration branch name. When set (e.g. "develop") it is used verbatim, provided that branch exists as a LOCAL branch. Resolution is a stateless local-refs-only check: a branch is never created from refs/remotes/origin/<target>, so remote state can never decide the base of a local rebase. When unset (default), the target is auto-detected: the origin/HEAD default-branch name when a local branch of that name exists, otherwise "main", otherwise "master". If no candidate resolves to an existing local branch the step skips with a recorded reason -- it never guesses a branch that is not clearly the shared mainline.
-# auto_integrate_fetch_enabled = false    # when false (default), auto-integration is strictly local: no network access, and the mainline pointer is re-observed from the local ref store -- the right setting for a fleet of linked worktrees sharing one git common directory. When true, a bounded, read-only "git fetch origin <target>" runs before each attempt purely to OBSERVE origin's position. The fetch never moves a local ref, never pushes, and never affects the rebase, merge or landing: remote state cannot change local auto-rebase behaviour in any configuration.
-# auto_integrate_fetch_timeout_seconds = 10.0  # wall-clock budget for the auto-integration fetch. On timeout or any remote failure the step falls back to local-only integration and the run is never failed by an unreachable remote. The degradation is not silent: the refresh outcome is recorded on the run state and rendered to the operator in the auto-integrate line.
-# auto_integrate_resolve_timeout_seconds = 900.0  # ONE wall-clock ceiling SHARED by the complete conflict-resolution operation during auto-integration. Every rebase stop, every round within a stop, and every sequential candidate agent invocation draw down this single budget -- none of them is granted a fresh ceiling of its own. On expiry the in-flight invocation is cut, the in-progress rebase or merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a rebase or merge in progress.
 # agent_process_monitor_enabled = true              # enable the agent-agnostic process monitor that discovers and classifies spawned subagents
 # agent_subagent_output_capture_enabled = true      # enable polling of observable subagent output streams as first-party evidence
 # agent_subagent_output_poll_interval_seconds = 1.0 # poll interval for subagent output streams (>0)
@@ -310,6 +360,7 @@ commit = "commit"
 # -----------------------------------------------------------------------------
 # [general.workflow] -- Workflow automation flags
 # -----------------------------------------------------------------------------
+
 [general.workflow]
 # checkpoint_enabled = true     # enable checkpoint/resume functionality
 # unsafe_mode = false          # merge Ralph Workflow MCP into agent MCP config instead of overwriting it

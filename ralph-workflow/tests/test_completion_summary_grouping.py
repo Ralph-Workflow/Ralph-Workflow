@@ -30,6 +30,7 @@ def _make_snapshot(
     plan_risks: tuple[str, ...] = (),
     is_terminal_success: bool = True,
     is_terminal_failure: bool = False,
+    auto_integrate_remote_sync: str | None = None,
 ) -> PipelineSnapshot:
     return PipelineSnapshot(
         phase=phase,
@@ -56,6 +57,10 @@ def _make_snapshot(
         decision_log=decision_log,
         is_terminal_success=is_terminal_success,
         is_terminal_failure=is_terminal_failure,
+        auto_integrate_action="rebased" if auto_integrate_remote_sync else None,
+        auto_integrate_target="main" if auto_integrate_remote_sync else None,
+        auto_integrate_fast_forwarded=auto_integrate_remote_sync is not None,
+        auto_integrate_remote_sync=auto_integrate_remote_sync,
     )
 
 
@@ -188,6 +193,13 @@ def test_emit_completion_summary_uses_group_format() -> None:
     out = buf.getvalue()
     assert "Pipeline Complete" in out
     assert "Decisions" in out
+
+
+def test_group_renders_remote_sync_outcome() -> None:
+    """S-7: the completion renderer exposes the same remote outcome as live activity."""
+    out = _render_group(_make_snapshot(auto_integrate_remote_sync="pushed"))
+    assert "auto-integrate:" in out
+    assert "remote: pushed" in out
 
 
 def test_group_no_markup_tags_in_output() -> None:

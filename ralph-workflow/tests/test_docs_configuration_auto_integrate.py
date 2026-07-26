@@ -86,6 +86,104 @@ def test_configuration_md_documents_true_default_for_auto_integrate_enabled() ->
     )
 
 
+def test_configuration_md_documents_auto_integrate_remote_sync_enabled_key() -> None:
+    """The operator reference MUST list the opt-in remote-sync tier key.
+
+    Pins AC-46 / S-2: a key added to ``GeneralConfig`` but not documented
+    is invisible to an operator. The row must (a) carry the ``false``
+    default so an operator can see the tier is OFF by default at a
+    glance, and (b) name the legacy replacement so operators migrating
+    from the old ``auto_integrate_push_enabled`` key can find it.
+    """
+    content = _PATH.read_text()
+    row = _row_for_key(content, "`auto_integrate_remote_sync_enabled`")
+    lowered = row.lower()
+    assert "false" in lowered, (
+        f"auto_integrate_remote_sync_enabled row must document the "
+        f"'false' default, got: {row!r}"
+    )
+    for token in (
+        "remote-sync",
+        "auto_integrate_push_enabled",
+    ):
+        assert token in lowered, (
+            f"the row must name the {token!r} surface, got: {row!r}"
+        )
+
+
+def test_configuration_md_documents_auto_integrate_remote_target_key() -> None:
+    """The configured remote name must be discoverable with its ``origin`` default.
+
+    Pins AC-46 / S-2: ``auto_integrate_remote_target`` is the only knob
+    that names WHICH remote the opt-in sync tier talks to; an operator
+    reading the docs to set up remote sync MUST find this row with its
+    default visible.
+    """
+    content = _PATH.read_text()
+    row = _row_for_key(content, "`auto_integrate_remote_target`")
+    assert "origin" in row, (
+        f"auto_integrate_remote_target row must document the 'origin' "
+        f"default, got: {row!r}"
+    )
+
+
+def test_configuration_md_documents_auto_integrate_remote_sync_interval_key() -> None:
+    """The pull throttle interval must be discoverable with its ``300.0`` default.
+
+    Pins AC-46 / S-2: ``0 means every seam`` is the load-bearing contract
+    on the interval, and an operator reading the docs must see it.
+    """
+    content = _PATH.read_text()
+    row = _row_for_key(content, "`auto_integrate_remote_sync_interval_seconds`")
+    assert "300.0" in row, (
+        f"auto_integrate_remote_sync_interval_seconds row must document the "
+        f"300.0 default, got: {row!r}"
+    )
+    lowered = row.lower()
+    assert "every seam" in lowered, (
+        f"the row must document that 0 means every seam, got: {row!r}"
+    )
+
+
+def test_configuration_md_documents_auto_integrate_remote_backoff_max_key() -> None:
+    """The backoff ceiling must be discoverable with its ``300.0`` default.
+
+    Pins AC-46 / S-2: the ceiling bounds the GAP between attempts, NEVER
+    the NUMBER; the doc must say so explicitly so an operator sizing the
+    knob does not read it as a max attempt count.
+    """
+    content = _PATH.read_text()
+    row = _row_for_key(content, "`auto_integrate_remote_backoff_max_seconds`")
+    assert "300.0" in row, (
+        f"auto_integrate_remote_backoff_max_seconds row must document the "
+        f"300.0 default, got: {row!r}"
+    )
+    lowered = row.lower()
+    assert "never the number" in lowered, (
+        f"the row must say the ceiling bounds the gap, not the attempt count, "
+        f"got: {row!r}"
+    )
+
+
+def test_configuration_md_documents_auto_integrate_remote_wait_seconds_key() -> None:
+    """The end-of-run wait budget must be discoverable with its ``0.0`` default.
+
+    Pins AC-46 / S-2: the ``0 default preserves today's exit behavior`` claim
+    is the load-bearing contract; an operator reading the docs MUST see that
+    the default is a no-wait.
+    """
+    content = _PATH.read_text()
+    row = _row_for_key(content, "`auto_integrate_remote_wait_seconds`")
+    assert "0.0" in row, (
+        f"auto_integrate_remote_wait_seconds row must document the 0.0 "
+        f"default, got: {row!r}"
+    )
+    lowered = row.lower()
+    assert "do not wait" in lowered, (
+        f"the row must say the 0 default means do not wait, got: {row!r}"
+    )
+
+
 def test_configuration_md_documents_auto_integrate_resolve_timeout_key() -> None:
     """The conflict-resolution ceiling must be discoverable with its default.
 

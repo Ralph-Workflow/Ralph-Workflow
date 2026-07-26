@@ -139,6 +139,73 @@ def _push_to_remote(
     return True, ""
 
 
+def push_branch_to_single_remote(
+    repo_root: Path,
+    branch: str,
+    *,
+    remote: str,
+    timeout_seconds: float,
+) -> str:
+    """Push ``refs/heads/<branch>`` to ONE configured remote; never raises.
+
+    The opt-in remote-sync tier narrows :func:`push_branch_to_all_remotes`
+    to the single ``auto_integrate_remote_target`` so the operator's
+    decision to ``fetch from origin, push to origin`` is auditable as
+    one remote. The push is fail-open and uses the same non-force
+    refspec ``refs/heads/<branch>:refs/heads/<branch>`` as the multi-remote
+    helper; a rejected push (or any other failure) returns a short
+    human-readable summary and never raises.
+
+    Outcomes:
+
+    * **Remote not configured** -- returns
+      ``"remote '<remote>' not configured"`` without contacting the
+      network. The local integration still landed; the remote sync
+      step recorded the absence and the run continues.
+    * **Push succeeded** -- returns
+      ``"pushed <branch> to <remote>"``.
+    * **Push failed** -- returns
+      ``"push of <branch> to <remote> failed: <detail>"`` so the
+      run can render the cause on the ``auto-integrate:`` line and
+      ``RebaseState.last_push``.
+
+    The push is the only refspec ``refs/heads/<branch>:refs/heads/<branch>``
+    so :program:`git push` rejects anything that would require replacing
+    remote history. ``run_git`` forces
+    ``GIT_TERMINAL_PROMPT=0``/``GCM_INTERACTIVE=Never`` so a missing
+    credential fails fast instead of hanging the agent.
+    """
+    if not isinstance(remote, str) or not remote.strip():
+        return "remote '' not configured"
+    if not _list_remotes(repo_root).__contains__(remote):
+        # ``git remote get-url <remote>`` is the structured way to ask,
+        # but enumeration of the configured names is enough for the
+        # operator-visible summary.
+        try:
+            existence = run_git(
+                ("remote", "get-url", remote),
+                cwd=repo_root,
+                label=f"git-{remote}-url",
+            )
+        except Exception:
+            existence = None
+        if existence is None or existence.returncode != 0:
+            return f"remote '{remote}' not configured"
+    ok, detail = _push_to_remote(
+        repo_root, remote, branch, timeout_seconds=timeout_seconds
+    )
+    if ok:
+        return f"pushed {branch} to {remote}"
+    one_line = " ".join(detail.splitlines()) or "push failed"
+    logger.warning(
+        "auto_integrate_push: push of '{}' to '{}' failed: {}",
+        branch,
+        remote,
+        one_line,
+    )
+    return f"push of {branch} to {remote} failed: {one_line}"
+
+
 def push_branch_to_all_remotes(
     repo_root: Path,
     branch: str,
@@ -197,4 +264,6 @@ def push_branch_to_all_remotes(
     return f"pushed {branch} to {succeeded}/{total} remotes ({failed_label} failed)"
 
 
-__all__ = ["push_branch_to_all_remotes"]
+__all__ = ["push_branch_to_all_remotes", "push_branch_to_single_remote"]
+
+

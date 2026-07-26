@@ -192,6 +192,7 @@ def snapshot_from_state(
         auto_integrate_target=state.rebase.last_target,
         auto_integrate_fast_forwarded=state.rebase.fast_forwarded,
         auto_integrate_push=state.rebase.last_push,
+        auto_integrate_remote_sync=state.rebase.last_remote_sync,
     )
 
 

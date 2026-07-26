@@ -193,6 +193,92 @@ class GeneralConfig(RalphBaseModel):
             " does not consume the budget of a fast one."
         ),
     )
+    auto_integrate_remote_sync_enabled: bool = Field(
+        default=False,
+        description=(
+            "OFF by default: when false (the default), auto-integration is"
+            " strictly local -- no `git fetch`, no `git push`, and no"
+            " remote-driven rebase or reconcile happens. Every existing"
+            " Part-A integration contract is preserved byte-identically:"
+            " git behavior with this flag false is identical to a run"
+            " on a previous version. Setting it to true opts the run"
+            " into the opt-in remote-sync tier: a throttled"
+            " `git fetch <remote_target> <target>` reconciles the local"
+            " mainline with the remote mainline before each seam, and"
+            " after every successful local landing the local target is"
+            " pushed to the single `auto_integrate_remote_target`. A"
+            " rejected push is reconciled (rebase local target onto"
+            " remote target) and re-attempted on a bounded, jittered,"
+            " exponential backoff. A run that finishes with an unpushed"
+            " target can opt into a visible waiting state via"
+            " `auto_integrate_remote_wait_seconds > 0`. Remote state"
+            " NEVER affects the rebase or merge base in any"
+            " configuration unless this flag is true, and turning it"
+            " on implies `auto_integrate_fetch_enabled = true` for the"
+            " freshness probe."
+        ),
+    )
+    auto_integrate_remote_target: str = Field(
+        default="origin",
+        description=(
+            "The configured remote name to sync the local target branch"
+            ' against. Defaults to "origin"; any configured remote'
+            " name is accepted. When the named remote is not configured"
+            " in this repository, remote sync degrades to local-only"
+            " integration with a recorded skip reason -- it never"
+            " raises. The push side only ever touches this one remote"
+            " (deprecated `auto_integrate_push_enabled = true` did"
+            " fan out to every configured remote; this flag replaces"
+            " that fan-out with single-remote semantics)."
+        ),
+    )
+    auto_integrate_remote_sync_interval_seconds: float = Field(
+        default=300.0,
+        ge=0.0,
+        description=(
+            "Minimum wall-clock seconds between two PULLS for a given"
+            " `(repo root, remote, target)` triple. 0 means every seam."
+            " The push side is NOT throttled: it follows successful"
+            " landings, which are already bounded by the seams. A"
+            " failed fetch does NOT arm the next window; only a"
+            " healthy fetch arms it, so a transient blip never buys a"
+            " whole interval of unrefreshed probes."
+        ),
+    )
+    auto_integrate_remote_backoff_max_seconds: float = Field(
+        default=300.0,
+        ge=0.0,
+        description=(
+            "Upper bound on the per-remote exponential, jittered backoff"
+            " applied after consecutive remote-side failures, both"
+            " between seams and inside the end-of-run waiting state."
+            " The base is `auto_integrate_remote_sync_interval_seconds`;"
+            " consecutive failures widen the gap exponentially with"
+            " jitter, capped at this ceiling. Any successful remote"
+            " interaction resets the backoff to the base interval. This"
+            " bounds the GAP between attempts; it never bounds their"
+            " NUMBER -- a transient failure never stops a later seam"
+            " from trying again."
+        ),
+    )
+    auto_integrate_remote_wait_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "How long a FINISHED run may sit in the visible"
+            " waiting-for-remote state when it still holds an unpushed"
+            " target. 0 (default) means do not wait: preserve today's"
+            ' exit behavior verbatim -- record "landed locally, not'
+            ' published to <remote>: <reason>" and exit. Any positive'
+            " value opts the run into waiting: retry the"
+            " fetch -> reconcile -> push sequence on the exponential"
+            " jittered backoff capped by"
+            " `auto_integrate_remote_backoff_max_seconds`, until this"
+            " cap is reached or the push succeeds; the waiting state"
+            " is interruptible by the existing interrupt/exit-pause"
+            " path and never blocks the pipeline while work remains."
+        ),
+    )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,

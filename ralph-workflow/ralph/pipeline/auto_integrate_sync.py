@@ -2,7 +2,7 @@
 
 This is the ONLY code path in ``ralph/`` that may contact a remote, and
 it contacts it strictly read-only: ``git fetch`` updates
-``refs/remotes/origin/<target>`` and NOTHING else. Remote state must
+``refs/remotes/<remote>/<target>`` and NOTHING else. Remote state must
 never affect a local rebase, merge or landing: the module never moves
 ``refs/heads/<target>``, never touches a worktree, never pushes. The
 authoritative mainline pointer is always the LOCAL ref -- in the
@@ -20,6 +20,11 @@ Every failure is fail-open: an absent remote, an unreachable host, a
 timeout or a diverged history all leave the repository untouched, so
 integration proceeds against the local ref exactly as it would have
 without the probe.
+
+The remote name is parameterized (``origin`` by default for
+backwards compatibility, any configured remote name when remote sync is
+opted into) so the same probe services both the legacy observe-only
+``origin`` probe and the opt-in ``auto_integrate_remote_target`` sync.
 """
 
 from __future__ import annotations
@@ -34,6 +39,11 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 if TYPE_CHECKING:
     from pathlib import Path
 
+#: Default remote name for the observe-only probe. ``origin`` matches the
+#: clone topology every existing run started with; the opt-in remote
+#: sync tier configures its remote via ``auto_integrate_remote_target``.
+DEFAULT_REFRESH_REMOTE = "origin"
+
 #: Typed outcomes of :func:`refresh_target_from_remote`. The refresh is
 #: fail-open by design -- an unreachable remote degrades to local-only
 #: integration rather than failing the run -- so the outcome is the ONLY
@@ -42,6 +52,7 @@ if TYPE_CHECKING:
 #: ``RebaseState.last_refresh`` and rendered in the auto-integrate line.
 REFRESH_DISABLED = "fetch disabled"
 REFRESH_NO_ORIGIN = "no origin remote"
+REFRESH_NO_REMOTE = "no remote configured"
 REFRESH_UNREACHABLE = "origin unreachable"
 REFRESH_NO_REMOTE_BRANCH = "no remote branch"
 REFRESH_NO_LOCAL_BRANCH = "no local branch"
@@ -72,12 +83,14 @@ REFRESH_LOCAL_FLEET = "local fleet"
 REFRESH_SUPPRESSED = "refresh suppressed by throttle"
 
 __all__ = [
+    "DEFAULT_REFRESH_REMOTE",
     "REFRESH_ALREADY_CURRENT",
     "REFRESH_DISABLED",
     "REFRESH_DIVERGED",
     "REFRESH_LOCAL_FLEET",
     "REFRESH_NO_LOCAL_BRANCH",
     "REFRESH_NO_ORIGIN",
+    "REFRESH_NO_REMOTE",
     "REFRESH_NO_REMOTE_BRANCH",
     "REFRESH_ORIGIN_AHEAD",
     "REFRESH_REFRESHED",
@@ -121,77 +134,92 @@ def refresh_target_from_remote(
     target: str,
     *,
     timeout_seconds: float,
+    remote: str = DEFAULT_REFRESH_REMOTE,
 ) -> str:
-    """Observe the freshness of ``refs/heads/<target>``, fetching origin if any.
+    """Observe the freshness of ``refs/heads/<target>``, fetching ``remote`` if any.
 
     Returns one of the ``REFRESH_*`` outcomes. Never raises, never
     pushes, and NEVER moves a local ref: the fetch updates only the
     remote-tracking ref, and the comparison below is pure reporting.
-    Remote state must not affect local rebase operations, so an origin
-    observed strictly ahead is recorded as
+    Remote state must not affect local rebase operations, so an
+    origin observed strictly ahead is recorded as
     :data:`REFRESH_ORIGIN_AHEAD` and the local ref -- the authoritative
     pointer every local decision uses -- is left exactly where the
     local fleet put it.
-    """
-    if not _has_origin(repo_root):
-        return _observe_without_origin(repo_root, target)
 
-    if not _fetch_target(repo_root, target, timeout_seconds):
-        # A cached ``refs/remotes/origin/<target>`` from an earlier,
-        # successful fetch is NOT evidence of a fresh origin read: it
+    Args:
+        repo_root: Repository root in which to run the probe.
+        target: Branch whose freshness to observe.
+        timeout_seconds: Per-attempt wall-clock fetch budget.
+        remote: The remote to fetch from. Defaults to ``origin`` for
+            backwards compatibility with the observe-only probe that
+            shipped first; the opt-in remote-sync tier passes the
+            configured ``auto_integrate_remote_target`` here.
+    """
+    if not _has_remote(repo_root, remote):
+        return _observe_without_remote(repo_root, target, remote)
+
+    if not _fetch_target(repo_root, target, timeout_seconds, remote=remote):
+        # A cached ``refs/remotes/<remote>/<target>`` from an earlier,
+        # successful fetch is NOT evidence of a fresh remote read: it
         # can be arbitrarily old. Reporting anything but UNREACHABLE
         # here would assert a freshness this call never established.
         logger.debug(
-            "auto_integrate: fetch of '{}' failed; origin unreachable",
+            "auto_integrate: fetch of '{}' from '{}' failed; remote unreachable",
             target,
+            remote,
         )
         return REFRESH_UNREACHABLE
 
-    return _classify_remote_position(repo_root, target)
+    return _classify_remote_position(repo_root, target, remote)
 
 
-def _observe_without_origin(repo_root: Path, target: str) -> str:
-    """Report freshness for a repository that has no ``origin`` remote.
+def _observe_without_remote(repo_root: Path, target: str, remote: str) -> str:
+    """Report freshness for a repository that has no ``remote`` configured.
 
-    'No origin' is not the same as 'no fresh pointer'. Ralph's own agent
+    'No remote' is not the same as 'no fresh pointer'. Ralph's own agent
     fleet runs as linked worktrees over one git common directory with no
     remote at all, and sibling agents advance ``refs/heads/<target>``
     there continuously. So the local ref is re-observed and
-    :data:`REFRESH_LOCAL_FLEET` is reported.
-    :data:`REFRESH_NO_ORIGIN` survives for the genuinely unobservable
-    case: no remote AND no such local branch.
+    :data:`REFRESH_LOCAL_FLEET` is reported. The ``REFRESH_NO_ORIGIN``
+    outcome survives for the legacy observe-only path where ``remote``
+    is ``origin``; ``REFRESH_NO_REMOTE`` is the parametrized equivalent
+    used by remote sync with a custom remote.
     """
     observed = observe_target_sha(repo_root, target)
     if observed is None:
         logger.debug(
-            "auto_integrate: no origin remote and no local '{}'; nothing to observe",
+            "auto_integrate: no remote '{}' and no local '{}'; nothing to observe",
+            remote,
             target,
         )
-        return REFRESH_NO_ORIGIN
+        return REFRESH_NO_ORIGIN if remote == DEFAULT_REFRESH_REMOTE else REFRESH_NO_REMOTE
     logger.debug(
-        "auto_integrate: no origin remote; observed local '{}' at {}",
+        "auto_integrate: no remote '{}'; observed local '{}' at {}",
+        remote,
         target,
         observed,
     )
     return REFRESH_LOCAL_FLEET
 
 
-def _classify_remote_position(repo_root: Path, target: str) -> str:
-    """Name where origin sits relative to the authoritative local ref.
+def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
+    """Name where ``remote`` sits relative to the authoritative local ref.
 
     Pure observation over refs a successful fetch just updated: no
     branch in this function mutates anything. The strict-ancestor probe
-    distinguishes an origin that is simply ahead (reported, not
+    distinguishes a remote that is simply ahead (reported, not
     applied) from one that diverged; both leave the local ref alone,
     because the local ref is the pointer local rebases are FOR.
     """
-    remote_sha = _remote_tracking_sha(repo_root, target)
+    remote_sha = _remote_tracking_sha(repo_root, target, remote)
     if remote_sha is None:
         # Reached only after a SUCCESSFUL fetch, so the remote
         # genuinely does not carry this branch -- the unreachable case
         # returned before this function was called.
         logger.debug(
-            "auto_integrate: no remote-tracking ref for '{}'; nothing to observe",
+            "auto_integrate: no remote-tracking ref for '{}/{}'; nothing to observe",
+            remote,
             target,
         )
         return REFRESH_NO_REMOTE_BRANCH
@@ -201,16 +229,18 @@ def _classify_remote_position(repo_root: Path, target: str) -> str:
         logger.debug("auto_integrate: local branch '{}' absent", target)
         return REFRESH_NO_LOCAL_BRANCH
     if local_sha == remote_sha:
-        logger.debug("auto_integrate: '{}' already matches origin", target)
+        logger.debug("auto_integrate: '{}' already matches remote '{}'", target, remote)
         return REFRESH_ALREADY_CURRENT
     if not is_ancestor(repo_root, local_sha, remote_sha):
         logger.debug(
-            "auto_integrate: origin/{} diverged from the local ref; local kept",
+            "auto_integrate: {}/{} diverged from the local ref; local kept",
+            remote,
             target,
         )
         return REFRESH_DIVERGED
     logger.debug(
-        "auto_integrate: origin/{} is ahead of the local ref; local kept ({} != {})",
+        "auto_integrate: {}/{} is ahead of the local ref; local kept ({} != {})",
+        remote,
         target,
         local_sha,
         remote_sha,
@@ -218,21 +248,35 @@ def _classify_remote_position(repo_root: Path, target: str) -> str:
     return REFRESH_ORIGIN_AHEAD
 
 
-def _has_origin(repo_root: Path) -> bool:
-    """True when an ``origin`` remote is configured; no network call."""
+def _has_remote(repo_root: Path, remote: str) -> bool:
+    """True when ``remote`` is configured; no network call.
+
+    Filters empty / whitespace names defensively -- an empty remote
+    name on the legacy observe-only path is the same as "no origin",
+    just rendered differently for the operator. Anything else is
+    decided from a real ``git remote get-url`` query.
+    """
+    if not isinstance(remote, str) or not remote.strip():
+        return False
     result = run_git(
-        ("remote", "get-url", "origin"),
+        ("remote", "get-url", remote),
         cwd=repo_root,
-        label="git-origin-url",
+        label=f"git-{remote}-url",
     )
     return result.returncode == 0
 
 
-def _fetch_target(repo_root: Path, target: str, timeout_seconds: float) -> bool:
-    """Fetch exactly one branch from origin, bounded and fail-open.
+def _fetch_target(
+    repo_root: Path,
+    target: str,
+    timeout_seconds: float,
+    *,
+    remote: str,
+) -> bool:
+    """Fetch exactly one branch from ``remote``, bounded and fail-open.
 
     Returns whether the fetch itself succeeded. The fetch touches ONLY
-    ``refs/remotes/origin/<target>``; no local ref is examined, moved
+    ``refs/remotes/<remote>/<target>``; no local ref is examined, moved
     or created here. A failure ENDS the refresh with
     :data:`REFRESH_UNREACHABLE`. ``run_git`` already forces
     ``GIT_TERMINAL_PROMPT=0`` and ``GCM_INTERACTIVE=Never``, so a
@@ -240,23 +284,25 @@ def _fetch_target(repo_root: Path, target: str, timeout_seconds: float) -> bool:
     """
     try:
         result = run_git(
-            ("fetch", "--quiet", "origin", "--", target),
+            ("fetch", "--quiet", remote, "--", target),
             cwd=repo_root,
-            label="git-fetch-target",
+            label=f"git-fetch-target-{remote}",
             options=GitRunOptions(timeout=timeout_seconds),
         )
     except Exception as fetch_exc:
-        logger.debug("auto_integrate: fetch of '{}' failed: {}", target, fetch_exc)
+        logger.debug(
+            "auto_integrate: fetch of '{}' from '{}' failed: {}", target, remote, fetch_exc
+        )
         return False
     return result.returncode == 0
 
 
-def _remote_tracking_sha(repo_root: Path, target: str) -> str | None:
-    """SHA of ``refs/remotes/origin/<target>``, or None when absent."""
+def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | None:
+    """SHA of ``refs/remotes/<remote>/<target>``, or None when absent."""
     result = run_git(
-        ("rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{target}"),
+        ("rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{target}"),
         cwd=repo_root,
-        label="git-remote-tracking-sha",
+        label=f"git-remote-tracking-sha-{remote}",
     )
     if result.returncode != 0:
         return None

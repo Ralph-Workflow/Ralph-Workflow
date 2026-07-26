@@ -15,6 +15,15 @@ _ACTION_REBASED = "rebased"
 _ACTION_MERGED = "merged"
 _ACTION_CONFLICT = "conflict"
 _ACTION_RECOVERED = "recovered"
+#: Remote-sync verb recorded on ``RebaseState.last_remote_sync`` by the
+#: opt-in remote sync tier. Rendered as a trailing ``[remote: <verb>]``
+#: suffix on the live line and the completion summary, so the
+#: operator sees the pull/reconcile/push outcome alongside the local
+#: land without changing the headline action.
+_ACTION_PULLED = "pulled"
+_ACTION_RECONCILED = "reconciled"
+_ACTION_PUSHED = "pushed"
+_ACTION_PUSH_REJECTED = "push rejected"
 
 
 def _fast_forward_suffix(
@@ -61,6 +70,29 @@ def _push_suffix(push: str | None) -> str:
     return f" [push: {push}]" if push else ""
 
 
+def _remote_suffix(remote_sync: str | None) -> str:
+    """Append the opt-in remote-sync verb, when one was recorded.
+
+    The verb is one of the ``REMOTE_*`` constants in
+    :mod:`ralph.pipeline.auto_integrate_remote_sync`. Rendered as a
+    single trailing ``[remote: <verb>]`` so the operator sees the
+    pull / reconcile / push outcome alongside the local land without
+    changing the headline action. Distinct from :func:`_push_suffix`,
+    which carries the free-form push summary string.
+    """
+    if not remote_sync:
+        return ""
+    if remote_sync == _ACTION_PULLED:
+        return " [remote: pulled]"
+    if remote_sync == _ACTION_RECONCILED:
+        return " [remote: reconciled with origin]"
+    if remote_sync == _ACTION_PUSHED:
+        return " [remote: pushed]"
+    if remote_sync == _ACTION_PUSH_REJECTED:
+        return " [remote: push rejected]"
+    return f" [remote: {remote_sync}]"
+
+
 def format_auto_integrate_message(
     action: str | None,
     target: str | None,
@@ -69,6 +101,7 @@ def format_auto_integrate_message(
     fast_forwarded: bool = False,
     refresh: str | None = None,
     push: str | None = None,
+    remote_sync: str | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
@@ -134,7 +167,7 @@ def format_auto_integrate_message(
     else:
         message = f"{normalized}"
 
-    return message + _refresh_suffix(refresh) + _push_suffix(push)
+    return message + _refresh_suffix(refresh) + _push_suffix(push) + _remote_suffix(remote_sync)
 
 
 __all__ = ["format_auto_integrate_message"]
