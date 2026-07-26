@@ -23,7 +23,9 @@ type DocumentPredicate = Callable[[ParsedDocument], bool]
 type DocumentMapper = Callable[[ParsedDocument], Content]
 type ContentNormalizer = Callable[[Content], Content]
 type DocumentValidator = Callable[[ParsedDocument], list[Diagnostic]]
+type TextValidator = Callable[[str], list[Diagnostic]]
 type MinimalVariantParser = Callable[[ParsedDocument], tuple[Content | None, list[Diagnostic]]]
+type SeverityPolicy = Callable[[list[Diagnostic]], None]
 
 
 _BODY_GRAMMAR_RULES = frozenset({"MD001", "MD002", "MD003", "MD004"})
@@ -57,6 +59,8 @@ class MdArtifactSpec:
     allow_unknown_sections: bool = False
     allow_nested_headings: bool = False
     structured_body: DocumentPredicate | None = None
+    validate_text: TextValidator | None = None
+    severity_policy: SeverityPolicy | None = None
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
@@ -65,6 +69,14 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         text,
         allow_nested_headings=spec.allow_nested_headings,
     )
+    if spec.validate_text is not None:
+        # Spec-level text validators run after the parser so the document
+        # state is available, but before structure validation so a
+        # text-level rejection short-circuits before any other check
+        # fires. The plan spec uses this hook for the closed-list
+        # not-a-plan detector; other specs leave it unset so this
+        # branch is a no-op for them.
+        diagnostics.extend(spec.validate_text(text))
     _teach_duplicate_closed_frontmatter_vocabulary(diagnostics, spec)
     structured_body = spec.structured_body is None or spec.structured_body(document)
     if not structured_body:
@@ -93,18 +105,71 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         and structured_body
     ):
         diagnostics.extend(spec.validate_document(document))
+    if spec.severity_policy is not None:
+        # The plan-scoped policy demotes content-shape findings (PLAN021,
+        # PLAN022, REF001-004, the pydantic branch of SPEC010, ...) from
+        # error to warning. Applying it after every diagnostic has been
+        # gathered (including the pydantic-side SPEC010 raised below) keeps
+        # the advisory-wearing-an-error-label failure mode the brief is
+        # designed to prevent closed off in this code path.
+        spec.severity_policy(diagnostics)
     if not _has_errors(diagnostics):
         try:
-            content = minimal_content if minimal_content is not None else spec.to_content(document)
-            normalized = spec.normalize_content(content)
+            raw_content = (
+                minimal_content if minimal_content is not None else spec.to_content(document)
+            )
+            return spec.normalize_content(raw_content), diagnostics
         except MarkdownArtifactError as exc:
             diagnostics.extend(exc.diagnostics)
+            if spec.severity_policy is not None:
+                spec.severity_policy(diagnostics)
+            # Best-effort: if the markdown mapper's diagnostics were all
+            # demoted to warning, persist the raw mapped content so a
+            # warnings-only plan still reaches downstream consumers.
+            if not _has_errors(diagnostics) and minimal_content is None:
+                return _best_effort_content(spec, document, diagnostics)
             return {}, diagnostics
         except (TypeError, ValueError) as exc:
             diagnostics.append(_normalizer_diagnostic(document, str(exc), spec.artifact_type))
+            if spec.severity_policy is not None:
+                spec.severity_policy(diagnostics)
+            # Best-effort: if the pydantic-side SPEC010 was demoted to
+            # warning, persist the raw mapped content so consumers still
+            # see what the markdown side produced.
+            if not _has_errors(diagnostics) and minimal_content is None:
+                return _best_effort_content(spec, document, diagnostics)
             return {}, diagnostics
-        return normalized, diagnostics
     return {}, diagnostics
+
+
+def _best_effort_content(
+    spec: MdArtifactSpec,
+    document: ParsedDocument,
+    diagnostics: list[Diagnostic],
+) -> tuple[Content, list[Diagnostic]]:
+    """Return the raw mapped content when only warnings remain.
+
+    Used when the canonical normalizer raised a finding the plan-scoped
+    policy has demoted to warning: the document has no blocking errors
+    but its canonical content fails pydantic or section-shape. Consumers
+    (development_result proof readers, work-unit dispatch) are defensive
+    about partial content; persisting the raw mapped dict keeps the
+    warnings-only document visible to them instead of collapsing it to
+    ``{}`` and forcing the agent to lose the planning substance to a
+    shape complaint.
+    """
+    try:
+        raw_content = spec.to_content(document)
+    except MarkdownArtifactError as exc:
+        for diagnostic in exc.diagnostics:
+            if diagnostic not in diagnostics:
+                diagnostics.append(diagnostic)
+        if spec.severity_policy is not None:
+            spec.severity_policy(diagnostics)
+        if not _has_errors(diagnostics):
+            return {}, diagnostics
+        return {}, diagnostics
+    return raw_content, diagnostics
 
 
 def _validate_structure(

@@ -70,6 +70,10 @@ from ralph.mcp.artifacts.markdown.specs._plan_evaluatability import (
     is_specific_expected_output,
 )
 from ralph.mcp.artifacts.markdown.specs._plan_evidence import evidence_content
+from ralph.mcp.artifacts.markdown.specs._plan_not_a_plan import (
+    apply_plan_severity_policy,
+    detect_not_a_plan,
+)
 from ralph.mcp.artifacts.markdown.specs._plan_steps import (
     resolve_step_references,
     step_number_map,
@@ -297,7 +301,6 @@ def _item_fields(
     prose_allowed: bool = True,
     strict_known_fields: bool = False,
 ) -> ParsedFields:
-    first_diagnostic = len(diagnostics)
     fields = parse_fields(
         item.fields,
         table,
@@ -306,16 +309,12 @@ def _item_fields(
         prose_allowed=prose_allowed,
         diagnostics=diagnostics,
     )
-    if strict_known_fields:
-        for index in range(first_diagnostic, len(diagnostics)):
-            diagnostic = diagnostics[index]
-            if diagnostic.rule_id == "PLAN020" and diagnostic.severity == "warning":
-                diagnostics[index] = Diagnostic(
-                    diagnostic.line,
-                    diagnostic.section,
-                    diagnostic.rule_id,
-                    diagnostic.message,
-                )
+    # ``strict_known_fields`` is kept as a parameter for downstream callers
+    # that still want to be told the field was consumed, but the
+    # advisory-by-default policy (see ``_plan_not_a_plan``) demotes
+    # fan-out PLAN020 findings to warning rather than re-promoting them
+    # to error. The plan-scoped severity policy covers the demotion
+    # uniformly; this hook stays a no-op for warning-severity findings.
     return fields
 
 
@@ -546,13 +545,17 @@ def _check_step_contract(
                     line,
                     "Steps",
                     "PLAN020",
-                    _consumer_rule_message(
+                    _advisory_message(
                         "PLAN020",
                         f"{context} verification must not invoke a shell interpreter directly",
+                        "the bounded-exec safety policy forbids shell "
+                        "interpreter invocations (subprocess.run is invoked "
+                        "without shell=True); a shell-prefixed command "
+                        "bypasses the policy at every subprocess call site",
                         "rewriting the command as a direct executable path "
                         "(e.g. 'pytest tests/x.py -q' instead of 'bash -c ...')",
-                        _BOUNDED_EXEC_SAFETY_CONSUMER,
                     ),
+                    "warning",
                 )
             )
         elif not is_concrete_command(verify):
@@ -845,13 +848,17 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
                         item.line,
                         "Verification",
                         "PLAN020",
-                        _consumer_rule_message(
+                        _advisory_message(
                             "PLAN020",
                             "verification method must not invoke a shell interpreter directly",
+                            "the bounded-exec safety policy forbids shell "
+                            "interpreter invocations (subprocess.run is invoked "
+                            "without shell=True); a shell-prefixed method "
+                            "bypasses the policy at every subprocess call site",
                             "rewriting the method as a direct executable path "
                             "(e.g. 'pytest tests/x.py -q' instead of 'bash -c ...')",
-                            _BOUNDED_EXEC_SAFETY_CONSUMER,
                         ),
+                        "warning",
                     )
                 )
             elif not is_concrete_verification(item.text, expect.text):
@@ -1109,6 +1116,7 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
 
 def _to_content(document: ParsedDocument) -> Content:
     content, diagnostics = _analyze(document)
+    apply_plan_severity_policy(diagnostics)
     errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
     if errors:
         raise MarkdownArtifactError(errors)
@@ -1116,7 +1124,15 @@ def _to_content(document: ParsedDocument) -> Content:
 
 
 def _document_warnings(document: ParsedDocument) -> list[Diagnostic]:
+    """Plan-scoped ``validate_document`` hook for :func:`parse_and_validate`.
+
+    Returns the advisory-severity subset of the analysis output. The
+    severity policy is applied before the filter so that findings the
+    policy demotes from error to warning (e.g. ``MD002``, ``PLAN021``,
+    ``REF004``) reach the diagnostic list and override ledger.
+    """
     _, diagnostics = _analyze(document)
+    apply_plan_severity_policy(diagnostics)
     return [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
 
 
@@ -1132,19 +1148,44 @@ def analyze_plan_document(
     recorded reason appears in ``overridden`` instead. Stale and error-targeted
     overrides are surfaced back into the diagnostic list as PLAN025/PLAN026.
 
-    Parser-originated diagnostics (MD002, MD005, MD006, MD007) are retained
-    in the returned list so a malformed document fails before canonical
+    Parser-originated diagnostics (MD005, MD006, MD007) are retained in
+    the returned list so a malformed document fails before canonical
     mapping the same way :func:`parse_and_validate` does; the closed
     vocabulary teach pass runs here too so ``type`` frontmatter duplicates
     carry the consumer phrase the rest of the message convention uses.
+    MD002 and MD001 are demoted to warning by the plan-scoped severity
+    policy so a malformed document that is recognizably a plan still
+    reaches the canonical mapper.
+
+    The closed-list not-a-plan detector runs early: if the document is
+    empty, markup-only, under the 100-character content floor, or
+    recognizably some other kind of text that arrived in the plan's
+    place, the only diagnostics in the returned list are PLAN001 errors
+    and the canonical content is ``{}``.
     """
     document, parser_diagnostics = parse_markdown_document(
         text, allow_nested_headings=PLAN_SPEC.allow_nested_headings
     )
     _teach_duplicate_closed_frontmatter_vocabulary(parser_diagnostics, PLAN_SPEC)
-    diagnostics, overridden, minimal_content = _collect_diagnostics_with_overrides(
-        document, parser_diagnostics=parser_diagnostics
+    # Closed-list not-a-plan detection runs first: a document that
+    # fails the four ``is this a plan?`` classes is rejected with
+    # PLAN001 errors and no canonical content, regardless of any other
+    # validation outcome.
+    not_a_plan_diagnostics = detect_not_a_plan(text)
+    if not_a_plan_diagnostics:
+        return {}, not_a_plan_diagnostics, []
+    diagnostics, overridden, minimal_content, analyzed_content = (
+        _collect_diagnostics_with_overrides(
+            document, parser_diagnostics=parser_diagnostics
+        )
     )
+    # Apply the plan-scoped severity policy before deciding content vs
+    # ``{}`` so demoted-from-error findings (PLAN021/PLAN022/REF004/etc.)
+    # do not force an empty canonical payload. The policy is also
+    # applied to diagnostics surfaced later (MarkdownArtifactError from
+    # ``to_content``, the pydantic-branch SPEC010) so warnings-only
+    # documents still produce best-effort canonical content.
+    apply_plan_severity_policy(diagnostics)
     content: Content
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         content = {}
@@ -1153,21 +1194,35 @@ def analyze_plan_document(
         # returned a valid canonical payload; use it instead of running the
         # full mapper, which would raise PLAN022 for a step-less document.
         content = minimal_content
+    elif analyzed_content is None:
+        # ``_collect_diagnostics_with_overrides`` did not run ``_analyze``
+        # because a blocking error was already present in the structure
+        # validation output. No canonical content is available; the empty
+        # content signals to callers that the plan cannot be persisted.
+        content = {}
     else:
+        # The analyzed content is reused as the best-effort payload when
+        # pydantic normalization rejects; we deliberately do not re-run
+        # ``_analyze`` here because that would re-emit diagnostics the
+        # override ledger already consumed.
         try:
-            content = PLAN_SPEC.to_content(document)
-            content = PLAN_SPEC.normalize_content(content)
-        except MarkdownArtifactError as exc:
-            for diagnostic in exc.diagnostics:
-                if diagnostic not in diagnostics:
-                    diagnostics.append(diagnostic)
-            content = {}
+            content = PLAN_SPEC.normalize_content(analyzed_content)
         except PlanArtifactValidationError as exc:
-            # Canonical pydantic validation rejects the mapped content even
-            # though the markdown side has no blocking diagnostic. Surface it
-            # as a SPEC010 error so the tool payload reflects the failure.
-            diagnostics.append(_normalizer_diagnostic(document, str(exc), "plan"))
-            content = {}
+            # Canonical pydantic validation rejects the mapped content
+            # even though the markdown side has no blocking diagnostic.
+            # The pydantic branch of SPEC010 is content-shape and the
+            # policy demotes it to warning; we still try to persist
+            # the best-effort content so a warnings-only plan reaches
+            # the executor / analysis phase.
+            pydantic_diagnostic = _normalizer_diagnostic(
+                document, str(exc), "plan"
+            )
+            diagnostics.append(pydantic_diagnostic)
+            apply_plan_severity_policy(diagnostics)
+            if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+                content = {}
+            else:
+                content = analyzed_content
     return content, diagnostics, overridden
 
 
@@ -1175,7 +1230,9 @@ def _collect_diagnostics_with_overrides(
     document: ParsedDocument,
     *,
     parser_diagnostics: list[Diagnostic] | None = None,
-) -> tuple[list[Diagnostic], list[_OverrideMatch], Content | None]:
+) -> tuple[
+    list[Diagnostic], list[_OverrideMatch], Content | None, Content | None
+]:
     """Collect all plan-spec diagnostics, apply the override ledger, and return both.
 
     Re-runs the same diagnostic surface :func:`parse_and_validate` collects
@@ -1186,7 +1243,12 @@ def _collect_diagnostics_with_overrides(
     helper ``_document_warnings`` here. The returned ``minimal_content`` is
     the canonical payload from the minimal variant (e.g. ``{"noop": True}``)
     when it produced a valid one; callers use it instead of running the
-    full mapper, which would raise PLAN022 for a step-less document.
+    full mapper, which would raise PLAN022 for a step-less document. The
+    returned ``analyzed_content`` is the content ``_analyze`` produced
+    (without the canonical pydantic normalization); callers reuse it as
+    the best-effort payload when the normalizer rejects, so we do not
+    have to re-run ``_analyze`` and re-emit diagnostics that the override
+    ledger already consumed.
 
     ``parser_diagnostics`` carries the MD002/MD005/MD006/MD007 messages
     ``parse_markdown_document`` produced; they are prepended so a document
@@ -1195,6 +1257,7 @@ def _collect_diagnostics_with_overrides(
     """
     diagnostics: list[Diagnostic] = list(parser_diagnostics or [])
     minimal_content: Content | None = None
+    analyzed_content: Content | None = None
     if PLAN_SPEC.minimal_variant is not None:
         minimal_content, variant_diagnostics = PLAN_SPEC.minimal_variant(document)
         diagnostics.extend(variant_diagnostics)
@@ -1211,11 +1274,14 @@ def _collect_diagnostics_with_overrides(
         and not any(diagnostic.severity == "error" for diagnostic in diagnostics)
     ):
         # _analyze emits errors and warnings together; we need both for the
-        # override ledger's error-vs-stale distinction.
-        _content, analyze_diagnostics = _analyze(document)
+        # override ledger's error-vs-stale distinction. The content is
+        # returned so ``analyze_plan_document`` can re-use it for the
+        # best-effort payload path without re-running _analyze (which
+        # would re-emit diagnostics the override ledger already consumed).
+        analyzed_content, analyze_diagnostics = _analyze(document)
         diagnostics.extend(analyze_diagnostics)
     overridden = _apply_validation_overrides(document, diagnostics)
-    return diagnostics, overridden, minimal_content
+    return diagnostics, overridden, minimal_content, analyzed_content
 
 
 def document_text_for_validation(document: ParsedDocument) -> str:
@@ -1473,6 +1539,8 @@ PLAN_SPEC = MdArtifactSpec(
     to_content=_to_content,
     normalize_content=normalize_plan_artifact_content,
     validate_document=_document_warnings,
+    validate_text=detect_not_a_plan,
+    severity_policy=apply_plan_severity_policy,
     minimal_variant=_minimal_noop_variant,
 )
 

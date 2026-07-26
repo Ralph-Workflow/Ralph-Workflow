@@ -307,21 +307,41 @@ def test_unknown_field_label_in_step_is_prose_with_warning() -> None:
     assert "Caveat: This line is prose, not a grammar field." in step_content
 
 
-def test_dangling_step_and_criterion_references_are_line_anchored_errors() -> None:
+def test_dangling_step_and_criterion_references_are_line_anchored_warnings() -> None:
+    """Dangling references surface as line-anchored warnings, not blocking errors.
+
+    Under the plan-scoped severity policy, PLAN021 (dangling step /
+    criterion reference) is content-shape and demoted to warning. The
+    plan still maps to canonical content so downstream consumers see
+    what the agent authored; the warning is line-anchored so the agent
+    can see which step / criterion broke the reference.
+    """
     document = _plan_document().replace("Depends on: S-1", "Depends on: S-9").replace(
         "Satisfied by: S-1", "Satisfied by: S-8"
     )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
-    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert {diagnostic.rule_id for diagnostic in errors} == {"PLAN021"}
-    assert all(diagnostic.line > 1 for diagnostic in errors)
-    assert {diagnostic.section for diagnostic in errors} == {"Steps", "Acceptance Criteria"}
+    assert content != {}
+    plan021 = [
+        diagnostic
+        for diagnostic in diagnostics
+        if diagnostic.rule_id == "PLAN021" and diagnostic.severity == "warning"
+    ]
+    assert {diagnostic.section for diagnostic in plan021} == {
+        "Steps",
+        "Acceptance Criteria",
+    }
+    assert all(diagnostic.line > 1 for diagnostic in plan021)
 
 
-def test_dependency_cycles_are_rejected() -> None:
+def test_dependency_cycles_advisories_with_cost_named() -> None:
+    """A step-dependency cycle is a warning under the plan-scoped policy.
+
+    REF004 (dependency cycle) is content-shape and demoted to warning.
+    The plan still maps so the agent can see the cycle and decide
+    whether to repair it or override the warning with a recorded reason.
+    """
     document = _plan_document().replace(
         "Type: file_change",
         "Type: file_change\nDepends on: S-2",
@@ -329,9 +349,9 @@ def test_dependency_cycles_are_rejected() -> None:
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
-        "cycle" in diagnostic.message and diagnostic.severity == "error"
+        "cycle" in diagnostic.message and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
@@ -380,10 +400,14 @@ def test_only_consumed_verification_expectation_is_advisory_at_the_item_line() -
 
     # PLAN020 on the verification expectation gap is advisory; the canonical
     # schema still raises SPEC010 because expected_outcome is required by
-    # VerificationStep, but the PLAN020 warning fires alongside it.
+    # VerificationStep, but the PLAN020 warning fires alongside it. The
+    # pydantic branch of SPEC010 is itself demoted to warning under the
+    # plan-scoped severity policy, so both findings are advisory.
     warnings = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
-    assert {diagnostic.rule_id for diagnostic in warnings} == {"PLAN020"}
-    assert {diagnostic.section for diagnostic in warnings} == {"Verification"}
+    assert {"PLAN020", "SPEC010"} <= {diagnostic.rule_id for diagnostic in warnings}
+    assert {diagnostic.section for diagnostic in warnings if diagnostic.rule_id == "PLAN020"} == {
+        "Verification"
+    }
     assert any("Expect" in diagnostic.message for diagnostic in warnings)
 
 
@@ -405,7 +429,16 @@ def test_malformed_and_duplicate_step_ids_are_rejected() -> None:
     )
 
 
-def test_shell_invocation_guard_still_hard_fails() -> None:
+def test_shell_invocation_guard_advisories_with_cost_named() -> None:
+    """A shell-prefixed verification advisories a bounded-exec safety warning.
+
+    Under the plan-scoped severity policy, the shell-prefixed PLAN020
+    finding is content-shape and demoted to warning. The plan still
+    maps to canonical content; the warning names the run cost (the
+    bounded-exec safety policy forbids shell interpreter invocations
+    and a shell-prefixed command bypasses the policy at every
+    subprocess call site) and the fix.
+    """
     document = _plan_document().replace(
         "- [V-1] pytest tests/mcp/test_md_plan_spec.py -q",
         "- [V-1] bash -c 'pytest tests'",
@@ -413,9 +446,9 @@ def test_shell_invocation_guard_still_hard_fails() -> None:
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
-        "shell interpreter" in diagnostic.message and diagnostic.severity == "error"
+        "shell interpreter" in diagnostic.message and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
@@ -517,7 +550,14 @@ Depends on: S-1
 
 
 @pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
-def test_parallel_unit_dependencies_must_resolve(section: str) -> None:
+def test_parallel_unit_dependencies_advisory_with_cost_named(section: str) -> None:
+    """An unknown unit dependency is a content-shape warning.
+
+    REF003 (unknown reference) is demoted to warning under the
+    plan-scoped severity policy. The plan still maps so the agent can
+    see the unknown reference and decide whether to repair it or
+    override the warning with a recorded reason.
+    """
     document = f"""---
 type: plan
 ---
@@ -533,17 +573,25 @@ Apply the bounded change.
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
         diagnostic.section == section
         and "unknown" in diagnostic.message.casefold()
         and "missing" in diagnostic.message
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
 
 @pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
-def test_consumed_parallel_fields_remain_strict_when_malformed(section: str) -> None:
+def test_consumed_parallel_fields_advisory_with_cost_named(section: str) -> None:
+    """A missing Directories value is a content-shape warning.
+
+    PLAN020 (fan-out field strictness) is demoted to warning under the
+    plan-scoped severity policy. The plan still maps; the warning names
+    the run cost (the worker fan-out silently drops the unit's
+    directory set) and the fix (rewrite the field shape).
+    """
     document = f"""---
 type: plan
 ---
@@ -558,17 +606,24 @@ Apply the bounded change.
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
         diagnostic.section == section
         and diagnostic.rule_id == "PLAN020"
         and "requires a value" in diagnostic.message
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
 
 @pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
-def test_parallel_unit_dependencies_must_form_a_dag(section: str) -> None:
+def test_parallel_unit_dependencies_advisory_cycle(section: str) -> None:
+    """A work-unit dependency cycle is a content-shape warning.
+
+    REF004 (dependency cycle) is demoted to warning under the
+    plan-scoped severity policy. The plan still maps; the warning names
+    the run cost (the fan-out dispatch cannot form a DAG) and the fix.
+    """
     document = f"""---
 type: plan
 ---
@@ -587,15 +642,23 @@ Apply the bounded change.
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
         diagnostic.section == section
         and "cycle" in diagnostic.message.casefold()
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
 
 def test_step_ids_are_unique_across_nested_mini_plans() -> None:
+    """A duplicate step ID is a PLAN022 warning under the new contract.
+
+    Under the plan-scoped severity policy, PLAN022 (malformed /
+    duplicate step ID) is content-shape and demoted to warning. The
+    plan still maps; the warning names the run cost (development_result
+    proof cross-references collide) and the fix.
+    """
     document = """---
 type: plan
 ---
@@ -610,9 +673,11 @@ Beta work.
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
-        diagnostic.rule_id == "PLAN022" and "S-1" in diagnostic.message
+        diagnostic.rule_id == "PLAN022"
+        and "S-1" in diagnostic.message
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 

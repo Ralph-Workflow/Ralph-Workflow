@@ -450,20 +450,27 @@ def test_malformed_frontmatter_fails_through_tool() -> None:
         )
 
 
-def test_malformed_top_level_prose_fails_through_tool() -> None:
-    """A body line before the first ``## Heading`` fails the public tool path."""
+def test_malformed_top_level_prose_advisories_through_tool() -> None:
+    """A body line before the first ``## Heading`` advisories the public tool path.
+
+    Under the plan-scoped severity policy, MD002 (top-level prose) is
+    content-shape and demoted to warning. The tool payload reports a
+    valid document with a cost-named warning so the agent can decide
+    whether to repair the prose or override the warning.
+    """
     payload = _verify_payload(_malformed_top_level_prose_plan())
-    assert payload["valid"] is False
+    assert payload["valid"] is True
     counts = payload["counts"]
     assert isinstance(counts, dict)
-    assert counts["error"] >= 1
+    assert counts["error"] == 0
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
     md002 = [d for d in diagnostics if d.get("rule_id") == "MD002"]
-    assert md002, f"expected MD002, got {[d.get('rule_id') for d in diagnostics]}"
+    assert md002, f"expected MD002 warning, got {[d.get('rule_id') for d in diagnostics]}"
     for d in md002:
-        assert _BLOCKING_CONSUMER_RE.search(d.get("message", "")), (
-            f"MD002 from tool path does not name its consumer: {d.get('message')!r}"
+        assert d.get("severity") == "warning"
+        assert _ADVISORY_COST_RE.search(d.get("message", "")), (
+            f"MD002 from tool path does not follow the cost-named convention: {d.get('message')!r}"
         )
 
 

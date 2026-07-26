@@ -106,20 +106,16 @@ def test_markdown_artifact_tools_are_registered() -> None:
             "malformed_frontmatter",
             "---\ntype: plan\nnot a field\n---\n## Steps\n\n### [S-1] Step\nType: file_change\nFiles:\n- modify foo.py\n",
         ),
-        (
-            "top_level_prose",
-            "---\ntype: plan\n---\nSome prose before any heading.\n## Steps\n\n### [S-1] Step\nType: file_change\nFiles:\n- modify foo.py\n",
-        ),
     ],
 )
-def test_plan_verify_rejects_malformed_markdown(tmp_path, label, content) -> None:
-    """The public ``handle_verify_md_artifact`` rejects malformed plan documents.
+def test_plan_verify_rejects_routing_failures(tmp_path, label, content) -> None:
+    """The public ``handle_verify_md_artifact`` rejects routing-failure plans.
 
-    Pre-24e66c49f the plan-aware analyze path silently canonicalized
-    malformed documents; the rewritten chain keeps the parser
-    diagnostics and surfaces them through the tool handler so a real
-    agent never sees ``valid=True`` for a plan that the parser cannot
-    route.
+    Under the plan-scoped severity policy, routing failures (duplicate
+    closed-frontmatter vocabulary, malformed frontmatter) are blocking
+    because the spec registry cannot identify the document as a plan.
+    Content-shape failures (top-level prose, etc.) are demoted to
+    warning and are not exercised by this test.
     """
     session = MockSession()
     workspace = MockWorkspace(tmp_path)

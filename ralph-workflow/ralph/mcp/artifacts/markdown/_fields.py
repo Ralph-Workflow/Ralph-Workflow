@@ -220,12 +220,25 @@ def _malformed_field(
             )
         )
     elif prose_allowed and is_fan_out:
-        # Fan-out contexts: keep the line as prose but emit an ERROR with
-        # the consumer phrase so the work-unit graph cannot silently lose a
-        # directories / depends-on / paths value.
+        # Fan-out contexts: keep the line as prose but surface a
+        # cost-named warning. The plan-scoped severity policy demotes
+        # PLAN020 fan-out field findings to warning, so a missing
+        # Directories / Depends on / Paths value costs the run a
+        # silently-empty unit and the agent can decide whether to
+        # repair the value or record an override.
         result.prose.append(line)
         diagnostics.append(
-            Diagnostic(line.line, section, "PLAN020", _fan_out_field_message("", message), "error")
+            Diagnostic(
+                line.line,
+                section,
+                "PLAN020",
+                f"{message}; the run cost is the worker fan-out in "
+                "ralph/pipeline/work_units.py parses this field verbatim "
+                "to scope edits and dispatch units, so a missing value "
+                "silently drops the unit's directory set; resolve by "
+                "fixing the field shape",
+                "warning",
+            )
         )
     else:
         diagnostics.append(

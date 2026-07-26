@@ -60,9 +60,16 @@ def test_verify_complete_plan_is_valid_without_persisting_it(tmp_path: Path) -> 
     assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 
 
-def test_get_draft_reports_cross_reference_error_without_mutating_content(
+def test_get_draft_reports_cross_reference_warning_without_mutating_content(
     tmp_path: Path,
 ) -> None:
+    """A dangling ``Depends on:`` is a PLAN021 warning; the draft is valid.
+
+    Under the plan-scoped severity policy, a dangling reference is a
+    content-shape warning, not a blocking error. The draft is valid
+    with a recorded warning; ``get_draft`` reports it without
+    mutating the content.
+    """
     workspace = FsWorkspace(tmp_path)
     invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
     handle_stage_md_artifact(
@@ -83,8 +90,11 @@ def test_get_draft_reports_cross_reference_error_without_mutating_content(
     )
 
     diagnostics = must_dict_list(first["diagnostics"])
-    assert first["valid"] is False
-    assert any(item["rule_id"] == "PLAN021" for item in diagnostics)
+    assert first["valid"] is True
+    assert any(
+        item["rule_id"] == "PLAN021" and item["severity"] == "warning"
+        for item in diagnostics
+    )
     assert first["content"] == invalid
     assert second["content"] == invalid
     assert second["diagnostics"] == diagnostics

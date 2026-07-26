@@ -77,7 +77,14 @@ Files:
 def test_plan_grammar_regression_malformed_step_like_ids_fail_document_wide(
     section: str, bad_id: str
 ) -> None:
-    """Regression for plan blocker 1: typo-like step IDs must never disappear."""
+    """Regression for plan blocker 1: typo-like step IDs surface as warnings.
+
+    Under the plan-scoped severity policy, malformed step IDs are
+    content-shape and are demoted to PLAN022 warning. The plan still
+    maps to canonical content so downstream consumers see what the
+    agent authored; the warning states the run cost (a step proof that
+    the development_result cross-references cannot satisfy) and the fix.
+    """
     document = (
         _single_step_document()
         + f"""
@@ -93,11 +100,12 @@ Type: action
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    # The malformed step ID no longer blocks; the plan still maps.
+    assert content != {}
     assert any(
         diagnostic.rule_id == "PLAN022"
         and bad_id in diagnostic.message
-        and diagnostic.severity == "error"
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
@@ -188,7 +196,14 @@ Type: action
 
 @pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
 def test_exact_fan_out_section_rejects_malformed_unit_marker(section: str) -> None:
-    """An exact consumed heading must not silently degrade to descriptive prose."""
+    """An exact consumed heading advisories a malformed unit marker.
+
+    Under the plan-scoped severity policy, PLAN024 (malformed work-unit
+    marker) is content-shape and demoted to warning. The plan still maps
+    to canonical content so consumers see what the agent authored; the
+    warning names the run cost (the worker fan-out falls back to serial
+    dispatch) and the fix.
+    """
     document = _single_step_document() + f"""
 
 ## {section}
@@ -198,11 +213,12 @@ def test_exact_fan_out_section_rejects_malformed_unit_marker(section: str) -> No
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert any(
         diagnostic.rule_id == "PLAN024"
         and diagnostic.section == section
         and "stable-ID item" in diagnostic.message
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     )
 
@@ -393,7 +409,14 @@ def test_unrelated_v_prefixed_item_remains_descriptive() -> None:
 
 
 def test_plan_grammar_regression_command_proof_requires_specific_expected_output() -> None:
-    """A runnable command alone does not say what observable result proves success."""
+    """A runnable command alone does not say what observable result proves success.
+
+    The PLAN020 vague-proof finding is content-shape and the plan-scoped
+    severity policy demotes it to warning. The plan still maps to
+    canonical content so consumers see the proof plan; the warning
+    names the run cost (the executor's step proof will bounce) and the
+    fix (a concrete expected_outcome).
+    """
     document = _single_step_document(
         extra=(
             "Verify: git diff --check\n"
@@ -408,10 +431,11 @@ def test_plan_grammar_regression_command_proof_requires_specific_expected_output
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
-    assert content == {}
+    assert content != {}
     assert sum(
         diagnostic.rule_id == "PLAN020"
         and "Expect:" in diagnostic.message
+        and diagnostic.severity == "warning"
         for diagnostic in diagnostics
     ) >= 2
 

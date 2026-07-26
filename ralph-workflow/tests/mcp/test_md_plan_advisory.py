@@ -173,11 +173,13 @@ Expect: it works
 # ---------------------------------------------------------------------------
 
 
-def test_consumed_anchors_remain_blocking_with_consumer_named() -> None:
-    """Pipeline-consumed anchors error with a message that names the reader.
+def test_consumed_anchors_demote_to_warning_with_cost_named() -> None:
+    """Pipeline-consumed anchors demote to warnings with cost-named messages.
 
-    Every error diagnostic must follow the convention
-    ``what; blocking because <consumer>; resolve by <fix>``.
+    Content-shape findings (malformed step IDs, work-unit dependency
+    cycles, malformed work-unit markers, shell invocations on verify
+    items) are advisory under the plan-scoped severity policy. They
+    state the run cost and the fix instead of blocking.
     """
     document = """---
 type: plan
@@ -207,25 +209,43 @@ free text line that is not a [unit-id] item
   Expect: tests pass
 """
 
-    _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     errors = [d for d in diagnostics if d.severity == "error"]
+    warnings = [d for d in diagnostics if d.severity == "warning"]
 
-    rule_ids = {d.rule_id for d in errors}
+    # Anchor findings are warnings; canonical content still maps despite
+    # the malformed step ID / cycle / shell invocation / stray prose.
+    assert errors == [], (
+        f"advisory-by-default plan should produce zero errors, got: "
+        f"{[(d.rule_id, d.severity, d.message) for d in errors]}"
+    )
+    assert content != {}, (
+        "a plan that draws only advisory findings must still produce "
+        "canonical content"
+    )
+
+    rule_ids = {d.rule_id for d in warnings}
     assert "PLAN022" in rule_ids  # malformed step ID (STEP-1)
     assert "REF004" in rule_ids   # dependency cycle in Work Units
     assert "PLAN024" in rule_ids  # malformed Work Units line
     assert "PLAN020" in rule_ids  # shell invocation guard on V-1
 
-    # Every error message follows the blocking consumer convention.
-    for d in errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"blocking diagnostic does not name its consumer: rule_id={d.rule_id} "
-            f"message={d.message!r}"
+    # Every warning follows the advisory cost \u2192 resolve convention.
+    for d in warnings:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            f"advisory diagnostic does not follow the cost \u2192 resolve "
+            f"convention: rule_id={d.rule_id} message={d.message!r}"
         )
 
 
-def test_dangling_step_reference_blocks_with_consumer_named() -> None:
-    """A ``Depends on:`` value that does not match any step blocks submission."""
+def test_dangling_step_reference_advisories_with_cost_named() -> None:
+    """A ``Depends on:`` value that does not match any step is advisory.
+
+    Under the advisory-by-default policy, a dangling step reference
+    surfaces as a cost-named warning; the canonical content still maps
+    so downstream consumers (development_result proof, fan-out) see the
+    plan they were handed.
+    """
     document = """---
 type: plan
 ---
@@ -237,15 +257,20 @@ Depends on: S-99
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     errors = [d for d in diagnostics if d.severity == "error"]
+    warnings = [d for d in diagnostics if d.severity == "warning"]
 
-    assert content == {}
+    assert errors == [], (
+        f"dangling step reference is advisory; got errors: "
+        f"{[(d.rule_id, d.message) for d in errors]}"
+    )
+    assert content != {}, "warnings-only plan must still map to canonical content"
     assert any(
-        d.rule_id in {"PLAN021", "REF003"} and d.severity == "error" for d in errors
-    ), f"expected a dangling-reference error, got: {[(d.rule_id, d.severity, d.message) for d in errors]}"
-    for d in errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"blocking diagnostic does not name its consumer: rule_id={d.rule_id} "
-            f"message={d.message!r}"
+        d.rule_id in {"PLAN021", "REF003"} and d.severity == "warning" for d in warnings
+    ), f"expected a dangling-reference warning, got: {[(d.rule_id, d.severity, d.message) for d in warnings]}"
+    for d in warnings:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            f"advisory diagnostic does not follow cost/resolve convention: "
+            f"rule_id={d.rule_id} message={d.message!r}"
         )
 
 
@@ -348,25 +373,41 @@ Files:
 
 
 def test_override_targeting_an_error_draws_plan026_warning_and_still_blocks() -> None:
-    """An override targeting an error emits PLAN026 and the error still blocks."""
+    """An override targeting a routing error emits PLAN026 and the error still blocks.
+
+    Under the plan-scoped severity policy, content-shape findings
+    (PLAN022 malformed step ID, PLAN021 dangling reference, etc.) are
+    demoted to warning. The only rule_ids that stay blocking for plans
+    are the four routing/transport classes: PLAN001 not-a-plan,
+    SPEC002 missing type, MD005/MD006/MD007 unparseable frontmatter,
+    SPEC001 size transport, and PLAN023 noop grammar. We exercise the
+    override-on-error contract with SPEC002, the missing-type routing
+    check, so the test verifies the new contract rather than relying
+    on a rule that has moved to advisory.
+    """
     document = """---
-type: plan
+title: just a title
 ---
 ## Steps
 
+### [S-1] First step
+This is a step block with content. Adding more text to make it over 100
+characters of actual content so the not-a-plan detector does not fire on
+length grounds and we can exercise the override-on-error contract.
+
 ## Validation Overrides
-- [PLAN022] Trying to silence an error
+- [SPEC002] Trying to silence an error
 """
 
-    _content, diagnostics, overridden = analyze_plan_document(document)
-    plan022_errors = [d for d in diagnostics if d.rule_id == "PLAN022"]
+    content, diagnostics, overridden = analyze_plan_document(document)
+    spec002_errors = [d for d in diagnostics if d.rule_id == "SPEC002"]
     plan026_warnings = [d for d in diagnostics if d.rule_id == "PLAN026"]
 
-    assert len(plan022_errors) == 1
-    assert plan022_errors[0].severity == "error"
+    assert len(spec002_errors) == 1
+    assert spec002_errors[0].severity == "error"
     assert len(plan026_warnings) == 1
     assert plan026_warnings[0].severity == "warning"
-    assert _content == {}  # the error still blocks content mapping
+    assert content == {}  # the routing error still blocks content mapping
     assert overridden == []  # errors are never overridable
 
 
@@ -527,8 +568,15 @@ Files:
         )
 
 
-def test_spec010_pydantic_failure_names_consumer() -> None:
-    """A pydantic-schema rejection surfaces SPEC010 with the schema consumer phrase."""
+def test_spec010_pydantic_failure_advisories_with_cost_named() -> None:
+    """A pydantic-schema rejection surfaces SPEC010 as advisory.
+
+    The pydantic branch of SPEC010 is content-shape (the canonical
+    normalizer rejected a field the markdown side accepted), so the
+    plan-scoped severity policy demotes it from error to warning. The
+    best-effort canonical content is persisted so downstream consumers
+    still see the plan the agent authored.
+    """
     document = """---
 type: plan
 ---
@@ -546,12 +594,13 @@ Satisfies: AC-99
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
-    assert content == {}
-    spec010_errors = [d for d in diagnostics if d.rule_id == "SPEC010"]
-    assert spec010_errors, "expected SPEC010 for pydantic schema rejection"
-    for d in spec010_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"SPEC010 pydantic failure does not name its consumer: {d.message!r}"
+    assert content != {}, "warnings-only plan must still map to canonical content"
+    spec010_warnings = [d for d in diagnostics if d.rule_id == "SPEC010" and d.severity == "warning"]
+    assert spec010_warnings, "expected SPEC010 warning for pydantic schema rejection"
+    for d in spec010_warnings:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            f"SPEC010 pydantic failure does not follow the cost \u2192 resolve "
+            f"convention: {d.message!r}"
         )
 
 
@@ -640,12 +689,13 @@ Expect: pytest will pass
 # ---------------------------------------------------------------------------
 
 
-def test_md002_top_level_prose_names_consumer() -> None:
-    """A body line before the first ``## Heading`` fails with the convention.
+def test_md002_top_level_prose_advisories_with_cost_named() -> None:
+    """A body line before the first ``## Heading`` is advisory.
 
-    The parser sees the line first, before any plan-spec rule; the
-    consumer phrase still names the artifact spec registry so the
-    convention is the same one every other blocking diagnostic uses.
+    MD002 is content-shape (the parser found a body line outside any
+    section), so the plan-scoped severity policy demotes it from error
+    to warning. The message still names the run cost so the agent can
+    decide whether to repair it.
     """
     document = """---
 type: plan
@@ -660,12 +710,13 @@ Files:
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
-    assert content == {}
-    md002_errors = [d for d in diagnostics if d.rule_id == "MD002" and d.severity == "error"]
-    assert md002_errors, "expected MD002 error for top-level prose"
-    for d in md002_errors:
-        assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"MD002 top-level prose does not name its consumer: {d.message!r}"
+    assert content != {}, "warnings-only plan must still map to canonical content"
+    md002_warnings = [d for d in diagnostics if d.rule_id == "MD002" and d.severity == "warning"]
+    assert md002_warnings, "expected MD002 warning for top-level prose"
+    for d in md002_warnings:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            f"MD002 top-level prose does not follow the cost \u2192 resolve convention: "
+            f"{d.message!r}"
         )
 
 
