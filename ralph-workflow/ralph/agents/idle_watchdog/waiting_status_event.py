@@ -12,7 +12,19 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WaitingStatusEvent:
-    """Structured status event emitted by IdleWatchdog during WAITING_ON_CHILD deferral.
+    """Structured watchdog status event emitted by IdleWatchdog.
+
+    IdleWatchdog is the sole owner of in-stream stall/liveness
+    decisions, and this dataclass is the public, single-channel
+    surface through which it publishes its assessment to
+    subscribers (the waiting-status listener, the
+    ``PipelineSubscriber`` waiting-dispatch path, and the Status
+    Bar's ``STALLED`` slot). Although several transition kinds
+    historically lined up with the WAITING_ON_CHILD branch, the
+    event itself is **not** scoped to that branch: every transition
+    listed in ``WaitingStatusKind`` (waiting, stall, and per-tick
+    progress) flows through this single dataclass, and the
+    ``kind`` field is the discriminator.
 
     This dataclass is frozen so subscribers cannot accidentally mutate shared state.
 
@@ -21,8 +33,42 @@ class WaitingStatusEvent:
     scoped_child_active, etc.). This plan ships only the throttle, transition,
     suspicion, and hard-stop summary semantics; Phase 3 fields are out of scope.
 
+    Transition kinds (see ``WaitingStatusKind`` for the canonical
+    enumeration and per-kind docstring):
+
+    - ``ENTERED`` -- transition into a WAITING_ON_CHILD deferral run.
+    - ``PROGRESS`` -- periodic status update while still waiting (rate-limited).
+    - ``SUBAGENT_PROGRESS`` -- per-subagent progress heartbeat for the
+      waiting-status stream; rate-limited independently of ``PROGRESS``
+      so the live subagent's activity is visible without inflating
+      the existing PROGRESS cadence.
+    - ``SUSPECTED_FROZEN`` -- cumulative wait crossed the suspect
+      threshold; the child may be frozen.
+    - ``EXITED`` -- transition out of a WAITING_ON_CHILD run; also
+      the canonical stall-clear site (any prior
+      ``STALLED``/``SUSPECTED_FROZEN``/``HARD_STOP``-driven stall is
+      now stale).
+    - ``HARD_STOP`` -- cumulative ceiling crossed; the watchdog is
+      about to fire ``CHILDREN_PERSIST_TOO_LONG``.
+    - ``STALLED`` -- the watchdog's stall state has transitioned
+      ON. This is the **single source of truth** for the Status
+      Bar's ``STALLED`` slot: the watchdog is the sole owner of
+      in-stream stall decisions, and downstream consumers render
+      ``STALLED`` only from this event (or, equivalently, from the
+      watchdog's ``is_stalled`` property). Emitted exactly once
+      per transition into a stall (no per-tick spam) and deduped
+      by the watchdog's runtime stall-state flag.
+    - ``STALL_RESUMED`` -- the watchdog's stall state has
+      transitioned OFF. Emitted exactly once per transition out
+      of a stall (driven by ``record_activity`` /
+      ``record_invocation_start`` / ``EXITED`` / a later tick
+      where the SILENT_SUBAGENT gate no longer defers). Mirrors
+      ``STALLED`` so subscribers can render explicit lines for
+      both transition markers without falling through to any
+      generic template.
+
     Attributes:
-        kind: The type of event (ENTERED, PROGRESS, SUSPECTED_FROZEN, EXITED, HARD_STOP).
+        kind: The type of event (one of the ``WaitingStatusKind`` values).
         cumulative_seconds: Cumulative WAITING_ON_CHILD seconds across the session so far.
         current_run_seconds: Seconds spent in the current WAITING_ON_CHILD run.
         idle_elapsed_seconds: Seconds since last record_activity() call.
