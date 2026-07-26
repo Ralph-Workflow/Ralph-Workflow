@@ -603,13 +603,9 @@ def _continue_fast_forward_from_record(
             refresh,
         )
     if branch_sha(workspace_root, record.target) == feature_sha:
-        # Already landed (another run / operator). Even here we
-        # route through the push hook: a sibling that landed
-        # locally does not necessarily push to every remote (its
-        # config may differ or it may have been crashed mid-push),
-        # and the AC-03 contract says the auto-integrate subsystem
-        # is the place every local advance reaches every remote
-        # when push is enabled.
+        # Already landed (another run / operator). Route through the push
+        # hook so an interrupted prior run can still publish the target to
+        # its configured remote without changing the local landing.
         _clear_record(workspace_root)
         return record_refresh(
             maybe_push_target(
@@ -659,12 +655,9 @@ def _land_and_reconcile(
     retries.
 
     The successful-landing branch routes through
-    :func:`ralph.pipeline.auto_integrate_ff.maybe_push_target` so the
-    AC-03 every-successful-advance-pushes contract is honoured at the
-    recovery landing site too: a crashed previous run that retried its
-    fast-forward on the next startup must push to every configured
-    remote just as the happy path does, with ``config=None`` (the
-    pre-seam behaviour) bypassing the push byte-for-byte.
+    :func:`ralph.pipeline.auto_integrate_ff.maybe_push_target` so recovery
+    can publish a retried local landing to its configured remote. With
+    ``config=None`` the pre-seam behavior bypasses remote sync byte-for-byte.
 
     R6/AC-06: :func:`post_attempt_verify` runs on EVERY exit path of
     the recovery fast-forward BEFORE backup-ref cleanup or record

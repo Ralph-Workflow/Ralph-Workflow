@@ -1168,7 +1168,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # _dispatch_pull_outcome maps each REFRESH_* outcome to
         # one branch in the byte-identical contract; refactoring
         # would scatter the documented REFRESH_* mapping.
-        ("ralph/config/loader.py", 415),
+        ("ralph/config/loader.py", 414),
         ("ralph/pipeline/auto_integrate_ff.py", 298),
         ("ralph/pipeline/auto_integrate_remote_sync.py", 322),
     }

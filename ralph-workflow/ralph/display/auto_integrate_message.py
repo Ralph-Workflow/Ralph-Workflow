@@ -59,14 +59,7 @@ def _refresh_suffix(refresh: str | None) -> str:
 
 
 def _push_suffix(push: str | None) -> str:
-    """Append the opt-in multi-remote push summary, when one was recorded.
-
-    The push is fail-open and best-effort; without this clause a
-    partial push (one remote down, one up) is indistinguishable from
-    a successful land-and-no-push, which is the exact symptom that
-    made the auto-integrate line look healthy while the operator's
-    backup mirror silently fell out of date.
-    """
+    """Append the opt-in configured-remote push summary, when recorded."""
     return f" [push: {push}]" if push else ""
 
 
@@ -129,12 +122,10 @@ def format_auto_integrate_message(
     e.g. a skip that short-circuited before the landing phase).
 
     ``push`` is the ``RebaseState.last_push`` summary produced by the
-    opt-in multi-remote push that ran after a successful local
-    landing (see :func:`ralph.git.remote_push.push_branch_to_all_remotes`).
+    opt-in push to the configured remote after a successful local landing.
     It is appended as ``[push: <summary>]`` when present, and omitted
-    entirely when ``None`` (push disabled, no remotes, or the prior
-    integration did not produce a record). The push is fail-open, so
-    the landing is unchanged regardless of what the push reported.
+    entirely when ``None``. The push is fail-open, so local success is
+    unchanged regardless of what the push reported.
 
     The unknown-verb fallback returns a bare ``f"{action}"`` rather than
     ``f"auto-integrate: {action}"``; the single ``auto-integrate:`` prefix

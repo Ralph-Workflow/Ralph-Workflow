@@ -644,17 +644,10 @@ def _integrate_once(
         # like ``"Branch is already up-to-date with upstream"``)
         # is scrubbed here. A clean-success state carries no reason.
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
-        # Opt-in multi-remote push. Runs ONLY after the local fast-forward
-        # already landed -- a remote failure cannot undo a local ref
-        # advance. The push is fail-open and best-effort by contract; the
-        # helper never raises, the record is updated to carry the summary
-        # so a partial push is operator-visible, and the (ok, retry_ff)
-        # landing tuple returned above is unchanged. When push is disabled
-        # (default) or the local config has no such flag at all, the field
-        # is left as the inherited None, so legacy checkpoints stay clean.
-        # Shared with the crash-recovery landing site via
-        # ``maybe_push_target`` so every successful advance of the local
-        # target reaches every configured remote when push is enabled.
+        # Opt-in configured-remote push. It runs only after the local
+        # fast-forward landed, so remote failure cannot undo local success.
+        # The fail-open helper records its summary without changing this
+        # landing result; disabled sync leaves legacy checkpoints clean.
         record = maybe_push_target(config, root, target, record)
         if record.last_remote_sync == REMOTE_PUSH_REJECTED:
             # A non-fast-forward push is a remote race, not a failed local

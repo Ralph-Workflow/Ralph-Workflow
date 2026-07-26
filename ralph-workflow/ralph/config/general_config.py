@@ -167,18 +167,10 @@ class GeneralConfig(RalphBaseModel):
         description=(
             "Off by default: when false, auto-integration is strictly local"
             " and the local mainline ref is never pushed to a remote."
-            " When true, EVERY successful advance of the target branch"
-            " (the local rebase/merge/endpoint-merge/fast-forward landing"
-            " the auto-integrate step performed) is also pushed to EVERY"
-            " configured remote, best-effort per remote and fail-open:"
-            " the push runs ONLY after the local landing already"
-            " succeeded, a remote failure never fails the run, never"
-            " reverts the local ref, and never changes the (record,"
-            " retry_ff) landing result. The push never force-pushes and"
-            " never moves any branch the operator did not ask for. The"
-            " summary is recorded on the run state and rendered in the"
-            " `auto-integrate:` line, so a partial push (e.g. one remote"
-            " down, one up) is operator-visible."
+            " When true, this deprecated alias enables remote sync for"
+            " the single configured `auto_integrate_remote_target`. The"
+            " push runs only after local landing, is fail-open, never"
+            " force-pushes, and never changes the landing result."
         ),
     )
     auto_integrate_push_timeout_seconds: float = Field(
@@ -186,11 +178,9 @@ class GeneralConfig(RalphBaseModel):
         gt=0.0,
         le=300.0,
         description=(
-            "Per-remote wall-clock budget for an auto-integrate push (must be"
-            " > 0 and <= 300). On timeout the remote is skipped and the"
-            " outcome recorded; the run is never failed by an unreachable"
-            " remote. Applied independently per remote, so a slow remote"
-            " does not consume the budget of a fast one."
+            "Wall-clock budget for the configured remote auto-integrate push"
+            " (must be > 0 and <= 300). On timeout the outcome is recorded"
+            " and the run continues without changing local success."
         ),
     )
     auto_integrate_remote_sync_enabled: bool = Field(
@@ -226,10 +216,9 @@ class GeneralConfig(RalphBaseModel):
             " name is accepted. When the named remote is not configured"
             " in this repository, remote sync degrades to local-only"
             " integration with a recorded skip reason -- it never"
-            " raises. The push side only ever touches this one remote"
-            " (deprecated `auto_integrate_push_enabled = true` did"
-            " fan out to every configured remote; this flag replaces"
-            " that fan-out with single-remote semantics)."
+            " raises. The push side only ever touches this one remote;"
+            " the deprecated `auto_integrate_push_enabled = true` alias"
+            " enables the same single-remote behavior."
         ),
     )
     auto_integrate_remote_sync_interval_seconds: float = Field(

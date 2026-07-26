@@ -374,8 +374,8 @@ def _warn_deprecated_push_enabled(data: dict[str, object]) -> None:
     still drives the same on/off decision when read by the legacy
     auto_integrate hook (so existing operators do not lose push behavior
     on upgrade), but it NEVER re-introduces the fan-out: the legacy
-    reader in :mod:`ralph.git.remote_push` now ignores anything but the
-    configured ``auto_integrate_remote_target``. The warning names the
+    remote-sync tier only uses the configured
+    ``auto_integrate_remote_target``. The warning names the
     replacement so an operator can find the new flag without reading the
     diff.
     """
@@ -388,8 +388,7 @@ def _warn_deprecated_push_enabled(data: dict[str, object]) -> None:
         "`auto_integrate_push_enabled = true` is deprecated; use "
         "`auto_integrate_remote_sync_enabled = true` together with "
         '`auto_integrate_remote_target = "<remote>"`. The deprecated '
-        "key now scopes to the SINGLE configured remote target and "
-        "no longer fans out to every configured remote."
+        "key now enables only the SINGLE configured remote target."
     )
 
 

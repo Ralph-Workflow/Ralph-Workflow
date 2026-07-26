@@ -300,14 +300,10 @@ def maybe_push_target(
     target: str,
     record: RebaseState,
 ) -> RebaseState:
-    """Opt-in multi-remote push hook shared by every successful local landing.
+    """Opt-in configured-remote push hook shared by successful local landings.
 
-    The auto-integrate contract is "every successful local advance of the
-    shared target must reach every configured remote when push is
-    enabled" -- the happy path in :func:`auto_integrate._integrate_once`
-    AND the crash-recovery continuation in
-    :func:`ralph.pipeline.auto_integrate_recovery._land_and_reconcile`
-    both call this helper after a successful local landing.
+    The happy path and crash-recovery continuation both call this helper after
+    a successful local landing so the configured remote can publish the target.
 
     Never gates or alters the landing. A push failure is recorded
     on ``RebaseState.last_push`` for operator visibility; the caller's
@@ -321,10 +317,10 @@ def maybe_push_target(
             push entirely, mirroring the pre-seam byte-identical
             behaviour. Otherwise ``config.general.auto_integrate_push_enabled``
             gates the call; ``config.general.auto_integrate_push_timeout_seconds``
-            sets the per-remote wall-clock budget. Both reads are
+            sets the push wall-clock budget. Both reads are
             ``getattr``-guarded so legacy configs that pre-date the
             push feature stay compatible.
-        repo_root: Repository root to enumerate remotes in.
+        repo_root: Repository root containing the configured remote.
         target: Branch to push (``refs/heads/<target>:refs/heads/<target>``).
         record: The ``RebaseState`` to annotate with ``last_push``. The
             returned object is ``record`` unchanged when no push
