@@ -144,6 +144,19 @@ def build_presented_entry(
     body = ""
     if event.content is not None:
         body = str(event.content)
+    # DA-001 (wt-028-display S-3 / AC-02): strip parser-channel
+    # prefixes (``text: ``, ``thinking: ``, ``tool_use: ``,
+    # ``tool_result: ``) at the canonical PresentedEntry seam so
+    # the text-first record writer carries the same normalized
+    # body the renderer registry produces. The renderer strips
+    # the prefix at its own seam (see
+    # :func:`ralph.display.agent_event_renderer._normalized_event_content`);
+    # the record writer reads the body off the event directly, so
+    # the same normalization has to run here. Importing the
+    # helper at module scope would create a circular import
+    # (presented_entry <-> agent_event_renderer), so the
+    # normalization is done inline.
+    body = _strip_parser_channel_prefixes(body)
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
@@ -253,6 +266,41 @@ def _code_value_is_failure(value: object) -> bool:
         stripped = value.strip()
         return bool(stripped) and stripped != "0"
     return False
+
+
+#: Parser-channel prefixes that must NEVER reach an operator-facing
+#: surface (DA-001 / AC-02). Mirrors
+#: :data:`ralph.display.agent_event_renderer._INTERNAL_CHANNEL_PREFIXES`;
+#: declared locally so :mod:`ralph.display.presented_entry` does not
+#: import :mod:`ralph.display.agent_event_renderer` (which would
+#: create a circular import -- the renderer imports
+#: :class:`PresentedEntry`).
+_PARSER_CHANNEL_PREFIXES: tuple[str, ...] = (
+    "text: ",
+    "thinking: ",
+    "tool_use: ",
+    "tool_result: ",
+)
+
+
+def _strip_parser_channel_prefixes(content: str) -> str:
+    """Strip a leading parser-channel prefix from ``content``.
+
+    DA-001 (wt-028-display S-3 / AC-02): the canonical
+    :class:`PresentedEntry` seam strips the four recognized parser
+    channel prefixes (``text: ``, ``thinking: ``, ``tool_use: ``,
+    ``tool_result: ``) when they appear at the START of the body.
+    Ordinary prose that happens to begin with the word ``text:``
+    followed by prose (rare in agent output but possible in tool
+    results that quote a payload) keeps its leading characters
+    unchanged because the registry only matches an EXACT
+    four-character prefix from the canonical set followed by a
+    single space.
+    """
+    for prefix in _PARSER_CHANNEL_PREFIXES:
+        if content.startswith(prefix):
+            return content[len(prefix):]
+    return content
 
 
 #: Map ``ActivityEventKind`` to ``(grouping_role, indent_level)`` for

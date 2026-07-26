@@ -147,9 +147,14 @@ class TestPiParserSharedNdjsonBehaviors:
                 self,
                 obj: dict[str, object],
                 raw: str,
+                source_timestamp: str | None = None,
             ) -> Iterator[AgentOutputLine]:
+                # DA-002 (wt-028-display S-2 / AC-01): forward the
+                # timestamp parameter unchanged; the base class
+                # post-processes the iterator to attach it to any
+                # AgentOutputLine that lacks one.
                 seen_event_types.append(str(obj.get("type", "")))
-                yield from super()._dispatch_json_object(obj, raw)
+                yield from super()._dispatch_json_object(obj, raw, source_timestamp)
 
         parser = _RecordingPiParser()
         line = _line({"type": "message_start", "message": {"role": "assistant"}})

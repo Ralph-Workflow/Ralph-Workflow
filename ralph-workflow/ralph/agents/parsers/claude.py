@@ -196,7 +196,13 @@ class ClaudeParser(NdjsonParserBase):
         self,
         obj: dict[str, object],
         raw: str,
+        source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
+        # DA-002 (wt-028-display S-2 / AC-01): the base class
+        # post-processes the iterator to attach ``source_timestamp``
+        # to any AgentOutputLine that lacks one, so the per-event
+        # dispatcher itself does not need to thread the parameter.
+        del source_timestamp  # accepted for override compatibility; ignored
         event_type = str(obj.get("type", "unknown"))
 
         # R5: register any embedded PID into the shared registry BEFORE

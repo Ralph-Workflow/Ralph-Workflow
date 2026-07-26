@@ -155,8 +155,19 @@ def stream_parsed_agent_activity(
             rendered_output_sink.append(rendered.plain)
         if isinstance(display, parallel_display_cls):
             kind = map_parser_type_to_kind(parsed_line.type)
+            # DA-002 (wt-028-display S-2 / AC-01): the parser-to-display
+            # handoff forwards the source-event timestamp the parser
+            # extracted so the rendered record carries ``[hh:mm:ss]``
+            # from the agent's own clock rather than the display
+            # clock. ``None`` keeps the pre-fix display-clock
+            # fallback for any parser that does not yet yield a
+            # source timestamp.
             display.emit_parsed_event(
-                agent_name, kind, parsed_line.content, parsed_line.metadata or {}
+                agent_name,
+                kind,
+                parsed_line.content,
+                parsed_line.metadata or {},
+                timestamp=parsed_line.timestamp,
             )
             # emit_parsed_event already records a tool_use on the display's
             # subscriber; recording it again here would double-count the repeat

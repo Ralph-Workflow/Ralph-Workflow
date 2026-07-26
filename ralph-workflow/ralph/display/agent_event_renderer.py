@@ -115,6 +115,59 @@ def _safe_str(content: object) -> str:
     return strip_terminal_control(text)
 
 
+#: Parser-channel prefixes that must NEVER reach an operator-facing
+#: surface. The four documented kinds in their short form, with the
+#: trailing colon and a single separating space. Agents that emit
+#: structured output sometimes leak these prefixes into the body
+#: (e.g. ``"text: internal prefix payload"``); the registry strips
+#: them at the canonical event-content normalization seam so the
+#: severity word, tool name, and outcome carry the information
+#: instead (DA-001 / AC-02).
+_INTERNAL_CHANNEL_PREFIXES: tuple[str, ...] = (
+    "text: ",
+    "thinking: ",
+    "tool_use: ",
+    "tool_result: ",
+)
+
+
+def _strip_internal_channel_prefix(content: str) -> str:
+    """Remove a leading parser-channel prefix from ``content``.
+
+    DA-001 (wt-028-display S-3 / AC-02): the registry's canonical
+    event-content normalization seam strips the four recognized
+    parser channel prefixes (``text: ``, ``thinking: ``,
+    ``tool_use: ``, ``tool_result: ``) when they appear at the
+    START of the body. The function never alters ordinary body
+    text -- it only matches a leading prefix that exactly one of
+    those four tokens followed by a single space. A body whose
+    first character is a colon, or whose first token is a
+    different word, is returned unchanged so legitimate prose is
+    preserved.
+    """
+    for prefix in _INTERNAL_CHANNEL_PREFIXES:
+        if content.startswith(prefix):
+            return content[len(prefix):]
+    return content
+
+
+def _normalized_event_content(event: AgentActivityEvent) -> str:
+    """Return ``event.content`` ready for body rendering.
+
+    DA-001 (wt-028-display S-3 / AC-02): applies
+    :func:`_safe_str` (control-character sanitization) followed by
+    :func:`_strip_internal_channel_prefix` (parser-channel prefix
+    stripping). This is the SINGLE canonical seam where agent-body
+    content is normalized before reaching any surface -- the live
+    log, the rendered record, and the plain-text shim all inherit
+    the normalization here so a parser that leaks
+    ``"text: ..."`` / ``"thinking: ..."`` / ``"tool_use: ..."`` /
+    ``"tool_result: ..."`` into the body cannot leak those tokens
+    to the operator.
+    """
+    return _strip_internal_channel_prefix(_safe_str(event.content))
+
+
 class EventRenderer(Protocol):
     """Render a single ``AgentActivityEvent`` into a rich ``Text``.
 
@@ -304,7 +357,7 @@ def _render_text_event(
     if event.kind is ActivityEventKind.THINKING:
         style_name = "running"
     style, icon, label = _state_payload(style_name)
-    body = _format_body_with_unit(_safe_str(event.content), unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
@@ -331,7 +384,7 @@ def _render_status_event(
     ``running``; subagent_progress uses ``info``.
     """
     style, icon, label = _state_payload("info")
-    body = _format_body_with_unit(_safe_str(event.content), unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
@@ -389,7 +442,7 @@ def _render_tool_use_event(
     the plain-text path matches the legacy ``agent_name`` contract.
     """
     style, icon, label = _state_payload("running")
-    raw_name = _safe_str(event.content) or "tool"
+    raw_name = _normalized_event_content(event) or "tool"
     tool_name = friendly_tool_name(raw_name)
     args_str = _format_event_input(event.metadata)
     body_segments: list[str] = []
@@ -445,7 +498,7 @@ def _render_tool_result_event(
     is_error = _metadata_truthy(event.metadata.get("is_error"))
     state = "error" if is_error else "success"
     style, icon, label = _state_payload(state)
-    raw_body = _safe_str(event.content)
+    raw_body = _normalized_event_content(event)
     if not raw_body:
         result_meta = event.metadata.get("result")
         if isinstance(result_meta, dict):
@@ -494,7 +547,7 @@ def _render_error_event(
     body so the meaning persists with color disabled.
     """
     style, icon, label = _state_payload("error")
-    body = _format_body_with_unit(_safe_str(event.content) or "unknown error", unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event) or "unknown error", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)
@@ -510,7 +563,7 @@ def _render_lifecycle_event(
 ) -> Text:
     """Render a lifecycle event (phase transitions, run start / end)."""
     style, icon, label = _state_payload("info")
-    body = _format_body_with_unit(_safe_str(event.content), unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
@@ -530,7 +583,7 @@ def _render_progress_event(
     in-progress signal never accidentally reads as success/failure.
     """
     style, icon, label = _state_payload("running")
-    body = _format_body_with_unit(_safe_str(event.content), unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
@@ -546,7 +599,7 @@ def _render_heartbeat_event(
 ) -> Text:
     """Render a heartbeat event (idle-waitdog liveness ping)."""
     style, icon, label = _state_payload("info")
-    body = _format_body_with_unit(_safe_str(event.content) or "alive", unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event) or "alive", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, "theme.text.muted", escape_body=escape_body)
@@ -571,7 +624,7 @@ def _render_unknown_event(
     key=value context.
     """
     style, icon, label = _state_payload("warning")
-    body = _format_body_with_unit(_safe_str(event.content), unit_id)
+    body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     if body:

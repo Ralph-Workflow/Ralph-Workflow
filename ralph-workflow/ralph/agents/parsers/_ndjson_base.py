@@ -29,6 +29,8 @@ text/thinking accumulator state override it to drain pending buffers.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
+from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from ._event_classification import is_lifecycle_event
@@ -104,6 +106,33 @@ def _extract_pid_from_obj(obj: dict[str, object]) -> int | None:
 
 
 __all__ = ["NdjsonParserBase"]
+
+
+def _extract_source_timestamp(obj: dict[str, object]) -> str | None:
+    """Return the validated ISO-8601 source timestamp from ``obj`` or ``None``.
+
+    DA-002 (wt-028-display S-2 / AC-01): the parser-to-display handoff
+    preserves the source event's real timestamp when one is present so
+    the rendered record carries ``[hh:mm:ss]`` from the agent's own
+    clock rather than the display clock. Inspects the conventional
+    keys (``timestamp``, ``time``, ``ts``) at the top level so a
+    fixture can drive the assertion with ``{"timestamp": "..."}``
+    without re-shaping the wire format. Returns ``None`` for any
+    non-string value, any unparsable string, or any key whose value
+    is empty -- the caller falls back to the display clock on ``None``
+    so a buggy parser cannot silently inject ``[??:??:??]``.
+    """
+    for key in ("timestamp", "time", "ts"):
+        raw = obj.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        candidate = raw.strip()
+        try:
+            datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        return candidate
+    return None
 
 
 class NdjsonParserBase(ParserTemplateBase):
@@ -240,6 +269,12 @@ class NdjsonParserBase(ParserTemplateBase):
 
         obj = cast("dict[str, object]", parsed)
 
+        # DA-002 (wt-028-display S-2 / AC-01): extract the source
+        # timestamp ONCE so every yielded ``AgentOutputLine`` carries
+        # the same validated value when the wire-format event has one.
+        # ``None`` keeps the pre-fix display-clock fallback.
+        source_timestamp = _extract_source_timestamp(obj)
+
         # R5 (Trustworthy Idle Watchdog spec): the shared
         # ``SubagentPidRegistry`` MUST see every observed structured
         # event BEFORE the lifecycle / error short-circuits so a
@@ -252,19 +287,73 @@ class NdjsonParserBase(ParserTemplateBase):
 
         if "error" in obj:
             error_msg = extract_error_message(obj)
-            yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
+            yield AgentOutputLine(
+                type="error",
+                content=error_msg,
+                raw=stripped,
+                metadata=obj,
+                timestamp=source_timestamp,
+            )
             return
 
         event_type = str(obj.get("type", ""))
         if event_type and is_lifecycle_event(event_type):
             lifecycle_result = self._handle_lifecycle_event(obj, event_type)
-            if lifecycle_result is None:
-                yield from self._dispatch_json_object(obj, stripped)
-                return
-            yield from lifecycle_result
+            yield from self._dispatch_with_timestamp(
+                obj,
+                stripped,
+                source_timestamp,
+                lifecycle_result,
+            )
             return
 
-        yield from self._dispatch_json_object(obj, stripped)
+        # DA-002 (wt-028-display S-2 / AC-01): the subclass dispatch
+        # hook yields AgentOutputLines whose ``timestamp`` is ``None``
+        # unless the subclass itself stamps them. Forward the validated
+        # source timestamp end-to-end by post-processing the iterator:
+        # any AgentOutputLine whose ``timestamp`` is still ``None`` has
+        # the source timestamp attached (or stays ``None`` when the
+        # wire-format event had none, preserving the display-clock
+        # fallback). ``AgentOutputLine`` is a frozen dataclass so the
+        # attribute is not directly writable; ``dataclasses.replace``
+        # produces a stamped copy. The post-processing is bounded by the
+        # subclass dispatch lifetime so a stale value cannot leak into
+        # a later event.
+        yield from self._dispatch_with_timestamp(
+            obj,
+            stripped,
+            source_timestamp,
+            None,
+        )
+
+    def _dispatch_with_timestamp(
+        self,
+        obj: dict[str, object],
+        raw: str,
+        source_timestamp: str | None,
+        lifecycle_result: Iterator[AgentOutputLine] | None,
+    ) -> Iterator[AgentOutputLine]:
+        """Yield the dispatch chain with ``source_timestamp`` attached to every line.
+
+        DA-002 (wt-028-display S-2 / AC-01): extracted helper that
+        keeps the ``_classify_after_strip`` state machine below the
+        PLR0911 return-statement cap. The lifecycle branch is
+        routed through here so the post-processing is centralised
+        in one place; the non-lifecycle branch also routes through
+        here with ``lifecycle_result=None``.
+        """
+        if lifecycle_result is not None:
+            yielded = lifecycle_result
+        else:
+            yielded = self._dispatch_json_object(obj, raw, source_timestamp)
+        if source_timestamp is None:
+            yield from yielded
+            return
+        for line in yielded:
+            if isinstance(line, AgentOutputLine) and line.timestamp is None:
+                yield replace(line, timestamp=source_timestamp)
+            else:
+                yield line
 
     def _handle_lifecycle_event(
         self,
@@ -290,6 +379,7 @@ class NdjsonParserBase(ParserTemplateBase):
         self,
         obj: dict[str, object],
         raw: str,
+        source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
         """Subclass hook: classify a non-lifecycle, non-error JSON object.
 
@@ -298,9 +388,23 @@ class NdjsonParserBase(ParserTemplateBase):
         Subclasses override this to map the per-agent event vocabulary to
         :class:`AgentOutputLine` types and to drive their per-agent
         accumulator state.
+
+        ``source_timestamp`` (DA-002 / wt-028-display S-2 / AC-01):
+        the optional validated ISO-8601 timestamp the base extracted
+        from the wire-format event. When the subclass hook returns
+        multiple yielded lines (e.g. an accumulator flush plus a final
+        snapshot), the timestamp is forwarded into every yielded
+        :class:`AgentOutputLine` so each line preserves the source
+        time end-to-end rather than falling back to the display
+        clock.
         """
         event_type = str(obj.get("type", "unknown"))
-        yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+        yield AgentOutputLine(
+            type=event_type,
+            raw=raw,
+            metadata=obj,
+            timestamp=source_timestamp,
+        )
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
         """Subclass hook: reclassify a line that is not valid JSON.

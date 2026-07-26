@@ -155,26 +155,62 @@ def _filter_run_start_content(lines: list[str]) -> list[str]:
     ]
 
 
-def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
-    """Default mode: plan and verbosity share one [run-start] line."""
+def test_emit_run_start_plan_verbosity_each_on_own_line() -> None:
+    """Default mode: plan= and verbosity= each render on their own line.
+
+    DA-003 (wt-028-display S-6 / AC-05): the run-start body now
+    emits one ``key=value`` row per supplied field on every console
+    size, so a long ``workspace_root`` cannot clip later fields
+    the way the legacy single-row grouping did. The structured
+    layout is the new contract; the pre-fix grouped-on-one-line
+    tests are intentionally retired in favor of the field-level
+    per-row pins.
+    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(plan_present=True, verbosity="verbose"))
     out = buf.getvalue()
     run_start_lines = _filter_run_start_content(out.splitlines())
     plan_line = next((ln for ln in run_start_lines if "plan=" in ln), None)
+    verbosity_line = next(
+        (ln for ln in run_start_lines if "verbosity=" in ln), None
+    )
     assert plan_line is not None, "expected a line with plan= in default mode"
-    assert "verbosity=" in plan_line, "verbosity= must be on the same line as plan="
+    assert verbosity_line is not None, (
+        "expected a line with verbosity= in default mode"
+    )
+    assert "verbosity=" not in plan_line, (
+        "verbosity= must be on its own line, not grouped with plan="
+    )
+    assert "plan=" not in verbosity_line, (
+        "plan= must be on its own line, not grouped with verbosity="
+    )
 
 
-def test_emit_run_start_prompt_workspace_grouped_on_one_line() -> None:
-    """Default mode: prompt= and workspace= share one [run-start] line."""
+def test_emit_run_start_prompt_workspace_each_on_own_line() -> None:
+    """Default mode: prompt= and workspace= each render on their own line.
+
+    DA-003 (wt-028-display S-6 / AC-05): same per-row contract as
+    the plan/verbosity pair -- a long ``workspace_root`` no longer
+    drags the rest of the orientation off the row.
+    """
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(prompt_path="PROMPT.md", workspace_root="/workspace"))
     out = buf.getvalue()
     run_start_lines = _filter_run_start_content(out.splitlines())
     prompt_line = next((ln for ln in run_start_lines if "prompt=" in ln), None)
+    workspace_line = next(
+        (ln for ln in run_start_lines if "workspace=" in ln), None
+    )
     assert prompt_line is not None, "expected a line with prompt= in default mode"
-    assert "workspace=" in prompt_line, "workspace= must be on the same line as prompt="
+    assert workspace_line is not None, (
+        "expected a line with workspace= in default mode"
+    )
+    assert "workspace=" not in prompt_line, (
+        "workspace= must be on its own line, not grouped with prompt="
+    )
+    assert "prompt=" not in workspace_line, (
+        "prompt= must be on its own line, not grouped with workspace="
+    )
 
 
 def _make_height_constrained_display(

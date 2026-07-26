@@ -18,6 +18,8 @@ Tests pin:
 
 from __future__ import annotations
 
+import io
+
 from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
@@ -175,3 +177,144 @@ def test_is_height_constrained_survives_refreshed() -> None:
     assert ctx.is_height_constrained() is True
     refreshed = ctx.refreshed()
     assert refreshed.is_height_constrained() is True
+
+
+# -----------------------------------------------------------------------
+# DA-003 (wt-028-display S-6 / AC-05): on a 12-row terminal the
+# run-start orientation must preserve every supplied field; nothing
+# is silently dropped. The pre-fix single ``no_wrap=True`` line
+# clipped every field after the long workspace path; the structured
+# multi-line layout that replaces it pins the field set in tests.
+# -----------------------------------------------------------------------
+
+
+def _run_height_constrained(
+    *, width: int, height: int
+) -> tuple[object, io.StringIO]:
+    """Render a fully populated ``emit_run_start`` at ``width x height``.
+
+    Returns ``(pd, buf)`` so callers can assert against the captured
+    plain-text rendering. The Console is non-TTY (``force_terminal=False``)
+    so the captured text is greppable, and the highlighter is off so
+    color escapes don't leak into the assertions.
+    """
+    from ralph.display._run_start_orientation import RunStartOrientation
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.theme import RALPH_THEME
+
+    buf = io.StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=False,
+        width=width,
+        height=height,
+        color_system=None,
+        theme=RALPH_THEME,
+    )
+    ctx = make_display_context(console=console, force_width=width, force_height=height)
+    pd = ParallelDisplay(ctx, is_quiet=False)
+    pd.emit_run_start(
+        RunStartOrientation(
+            prompt_path=".agent/PROMPT.md",
+            workspace_root=(
+                "/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-028-display"
+            ),
+            developer_agent="claude",
+            developer_model="minimax/MiniMax-3",
+            developer_iters=4,
+            parallel_max_workers=2,
+            plan_present=True,
+            verbosity="normal",
+            legend_enabled=False,
+        )
+    )
+    return pd, buf
+
+
+def test_run_start_preserves_every_field_at_12_rows_80_cols() -> None:
+    """DA-003: 12-row / 80-col run-start keeps every supplied field.
+
+    The pre-fix single ``no_wrap=True`` line joined every field
+    onto one row and let the long workspace path consume the
+    entire 80-column width; ``developer=``, ``iterations=``,
+    ``parallel=``, ``plan=``, and ``verbosity=`` never reached
+    the operator. The structured multi-line layout emits one
+    ``key=value`` row per supplied field; this test pins every
+    key at the canonical 12-row, 80-col split-pane size.
+    """
+    import re
+
+    _pd, buf = _run_height_constrained(width=80, height=12)
+    plain = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", buf.getvalue())
+    for key in (
+        "prompt=",
+        "workspace=",
+        "developer=",
+        "model=",
+        "iterations=",
+        "parallel=",
+        "plan=",
+        "verbosity=",
+    ):
+        assert key in plain, (
+            f"run-start field {key!r} missing from 12-row / 80-col output:\n{plain!r}"
+        )
+
+
+def test_run_start_preserves_every_field_at_12_rows_120_cols() -> None:
+    """DA-003: 12-row / 120-col run-start keeps every supplied field.
+
+    Wider console widens the body budget so the elision is shorter,
+    but the field set must be identical to the 80-col case -- no
+    field may disappear at any width the terminal can hand the
+    operator.
+    """
+    import re
+
+    _pd, buf = _run_height_constrained(width=120, height=12)
+    plain = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", buf.getvalue())
+    for key in (
+        "prompt=",
+        "workspace=",
+        "developer=",
+        "model=",
+        "iterations=",
+        "parallel=",
+        "plan=",
+        "verbosity=",
+    ):
+        assert key in plain, (
+            f"run-start field {key!r} missing from 12-row / 120-col output:\n{plain!r}"
+        )
+
+
+def test_run_start_long_value_left_elides_not_clipped() -> None:
+    """DA-003: an overlong value left-elides with an accounted-for glyph.
+
+    The 80-col, 12-row layout cannot fit the full
+    ``workspace=/Volumes/Crucial X9/...`` path; the layout
+    left-elides it (operator can still see the file system
+    basename) rather than letting the terminal silently clip
+    the rest of the fields. The pre-fix code clipped the entire
+    line at the terminal width.
+    """
+    import re
+
+    _pd, buf = _run_height_constrained(width=80, height=12)
+    plain = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", buf.getvalue())
+    # The workspace path is left-elided so the tail (the
+    # project's basename) remains visible at 80 cols.
+    assert "wt-028-display" in plain, (
+        f"left-elided workspace path must keep the project basename "
+        f"at 80 cols; got:\n{plain!r}"
+    )
+    # No mid-token clipping -- the path either appears in full
+    # or left-elided with the standard elision glyph (U+2026).
+    assert "..." not in plain, (
+        f"mid-word clipping is the pre-fix defect; got:\n{plain!r}"
+    )
+    # Every other field key survived despite the long path.
+    for key in ("developer=", "iterations=", "parallel=", "plan=", "verbosity="):
+        assert key in plain, (
+            f"run-start field {key!r} dropped after long workspace path:\n{plain!r}"
+        )

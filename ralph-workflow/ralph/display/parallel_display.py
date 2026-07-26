@@ -2735,6 +2735,14 @@ class ParallelDisplay:
 
             self._emit_run_start(timestamp, orientation, height_constrained=height_constrained)
 
+    #: DA-003 (wt-028-display S-6 / AC-05): column prefix the
+    #: ``_build_line`` chrome (timestamp + level + category + tag)
+    #: takes on a run-start line. The body has to fit within
+    #: ``body_measure() - chrome_prefix_len`` columns so a
+    #: long ``workspace_root`` left-elides to that budget rather
+    #: than silently overflowing the terminal width.
+    _RUN_START_CHROME_PREFIX_LEN: int = len("00:00:00 INFO META [run-start] ")
+
     def _emit_run_start(
         self,
         timestamp: str,
@@ -2744,95 +2752,213 @@ class ParallelDisplay:
     ) -> None:
         """Emit the run-start orientation body (single default-mode layout).
 
-        DA-005 (S-6 / AC-05): on a height-constrained console the
-        body compresses to a single headed line carrying the same
-        fields in ``key=value`` form, so the orientation stays
-        legible on a 12-row terminal without growing the working
-        area or dropping the prompt/workspace/agents/iterations/
-        parallel/plan information.
+        DA-003 (S-6 / AC-05): the height-constrained console path
+        renders one heading line plus one ``key=value`` line per
+        supplied field. The body of each line is left-elided to fit
+        within ``body_measure() - chrome_prefix_len`` so a long
+        ``workspace_root`` or ``prompt_path`` cannot silently clip
+        later fields the way the previous single ``no_wrap=True``
+        line did -- a 12-row, 80-col probe at fully-populated
+        orientation rendered only ``prompt=...`` and dropped
+        ``developer``, ``iterations``, ``parallel``, ``plan``, and
+        ``verbosity``. With the structured layout every supplied
+        field has its own line and either renders in full, left-elides
+        with an accounted-for marker, or condenses to a counted
+        marker that points at the verbatim capture.
         """
-        pw_parts: list[str] = []
+        pw_parts: list[tuple[str, str]] = []
         if orientation.prompt_path is not None:
-            pw_parts.append(f"prompt={strip_markup(orientation.prompt_path)}")
+            pw_parts.append(("prompt", strip_markup(orientation.prompt_path)))
         if orientation.workspace_root is not None:
-            pw_parts.append(f"workspace={strip_markup(orientation.workspace_root)}")
-        agents_parts = self._build_agents_parts(orientation)
-        iter_parts: list[str] = []
+            pw_parts.append(("workspace", strip_markup(orientation.workspace_root)))
+        agents_parts: list[tuple[str, str]] = []
+        if orientation.developer_agent is not None:
+            agents_parts.append(("developer", strip_markup(orientation.developer_agent)))
+        if orientation.developer_model is not None:
+            agents_parts.append(("model", strip_markup(orientation.developer_model)))
+        iter_parts: list[tuple[str, str]] = []
         if orientation.developer_iters is not None:
-            iter_parts.append(f"dev:{orientation.developer_iters}")
-        parallel_parts: list[str] = []
+            iter_parts.append(("iterations", f"dev:{orientation.developer_iters}"))
+        parallel_parts: list[tuple[str, str]] = []
         if orientation.parallel_max_workers is not None:
-            parallel_parts.append(f"max_workers={orientation.parallel_max_workers}")
-        plan_val = "ready" if orientation.plan_present else "absent"
-        plan_parts: list[str] = [f"plan={plan_val}"]
-        if orientation.verbosity is not None:
-            plan_parts.append(f"verbosity={orientation.verbosity}")
-        if height_constrained:
-            condensed = " ".join(
-                [
-                    *pw_parts,
-                    *agents_parts,
-                    *(f"iterations={' '.join(iter_parts)}" for _ in [0] if iter_parts),
-                    *(f"parallel={' '.join(parallel_parts)}" for _ in [0] if parallel_parts),
-                    " ".join(plan_parts),
-                ]
+            parallel_parts.append(
+                ("parallel", f"max_workers={orientation.parallel_max_workers}")
             )
-            self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {condensed}"),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
+        plan_val = "ready" if orientation.plan_present else "absent"
+        plan_parts: list[tuple[str, str]] = [("plan", plan_val)]
+        if orientation.verbosity is not None:
+            plan_parts.append(("verbosity", orientation.verbosity))
+
+        if height_constrained:
+            self._emit_run_start_unboxed(
+                timestamp,
+                pw_parts=pw_parts,
+                agents_parts=agents_parts,
+                iter_parts=iter_parts,
+                parallel_parts=parallel_parts,
+                plan_parts=plan_parts,
             )
             return
-        if pw_parts:
+
+        for key, value in pw_parts:
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        if agents_parts:
+        for key, value in agents_parts:
             self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-start] {' '.join(agents_parts)}"
-                ),
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        if iter_parts:
+        for key, value in iter_parts:
             self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[run-start] iterations={' '.join(iter_parts)}",
-                ),
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        if parallel_parts:
+        for key, value in parallel_parts:
             self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[run-start] parallel={' '.join(parallel_parts)}",
-                ),
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
+        for key, value in plan_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def _emit_run_start_unboxed(
+        self,
+        timestamp: str,
+        *,
+        pw_parts: list[tuple[str, str]],
+        agents_parts: list[tuple[str, str]],
+        iter_parts: list[tuple[str, str]],
+        parallel_parts: list[tuple[str, str]],
+        plan_parts: list[tuple[str, str]],
+    ) -> None:
+        """Emit the run-start body on a height-constrained console.
+
+        DA-003 (wt-028-display S-6 / AC-05): one heading line plus
+        one ``key=value`` line per supplied field. Each body is
+        left-elided to fit the available body budget so a long
+        ``workspace_root`` cannot silently clip later fields -- the
+        pre-fix single ``no_wrap=True`` line on a 12-row, 80-col
+        probe at fully-populated orientation dropped
+        ``iterations``, ``parallel``, ``plan``, and ``verbosity``
+        after the path consumed the entire row. Each line
+        carries the indentation of the chrome prefix so the
+        sub-rows hang under the heading row. Body budgets below
+        the 40-column floor fall back to a counted condensation
+        marker so the field is never silently dropped.
+        """
+        # Heading line: still tags the run-start so the entry is
+        # findable in scrollback / the record.
         self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"),
+            self._build_line(timestamp, "INFO", "META", "[run-start] orientation"),
             markup=False,
             highlight=False,
             no_wrap=True,
+        )
+        chrome_prefix_len = self._RUN_START_CHROME_PREFIX_LEN + len("  ")
+        # The body budget must accommodate the 2-space hanging indent
+        # that aligns each ``key=value`` row beneath the heading. We
+        # floor at 12 so the smallest sane token still survives --
+        # below that we condense to a counted marker rather than
+        # silently dropping the field.
+        body_budget = max(12, self._ctx.body_measure() - chrome_prefix_len)
+
+        groups: list[tuple[str, list[tuple[str, str]]]] = [
+            ("prompt", pw_parts),
+            ("agents", agents_parts),
+            ("iterations", iter_parts),
+            ("parallel", parallel_parts),
+            ("plan", plan_parts),
+        ]
+        condensed_count = 0
+        condensed_chars = 0
+        for _group_label, items in groups:
+            for key, value in items:
+                rendered = self._render_run_start_field(
+                    timestamp, key, value, body_budget
+                )
+                if rendered is None:
+                    condensed_count += 1
+                    condensed_chars += len(value)
+                else:
+                    self._console.print(rendered, markup=False, highlight=False)
+        if condensed_count:
+            marker = (
+                f"\u22ee {condensed_count} field"
+                f"{'s' if condensed_count != 1 else ''} condensed"
+                f" \u00b7 {condensed_chars} chars"
+                " \u00b7 in verbatim capture"
+            )
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {marker}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def _render_run_start_field(
+        self,
+        timestamp: str,
+        key: str,
+        value: str,
+        body_budget: int,
+    ) -> Text | None:
+        """Render a single ``key=value`` row, left-eliding long values.
+
+        DA-003 (wt-028-display S-6 / AC-05): when the rendered
+        ``key=value`` line fits within ``body_budget`` columns the
+        value is rendered in full; when it does not the value is
+        left-elided (``\u2026`` prefix) until it does. Returns
+        ``None`` when the budget cannot accommodate even a
+        counted marker for the field so the caller can collapse to
+        a single ``N fields condensed \u00b7 M chars \u00b7 in verbatim
+        capture`` marker at the end of the block.
+        """
+        rendered = f"{key}={value}"
+        if len(rendered) <= body_budget:
+            line = self._build_line(
+                timestamp, "INFO", "META", f"[run-start]   {rendered}"
+            )
+            return line
+        # Leave room for ``key=`` plus the elision glyph and the
+        # closing ``\u2026`` so the operator still sees which key this
+        # row carried. If the budget cannot even hold ``key=\u2026`` the
+        # caller counts this row in the block-level marker.
+        keep_suffix = "\u2026"
+        key_prefix = f"{key}="
+        available = body_budget - len(key_prefix) - len(keep_suffix)
+        if available <= 0:
+            return None
+        elided = f"{keep_suffix}{value[-available:]}" if available > 0 else keep_suffix
+        rendered = f"{key_prefix}{elided}"
+        if len(rendered) > body_budget:
+            # Final safety net -- extremely tight budget. We still
+            # emit the row with whatever fits rather than silently
+            # dropping the field; this branch is unreachable under
+            # the ``available > 0`` check above in practice but
+            # preserves the no-silent-drop guarantee if the budget
+            # arithmetic changes.
+            rendered = rendered[:body_budget]
+        return self._build_line(
+            timestamp, "INFO", "META", f"[run-start]   {rendered}"
         )
 
     def begin_phase(self, phase: str) -> None:
