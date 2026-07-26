@@ -17,7 +17,7 @@ must actually live inside the wired sink.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pytest
 
 import ralph.testing.audit_terminal_escape_containment as audit_module
 from ralph.testing.audit_terminal_escape_containment import (
@@ -28,12 +28,18 @@ from ralph.testing.audit_terminal_escape_containment import (
 )
 from ralph.testing.audit_terminal_escape_containment import main as audit_main
 
-if TYPE_CHECKING:
-    import pytest
 
-
+@pytest.mark.timeout_seconds(5)
 def test_audit_returns_zero_when_all_invariants_satisfied() -> None:
-    """``main()`` returns 0 on the in-tree literal set."""
+    """``main()`` returns 0 on the in-tree literal set.
+
+    The audit walks every invariant's AST parse over real source files
+    (calls ``ast.parse`` on each scanned path); under 24-way sharding the
+    per-test SIGALRM cap charges wall-clock against contention from
+    sibling shards. The 5-second cap is just the resource headroom the
+    work needs; it does NOT mask a real regression (the audit either
+    finds zero violations or it doesn't).
+    """
     assert audit_main([]) == 0
 
 

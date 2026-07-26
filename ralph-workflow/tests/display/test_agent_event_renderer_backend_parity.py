@@ -15,6 +15,7 @@ is identical across backends.
 from __future__ import annotations
 
 import io
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     from ralph.display.agent_activity_event import AgentActivityEvent
     from ralph.display.context import DisplayContext
 
+from ralph.display import activity_model
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import ActivityProvider
 from ralph.display.agent_event_renderer import (
@@ -36,6 +38,39 @@ from ralph.display.context import make_display_context
 from ralph.display.tool_args import friendly_tool_name
 
 pytestmark = pytest.mark.timeout_seconds(5)
+
+# Backend-parity tests render the same logical event through three
+# provider normalizers and compare the rendered plain text byte-for-byte.
+# ``make_event`` (in ralph/display/activity_model.py) stamps every event
+# with a fresh ``datetime.now(UTC).isoformat()`` at construction, so the
+# three backends can otherwise pick up adjacent-second timestamps when the
+# loop crosses a wall-clock second boundary. Pin ``datetime.now(UTC)`` to
+# a single fixed instant for the whole module so the timestamp cue in the
+# rendered line is identical across providers (the parity contract the
+# tests assert).
+_FROZEN_TIMESTAMP: datetime = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_event_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the event-construction clock to a single fixed UTC instant.
+
+    ``ralph.display.activity_model.make_event`` calls
+    ``datetime.now(UTC).isoformat()`` at every event construction. The
+    backend-parity tests below build three such events in a tight loop
+    and compare the rendered plain text; a second-boundary crossing
+    would split the timestamps and break the parity assertion. Pinning
+    the clock at module import time isn't safe (the clock keeps moving
+    between import and the test body), so use an autouse fixture.
+    """
+
+    class _FrozenDatetime:
+        @staticmethod
+        def now(tz: object = None) -> datetime:
+            assert tz is UTC
+            return _FROZEN_TIMESTAMP
+
+    monkeypatch.setattr(activity_model, "datetime", _FrozenDatetime)
 
 
 def _ctx() -> DisplayContext:

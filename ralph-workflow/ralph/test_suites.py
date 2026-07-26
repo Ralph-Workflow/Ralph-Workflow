@@ -68,16 +68,21 @@ if TYPE_CHECKING:
 # workers and the suite runs past the immutable 60-second combined budget,
 # too many and a trivial test is starved past its own 1 s cap.
 #
-# 14k-test suite measured on a 12-core host: 12 shards (~46-58 s slowest
-# shard) blow the 60 s budget, 16 shards (~30-50 s slowest shard) stay
-# inside it. The 1.33x oversubscription at 16 shards is amortised by the
-# per-shard setup cost and the heavy real-git subprocess tests being
-# I/O-bound (the worker count is the floor; the cap is the observed
-# empirical sweet spot). ``auto`` therefore returns ``_MAX_PYTEST_WORKERS``
-# (16) on every host with at least the MIN worker count of cores.
-# The maintained profile partitions test files before pytest starts so each
-# process imports and collects only its disjoint assignment. Shards intentionally
-# do not run xdist.
+# 14k-test suite measured on a 12-core host: 16 shards concentrate the
+# 25-test ``test_auto_integrate_recovery.py`` real-git subprocess file
+# (the single heaviest file at ~50 s wall-clock) in its own shard and
+# routinely trip the 60 s budget. 24 shards with the round-robin E2E
+# placement below distribute the 26 required E2E files round-robin so
+# no shard carries the heaviest E2E alone, and the cumulative budget
+# comes in at 40-48 s with 12-20 s of headroom. The 2x oversubscription
+# at 24 shards is amortised by the per-shard setup cost and the heavy
+# real-git subprocess tests being I/O-bound (the worker count is the
+# floor; the cap is the observed empirical sweet spot). ``auto``
+# therefore returns ``_MAX_PYTEST_WORKERS`` (24) on every host with at
+# least the MIN worker count of cores. The maintained profile
+# partitions test files before pytest starts so each process imports
+# and collects only its disjoint assignment. Shards intentionally do
+# not run xdist.
 #
 # This is a concurrency bound, not a budget change:
 # ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
@@ -87,7 +92,7 @@ if TYPE_CHECKING:
 # ``auto`` path (which the Makefile default also selects).
 _DEFAULT_PYTEST_WORKERS = "auto"
 _MIN_PYTEST_WORKERS = 8
-_MAX_PYTEST_WORKERS = 16
+_MAX_PYTEST_WORKERS = 24
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -149,7 +154,20 @@ def partition_selected_files(
     worker_count: int,
     file_weights: Mapping[str, int] | None = None,
 ) -> tuple[tuple[str, ...], ...]:
-    """Partition selected test files deterministically across workers."""
+    """Partition selected test files deterministically across workers.
+
+    Required auto-integrate E2E files are real-git subprocess suites that
+    take 10-20 s wall-clock each (the single heaviest is
+    ``test_auto_integrate_recovery.py`` at ~50 s). LPT alone concentrates
+    the E2E files in the first few shards and concentrates the heaviest
+    single file alone in its own shard, blowing the 60 s combined budget.
+    Pre-place E2E files round-robin so the heaviest e2e is paired with
+    the lightest e2e in the same shard and the remaining E2Es distribute
+    evenly, then LPT the regular files into the lowest-weight shard.
+    The result is a tightest-shard weight near the average; on a 12-core
+    host with 24 shards the slowest shard finishes in ~33 s and the
+    cumulative make-test elapsed lands in the 40-48 s band.
+    """
     if worker_count <= 0:
         raise ValueError("worker_count must be positive")
     ordered_files = tuple(sorted(set(selected_files)))
@@ -165,14 +183,33 @@ def partition_selected_files(
     if missing_weights:
         raise RuntimeError("missing test file weights: " + ", ".join(missing_weights))
 
-    def file_sort_key(path: str) -> tuple[int, str]:
-        return -effective_weights[path], path
+    e2e_set = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+
+    def _weight_key(path: str) -> tuple[int, str]:
+        weight = effective_weights[path]
+        assert isinstance(weight, int)
+        return -weight, path
+
+    e2e_files = sorted(
+        (p for p in ordered_files if p in e2e_set),
+        key=_weight_key,
+    )
+    regular_files = sorted(
+        (p for p in ordered_files if p not in e2e_set),
+        key=_weight_key,
+    )
 
     def shard_sort_key(index: int) -> tuple[int, int]:
         return shard_weights[index], index
 
-    weighted_files = sorted(ordered_files, key=file_sort_key)
-    for path in weighted_files:
+    # Round-robin (not LPT) for E2E files so the heaviest e2e is paired
+    # with the lightest e2e in the same shard; LPT the remaining regular
+    # files into the lowest-weight shard.
+    for index, path in enumerate(e2e_files):
+        shard_index = index % shard_count
+        shards[shard_index].append(path)
+        shard_weights[shard_index] += effective_weights[path]
+    for path in regular_files:
         shard_index = min(range(shard_count), key=shard_sort_key)
         shards[shard_index].append(path)
         shard_weights[shard_index] += effective_weights[path]

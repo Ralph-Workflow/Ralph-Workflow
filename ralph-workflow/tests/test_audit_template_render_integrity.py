@@ -214,10 +214,19 @@ def test_main_exit_codes_follow_collect_violations(
     assert captured.out.count("Every packaged prompt template must render") == 1
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(15)
 def test_audit_clean_on_current_templates() -> None:
     """Verify-gate wiring: every packaged template x scenario must render
     cleanly. On failure, the full violation list is surfaced so the failing
-    template and check are immediately visible in the test output."""
+    template and check are immediately visible in the test output.
+
+    The audit walks every packaged template through every reachable
+    scenario via the real rendering path (registry + partials +
+    ``TemplateRenderer``). The 5 s cap was measured at 1.6 s on a clean
+    host, but under 24-way sharding the per-test SIGALRM cap fires
+    against CPU contention from sibling shards. The 15 s cap is the
+    resource headroom the work needs; it does NOT mask a real
+    regression (the audit either finds zero violations or it doesn't).
+    """
     violations = collect_violations()
     assert violations == [], "render-integrity violations:\n" + "\n".join(violations)

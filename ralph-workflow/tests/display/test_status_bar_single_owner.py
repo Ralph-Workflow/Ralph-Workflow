@@ -32,6 +32,8 @@ import ast
 from functools import cache
 from pathlib import Path
 
+import pytest
+
 _RALPH_DIR = Path(__file__).parent.parent.parent / "ralph"
 _SCAN_DIRS = (
     _RALPH_DIR / "display",
@@ -153,6 +155,7 @@ def _site_is_in_method(
     return False
 
 
+@pytest.mark.timeout_seconds(5)
 def test_parallel_display_exclusively_owns_status_bar_lifecycle() -> None:
     """All constructor, start, stop, CLI, and runtime ownership clauses hold."""
     violations: list[str] = []

@@ -142,6 +142,7 @@ def _approve_policy(ws: MemoryWorkspace) -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_unprepared_project_still_proceeds_to_planning() -> None:
     """A project whose policy cannot be made ready runs anyway.
 
