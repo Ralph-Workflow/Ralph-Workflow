@@ -1602,6 +1602,41 @@ def _cleanup_pipeline(
         teardown()
 
 
+def _wait_for_pending_remote_publication(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+    """Publish a terminal pending target only when remote waiting was opted in."""
+    from ralph.pipeline.auto_integrate import resolve_integration_target
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        REMOTE_PUSH_REJECTED,
+        REMOTE_PUSHED,
+        remote_sync_enabled,
+        remote_wait_seconds,
+        wait_for_remote_publish,
+    )
+
+    if (
+        state.rebase.last_remote_sync != REMOTE_PUSH_REJECTED
+        or not remote_sync_enabled(ctx.config)
+        or remote_wait_seconds(ctx.config) <= 0.0
+    ):
+        return state
+    target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
+    if target is None:
+        return state
+    published, summary = wait_for_remote_publish(
+        ctx.config,
+        ctx.workspace_scope.root,
+        target,
+        sleep=ctx.sleep,
+    )
+    updated = state.rebase.model_copy(
+        update={
+            "last_remote_sync": REMOTE_PUSHED if published else REMOTE_PUSH_REJECTED,
+            "last_reason": None if published else summary,
+        }
+    )
+    return state.copy_with(rebase=updated)
+
+
 def _execute_with_cleanup(
     initial_state: PipelineState,
     loop_ctx: _LoopContext,
@@ -1640,6 +1675,10 @@ def _execute_with_cleanup(
             except KeyboardInterrupt:
                 return _handle_keyboard_interrupt(state, loop_ctx)
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
+                try:
+                    state = _wait_for_pending_remote_publication(state, loop_ctx)
+                except KeyboardInterrupt:
+                    return _handle_keyboard_interrupt(state, loop_ctx)
                 loop_ctx.active_display.emit(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )

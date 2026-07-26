@@ -34,6 +34,9 @@ from ralph.pipeline.auto_integrate_ff import (
     maybe_push_target,
 )
 from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+)
+from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
 )
 from ralph.pipeline.auto_integrate_record import (
@@ -54,7 +57,6 @@ from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.workspace.scope import WorkspaceScope
 
 #: Mirrors of the outcome verbs in :mod:`ralph.pipeline.auto_integrate`
@@ -785,6 +787,17 @@ def _land_and_reconcile(
     )
 
 
+def _recovery_operation_root(record: object, root: Path) -> tuple[str, Path]:
+    """Return the owned worktree for current records and the root for legacy test records."""
+    if (
+        isinstance(record, IntegrationRecord)
+        and record.operation_kind == "target_reconcile"
+        and record.owning_worktree is not None
+    ):
+        return record.operation_kind, Path(record.owning_worktree)
+    return "feature_integrate", root
+
+
 def recover_incomplete_integration(
     workspace_scope: WorkspaceScope,
     *,
@@ -848,16 +861,12 @@ def recover_incomplete_integration(
             # a dirty tree is operator-owned and preserved).
             return _reclaim_unowned_stale_rebase(root)
 
-        # Step 1: abort any owned engine op we may have left behind.
-        # If EITHER abort fails, retain the record so the next
-        # startup can retry. This closes the bug where the prior
-        # implementation unconditionally called ``_clear_record``
-        # after the abort/reset path and returned
-        # ``last_action='recovered'`` -- leaving the repository in
-        # a rebase/merge state with no ownership marker.
+        operation_kind, operation_root = _recovery_operation_root(record, root)
+
+        # Abort owned operations; retain the record if recovery cannot prove cleanup.
         abort_failed = False
         try:
-            if rebase_in_progress(root):
+            if rebase_in_progress(operation_root):
                 if record.resolving_rebase:
                     # Named distinctly so an operator can tell this apart
                     # from an ordinary crashed rebase. The rebase is still
@@ -872,18 +881,14 @@ def recover_incomplete_integration(
                         "(an orphaned resolution is never resumed)",
                         record.target,
                     )
-                abort_rebase(repo_root=root)
+                abort_rebase(repo_root=operation_root)
         except Exception as exc:
             abort_failed = True
             logger.warning("recovery: abort_rebase raised: {}", exc)
         try:
-            # MERGE_STATE_UNKNOWN deliberately lands in this branch:
-            # "git could not be asked" is not evidence that no merge
-            # is in flight, so the abort is attempted and only a
-            # POSITIVE post-abort MERGE_STATE_NONE counts as success.
-            if merge_state(root) != MERGE_STATE_NONE:
-                aborted = abort_merge(root)
-                if not aborted and merge_state(root) != MERGE_STATE_NONE:
+            if merge_state(operation_root) != MERGE_STATE_NONE:
+                aborted = abort_merge(operation_root)
+                if not aborted and merge_state(operation_root) != MERGE_STATE_NONE:
                     abort_failed = True
                     logger.warning(
                         "recovery: merge abort did not prove MERGE_HEAD gone in {}",
@@ -895,10 +900,9 @@ def recover_incomplete_integration(
 
         # Step 2: reconcile by phase.
         if record.phase == "integrating":
-            # Restore the feature branch to its pre-integration state.
             reset_failed = False
             try:
-                reset_hard(root, record.pre_feature_sha)
+                reset_hard(operation_root, record.pre_feature_sha)
             except Exception as exc:
                 reset_failed = True
                 logger.warning("recovery: reset_hard failed: {}", exc)
@@ -911,9 +915,9 @@ def recover_incomplete_integration(
             restored_ok = (
                 not abort_failed
                 and not reset_failed
-                and not rebase_in_progress(root)
-                and merge_state(root) == MERGE_STATE_NONE
-                and _head_matches_sha(root, record.pre_feature_sha)
+                and not rebase_in_progress(operation_root)
+                and merge_state(operation_root) == MERGE_STATE_NONE
+                and _head_matches_sha(operation_root, record.pre_feature_sha)
             )
             if not restored_ok:
                 return _record_skip(
@@ -924,7 +928,11 @@ def recover_incomplete_integration(
             _clear_record(root)
             return RebaseState(
                 last_action=_ACTION_RECOVERED,
-                last_reason="restored feature branch after interrupted rebase",
+                last_reason=(
+                    "restored target worktree after interrupted reconciliation"
+                    if operation_kind == "target_reconcile"
+                    else "restored feature branch after interrupted rebase"
+                ),
                 last_target=record.target,
                 fast_forwarded=False,
             )
@@ -954,12 +962,6 @@ def recover_incomplete_integration(
 
 
 # ----- AC-14 catalog evidence -----
-# This file is the authoritative source for the catalog entries listed
-# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
-# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
-# names the rung the entry sits on. Adding a new entry here requires
-# BOTH lines or the audit fails.
-
 # AC-14 rationale: A1
 # ladder rung: 2
 # AC-14 rationale: A10

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.git.merge import WORKTREE_FOUND, worktree_lookup
+from ralph.git.merge import WORKTREE_FOUND, branch_sha, worktree_lookup
 from ralph.git.operations import find_main_worktree_root, is_repo_clean
 from ralph.git.rebase.rebase import (
     RebaseNoOp,
@@ -19,6 +19,7 @@ from ralph.git.rebase.rebase import (
     rebase_in_progress,
     rebase_onto,
 )
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, clear_record, write_record
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,20 +32,67 @@ def reconcile_target_onto_remote(repo_root: Path, target: str, remote: str) -> t
     every other shape is intentional: checking out or moving the feature
     worktree would make a remote retry alter unrelated local work.
     """
-    verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
-    if verdict != WORKTREE_FOUND or owner is None:
-        return False, f"target '{target}' has no owning worktree for reconciliation"
-    if not is_repo_clean(owner):
-        return False, f"target worktree is dirty; skipped reconciliation of {remote}/{target}"
+    owner, pre_target_sha, reason = _reconciliation_preconditions(repo_root, target, remote)
+    if reason is not None or owner is None or pre_target_sha is None:
+        return False, reason or f"target '{target}' is unavailable for reconciliation"
+    write_record(
+        repo_root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=pre_target_sha,
+            pre_target_sha=pre_target_sha,
+            operation_kind="target_reconcile",
+            owning_worktree=str(owner),
+        ),
+    )
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
         if isinstance(outcome, (RebaseSuccess, RebaseNoOp)):
+            clear_record(repo_root)
             return True, ""
         if rebase_in_progress(owner):
             abort_rebase(repo_root=owner)
     except Exception as exc:
-        return False, f"reconciliation of {target} with {remote}/{target} failed: {exc}"
+        return _abort_or_retain_record(repo_root, owner, target, remote, str(exc))
+    if rebase_in_progress(owner):
+        return _abort_or_retain_record(repo_root, owner, target, remote, "conflicted")
+    clear_record(repo_root)
     return False, f"reconciliation of {target} with {remote}/{target} conflicted"
+
+
+def _reconciliation_preconditions(
+    repo_root: Path, target: str, remote: str
+) -> tuple[Path | None, str | None, str | None]:
+    """Return a clean owning target worktree and its pre-rebase SHA."""
+    verdict, owner = worktree_lookup(find_main_worktree_root(repo_root), target)
+    if verdict != WORKTREE_FOUND or owner is None:
+        return None, None, f"target '{target}' has no owning worktree for reconciliation"
+    if not is_repo_clean(owner):
+        return None, None, f"target worktree is dirty; skipped reconciliation of {remote}/{target}"
+    pre_target_sha = branch_sha(owner, target)
+    if pre_target_sha is None:
+        return None, None, f"target '{target}' disappeared before reconciliation"
+    return owner, pre_target_sha, None
+
+
+def _abort_or_retain_record(
+    repo_root: Path,
+    owner: Path,
+    target: str,
+    remote: str,
+    detail: str,
+) -> tuple[bool, str]:
+    """Abort a failed reconciliation, retaining crash ownership if cleanup cannot be proven."""
+    try:
+        if rebase_in_progress(owner):
+            abort_rebase(repo_root=owner)
+    except Exception:
+        pass
+    if rebase_in_progress(owner):
+        return False, f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}"
+    clear_record(repo_root)
+    return False, f"reconciliation of {target} with {remote}/{target} failed: {detail}"
 
 
 __all__ = ["reconcile_target_onto_remote"]

@@ -33,6 +33,7 @@ AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
 #: corrupt by :func:`read_record` -- a malformed record must never
 #: be acted on as if it were a known phase.
 IntegrationPhase = Literal["integrating", "integrated"]
+IntegrationOperation = Literal["feature_integrate", "target_reconcile"]
 
 #: Closed set of valid phase values, used by :func:`read_record` to
 #: reject corrupt on-disk records that pass pydantic coercion but
@@ -86,6 +87,8 @@ class IntegrationRecord(RalphBaseModel):
     pre_target_sha: str | None
     integrated_feature_sha: str | None = None
     resolving_rebase: bool = False
+    operation_kind: IntegrationOperation = "feature_integrate"
+    owning_worktree: str | None = None
 
 
 def record_path(workspace_root: Path) -> Path:
@@ -241,6 +244,7 @@ def clear_record(workspace_root: Path) -> None:
 
 __all__ = [
     "AUTO_INTEGRATE_RECORD_FILENAME",
+    "IntegrationOperation",
     "IntegrationPhase",
     "IntegrationRecord",
     "clear_record",
