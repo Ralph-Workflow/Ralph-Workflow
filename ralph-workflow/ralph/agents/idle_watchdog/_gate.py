@@ -188,6 +188,19 @@ def gate_fire(
         # watchdog's own assessment. ``_set_stall`` is idempotent.
         self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         return WatchdogVerdict.FIRE
+    # wt-047-stall-label (DA-001): deferral path must clear any
+    # previously set stall. A prior ``SILENT_SUBAGENT``-induced stall
+    # (or any other non-``STUCK`` fire path) that no longer applies
+    # on the current tick must NOT keep the Status Bar stuck on
+    # ``STALLED`` forever; the watchdog is the sole owner of the
+    # label and the classifier just told us the run is NOT stuck on
+    # this tick. ``_set_stall`` is idempotent so the no-op when
+    # ``_stall_active`` is already False is harmless. The CLEAR is
+    # intentionally placed BEFORE the ``_last_fire_reason`` /
+    # logging so a re-entrant caller that observes the cleared
+    # state during the same call sees the post-deferral truth.
+    if self._stall_active:
+        self._set_stall(active=False, now=now, idle_elapsed=idle_elapsed)
     self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
     self._last_deferred_kind = kind
     coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)

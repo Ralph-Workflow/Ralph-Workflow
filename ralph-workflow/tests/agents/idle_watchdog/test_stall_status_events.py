@@ -116,10 +116,7 @@ def _make_watchdog(
     # ``os_descendant_only_ceiling_seconds`` (default 300.0) and the
     # ``stuck_job_sub_ceiling_seconds`` (default 600.0) -- they
     # must all be <= ``max_waiting_on_child_seconds``.
-    if (
-        max_waiting_on_child_no_progress_seconds is None
-        and max_waiting_on_child_seconds < 600.0
-    ):
+    if max_waiting_on_child_no_progress_seconds is None and max_waiting_on_child_seconds < 600.0:
         max_waiting_on_child_no_progress_seconds = max_waiting_on_child_seconds
     if max_waiting_on_child_seconds < 300.0:
         os_descendant_only_ceiling_seconds: float | None = max_waiting_on_child_seconds
@@ -374,8 +371,7 @@ def test_fire_verdict_emits_stalled_event() -> None:
     watchdog.evaluate(lambda: AgentExecutionState.ACTIVE)
     stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
     assert len(stalled_events) == 1, (
-        f"Repeated evaluate() must NOT emit duplicate STALLED events; "
-        f"got {len(stalled_events)}"
+        f"Repeated evaluate() must NOT emit duplicate STALLED events; got {len(stalled_events)}"
     )
 
 
@@ -439,8 +435,7 @@ def test_silent_subagent_emits_stalled_event() -> None:
     assert gate_verdict == WatchdogVerdict.FIRE
     stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
     assert len(stalled_events) == 1, (
-        f"Repeated _gate_fire must NOT emit duplicate STALLED events; "
-        f"got {len(stalled_events)}"
+        f"Repeated _gate_fire must NOT emit duplicate STALLED events; got {len(stalled_events)}"
     )
 
 
@@ -573,3 +568,149 @@ def test_is_stalled_property_reflects_internal_state() -> None:
     assert watchdog.is_stalled is True
     watchdog._set_stall(active=False, now=200.0, idle_elapsed=0.0)
     assert watchdog.is_stalled is False
+
+
+# ---------------------------------------------------------------------------
+# DA-001 regression: gate deferral must clear a prior SILENT_SUBAGENT stall.
+# ---------------------------------------------------------------------------
+
+
+def test_gate_deferral_clears_silent_subagent_stall_on_non_stuck_tick() -> None:
+    """A later non-stuck tick clears a prior SILENT_SUBAGENT stall.
+
+    DA-001 contract: when the gate fires (returns ``WatchdogVerdict.FIRE``)
+    on a ``StuckKind.SILENT_SUBAGENT`` verdict and the next tick's
+    classifier no longer returns ``SILENT_SUBAGENT`` (e.g. the
+    corroborator now reports a non-stuck kind like ``LOADING``), the
+    gate's deferral path MUST clear the stall flag. Without this
+    transition-out, the Status Bar would stay ``STALLED`` forever
+    after a transient subagent silence even though the watchdog's
+    own classifier is reporting a healthy session.
+
+    The captured ``WaitingStatusListener`` is the contract surface
+    the status bar subscribes to; both the ``STALLED`` transition
+    on entry and the ``STALL_RESUMED`` transition on exit must be
+    observable as listener events (not just internal flag flips).
+    """
+    captured: list[WaitingStatusEvent] = []
+    watchdog, clock = _make_watchdog(listener=captured.append)
+
+    # Patch _classify_stuck_now so we can drive the SILENT_SUBAGENT
+    # transition followed by a non-stuck kind deterministically.
+    sequence: list[StuckKind] = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
+    _attr = "_classify_stuck_now"
+
+    def _sequence_now(
+        *,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
+    ) -> StuckKind:
+        if sequence:
+            return sequence.pop(0)
+        return StuckKind.LOADING
+
+    setattr(watchdog, _attr, _sequence_now)
+
+    # Tick 1: SILENT_SUBAGENT -> gate fires + sets stall.
+    first_now = clock.monotonic() + 181.0
+    first_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=first_now,
+        idle_elapsed=181.0,
+    )
+    assert first_verdict == WatchdogVerdict.FIRE
+    stalled_after_first = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled_after_first) == 1
+    assert _stall_state(watchdog) is True
+
+    # Tick 2: classifier returns LOADING (not SILENT_SUBAGENT) -> gate
+    # defers (CONTINUE). The deferral path must clear the stall flag
+    # and emit exactly one STALL_RESUMED transition.
+    second_now = clock.monotonic() + 1.0
+    second_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=second_now,
+        idle_elapsed=1.0,
+    )
+    assert second_verdict == WatchdogVerdict.CONTINUE
+    resumed_after_second = [
+        e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED
+    ]
+    assert len(resumed_after_second) == 1, (
+        f"Expected exactly one STALL_RESUMED listener event on the non-stuck tick; "
+        f"got {len(resumed_after_second)}: {[e.kind for e in _events(captured)]}"
+    )
+    assert _stall_state(watchdog) is False
+
+    # Tick 3: classifier still returns LOADING -> no additional events.
+    third_now = clock.monotonic() + 1.0
+    third_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=third_now,
+        idle_elapsed=1.0,
+    )
+    assert third_verdict == WatchdogVerdict.CONTINUE
+    stalled_total = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    resumed_total = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
+    assert len(stalled_total) == 1, (
+        f"Repeated non-stuck ticks must NOT emit duplicate STALLED; got {len(stalled_total)}"
+    )
+    assert len(resumed_total) == 1, (
+        f"Repeated non-stuck ticks must NOT emit duplicate STALL_RESUMED; got {len(resumed_total)}"
+    )
+
+
+def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
+    """A STUCK verdict still fires AND keeps the stall active on the next deferral.
+
+    DA-001 contract: the deferral path only clears a stall that
+    was previously set by ``SILENT_SUBAGENT`` (or any other
+    non-``STUCK`` fire path); a ``STUCK`` verdict stays stalled
+    because the gate is firing that same tick, not deferring. The
+    subsequent tick's classifier may return a different non-stuck
+    kind (e.g. ``LOADING``) -- in that case the deferral path
+    clears the stall. This test pins the asymmetry: a single STUCK
+    tick followed by a non-stuck tick is exactly one STALLED +
+    exactly one STALL_RESUMED, and ``is_stalled`` ends False.
+    """
+    captured: list[WaitingStatusEvent] = []
+    watchdog, clock = _make_watchdog(listener=captured.append)
+
+    sequence: list[StuckKind] = [StuckKind.STUCK, StuckKind.LOADING]
+    _attr = "_classify_stuck_now"
+
+    def _sequence_now(
+        *,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
+    ) -> StuckKind:
+        if sequence:
+            return sequence.pop(0)
+        return StuckKind.LOADING
+
+    setattr(watchdog, _attr, _sequence_now)
+
+    first_now = clock.monotonic() + 60.0
+    first_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=first_now,
+        idle_elapsed=60.0,
+    )
+    assert first_verdict == WatchdogVerdict.FIRE
+    assert _stall_state(watchdog) is True
+
+    second_now = clock.monotonic() + 1.0
+    second_verdict = watchdog._gate_fire(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=second_now,
+        idle_elapsed=1.0,
+    )
+    assert second_verdict == WatchdogVerdict.CONTINUE
+    assert _stall_state(watchdog) is False
+
+    stalled_total = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    resumed_total = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
+    assert len(stalled_total) == 1
+    assert len(resumed_total) == 1

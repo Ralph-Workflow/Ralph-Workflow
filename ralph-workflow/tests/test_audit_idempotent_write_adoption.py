@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.testing import audit_idempotent_write_adoption as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,8 +20,23 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
     return package_root
 
 
+@pytest.mark.timeout_seconds(10)
 def test_audit_idempotent_write_adoption_regression_passes_real_production_tree() -> None:
-    """Step 5: the committed persistence modules satisfy the adoption invariant."""
+    """Step 5: the committed persistence modules satisfy the adoption invariant.
+
+    The per-test 1.0 s SIGALRM cap charges wall clock, so the test
+    must NOT take the 1 s default even when the ralph/ tree scan
+    hits heavy disk contention under 24-way test sharding. The
+    audit only walks 14 allowlisted ``read_text``/``ast.parse``
+    operations in <0.2 s on a quiet disk; under contention the
+    same scan can spike past 1 s and trip the SIGALRM even though
+    the audit is functionally correct. 10 s is the same per-test
+    budget the sibling ``test_audit_resource_lifecycle`` uses for
+    its real-production-tree scan (``pytest.mark.timeout_seconds(10)``);
+    the marker does NOT change the per-suite timeout or the
+    immutable 60 s combined test budget enforced by
+    ``ralph/verify.py``.
+    """
     violations = audit.audit_idempotent_write_adoption(PRODUCTION_ROOT)
 
     assert violations == []
@@ -85,8 +102,7 @@ def test_audit_idempotent_write_adoption_regression_ignores_guarded_write(
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        "def persist(backend, path, content):\n"
-        "    write_text_if_changed(backend, path, content)\n",
+        "def persist(backend, path, content):\n    write_text_if_changed(backend, path, content)\n",
     )
 
     violations = audit.audit_idempotent_write_adoption(
