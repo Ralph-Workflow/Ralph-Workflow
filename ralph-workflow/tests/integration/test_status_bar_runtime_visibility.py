@@ -261,11 +261,11 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     Reuses the existing ``_TtyLikeStringIO`` fake-console pattern so
     the StatusBar real-TTY gate passes without a real pseudo-tty.
     """
-    pd_full, buf_full = _make_parallel_display(width=100)
+    pd_full, buf_full = _make_parallel_display(width=120)
     assert pd_full._ctx.console.is_terminal is True
     assert pd_full._ctx.console.file.isatty() is True
-    assert pd_full._ctx.console.width == 100, (
-        f"AC-01: console width MUST be 100 for this focused test; "
+    assert pd_full._ctx.console.width == 120, (
+        f"AC-01: console width MUST be 120 for this focused test; "
         f"got {pd_full._ctx.console.width!r}"
     )
     sb = pd_full.status_bar

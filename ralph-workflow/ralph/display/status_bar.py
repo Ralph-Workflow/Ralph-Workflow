@@ -221,6 +221,21 @@ _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS: int = 7
 # phase + path at the terminal width.
 _CANONICAL_FIT_THRESHOLD: int = 40
 
+# DA-002 (wt-028-display AC-02): the 60-col rung is the spec's
+# boundary between the path-elided (above) and path-dropped (below)
+# layouts. Below this width the elapsed display, agent segment, and
+# workspace path are all dropped; above it the bar carries the full
+# optional-width pool. The constant lands every ``if ctx.width >= 60``
+# check in this module on the same spec source.
+_PATH_DROP_THRESHOLD: int = 60
+
+# DA-003 (wt-028-display AC-02): the 80-col rung is the spec's
+# boundary between path-elided (above) and phase-abbreviated (below)
+# layouts. Below this width the phase label is tail-truncated to
+# the abbreviated form so the dropped path's budget can be
+# redirected to recognisable segments.
+_PHASE_ABBREVIATE_THRESHOLD: int = 80
+
 # Minimum readable budget for the workspace path and the phase label.
 # The single default-mode Status Bar ALWAYS reserves at least this much
 # space for the workspace path and the phase label so the operator can
@@ -251,6 +266,42 @@ ATTENTION_PRESENTATION: dict[str, tuple[str, str, str]] = {
     "retrying": ("RETRYING", "retrying", "theme.status.warn"),
     "terminated": ("DONE", "terminated", "theme.status.info"),
 }
+
+
+# DA-001 (wt-028-display AC-01): worst-case attention slot width.
+# The attention slot is reserved at every width so its arrival (or
+# clearing) never shifts any neighbour. The width is the maximum
+# ``len(glyph) + 1 + len(label)`` across the four attention states
+# (``waiting`` is the longest at ``STALLED`` glyph (1) + " " (1) +
+# ``WAITING`` (7) = 9, etc.). Computed once at module import.
+_ATTENTION_PRESENTATION_MAX_LABEL_CHARS: int = max(
+    len(label) for label, _glyph, _style in ATTENTION_PRESENTATION.values()
+)
+
+
+def _attention_slot_reserved_width(ctx: DisplayContext) -> int:
+    """Return the reserved width of the attention slot for ``ctx``.
+
+    The attention slot is reserved at every width so a healthy
+    run's blank space yields the same byte position as a populated
+    ``WAITING`` / ``STALLED`` / ``RETRYING`` / ``DONE`` label. The
+    returned width is the worst case across the four states (the
+    longest label plus its glyph and one space) plus the trailing
+    separator so the trailing separator lands at a stable position
+    whether the slot is empty or populated. The function does no I/O
+    and is safe to call per-render.
+
+    DA-001 (wt-028-display AC-01).
+    """
+    separator = _field_separator(ctx)
+    max_glyph_len = max(
+        (len(ctx.glyph_for(glyph_key)) for glyph_key in (
+            glyph_key for _label, glyph_key, _style in ATTENTION_PRESENTATION.values()
+        )),
+        default=0,
+    )
+    # ``{glyph} {label}{separator}`` is the rendered string when populated.
+    return max_glyph_len + 1 + _ATTENTION_PRESENTATION_MAX_LABEL_CHARS + len(separator)
 
 
 @dataclass(frozen=True)
@@ -604,6 +655,22 @@ def _field_overhead_and_label_budgets(
         ``ctx.width`` (the caller tries the next iter configuration
         in priority order).
         """
+        # DA-001 (wt-028-display AC-01): subtract the attention slot
+        # reserved width from the available budget so the budget
+        # allocator hands out path_budget / phase_budget that account
+        # for the leading reserved slot. The reservation is constant
+        # per-width (worst-case across the four attention states), so
+        # it lands cleanly in the chrome sum rather than the per-iter
+        # allocation.
+        attention_chrome = _attention_slot_reserved_width(ctx)
+        # DA-002 (wt-028-display AC-01): subtract the elapsed display
+        # fixed-width chrome when the bar is wide enough to render it
+        # (the renderer drops elapsed below the 60-col rung).
+        elapsed_chrome = (
+            _ELAPSED_FIXED_WIDTH + separator_len
+            if ctx.width >= _PATH_DROP_THRESHOLD
+            else 0
+        )
         available = ctx.width - _chrome(
             outer_label,
             inner_label,
@@ -611,7 +678,7 @@ def _field_overhead_and_label_budgets(
             with_glyph,
             include_outer=include_outer,
             include_inner=include_inner,
-        )
+        ) - attention_chrome - elapsed_chrome
         if available < _MIN_PHASE_PLUS_PATH:
             return None
         # Allocate remaining space to phase + path. Phase gets up to
@@ -799,6 +866,36 @@ def _format_elapsed(seconds: float) -> str:
     return f"Time {minutes:02d}:{secs:02d}"
 
 
+# DA-002 (wt-028-display AC-01): worst-case fixed width for the
+# elapsed label. The elapsed segment crosses three format
+# boundaries (``Time mm:ss`` -> ``Time H:mm:ss`` -> ``Time HH:mm:ss``)
+# when the hour count rolls from 0 to 1 to 2 digits. Without a
+# fixed width, those boundaries push the workspace-path byte
+# position sideways at wider widths. We pad to the worst case
+# (``Time 99:59:59`` = 13 chars) so neighbouring segments stay
+# byte-stable across the elapsed format roll-overs.
+_ELAPSED_FIXED_WIDTH: int = 13
+# DA-002 pin: ``Time 99:59:59`` MUST equal ``_ELAPSED_FIXED_WIDTH``.
+assert len("Time 99:59:59") == _ELAPSED_FIXED_WIDTH, (
+    f"_ELAPSED_FIXED_WIDTH must match the worst-case realistic label width; "
+    f"got {_ELAPSED_FIXED_WIDTH} but 'Time 99:59:59' is {len('Time 99:59:59')} chars"
+)
+
+
+def _format_elapsed_fixed(seconds: float | None) -> str:
+    """Return the elapsed label padded to the fixed-width column.
+
+    DA-002 (wt-028-display AC-01). Returns an all-blank column of
+    the same width when ``seconds`` is ``None`` so the segment is
+    reserved in the bar even when the caller has not yet computed
+    elapsed (the Live region picks up the value on the next
+    refresh tick).
+    """
+    if seconds is None:
+        return " " * _ELAPSED_FIXED_WIDTH
+    return _format_elapsed(seconds).ljust(_ELAPSED_FIXED_WIDTH)
+
+
 def _split_agent_label(label: str) -> tuple[str, str]:
     """Split ``"Agent <name>"`` into the ``"Agent "`` prefix and the name.
 
@@ -911,6 +1008,52 @@ def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
     return format_analysis_cycle_minimal(n, cap)
 
 
+def _append_attention_slot(
+    text: Text,
+    model: StatusBarModel,
+    ctx: DisplayContext,
+    now_monotonic: float | None,
+    separator: str,
+) -> None:
+    """Render the reserved attention slot at the front of the bar.
+
+    DA-001 (wt-028-display AC-01): the slot is RESERVED at every
+    width -- a healthy run renders blank space and a populated
+    ``WAITING`` / ``STALLED`` / ``RETRYING`` / ``DONE`` label
+    renders at the same byte position. The reserved width is the
+    worst case across the four states so the trailing separator
+    lands at a byte-stable position whether the slot is empty or
+    populated.
+    """
+    attention_state = _resolve_attention_state(model, now_monotonic)
+    attention_slot_width = _attention_slot_reserved_width(ctx)
+    if attention_state is not None:
+        label, glyph_key, style = ATTENTION_PRESENTATION[attention_state]
+        glyph = ctx.glyph_for(glyph_key)
+        text.append(f"{glyph} {label}", style=style)
+        text.append(separator, style="theme.status.path_marker")
+        # Pad to the reserved width when the rendered state is
+        # shorter than the worst case (e.g. ``DONE`` is shorter
+        # than ``STALLED``) so the trailing separator lands at
+        # the reserved position even on shorter states.
+        rendered_so_far = len(text.plain)
+        if rendered_so_far < attention_slot_width:
+            text.append(
+                " " * (attention_slot_width - rendered_so_far),
+                style="theme.status.path",
+            )
+    else:
+        # Reserve the attention slot with blank space so
+        # phase/path/cycle byte positions stay stable when
+        # attention arrives. The slot width includes the trailing
+        # separator so the phase segment begins at the reserved
+        # position.
+        text.append(
+            " " * attention_slot_width,
+            style="theme.status.path",
+        )
+
+
 def render_status_bar(
     model: StatusBarModel,
     ctx: DisplayContext,
@@ -992,17 +1135,15 @@ def render_status_bar(
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
-    # P0 (wt-028-display AC-03): render the attention slot FIRST so
-    # its arrival never shifts neighbours. The slot is reserved at
+    # DA-001 (wt-028-display AC-01): render the attention slot FIRST so
+    # its arrival never shifts neighbours. The slot is RESERVED at
     # every width -- a healthy run renders blank space (the operator
     # learns the slot is empty by its blank state and gets a visible
-    # label + glyph the moment the run is no longer healthy).
-    attention_state = _resolve_attention_state(model, now_monotonic)
-    if attention_state is not None:
-        label, glyph_key, style = ATTENTION_PRESENTATION[attention_state]
-        glyph = ctx.glyph_for(glyph_key)
-        text.append(f"{glyph} {label}", style=style)
-        text.append(separator, style="theme.status.path_marker")
+    # label + glyph the moment the run is no longer healthy). The
+    # reserved width is the worst case across the four attention
+    # states so the trailing separator lands at a byte-stable position
+    # whether the slot is empty or populated.
+    _append_attention_slot(text, model, ctx, now_monotonic, separator)
     if model.integration_alert:
         # The alert LEADS the bar so an unresolved integration conflict
         # is visible at every width; the final width clamp below still
@@ -1016,9 +1157,32 @@ def render_status_bar(
     if ctx.glyphs_enabled and budgets.render_marker:
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")
+    # DA-003 (wt-028-display AC-02): abbreviate the phase label at the
+    # 60-col rung when the path drops and the budget is tight. The
+    # abbreviation uses a phase-specific short form
+    # (``development`` -> ``dev``, ``planning`` -> ``plan``, etc.)
+    # via :data:`_PHASE_ABBREVIATIONS`; an unknown phase falls back
+    # to the first ``budget`` chars lowercased. The truncation
+    # happens before the phase is appended so neighbouring segments
+    # see the abbreviated form.
+    if ctx.width < _PHASE_ABBREVIATE_THRESHOLD and len(phase_display) > budgets.phase_budget:
+        phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     text.append(phase_display, style=model.phase_style)
     text.append(separator, style="theme.status.path_marker")
-    text.append(path_display, style="theme.status.path")
+    # DA-002 (wt-028-display AC-01): render the elapsed segment with a
+    # fixed-width buffer so neighbouring segments stay byte-stable
+    # across the elapsed format roll-overs (mm:ss -> H:mm:ss ->
+    # HH:mm:ss). The buffer is reserved whether or not the caller has
+    # computed elapsed (the Live region picks the value up on its
+    # next refresh tick). The segment is omitted at very narrow
+    # widths (< 60) where the chrome for the other required
+    # segments already saturates the bar -- the spec drops elapsed
+    # below the supported floor (``At 40 -- the floor -- attention,
+    # phase, liveness, position, and elapsed survive``; widths below
+    # 40 are below the floor).
+    if ctx.width >= _PATH_DROP_THRESHOLD:
+        text.append(_format_elapsed_fixed(model.elapsed_seconds), style="theme.status.info")
+        text.append(separator, style="theme.status.path_marker")
     if render_outer_dev:
         text.append(separator, style="theme.status.path_marker")
         if budgets.render_iter_glyph:
@@ -1043,21 +1207,11 @@ def render_status_bar(
             )
         )
     for label in optional_segments:
-        text.append(separator, style="theme.status.path_marker")
-        # P3 (wt-028-display AC-15): the agent segment surfaces the
-        # deterministic identity color so the live footer reveals
-        # which agent produced the current cycle. The label is
-        # always preserved (color only assists recognition), so a
-        # grayscale / colourblind operator still reads the bare
-        # name.
-        if label is agent_label and model.agent_name:
-            agent_prefix, agent_rest = _split_agent_label(label)
-            if agent_prefix:
-                text.append(agent_prefix, style=identity_color(model.agent_name))
-            if agent_rest:
-                text.append(agent_rest, style="theme.status.info")
-        else:
-            text.append(label, style="theme.status.info")
+        _append_optional_segment(text, label, model, separator)
+    # DA-004 (wt-028-display AC-02): cwd path renders LAST (after
+    # agent) so it is the trailing optional segment that elides /
+    # drops first at narrow widths.
+    _append_path_segment(text, path_display, separator, ctx.width)
     # Final width clamp: at extremely narrow widths (1-2 cols) the
     # phase|path separator alone exceeds the budget so the rendered text
     # cannot fit. Truncate the rendered text to ``ctx.width`` so the
@@ -1068,6 +1222,52 @@ def render_status_bar(
     if len(text.plain) > ctx.width:
         text.truncate(ctx.width)
     return text
+
+
+def _append_optional_segment(
+    text: Text,
+    label: str,
+    model: StatusBarModel,
+    separator: str,
+) -> None:
+    """Render one optional segment (elapsed or agent) after a leading separator.
+
+    P3 (wt-028-display AC-15): the agent segment surfaces the
+    deterministic identity color so the live footer reveals
+    which agent produced the current cycle. The label is
+    always preserved (color only assists recognition), so a
+    grayscale / colourblind operator still reads the bare name.
+    """
+    text.append(separator, style="theme.status.path_marker")
+    if label.startswith("Agent ") and model.agent_name:
+        agent_prefix, agent_rest = _split_agent_label(label)
+        if agent_prefix:
+            text.append(agent_prefix, style=identity_color(model.agent_name))
+        if agent_rest:
+            text.append(agent_rest, style="theme.status.info")
+    else:
+        text.append(label, style="theme.status.info")
+
+
+def _append_path_segment(
+    text: Text,
+    path_display: str,
+    separator: str,
+    width: int,
+) -> None:
+    """Render the trailing workspace path segment when the width budget allows.
+
+    DA-004 (wt-028-display AC-02): cwd path renders LAST (after
+    agent) so it is the trailing optional segment that elides /
+    drops first at narrow widths. The path is elided from the
+    left when tight (per spec) via the middle-truncate helper
+    above. DA-003 (wt-028-display AC-02): at width < 60 the path
+    drops entirely (no truncated ghost); the spec drops the path
+    at the 60-col rung and abbreviates the phase label instead.
+    """
+    if width >= _PATH_DROP_THRESHOLD:
+        text.append(separator, style="theme.status.path_marker")
+        text.append(path_display, style="theme.status.path")
 
 
 class StatusBar:

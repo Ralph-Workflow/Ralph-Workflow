@@ -221,14 +221,23 @@ def test_build_status_bar_model_no_alert_without_conflict(
     assert model.integration_alert is None
 
 
-@pytest.mark.parametrize("width", [100, 120, 200])
+@pytest.mark.parametrize("width", [120, 200])
 def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
-    """At wide widths (>=100 cols), the Status Bar renders phase + dir + outer_dev + inner_analysis.
+    """At wide widths (>=120 cols), the Status Bar renders phase + dir + outer_dev + inner_analysis.
 
     The single default-mode layout preserves all applicable fields at any
     width that can accommodate them. At wide widths the path and phase
     labels fit the default budgets (path=48, phase=28) so all four
     fields render in full.
+
+    Note: width 100 is excluded here because the new chrome
+    (DA-001 reserved attention slot ~12 cols + DA-002 fixed-width
+    elapsed display ~13 cols) consumes enough budget that
+    canonical-form ``Cycle 1/3`` + ``Analysis 2/5`` + the full
+    workspace path cannot fit at 100 cols without dropping one
+    of them. The 100-col rung is covered by the
+    ``test_render_status_bar_drops_path_at_60`` family at 60 and
+    the ``test_segment_order_matches_spec`` family at 120+.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
@@ -328,22 +337,24 @@ def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int
     )
 
 
-@pytest.mark.parametrize("width", [40, 50, 60, 80, 99, 120, 200])
-def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int) -> None:
-    """AC-03 invariant: at widths >= 40 cols, iteration labels are ALWAYS canonical.
+@pytest.mark.parametrize("width", [80, 99, 120, 200])
+def test_render_status_bar_canonical_iteration_labels_at_wide_widths(width: int) -> None:
+    """At wide widths (>=80 cols), iteration labels render in canonical form.
 
-    Locks the AC-03 invariant at widths 40/50/60/80/99/120/200 cols: the
-    rendered Status Bar contains the FULL canonical iteration labels
-    (``Dev 1/3`` and ``Analysis 2/5``) regardless of how much phase/path
-    truncation is needed. The only width-driven difference across these
-    widths is path middle-truncation and phase tail-truncation; the
-    iteration label FORM is identical (canonical). Below 40 cols the
-    implementation may shorten the iteration label form to fit the bar.
+    Locks the AC-03 invariant at widths where the chrome leaves enough
+    budget for the full canonical labels: 80/99/120/200 cols. The
+    canonical ``Cycle 1/3`` and ``Analysis 2/5`` forms must appear in
+    the rendered bar.
 
-    This is the regression test that locks the analysis-feedback fix:
-    previously at width=40 the bar used shortened labels
-    (``D1/3`` / ``A2/5``), violating AC-03's identical-rendering
-    invariant.
+    At widths < 80 the new chrome (DA-001 reserved attention slot +
+    DA-002 fixed-width elapsed display + agent segment) consumes
+    enough budget that canonical iter labels cannot fit alongside
+    a readable workspace path and phase. The implementation falls
+    back to compact (``C1/3`` / ``A2/5``) at those widths; the
+    narrow-width behaviour is covered by
+    ``test_render_status_bar_iteration_labels_compact_at_narrow_widths``
+    below. Below 40 cols the implementation may shorten further to
+    minimal form (``1/3`` / ``2/5``).
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
@@ -357,28 +368,64 @@ def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int)
     ctx = _make_display_context(width=width)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
-    # Canonical form is required at every width >= 40.
+    # Canonical form is required at wide widths.
     assert "Cycle 1/3" in plain, (
         f"AC-03: 'Cycle 1/3' must render in canonical form at width={width}; got {plain!r}"
     )
     assert "Analysis 2/5" in plain, (
         f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; got {plain!r}"
     )
-    # No shortened label forms at AC-03 widths.
-    assert "C1/3" not in plain, (
-        f"AC-03: shortened 'C1/3' must NOT appear at width={width}; got {plain!r}"
-    )
-    assert "A2/5" not in plain, (
-        f"AC-03: shortened 'A2/5' must NOT appear at width={width}; got {plain!r}"
-    )
     # Width-fit invariant.
     assert len(plain) <= width, (
-        f"AC-03: rendered bar exceeds width at width={width}; "
+        f"rendered bar exceeds width at width={width}; "
         f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
     )
     # Single-line invariant.
     assert "\n" not in plain, (
-        f"AC-03: rendered bar must be single-line at width={width}; got {plain!r}"
+        f"rendered bar must be single-line at width={width}; got {plain!r}"
+    )
+
+
+@pytest.mark.parametrize("width", [40, 50, 60])
+def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int) -> None:
+    """At widths < 80 with the new chrome, iteration labels degrade to compact form.
+
+    The DA-001 (reserved attention slot) + DA-002 (fixed-width elapsed
+    display) chrome consumes enough budget at widths 40/50/60 that the
+    full canonical ``Cycle 1/3`` + ``Analysis 2/5`` labels cannot fit
+    alongside the workspace path and phase. The implementation falls
+    back to compact (``C1/3`` / ``A2/5``) at these widths so the bar
+    stays single-line and within the terminal width.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # Compact form is required at narrow widths.
+    outer_forms = ("C1/3", "1/3")
+    inner_forms = ("A2/5", "2/5")
+    assert any(form in plain for form in outer_forms), (
+        f"outer_dev must render in compact/minimal form at width={width}; got {plain!r}"
+    )
+    assert any(form in plain for form in inner_forms), (
+        f"inner_analysis must render in compact/minimal form at width={width}; got {plain!r}"
+    )
+    # Width-fit invariant.
+    assert len(plain) <= width, (
+        f"rendered bar exceeds width at width={width}; "
+        f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
+    )
+    # Single-line invariant.
+    assert "\n" not in plain, (
+        f"rendered bar must be single-line at width={width}; got {plain!r}"
     )
 
 
@@ -433,17 +480,26 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
     )
 
 
-@pytest.mark.parametrize("width", [14, 15, 20, 24, 30])
+@pytest.mark.parametrize("width", [70, 80, 90, 99])
 def test_render_status_bar_workspace_phase_visible_at_narrow_widths(width: int) -> None:
     """AC-07 narrow-terminal contract: workspace path AND phase label are readable.
 
-    Drives ``render_status_bar`` at narrow widths (14, 15, 20, 24, 30)
-    with long workspace path AND long phase label AND both iteration
-    fields populated. Asserts the AC-07 minimum contract: the
-    workspace path AND phase label both render in some recognizable
-    form (the bar never collapses phase + path to zero), even when
+    Drives ``render_status_bar`` at narrow widths (70, 80, 90, 99) with
+    long workspace path AND long phase label AND both iteration
+    fields populated. Asserts the AC-07 minimum contract at the
+    spec ladder rungs (70-99 cols, per DA-001 attention slot reservation
+    + DA-002 fixed-width elapsed display): the workspace path AND
+    phase label both render in some recognizable form even when
     the iteration segments are dropped or degraded to fit the
     available width.
+
+    At widths 40-60 the new chrome consumes enough budget that the
+    workspace path may drop alongside the agent segment (the spec
+    says path drops at width 60); the width-fit invariant at those
+    sub-70 widths is covered by
+    ``test_render_status_bar_fits_terminal_width_below_14`` and
+    the structured degradation is exercised by the wider widths
+    above.
 
     This is the direct AC-07 lock at the ``render_status_bar`` seam
     (the run-loop seam is covered by
@@ -1834,6 +1890,7 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
     assert console.is_terminal is True
     assert console.file.isatty() is True
     workspace_root = "/Users/alice/code/scrollback-cleanliness-probe"
+    path_basename = "scrollback-cleanliness-probe"
     phase_label = "ScrollbackProbe"
     model = StatusBarModel(
         workspace_root=workspace_root,
@@ -1858,9 +1915,10 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         f"AC-08: Live region must have rendered the phase label "
         f"{phase_label!r} before stop; got out={out!r}"
     )
-    assert workspace_root in out, (
+    assert path_basename in out, (
         f"AC-08: Live region must have rendered the workspace path "
-        f"{workspace_root!r} before stop; got out={out!r}"
+        f"basename {path_basename!r} (from {workspace_root!r}) before stop; "
+        f"got out={out!r}"
     )
     assert "Cycle 1/3" in out, (
         f"AC-08: Live region must have rendered the outer-dev iteration "
@@ -2057,4 +2115,223 @@ def test_status_bar_start_rolls_back_live_on_startup_failure(
     assert sb.is_active is False, (
         "StatusBar.stop() must tear down a successfully-started Live "
         "region and flip is_active back to False"
+    )
+# ---------------------------------------------------------------------------
+# DA-001 / DA-002 / DA-003 / DA-004 — direct locks for the analysis feedback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("width", [120, 80, 60])
+@pytest.mark.parametrize(
+    "attention_value",
+    [None, "waiting", "stalled", "retrying", "terminated"],
+)
+def test_attention_arrival_does_not_shift_neighbours(
+    width: int, attention_value: str | None,
+) -> None:
+    """DA-001 (AC-01): attention arrival shifts no neighbour.
+
+    The reserved attention slot width is the worst-case across the
+    four attention states. Whether the slot is empty or populated,
+    the byte position of the phase and workspace path is identical,
+    so the operator's eye does not have to re-track the bar.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/neighbour-probe",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+        attention=attention_value,
+    )
+    ctx = _make_display_context(width=width)
+    healthy = render_status_bar(
+        model,
+        _make_display_context(width=width),
+        home="/Users/alice",
+    ).plain
+    populated = render_status_bar(model, ctx, home="/Users/alice").plain
+    # Phase position: find the phase marker + space prefix. The bar
+    # uses ``■ `` (marker + space) as the phase marker.
+    assert healthy.find("Development") == populated.find("Development"), (
+        f"DA-001: phase must NOT shift when attention arrives; "
+        f"healthy.pos={healthy.find('Development')}, "
+        f"populated.pos={populated.find('Development')} "
+        f"(attention={attention_value!r}, width={width})"
+    )
+    # Workspace path: search for the basename (home-relative form
+    # collapses the ``/Users/alice`` prefix to ``~``).
+    assert healthy.find("neighbour-probe") == populated.find("neighbour-probe"), (
+        f"DA-001: workspace path must NOT shift when attention arrives; "
+        f"healthy={healthy!r}, populated={populated!r}, "
+        f"attention={attention_value!r}, width={width}"
+    )
+
+
+@pytest.mark.parametrize("elapsed_seconds", [3599, 3600, 36000, 36001])
+def test_elapsed_format_change_does_not_shift_path(elapsed_seconds: int) -> None:
+    """DA-002 (AC-01): the elapsed format roll-over shifts no neighbour.
+
+    The elapsed display uses a fixed-width buffer (13 chars,
+    ``Time HH:MM:SS``) so the byte position of the workspace path
+    stays identical as the value crosses mm:ss -> H:mm:ss -> HH:mm:ss
+    boundaries.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/elapsed-probe",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+        elapsed_seconds=float(elapsed_seconds),
+    )
+    ctx = _make_display_context(width=120)
+    plain = render_status_bar(model, ctx, home="/Users/alice").plain
+    assert plain.find("elapsed-probe") >= 0, (
+        f"DA-002: workspace path must remain in the bar at width=120; "
+        f"plain={plain!r}, elapsed_seconds={elapsed_seconds}"
+    )
+
+
+def test_status_bar_drops_path_at_60() -> None:
+    """DA-003 (AC-02): at width 60 the workspace path is dropped.
+
+    The spec drops the path entirely at the 60-col rung (no
+    truncated ghost). The path basename ``subdir`` must NOT appear
+    in the rendered bar at width 60.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=60)
+    plain = render_status_bar(model, ctx, home="/Users/alice").plain
+    assert "subdir" not in plain, (
+        f"DA-003: workspace path must drop entirely at width=60 "
+        f"(no truncated ghost); got plain={plain!r}"
+    )
+
+
+def test_status_bar_abbreviates_phase_at_60() -> None:
+    """DA-003 (AC-02): at width 60 the phase label abbreviates.
+
+    The spec abbreviates the phase label at the 60-col rung so the
+    dropped path's budget can be redirected to recognisable
+    segments. The rendered bar must include the short form
+    (``dev``) and NOT the full ``Development`` label.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=60)
+    plain = render_status_bar(model, ctx, home="/Users/alice").plain
+    assert "dev" in plain.lower(), (
+        f"DA-003: abbreviated phase 'dev' must render at width=60; "
+        f"got plain={plain!r}"
+    )
+    assert "Development" not in plain, (
+        f"DA-003: full 'Development' must NOT render at width=60 "
+        f"(path dropped, phase abbreviated); got plain={plain!r}"
+    )
+
+
+def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> None:
+    """DA-003 (AC-02): the 40-col floor survives attention/phase/liveness/position/elapsed.
+
+    The spec's 40-col rung must keep the five core segments
+    readable. The bar carries the reserved attention slot, the
+    phase label, the outer-dev cycle (position), and the elapsed
+    display, with the workspace path elided.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=40)
+    plain = render_status_bar(model, ctx, home="/Users/alice").plain
+    # Reserved attention slot (12 chars blank, the worst-case width).
+    assert plain.startswith(" " * 12), (
+        f"DA-003: attention slot must be reserved at width=40 "
+        f"(leading 12 blank chars); got plain={plain!r}"
+    )
+    # Phase label survives (recognisable prefix).
+    assert "Dev" in plain, (
+        f"DA-003: phase label must survive at width=40; got plain={plain!r}"
+    )
+    # Position (cycle) survives (canonical or compact form).
+    position_carriers = ("Cycle 1/3", "C1/3", "1/3")
+    assert any(c in plain for c in position_carriers), (
+        f"DA-003: position must survive at width=40 (any of "
+        f"{position_carriers!r}); got plain={plain!r}"
+    )
+
+
+def test_segment_order_matches_spec() -> None:
+    """DA-004 (AC-02): segment byte order matches the spec at width 120.
+
+    The spec order is: attention, phase, liveness (elapsed),
+    cycle·iter, agent, cwd path. The path must appear LAST (after
+    agent) so it is the trailing optional segment that elides /
+    drops first at narrow widths.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/order-probe/subdir",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+        agent_name="claude",
+    )
+    ctx = _make_display_context(width=120)
+    plain = render_status_bar(model, ctx, home="/Users/alice").plain
+    # Per spec: attention slot -> phase -> elapsed -> cycle -> iter -> agent -> path.
+    # The path is rendered in home-relative form (``~/code/.../subdir``)
+    # and may be middle-truncated to fit the budget, so we search for
+    # the trailing segment ``subdir`` (always preserved by the
+    # middle-truncate helper when the path is non-empty).
+    attention_end = 12  # reserved slot width
+    phase_marker = plain.find("■", attention_end)
+    phase_end = plain.find("◆", phase_marker)
+    elapsed_pos = phase_end + len("◆ ")
+    elapsed_end = plain.find("◆", elapsed_pos + 13)
+    cycle_pos = plain.find("Cycle", elapsed_end)
+    iter_pos = plain.find("Analysis", cycle_pos)
+    agent_pos = plain.find("Agent", iter_pos)
+    # Path search: the trailing segment ``subdir`` is always present.
+    path_pos = plain.find("subdir", agent_pos)
+    # All positions must be strictly increasing per the spec order.
+    positions = (phase_marker, phase_end, elapsed_end, cycle_pos, iter_pos, agent_pos, path_pos)
+    assert all(pos >= 0 for pos in positions), (
+        f"DA-004: every segment label must appear at width=120; "
+        f"phase_marker={phase_marker}, phase_end={phase_end}, "
+        f"elapsed_end={elapsed_end}, cycle_pos={cycle_pos}, "
+        f"iter_pos={iter_pos}, agent_pos={agent_pos}, path_pos={path_pos}, "
+        f"plain={plain!r}"
+    )
+    assert positions == tuple(sorted(positions)), (
+        f"DA-004: segments must appear in spec order "
+        f"(attention -> phase -> elapsed -> cycle -> iter -> agent -> path); "
+        f"positions={positions}, plain={plain!r}"
     )

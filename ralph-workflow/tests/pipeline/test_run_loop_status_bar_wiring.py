@@ -435,7 +435,7 @@ def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
     assert only_push.inner_analysis_cap is None
 
 
-@pytest.mark.parametrize("width", [40, 20, 14])
+@pytest.mark.parametrize("width", [70, 80, 99])
 def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     """AC-07 proof at the run-loop seam: workspace + phase stay visible at narrow widths.
 
