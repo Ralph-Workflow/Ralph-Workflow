@@ -7,9 +7,11 @@ from unittest.mock import patch
 
 from rich.console import Console
 
+from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.subscriber import PipelineSubscriber
+from ralph.pipeline.state import PipelineState
 from ralph.pipeline.worker_state import WorkerStatus
 
 if TYPE_CHECKING:
@@ -72,3 +74,69 @@ def test_injected_subscriber_used_directly() -> None:
     )
     pd = ParallelDisplay(make_display_context(console=console, env={}), subscriber=sub)
     assert pd.subscriber is sub
+
+
+# ---------------------------------------------------------------------------
+# wt-047-stall-label (DA-001): the injected-subscriber path must populate
+# the host's watchdog_attention surface so the bar mirrors STALLED.
+#
+# Pre-fix the constructor bound the sink only when it CONSTRUCTED its own
+# subscriber; the supported ``subscriber=`` path left the supplied
+# subscriber's ``watchdog_attention_sink`` slot unset, so a watchdog
+# STALLED transition was silently dropped on that path.
+# ---------------------------------------------------------------------------
+
+def test_injected_subscriber_receives_stalled_event(tmp_path: Path) -> None:
+    """DA-001 regression: an injected subscriber + STALLED event drives the host.
+
+    Sends a real ``WaitingStatusKind.STALLED`` event through an
+    injected subscriber and asserts the host's
+    ``watchdog_attention`` is ``"stalled"``. Pre-fix the supplied
+    subscriber's sink was never bound and ``display.watchdog_attention``
+    stayed ``None``.
+    """
+    console = Console(force_terminal=True, width=120)
+    q: Queue[PipelineSnapshot] = Queue(maxsize=8)
+    sub = PipelineSubscriber(
+        queue=q,
+        workspace_root=tmp_path,
+        run_id="injected-stall",
+    )
+    pd = ParallelDisplay(make_display_context(console=console, env={}), subscriber=sub)
+
+    # Prime the subscriber with a state so record_waiting_status has
+    # something to snapshot from.
+    state = PipelineState(
+        phase="development",
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+    )
+    sub.notify(state)
+
+    # Send a real STALLED event through the injected subscriber and
+    # assert the host picks it up.
+    sub.record_waiting_status(
+        WaitingStatusEvent(
+            kind=WaitingStatusKind.STALLED,
+            cumulative_seconds=1800.0,
+            current_run_seconds=0.0,
+            idle_elapsed_seconds=42.0,
+            ceiling_seconds=1800.0,
+            suspect_threshold_seconds=600.0,
+            diagnostic={},
+        )
+    )
+    assert pd.watchdog_attention == "stalled"
+
+    # Clear via STALL_RESUMED.
+    sub.record_waiting_status(
+        WaitingStatusEvent(
+            kind=WaitingStatusKind.STALL_RESUMED,
+            cumulative_seconds=1800.0,
+            current_run_seconds=0.0,
+            idle_elapsed_seconds=43.0,
+            ceiling_seconds=1800.0,
+            suspect_threshold_seconds=600.0,
+            diagnostic={},
+        )
+    )
+    assert pd.watchdog_attention is None

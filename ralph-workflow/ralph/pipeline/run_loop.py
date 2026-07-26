@@ -506,11 +506,17 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
 
     P0 (wt-028-display S-2 / AC-01): the run loop owns the truth
     about whether the run is healthy, waiting, retrying, or has
-    terminated. The bar's renderer derives ``stalled`` from the
-    activity gap; here we report operator-pushed states that
-    must override the derivation. ``None`` means the renderer
-    uses its default healthy rendering with the stall derivation
-    in play.
+    terminated. Here we report operator-pushed states that must
+    take precedence over the watchdog-sourced stall: a pushed
+    ``waiting`` / ``retrying`` / ``terminated`` always wins so a
+    run-end or operator-visible state can override the watchdog
+    signal. ``None`` leaves the attention slot empty so the Status
+    Bar host can substitute the watchdog-sourced attention in
+    (see :func:`_build_status_bar_model` and
+    :meth:`ralph.display.status_bar.StatusBar._model_with_live_attention`).
+    There is NO display-side activity-gap derivation -- the
+    watchdog is the single source of truth for ``stalled`` and
+    surfaces it through the host's ``watchdog_attention`` slot.
 
     The mapping is read defensively from ``state`` so a fake /
     legacy state object without the new slots never breaks the

@@ -714,3 +714,41 @@ def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
     resumed_total = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
     assert len(stalled_total) == 1
     assert len(resumed_total) == 1
+
+# ---------------------------------------------------------------------------
+# wt-047-stall-label (DA-002): the watchdog STALLED / STALL_RESUMED
+# transition events carry the correct idle_elapsed_seconds (the
+# only operator-truthful elapsed value) so the subscriber renders a
+# line with the watchdog actual measurement, not the always-0.0
+# current_run_seconds.
+# ---------------------------------------------------------------------------
+
+
+def test_set_stall_emitted_event_carries_idle_elapsed_seconds() -> None:
+    """DA-002 regression: STALLED event carries idle_elapsed_seconds=42.0.
+
+    The watchdog already passes idle_elapsed through to the
+    emitted event; this test pins the watchdog side so a future
+    regression in _emit (e.g. accidentally using
+    current_run_seconds) is caught at the source rather than
+    only at the subscriber rendering.
+    """
+    captured: list[WaitingStatusEvent] = []
+    watchdog, _clock = _make_watchdog(listener=captured.append)
+    watchdog._set_stall(active=True, now=100.0, idle_elapsed=42.0)
+    stalled = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    assert len(stalled) == 1
+    assert stalled[0].idle_elapsed_seconds == 42.0
+    assert stalled[0].current_run_seconds == 0.0
+
+
+def test_set_stall_resumed_emitted_event_carries_idle_elapsed_seconds() -> None:
+    """DA-002 regression: STALL_RESUMED event carries idle_elapsed_seconds."""
+    captured: list[WaitingStatusEvent] = []
+    watchdog, _clock = _make_watchdog(listener=captured.append)
+    watchdog._set_stall(active=True, now=100.0, idle_elapsed=42.0)
+    watchdog._set_stall(active=False, now=200.0, idle_elapsed=37.0)
+    resumed = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
+    assert len(resumed) == 1
+    assert resumed[0].idle_elapsed_seconds == 37.0
+    assert resumed[0].current_run_seconds == 0.0

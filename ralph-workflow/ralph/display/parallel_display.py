@@ -614,6 +614,15 @@ class ParallelDisplay:
 
         if subscriber is not None:
             self._subscriber = subscriber
+            # wt-047-stall-label (DA-001): an externally-supplied
+            # subscriber owns its own constructor args; the display
+            # cannot re-construct it with a sink. Bind the host's
+            # :meth:`set_watchdog_attention` callback through the
+            # subscriber's public late-binder so the STALLED slot
+            # is populated for the injected-subscriber path too.
+            # The constructor path below binds at construction
+            # time (cheaper) so the binder is only needed here.
+            self._subscriber.set_watchdog_attention_sink(self.set_watchdog_attention)
         else:
             snapshot_q: queue.Queue[PipelineSnapshot] = queue.Queue(
                 maxsize=_DEFAULT_SNAPSHOT_QUEUE_MAXSIZE

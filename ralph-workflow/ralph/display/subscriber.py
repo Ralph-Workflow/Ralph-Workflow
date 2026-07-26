@@ -67,6 +67,11 @@ class _WaitingEventLike(Protocol):
     cumulative_seconds: float
     ceiling_seconds: float
     current_run_seconds: float
+    # wt-047-stall-label: the watchdog's stall-state transitions
+    # carry the actual idle-elapsed value here; STALLED / STALL_RESUMED
+    # render this (NOT ``current_run_seconds``, which is the
+    # waiting-run time and is 0.0 on a watchdog stall transition).
+    idle_elapsed_seconds: float
     diagnostic: dict[str, object]
     subagent_activity: str | None
     kind: _WaitingKindLike
@@ -159,11 +164,19 @@ def _format_waiting_status_line(event: object) -> str:  # noqa: PLR0911 - 8 dist
     # wt-047-stall-label: explicit text for the two new stall-state
     # transitions. NEVER fall through to the ``hit hard ceiling``
     # template below for STALLED / STALL_RESUMED -- the line is
-    # semantically distinct from a ceiling-crossing event.
+    # semantically distinct from a ceiling-crossing event. Render
+    # ``idle_elapsed_seconds`` (NOT ``current_run_seconds``): the
+    # watchdog emits STALLED / STALL_RESUMED with
+    # ``current_run_seconds=0.0`` because the run was never
+    # WAITING_ON_CHILD at the moment of the stall; the only
+    # operator-truthful elapsed value is the watchdog's own
+    # idle-elapsed measurement (``IdleWatchdog._set_stall``).
     if kind == waiting_kind_cls.STALLED:
-        return f"Agent stalled (idle_elapsed={run}s, watchdog assessment)"
+        idle_secs = f"{cast_event.idle_elapsed_seconds:.0f}"
+        return f"Agent stalled (idle_elapsed={idle_secs}s, watchdog assessment)"
     if kind == waiting_kind_cls.STALL_RESUMED:
-        return f"Agent resumed after stall (idle_elapsed={run}s)"
+        idle_secs = f"{cast_event.idle_elapsed_seconds:.0f}"
+        return f"Agent resumed after stall (idle_elapsed={idle_secs}s)"
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
@@ -268,6 +281,15 @@ class PipelineSubscriber:
         self._watchdog_attention_sink: Callable[[str | None], None] | None = (
             watchdog_attention_sink
         )
+        # wt-047-stall-label: dedicated lock for late-binding the
+        # sink from a host that already holds a subscriber
+        # reference (the ``subscriber=`` injected path on
+        # :class:`ralph.display.parallel_display.ParallelDisplay`).
+        # The constructor path binds the sink before any event is
+        # emitted so a lock is unnecessary there; the lock guards
+        # :meth:`set_watchdog_attention_sink` against a concurrent
+        # ``record_waiting_status`` read.
+        self._watchdog_attention_sink_lock = threading.Lock()
 
         prompt_path = _prompt_path_finder(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
@@ -553,6 +575,31 @@ class PipelineSubscriber:
                 )
         for s in snapshots_to_publish:
             self._publish(s)
+
+    def set_watchdog_attention_sink(
+        self, sink: Callable[[str | None], None] | None
+    ) -> None:
+        """Bind (or clear) the watchdog-attention sink after construction.
+
+        wt-047-stall-label (DA-001): the supported ``subscriber=``
+        argument on :class:`ralph.display.parallel_display.ParallelDisplay`
+        lets a test / advanced caller supply a fully-constructed
+        :class:`PipelineSubscriber`. Without this binder the supplied
+        subscriber's ``watchdog_attention_sink`` slot stays unset and
+        STALLED transitions never reach the host
+        ``watchdog_attention`` surface -- the public constructor path
+        would silently fail to render ``STALLED``.
+
+        The constructor ``watchdog_attention_sink=`` parameter is
+        still the preferred seam for production callers (binding at
+        construction time, not after the first event); this method
+        exists for the injected-subscriber path. ``None`` clears the
+        sink. The binding is guarded by a dedicated lock so a
+        concurrent ``record_waiting_status`` call sees a stable
+        sink reference.
+        """
+        with self._watchdog_attention_sink_lock:
+            self._watchdog_attention_sink = sink
 
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""

@@ -1129,6 +1129,6 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # diagnostic payload handling across helper functions and
         # obscure the per-kind fallback that the wt-047 plan locks
         # against the ``hit hard ceiling`` template.
-        ("ralph/display/subscriber.py", 105),
+        ("ralph/display/subscriber.py", 110),
     }
 )

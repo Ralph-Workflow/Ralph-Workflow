@@ -786,3 +786,52 @@ def test_subscriber_sink_call_is_defensive(tmp_path: Path) -> None:
     # Snapshot path still produced.
     snapshot = sub.build_snapshot(state)
     assert snapshot is not None
+
+# ---------------------------------------------------------------------------
+# wt-047-stall-label (DA-002): STALLED / STALL_RESUMED lines render the
+# watchdog's idle_elapsed_seconds (NOT current_run_seconds). The
+# watchdog emits stall-state transitions with current_run_seconds=0.0
+# (the run was never WAITING_ON_CHILD at the moment of the stall),
+# so the operator-facing line would report a false elapsed value if
+# it read current_run_seconds.
+# ---------------------------------------------------------------------------
+
+
+def test_stalled_line_uses_idle_elapsed_not_current_run(tmp_path: Path) -> None:
+    """DA-002 regression: STALLED line reports the watchdog idle_elapsed_seconds."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        WaitingStatusEvent(
+            kind=WaitingStatusKind.STALLED,
+            cumulative_seconds=1800.0,
+            current_run_seconds=0.0,
+            idle_elapsed_seconds=42.0,
+            ceiling_seconds=1800.0,
+            suspect_threshold_seconds=600.0,
+            diagnostic={},
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "idle_elapsed=42s" in line
+    assert "idle_elapsed=0s" not in line
+
+
+def test_stall_resumed_line_uses_idle_elapsed_not_current_run(tmp_path: Path) -> None:
+    """DA-002 regression: STALL_RESUMED line reports idle_elapsed_seconds."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        WaitingStatusEvent(
+            kind=WaitingStatusKind.STALL_RESUMED,
+            cumulative_seconds=1800.0,
+            current_run_seconds=0.0,
+            idle_elapsed_seconds=37.0,
+            ceiling_seconds=1800.0,
+            suspect_threshold_seconds=600.0,
+            diagnostic={},
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "idle_elapsed=37s" in line
+    assert "idle_elapsed=0s" not in line
