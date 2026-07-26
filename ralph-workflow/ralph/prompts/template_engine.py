@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections import OrderedDict
 from typing import TYPE_CHECKING, cast
 
@@ -31,7 +32,9 @@ _IMPORT_TAG = re.compile(
 _IMPORT_CONTEXT_SUFFIX = re.compile(r"\b(?:with|without)\s+context\s*$")
 _VARIABLE_BLANK_LINE = re.compile(r"(?m)^(?=\r?$)")
 _MAX_COMPILED_TEMPLATES = 64
+_MAX_CACHED_RENDERERS = 16
 _TemplateCache = OrderedDict[str, Template]
+_RendererCache = OrderedDict[tuple[tuple[str, str], ...], "TemplateRenderer"]
 _TOOL_VARIABLE_REFERENCE = re.compile(r"\b[A-Z][A-Z0-9_]*_TOOL_(?:NAME|REFERENCE)\b")
 
 
@@ -72,6 +75,11 @@ class TemplateRenderer:
         filters["split_items"] = self._split_items
         self._environment.globals["raise_error"] = _raise_template_error
         self._compiled_templates: _TemplateCache = OrderedDict()  # bounded-accumulator-ok: cap=64
+        # ``_active_blank_line_token`` is per-render state reached by the
+        # ``split_items`` filter, so a renderer shared between threads
+        # (see ``_RENDERERS``) must serialize whole renders or one render
+        # would strip the other's sentinel.
+        self._render_lock = threading.RLock()
         self._active_blank_line_token = ""
         self._partial_tool_variables: frozenset[str] = frozenset(
             name for content in templates.values() for name in _tool_variable_names(content)
@@ -79,6 +87,11 @@ class TemplateRenderer:
 
     def render(self, template_text: str, variables: Mapping[str, str]) -> str:
         """Render one template with the renderer's immutable partial set."""
+        with self._render_lock:
+            return self._render_locked(template_text, variables)
+
+    def _render_locked(self, template_text: str, variables: Mapping[str, str]) -> str:
+        """Render with ``_render_lock`` already held."""
         try:
             protected_variables, blank_line_token = _protect_variable_blank_lines(
                 template_text,
@@ -148,13 +161,38 @@ class TemplateRenderer:
         return template
 
 
+#: Renderers keyed by their partial set. A ``TemplateRenderer`` owns an
+#: immutable partial set, so two calls with equal partials are
+#: interchangeable -- yet every ``render_template`` call used to build a
+#: fresh Jinja ``Environment`` and re-normalize every partial, which is
+#: the dominant cost of rendering a prompt (~20ms per call). Reusing the
+#: renderer also reuses its bounded compiled-template cache.
+_RENDERERS: _RendererCache = OrderedDict()  # bounded-accumulator-ok: cap=_MAX_CACHED_RENDERERS
+_RENDERERS_LOCK = threading.Lock()
+
+
+def _renderer_for(partials: Mapping[str, str]) -> TemplateRenderer:
+    """Return a cached renderer for ``partials``, building one if needed."""
+    key = tuple(sorted(partials.items()))
+    with _RENDERERS_LOCK:
+        cached = _RENDERERS.get(key)
+        if cached is not None:
+            _RENDERERS.move_to_end(key)
+            return cached
+        renderer = TemplateRenderer(partials)
+        _RENDERERS[key] = renderer
+        if len(_RENDERERS) > _MAX_CACHED_RENDERERS:
+            _RENDERERS.popitem(last=False)
+        return renderer
+
+
 def render_template(
     template_text: str,
     variables: Mapping[str, str],
     partials: Mapping[str, str],
 ) -> str:
     """Render the provided template text with partials and variables."""
-    return TemplateRenderer(partials).render(template_text, variables)
+    return _renderer_for(partials).render(template_text, variables)
 
 
 def _split_loop_items(values: str) -> list[str]:
