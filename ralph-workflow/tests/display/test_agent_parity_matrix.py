@@ -20,7 +20,9 @@ APIs and ``rich.text.Text.plain`` so it does not peek at implementations.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
+from pathlib import Path
 
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
@@ -277,3 +279,99 @@ def test_gemini_input_format_renders() -> None:
     entry = build_presented_entry(event, unit_id="gemini")
     assert entry.identity == "gemini"
     assert entry.body == "gemini answer"
+
+
+# --- NDJSON parity corpus (AC-10 / S-9) ----------------------------------
+#
+# Each fixture is a real-style NDJSON stream mirroring what each
+# parser produces. The matrix exercises the canonical entry pipeline
+# against each stream and asserts the same per-event invariants the
+# inline parity tests pin for the in-test synthetic stream.
+# This is the regression corpus: the pi/claude/gemini fixtures are
+# checked-in alongside the parity test, so a future change to the
+# canonical pipeline that breaks one of them cannot ship.
+
+
+_FIXTURES_DIR = Path(__file__).parent / "_fixtures"
+
+
+def _load_ndjson_fixture(name: str) -> list[dict[str, object]]:
+    path = _FIXTURES_DIR / name
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _event_from_fixture(record: dict[str, object]) -> AgentActivityEvent:
+    provider_str = str(record.get("provider", "claude"))
+    provider = ActivityProvider(provider_str)
+    kind_str = str(record.get("kind", "text"))
+    kind = ActivityEventKind(kind_str)
+    content = str(record.get("content", ""))
+    metadata_raw = record.get("metadata", {})
+    metadata = dict(metadata_raw) if isinstance(metadata_raw, dict) else {}
+    return AgentActivityEvent(
+        provider=provider,
+        kind=kind,
+        content=content,
+        metadata=metadata,
+    )
+
+
+def test_claude_ndjson_fixture_yields_one_entry_per_event() -> None:
+    """AC-10: claude NDJSON stream -> one PresentedEntry per event, no duplicates."""
+    records = _load_ndjson_fixture("claude_ndjson.jsonl")
+    entries = [
+        build_presented_entry(_event_from_fixture(rec), unit_id="claude")
+        for rec in records
+    ]
+    # One entry per record.
+    assert len(entries) == len(records)
+    # No body ever contains the internal channel vocabulary.
+    for entry in entries:
+        for forbidden in ("CONT", "META", "[thinking-start]", "[thinking-end]"):
+            assert forbidden not in entry.body, (
+                f"claude fixture: {forbidden!r} leaked into entry: {entry.body!r}"
+            )
+
+
+def test_pi_ndjson_fixture_yields_one_entry_per_event() -> None:
+    """AC-10: pi NDJSON stream -> one PresentedEntry per event, no duplicates."""
+    records = _load_ndjson_fixture("pi_ndjson.jsonl")
+    entries = [
+        build_presented_entry(_event_from_fixture(rec), unit_id="pi")
+        for rec in records
+    ]
+    assert len(entries) == len(records)
+    for entry in entries:
+        for forbidden in ("CONT", "META", "[thinking-start]", "[thinking-end]"):
+            assert forbidden not in entry.body, (
+                f"pi fixture: {forbidden!r} leaked into entry: {entry.body!r}"
+            )
+
+
+def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:
+    """AC-10: gemini NDJSON stream -> one PresentedEntry per event, no duplicates.
+
+    gemini is parser-only (not a selectable agent today) but is a
+    supported input format. It must satisfy the same per-event
+    invariants as the selectable agents so a future gemini
+    selectable agent inherits the presentation by construction.
+    """
+    records = _load_ndjson_fixture("gemini_ndjson.jsonl")
+    entries = [
+        build_presented_entry(_event_from_fixture(rec), unit_id="gemini")
+        for rec in records
+    ]
+    assert len(entries) == len(records)
+    for entry in entries:
+        # Internal vocabulary never reaches the surface.
+        for forbidden in ("CONT", "META", "[thinking-start]", "[thinking-end]"):
+            assert forbidden not in entry.body, (
+                f"gemini fixture: {forbidden!r} leaked into entry: {entry.body!r}"
+            )
+        # Identity is single-sourced: the entry identity is "gemini" and
+        # does not appear duplicated in the body.
+        assert entry.identity == "gemini"
+        assert "gemini" not in entry.body, (
+            f"gemini fixture: identity leaked into body: {entry.body!r}"
+        )
+

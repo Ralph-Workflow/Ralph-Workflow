@@ -126,6 +126,36 @@ def test_attention_states_pairwise_distinct_in_grayscale() -> None:
     assert len(seen) == len(label_carriers), "labels must be pairwise distinct"
 
 
+def test_attention_states_pairwise_distinct_in_rendered_output() -> None:
+    """AC-11: attention distinctness asserted on the actual rendered bar, not a dict.
+
+    The previous test pinned a hardcoded label-dict invariant. This
+    stronger test renders the bar with NO_COLOR and the ASCII
+    glyph fallback for every attention state and asserts the
+    rendered output itself is pairwise distinct. A future change
+    to the label carrier cannot ship a state that reads identical
+    to another in the actual display.
+    """
+    ctx_no_color = _ctx(width=120, height=40, color=False, glyphs=False)
+    states = ("waiting", "stalled", "retrying", "terminated")
+    rendered: dict[str, str] = {}
+    for state in states:
+        text = render_status_bar(
+            _model(attention=state), ctx_no_color, now_monotonic=100.0
+        ).plain
+        # Strip the right-hand side (path/cycle/iter/elapsed) so the
+        # comparison focuses on the leading attention slot + phase
+        # carrier, where the state label actually lives.
+        head = text.split("/", 1)[0]
+        rendered[state] = head
+    # Pairwise distinct in the rendered output: no two states share
+    # the same leading attention-slot text.
+    seen = set(rendered.values())
+    assert len(seen) == len(states), (
+        f"attention states must render distinctly in the bar; got {rendered!r}"
+    )
+
+
 def test_stall_pushed_attention_renders() -> None:
     """wt-047-stall-label: a pushed ``attention='stalled'`` renders STALLED.
 

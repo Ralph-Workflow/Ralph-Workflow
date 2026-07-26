@@ -1,0 +1,5 @@
+{"kind": "text", "provider": "gemini", "content": "Reading the test file.", "metadata": {}}
+{"kind": "thinking", "provider": "gemini", "content": "Reasoning about the next step.", "metadata": {}}
+{"kind": "tool_use", "provider": "gemini", "content": "Read", "metadata": {"input": {"path": "ralph/display/agent_event_renderer.py"}}}
+{"kind": "tool_result", "provider": "gemini", "content": "ok", "metadata": {"tool": "Read"}}
+{"kind": "text", "provider": "gemini", "content": "Render path is correct.", "metadata": {}}

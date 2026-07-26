@@ -275,11 +275,23 @@ def _code_value_is_failure(value: object) -> bool:
 #: import :mod:`ralph.display.agent_event_renderer` (which would
 #: create a circular import -- the renderer imports
 #: :class:`PresentedEntry`).
+#:
+#: AC-07 (wt-028-display S-6): the SPACE-LESS form
+#: (``text:hello``) is also a known accumulator key shape used by
+#: pi/claude when the first content fragment lacks a separating
+#: space. The space-less stripper only fires when the remainder is
+#: non-empty AND does not begin with whitespace.
 _PARSER_CHANNEL_PREFIXES: tuple[str, ...] = (
     "text: ",
     "thinking: ",
     "tool_use: ",
     "tool_result: ",
+)
+_PARSER_CHANNEL_PREFIXES_SPACELESS: tuple[str, ...] = (
+    "text:",
+    "thinking:",
+    "tool_use:",
+    "tool_result:",
 )
 
 
@@ -296,10 +308,21 @@ def _strip_parser_channel_prefixes(content: str) -> str:
     unchanged because the registry only matches an EXACT
     four-character prefix from the canonical set followed by a
     single space.
+
+    AC-07 (wt-028-display S-6): the space-less form
+    (``text:hello``) is also stripped when the remainder is
+    non-empty, so the accumulator key shape used by pi/claude
+    cannot leak the prefix even if the first content fragment
+    lacks a separating space.
     """
     for prefix in _PARSER_CHANNEL_PREFIXES:
         if content.startswith(prefix):
             return content[len(prefix):]
+    for prefix in _PARSER_CHANNEL_PREFIXES_SPACELESS:
+        if content.startswith(prefix):
+            remainder = content[len(prefix):]
+            if remainder and not remainder[0].isspace():
+                return remainder
     return content
 
 

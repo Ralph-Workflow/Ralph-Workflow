@@ -369,3 +369,54 @@ def test_record_writer_invalid_indent_level_falls_back_to_zero() -> None:
                  "timestamp": "14:29:03", "indent_level": "two"}
     line = _format_entry_line(bad_entry)
     assert line.startswith("[14:29:03]"), f"bad indent must clamp to 0; got: {line!r}"
+
+
+# ---------------------------------------------------------------------------
+# AC-07 (wt-028-display S-6): space-less parser channel tokens, sync test
+# ---------------------------------------------------------------------------
+
+
+def test_presented_entry_strips_space_less_text_prefix() -> None:
+    """AC-07: ``text:hello`` (no space) is stripped at the PresentedEntry seam.
+
+    The two prefix tables are declared separately to avoid a circular
+    import between agent_event_renderer and presented_entry; this
+    test pins the behavioral contract that the PresentedEntry seam
+    also recognizes the space-less form so neither surface can leak.
+    """
+    entry = build_presented_entry(
+        _event(ActivityEventKind.TEXT, "text:hello world"),
+        unit_id="pi",
+    )
+    assert "text:hello" not in entry.body
+    assert "hello world" in entry.body
+
+
+def test_parser_channel_prefix_tables_stay_in_sync() -> None:
+    """AC-07: the two prefix tables must agree on the canonical token set.
+
+    The renderer and the presented_entry declare their prefix tables
+    separately to avoid a circular import. A drift between the two
+    tables means one surface would leak a token the other strips, so
+    the canonical token set is asserted equal at test time.
+    """
+    from ralph.display import agent_event_renderer as renderer
+    from ralph.display import presented_entry as presented
+
+    # Spaced forms must match exactly.
+    assert set(renderer._INTERNAL_CHANNEL_PREFIXES) == set(
+        presented._PARSER_CHANNEL_PREFIXES
+    ), (
+        "Spaced prefix table drifted between agent_event_renderer "
+        f"({renderer._INTERNAL_CHANNEL_PREFIXES!r}) and presented_entry "
+        f"({presented._PARSER_CHANNEL_PREFIXES!r})."
+    )
+    # Space-less forms must match exactly.
+    assert set(renderer._INTERNAL_CHANNEL_PREFIXES_SPACELESS) == set(
+        presented._PARSER_CHANNEL_PREFIXES_SPACELESS
+    ), (
+        "Space-less prefix table drifted between agent_event_renderer "
+        f"({renderer._INTERNAL_CHANNEL_PREFIXES_SPACELESS!r}) and presented_entry "
+        f"({presented._PARSER_CHANNEL_PREFIXES_SPACELESS!r})."
+    )
+

@@ -122,32 +122,44 @@ def _safe_str(content: object) -> str:
 #: (e.g. ``"text: internal prefix payload"``); the registry strips
 #: them at the canonical event-content normalization seam so the
 #: severity word, tool name, and outcome carry the information
-#: instead (DA-001 / AC-02).
+#: instead (DA-001 / AC-02). The space-less sibling
+#: :data:`_INTERNAL_CHANNEL_PREFIXES_SPACELESS` covers the
+#: ``"text:hello"`` accumulator key shape (AC-07 / S-6).
 _INTERNAL_CHANNEL_PREFIXES: tuple[str, ...] = (
     "text: ",
     "thinking: ",
     "tool_use: ",
     "tool_result: ",
 )
+_INTERNAL_CHANNEL_PREFIXES_SPACELESS: tuple[str, ...] = (
+    "text:",
+    "thinking:",
+    "tool_use:",
+    "tool_result:",
+)
 
 
 def _strip_internal_channel_prefix(content: str) -> str:
     """Remove a leading parser-channel prefix from ``content``.
 
-    DA-001 (wt-028-display S-3 / AC-02): the registry's canonical
-    event-content normalization seam strips the four recognized
-    parser channel prefixes (``text: ``, ``thinking: ``,
-    ``tool_use: ``, ``tool_result: ``) when they appear at the
-    START of the body. The function never alters ordinary body
-    text -- it only matches a leading prefix that exactly one of
-    those four tokens followed by a single space. A body whose
-    first character is a colon, or whose first token is a
-    different word, is returned unchanged so legitimate prose is
+    DA-001 (S-3 / AC-02): strips the four recognized parser
+    channel prefixes (``text: ``, ``thinking: ``, ``tool_use: ``,
+    ``tool_result: ``) at the START of the body. AC-07 (S-6):
+    the space-less form (``text:hello``) is also stripped when
+    the remainder is non-empty, so the accumulator key shape used
+    by pi/claude cannot leak the prefix. A body whose first token
+    is a different word, or whose remainder is empty / whitespace
+    prefixed, is returned unchanged so legitimate prose is
     preserved.
     """
     for prefix in _INTERNAL_CHANNEL_PREFIXES:
         if content.startswith(prefix):
             return content[len(prefix):]
+    for prefix in _INTERNAL_CHANNEL_PREFIXES_SPACELESS:
+        if content.startswith(prefix):
+            remainder = content[len(prefix):]
+            if remainder and not remainder[0].isspace():
+                return remainder
     return content
 
 

@@ -297,3 +297,63 @@ def test_agent_event_renderer_has_no_literal_hex_outside_theme() -> None:
         f"literal hex string(s) found in agent_event_renderer.py -- "
         f"reference STATUS_STYLES from ralph.display.theme instead: {offenders}"
     )
+
+
+# ---------------------------------------------------------------------------
+# AC-07 (wt-028-display S-6): space-less internal channel tokens stripped
+# ---------------------------------------------------------------------------
+
+
+def test_render_event_strips_space_less_text_prefix() -> None:
+    """AC-07: ``text:hello`` (no space) is stripped, just like ``text: hello``.
+
+    pi/claude accumulators may emit the space-less form when the first
+    content fragment lacks a separating space. The stripper must
+    recognize that form so the ``text:`` channel token never reaches
+    the operator surface.
+    """
+    ctx = _ctx()
+    rendered = render_event(_event(ActivityEventKind.TEXT, "text:hello world"), ctx)
+    plain = rendered.plain
+    assert "text:hello" not in plain
+    # The visible payload survives intact.
+    assert "hello world" in plain
+
+
+def test_render_event_strips_space_less_thinking_prefix() -> None:
+    """AC-07: ``thinking:reasoning here`` is stripped of the prefix."""
+    ctx = _ctx()
+    rendered = render_event(
+        _event(ActivityEventKind.THINKING, "thinking:reasoning here"), ctx
+    )
+    plain = rendered.plain
+    assert "thinking:reasoning" not in plain
+    assert "reasoning here" in plain
+
+
+def test_render_event_preserves_colon_in_legitimate_prose() -> None:
+    """AC-07: prose containing ``text:`` mid-sentence is preserved.
+
+    The stripper only matches when the prefix is the WHOLE first
+    word, not when the colon word appears later in the body.
+    """
+    ctx = _ctx()
+    rendered = render_event(
+        _event(ActivityEventKind.TEXT, "He said text: was a key field"), ctx
+    )
+    plain = rendered.plain
+    assert "He said text: was a key field" in plain
+
+
+def test_render_event_preserves_bare_prefix_token() -> None:
+    """AC-07: ``text:`` alone (no payload) is NOT stripped.
+
+    A bare prefix with no payload is ambiguous; the stripper
+    conservatively leaves it alone so it cannot silently erase a
+    line that happens to read exactly ``text:``.
+    """
+    ctx = _ctx()
+    rendered = render_event(_event(ActivityEventKind.TEXT, "text:"), ctx)
+    plain = rendered.plain
+    assert "text:" in plain
+
