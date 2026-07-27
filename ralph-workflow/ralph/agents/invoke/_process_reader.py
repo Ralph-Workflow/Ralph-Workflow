@@ -753,6 +753,15 @@ class _ProcessLineReader:
                 tool_name, tool_args = tool_call
                 watchdog.record_tool_call_activity(tool_name, tool_args)
             watchdog.record_tool_use_activity()
+        elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+            # Every non-PTY transport lands here (PTY serves only
+            # claude_interactive / agy / nanocoder), and this branch did not
+            # exist: a tool result fell through to ``record_activity()``, whose
+            # ``note_progress()`` wiped the tool-call repetition streak after
+            # every completed call, and ``record_tool_result_activity`` was
+            # never reached at all -- so STALLED_AFTER_TOOL_RESULT was
+            # unreachable on opencode, claude, pi, cursor, and codex alike.
+            watchdog.record_tool_result_activity()
         else:
             watchdog.record_activity()
 

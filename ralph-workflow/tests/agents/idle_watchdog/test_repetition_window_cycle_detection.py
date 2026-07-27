@@ -1,12 +1,15 @@
-"""A repeated tool call only counts as a wedge when it DOMINATES its window.
+"""A repeated tool call only counts as a wedge when the window is a CYCLE.
 
 The window rule exists so cosmetic OUTPUT interleaved between identical calls
 cannot reset the streak. It was never meant to survive interleaved *other tool
-calls*: an agent reaching for eight different tools between repeats is working,
-not wedged. Counting 8 occurrences of one fingerprint anywhere in the trailing
-600s killed ordinary habits -- ``git status`` after each edit, re-reading the
-plan draft, polling a build. One captured healthy pi run issues
-``mcp__ralph__ralph_get_plan_draft`` 14 times among ~250 tool calls.
+calls*: repeating one call while otherwise doing varied work is how agents poll
+a build or re-check ``git status``, not how they wedge. Counting 8 occurrences
+of one fingerprint anywhere in the trailing 600s killed those habits -- one
+captured healthy pi run issues ``mcp__ralph__ralph_get_plan_draft`` 14 times
+among 124 tool calls.
+
+Diversity is the discriminator, not share-of-window: a share test set at half
+the window lets an unambiguous three-call A/B/C loop sit at 33% and escape.
 """
 
 from __future__ import annotations
@@ -24,23 +27,35 @@ def _tracker(clock: FakeClock) -> RepetitionTracker:
     )
 
 
-def test_repeats_diluted_by_real_work_do_not_trip() -> None:
-    """14 identical polls among ~250 distinct calls is 6% of the window."""
+def test_polling_threaded_through_varied_work_does_not_trip() -> None:
+    """The real pi shape: 14 identical plan-draft reads among 124 calls."""
     clock = FakeClock()
     tracker = _tracker(clock)
 
-    for index in range(250):
+    for index in range(124):
         tracker.mark_tool_call("ralph_read_file", {"path": f"/repo/file_{index}.py"})
         clock.advance(1.0)
-        if index % 18 == 0:
+        if index % 9 == 0:
             tracker.mark_tool_call("ralph_get_plan_draft", {})
             clock.advance(1.0)
 
     assert not tracker.tripped_tool_dimension()
 
 
-def test_repeats_dominating_the_window_still_trip() -> None:
-    """A wedge is ~100% of its window and MUST still be caught."""
+def test_distinct_calls_at_run_start_do_not_trip() -> None:
+    """A small window early in a run must not be read as a cycle."""
+    clock = FakeClock()
+    tracker = _tracker(clock)
+
+    for index in range(8):
+        tracker.mark_tool_call("ralph_read_file", {"path": f"/repo/{index}.py"})
+        clock.advance(1.0)
+
+    assert not tracker.tripped_tool_dimension()
+
+
+def test_one_call_repeated_still_trips() -> None:
+    """The canonical wedge: the same call and nothing else."""
     clock = FakeClock()
     tracker = _tracker(clock)
 
@@ -51,16 +66,29 @@ def test_repeats_dominating_the_window_still_trip() -> None:
     assert tracker.tripped_tool_dimension()
 
 
-def test_two_call_alternating_loop_still_trips() -> None:
-    """An A/B/A/B loop is 50% of its window, which is still a wedge."""
+def test_two_call_loop_still_trips() -> None:
+    """An A/B/A/B loop is a wedge with two moving parts."""
     clock = FakeClock()
     tracker = _tracker(clock)
 
-    for _ in range(8):
+    for _ in range(10):
         tracker.mark_tool_call("ralph_exec", {"command": "make test"})
         clock.advance(1.0)
         tracker.mark_tool_call("ralph_read_file", {"path": "/repo/out.log"})
         clock.advance(1.0)
+
+    assert tracker.tripped_tool_dimension()
+
+
+def test_three_call_loop_still_trips() -> None:
+    """A/B/C is still a cycle; a share-of-window test would miss it at 33%."""
+    clock = FakeClock()
+    tracker = _tracker(clock)
+
+    for _ in range(9):
+        for name in ("ralph_exec", "ralph_read_file", "ralph_git_status"):
+            tracker.mark_tool_call(name, {})
+            clock.advance(1.0)
 
     assert tracker.tripped_tool_dimension()
 

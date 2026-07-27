@@ -673,6 +673,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_discovery_strategy_for_config",),
         ),
         (
+            "tests/agents/idle_watchdog/test_tool_result_routing.py",
+            "ralph.agents.invoke._process_reader",
+            ("_ProcessLineReader",),
+        ),
+        (
             "tests/agents/invoke/test_line_reader_queue_bound.py",
             "ralph.agents.invoke._process_reader",
             ("_ProcessLineReader",),

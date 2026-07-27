@@ -308,7 +308,7 @@ class RepetitionTracker:
             now = self._clock.monotonic()
             self._prune_tool(now)
             repeats = _max_fingerprint_count(self._tool_events)
-            if repeats >= self._window_count and _dominates(repeats, len(self._tool_events)):
+            if repeats >= self._window_count and _window_is_cycling(self._tool_events):
                 return True
         return False
 
@@ -327,26 +327,42 @@ class RepetitionTracker:
             self._tool_events.popleft()
 
 
-def _dominates(repeats: int, window_size: int) -> bool:
-    """Return True when one fingerprint accounts for at least half the window.
+#: How many distinct tool-call fingerprints a window may hold and still be
+#: read as a cycle rather than as work. A wedged agent cycles among a handful
+#: of calls; an agent reaching for a dozen different tools is working.
+_MAX_CYCLE_FINGERPRINTS = 4
+
+
+def _window_is_cycling(events: Iterable[tuple[str, float]]) -> bool:
+    """Return True when the window holds few enough distinct calls to be a cycle.
 
     The window rule exists so that cosmetic OUTPUT interleaved between
     identical calls cannot reset the streak. It was never meant to survive
-    interleaved *other tool calls*: an agent that reaches for eight different
-    tools between repeats is working, not wedged.
+    interleaved *other tool calls*: repeating one call while otherwise doing
+    varied work is how agents poll a build or re-check ``git status``, not how
+    they wedge.
 
     Without this, the rule counted 8 occurrences of one fingerprint anywhere
-    in the trailing window no matter how much real work surrounded them, so
-    ordinary habits -- ``git status`` after each edit, re-reading the plan
-    draft, polling a build -- were killed as wedges. One captured healthy pi
-    run issues ``mcp__ralph__ralph_get_plan_draft`` 14 times among ~250 tool
-    calls (6% of the window) and would have been killed.
+    in the trailing window no matter how much real work surrounded them. One
+    captured healthy pi run issues ``mcp__ralph__ralph_get_plan_draft`` 14
+    times among 124 tool calls and would have been killed.
 
-    A genuine wedge is ~100% of its window; an A/B/A/B two-call loop is 50%
-    and still trips. The consecutive rule is untouched and remains the fast
-    path for a back-to-back repeat.
+    Diversity is the discriminator, not share-of-window. A share test set at
+    half the window looks reasonable but lets a three-call A/B/C loop -- an
+    unambiguous wedge -- sit at 33% and escape, while still killing an agent
+    that polls one endpoint between genuinely different calls. Counting
+    distinct fingerprints gets both right: a 1-, 2-, or 3-call loop trips; a
+    poll threaded through varied work does not.
+
+    The consecutive rule is untouched and remains the fast path for a
+    back-to-back repeat.
     """
-    return window_size <= 0 or repeats * 2 >= window_size
+    distinct: set[str] = set()
+    for fingerprint, _ in events:
+        distinct.add(fingerprint)
+        if len(distinct) > _MAX_CYCLE_FINGERPRINTS:
+            return False
+    return True
 
 
 def _max_fingerprint_count(events: Iterable[tuple[str, float]]) -> int:

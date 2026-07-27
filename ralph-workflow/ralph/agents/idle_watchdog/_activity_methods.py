@@ -401,12 +401,12 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
     the configured ``post_tool_result_progression_seconds`` budget.
     If not, the watchdog fires STALLED_AFTER_TOOL_RESULT.
 
-    This is a NEW BEHAVIOR for direct wedge detection. The
-    existing ``pty_line_reader._handle_queued_line`` calls this
-    method AFTER ``record_activity()`` on the TOOL_RESULT branch
-    so the wedge is detected in ~120s by default (the
-    post-tool-result budget) rather than waiting for the full
-    300s idle timeout.
+    Both line readers call this INSTEAD OF ``record_activity()`` on the
+    TOOL_RESULT branch. It does everything ``record_activity`` does -- resets
+    the idle baseline, marks meaningful output -- EXCEPT clear the repetition
+    streak, which is the whole point (see below). Calling both, as the PTY
+    reader used to, put the ``note_progress()`` back in and defeated the
+    contract this docstring describes.
 
     Does NOT reset _session_started_at (the session ceiling
     remains absolute).
@@ -421,9 +421,9 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
     """
     now = self._clock.monotonic()
     self._accumulate_waiting_run(now)
-    self._last_activity = now
-    self._in_drain_window = False
-    self._drain_started_at = None
+    self._reset_idle_baseline()
+    self._last_meaningful_output_at = now
+    self._has_meaningful_output = True
     self._last_tool_result_at = now
     self._awaiting_post_tool_result_progression = True
 

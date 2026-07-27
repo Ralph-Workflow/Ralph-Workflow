@@ -1088,7 +1088,12 @@ class PtyLineReader:
                     self._awaiting_post_tool_result_progress = True
                     self._last_tool_result_at = self._clock.monotonic()
                     self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
-                    watchdog.record_activity()
+                    # NOT record_activity(): its note_progress() wiped the
+                    # tool-call repetition streak after every completed call,
+                    # putting back exactly what record_tool_result_activity
+                    # documents it must not do. That method (called below)
+                    # already resets the idle baseline and marks meaningful
+                    # output.
                 elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
                     self._awaiting_post_tool_result_progress = False
                     watchdog.record_activity()
