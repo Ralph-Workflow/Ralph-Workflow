@@ -24,9 +24,7 @@ Acceptance criteria covered:
 * AC-09 — target checked out dirty in another worktree: ff skipped.
 * AC-10 — no invocation of this feature ever calls ``git push``.
 * AC-11 — phased crash recovery (4 cases).
-* AC-13 — target auto-detection: origin/HEAD -> develop; remote-less
-  ``main`` integration; remote-less ``master`` integration when no
-  ``main`` branch exists; no-candidate skip; explicit override.
+* AC-13 — configured local target resolution; a missing local target skips.
 """
 
 from __future__ import annotations
@@ -41,7 +39,6 @@ from ralph.pipeline.auto_integrate import (
     IntegrationRecord,
     auto_integrate_after_commit,
     recover_incomplete_integration,
-    resolve_integration_target,
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
@@ -128,23 +125,23 @@ def test_disabled_returns_none_and_repo_byte_unchanged(tmp_git_repo: Path) -> No
     after = _snapshot(tmp_git_repo)
     assert before == after
 
-
 def test_default_enabled_with_no_config_set(tmp_git_repo: Path) -> None:
     """AC-01 default: with no config set, the feature is active (default True)."""
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     config = UnifiedConfig.model_validate({})
     assert config.general.auto_integrate_enabled is True
-    assert config.general.auto_integrate_target is None
+    assert config.general.auto_integrate_target == "main"
+    base = _base_branch(tmp_git_repo)
+    if base != "main":
+        _run(tmp_git_repo, "branch", "-m", base, "main")
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
     assert outcome.last_action in {"rebased", "merged", "skipped"}
-    # The default branch (main or master) must now be at feature_sha.
-    base = _base_branch(tmp_git_repo)
-    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    main_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/main").stdout.strip()
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert base_sha == feature_sha
+    assert main_sha == feature_sha
 
 
 # ---------------------------------------------------------------------------
@@ -166,8 +163,6 @@ def test_on_target_branch_skips_with_zero_mutation(tmp_git_repo: Path) -> None:
     assert outcome.last_target == base
     after = _snapshot(tmp_git_repo)
     assert before == after
-
-
 def test_no_commits_beyond_target_skips_with_zero_mutation(tmp_git_repo: Path) -> None:
     """AC-03 no-commits-beyond-target skip."""
     base = _base_branch(tmp_git_repo)
@@ -197,7 +192,7 @@ def test_no_target_branch_resolved_skips(tmp_git_repo: Path) -> None:
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
     assert outcome.last_action == "skipped"
-    assert "no integration target" in (outcome.last_reason or "")
+    assert outcome.last_reason == "local integration target branch does not exist: non-existent-branch-xyz"
     after = _snapshot(tmp_git_repo)
     assert before == after
 
@@ -860,110 +855,3 @@ def test_recovery_no_record_is_a_noop(tmp_git_repo: Path) -> None:
     assert outcome is None
     after = _snapshot(tmp_git_repo)
     assert before == after
-
-
-# ---------------------------------------------------------------------------
-# AC-13: target auto-detection
-# ---------------------------------------------------------------------------
-
-
-def test_auto_detect_origin_head(tmp_git_repo: Path) -> None:
-    """AC-13: origin/HEAD -> develop integration."""
-    base = _base_branch(tmp_git_repo)
-    # Build a 'develop' branch and make origin/HEAD point to it.
-    _run(tmp_git_repo, "branch", "develop")
-    bare = tmp_git_repo.parent / "bare.git"
-    _run(tmp_git_repo.parent, "init", "--bare", str(bare))
-    _run(tmp_git_repo, "remote", "add", "origin", str(bare))
-    _run(tmp_git_repo, "push", "origin", "develop")
-    _run(tmp_git_repo, "remote", "set-head", "origin", "develop")
-    # A feature branch with a commit on top of the current base.
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    config = _build_config(tmp_git_repo)  # auto-detect, target unset
-    scope = WorkspaceScope(tmp_git_repo)
-    resolved = resolve_integration_target(config, tmp_git_repo)
-    assert resolved == "develop"
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None
-    # The action landed develop at the feature tip (or rebased and
-    # then ff'd; either way develop should equal feature_sha).
-    develop_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/develop").stdout.strip()
-    feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert develop_sha == feature_sha
-    # 'base' (main or master) was NOT advanced.
-    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    # base was advanced only by the seeded initial commit + nothing else.
-    # Just assert base_sha != feature_sha.
-    assert base_sha != feature_sha
-
-
-def test_auto_detect_no_remote_picks_main(tmp_git_repo: Path) -> None:
-    """AC-13: remote-less repo with main -> integrate main."""
-    base = _base_branch(tmp_git_repo)
-    # If the default branch isn't already 'main', rename it.
-    if base != "main":
-        _run(tmp_git_repo, "branch", "-m", base, "main")
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    config = _build_config(tmp_git_repo)  # auto-detect
-    scope = WorkspaceScope(tmp_git_repo)
-    resolved = resolve_integration_target(config, tmp_git_repo)
-    assert resolved == "main"
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None
-    main_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/main").stdout.strip()
-    assert main_sha == feature_sha
-
-
-def test_auto_detect_no_main_picks_master(tmp_git_repo: Path) -> None:
-    """AC-13: remote-less repo with no main but a master -> integrate master."""
-    base = _base_branch(tmp_git_repo)
-    # Rename base to master so NO branch named main exists; this forces
-    # resolution past the 'main' candidate onto the 'master' leg.
-    if base != "master":
-        _run(tmp_git_repo, "branch", "-m", base, "master")
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    config = _build_config(tmp_git_repo)  # auto-detect
-    scope = WorkspaceScope(tmp_git_repo)
-    resolved = resolve_integration_target(config, tmp_git_repo)
-    assert resolved == "master"
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None
-    master_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/master").stdout.strip()
-    assert master_sha == feature_sha
-
-
-def test_auto_detect_no_candidate_skips(tmp_git_repo: Path) -> None:
-    """AC-13: no candidate -> recorded skip, no mutation."""
-    base = _base_branch(tmp_git_repo)
-    # Rename base to something that's not main or master, so no
-    # auto-detect candidate exists.
-    _run(tmp_git_repo, "branch", "-m", base, "trunk")
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    config = _build_config(tmp_git_repo)  # auto-detect
-    scope = WorkspaceScope(tmp_git_repo)
-    before = _snapshot(tmp_git_repo)
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None
-    assert outcome.last_action == "skipped"
-    after = _snapshot(tmp_git_repo)
-    assert before == after
-
-
-def test_explicit_config_target_overrides_detection(tmp_git_repo: Path) -> None:
-    """AC-13: explicit target overrides detection."""
-    _base_branch(tmp_git_repo)  # ensure the seed base branch exists
-    _run(tmp_git_repo, "branch", "develop")
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    config = _build_config(tmp_git_repo, target="develop")
-    scope = WorkspaceScope(tmp_git_repo)
-    resolved = resolve_integration_target(config, tmp_git_repo)
-    assert resolved == "develop"
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None
-    develop_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/develop").stdout.strip()
-    assert develop_sha == feature_sha

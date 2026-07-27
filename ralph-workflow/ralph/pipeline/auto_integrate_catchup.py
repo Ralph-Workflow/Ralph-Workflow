@@ -116,10 +116,12 @@ def _current_branch_name(root: Path) -> str | None:
 
 
 def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
-    """Return the configured integration branch verbatim, if any."""
-    del root
+    """Return the configured target only when it is a local branch."""
     configured: object = getattr(config.general, "auto_integrate_target", None)
-    return configured if isinstance(configured, str) and configured else None
+    if not isinstance(configured, str) or not configured:
+        return None
+    sha, query_ok = observe_branch_sha(root, configured)
+    return configured if query_ok and sha is not None else None
 
 
 def _local_head(repo: Repo, name: str) -> Head | None:

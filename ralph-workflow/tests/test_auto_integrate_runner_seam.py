@@ -15,6 +15,7 @@ from ralph.git.merge import WORKTREE_FOUND
 from ralph.pipeline import (
     auto_integrate,
     auto_integrate_backoff,
+    auto_integrate_catchup,
     auto_integrate_ff,
     runner,
 )
@@ -61,6 +62,11 @@ def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None
     """
     config = _default_config()
     root = Path("/workspace/feature")
+    monkeypatch.setattr(
+        auto_integrate_catchup,
+        "observe_branch_sha",
+        lambda _root, _target: ("old-main", True),
+    )
     target = auto_integrate.resolve_integration_target(config, root)
 
     _stub_ff_environment(monkeypatch, root)

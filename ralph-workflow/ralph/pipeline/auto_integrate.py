@@ -37,6 +37,7 @@ from ralph.pipeline.auto_integrate_budget_seam import (
     charge_failed_attempt,
     observe_conflict_identity,
 )
+from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
     resolver_allowed,
@@ -108,15 +109,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
-
-def resolve_integration_target(
-    config: UnifiedConfig,
-    repo_root: Path | str,
-) -> str | None:
-    """Return the configured local integration branch verbatim, if any."""
-    del repo_root
-    configured: object = getattr(config.general, "auto_integrate_target", None)
-    return configured if isinstance(configured, str) and configured else None
 
 
 # The record path / write_record / read_record / clear_record helpers
@@ -203,15 +195,10 @@ def auto_integrate_on_phase_transition(
             return None
         target = resolve_integration_target(config, root)
         if target is None:
-            # AC-08: even the "no target configured" short-circuit
-            # must surface a recorded skip rather than a silent
-            # ``None``; an operator looking at the run log must be
-            # able to tell "this phase boundary did nothing because
-            # no integration target was configured" from "this run
-            # is missing a target entirely". The boundary hook still
-            # costs nothing here -- ``_record_skip`` is a pure
-            # dataclass construction.
-            return _record_skip(reason="no integration target configured", target="")
+            return _record_skip(
+                reason=_missing_target_reason(config),
+                target=_configured_target(config),
+            )
         if not _worktree_is_clean(root):
             return _defer_dirty_boundary(config, root, target)
         # A stale remote pointer must not let this cheap hook conclude
@@ -338,7 +325,10 @@ def _auto_integrate_after_commit_inner(
     # records say how fresh the mainline pointer was too -- the success
     # path was previously the only one that could (AC-04).
     refresh: str | None = ctx[3] if ctx is not None else None
-    early_skip, usable_ctx = _check_early_skips(ctx)
+    early_skip, usable_ctx = _check_early_skips(
+        ctx,
+        missing_target=_configured_target(config),
+    )
     if early_skip is not None:
         return carry_budget_through_skip(early_skip, prior=state)
     if usable_ctx is None:
@@ -654,8 +644,22 @@ def _integrate_once(
         raise
 
 
+def _configured_target(config: UnifiedConfig) -> str:
+    """Return the configured target unchanged for operator-facing skips."""
+    configured: object = getattr(config.general, "auto_integrate_target", "")
+    return configured if isinstance(configured, str) else ""
+
+
+def _missing_target_reason(config: UnifiedConfig) -> str:
+    """Name the missing local target without guessing an alternative."""
+    target = _configured_target(config)
+    return f"local integration target branch does not exist: {target}" if target else "no integration target configured"
+
+
 def _check_early_skips(
     ctx: tuple[Path, str | None, str | None, str | None] | None,
+    *,
+    missing_target: str,
 ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
     """Apply the AC-01/AC-02/AC-13 skip table to the resolved context.
 
@@ -687,8 +691,13 @@ def _check_early_skips(
         # this branch -- a detached HEAD is not an in-progress
         # integration.
         return record_refresh(_record_skip(reason="detached HEAD", target=target), refresh), None
-    if target is None:  # AC-13: no target resolved -> recorded skip
-        return _record_skip(reason="no integration target branch resolved", target=None), None
+    if target is None:
+        reason = (
+            f"local integration target branch does not exist: {missing_target}"
+            if missing_target
+            else "no integration target configured"
+        )
+        return _record_skip(reason=reason, target=missing_target or None), None
     skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
     if skip is not None:
         # Every skip in that table is decided FROM the target pointer
