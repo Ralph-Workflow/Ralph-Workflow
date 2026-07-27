@@ -304,16 +304,7 @@ def _has_explicit_unit_prefix(body: str, unit_id: str) -> bool:
 
 
 def _tool_name_for_result(event: AgentActivityEvent) -> str:
-    """Return the tool name to render on a TOOL_RESULT line, or ``""`` when unknown.
-
-    The result renderer uses this to embed the friendly tool name
-    so the operator can pair the result with the TOOL_USE call
-    even when the two lines are separated by intervening output
-    (other tools, status messages). The friendly-name normalization
-    in :mod:`ralph.display.tool_args` is applied so the same
-    ``mcp__ralph__read_file`` -> ``ralph.read_file`` mapping the
-    TOOL_USE renderer uses is also applied here.
-    """
+    """Return the friendly tool name attached to a TOOL_RESULT, if known."""
     metadata = event.metadata or {}
     for key in ("tool_name", "name", "tool"):
         value = metadata.get(key)
@@ -537,6 +528,14 @@ def _render_tool_result_event(
     else:
         body = raw_body
     tool_ref = _tool_name_for_result(event)
+    metadata = event.metadata or {}
+    target = metadata.get("target")
+    if not isinstance(target, str) or not target:
+        target = next(
+            (f"{key}={_safe_str(value)}" for key in ("path", "command", "workdir")
+             if isinstance(value := metadata.get(key), str) and value),
+            _format_event_input(metadata),
+        )
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     # DA-001 (wt-028-display P1 / AC-21): the timestamp is intentionally
@@ -551,6 +550,9 @@ def _render_tool_result_event(
             escape(tool_ref) if escape_body else tool_ref,
             style=style,
         )
+        text.append(" ", style=style)
+    if target:
+        text.append(escape(target) if escape_body else target, style="theme.text.muted")
         text.append(" ", style=style)
     body_style = "theme.text.muted" if not is_error else style
     _append_tool_result_body(

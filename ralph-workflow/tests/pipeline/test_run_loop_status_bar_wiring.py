@@ -60,6 +60,7 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel
 from ralph.pipeline.run_loop import (
+    _execute_with_cleanup,
     _LoopContext,
     _push_status_bar_if_changed,
     _run_inner_loop,
@@ -803,6 +804,47 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
         "wt-047-stall-label: the dead display-side stall derivation "
         "must be removed from the model entirely (zero dead code)."
     )
+
+
+def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-7: teardown follows a final, truthful terminated Status Bar push."""
+    workspace_root = Path(tempfile.mkdtemp())
+    display = _make_display()
+    loop_ctx = _make_loop_context(
+        active_display=display,
+        workspace_root=workspace_root,
+        policy_bundle=_load_default_policy(),
+    )
+    terminal_state = _make_state("complete", 1, 1, 1).copy_with(run_outcome="completed")
+    captured = _patched_update_recorder(monkeypatch)
+    monkeypatch.setattr("ralph.pipeline.run_loop._emit_run_start", lambda *_args: None)
+    monkeypatch.setattr(
+        "ralph.pipeline.run_loop._run_inner_loop",
+        lambda *_args: (terminal_state, "development", None),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.run_loop._wait_for_pending_remote_publication",
+        lambda state, _ctx: state,
+    )
+    monkeypatch.setattr("ralph.pipeline.run_loop._emit_post_loop_result", lambda *_args: None)
+
+    observed_before_teardown: list[StatusBarModel | None] = []
+
+    def display_stop() -> None:
+        observed_before_teardown.append(display.status_bar.last_model)
+
+    assert _execute_with_cleanup(
+        terminal_state,
+        loop_ctx,
+        "development",
+        lambda: None,
+        lambda: None,
+        display_stop,
+    ) == 0
+    assert captured[-1].attention == "terminated"
+    assert observed_before_teardown == [captured[-1]]
 
 
 def test_attention_state_for_state_returns_waiting() -> None:

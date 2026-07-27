@@ -103,6 +103,26 @@ def _drive_through_writer(
     return writer.path.read_text(encoding="utf-8")
 
 
+def test_tool_result_regression_flood_entries_keep_tool_target_and_outcome(tmp_path: Path) -> None:
+    """S-3: distinct same-kind results remain distinguishable in the record."""
+    records = [
+        {
+            "kind": "tool_result",
+            "content": "12 lines",
+            "metadata": {"tool": "read_file", "target": f"path=src/file_{index}.py"},
+        }
+        for index in range(20)
+    ]
+    output = _drive_through_writer(records, tmp_path)
+    lines = [line for line in output.splitlines() if line.strip()]
+    assert len(lines) == 20
+    assert len(set(lines)) == 20
+    for index, line in enumerate(lines):
+        assert "PASS" in line
+        assert "read_file" in line
+        assert f"path=src/file_{index}.py" in line
+
+
 def test_pi_ndjson_re_renders_one_entry_per_event(tmp_path: Path) -> None:
     """The pi PTY NDJSON fixture produces exactly one line per event."""
     path = _fixture("pi_ndjson.jsonl")

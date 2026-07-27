@@ -21,7 +21,7 @@ def _make_display() -> tuple[ParallelDisplay, StringIO]:
 
 def test_ansi_escapes_in_run_start_are_stripped() -> None:
     pd, buf = _make_display()
-    pd.emit_run_start(RunStartOrientation(legend_enabled=False))
+    pd.emit_run_start(RunStartOrientation())
     out = buf.getvalue()
     assert "\x1b[" not in out
 

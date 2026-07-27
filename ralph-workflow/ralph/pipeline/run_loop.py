@@ -535,6 +535,8 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
     if isinstance(run_phase, str):
         if run_phase.startswith("waiting"):
             return "waiting"
+        if run_phase in ("complete", "failed", "cancelled"):
+            return "terminated"
         if run_phase in ("", "starting", "startup"):
             return "starting"
     retrying: object = getattr(state, "retrying", None)
@@ -1700,6 +1702,14 @@ def _execute_with_cleanup(
                 exit_code = 1
             _emit_post_loop_result(
                 state, loop_ctx.active_display, loop_ctx.is_quiet, exit_code, loop_ctx.policy_bundle
+            )
+            final_status_state = state.copy_with(run_outcome="terminated")
+            _push_status_bar_if_changed(
+                loop_ctx.active_display,
+                final_status_state,
+                loop_ctx.policy_bundle,
+                loop_ctx.workspace_scope.root,
+                last_sig=None,
             )
     finally:
         _cleanup_pipeline(loop_ctx, unsubscribe_bus, unsubscribe_display, display_stop, state)

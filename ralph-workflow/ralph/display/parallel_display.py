@@ -2788,21 +2788,6 @@ class ParallelDisplay:
             t.append("Ralph Workflow run start", style="theme.banner.title")
             self._console.print(t, markup=False, highlight=False, no_wrap=True)
 
-            if orientation.legend_enabled and not height_constrained:
-                self._console.print(
-                    self._build_line(
-                        timestamp,
-                        "INFO",
-                        "META",
-                        "[run-start] legend: levels: INFO|SUCCESS|WARN|ERROR|MILESTONE"
-                        "  tags: content|think|call|result|error"
-                        "  format: [tag][unit] message",
-                    ),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=True,
-                )
-
             self._emit_run_start(timestamp, orientation, height_constrained=height_constrained)
 
     #: DA-003 (wt-028-display S-6 / AC-05): column prefix the

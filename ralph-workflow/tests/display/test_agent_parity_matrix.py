@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from itertools import combinations
 from pathlib import Path
 
 from ralph.agents.parsers.opencode import OpenCodeParser
@@ -49,6 +50,18 @@ _SUPPORTED_AGENTS: tuple[str, ...] = (
     "pi",
     "cursor",
 )
+_PARITY_STREAM_AGENTS = (*_SUPPORTED_AGENTS, "gemini")
+_PROVIDER_BY_AGENT = {
+    "claude": ActivityProvider.CLAUDE,
+    "claude-headless": ActivityProvider.CLAUDE,
+    "codex": ActivityProvider.CODEX,
+    "opencode": ActivityProvider.OPENCODE,
+    "nanocoder": ActivityProvider.NANOCODER,
+    "agy": ActivityProvider.AGY,
+    "pi": ActivityProvider.PI,
+    "cursor": ActivityProvider.CURSOR,
+    "gemini": ActivityProvider.GEMINI,
+}
 
 _INTERNAL_VOCABULARY: tuple[str, ...] = (
     "CONT",
@@ -75,30 +88,31 @@ def _make_event(
 
 def _drive_event_stream(unit_id: str) -> Iterable[AgentActivityEvent]:
     """A representative event stream: text, thinking, tool, error, unknown."""
-    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.TEXT, "ping")
-    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.THINKING, "reasoning")
+    provider = _PROVIDER_BY_AGENT[unit_id]
+    yield _make_event(provider, ActivityEventKind.TEXT, "ping")
+    yield _make_event(provider, ActivityEventKind.THINKING, "reasoning")
     yield _make_event(
-        ActivityProvider.CLAUDE,
+        provider,
         ActivityEventKind.TOOL_USE,
         "Bash",
         metadata={"input": {"command": "ls -la"}},
     )
     yield _make_event(
-        ActivityProvider.CLAUDE,
+        provider,
         ActivityEventKind.TOOL_RESULT,
         "ok",
         metadata={"tool": "Bash"},
     )
-    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.ERROR, "boom")
-    yield _make_event(ActivityProvider.CLAUDE, ActivityEventKind.UNKNOWN, "??")
+    yield _make_event(provider, ActivityEventKind.ERROR, "boom")
+    yield _make_event(provider, ActivityEventKind.UNKNOWN, "??")
 
 
 # --- One entry per event --------------------------------------------------
 
 
 def test_canonical_entry_builds_one_per_event_for_each_agent() -> None:
-    """Every supported agent produces one ``PresentedEntry`` per event."""
-    for agent_name in _SUPPORTED_AGENTS:
+    """Every supported input stream, including gemini, yields one entry per event."""
+    for agent_name in _PARITY_STREAM_AGENTS:
         entries = [
             build_presented_entry(event, unit_id=agent_name)
             for event in _drive_event_stream(agent_name)
@@ -115,8 +129,8 @@ def test_canonical_entry_builds_one_per_event_for_each_agent() -> None:
 
 
 def test_render_event_keeps_internal_vocabulary_off_surface() -> None:
-    """CONT / META / thinking-start / fragments, never reach the rendered text."""
-    for agent_name in _SUPPORTED_AGENTS:
+    """CONT / META / thinking-start / fragments never reach any agent surface."""
+    for agent_name in _PARITY_STREAM_AGENTS:
         for event in _drive_event_stream(agent_name):
             text = render_event(event, unit_id=agent_name)
             plain = text.plain
@@ -128,8 +142,8 @@ def test_render_event_keeps_internal_vocabulary_off_surface() -> None:
 
 
 def test_render_event_kind_text_keeps_internal_vocabulary_off_surface() -> None:
-    """The plain-text path also strips the internal vocabulary."""
-    for agent_name in _SUPPORTED_AGENTS:
+    """The plain-text path also strips internal vocabulary for every input format."""
+    for agent_name in _PARITY_STREAM_AGENTS:
         for event in _drive_event_stream(agent_name):
             line = render_event_kind_text(
                 event.kind,
@@ -149,23 +163,18 @@ def test_render_event_kind_text_keeps_internal_vocabulary_off_surface() -> None:
 
 
 def test_same_event_different_agents_differs_only_by_identity() -> None:
-    """Two agents producing the same logical event render to the same body
-    (icon/label/timestamp are stable; only the identity prefix may differ)."""
-    text_a = render_event(
-        _make_event(ActivityProvider.CLAUDE, ActivityEventKind.TEXT, "hello"),
-        unit_id="claude",
-    ).plain
-    text_b = render_event(
-        _make_event(ActivityProvider.CODEX, ActivityEventKind.TEXT, "hello"),
-        unit_id="codex",
-    ).plain
-    # The body portion after the icon/label/timestamp must be identical.
-    parts_a = text_a.split(" ", 3)
-    parts_b = text_b.split(" ", 3)
-    # Strip the per-agent identity prefix at the end of the body.
-    body_a = parts_a[-1].removeprefix("claude ")
-    body_b = parts_b[-1].removeprefix("codex ")
-    assert body_a == body_b
+    """Every supported input stream, including gemini, shares one event body."""
+    rendered = {
+        agent_name: render_event(
+            _make_event(_PROVIDER_BY_AGENT[agent_name], ActivityEventKind.TEXT, "hello"),
+            unit_id=agent_name,
+        ).plain
+        for agent_name in _PARITY_STREAM_AGENTS
+    }
+    for first, second in combinations(_PARITY_STREAM_AGENTS, 2):
+        body_first = rendered[first].split(" ", 3)[-1].removeprefix(f"{first} ")
+        body_second = rendered[second].split(" ", 3)[-1].removeprefix(f"{second} ")
+        assert body_first == body_second, f"{first} and {second} differ beyond identity"
 
 
 # --- Composite identity (Design item 8) ------------------------------------

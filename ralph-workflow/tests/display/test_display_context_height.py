@@ -225,7 +225,6 @@ def _run_height_constrained(
             parallel_max_workers=2,
             plan_present=True,
             verbosity="normal",
-            legend_enabled=False,
         )
     )
     return pd, buf

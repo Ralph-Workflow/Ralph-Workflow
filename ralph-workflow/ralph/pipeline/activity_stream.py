@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -18,6 +19,7 @@ from ralph.display.parallel_display import (
     emit_activity_line,
     subscriber_for_display,
 )
+from ralph.display.tool_args import format_tool_input
 from ralph.mcp.server._activity_sink import invoke_subagent_sink
 
 if TYPE_CHECKING:
@@ -130,7 +132,9 @@ def stream_parsed_agent_activity(
     # SUBAGENT_PROGRESS display event can re-use the exact string the
     # sink received (avoids re-sanitizing or re-emitting raw payload).
     last_subagent_summary: list[str] = []
+    tool_targets: dict[str, str] = {}
     for parsed_line in parser.parse(_iter_lines()):
+        retained_line = _retain_tool_result_target(parsed_line, tool_targets)
         # Forward parsed lines to the per-parser subagent sink so the
         # idle watchdog's per-channel evidence surface stays fresh for
         # ALL parsers (Claude, OpenCode, Codex, Gemini, Pi, Agy,
@@ -146,14 +150,14 @@ def stream_parsed_agent_activity(
             )
             last_subagent_summary.clear()
             try:
-                _capture_summary_into(parsed_line, emit_hook, last_subagent_summary)
+                _capture_summary_into(retained_line, emit_hook, last_subagent_summary)
             except Exception:
                 logger.debug("parser.emit_subagent_activity failed", exc_info=True)
-        rendered = _render_agent_activity_line(parsed_line, agent_name)
+        rendered = _render_agent_activity_line(retained_line, agent_name)
         if rendered is not None and rendered_output_sink is not None:
             rendered_output_sink.append(rendered.plain)
         if isinstance(display, parallel_display_cls):
-            kind = map_parser_type_to_kind(parsed_line.type)
+            kind = map_parser_type_to_kind(retained_line.type)
             # DA-002 (wt-028-display S-2 / AC-01): the parser-to-display
             # handoff forwards the source-event timestamp the parser
             # extracted so the rendered record carries ``[hh:mm:ss]``
@@ -164,21 +168,43 @@ def stream_parsed_agent_activity(
             display.emit_parsed_event(
                 agent_name,
                 kind,
-                parsed_line.content,
-                parsed_line.metadata or {},
-                timestamp=parsed_line.timestamp,
+                retained_line.content,
+                retained_line.metadata or {},
+                timestamp=retained_line.timestamp,
             )
             # emit_parsed_event already records a tool_use on the display's
             # subscriber; recording it again here would double-count the repeat
             # counter (a single call would render "(x2)"). Record only non-tool
             # lines here on the parallel path.
-            record_on_subscriber = parsed_line.type != "tool_use"
+            record_on_subscriber = retained_line.type != "tool_use"
         else:
             if rendered is not None:
                 emit_activity_line(display, None, rendered.plain, display_context=display_context)
             record_on_subscriber = True
         if subscriber is not None and record_on_subscriber:
-            _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
+            _record_activity_on_subscriber(subscriber, retained_line, rendered, agent_name)
+
+
+def _retain_tool_result_target(
+    line: AgentOutputLine, tool_targets: dict[str, str]
+) -> AgentOutputLine:
+    """Carry a tool call's target into its matching result metadata."""
+    metadata = line.metadata
+    tool = metadata.get("tool")
+    tool_name = tool if isinstance(tool, str) else (line.content or "")
+    call_id = metadata.get("tool_call_id")
+    key = str(call_id) if call_id is not None else tool_name
+    if line.type == "tool_use":
+        target = format_tool_input(metadata.get("input", metadata.get("args")))
+        if target:
+            tool_targets[key] = target
+        return line
+    if line.type != "tool_result" or not key or metadata.get("target"):
+        return line
+    retained_target = tool_targets.get(key)
+    if not retained_target:
+        return line
+    return replace(line, metadata={**metadata, "target": retained_target})
 
 
 def _capture_summary_into(

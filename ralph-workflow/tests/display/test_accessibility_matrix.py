@@ -362,6 +362,27 @@ def test_status_bar_and_live_log_answer_operator_jobs_at_40x12() -> None:
     assert "action" in live_log
 
 
+def test_status_bar_and_live_log_keep_hierarchy_at_40x8() -> None:
+    """S-5: an 8-row viewport retains bar truth and a phase/tool hierarchy."""
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, color_system=None, width=40, height=8)
+    ctx = make_display_context(console=console, env={"RALPH_ENABLE_GLYPHS": "1"})
+    bar = render_status_bar(_model(attention="waiting"), ctx, now_monotonic=100.0).plain
+    display = ParallelDisplay(ctx)
+    display.emit_phase_start("development", agent_name="claude")
+    display.emit_activity_line("claude", "tool_use", "read status_bar.py")
+    display.emit_activity_line("claude", "tool_result", "ok: 214 lines")
+
+    assert "WAIT" in bar
+    assert "Development" in bar or "dev" in bar.lower()
+    assert "1/4" in bar or "1/" in bar
+    assert "0s" in bar or "00:00" in bar
+    live_log = buffer.getvalue()
+    assert "development" in live_log.lower()
+    assert "read" in live_log and "status_bar.py" in live_log
+    assert "ok: 214 lines" in live_log
+
+
 def test_status_bar_model_push_is_byte_stable_when_unchanged() -> None:
     """AC-07 acceptance: consecutive direct renders of an unchanged model are byte-stable."""
     ctx = _ctx(width=40, height=12)

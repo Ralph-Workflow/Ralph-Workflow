@@ -147,30 +147,11 @@ def test_emit_run_start_milestone_glyph_ascii_fallback() -> None:
     assert "◆" not in milestone_line
 
 
-def test_emit_run_start_legend_format() -> None:
-    """emit_run_start legend uses the new S-4 pipe-separated format.
-
-    The retired ``cats: META|CONT`` chrome is gone; the legend
-    now enumerates the public tag vocabulary (content / think /
-    call / result / error).
-    """
-    pd, buf = _make_display()
-    pd.emit_run_start(_orientation())
-    out = buf.getvalue()
-    assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" in out
-    assert "tags: content|think|call|result|error" in out
-    assert "format: [tag][unit] message" in out
-
-
 _COMPACT_MAX_RUN_START_LINES = 4
 
 
 def _filter_run_start_content(lines: list[str]) -> list[str]:
-    return [
-        ln
-        for ln in lines
-        if "[run-start]" in ln and "legend" not in ln and "Ralph Workflow" not in ln
-    ]
+    return [ln for ln in lines if "[run-start]" in ln and "Ralph Workflow" not in ln]
 
 
 def test_emit_run_start_plan_verbosity_each_on_own_line() -> None:
@@ -269,7 +250,6 @@ def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
             workspace_root="/workspace",
             plan_present=True,
             verbosity="verbose",
-            legend_enabled=True,
         )
     )
     out = buf.getvalue()
@@ -290,22 +270,14 @@ def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
     assert "workspace=/workspace" in out
     assert "plan=ready" in out
     assert "verbosity=verbose" in out
-    # The legend line is also part of the visual chrome and must
-    # be suppressed on the height-constrained surface.
-    assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" not in out, (
-        f"legend line must be suppressed at 12 rows:\n{out!r}"
-    )
 
 
 def test_emit_run_start_keeps_section_rule_at_24_rows() -> None:
     """DA-005: at height=24 the section rule is preserved (default layout)."""
     pd, buf = _make_height_constrained_display(height=24)
-    pd.emit_run_start(_orientation(legend_enabled=True))
+    pd.emit_run_start(_orientation())
     out = buf.getvalue()
     # The default-mode visual hierarchy keeps the section rule.
     assert "─── [run-start]" in out, (
         f"section rule must survive at 24 rows (default layout):\n{out!r}"
-    )
-    assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" in out, (
-        f"legend line must survive at 24 rows:\n{out!r}"
     )

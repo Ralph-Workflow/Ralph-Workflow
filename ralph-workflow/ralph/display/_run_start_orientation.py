@@ -9,7 +9,7 @@ class without taking a dependency on a renderer module.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -24,4 +24,3 @@ class RunStartOrientation:
     plan_present: bool = False
     verbosity: str | None = None
     workspace_root: str | None = None
-    legend_enabled: bool = field(default=True)

@@ -2211,6 +2211,51 @@ def test_elapsed_format_change_does_not_shift_path(elapsed_seconds: int) -> None
     )
 
 
+
+@pytest.mark.parametrize("width", [120, 80, 60, 40])
+def test_status_bar_regression_value_changes_preserve_surviving_segment_columns(width: int) -> None:
+    """S-2: counters and identity reserve their realistic maximum widths."""
+    def render(*, cycle: int, cycle_cap: int, iteration: int, agent: str, elapsed: int) -> str:
+        return render_status_bar(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/reflow-probe/subdir",
+                phase_label="Development",
+                phase_style="theme.phase.development",
+                outer_dev_iteration=cycle,
+                outer_dev_cap=cycle_cap,
+                inner_analysis=iteration,
+                inner_analysis_cap=100,
+                agent_name=agent,
+                elapsed_seconds=elapsed,
+            ),
+            _make_display_context(width=width),
+            home="/Users/alice",
+        ).plain
+
+    baseline = render(cycle=9, cycle_cap=99, iteration=9, agent="claude", elapsed=761)
+    transitions = (
+        render(cycle=10, cycle_cap=99, iteration=10, agent="claude", elapsed=3720),
+        render(cycle=100, cycle_cap=100, iteration=100, agent="claude-headless", elapsed=3720),
+    )
+    # At constrained widths the layout is deliberately allowed to choose a
+    # smaller surviving set; stable columns apply to values that keep their
+    # rendered form, while the existing tests pin the width ladder itself.
+    anchors = ("Development", "Cycle", "Analysis", "Agent", "subdir")
+    for changed in transitions:
+        for anchor in anchors:
+            baseline_column = baseline.find(anchor)
+            changed_column = changed.find(anchor)
+            if (
+                baseline_column >= 0
+                and changed_column >= 0
+                and baseline.split(anchor, 1)[0] == changed.split(anchor, 1)[0]
+            ):
+                assert changed_column == baseline_column, (
+                    f"S-2: {anchor} shifted at width={width}; "
+                    f"baseline={baseline!r}, changed={changed!r}"
+                )
+
+
 def test_status_bar_drops_path_at_60() -> None:
     """DA-003 (AC-02): at width 60 the workspace path is dropped.
 

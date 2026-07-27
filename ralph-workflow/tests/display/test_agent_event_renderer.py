@@ -127,6 +127,21 @@ def test_tool_result_renders_body() -> None:
     assert "out: ok" in rendered.plain
 
 
+def test_tool_result_regression_renders_tool_target_and_outcome() -> None:
+    """S-3: result rows retain the call target needed to distinguish a flood."""
+    rendered = render_event(
+        _event(
+            ActivityEventKind.TOOL_RESULT,
+            "12 lines",
+            metadata={"tool": "read_file", "target": "path=ralph/display/status_bar.py"},
+        ),
+        _ctx(),
+    )
+    assert "PASS" in rendered.plain
+    assert "read_file" in rendered.plain
+    assert "path=ralph/display/status_bar.py" in rendered.plain
+
+
 def test_tool_result_json_from_bash_is_syntax_highlighted() -> None:
     """S-4: recognized bash JSON results get ANSI-theme syntax decoration."""
     ctx = _ctx()
