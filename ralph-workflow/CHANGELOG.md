@@ -43,6 +43,14 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-07-26
+
+Patch release. `__version__` moved from `0.9.3` to `0.9.4` in
+`ralph/__init__.py` (the canonical version source `pyproject.toml`
+reads via `[tool.hatch.version]`), with `skills-package/package.json`
+kept in parity by `tests/test_skills_package_version_parity.py`.
+Carries the display, plan-diagnostic, and watchdog changes below.
+
 ### Changed
 
 - **fix(display): resolve identity colors from the shared terminal background** — `DisplayContext` now selects the matching dark/light identity palette once, and both event entries and the Status Bar consume it; labels remain the non-color identity carrier. Locked by `tests/display/test_identity_color.py` and `tests/display/test_terminal_background.py`.
