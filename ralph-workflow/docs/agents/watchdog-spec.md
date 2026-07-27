@@ -568,10 +568,7 @@ to the sink:
 | Event kind | Sink value |
 |------------|------------|
 | `STALLED` | `"stalled"` |
-| `SUSPECTED_FROZEN` | `"stalled"` |
-| `HARD_STOP` | `"stalled"` |
 | `STALL_RESUMED` | `None` |
-| `EXITED` | `None` |
 
 The sink call is wrapped defensively (a misbehaving host cannot
 break the snapshot path), and the sink is invoked at most once per
@@ -639,9 +636,8 @@ here is the safest cleanup step (no leaked state across runs).
 - `tests/display/test_subscriber.py` — explicit `_format_waiting_status_line`
   text for the two new kinds (never the `hit hard ceiling` fallback);
   the `watchdog_attention_sink` mapping for `STALLED` /
-  `SUSPECTED_FROZEN` / `HARD_STOP` / `STALL_RESUMED` / `EXITED`;
-  and the defensive sink call (a raising sink does not break the
-  snapshot path).
+  `STALL_RESUMED` only; every other waiting-status kind leaves the
+  sink untouched, and a raising sink does not break the snapshot path.
 - `tests/display/test_status_bar_liveness.py` — the bar renders
   `STALLED` ONLY when the watchdog has pushed
   `attention='stalled'`; a bare time gap of any size never produces

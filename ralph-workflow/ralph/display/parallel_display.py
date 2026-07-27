@@ -492,14 +492,10 @@ class ParallelDisplay:
         self._monotonic: Callable[[], float] = (
             monotonic if monotonic is not None else time.monotonic
         )
-        # wt-047-stall-label: watchdog-sourced attention state for
-        # the Status Bar's STALLED slot. Set by the
-        # ``PipelineSubscriber`` via the watchdog_attention_sink
-        # when the watchdog publishes STALLED / STALL_RESUMED /
-        # SUSPECTED_FROZEN / HARD_STOP / EXITED transitions; the
-        # Status Bar host reads this field on every Live tick and
-        # substitutes it into the model when the pushed ``attention``
-        # is None. Thread-safe via the dedicated lock below.
+        # wt-047-stall-label: watchdog-sourced attention state for the Status
+        # Bar's STALLED slot. The subscriber forwards only STALLED /
+        # STALL_RESUMED transitions through its sink. The host substitutes this
+        # value only when pushed attention is None. Thread-safe below.
         self._watchdog_attention: str | None = None
         self._watchdog_attention_lock = threading.Lock()
 
@@ -1913,17 +1909,13 @@ class ParallelDisplay:
     def watchdog_attention(self) -> str | None:
         """Return the watchdog-sourced attention state, or ``None``.
 
-        wt-047-stall-label: this is the Status Bar host's read of
-        the watchdog's stall-state transition stream. The watchdog
-        publishes STALLED / STALL_RESUMED / SUSPECTED_FROZEN /
-        HARD_STOP / EXITED events; the subscriber maps them to
-        ``"stalled"`` / ``None`` and calls
-        :meth:`set_watchdog_attention` here. The Status Bar host
-        reads this on every Live tick and substitutes the value
-        into the model ONLY when the pushed ``attention`` is None
-        (a pushed ``waiting`` / ``retrying`` / ``terminated``
-        always wins). Returns ``None`` when the watchdog has not
-        published a stall transition since the last run cleanup.
+        wt-047-stall-label: this is the Status Bar host's read of the
+        watchdog's STALLED / STALL_RESUMED transition stream. The subscriber
+        forwards those events as ``"stalled"`` / ``None`` and calls
+        :meth:`set_watchdog_attention`. The host substitutes the value only
+        when pushed ``attention`` is None; pushed ``waiting`` / ``retrying`` /
+        ``terminated`` always win. Returns ``None`` when no stall transition
+        has been published since the last run cleanup.
         """
         with self._watchdog_attention_lock:
             return self._watchdog_attention
@@ -1931,12 +1923,11 @@ class ParallelDisplay:
     def set_watchdog_attention(self, value: str | None) -> None:
         """Set the watchdog-sourced attention state.
 
-        wt-047-stall-label: the subscriber's sink that maps
-        stall-state transitions to ``"stalled"`` / ``None``. The
-        sink is called from the subscriber thread (and indirectly
-        from the watchdog's emit path), so the field is guarded
-        by a dedicated lock to keep the Status Bar host's reads
-        race-free. ``None`` clears the stall.
+        wt-047-stall-label: the subscriber's sink forwards only watchdog
+        STALLED / STALL_RESUMED transitions as ``"stalled"`` / ``None``.
+        It is called from the subscriber thread (indirectly from the watchdog
+        emit path), so the dedicated lock keeps Status Bar reads race-free.
+        ``None`` clears the stall.
         """
         with self._watchdog_attention_lock:
             self._watchdog_attention = value

@@ -270,14 +270,11 @@ class PipelineSubscriber:
         self._pipeline_policy: PipelinePolicy | None = pipeline_policy
         self._plan_reader = _plan_reader
         self._plan_marker_reader = _plan_marker_reader
-        # wt-047-stall-label: the watchdog publishes stall-state
-        # transitions as WaitingStatusEvents. The subscriber's sink
-        # forwards those transitions to the Status Bar host (the
-        # ParallelDisplay) so the bar's STALLED slot reads the
-        # watchdog-sourced state (NOT a display-side 30s gap
-        # derivation). The sink is wrapped in a defensive try/except
-        # in ``record_waiting_status`` so a misbehaving host does not
-        # break the snapshot path.
+        # wt-047-stall-label: the sink forwards the watchdog's STALLED /
+        # STALL_RESUMED transitions verbatim to the Status Bar host. It never
+        # derives stall state from other waiting-status events. The sink is
+        # wrapped defensively in ``record_waiting_status`` so a misbehaving
+        # host does not break the snapshot path.
         self._watchdog_attention_sink: Callable[[str | None], None] | None = (
             watchdog_attention_sink
         )
@@ -530,24 +527,12 @@ class PipelineSubscriber:
                     decision=cast_event.kind.name,
                     reason=line,
                 )
-            # wt-047-stall-label: map the watchdog's stall-state
-            # transitions to the Status Bar's attention sink. The
-            # mapping is: STALLED / SUSPECTED_FROZEN / HARD_STOP =>
-            # "stalled" (the watchdog considers the run stalled);
-            # STALL_RESUMED / EXITED => None (no longer stalled).
-            # The sink is the only writer of the Status Bar's
-            # ``watchdog_attention`` slot; the subscriber is the
-            # only reader of the watchdog's stall-state event stream.
-            if cast_event.kind in (
-                waiting_kind_cls.STALLED,
-                waiting_kind_cls.SUSPECTED_FROZEN,
-                waiting_kind_cls.HARD_STOP,
-            ):
+            # wt-047-stall-label: forward only the watchdog's explicit
+            # stall-state transitions. Other event kinds remain breadcrumbs;
+            # deriving the slot from them would create a second state machine.
+            if cast_event.kind == waiting_kind_cls.STALLED:
                 sink_value = "stalled"
-            elif cast_event.kind in (
-                waiting_kind_cls.STALL_RESUMED,
-                waiting_kind_cls.EXITED,
-            ):
+            elif cast_event.kind == waiting_kind_cls.STALL_RESUMED:
                 sink_value = None
             snapshot = self._build_snapshot_locked(self._last_state)
             if snapshot is not None:
@@ -586,9 +571,9 @@ class PipelineSubscriber:
         lets a test / advanced caller supply a fully-constructed
         :class:`PipelineSubscriber`. Without this binder the supplied
         subscriber's ``watchdog_attention_sink`` slot stays unset and
-        STALLED transitions never reach the host
-        ``watchdog_attention`` surface -- the public constructor path
-        would silently fail to render ``STALLED``.
+        the watchdog's STALLED / STALL_RESUMED transitions never reach
+        the host ``watchdog_attention`` surface -- the public constructor
+        path would silently fail to render ``STALLED``.
 
         The constructor ``watchdog_attention_sink=`` parameter is
         still the preferred seam for production callers (binding at

@@ -44,10 +44,9 @@ class WaitingStatusEvent:
       the existing PROGRESS cadence.
     - ``SUSPECTED_FROZEN`` -- cumulative wait crossed the suspect
       threshold; the child may be frozen.
-    - ``EXITED`` -- transition out of a WAITING_ON_CHILD run; also
-      the canonical stall-clear site (any prior
-      ``STALLED``/``SUSPECTED_FROZEN``/``HARD_STOP``-driven stall is
-      now stale).
+    - ``EXITED`` -- transition out of a WAITING_ON_CHILD run. It remains a
+      waiting-run marker; ``STALL_RESUMED`` is the sole stall-clear signal
+      for the Status Bar slot.
     - ``HARD_STOP`` -- cumulative ceiling crossed; the watchdog is
       about to fire ``CHILDREN_PERSIST_TOO_LONG``.
     - ``STALLED`` -- the watchdog's stall state has transitioned
