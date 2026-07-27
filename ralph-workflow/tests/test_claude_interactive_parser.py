@@ -344,7 +344,11 @@ def test_claude_interactive_strategy_prioritizes_tool_use_over_later_output_from
 
     assert signal is not None
     assert signal.kind == AgentActivityKind.TOOL_USE
-    assert signal.raw == "claude tool: read_file"
+    # The signal's raw is the watchdog-readable envelope, NOT the operator
+    # marker: the marker carries no arguments, so fingerprinting it collapsed
+    # every call of one tool onto `<name>|{}` and fired a false
+    # REPEATED_IDENTICAL_TOOL_CALL. `event.text` keeps the marker for display.
+    assert json.loads(signal.raw) == {"type": "tool_use", "name": "read_file", "input": {}}
 
 
 def test_claude_interactive_parser_surfaces_subscription_limit_errors() -> None:

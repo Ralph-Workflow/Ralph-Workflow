@@ -139,6 +139,22 @@ def _terminal_interactive_startup_error(agent_name: str, line: str) -> str | Non
     return None
 
 
+def _tool_use_display_name(
+    raw: str,
+    tool_call: tuple[str, dict[str, object]] | None,
+) -> str:
+    """Return the tool name to show in watchdog diagnostics for a TOOL_USE line.
+
+    Prefers the extracted name. The plain-text ``claude tool: <name>`` split is
+    the fallback for transports that still emit a marker; applying it to the
+    interactive transport's JSON envelope would slice a JSON fragment.
+    """
+    if tool_call is not None:
+        return tool_call[0]
+    stripped = raw.strip()
+    return stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+
+
 class PtyLineReader:
     def __init__(
         self,
@@ -1048,8 +1064,6 @@ class PtyLineReader:
             else:
                 if activity_signal.kind == AgentActivityKind.TOOL_USE:
                     self._awaiting_post_tool_result_progress = False
-                    raw = activity_signal.raw.strip()
-                    self._last_tool_use_name = raw.split(":", 1)[-1].strip() if ":" in raw else raw
                     # NEW BEHAVIOR: feed the tool-call circuit
                     # breaker so the watchdog can fire
                     # REPEATED_IDENTICAL_TOOL_CALL when an agent
@@ -1064,9 +1078,11 @@ class PtyLineReader:
                     # stable (name, args) fingerprint to
                     # contribute.
                     tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+                    self._last_tool_use_name = _tool_use_display_name(
+                        activity_signal.raw, tool_call
+                    )
                     if tool_call is not None:
-                        tool_name, tool_args = tool_call
-                        watchdog.record_tool_call_activity(tool_name, tool_args)
+                        watchdog.record_tool_call_activity(*tool_call)
                     watchdog.record_tool_use_activity()
                 elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
                     self._awaiting_post_tool_result_progress = True

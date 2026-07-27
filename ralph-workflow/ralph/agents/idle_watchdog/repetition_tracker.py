@@ -307,7 +307,8 @@ class RepetitionTracker:
         if self._window_count is not None and self._window_seconds is not None:
             now = self._clock.monotonic()
             self._prune_tool(now)
-            if _max_fingerprint_count(self._tool_events) >= self._window_count:
+            repeats = _max_fingerprint_count(self._tool_events)
+            if repeats >= self._window_count and _dominates(repeats, len(self._tool_events)):
                 return True
         return False
 
@@ -324,6 +325,28 @@ class RepetitionTracker:
         cutoff = now - self._window_seconds
         while self._tool_events and self._tool_events[0][1] < cutoff:
             self._tool_events.popleft()
+
+
+def _dominates(repeats: int, window_size: int) -> bool:
+    """Return True when one fingerprint accounts for at least half the window.
+
+    The window rule exists so that cosmetic OUTPUT interleaved between
+    identical calls cannot reset the streak. It was never meant to survive
+    interleaved *other tool calls*: an agent that reaches for eight different
+    tools between repeats is working, not wedged.
+
+    Without this, the rule counted 8 occurrences of one fingerprint anywhere
+    in the trailing window no matter how much real work surrounded them, so
+    ordinary habits -- ``git status`` after each edit, re-reading the plan
+    draft, polling a build -- were killed as wedges. One captured healthy pi
+    run issues ``mcp__ralph__ralph_get_plan_draft`` 14 times among ~250 tool
+    calls (6% of the window) and would have been killed.
+
+    A genuine wedge is ~100% of its window; an A/B/A/B two-call loop is 50%
+    and still trips. The consecutive rule is untouched and remains the fast
+    path for a back-to-back repeat.
+    """
+    return window_size <= 0 or repeats * 2 >= window_size
 
 
 def _max_fingerprint_count(events: Iterable[tuple[str, float]]) -> int:

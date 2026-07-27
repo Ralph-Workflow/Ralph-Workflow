@@ -1026,9 +1026,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/catalog.py", 527),
         ("ralph/agents/catalog.py", 594),
         ("ralph/agents/catalog.py", 597),
-        ("ralph/agents/execution_state/_factory.py", 229),
-        ("ralph/agents/execution_state/_factory.py", 289),
-        ("ralph/agents/execution_state/_factory.py", 292),
+        ("ralph/agents/execution_state/_factory.py", 234),
+        ("ralph/agents/execution_state/_factory.py", 294),
+        ("ralph/agents/execution_state/_factory.py", 297),
         ("ralph/agents/idle_watchdog/_active_branch.py", 226),
         ("ralph/agents/invoke/_command_builders/__init__.py", 226),
         ("ralph/agents/invoke/_runtime_resolvers/__init__.py", 82),
@@ -1085,7 +1085,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # the newly wired repo-structure audit. They mark complexity,
         # lazy-import, or global-state suppression in long-lived modules;
         # refactoring them is out of scope for this migration.
-        ("ralph/agents/execution_state/_factory.py", 295),
+        ("ralph/agents/execution_state/_factory.py", 300),
         ("ralph/agents/idle_watchdog/_active_branch.py", 227),
         ("ralph/agents/idle_watchdog/_fire_evaluators.py", 119),
         ("ralph/agents/idle_watchdog/_fire_evaluators.py", 304),

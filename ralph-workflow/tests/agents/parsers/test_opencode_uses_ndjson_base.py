@@ -64,29 +64,6 @@ class TestOpenCodeUsesNdjsonBase:
             f"Expected 'Hello world' in {text_results!r}"
         )
 
-    def test_step_start_uses_part_id_for_accumulator_key(self) -> None:
-        """OpenCode carries the part id at ``part.id``, never at the top level.
-
-        Reading only the top level left ``_current_part_id`` permanently
-        ``None`` against every real OpenCode event, silently disabling the
-        delta-accumulation path this parser documents.
-        """
-        parser = OpenCodeParser()
-        results = list(
-            parser.parse(
-                _lines(
-                    '{"type": "step_start", "part": {"id": "prt_1", "type": "step-start"}}',
-                    '{"type": "stream", "content": "Hello"}',
-                    '{"type": "stream", "content": " world"}',
-                    '{"type": "step_finish", "part": {"id": "prt_2"}}',
-                )
-            )
-        )
-        text_results = [r for r in results if r.type == "text"]
-        assert any(r.content == "Hello world" for r in text_results), (
-            f"Expected 'Hello world' in {text_results!r}"
-        )
-
     def test_errored_tool_still_surfaces_the_dispatch(self) -> None:
         """A tool whose state errored MUST stay visible as a dispatch.
 

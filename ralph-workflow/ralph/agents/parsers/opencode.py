@@ -15,15 +15,6 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog import SubagentPidRegistry
 
 
-def _part_id_of(obj: dict[str, object]) -> str:
-    """Return ``part.id`` for an OpenCode event, or ``""`` when absent."""
-    part = obj.get("part")
-    if not isinstance(part, dict):
-        return ""
-    part_id = cast("dict[str, object]", part).get("id")
-    return part_id.strip() if isinstance(part_id, str) else ""
-
-
 class _OpenCodeDispatch:
     """Per-event-type dispatch for OpenCodeParser.
 
@@ -40,11 +31,18 @@ class _OpenCodeDispatch:
         event_type = str(obj.get("type", "unknown"))
 
         if event_type == "step_start":
-            # OpenCode carries the part id at ``part.id``; there is no
-            # top-level ``id`` on any event it emits. Reading only the top
-            # level left ``_current_part_id`` permanently ``None``, which
-            # silently disabled the whole delta-accumulation path below.
-            step_id = str(obj.get("id", "")) or str(_part_id_of(obj))
+            # NOTE: OpenCode 1.17.15 emits exactly five event types --
+            # step_start, step_finish, text, tool_use, error -- and carries the
+            # part id at ``part.id``, not at the top level. So this lookup
+            # always misses on the live runtime and the accumulator machinery
+            # below never engages. That is currently harmless because the
+            # ``stream`` deltas it accumulates do not exist either; text
+            # arrives whole in one ``text`` event. Do NOT "fix" this by
+            # reading ``part.id``: the step-start part id is a DIFFERENT part
+            # from the text part the deltas would belong to, so it would key
+            # the accumulator wrongly. Both halves must be reworked together
+            # against a runtime that actually streams.
+            step_id = str(obj.get("id", ""))
             if step_id:
                 self._owner._current_part_id = step_id
             return

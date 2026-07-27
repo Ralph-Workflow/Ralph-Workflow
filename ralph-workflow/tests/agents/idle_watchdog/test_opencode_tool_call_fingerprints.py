@@ -133,23 +133,71 @@ def test_opencode_strategy_classifies_tool_use_as_tool_use() -> None:
     assert signal.raw == line
 
 
-def test_opencode_strategy_classifies_errored_tool_as_error_line() -> None:
-    """A tool whose ``part.state.status`` is ``error`` is an ERROR_LINE.
+def test_opencode_strategy_keeps_an_errored_tool_in_the_tool_dimension() -> None:
+    """An errored tool MUST stay a TOOL_USE so the breaker can still see it.
 
-    ``_opencode_tool_signal`` runs before ``_error_output_signal``, so without
-    this branch the error classifier is unreachable on OpenCode and an MCP
-    retry storm is misrouted into the tool-call dimension with a useless
-    ``tool_name=unknown`` diagnostic instead of firing REPEATED_ERROR_LOOP
-    with the real error text.
+    The tool-call dimension is the only one that catches an agent re-running
+    one failing command forever: the failure text varies per attempt (exit
+    codes, pytest counts, elapsed times) and ``RepetitionTracker.fingerprint``
+    cannot collapse it, while the ``(tool, args)`` pair is identical every
+    time. Reclassifying the error away made that wedge invisible in BOTH
+    dimensions.
     """
     strategy = strategy_for_transport(AgentTransport.OPENCODE)
-    line = _opencode_tool_line("ralph_read_file", {"path": "/tmp/x"}, status="error")
+    line = _opencode_tool_line("ralph_exec", {"command": "uv run pytest -q"}, status="error")
 
     signal = strategy.classify_activity_line(line)
 
     assert signal is not None
-    assert signal.kind == AgentActivityKind.ERROR_LINE
-    assert signal.raw == "MCP error -32001: Request timed out"
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert extract_tool_call_from_activity_signal(signal.raw) == (
+        "ralph_exec",
+        {"command": "uv run pytest -q"},
+    )
+
+
+def test_opencode_repeated_failing_tool_trips_the_breaker() -> None:
+    """A wedge that re-runs one failing command MUST still be caught."""
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+    strategy = strategy_for_transport(AgentTransport.OPENCODE)
+
+    for index in range(5):
+        line = _opencode_tool_line(
+            "ralph_exec", {"command": "uv run pytest -q"}, call_id=f"c{index}", status="error"
+        )
+        signal = strategy.classify_activity_line(line)
+        assert signal is not None
+        extracted = extract_tool_call_from_activity_signal(signal.raw)
+        assert extracted is not None
+        watchdog.record_tool_call_activity(*extracted)
+        clock.advance(2.0)
+
+    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) == (
+        WatchdogVerdict.FIRE
+    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+
+
+def test_opencode_errored_subagent_keeps_its_child_progress_signal() -> None:
+    """An errored ``task`` must not go dark on the subagent-activity sink."""
+    strategy = strategy_for_transport(AgentTransport.OPENCODE)
+    line = _opencode_tool_line("task", {"prompt": "inspect"}, status="error")
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
 
 def test_opencode_strategy_classifies_tool_result_as_tool_result() -> None:

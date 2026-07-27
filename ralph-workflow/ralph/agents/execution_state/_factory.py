@@ -181,7 +181,12 @@ def _classify_pi_assistant_event(
         return None
     assistant_obj = cast("dict[str, object]", assistant_event)
     if assistant_obj.get("type") == "toolcall_end":
-        return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
+        # ``toolcall_end`` CLOSES the call that ``tool_execution_start``
+        # already opened -- verified against real captures, where both events
+        # carry the same ``callID``. Classifying both as TOOL_USE fed the
+        # tool-call repetition breaker twice per call, so four legitimate
+        # identical calls hit a window rule sized for eight.
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
     if assistant_obj.get("type") == "error":
         reason = assistant_obj.get("reason", "error")
         return AgentActivitySignal(AgentActivityKind.ERROR_LINE, raw=str(reason))

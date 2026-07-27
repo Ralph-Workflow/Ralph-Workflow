@@ -277,9 +277,12 @@ def test_pi_strategy_classifies_tool_execution_start_as_tool_use() -> None:
     assert signal.raw == line
 
 
-def test_pi_strategy_classifies_toolcall_end_as_tool_use() -> None:
-    """Pi message-update toolcall events must feed the same TOOL_USE
-    path as OpenCode tool calls.
+def test_pi_strategy_classifies_toolcall_end_as_tool_result() -> None:
+    """Pi's ``toolcall_end`` CLOSES a call ``tool_execution_start`` opened.
+
+    Real captures show both events carrying the same ``callID``, so counting
+    both as TOOL_USE fed the tool-call repetition breaker twice per call and
+    four legitimate identical calls hit a window rule sized for eight.
     """
     strategy = _make_pi_strategy()
     line = json.dumps(
@@ -295,7 +298,7 @@ def test_pi_strategy_classifies_toolcall_end_as_tool_use() -> None:
     signal = strategy.classify_activity_line(line)
 
     assert signal is not None
-    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.kind == AgentActivityKind.TOOL_RESULT
     assert signal.raw == line
 
 

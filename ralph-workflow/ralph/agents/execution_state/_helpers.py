@@ -207,19 +207,21 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
     for. Before this existed, every OpenCode line -- subagent dispatches
     included -- fell through to a plain OUTPUT_LINE.
 
-    A tool whose ``part.state.status`` is ``"error"`` is an ERROR_LINE, not a
-    tool call. This branch runs BEFORE the strategy ever reaches
-    :func:`_error_output_signal`, so without the check here that classifier is
-    unreachable on the OpenCode transport and an MCP retry storm (the
-    ``MCP error -32001: Request timed out`` loop the repeated-error breaker
-    exists to catch) was misrouted into the tool-call dimension.
+    An ERRORED tool stays a TOOL_USE (and a ``task`` stays CHILD_PROGRESS).
+    Reclassifying it as ERROR_LINE looks tidier but loses more than it gains:
+    the tool-call dimension is the ONLY dimension that catches an agent
+    re-running one failing command forever, because a real failure's text
+    (exit codes, pytest counts, elapsed times) varies per attempt and
+    ``RepetitionTracker.fingerprint`` cannot collapse it, while the
+    ``(tool, args)`` pair is identical every time. Measured: 30 identical
+    failing ``ralph_exec`` calls over 600s fire REPEATED_IDENTICAL_TOOL_CALL
+    at t=160s as TOOL_USE, and fire nothing at all as ERROR_LINE. Routing the
+    error away would also blind the subagent-activity sink exactly when a
+    subagent fails, since ``observe_line`` forwards only CHILD_* kinds.
     """
     tool_name = _opencode_tool_name(obj)
     if tool_name is None:
         return None
-    tool_error = _tool_state_error_message(obj)
-    if tool_error is not None:
-        return AgentActivitySignal(AgentActivityKind.ERROR_LINE, raw=tool_error)
     if tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS:
         return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
     if str(obj.get("type", "")) == "tool_result":

@@ -57,14 +57,15 @@ def extract_tool_call_from_activity_signal(
 
     Walks the envelope shapes listed in the module docstring so the tool-call
     circuit breaker (``RepetitionTracker.mark_tool_call``) sees a stable
-    fingerprint per ``(tool_name, tool_args)`` pair regardless of transport.
+    fingerprint per ``(tool_name, tool_args)`` pair. Reaches every transport
+    that classifies a line as TOOL_USE -- today opencode, claude,
+    claude_interactive, pi, and cursor. codex, agy, nanocoder, and generic all
+    route through ``GenericExecutionStrategy``, which never emits TOOL_USE, so
+    the breaker is unreachable on those four.
+
     Returns ``None`` when the line is not recognisably a tool-use line, when
     the structure is not understood, or when nothing distinguishing could be
-    recovered -- the watchdog then skips the observation rather than
-    fingerprinting a meaningless blob.
-
-    An empty / missing name falls back to ``"unknown"``. Plain-text markers
-    carry no arguments, so their fingerprint is ``(name, {})``.
+    recovered. An empty / missing name falls back to ``"unknown"``.
     """
     plain = _extract_plain_text_tool_call(raw)
     if plain is not None:
