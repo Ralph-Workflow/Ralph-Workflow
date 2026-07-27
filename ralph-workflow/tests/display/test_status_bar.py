@@ -2028,6 +2028,32 @@ def test_status_bar_fallback_erases_previous_row_before_active_update(
     assert last_line_visible == ""
 
 
+def test_status_bar_regression_fallback_skips_identical_frame_repaint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-5: unchanged fallback frames do not erase and repaint the footer."""
+    monkeypatch.setenv("TERM", "dumb")
+    buf = _TtyLikeStringIO()
+    console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/status-bar",
+        phase_label="StablePhase",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+
+    pd.status_bar.update(model)
+    pd.status_bar.start()
+    try:
+        after_start = buf.getvalue()
+        pd.status_bar.update(model)
+        assert buf.getvalue() == after_start
+    finally:
+        pd.status_bar.stop()
+
+
 # ---------------------------------------------------------------------------
 # StatusBar.start() failure-isolation regression test
 # ---------------------------------------------------------------------------

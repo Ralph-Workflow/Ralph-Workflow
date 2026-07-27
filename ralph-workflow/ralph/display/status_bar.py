@@ -1405,7 +1405,16 @@ class StatusBar:
         _lock: Threading lock guarding ``_model`` assignment.
     """
 
-    __slots__ = ("_clock", "_display", "_fallback_rendered", "_home", "_live", "_lock", "_model")
+    __slots__ = (
+        "_clock",
+        "_display",
+        "_fallback_frame",
+        "_fallback_rendered",
+        "_home",
+        "_live",
+        "_lock",
+        "_model",
+    )
 
     def __init__(
         self,
@@ -1419,6 +1428,7 @@ class StatusBar:
         self._live: _Live | None = None
         self._lock = threading.Lock()
         self._fallback_rendered = False
+        self._fallback_frame: str | None = None
         # P0 (wt-028-display AC-01): injectable clock so the bar can
         # recompute elapsed on every Live tick without touching
         # ``time.monotonic`` directly (and so tests can drive the
@@ -1536,14 +1546,19 @@ class StatusBar:
     def _fallback_render_once(self) -> None:
         if self._live_console_is_interactive():
             return
+        renderable = self._renderable()
+        if self._fallback_rendered and self._fallback_frame == renderable.plain:
+            return
         self._fallback_cleanup()
-        self._ctx().console.print(self._renderable())
+        self._ctx().console.print(renderable)
         self._fallback_rendered = True
+        self._fallback_frame = renderable.plain
 
     def _fallback_cleanup(self) -> None:
         if not self._fallback_rendered:
             return
         self._fallback_rendered = False
+        self._fallback_frame = None
         file_obj: IO[str] = self._ctx().console.file
         file_obj.write("\r\x1b[1A\x1b[2K")
         file_obj.flush()

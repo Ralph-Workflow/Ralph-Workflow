@@ -203,7 +203,7 @@ def test_presented_entry_regression_drops_badge_only_body() -> None:
     event = AgentActivityEvent(
         provider=ActivityProvider.PI,
         kind=ActivityEventKind.UNKNOWN,
-        content="⚠ WARN pi/minimax/MiniMax-3",
+        content="⚠ WARN 23:18:56 pi/minimax/MiniMax-3",
         metadata={},
     )
     assert build_presented_entry(event, unit_id="pi/minimax/MiniMax-3").body == ""
