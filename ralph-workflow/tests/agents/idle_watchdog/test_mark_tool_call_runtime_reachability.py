@@ -852,3 +852,136 @@ def test_identical_tool_calls_trip_even_when_each_result_arrives() -> None:
 
     assert verdict == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+
+
+# ---------------------------------------------------------------------------
+# (6) Claude: the COMPLETE call is in the assistant message, not the
+#     content_block_start placeholder.
+#
+#     Claude opens a tool call with "input": {} and streams the real arguments
+#     afterwards as input_json_delta frames. Fingerprinting the placeholder
+#     keyed every call of one tool to "<name>|{}", so five different Bash
+#     commands in a row looked like one identical call repeated five times and
+#     tripped REPEATED_IDENTICAL_TOOL_CALL on a healthy agent.
+# ---------------------------------------------------------------------------
+
+
+def _claude_assistant_tool_use_line(tool_input: dict[str, object]) -> str:
+    """Build the Claude stream-json assistant message carrying a complete call."""
+    return json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_01RCxFZpHAEB3yBAHn3nktG2",
+                        "name": "Bash",
+                        "input": tool_input,
+                    }
+                ]
+            },
+        }
+    )
+
+
+def test_extract_tool_call_from_claude_assistant_message() -> None:
+    """The assistant message carries the real arguments and MUST be used."""
+    line = _claude_assistant_tool_use_line({"command": "echo one"})
+
+    result = _extract_tool_call_from_activity_signal(line)
+
+    assert result == ("Bash", {"command": "echo one"})
+
+
+def test_claude_distinct_commands_produce_distinct_fingerprints() -> None:
+    """Two different Bash commands MUST NOT share one fingerprint."""
+    first = _extract_tool_call_from_activity_signal(
+        _claude_assistant_tool_use_line({"command": "echo one"})
+    )
+    second = _extract_tool_call_from_activity_signal(
+        _claude_assistant_tool_use_line({"command": "echo two"})
+    )
+
+    assert first != second
+
+
+def test_extract_tool_call_skips_claude_streaming_placeholder() -> None:
+    """``content_block_start`` arrives with ``input: {}`` before the deltas.
+
+    Feeding it to the breaker keys every call of one tool to ``<name>|{}``
+    regardless of the arguments it was actually invoked with.
+    """
+    line = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 1,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_01RCxFZpHAEB3yBAHn3nktG2",
+                    "name": "Bash",
+                    "input": {},
+                },
+            },
+        }
+    )
+
+    assert _extract_tool_call_from_activity_signal(line) is None
+
+
+def test_claude_strategy_distinct_commands_do_not_trip_the_breaker() -> None:
+    """Five DIFFERENT Bash commands MUST NOT trip the tool-call breaker."""
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+
+    for index in range(5):
+        line = _claude_assistant_tool_use_line({"command": f"echo {index}"})
+        extracted = _extract_tool_call_from_activity_signal(line)
+        assert extracted is not None
+        watchdog.record_tool_call_activity(*extracted)
+        clock.advance(1.0)
+
+    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) != (
+        WatchdogVerdict.FIRE
+    )
+
+
+def test_claude_identical_commands_still_trip_the_breaker() -> None:
+    """The breaker must stay REACHABLE on Claude: five identical calls fire."""
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(5):
+        line = _claude_assistant_tool_use_line({"command": "pytest -q"})
+        extracted = _extract_tool_call_from_activity_signal(line)
+        assert extracted is not None
+        watchdog.record_tool_call_activity(*extracted)
+        clock.advance(1.0)
+
+    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) == (
+        WatchdogVerdict.FIRE
+    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+    assert watchdog.repetition_diagnostic().get("tool_name") == "Bash"

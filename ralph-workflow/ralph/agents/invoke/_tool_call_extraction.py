@@ -12,9 +12,13 @@ Recognised envelope shapes:
 
 * ``{"type": "tool_use", "name": "...", "input": {...}}``
 * ``{"type": "tool_use", "tool_name": "...", "arguments": {...}}``
+* ``{"type": "assistant", "message": {"content": [{"type": "tool_use",
+  "name": "...", "input": {...}}]}}`` (Claude stream-json assistant message --
+  the COMPLETE call; preferred over the streaming placeholder below)
 * ``{"type": "stream_event", "event": {"type": "content_block_start",
   "content_block": {"type": "tool_use", "name": "...", "input": {...}}}}``
-  (Claude content_block_start wrapped in stream_event)
+  (Claude content_block_start wrapped in stream_event; skipped when its
+  ``input`` is still the empty streaming placeholder)
 * ``{"event": "tool_use", "tool_name": "...", "arguments": {...}}``
 * ``{"tool": "<name>", "input": {...}}`` (raw provider shorthand)
 * ``{"type": "tool_use", "part": {"type": "tool", "tool": "...",
@@ -51,28 +55,91 @@ def extract_tool_call_from_activity_signal(
 ) -> tuple[str, dict[str, object]] | None:
     """Best-effort extract ``(tool_name, tool_args)`` from a TOOL_USE raw line.
 
-    The helper walks a few known envelope shapes so the tool-call
-    circuit breaker (``RepetitionTracker.mark_tool_call``) sees a
-    stable fingerprint per (tool_name, tool_args) pair regardless of
-    transport.  Returns ``None`` when the line is not recognisably a
-    tool-use line OR the structure is not understood so the watchdog
-    can skip the observation rather than fingerprint a meaningless
-    blob.
+    Walks the envelope shapes listed in the module docstring so the tool-call
+    circuit breaker (``RepetitionTracker.mark_tool_call``) sees a stable
+    fingerprint per ``(tool_name, tool_args)`` pair regardless of transport.
+    Returns ``None`` when the line is not recognisably a tool-use line, when
+    the structure is not understood, or when nothing distinguishing could be
+    recovered -- the watchdog then skips the observation rather than
+    fingerprinting a meaningless blob.
 
-    The ``tool_name`` is the literal string after trimming; an empty /
-    missing name falls back to ``"unknown"`` so the fingerprint is
-    always well-formed.  The ``tool_args`` is the dict of input
-    arguments extracted from the envelope; ``None`` is treated as an
-    empty dict inside the tracker.  Plain-text markers carry no
-    arguments, so the fingerprint is ``(name, {})``.
+    An empty / missing name falls back to ``"unknown"``. Plain-text markers
+    carry no arguments, so their fingerprint is ``(name, {})``.
     """
     plain = _extract_plain_text_tool_call(raw)
     if plain is not None:
         return plain
-    obj = _parse_tool_use_envelope(raw)
-    if obj is None:
+    top_level = _parse_json_object(raw)
+    if top_level is None:
+        return None
+    nested = _extract_claude_message_tool_use(top_level)
+    if nested is not None:
+        return _extract_tool_call_from_dict(nested)
+    obj = _unwrap_tool_use_envelope(top_level)
+    if _is_streaming_tool_placeholder(obj):
         return None
     return _extract_tool_call_from_dict(obj)
+
+
+def _parse_json_object(raw: str) -> dict[str, object] | None:
+    """Parse ``raw`` into a JSON object, or ``None`` when it is not one."""
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    try:
+        parsed = cast("object", json.loads(stripped, strict=False))
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return cast("dict[str, object]", parsed)
+
+
+def _extract_claude_message_tool_use(obj: dict[str, object]) -> dict[str, object] | None:
+    """Return the ``tool_use`` block nested in a Claude assistant/user message.
+
+    Claude's ``--output-format=stream-json`` does not put the tool call at the
+    top level; it nests the COMPLETE call -- name and fully-populated
+    ``input`` -- in ``message.content[]``::
+
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]}}
+
+    ``_is_tool_use_dict`` rejects ``type == "assistant"``, so this shape used to
+    return ``None`` and the ONLY Claude frame reaching the breaker was the
+    argless streaming placeholder (see :func:`_is_streaming_tool_placeholder`).
+    That left five different ``Bash`` commands fingerprinting identically as
+    ``Bash|{}`` -- a false ``REPEATED_IDENTICAL_TOOL_CALL`` kill. Preferring
+    this shape gives the breaker the real arguments instead.
+    """
+    if obj.get("type") not in {"assistant", "user"}:
+        return None
+    message = obj.get("message")
+    if not isinstance(message, dict):
+        return None
+    content = cast("dict[str, object]", message).get("content")
+    if not isinstance(content, list):
+        return None
+    for block in cast("list[object]", content):
+        if isinstance(block, dict) and cast("dict[str, object]", block).get("type") == "tool_use":
+            return cast("dict[str, object]", block)
+    return None
+
+
+def _is_streaming_tool_placeholder(obj: dict[str, object]) -> bool:
+    """Return True for a ``content_block_start`` tool frame with no arguments yet.
+
+    Claude opens a tool call with ``"input": {}`` and streams the real
+    arguments afterwards as ``input_json_delta`` frames. Fingerprinting the
+    placeholder keys every call of one tool to ``<name>|{}`` regardless of what
+    it was actually called with, so N different invocations of the same tool
+    look like one call repeated N times. The complete call arrives separately
+    in the assistant message, which is where the breaker gets its fingerprint.
+    """
+    if obj.get("type") != "tool_use":
+        return False
+    tool_input = obj.get("input")
+    return isinstance(tool_input, dict) and not tool_input and "id" in obj
 
 
 def _extract_plain_text_tool_call(raw: str) -> tuple[str, dict[str, object]] | None:
@@ -88,23 +155,12 @@ def _extract_plain_text_tool_call(raw: str) -> tuple[str, dict[str, object]] | N
     return None
 
 
-def _parse_tool_use_envelope(raw: str) -> dict[str, object] | None:
-    """Parse a JSON tool-use envelope, unwrapping ``stream_event`` if present.
+def _unwrap_tool_use_envelope(obj: dict[str, object]) -> dict[str, object]:
+    """Unwrap ``stream_event`` / ``assistantMessageEvent`` wrappers.
 
-    Returns ``None`` when the raw line is not a recognisable JSON
-    tool-use envelope; returns the inner dict (after unwrapping
-    ``stream_event`` -> ``content_block``) on success.
+    Returns the inner dict (after unwrapping ``stream_event`` ->
+    ``content_block``), or ``obj`` unchanged when no wrapper is present.
     """
-    stripped = raw.strip()
-    if not stripped:
-        return None
-    try:
-        parsed = cast("object", json.loads(stripped, strict=False))
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    obj = cast("dict[str, object]", parsed)
     if obj.get("type") == "stream_event" or "event" in obj:
         event = obj.get("event")
         if isinstance(event, dict):
