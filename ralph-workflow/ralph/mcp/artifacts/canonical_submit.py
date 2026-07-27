@@ -19,7 +19,7 @@ from ralph.mcp.artifacts.history import (
     rebuild_history_index,
     snapshot_current_artifact,
 )
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 
@@ -60,7 +60,13 @@ def _restore_file_state(
     """Restore a captured file or remove a file created by the failed submit."""
     existed, content = state
     if existed:
-        backend.write_text(path, content, encoding="utf-8")
+        atomic_write_text_if_changed(
+            backend,
+            path,
+            content,
+            tmp_path=path.with_suffix(".md.tmp"),
+            encoding="utf-8",
+        )
         return
     backend.unlink(path, missing_ok=True)
 
@@ -209,16 +215,27 @@ def submit_artifact_canonical(
                 backend=backend,
                 now_iso=deps.now_iso,
             )
-        write_text_if_changed(backend, artifact_path, markdown, encoding="utf-8")
+        atomic_write_text_if_changed(
+            backend,
+            artifact_path,
+            markdown,
+            tmp_path=artifact_path.with_suffix(".md.tmp"),
+            encoding="utf-8",
+        )
+        if backend.read_text(artifact_path, encoding="utf-8") != markdown:
+            raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
 
         if handoff_path is not None:
             backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
-            write_text_if_changed(
+            atomic_write_text_if_changed(
                 backend,
                 handoff_path,
                 markdown,
+                tmp_path=handoff_path.with_suffix(".md.tmp"),
                 encoding="utf-8",
             )
+            if backend.read_text(handoff_path, encoding="utf-8") != markdown:
+                raise OSError(f"canonical handoff write was corrupt: {handoff_path}")
 
         if run_id is not None:
             receipt_path = write_artifact_receipt(

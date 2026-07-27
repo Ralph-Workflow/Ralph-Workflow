@@ -10,6 +10,8 @@ Closed-list classes:
 - Empty or effectively empty: nothing, whitespace only, or nothing but
   markup (a bare heading, a horizontal rule, an empty code fence).
 - Under 100 characters of actual content.
+- Recognizably truncated at EOF: an unclosed code fence or a dangling
+  plan field label with no value.
 - Recognizably some other kind of text that arrived in the plan's
   place: a refusal or apology, a question back to the user, a bare
   status / progress message, raw tool output, a stack trace, or a
@@ -53,6 +55,10 @@ _MIN_CONTENT_CHARS = 100
 _STEP_BLOCK_PATTERN = re.compile(r"^#{3,6} \[[A-Za-z][A-Za-z0-9_-]*\]")
 _STABLE_ID_ITEM_PATTERN = re.compile(r"^- (?: \[[ xX]\] )? \[[A-Za-z][A-Za-z0-9_-]*\]")
 _SUBSTANTIAL_BODY_CHARS = 50
+_DANGLING_FIELD_PATTERN = re.compile(
+    r"^(?:Files|Depends on|Satisfies|Verify|Expect|Location|Evidence|Rationale|Mitigation|Type|Priority):$",
+    re.IGNORECASE,
+)
 
 # Recognizably-other-text patterns. Each pattern is anchored to the
 # start of a content line (case-folded) so a plan that happens to
@@ -274,6 +280,30 @@ def _first_content_line(text: str) -> str:
     return ""
 
 
+def _is_recognizably_truncated(text: str) -> str | None:
+    """Return the unambiguous EOF truncation reason, if present."""
+    fence_count = sum(
+        1 for line in text.splitlines() if line.strip().startswith("```")
+    )
+    if fence_count % 2:
+        return "an unclosed code fence at end of file"
+    for line in reversed(text.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            if _DANGLING_FIELD_PATTERN.fullmatch(stripped):
+                return "a dangling plan field label at end of file"
+            return None
+    return None
+
+
+def _truncation_message(reason: str) -> str:
+    return _consumer_rule_message(
+        f"submitted text is recognizably truncated: {reason}",
+        "completing the interrupted fence or adding the missing field value before submitting",
+        _NOT_A_PLAN_CONSUMER,
+    )
+
+
 def _is_refusal(first_line: str) -> bool:
     return any(first_line.startswith(prefix) for prefix in _REFUSAL_PREFIXES)
 
@@ -348,6 +378,8 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
         message = _empty_message()
     elif content_chars < _MIN_CONTENT_CHARS:
         message = _too_short_message(content_chars)
+    elif truncation_reason := _is_recognizably_truncated(body_text):
+        message = _truncation_message(truncation_reason)
     # Plan-shape evidence bypasses recognizably-other-text checks: doubt
     # resolves in favor of a real plan that incidentally matches a prefix.
     elif not _has_plan_shape(document):

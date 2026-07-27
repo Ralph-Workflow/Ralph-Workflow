@@ -397,6 +397,45 @@ type: plan
         )
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\n```python\nsubmit_plan()\n""",
+        """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\nFiles:""",
+        """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\nVerify:""",
+        """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\nExpect:""",
+    ],
+)
+def test_plan_regression_recognizable_eof_truncation_emits_plan001_error(text: str) -> None:
+    """S-1: unclosed fences and dangling fields are rejected at the shared gate."""
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    errors = [
+        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
+    ]
+    assert len(errors) == 1
+    assert _BLOCKING_CONSUMER_RE.search(errors[0].message)
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "```python\nsubmit_plan()\n```",
+        "This plan may end mid-prose without claiming a dangling field.",
+        "## Verification\nThe focused plan tests pass.",
+    ],
+)
+def test_plan_regression_complete_or_ambiguous_eof_does_not_emit_plan001(suffix: str) -> None:
+    """S-1: only unambiguous EOF truncation signals block a substantive plan."""
+    text = (
+        """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\n"""
+        + suffix
+    )
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    assert [
+        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
+    ] == []
+
+
 def test_analyze_plan_document_propagates_plan001_error() -> None:
     """The MCP wire-shape helper sees the same PLAN001 error."""
     content, diagnostics, _overridden = analyze_plan_document("")

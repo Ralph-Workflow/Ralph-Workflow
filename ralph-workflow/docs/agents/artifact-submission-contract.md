@@ -160,10 +160,13 @@ The function:
    stored artifact is always ``.md``, never a JSON envelope.
 2. Snapshots the existing artifact into history first (when history is
    enabled and a canonical file already exists).
-3. Persists the markdown under ``.agent/artifacts/<type>.md`` (idempotent —
-   byte-identical content is not rewritten).
-4. Writes the byte-identical handoff copy (for example ``.agent/PLAN.md``)
-   when the type has a handoff path.
+3. Atomically persists the markdown under ``.agent/artifacts/<type>.md``
+   (write a sibling temporary file, then replace; byte-identical content is not
+   rewritten). A crash leaves either the previous complete file or the new one,
+   never a partial file.
+4. Atomically writes the byte-identical handoff copy (for example
+   ``.agent/PLAN.md``) with the same temporary-file replacement when the type
+   has a handoff path.
 5. Stamps the run-scoped receipt by upserting one row into
    ``.agent/state.db`` via ``RunStateDB.upsert_receipt`` (RFC-013 P3).
    When the DB write raises ``OSError``, ``RuntimeError``, or
