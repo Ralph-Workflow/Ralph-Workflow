@@ -18,6 +18,7 @@ from ralph.git import remote_push as _remote_push_module
 from ralph.pipeline.auto_integrate_sync import (
     DEFAULT_REFRESH_REMOTE,
     REFRESH_DIVERGED,
+    REFRESH_LOCAL_AHEAD,
     REFRESH_LOCAL_FLEET,
     REFRESH_NO_LOCAL_BRANCH,
     REFRESH_NO_REMOTE,
@@ -352,6 +353,14 @@ def _dispatch_pull_outcome(
                 last_refresh=refresh,
                 reason=None,
             )
+    elif refresh == REFRESH_LOCAL_AHEAD:
+        _arm_throttle(repo_root, chosen_remote, target, clock)
+        state = _record_remote_state(
+            target,
+            last_remote_sync=REMOTE_LOCAL_AHEAD,
+            last_refresh=refresh,
+            reason=None,
+        )
     elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
 

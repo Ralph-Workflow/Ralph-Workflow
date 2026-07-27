@@ -67,6 +67,9 @@ REFRESH_REFRESHED = "refreshed from origin"
 #: local ref is authoritative for every local rebase and landing
 #: decision, so nothing is applied and nothing local moves.
 REFRESH_ORIGIN_AHEAD = "origin ahead (local ref kept)"
+#: Local target contains the fetched remote target. This matters only to the
+#: opt-in sync path: it must publish later, not rebase local history.
+REFRESH_LOCAL_AHEAD = "local ahead of remote"
 #: The target pointer was re-observed from the SHARED ref store rather
 #: than from a remote. This is the normal outcome for Ralph's own
 #: linked-worktree fleet, where every agent's ``wt-0NN-*`` worktree
@@ -87,6 +90,7 @@ __all__ = [
     "REFRESH_ALREADY_CURRENT",
     "REFRESH_DISABLED",
     "REFRESH_DIVERGED",
+    "REFRESH_LOCAL_AHEAD",
     "REFRESH_LOCAL_FLEET",
     "REFRESH_NO_LOCAL_BRANCH",
     "REFRESH_NO_ORIGIN",
@@ -231,21 +235,24 @@ def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
     if local_sha == remote_sha:
         logger.debug("auto_integrate: '{}' already matches remote '{}'", target, remote)
         return REFRESH_ALREADY_CURRENT
-    if not is_ancestor(repo_root, local_sha, remote_sha):
+    if is_ancestor(repo_root, local_sha, remote_sha):
         logger.debug(
-            "auto_integrate: {}/{} diverged from the local ref; local kept",
+            "auto_integrate: {}/{} is ahead of the local ref; local kept ({} != {})",
             remote,
             target,
+            local_sha,
+            remote_sha,
         )
-        return REFRESH_DIVERGED
+        return REFRESH_ORIGIN_AHEAD
+    if is_ancestor(repo_root, remote_sha, local_sha):
+        logger.debug("auto_integrate: local '{}' is ahead of {}/{}", target, remote, target)
+        return REFRESH_LOCAL_AHEAD
     logger.debug(
-        "auto_integrate: {}/{} is ahead of the local ref; local kept ({} != {})",
+        "auto_integrate: {}/{} diverged from the local ref; local kept",
         remote,
         target,
-        local_sha,
-        remote_sha,
     )
-    return REFRESH_ORIGIN_AHEAD
+    return REFRESH_DIVERGED
 
 
 def _has_remote(repo_root: Path, remote: str) -> bool:

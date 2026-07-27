@@ -407,7 +407,8 @@ def _maybe_imply_fetch_enabled(data: dict[str, object]) -> None:
     if "auto_integrate_fetch_enabled" in data:
         return
     raw: object = data.get("auto_integrate_remote_sync_enabled")
-    if isinstance(raw, bool) and raw:
+    legacy_raw: object = data.get("auto_integrate_push_enabled")
+    if (isinstance(raw, bool) and raw) or (isinstance(legacy_raw, bool) and legacy_raw):
         data["auto_integrate_fetch_enabled"] = True
 
 

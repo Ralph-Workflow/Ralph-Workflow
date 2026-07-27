@@ -22,6 +22,7 @@ from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
+    REFRESH_LOCAL_AHEAD,
     REFRESH_LOCAL_FLEET,
     REFRESH_ORIGIN_AHEAD,
 )
@@ -124,6 +125,18 @@ def test_local_ahead_does_not_move_target(
     config = _config()
     out = remote_sync.pull_and_reconcile_target(config, Path("/repo"), "main")
     assert out is None
+
+
+def test_local_strictly_ahead_records_publishable_without_reconcile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression S-1: a remote behind local target is not a divergence."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_AHEAD)
+    out = remote_sync.pull_and_reconcile_target(_config(), Path("/repo"), "main")
+    assert out is not None
+    assert out.last_remote_sync == remote_sync.REMOTE_LOCAL_AHEAD
 
 
 def test_remote_strictly_ahead_records_pulled(
