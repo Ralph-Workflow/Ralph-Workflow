@@ -53,6 +53,11 @@ for `ralph-workflow.toml`, with the same fallback to bundled
 defaults under
 [`ralph/policy/defaults/`](../../modules.html#ralph.policy.defaults).
 
+Agent CLI definitions (`[agents.*]`) load from
+`~/.config/ralph-workflow-agents.toml`, merged BELOW the main config so
+an `[agents.*]` table left in an existing `ralph-workflow.toml` keeps
+its precedence.
+
 User-global policy overrides prefer the **branded** filenames:
 
 - `ralph-workflow-pipeline.toml`

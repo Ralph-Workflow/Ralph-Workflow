@@ -13,6 +13,7 @@ Typical entry points:
 
 from ralph.config.bootstrap import (
     BootstrapResult,
+    ensure_global_agents_config,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_local_configs,
@@ -41,6 +42,7 @@ __all__ = [
     "UnifiedConfig",
     "Verbosity",
     "emit_first_run_welcome",
+    "ensure_global_agents_config",
     "ensure_global_config",
     "ensure_global_mcp_config",
     "ensure_local_configs",

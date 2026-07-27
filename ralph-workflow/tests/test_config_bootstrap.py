@@ -31,7 +31,9 @@ from ralph.policy.loader import (
 from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
-_EXPECTED_REGENERATE_COUNT = 9
+#: Nine files regenerated before ``ralph-workflow-agents.toml`` was split
+#: out of the main config; ten after.
+_EXPECTED_REGENERATE_COUNT = 10
 _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     # Ralph-local
     ".agent/",
@@ -354,6 +356,7 @@ def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
 
     sentinel = "# SENTINEL"
     (global_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
+    (global_dir / "ralph-workflow-agents.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-mcp.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-pipeline.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-artifacts.toml").write_text(sentinel, encoding="utf-8")

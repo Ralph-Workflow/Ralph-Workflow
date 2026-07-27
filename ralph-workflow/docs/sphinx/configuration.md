@@ -37,7 +37,8 @@ Ralph Workflow manages a standard config set across two scopes.
 
 | File | Purpose |
 |------|---------|
-| `~/.config/ralph-workflow.toml` | Global defaults: agent selection, iteration counts, verbosity |
+| `~/.config/ralph-workflow.toml` | Global defaults: agent chains and drains, iteration counts, verbosity |
+| `~/.config/ralph-workflow-agents.toml` | Agent CLI definitions: binary, flags, and output parser per coding-agent CLI |
 | `~/.config/ralph-workflow-mcp.toml` | MCP server definitions shared across projects |
 | `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults when a workspace has no local pipeline override |
 | `~/.config/ralph-workflow-artifacts.toml` | Global artifact defaults when a workspace has no local artifact override |

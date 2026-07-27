@@ -41,6 +41,7 @@ from ralph.cli.commands.smoke import (
 )
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
+    ensure_global_agents_config,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_global_policy_configs,
@@ -326,6 +327,7 @@ def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
     """Create user-global config files from bundled templates if they don't exist."""
     results = [
         ensure_global_config(),
+        ensure_global_agents_config(),
         ensure_global_mcp_config(),
         *ensure_global_policy_configs(),
     ]

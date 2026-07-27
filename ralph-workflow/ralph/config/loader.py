@@ -2,12 +2,18 @@
 
 Merge order (lowest to highest priority):
   1. Embedded defaults (Pydantic field defaults)
-  2. ~/.config/ralph-workflow.toml (or $XDG_CONFIG_HOME/ralph-workflow.toml)
-  3. .agent/ralph-workflow.toml (project-local)
-  4. CLI flag overrides
+  2. ~/.config/ralph-workflow-agents.toml (agent CLI definitions)
+  3. ~/.config/ralph-workflow.toml (or $XDG_CONFIG_HOME/ralph-workflow.toml)
+  4. .agent/ralph-workflow.toml (project-local)
+  5. CLI flag overrides
 
-This module handles the four-layer configuration merge:
+This module handles the layered configuration merge:
+
 - Embedded defaults provide the baseline for every field.
+- The agents file supplies ``[agents.*]`` transport plumbing, kept out of the
+  main config so that file opens on the ``[agent_chains]`` operators edit. It
+  sits BELOW the main config so an ``[agents.*]`` table left in an existing
+  ``ralph-workflow.toml`` keeps winning and no upgrade loses a customization.
 - Global config supplies user-wide preferences.
 - Project-local config supplies repo-specific overrides.
 - CLI overrides apply last via dict patch before Pydantic validation.
@@ -38,6 +44,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
+GLOBAL_AGENTS_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow-agents.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
 
 # Open user-key maps whose IMMEDIATE child KEYS are user-defined.  We do
@@ -314,6 +321,14 @@ def _global_config_path() -> Path:
     return GLOBAL_CONFIG_PATH
 
 
+def _global_agents_config_path() -> Path:
+    """Resolve the agent-definitions config path, honoring XDG_CONFIG_HOME."""
+    xdg_config_home = getenv("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        return Path(xdg_config_home) / "ralph-workflow-agents.toml"
+    return GLOBAL_AGENTS_CONFIG_PATH
+
+
 def _migrate_verbosity(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate verbosity field."""
     if "verbosity" in data:
@@ -382,9 +397,10 @@ def load_config(
 
     Merge order (lowest to highest priority):
       1. Embedded defaults (Pydantic field defaults)
-      2. ~/.config/ralph-workflow.toml
-      3. .agent/ralph-workflow.toml (project-local)
-      4. CLI flag overrides
+      2. ~/.config/ralph-workflow-agents.toml (agent CLI definitions)
+      3. ~/.config/ralph-workflow.toml
+      4. .agent/ralph-workflow.toml (project-local)
+      5. CLI flag overrides
 
     Args:
         config_path: Optional path to local config file. Defaults to .agent/ralph-workflow.toml.
@@ -396,6 +412,8 @@ def load_config(
     Raises:
         SystemExit: If configuration validation fails.
     """
+    agents_path = _global_agents_config_path()
+    agents_data = load_toml(agents_path)
     global_data = load_toml(_global_config_path())
     # Track each propagated path's data separately so warn_unknown_fields
     # can name the exact source file when a typo is found in an inherited
@@ -434,13 +452,17 @@ def load_config(
             _warn_and_remove_retired_auto_integrate_keys(general_layer)
         propagated_entries[index] = (propagated_path, converted_entry)
         propagated_data = deep_merge(propagated_data, converted_entry)
+    warn_unknown_fields(agents_data, agents_path)
     warn_unknown_fields(global_data, _global_config_path())
     for propagated_path, propagated_path_data in propagated_entries:
         warn_unknown_fields(propagated_path_data, propagated_path)
     warn_unknown_fields(local_data, local_path)
 
-    # Merge: global -> propagated -> local
-    merged = deep_merge(global_data, propagated_data)
+    # Merge: agents -> global -> propagated -> local. The agents file sits
+    # lowest so an [agents.*] table still present in an operator's existing
+    # ralph-workflow.toml keeps its precedence across the upgrade.
+    merged = deep_merge(agents_data, global_data)
+    merged = deep_merge(merged, propagated_data)
     merged = deep_merge(merged, local_data)
 
     # Apply CLI overrides last

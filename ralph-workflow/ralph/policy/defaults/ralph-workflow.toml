@@ -1,5 +1,5 @@
 # =============================================================================
-#  Ralph Workflow -- user-global configuration
+#  Ralph Workflow -- main configuration
 #  ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
 # =============================================================================
 #
@@ -7,191 +7,24 @@
 #  is on your PATH, change nothing and run `ralph`.
 #
 #  The ONE thing most operators ever edit is section 1 below -- which model
-#  does which job. It is the first thing in the file for that reason.
+#  does which job. That is why it is the first thing in the file.
 #
 #     1. CHAINS  -- which agent/model does which job   <- edit this
 #     2. DRAINS  -- which chain runs which phase       <- rarely changed
 #
-#  Everything past the OPTIONAL banner is machinery with a working default:
-#  the agent CLI definitions, the tuning knobs, the reference notes. You can
-#  stop reading at that banner.
+#  Everything past the OPTIONAL banner is machinery with a working default.
+#  You can stop reading there.
+#
+#  NOT IN THIS FILE: how to invoke each agent CLI (binary, flags, parser).
+#  That plumbing lives in ralph-workflow-agents.toml, and you only open it to
+#  switch which CLI is active.
 #
 #  ralph --diagnose           which agent CLIs are installed and usable
-#  ralph --regenerate-config  rewrite this file from the bundled default
-#                             (your current file is saved to <name>.bak first)
+#  ralph --regenerate-config  rewrite the config set from the bundled defaults
+#                             (each current file is saved to <name>.bak first)
 #
 # =============================================================================
 
-
-# =============================================================================
-# OPTIONAL -- everything below this line has a working default.
-# Skip it unless you know you need something here.
-# =============================================================================
-
-
-# -----------------------------------------------------------------------------
-# AGENT CLI DEFINITIONS -- how to invoke each coding-agent CLI.
-# -----------------------------------------------------------------------------
-# This is transport plumbing (binary name, flags, output parser), not a
-# preference. You only come here to SWITCH CLIs: comment out the active block
-# below, uncomment ONE of the inactive blocks after it, then name that agent
-# from [agent_chains] in section 1.
-#
-# `ralph --diagnose` reports which CLIs are installed; a detected CLI may be
-# uncommented for you automatically.
-
-# --- ACTIVE ------------------------------------------------------------------
-
-[agents.claude]
-cmd = "claude"
-transport = "claude_interactive"
-# Use skip-permissions here because Ralph Workflow confines interactive Claude
-# through the Ralph Workflow MCP/tool allowlist; MCP remains the real
-# permission boundary.
-yolo_flag = "--dangerously-skip-permissions"
-verbose_flag = "--verbose"
-json_parser = "claude"
-session_flag = "--resume {}"
-can_commit = true
-display_name = "Claude"
-# Claude Code's native sub-agent / task tooling is enabled by default in
-# this build. Plans that declare work_units / parallel_plan are
-# dispatched to the executing agent's sub-agents; Ralph-managed fan-out
-# stays dormant. Set to false to force sequential execution.
-subagent_capability = true
-
-# --- INACTIVE (uncomment ONE to switch) --------------------------------------
-
-# @AGENT-BLOCK-START: claude
-# [agents.claude]
-# cmd = "claude"
-# transport = "claude_interactive"
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = true
-# display_name = "Claude"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: claude-headless
-# [agents.claude-headless]
-# cmd = "claude -p"
-# transport = "claude"
-# output_flag = "--output-format=stream-json"
-# yolo_flag = "--permission-mode auto"
-# verbose_flag = "--verbose"
-# print_flag = "--print"
-# streaming_flag = "--include-partial-messages"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = true
-# display_name = "Claude Code (headless)"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: codex
-# [agents.codex]
-# cmd = "codex exec"
-# transport = "codex"
-# output_flag = "--json"
-# yolo_flag = "--dangerously-bypass-approvals-and-sandbox"
-# json_parser = "codex"
-# can_commit = true
-# display_name = "Codex"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: opencode
-# [agents.opencode]
-# cmd = "opencode"
-# transport = "opencode"
-# output_flag = "--json-stream"
-# json_parser = "opencode"
-# session_flag = "--session {}"
-# can_commit = false
-# display_name = "OpenCode"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: nanocoder
-# [agents.nanocoder]
-# cmd = "nanocoder"
-# transport = "nanocoder"
-# json_parser = "generic"
-# can_commit = false
-# display_name = "Nanocoder"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: agy
-# [agents.agy]
-# cmd = "agy"
-# transport = "agy"
-# yolo_flag = "--dangerously-skip-permissions"
-# print_flag = "--print"
-# json_parser = "generic"
-# can_commit = false
-# display_name = "Google Anti Gravity"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: pi
-# [agents.pi]
-# cmd = "pi"
-# transport = "pi"
-# output_flag = "--mode json"
-# yolo_flag = "--approve"
-# json_parser = "pi"
-# session_flag = "--session {}"
-# can_commit = true
-# display_name = "Pi"
-# @AGENT-BLOCK-END
-
-# @AGENT-BLOCK-START: cursor
-# [agents.cursor]
-# cmd = "agent"
-# transport = "cursor"
-# output_flag = "--output-format stream-json"
-# yolo_flag = "--yolo"
-# print_flag = "--print"
-# streaming_flag = "--stream-partial-output"
-# json_parser = "generic"
-# session_flag = "--resume {}"
-# can_commit = true
-# display_name = "Cursor"
-# @AGENT-BLOCK-END
-
-# [agents.prompt-helper-agent]
-# cmd = "claude"
-# transport = "claude_interactive"
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = false
-
-
-# -----------------------------------------------------------------------------
-# PROMPT HELPER -- which agent refines PROMPT.md. Rarely changed.
-# -----------------------------------------------------------------------------
-# Default: the first agent in [agents.*], or the built-in "opencode" agent if
-# none is configured. Uncomment both lines to force a specific one.
-# [prompt_helper]
-# agent = "claude"
-
-# -----------------------------------------------------------------------------
-# REFERENCE -- how the config files fit together. Nothing to edit here.
-# -----------------------------------------------------------------------------
-# Eight files: four user-global, four project-local.
-#   ~/.config/ralph-workflow.toml            .agent/ralph-workflow.toml
-#   ~/.config/ralph-workflow-mcp.toml        .agent/mcp.toml
-#   ~/.config/ralph-workflow-pipeline.toml   .agent/pipeline.toml
-#   ~/.config/ralph-workflow-artifacts.toml  .agent/artifacts.toml
-#
-# Precedence, highest first:
-#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled
-#
-# MCP servers and web search live in ralph-workflow-mcp.toml (or .agent/mcp.toml),
-# not in this file.
-#
-# From here down every key is shown commented out at its default value.
-# Uncomment only the ones you want to change; the rest keep their defaults.
 
 # =============================================================================
 # 1. CHAINS (REQUIRED) -- which agent/model does which job.
@@ -244,6 +77,40 @@ analysis = "analysis"
 commit = "commit"
 
 
+
+# =============================================================================
+# OPTIONAL -- everything below this line has a working default.
+# Skip it unless you know you need something here.
+# =============================================================================
+
+
+
+# -----------------------------------------------------------------------------
+# PROMPT HELPER -- which agent refines PROMPT.md. Rarely changed.
+# -----------------------------------------------------------------------------
+# Default: the first agent in [agents.*], or the built-in "opencode" agent if
+# none is configured. Uncomment both lines to force a specific one.
+# [prompt_helper]
+# agent = "claude"
+
+# -----------------------------------------------------------------------------
+# REFERENCE -- how the config files fit together. Nothing to edit here.
+# -----------------------------------------------------------------------------
+# Nine files: five user-global, four project-local.
+#   ~/.config/ralph-workflow.toml            .agent/ralph-workflow.toml
+#   ~/.config/ralph-workflow-agents.toml     (agent CLI definitions)
+#   ~/.config/ralph-workflow-mcp.toml        .agent/mcp.toml
+#   ~/.config/ralph-workflow-pipeline.toml   .agent/pipeline.toml
+#   ~/.config/ralph-workflow-artifacts.toml  .agent/artifacts.toml
+#
+# Precedence, highest first:
+#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled
+#
+# MCP servers and web search live in ralph-workflow-mcp.toml (or .agent/mcp.toml),
+# not in this file.
+#
+# From here down every key is shown commented out at its default value.
+# Uncomment only the ones you want to change; the rest keep their defaults.
 
 # Edit this only if you need to change Ralph Workflow's normal workflow settings.
 # -----------------------------------------------------------------------------

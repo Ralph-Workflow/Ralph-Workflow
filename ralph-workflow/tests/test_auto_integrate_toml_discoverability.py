@@ -237,18 +237,19 @@ def test_templates_omit_retired_auto_integrate_keys() -> None:
         assert not any(key in text for key in _RETIRED_AUTO_INTEGRATE_KEYS)
 
 
-def test_agent_definitions_precede_chains_and_general() -> None:
-    """S-7: agent definitions appear before routing and general settings."""
+def test_chains_precede_general_settings() -> None:
+    """Routing comes before tuning knobs in both main templates.
+
+    Supersedes the earlier S-7 ordering rule, which required ``[agents.*]``
+    to precede ``[agent_chains]``. Agent definitions are transport plumbing
+    (binary, flags, output parser) and no longer live in these files at all
+    -- they moved to ``ralph-workflow-agents.toml`` so the main config opens
+    on the one section operators actually edit. Their absence here is pinned
+    by ``tests/config/test_agents_config_file.py``.
+    """
     for _, path in _bundled():
         text = _read_text(path)
-        agent_definition = next(
-            index
-            for index, line in enumerate(text.splitlines())
-            if line.lstrip("# ").startswith("[agents.")
-        )
-        chains = text.index("[agent_chains]")
-        general = text.index("[general]")
-        assert agent_definition < chains < general
+        assert text.index("[agent_chains]") < text.index("[general]")
 
 
 def test_no_duplicate_auto_integrate_key_in_a_template() -> None:

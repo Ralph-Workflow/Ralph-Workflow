@@ -12,6 +12,7 @@ import sys
 def main() -> None:
     """Launch the interactive prompt-helper (same as `ralph --prompt-helper`)."""
     from ralph.config.bootstrap import (
+        ensure_global_agents_config,
         ensure_global_config,
         ensure_global_mcp_config,
         ensure_global_policy_configs,
@@ -21,6 +22,7 @@ def main() -> None:
 
     try:
         ensure_global_config()
+        ensure_global_agents_config()
         ensure_global_mcp_config()
         ensure_global_policy_configs()
         workspace_scope = resolve_workspace_scope()

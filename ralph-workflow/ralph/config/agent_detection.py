@@ -32,7 +32,7 @@ def detect_installed_agents() -> list[str]:
 
 def enable_detected_agents(config_path: Path | None = None) -> list[str]:
     """Activate untouched bundled blocks for installed agents, without changing active ones."""
-    path = config_path or resolve_global_config_dir() / "ralph-workflow.toml"
+    path = config_path or resolve_global_config_dir() / "ralph-workflow-agents.toml"
     text = path.read_text(encoding="utf-8")
     enabled: list[str] = []
 

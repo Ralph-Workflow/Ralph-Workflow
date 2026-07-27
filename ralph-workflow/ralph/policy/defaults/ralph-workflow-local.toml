@@ -14,88 +14,13 @@
 #     2. DRAINS  -- which chain runs which phase, for this project
 #
 #  Everything past the OPTIONAL banner is machinery with a working default.
-#  You can stop reading at that banner.
+#  You can stop reading there.
+#
+#  NOT IN THIS FILE: how to invoke each agent CLI (binary, flags, parser).
+#  That plumbing lives in ~/.config/ralph-workflow-agents.toml.
 #
 # =============================================================================
 
-
-# =============================================================================
-# OPTIONAL -- everything below this line has a working default.
-# Skip it unless you know you need something here.
-#
-# From here down every key is shown commented out at its default value;
-# uncomment only the ones you want to change. MCP servers and web search
-# live in .agent/mcp.toml (or ~/.config/ralph-workflow-mcp.toml), not here.
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# AGENT CLI DEFINITIONS -- how to invoke each coding-agent CLI, for THIS project.
-# -----------------------------------------------------------------------------
-# Transport plumbing (binary name, flags, output parser), not a preference.
-# Uncommenting a block here REPLACES the user-global active agent for this
-# project only. Most projects leave the global agent alone.
-
-# [agents.claude]
-# cmd = "claude"
-# transport = "claude_interactive"
-# Use skip-permissions here because Ralph Workflow confines interactive Claude
-# through the Ralph Workflow MCP/tool allowlist; MCP remains the real
-# permission boundary.
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = true
-# display_name = "Claude"
-
-# [agents.opencode]
-# cmd = "opencode"
-# output_flag = "--output-format=stream-json"
-# yolo_flag = "-y"
-# json_parser = "opencode"
-# can_commit = false
-# display_name = "OpenCode"
-
-# [agents.nanocoder]
-# cmd = "nanocoder"
-# transport = "nanocoder"
-# json_parser = "generic"
-# can_commit = false
-# display_name = "Nanocoder"
-
-# [agents.agy]
-# cmd = "agy"
-# transport = "agy"
-# yolo_flag = "--dangerously-skip-permissions"
-# print_flag = "--print"
-# json_parser = "generic"
-# can_commit = false
-# display_name = "Google Anti Gravity"
-
-# [agents.prompt-helper-agent]
-# cmd = "claude"
-# transport = "claude_interactive"
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = false
-
-# [agents.pi]
-# Pi.dev minimal coding-agent harness (https://pi.dev/). Install via either:
-#   npm install -g @earendil-works/pi-coding-agent     # https://www.npmjs.com/package/@earendil-works/pi-coding-agent
-#   curl -fsSL https://pi.dev/install.sh | sh           # https://pi.dev/ (official install script)
-# Pi streams NDJSON events on stdout per https://pi.dev/docs/latest/json
-# and has no native MCP config file; Ralph Workflow wires MCP through a
-# generated Pi extension and retries clean exits without completion evidence
-# against the captured Pi session.
-# cmd = "pi"
-# output_flag = "--mode json"
-# yolo_flag = "--approve"
-# json_parser = "pi"
-# session_flag = "--session {}"
-# can_commit = true
-# display_name = "Pi"
 
 # =============================================================================
 # 1. CHAINS -- which agent/model does which job, for THIS project.
@@ -147,6 +72,15 @@ analysis = "analysis"
 commit = "commit"
 
 
+
+# =============================================================================
+# OPTIONAL -- everything below this line has a working default.
+# Skip it unless you know you need something here.
+#
+# From here down every key is shown commented out at its default value;
+# uncomment only the ones you want to change. MCP servers and web search
+# live in .agent/mcp.toml (or ~/.config/ralph-workflow-mcp.toml), not here.
+# =============================================================================
 
 # Edit this only if you need to change Ralph Workflow's normal workflow settings.
 # -----------------------------------------------------------------------------

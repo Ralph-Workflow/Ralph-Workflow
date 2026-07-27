@@ -1,13 +1,15 @@
 """Bootstrap helpers for creating user-global and project-local config files.
 
 Auto-creates the user-global Ralph config set on first run, including
-~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml,
-~/.config/ralph-workflow-pipeline.toml, and
-~/.config/ralph-workflow-artifacts.toml from bundled templates.
+~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-agents.toml,
+~/.config/ralph-workflow-mcp.toml, ~/.config/ralph-workflow-pipeline.toml,
+and ~/.config/ralph-workflow-artifacts.toml from bundled templates.
 Also supports regenerating configs with .bak backups via --regenerate-config.
 
 Bootstrap creates the standard first-run config set:
-  - User-global: ~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml,
+  - User-global: ~/.config/ralph-workflow.toml,
+                 ~/.config/ralph-workflow-agents.toml,
+                 ~/.config/ralph-workflow-mcp.toml,
                  ~/.config/ralph-workflow-pipeline.toml,
                  ~/.config/ralph-workflow-artifacts.toml
   - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml,
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
+_GLOBAL_AGENTS_FILENAME = "ralph-workflow-agents.toml"
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _GLOBAL_PIPELINE_FILENAME = "ralph-workflow-pipeline.toml"
 _GLOBAL_ARTIFACTS_FILENAME = "ralph-workflow-artifacts.toml"
@@ -328,6 +331,29 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
         if migrated is not None:
             return migrated
     return result
+
+
+def ensure_global_agents_config(
+    global_dir: Path | None = None, *, force: bool = False
+) -> BootstrapResult:
+    """Ensure ~/.config/ralph-workflow-agents.toml exists, from the bundled template.
+
+    Agent CLI definitions are transport plumbing (binary, flags, output
+    parser), so they live apart from the main config, which opens on the
+    ``[agent_chains]`` operators actually edit.
+
+    Args:
+        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
+        force: When True, overwrite an existing file (backs it up to <name>.bak first).
+
+    Returns:
+        BootstrapResult describing the action taken.
+    """
+    if global_dir is None:
+        global_dir = resolve_global_config_dir()
+    target = global_dir / _GLOBAL_AGENTS_FILENAME
+    source = _get_bundled_defaults_dir() / _GLOBAL_AGENTS_FILENAME
+    return _copy_with_backup(source, target, force)
 
 
 def ensure_global_mcp_config(
@@ -665,6 +691,7 @@ def regenerate_all(
     """
     results: list[BootstrapResult] = [
         ensure_global_config(global_dir, force=True),
+        ensure_global_agents_config(global_dir, force=True),
         ensure_global_mcp_config(global_dir, force=True),
         *ensure_global_policy_configs(global_dir, force=True),
     ]

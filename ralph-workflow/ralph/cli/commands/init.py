@@ -29,6 +29,7 @@ from ralph.config.bootstrap import (
     BootstrapResult,
     auto_seed_default_git_exclude,
     auto_seed_default_gitignore,
+    ensure_global_agents_config,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_global_policy_configs,
@@ -159,6 +160,7 @@ def init_command(
     else:
         global_results: list[BootstrapResult] = [
             ensure_global_config(),
+            ensure_global_agents_config(),
             ensure_global_mcp_config(),
             *ensure_global_policy_configs(),
         ]

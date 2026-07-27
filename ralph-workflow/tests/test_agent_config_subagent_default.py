@@ -114,9 +114,13 @@ def test_partial_override_inherits_subagent_capability_default_for_claude(
     assert config.agents["claude"].subagent_capability is True
 
 
-def test_bundled_ralph_workflow_toml_shipped_with_subagent_capability_true() -> None:
-    """The bundled ``ralph/policy/defaults/ralph-workflow.toml`` MUST ship
-    with ``[agents.claude] subagent_capability = true`` uncommented.
+def test_bundled_agents_toml_shipped_with_subagent_capability_true() -> None:
+    """The bundled ``ralph/policy/defaults/ralph-workflow-agents.toml`` MUST
+    ship with ``[agents.claude] subagent_capability = true`` uncommented.
+
+    ``[agents.*]`` moved out of the main config into its own file so
+    ralph-workflow.toml opens on ``[agent_chains]``; the requirement this
+    test pins is unchanged, only the file it reads.
 
     This pins the bundled default end-to-end: the model_post_init default is
     covered by ``test_subagent_capability_defaults_true_for_claude_command``,
@@ -133,7 +137,7 @@ def test_bundled_ralph_workflow_toml_shipped_with_subagent_capability_true() -> 
     fixture overhead, no parser invocation.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    bundled = repo_root / "ralph" / "policy" / "defaults" / "ralph-workflow.toml"
+    bundled = repo_root / "ralph" / "policy" / "defaults" / "ralph-workflow-agents.toml"
     assert bundled.is_file(), f"bundled default not found at {bundled}"
 
     content = bundled.read_text(encoding="utf-8")
