@@ -58,12 +58,23 @@ def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]
 # ---------------------------------------------------------------------------
 
 
-def test_build_edit_preview_returns_none_for_non_edit_tools() -> None:
-    """read_file / exec / git_status / grep_files are not content-edit tools."""
-    for name in ("read_file", "exec", "git_status", "grep_files", "list_directory"):
+def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
+    """Commands without file content do not produce a preview."""
+    for name in ("exec", "git_status", "grep_files", "list_directory"):
         assert build_edit_preview(name, {"path": "a.py"}, width=80) is None, (
             f"{name!r} must not produce a preview"
         )
+
+
+def test_build_edit_preview_read_file_uses_path_lexer() -> None:
+    """Read results get the same file-content preview as writes (S-3)."""
+    preview = build_edit_preview(
+        "read_file",
+        {"path": "ralph/display/status_bar.py", "content": "def render():\n    return 1\n"},
+        width=80,
+    )
+    assert isinstance(preview, Syntax)
+    assert preview.lexer.name == "Python"
 
 
 def test_build_edit_preview_returns_none_for_empty_payload() -> None:
@@ -337,6 +348,25 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
     assert "def new" in output, f"preview missing new content:\n{output!r}"
     # Preview carries diff markers.
     assert "+" in output and "-" in output
+
+
+def test_parallel_display_tool_result_read_file_prints_content_preview() -> None:
+    """A read result is rendered as a subordinate, syntax-aware file block (S-3)."""
+    pd, buf = _make_display()
+    pd.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="def render():\n    return 1\n",
+        metadata={
+            "tool_name": "read_file",
+            "tool_path": "ralph/display/status_bar.py",
+            "exit_code": 0,
+        },
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert "def render" in output, f"read preview missing content:\n{output!r}"
+    assert "return 1" in output, f"read preview missing content:\n{output!r}"
 
 
 def test_parallel_display_quiet_mode_suppresses_tool_use_preview() -> None:

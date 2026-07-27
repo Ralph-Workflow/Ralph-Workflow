@@ -66,8 +66,7 @@ class _Questionary(Protocol):
         *,
         choices: Sequence[object],
         default: str,
-        show_description: bool,
-        instruction: str,
+        **kwargs: object,
     ) -> _Question: ...
 
 

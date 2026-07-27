@@ -132,6 +132,7 @@ CONTENT_EDIT_TOOLS: Final[frozenset[str]] = frozenset(
         "ralph_edit_md_artifact",
         "ralph_stage_md_artifact",
         "ralph_submit_md_artifact",
+        "read_file",
     }
 )
 
@@ -410,8 +411,8 @@ def build_edit_preview(
 ) -> RenderableType | None:
     """Return a rich renderable previewing the edit described by ``input_dict``.
 
-    Returns ``None`` for non-edit tools (e.g. ``read_file``, ``exec``)
-    or empty payloads so the caller can skip the print cleanly.
+    Returns ``None`` for tools without content (e.g. ``exec``) or empty
+    payloads so the caller can skip the print cleanly.
 
     The renderable is a :class:`rich.syntax.Syntax` (write-style tools)
     or a :class:`rich.console.Group` (edit-style tools with multiple

@@ -2505,6 +2505,19 @@ class ParallelDisplay:
                     with contextlib.suppress(Exception):
                         self._console.print(preview)
 
+            if kind is ActivityEventKind.TOOL_RESULT and not self._is_quiet:
+                result_tool_name = str(metadata.get("tool_name", "") or "")
+                result_path = str(metadata.get("tool_path", "") or "")
+                result_preview = build_edit_preview(
+                    result_tool_name,
+                    {"path": result_path, "content": text_content},
+                    width=self._ctx.width,
+                    terminal_bg_is_light=self._terminal_bg_is_light,
+                )
+                if result_preview is not None:
+                    with contextlib.suppress(Exception):
+                        self._console.print(result_preview)
+
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
         # record append now lives at the shared presentation seam
         # (the ``emit_activity_line`` print path and the
