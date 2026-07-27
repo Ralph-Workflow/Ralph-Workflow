@@ -35,6 +35,7 @@ from ralph.display.agent_event_renderer import (
     normalize_event_from_agent_output_line,
     render_event,
 )
+from ralph.display.presented_entry import build_presented_entry
 from ralph.display.record_writer import RenderedRecordWriter
 
 if TYPE_CHECKING:
@@ -183,6 +184,29 @@ def test_rendered_record_carries_no_internal_vocabulary(tmp_path: Path) -> None:
         assert token not in output, (
             f"forbidden token {token!r} leaked into rendered record: {output!r}"
         )
+
+
+def test_presented_entry_regression_strips_live_badge_identity_chrome() -> None:
+    """S-2: record bodies contain content once, never copied live chrome."""
+    event = AgentActivityEvent(
+        provider=ActivityProvider.PI,
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="✓ PASS 23:18:56 pi/minimax/MiniMax-3 ↳ grep_files path=ralph/",
+        metadata={},
+    )
+    entry = build_presented_entry(event, unit_id="pi/minimax/MiniMax-3")
+    assert entry.body == "grep_files path=ralph/"
+
+
+def test_presented_entry_regression_drops_badge_only_body() -> None:
+    """S-2: a badge with no event content is empty after normalization."""
+    event = AgentActivityEvent(
+        provider=ActivityProvider.PI,
+        kind=ActivityEventKind.UNKNOWN,
+        content="⚠ WARN pi/minimax/MiniMax-3",
+        metadata={},
+    )
+    assert build_presented_entry(event, unit_id="pi/minimax/MiniMax-3").body == ""
 
 
 def test_rendered_record_carries_no_ansi_color_codes(tmp_path: Path) -> None:
@@ -604,7 +628,7 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert all(any(name in line for name in tool_names) for line in tool_call_lines), (
         f"OpenCode tool-call target missing from line:\n{rendered}"
     )
-    assert all("PASS" in line or "FAIL" in line for line in tool_result_lines), (
+    assert all("severity=" in line for line in tool_result_lines), (
         f"OpenCode tool-result outcome missing from line:\n{rendered}"
     )
     for forbidden in _FORBIDDEN_TOKENS:

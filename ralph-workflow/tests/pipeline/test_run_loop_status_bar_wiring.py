@@ -825,7 +825,7 @@ def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
         lambda *_args: (terminal_state, "development", None),
     )
     monkeypatch.setattr(
-        "ralph.pipeline.run_loop._wait_for_pending_remote_publication",
+        "ralph.pipeline.run_loop._report_pending_remote_publication",
         lambda state, _ctx: state,
     )
     monkeypatch.setattr("ralph.pipeline.run_loop._emit_post_loop_result", lambda *_args: None)

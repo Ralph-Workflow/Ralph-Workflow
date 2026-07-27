@@ -14,6 +14,7 @@ one vocabulary" structurally enforced rather than remembered.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -159,7 +160,7 @@ def build_presented_entry(
     # consolidated the stripper into a single leaf module
     # (:mod:`ralph.display._channel_prefix_stripper`) so the live
     # log and the rendered record cannot drift.
-    body = strip_parser_channel_prefix(body)
+    body = _strip_live_chrome(strip_parser_channel_prefix(body))
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
@@ -198,6 +199,27 @@ def build_presented_entry(
         indent_level=indent_level,
         grouping_role=grouping_role,
     )
+
+
+_LIVE_BADGE_PREFIX = re.compile(r"^[✓✗⚠\u2139◐]\s+(?:PASS|FAIL|WARN|INFO|RUN)\s+")
+_LIVE_BADGE_ONLY = re.compile(r"^(?:\d{2}:\d{2}:\d{2}\s+)?\S+$")
+
+
+def _strip_live_chrome(body: str) -> str:
+    """Remove a live-rendered badge/identity prefix from a record body.
+
+    The canonical entry is text-first; status, time, and identity belong to
+    its structured fields, not copied from a previously-rendered live line.
+    """
+    match = _LIVE_BADGE_PREFIX.match(body)
+    if match is None:
+        return body
+    remainder = body[match.end() :].strip()
+    if "↳" in remainder:
+        return remainder.split("↳", 1)[1].strip()
+    if _LIVE_BADGE_ONLY.fullmatch(remainder):
+        return ""
+    return remainder
 
 
 def _derive_severity(
