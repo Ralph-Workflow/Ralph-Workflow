@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
+from ralph.agents.parsers.base import extract_error_message
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -45,16 +46,17 @@ def _non_blank_output_signal(line: str) -> AgentActivitySignal | None:
 def _error_message_from_error_field(obj: dict[str, object]) -> str:
     """Extract a stable error message from a top-level ``error`` event object.
 
-    Handles ``error`` as a dict (``error.message``/``error.name``), a bare string
-    (``error`` is the message), or a top-level ``message`` fallback.
+    Delegates to the canonical :func:`extract_error_message` so the watchdog's
+    fingerprint and the operator-facing parser message are derived from ONE
+    resolution order. They had diverged: this function stopped at
+    ``error.name`` while OpenCode nests the real text at
+    ``error.data.message``, so a 402 "requires more credits", a 404 "Not
+    Found", and a 429 all fingerprinted as the single string ``"APIError"``.
+    ``RepetitionTracker`` then read three unrelated failures as one repeating
+    error and could fire REPEATED_ERROR_LOOP on a sequence that is not a loop
+    -- while every diagnostic showed the operator only ``"APIError"``.
     """
-    error_obj = obj.get("error")
-    if isinstance(error_obj, dict):
-        inner = cast("dict[str, object]", error_obj)
-        return str(inner.get("message", inner.get("name", "unknown error")))
-    if isinstance(error_obj, str) and error_obj:
-        return error_obj
-    return str(obj.get("message", "unknown error"))
+    return extract_error_message(obj)
 
 
 def _tool_state_error_message(obj: dict[str, object]) -> str | None:
@@ -230,6 +232,40 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
         # the tool-call repetition breaker twice for one call.
         return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
     return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
+
+
+#: OpenCode brackets EVERY tool call with these frame markers. The parser
+#: yields no output line for them, so they are cosmetic to the operator.
+_OPENCODE_STEP_FRAME_TYPES = frozenset({"step_start", "step_finish"})
+
+
+def _opencode_step_frame_signal(line: str) -> AgentActivitySignal | None:
+    """Return a LIFECYCLE signal for an OpenCode step frame, else ``None``.
+
+    These frames classified as OUTPUT_LINE, which routes to
+    ``record_activity()`` -> ``RepetitionTracker.note_progress()``. Because a
+    ``step_finish`` follows every single tool call, the repetition streaks were
+    reset after each one, and neither REPEATED_IDENTICAL_TOOL_CALL nor
+    REPEATED_ERROR_LOOP could accumulate on the real interleaved stream --
+    an agent re-issuing one failing command forever stayed invisible.
+
+    LIFECYCLE keeps the agent off the idle deadline (a frame IS evidence the
+    process is alive) without claiming forward progress, which is exactly what
+    a frame marker is worth.
+    """
+    stripped = line.strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        parsed = cast("object", json.loads(stripped, strict=False))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    obj = cast("dict[str, object]", parsed)
+    if str(obj.get("type", "")) not in _OPENCODE_STEP_FRAME_TYPES:
+        return None
+    return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=line)
 
 
 def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:

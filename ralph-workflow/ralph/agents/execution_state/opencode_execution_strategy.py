@@ -22,6 +22,7 @@ from ._helpers import (
     _error_output_signal,
     _evidence_precedence,
     _non_blank_output_signal,
+    _opencode_step_frame_signal,
     _os_descendant_state,
     _probe_check_quiet,
     _progress_report_signal,
@@ -94,6 +95,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify OpenCode output for idle-watchdog activity."""
+        frame_signal = _opencode_step_frame_signal(line)
+        if frame_signal is not None:
+            return frame_signal
         signal = _classify_opencode_child_signal(line)
         if signal is not None:
             return signal
