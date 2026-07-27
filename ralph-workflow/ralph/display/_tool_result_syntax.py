@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from rich.syntax import Syntax
 
-from ralph.display.theme import syntax_theme_for_background
+from ralph.display.theme import SYNTAX_BACKGROUND_TRANSPARENT, syntax_theme_for_background
 
 if TYPE_CHECKING:
     from rich.text import Text
@@ -29,7 +29,7 @@ def append_tool_result_syntax(
             body,
             lexer,
             theme=syntax_theme_for_background(terminal_bg_is_light),
-            background_color=None,
+            background_color=SYNTAX_BACKGROUND_TRANSPARENT,
         ).highlight(body)
     )
     return True
