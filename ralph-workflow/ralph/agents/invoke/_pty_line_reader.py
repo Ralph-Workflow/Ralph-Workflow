@@ -101,6 +101,7 @@ from ._monitor_factory import _make_process_monitor
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx, _EvalCompletionFn
     from ralph.agents.timeout_clock import Clock
@@ -137,6 +138,17 @@ def _terminal_interactive_startup_error(agent_name: str, line: str) -> str | Non
     ):
         return f"Nanocoder startup/configuration error: {visible_line}"
     return None
+
+
+def _record_embedded_error(watchdog: IdleWatchdog, signal: AgentActivitySignal) -> None:
+    """Feed the error dimension for a signal that carries an embedded error.
+
+    A failed tool call is BOTH a call and an error; feeding only the dimension
+    its ``kind`` names left the other wedge invisible. See
+    :class:`~ralph.agents.activity.AgentActivitySignal`.
+    """
+    if signal.error_message is not None:
+        watchdog.record_error_activity(signal.error_message)
 
 
 def _tool_use_display_name(
@@ -1048,6 +1060,7 @@ class PtyLineReader:
         if activity_signal is not None:
             self._last_activity_kind = activity_signal.kind
             self._last_meaningful[0] = activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+            _record_embedded_error(watchdog, activity_signal)
             if activity_signal.kind == AgentActivityKind.ERROR_LINE:
                 # Repeated identical errors must not reset the idle baseline or
                 # the repetition streak's progress counter; they feed the

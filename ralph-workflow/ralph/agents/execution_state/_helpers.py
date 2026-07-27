@@ -224,14 +224,19 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
     tool_name = _opencode_tool_name(obj)
     if tool_name is None:
         return None
+    tool_error = _tool_state_error_message(obj)
     if tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS:
-        return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
+        return AgentActivitySignal(
+            AgentActivityKind.CHILD_PROGRESS, raw=line, error_message=tool_error
+        )
     if str(obj.get("type", "")) == "tool_result":
         # OpenCode 1.17.x collapses call+result into one ``tool_use`` event, so
         # this branch is defensive. Classifying a result as TOOL_USE would feed
         # the tool-call repetition breaker twice for one call.
-        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
-    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
+        return AgentActivitySignal(
+            AgentActivityKind.TOOL_RESULT, raw=line, error_message=tool_error
+        )
+    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line, error_message=tool_error)
 
 
 #: OpenCode brackets EVERY tool call with these frame markers. The parser

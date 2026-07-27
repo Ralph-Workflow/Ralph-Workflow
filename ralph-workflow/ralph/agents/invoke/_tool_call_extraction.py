@@ -121,10 +121,21 @@ def _extract_claude_message_tool_use(obj: dict[str, object]) -> dict[str, object
     content = cast("dict[str, object]", message).get("content")
     if not isinstance(content, list):
         return None
-    for block in cast("list[object]", content):
-        if isinstance(block, dict) and cast("dict[str, object]", block).get("type") == "tool_use":
-            return cast("dict[str, object]", block)
-    return None
+    blocks = [
+        cast("dict[str, object]", block)
+        for block in cast("list[object]", content)
+        if isinstance(block, dict) and cast("dict[str, object]", block).get("type") == "tool_use"
+    ]
+    if len(blocks) != 1:
+        # A message batching several parallel calls cannot be represented as
+        # ONE (name, args) fingerprint. Taking the first block silently
+        # discarded the rest, so N genuinely different parallel calls all keyed
+        # to the first one and a fully progressing agent looked 100% repetitive.
+        # Claude Code splits parallel calls into one frame each, so this is a
+        # guard against a shape that is rare rather than a live false kill --
+        # skipping the observation is the safe answer either way.
+        return None
+    return blocks[0]
 
 
 def _is_streaming_tool_placeholder(obj: dict[str, object]) -> bool:
@@ -335,5 +346,29 @@ def _resolve_cursor_tool_call(
             args_field = payload.get("input")
         if not isinstance(args_field, dict):
             args_field = {}
-        return key, cast("dict[str, object]", args_field)
+        return key, _strip_per_call_keys(cast("dict[str, object]", args_field))
     return None
+
+
+#: Keys that vary on EVERY call and must never enter a fingerprint. Cursor
+#: embeds its per-call id inside ``args`` (verified against a live
+#: ``cursor-agent --output-format stream-json`` run), so leaving them in made
+#: two byte-identical ``ls -la`` shell calls look like two different calls and
+#: the breaker could never fire on this transport.
+_PER_CALL_ARG_KEYS = frozenset(
+    {
+        "toolCallId",
+        "tool_call_id",
+        "callID",
+        "call_id",
+        "conversationId",
+        "conversation_id",
+        "startedAtMs",
+        "completedAtMs",
+    }
+)
+
+
+def _strip_per_call_keys(args: dict[str, object]) -> dict[str, object]:
+    """Drop per-call identifiers so identical calls share one fingerprint."""
+    return {key: value for key, value in args.items() if key not in _PER_CALL_ARG_KEYS}

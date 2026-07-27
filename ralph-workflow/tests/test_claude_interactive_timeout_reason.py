@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ralph.agents.activity import AgentActivityKind
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
@@ -121,9 +121,9 @@ class _StopAfterOneCompletionPoll(threading.Event):
 class _FakeStrategy:
     def classify_activity_line(self, line: str) -> object:
         if line == "tool\n":
-            return SimpleNamespace(kind=AgentActivityKind.TOOL_RESULT, raw="claude result: ok")
+            return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw="claude result: ok")
         if line == "lifecycle\n":
-            return SimpleNamespace(kind=AgentActivityKind.LIFECYCLE, raw="claude/session")
+            return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw="claude/session")
         return None
 
     def observe_line(self, line: str) -> None:

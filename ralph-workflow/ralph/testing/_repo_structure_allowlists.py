@@ -683,6 +683,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_ProcessLineReader",),
         ),
         (
+            "tests/agents/idle_watchdog/test_both_repetition_dimensions.py",
+            "ralph.agents.invoke._process_reader",
+            ("_ProcessLineReader",),
+        ),
+        (
             "tests/agents/invoke/test_line_reader_queue_bound.py",
             "ralph.agents.invoke._process_reader",
             ("_ProcessLineReader",),

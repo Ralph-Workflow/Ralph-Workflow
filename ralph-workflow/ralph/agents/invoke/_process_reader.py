@@ -734,6 +734,13 @@ class _ProcessLineReader:
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
         )
+        if activity_signal.error_message is not None:
+            # A failed tool call is BOTH a call and an error. Feeding only the
+            # dimension its ``kind`` names left the other wedge invisible: a
+            # repeated failing command whose output text varies, or an
+            # MCP-timeout storm whose args vary. Feed the error dimension here
+            # and let the kind-specific branch below feed the other.
+            watchdog.record_error_activity(activity_signal.error_message)
         if activity_signal.kind == AgentActivityKind.ERROR_LINE:
             watchdog.record_error_activity(activity_signal.raw)
         elif activity_signal.kind == AgentActivityKind.PROGRESS_REPORT:
