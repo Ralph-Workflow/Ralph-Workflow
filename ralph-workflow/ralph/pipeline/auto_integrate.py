@@ -483,6 +483,8 @@ def _auto_integrate_after_commit_inner(
         record = record.model_copy(
             update={
                 "last_remote_sync": remote_record.last_remote_sync,
+                "last_remote": remote_record.last_remote,
+                "last_refresh": remote_record.last_refresh or record.last_refresh,
                 "last_reason": record.last_reason or remote_record.last_reason,
             }
         )
@@ -653,7 +655,7 @@ def _integrate_once(
         # The fail-open helper records its summary without changing this
         # landing result; disabled sync leaves legacy checkpoints clean.
         record = maybe_push_target(config, root, target, record)
-        if record.last_remote_sync == REMOTE_PUSH_REJECTED:
+        if record.last_push_status == "non_fast_forward":
             # A non-fast-forward push is a remote race, not a failed local
             # landing. Spend only this seam's bounded retry budget trying to
             # reconcile and publish; the returned record remains fail-open.

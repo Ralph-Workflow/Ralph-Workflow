@@ -243,3 +243,10 @@ def test_remote_backoff_max_rejects_negative_values() -> None:
     """The backoff ceiling is non-negative; negative values must not slide."""
     with pytest.raises(ValidationError):
         _config(auto_integrate_remote_backoff_max_seconds=-1.0)
+
+
+def test_remote_target_rejects_empty_or_whitespace_values() -> None:
+    """S-2: remote publication must never silently fall back to origin."""
+    for value in ("", "   "):
+        with pytest.raises(ValidationError):
+            _config(auto_integrate_remote_target=value)

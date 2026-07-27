@@ -159,10 +159,8 @@ def test_unreachable_remote_does_not_attempt_push(
     assert push_calls == []
     # The reconciliation attempts a single refresh-only cycle; the
     # last_remote_sync reflects the unreachable pull state.
-    assert out.last_remote_sync in {
-        REMOTE_PUSH_REJECTED,
-        remote_sync.REMOTE_PULL_FAILED,
-    }
+    assert out.last_remote_sync == remote_sync.REMOTE_REMOTE_UNREACHABLE
+    assert out.last_push_status == remote_push_module.PushStatus.UNREACHABLE.value
 
 
 def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(

@@ -1606,31 +1606,40 @@ def _wait_for_pending_remote_publication(state: PipelineState, ctx: _LoopContext
     """Publish a terminal pending target only when remote waiting was opted in."""
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_remote_sync import (
-        REMOTE_PUSH_REJECTED,
         REMOTE_PUSHED,
         remote_sync_enabled,
         remote_wait_seconds,
         wait_for_remote_publish,
     )
 
+    pending_status = state.rebase.last_push_status
     if (
-        state.rebase.last_remote_sync != REMOTE_PUSH_REJECTED
+        pending_status in (None, "pushed", "created")
         or not remote_sync_enabled(ctx.config)
-        or remote_wait_seconds(ctx.config) <= 0.0
     ):
         return state
     target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
     if target is None:
         return state
+    remote = state.rebase.last_remote or "origin"
+    if remote_wait_seconds(ctx.config) <= 0.0:
+        reason = state.rebase.last_reason or state.rebase.last_push or pending_status
+        return state.copy_with(
+            rebase=state.rebase.model_copy(
+                update={"last_reason": f"landed locally, not published to {remote}: {reason}"}
+            )
+        )
     published, summary = wait_for_remote_publish(
         ctx.config,
         ctx.workspace_scope.root,
         target,
+        remote=remote,
         sleep=ctx.sleep,
     )
     updated = state.rebase.model_copy(
         update={
-            "last_remote_sync": REMOTE_PUSHED if published else REMOTE_PUSH_REJECTED,
+            "last_remote_sync": REMOTE_PUSHED if published else state.rebase.last_remote_sync,
+            "last_push_status": "pushed" if published else pending_status,
             "last_reason": None if published else summary,
         }
     )

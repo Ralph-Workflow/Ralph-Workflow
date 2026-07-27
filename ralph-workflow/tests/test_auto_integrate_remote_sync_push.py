@@ -12,7 +12,8 @@ semantics; no fan-out) and is replaced by the new flag.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.git import remote_push as remote_push_module
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
@@ -21,9 +22,6 @@ from ralph.pipeline.auto_integrate_remote_sync import (
     remote_sync_enabled,
 )
 from ralph.pipeline.rebase_state import RebaseState
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _config(
@@ -281,3 +279,28 @@ def test_remote_target_name_default_is_origin() -> None:
 
     cfg2 = UnifiedConfig.model_validate(cfg_default_dict)
     assert remote_sync.remote_target_name(cfg2) == "origin"
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome"),
+    [
+        (remote_push_module.PushStatus.TIMEOUT, remote_sync.REMOTE_TIMEOUT),
+        (remote_push_module.PushStatus.AUTH_FAILED, remote_sync.REMOTE_AUTH_FAILED),
+        (remote_push_module.PushStatus.HOOK_REJECTED, remote_sync.REMOTE_REJECTED_BY_HOOK),
+        (remote_push_module.PushStatus.UNREACHABLE, remote_sync.REMOTE_REMOTE_UNREACHABLE),
+    ],
+)
+def test_push_failure_preserves_typed_status_without_non_fast_forward(
+    monkeypatch: pytest.MonkeyPatch,
+    status: remote_push_module.PushStatus,
+    outcome: str,
+) -> None:
+    """S-3: only an actual non-fast-forward may enter reconciliation."""
+    monkeypatch.setattr(
+        remote_push_module,
+        "push_branch_to_single_remote",
+        lambda *_a, **_kw: remote_push_module.PushResult(status, "origin", "main", status.value),
+    )
+    result = push_target_after_landing(_config(), Path("/repo"), "main", _record())
+    assert result.last_push_status == status.value
+    assert result.last_remote_sync == outcome

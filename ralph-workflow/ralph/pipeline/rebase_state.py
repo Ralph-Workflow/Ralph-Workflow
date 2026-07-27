@@ -74,6 +74,11 @@ class RebaseState(RalphBaseModel):
     # Configured remote used for the latest remote-sync outcome.
     last_remote: str | None = None
 
+    # Structured classification of the latest publication attempt. This is
+    # deliberately separate from ``last_push`` prose: retry decisions must
+    # never parse operator display text. Defaults preserve old checkpoints.
+    last_push_status: str | None = None
+
     # ``consecutive_conflicts`` counts unresolved integration conflicts
     # against ``last_target`` in a row. It bounds how often the
     # dev-agent conflict resolver is invoked for the same conflict (see

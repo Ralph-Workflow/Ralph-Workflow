@@ -210,6 +210,7 @@ class GeneralConfig(RalphBaseModel):
     )
     auto_integrate_remote_target: str = Field(
         default="origin",
+        min_length=1,
         description=(
             "The configured remote name to sync the local target branch"
             ' against. Defaults to "origin"; any configured remote'
@@ -735,6 +736,8 @@ class GeneralConfig(RalphBaseModel):
                 " agent_idle_no_progress_waiting_on_child_seconds"
             )
             raise ValueError(msg)
+        if not self.auto_integrate_remote_target.strip():
+            raise ValueError("auto_integrate_remote_target must not be empty or whitespace")
         self._validate_workspace_change_weights()
         return self
 

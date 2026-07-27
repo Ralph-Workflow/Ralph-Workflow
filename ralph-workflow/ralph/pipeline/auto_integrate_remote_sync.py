@@ -115,7 +115,10 @@ def remote_sync_enabled(config: object) -> bool:
     if raw is None:
         return False
     enabled_raw: object = getattr(raw, "auto_integrate_remote_sync_enabled", False)
-    return isinstance(enabled_raw, bool) and enabled_raw
+    legacy_raw: object = getattr(raw, "auto_integrate_push_enabled", False)
+    return (isinstance(enabled_raw, bool) and enabled_raw) or (
+        isinstance(legacy_raw, bool) and legacy_raw
+    )
 
 
 def remote_target_name(config: object, *, default: str = DEFAULT_REFRESH_REMOTE) -> str:
@@ -273,7 +276,8 @@ def pull_and_reconcile_target(
         timeout_seconds=float(fetch_timeout_seconds(config)),
         remote=chosen_remote,
     )
-    return _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock)
+    state = _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock)
+    return state.model_copy(update={"last_remote": chosen_remote}) if state is not None else None
 
 
 def _dispatch_pull_outcome(
@@ -534,6 +538,7 @@ def push_target_after_landing(
         update={
             "last_push": typed_result.summary,
             "last_remote": typed_result.remote,
+            "last_push_status": typed_result.status.value,
             "last_remote_sync": _remote_sync_status(typed_result.status),
             "last_reason": (
                 None if typed_result.success else typed_result.detail or typed_result.status.value
@@ -572,13 +577,17 @@ def _coerce_push_result(
 
 def _remote_sync_status(status: _remote_push_module.PushStatus) -> str:
     """Project typed push facts into the durable remote-sync outcome."""
-    if status is _remote_push_module.PushStatus.PUSHED:
-        return REMOTE_PUSHED
-    if status is _remote_push_module.PushStatus.CREATED:
-        return REMOTE_CREATED
-    if status is _remote_push_module.PushStatus.MISSING_REMOTE:
-        return REMOTE_NO_REMOTE
-    return REMOTE_PUSH_REJECTED
+    outcomes = {
+        _remote_push_module.PushStatus.PUSHED: REMOTE_PUSHED,
+        _remote_push_module.PushStatus.CREATED: REMOTE_CREATED,
+        _remote_push_module.PushStatus.MISSING_REMOTE: REMOTE_NO_REMOTE,
+        _remote_push_module.PushStatus.NON_FAST_FORWARD: REMOTE_PUSH_REJECTED,
+        _remote_push_module.PushStatus.TIMEOUT: REMOTE_TIMEOUT,
+        _remote_push_module.PushStatus.AUTH_FAILED: REMOTE_AUTH_FAILED,
+        _remote_push_module.PushStatus.HOOK_REJECTED: REMOTE_REJECTED_BY_HOOK,
+        _remote_push_module.PushStatus.UNREACHABLE: REMOTE_REMOTE_UNREACHABLE,
+    }
+    return outcomes[status]
 
 
 # ----- Rejected-push reconcile loop -------------------------------------
@@ -591,6 +600,7 @@ class _PushOutcome:
     success: bool
     summary: str
     pushed: bool
+    status: _remote_push_module.PushStatus | None = None
     created_remote_branch: bool = False
 
 
@@ -634,10 +644,11 @@ def reconcile_after_rejected_push(
             update={
                 "last_push": outcome.summary,
                 "last_remote": chosen_remote,
+                "last_push_status": outcome.status.value if outcome.status is not None else None,
                 "last_remote_sync": (
-                    REMOTE_PUSHED
-                    if outcome.success
-                    else (REMOTE_CREATED if outcome.created_remote_branch else REMOTE_PUSH_REJECTED)
+                    _remote_sync_status(outcome.status)
+                    if outcome.status is not None
+                    else REMOTE_PULL_FAILED
                 ),
             },
         )
@@ -665,13 +676,17 @@ def _attempt_reconcile_and_push(
     )
     if refresh == REFRESH_NO_REMOTE:
         return _PushOutcome(
-            success=False, summary=f"remote '{remote}' not configured", pushed=False
+            success=False,
+            summary=f"remote '{remote}' not configured",
+            pushed=False,
+            status=_remote_push_module.PushStatus.MISSING_REMOTE,
         )
     if refresh == REFRESH_UNREACHABLE:
         return _PushOutcome(
             success=False,
             summary=f"push of {target} to {remote} failed: {REMOTE_REMOTE_UNREACHABLE}",
             pushed=True,
+            status=_remote_push_module.PushStatus.UNREACHABLE,
         )
     if refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
@@ -692,6 +707,7 @@ def _attempt_reconcile_and_push(
         success=typed_result.success,
         summary=typed_result.summary,
         pushed=typed_result.status is not _remote_push_module.PushStatus.MISSING_REMOTE,
+        status=typed_result.status,
         created_remote_branch=typed_result.status is _remote_push_module.PushStatus.CREATED,
     )
 
@@ -879,6 +895,7 @@ def wait_for_remote_publish(
             published = True
             backoff_state.record_success(repo_root, chosen_remote, target)
             break
+        backoff_state.record_failure(repo_root, chosen_remote, target)
         gap = backoff_state.next_gap(
             repo_root=repo_root,
             remote=chosen_remote,
@@ -888,8 +905,7 @@ def wait_for_remote_publish(
             clock=clock,
         )
         if gap > 0.0:
-            sleep(float(gap))
-        backoff_state.record_failure(repo_root, chosen_remote, target)
+            sleep(min(float(gap), max(0.0, deadline - clock())))
     if published:
         return True, last_summary
     if is_interrupted() or not last_summary:
