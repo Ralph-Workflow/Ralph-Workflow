@@ -71,6 +71,9 @@ class RebaseState(RalphBaseModel):
     # legacy checkpoints load unchanged.
     last_remote_sync: str | None = None
 
+    # Configured remote used for the latest remote-sync outcome.
+    last_remote: str | None = None
+
     # ``consecutive_conflicts`` counts unresolved integration conflicts
     # against ``last_target`` in a row. It bounds how often the
     # dev-agent conflict resolver is invoked for the same conflict (see

@@ -20,12 +20,22 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, clear_record, write_record
+from ralph.pipeline.conflict_resolution.rebase_loop import (
+    RebaseStopResolver,
+    resolve_rebase_in_progress,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-def reconcile_target_onto_remote(repo_root: Path, target: str, remote: str) -> tuple[bool, str]:
+def reconcile_target_onto_remote(
+    repo_root: Path,
+    target: str,
+    remote: str,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+) -> tuple[bool, str]:
     """Rebase unpublished local target commits onto ``remote/target`` safely.
 
     The target must already be checked out in one clean worktree.  Refusing
@@ -49,6 +59,13 @@ def reconcile_target_onto_remote(repo_root: Path, target: str, remote: str) -> t
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
         if isinstance(outcome, (RebaseSuccess, RebaseNoOp)):
+            clear_record(repo_root)
+            return True, ""
+        if (
+            rebase_in_progress(owner)
+            and rebase_stop_resolver is not None
+            and resolve_rebase_in_progress(owner, f"{remote}/{target}", rebase_stop_resolver)
+        ):
             clear_record(repo_root)
             return True, ""
         if rebase_in_progress(owner):

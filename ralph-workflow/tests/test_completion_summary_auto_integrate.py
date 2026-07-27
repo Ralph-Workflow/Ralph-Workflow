@@ -49,6 +49,8 @@ def _make_snapshot(
     auto_integrate_reason: str | None = None,
     auto_integrate_target: str | None = None,
     auto_integrate_fast_forwarded: bool = False,
+    auto_integrate_remote: str | None = None,
+    auto_integrate_remote_sync: str | None = None,
     phase: str = "complete",
     previous_phase: str | None = "development_commit",
     review_issues_found: bool = False,
@@ -92,6 +94,8 @@ def _make_snapshot(
         auto_integrate_reason=auto_integrate_reason,
         auto_integrate_target=auto_integrate_target,
         auto_integrate_fast_forwarded=auto_integrate_fast_forwarded,
+        auto_integrate_remote=auto_integrate_remote,
+        auto_integrate_remote_sync=auto_integrate_remote_sync,
     )
 
 
@@ -223,6 +227,20 @@ def test_format_unknown_verb_returns_bare_phrase_without_double_prefix() -> None
 
 
 # ---------- Step 5: render_completion_summary integration ----------
+
+
+def test_configured_remote_is_rendered_by_both_completion_surfaces() -> None:
+    """S-1: completion surfaces retain the configured remote, not ``origin``."""
+    snapshot = _make_snapshot(
+        auto_integrate_action="rebased",
+        auto_integrate_target="release",
+        auto_integrate_fast_forwarded=True,
+        auto_integrate_remote="upstream",
+        auto_integrate_remote_sync="reconciled",
+    )
+    for text in (_render_plain(snapshot), _render_group(snapshot)):
+        assert "upstream/release" in text
+        assert "origin" not in text
 
 
 def test_plain_renderer_surfaces_conflict_with_reason() -> None:

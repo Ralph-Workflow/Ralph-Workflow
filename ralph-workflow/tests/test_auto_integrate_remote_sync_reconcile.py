@@ -165,6 +165,53 @@ def test_unreachable_remote_does_not_attempt_push(
     }
 
 
+def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1: target rebase conflicts offer the shared resolver before aborting."""
+    from ralph.git.rebase.rebase import RebaseConflicts
+    from ralph.pipeline import auto_integrate_remote_reconcile as mod
+
+    owner = Path("/target-owner")
+    monkeypatch.setattr(mod, "_reconciliation_preconditions", lambda *_a: (owner, "before", None))
+    monkeypatch.setattr(mod, "write_record", lambda *_a: None)
+    monkeypatch.setattr(mod, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict"))
+    monkeypatch.setattr(mod, "rebase_in_progress", lambda *_a: True)
+    def resolver(*_a: object, **_kw: object) -> bool:
+        return True
+
+    calls: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        mod,
+        "resolve_rebase_in_progress",
+        lambda root, target, received: calls.append((root, target)) or received(root, target, object()),
+    )
+
+    success, _reason = mod.reconcile_target_onto_remote(
+        Path("/repo"), "main", "origin", rebase_stop_resolver=resolver
+    )
+    assert calls == [(owner, "origin/main")]
+    assert success is True
+
+
+def test_rejected_push_reintegrates_feature_before_repush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1: each rejected-push cycle reintegrates the feature before pushing."""
+    from ralph.pipeline import auto_integrate_remote_sync as mod
+
+    events: list[str] = []
+    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *_a, **_kw: events.append("fetch") or REFRESH_LOCAL_FLEET)
+    monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", lambda *_a, **_kw: events.append("push") or "pushed main to origin")
+
+    def integrate(*_a: object, **_kw: object) -> None:
+        events.append("feature integration")
+
+    record = _record()
+    mod.reconcile_after_rejected_push(_config(), Path("/repo"), "main", record, reintegrate=integrate)
+    assert events == ["fetch", "feature integration", "push"]
+
+
 def test_disabled_remote_sync_skips_reconcile() -> None:
     """No state change when remote sync is disabled."""
     from ralph.config.models import UnifiedConfig

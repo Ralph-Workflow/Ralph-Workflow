@@ -248,6 +248,26 @@ def test_remote_sync_enabled_helper_checks_flag() -> None:
     assert remote_sync_enabled(None) is False
 
 
+def test_push_result_classifies_creation_and_failures_without_summary_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1: callers need structured push facts, not prose classification."""
+    monkeypatch.setattr(remote_push_module, "_list_remotes", lambda _root: ["origin"])
+    monkeypatch.setattr(
+        remote_push_module,
+        "_push_to_remote",
+        lambda *_a, **_kw: (False, "remote: Permission denied (publickey)"),
+    )
+
+    result = remote_push_module.push_branch_to_single_remote(
+        Path("/repo"), "main", remote="origin", timeout_seconds=5.0
+    )
+
+    assert result.status == remote_push_module.PushStatus.AUTH_FAILED
+    assert result.remote == "origin"
+    assert result.branch == "main"
+
+
 def test_remote_target_name_default_is_origin() -> None:
     """Default remote name is ``origin``."""
     cfg = _config(enabled=True, remote="upstream")

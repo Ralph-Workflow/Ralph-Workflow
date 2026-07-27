@@ -244,7 +244,11 @@ def auto_integrate_on_phase_transition(
         # nothing.
         refresh = _refresh_target(config, root, target)
         target_sha = branch_sha(root, target)
-        if target_sha is not None and target_sha == get_head_sha(root):
+        if (
+            target_sha is not None
+            and target_sha == get_head_sha(root)
+            and state.last_remote_sync != REMOTE_PUSH_REJECTED
+        ):
             # Fully integrated and landed: the frequent-boundary case.
             # Quiet only while the refreshed pointer that verdict was
             # read through can be trusted (see ``record_when_stale``).

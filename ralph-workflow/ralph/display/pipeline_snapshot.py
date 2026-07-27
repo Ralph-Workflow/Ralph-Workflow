@@ -93,3 +93,4 @@ class PipelineSnapshot:
     #: Latest opt-in remote-sync outcome, kept separate from the free-form
     #: push summary so both live and completion surfaces render it uniformly.
     auto_integrate_remote_sync: str | None = None
+    auto_integrate_remote: str | None = None

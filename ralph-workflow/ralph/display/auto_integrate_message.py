@@ -63,7 +63,9 @@ def _push_suffix(push: str | None) -> str:
     return f" [push: {push}]" if push else ""
 
 
-def _remote_suffix(remote_sync: str | None) -> str:
+def _remote_suffix(
+    remote_sync: str | None, remote: str | None = None, target: str | None = None
+) -> str:
     """Append the opt-in remote-sync verb, when one was recorded.
 
     The verb is one of the ``REMOTE_*`` constants in
@@ -78,7 +80,7 @@ def _remote_suffix(remote_sync: str | None) -> str:
     if remote_sync == _ACTION_PULLED:
         return " [remote: pulled]"
     if remote_sync == _ACTION_RECONCILED:
-        return " [remote: reconciled with origin]"
+        return f" [remote: reconciled with {remote or 'origin'}/{target or 'target'}]"
     if remote_sync == _ACTION_PUSHED:
         return " [remote: pushed]"
     if remote_sync == _ACTION_PUSH_REJECTED:
@@ -95,6 +97,7 @@ def format_auto_integrate_message(
     refresh: str | None = None,
     push: str | None = None,
     remote_sync: str | None = None,
+    remote: str | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
@@ -158,7 +161,9 @@ def format_auto_integrate_message(
     else:
         message = f"{normalized}"
 
-    return message + _refresh_suffix(refresh) + _push_suffix(push) + _remote_suffix(remote_sync)
+    return message + _refresh_suffix(refresh) + _push_suffix(push) + _remote_suffix(
+        remote_sync, remote, target
+    )
 
 
 __all__ = ["format_auto_integrate_message"]

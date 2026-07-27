@@ -1,51 +1,7 @@
-"""Opt-in remote sync helpers for the auto-integration step.
+"""Fail-open, opt-in pull, reconcile, push, retry, and wait helpers.
 
-The shipped auto-integration step (Part A in ``PRODUCT_CRITERIA.md``) is
-strictly local: a Ralph run on a feature branch continuously rebases onto
-the local mainline, resolves conflicts in place, and fast-forwards the
-local mainline ref to the feature tip. Nothing it does depends on -- or
-reaches -- a remote.
-
-This module adds the **opt-in remote sync tier** (Part B): when
-``auto_integrate_remote_sync_enabled = true``, the run also keeps the
-local mainline in step with ``auto_integrate_remote_target`` (default
-``origin``) through a throttled pull, a bounded reconcile-after-push
-loop, and an optional end-of-run waiting state. With the flag false
-(default), every helper here short-circuits to its strict-local cousin
-in :mod:`ralph.pipeline.auto_integrate`, so git behavior is
-byte-identical to today's run.
-
-Vocabulary:
-
-* **target** -- the shared integration *branch* resolved exactly as in
-  Part A: ``auto_integrate_target`` if set, else ``origin/HEAD`` ->
-  ``main`` -> ``master``.
-* **remote target** -- the configured remote name to sync that branch
-  with (``auto_integrate_remote_target``, default ``"origin"``). The
-  branch name on the remote is the **same** target name; the synced
-  ref pair is always ``refs/heads/<target>`` <-> ``<remote>/<target>``.
-
-The module is fail-open at every boundary: a remote that is down, an
-auth failure, a hook rejection, an absent remote, a missing remote
-branch and a non-fast-forward push all degrade to local-only
-integration with a recorded skip reason. ``RebaseState.last_reason``
-and the durable ``IntegrationRecord`` carry the cause so the operator
-can tell *why* the remote step degraded.
-
-Tiers:
-* :func:`pull_and_reconcile_target` -- the periodic pull side (S-3).
-* :func:`push_target_after_landing` -- the after-landing push side (S-4).
-* :func:`reconcile_after_rejected_push` -- the rejected-push loop (S-5).
-* :class:`RemoteBackoffState` -- per-(root, remote, target) backoff (S-6).
-* :func:`wait_for_remote_publish` -- the end-of-run waiting state (S-7).
-
-State recording (S-8) extends :class:`ralph.pipeline.rebase_state.
-RebaseState` with ``last_remote_sync`` carrying the latest pull /
-reconcile / push / create / pending-push outcome; the existing
-``last_push`` field carries the legacy single-push summary. The
-display phrase mapping in :mod:`ralph.display.auto_integrate_message`
-renders the new outcomes identically to the live line and the
-completion summary.
+Remote work is disabled by default. When enabled, every operation records a
+bounded outcome and leaves local integration intact on failure.
 """
 
 from __future__ import annotations
@@ -567,18 +523,21 @@ def push_target_after_landing(
 
     # Resolve dynamically so test monkeypatch on ralph.git.remote_push
     # is observed by both production code and tests.
-    summary = _remote_push_module.push_branch_to_single_remote(
+    result = _remote_push_module.push_branch_to_single_remote(
         repo_root,
         target,
         remote=chosen_remote,
         timeout_seconds=float(push_timeout_seconds(config)),
     )
-    pending = _parse_push_summary(summary, target=target, remote=chosen_remote)
+    typed_result = _coerce_push_result(result, remote=chosen_remote, target=target)
     return record.model_copy(
         update={
-            "last_push": summary,
-            "last_remote_sync": pending.last_remote_sync,
-            "last_reason": pending.last_reason or record.last_reason,
+            "last_push": typed_result.summary,
+            "last_remote": typed_result.remote,
+            "last_remote_sync": _remote_sync_status(typed_result.status),
+            "last_reason": (
+                None if typed_result.success else typed_result.detail or typed_result.status.value
+            ),
         },
     )
 
@@ -596,20 +555,30 @@ def _any_push_enabled(config: object) -> bool:
     return isinstance(legacy, bool) and legacy
 
 
-def _parse_push_summary(summary: str, *, target: str, remote: str) -> RebaseState:
-    """Translate a push summary into the recorded ``last_remote_sync``."""
-    if summary == f"pushed {target} to {remote}":
-        return RebaseState(last_remote_sync=REMOTE_PUSHED)
-    if summary == f"remote '{remote}' not configured":
-        return RebaseState(
-            last_remote_sync=REMOTE_NO_REMOTE,
-            last_reason=f"remote '{remote}' not configured",
-        )
-    if summary.startswith("push of "):
-        detail = summary[len("push of ") :]
-        reason = f"push rejected: {detail}"
-        return RebaseState(last_remote_sync=REMOTE_PUSH_REJECTED, last_reason=reason)
-    return RebaseState(last_remote_sync=REMOTE_PUSH_REJECTED, last_reason=summary)
+def _coerce_push_result(
+    result: _remote_push_module.PushResult | str, *, remote: str, target: str
+) -> _remote_push_module.PushResult:
+    """Keep legacy test doubles at the public helper boundary during migration."""
+    if isinstance(result, _remote_push_module.PushResult):
+        return result
+    if result == f"pushed {target} to {remote}":
+        return _remote_push_module.PushResult(_remote_push_module.PushStatus.PUSHED, remote, target)
+    if result == f"remote '{remote}' not configured":
+        return _remote_push_module.PushResult(_remote_push_module.PushStatus.MISSING_REMOTE, remote, target)
+    return _remote_push_module.PushResult(
+        _remote_push_module.PushStatus.NON_FAST_FORWARD, remote, target, result
+    )
+
+
+def _remote_sync_status(status: _remote_push_module.PushStatus) -> str:
+    """Project typed push facts into the durable remote-sync outcome."""
+    if status is _remote_push_module.PushStatus.PUSHED:
+        return REMOTE_PUSHED
+    if status is _remote_push_module.PushStatus.CREATED:
+        return REMOTE_CREATED
+    if status is _remote_push_module.PushStatus.MISSING_REMOTE:
+        return REMOTE_NO_REMOTE
+    return REMOTE_PUSH_REJECTED
 
 
 # ----- Rejected-push reconcile loop -------------------------------------
@@ -635,6 +604,7 @@ def reconcile_after_rejected_push(
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = random.random,
     max_attempts: int = _MAX_REMOTE_SYNC_ATTEMPTS,
+    reintegrate: Callable[[], None] | None = None,
 ) -> RebaseState:
     """Try a bounded reconcile-then-push cycle after a non-fast-forward.
 
@@ -658,10 +628,12 @@ def reconcile_after_rejected_push(
             target=target,
             remote=chosen_remote,
             config=config,
+            reintegrate=reintegrate,
         )
         final_record = final_record.model_copy(
             update={
                 "last_push": outcome.summary,
+                "last_remote": chosen_remote,
                 "last_remote_sync": (
                     REMOTE_PUSHED
                     if outcome.success
@@ -682,6 +654,7 @@ def _attempt_reconcile_and_push(
     target: str,
     remote: str,
     config: UnifiedConfig | None,
+    reintegrate: Callable[[], None] | None,
 ) -> _PushOutcome:
     """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
     refresh = refresh_target_from_remote(
@@ -706,17 +679,21 @@ def _attempt_reconcile_and_push(
         reconciled, reason = reconcile_target_onto_remote(repo_root, target, remote)
         if not reconciled:
             return _PushOutcome(success=False, summary=reason, pushed=False)
-    summary = _remote_push_module.push_branch_to_single_remote(
+    if reintegrate is not None:
+        reintegrate()
+    result = _remote_push_module.push_branch_to_single_remote(
         repo_root,
         target,
         remote=remote,
         timeout_seconds=float(push_timeout_seconds(config)),
     )
-    if summary == f"pushed {target} to {remote}":
-        return _PushOutcome(success=True, summary=summary, pushed=True, created_remote_branch=False)
-    if summary.startswith("push of "):
-        return _PushOutcome(success=False, summary=summary, pushed=True)
-    return _PushOutcome(success=False, summary=summary, pushed=False)
+    typed_result = _coerce_push_result(result, remote=remote, target=target)
+    return _PushOutcome(
+        success=typed_result.success,
+        summary=typed_result.summary,
+        pushed=typed_result.status is not _remote_push_module.PushStatus.MISSING_REMOTE,
+        created_remote_branch=typed_result.status is _remote_push_module.PushStatus.CREATED,
+    )
 
 
 # ----- Backoff state ----------------------------------------------------
@@ -895,6 +872,7 @@ def wait_for_remote_publish(
             target=target,
             remote=chosen_remote,
             config=config,
+            reintegrate=None,
         )
         last_summary = outcome.summary
         if outcome.success:

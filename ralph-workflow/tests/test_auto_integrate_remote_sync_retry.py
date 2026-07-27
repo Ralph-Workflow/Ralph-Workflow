@@ -217,6 +217,37 @@ def test_pending_push_state_carry_forward_does_not_terminate() -> None:
     assert rejected_record.last_remote_sync == REMOTE_PUSH_REJECTED
 
 
+def test_phase_transition_retries_pending_push_without_new_commit(
+    monkeypatch,
+) -> None:
+    """S-1: a clean phase boundary retries an eligible pending publication."""
+    from pathlib import Path
+
+    from ralph.pipeline import auto_integrate as mod
+    from ralph.pipeline.rebase_state import RebaseState
+
+    root = Path("/repo")
+    monkeypatch.setattr(Path, "exists", lambda self: self == root / ".git")
+    monkeypatch.setattr(mod, "resolve_integration_target", lambda *_a: "main")
+    monkeypatch.setattr(mod, "_worktree_is_clean", lambda *_a: True)
+    monkeypatch.setattr(mod, "_refresh_target", lambda *_a: None)
+    monkeypatch.setattr(mod, "branch_sha", lambda *_a: "same")
+    monkeypatch.setattr(mod, "get_head_sha", lambda *_a: "same")
+    called: list[RebaseState] = []
+    monkeypatch.setattr(
+        mod,
+        "auto_integrate_after_commit",
+        lambda *_a, **_kw: called.append(_a[2]) or _a[2],
+    )
+
+    class Scope:
+        root = "/repo"
+
+    pending = RebaseState(last_remote_sync=REMOTE_PUSH_REJECTED, last_target="main")
+    mod.auto_integrate_on_phase_transition(_config(), Scope(), pending)
+    assert called == [pending]
+
+
 def test_backoff_state_key_set_is_bounded() -> None:
     """AC-37/lifecycle audit: the FIFO cap holds the key set bounded."""
     clock = _FakeClock(0.0)

@@ -626,6 +626,7 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         refresh=outcome.last_refresh,
         push=outcome.last_push,
         remote_sync=outcome.last_remote_sync,
+        remote=outcome.last_remote,
     )
     # A skip or conflict means no integration happened this commit; an
     # operator who expects continuous integration must not lose that
