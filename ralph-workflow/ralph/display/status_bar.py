@@ -1025,10 +1025,7 @@ def _prune_optional_segments(
     return keep
 
 
-def _resolve_attention_state(
-    model: StatusBarModel,
-    now_monotonic: float | None,
-) -> str | None:
+def _resolve_attention_state(model: StatusBarModel) -> str | None:
     """Return the active attention state for the bar.
 
     The ``attention`` slot in the pushed model is the SOLE source
@@ -1050,11 +1047,6 @@ def _resolve_attention_state(
         model: Status bar view-model carrying the attention slot
             (pushed operator state OR the host-substituted
             watchdog-sourced value).
-        now_monotonic: Currently unused (reserved for future
-            derivations; the stall signal is sourced from the
-            watchdog, NOT a display-side gap). Retained in the
-            signature for forward-compatibility.
-
     Returns:
         ``None`` (blank slot, healthy run) or one of the named
         attention values. The returned value is always a key of
@@ -1086,7 +1078,6 @@ def _append_attention_slot(
     text: Text,
     model: StatusBarModel,
     ctx: DisplayContext,
-    now_monotonic: float | None,
     separator: str,
 ) -> None:
     """Render the reserved attention slot at the front of the bar.
@@ -1099,7 +1090,7 @@ def _append_attention_slot(
     lands at a byte-stable position whether the slot is empty or
     populated.
     """
-    attention_state = _resolve_attention_state(model, now_monotonic)
+    attention_state = _resolve_attention_state(model)
     attention_slot_width = _attention_slot_reserved_width(ctx)
     if attention_state is not None:
         label, glyph_key, style = ATTENTION_PRESENTATION[attention_state]
@@ -1230,7 +1221,7 @@ def render_status_bar(
     # reserved width is the worst case across the four attention
     # states so the trailing separator lands at a byte-stable position
     # whether the slot is empty or populated.
-    _append_attention_slot(text, model, ctx, now_monotonic, separator)
+    _append_attention_slot(text, model, ctx, separator)
     if model.integration_alert:
         # The alert LEADS the bar so an unresolved integration conflict
         # is visible at every width; the final width clamp below still

@@ -1636,7 +1636,10 @@ class TestNoExcludedEmitMethod:
 def _parallel_display_imports(path: pathlib.Path) -> tuple[tuple[int, tuple[str, ...]], ...]:
     """Return AST-accurate direct imports from a file that needs inspection."""
     source = _read(path)
-    if "from ralph.display.parallel_display import" not in source:
+    if not re.search(
+        r"from ralph\.display\.parallel_display import(?:\s+emit_|\s*\([^)]*\bemit_)",
+        source,
+    ):
         return ()
     try:
         tree = _parse(path)

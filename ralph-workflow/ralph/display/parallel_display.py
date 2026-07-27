@@ -1928,6 +1928,9 @@ class ParallelDisplay:
         It is called from the subscriber thread (indirectly from the watchdog
         emit path), so the dedicated lock keeps Status Bar reads race-free.
         ``None`` clears the stall.
+
+        # ponytail: one run-level slot is last-writer-wins during fan-out;
+        # track per-unit stalls only if concurrent stalls become an operator hazard.
         """
         with self._watchdog_attention_lock:
             self._watchdog_attention = value
