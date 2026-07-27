@@ -1,40 +1,89 @@
 # =============================================================================
-# OPTIONAL OVERRIDE FILE -- usually you do NOT need to edit this.
+#  Ralph Workflow -- project-local configuration
+#  .agent/ralph-workflow.toml  (relative to your project root)
 # =============================================================================
-# Location: .agent/ralph-workflow.toml  (relative to your project root)
 #
-# This file overrides the user-global ~/.config/ralph-workflow.toml.
-# Values here take precedence over the global file.
+#  YOU USUALLY DO NOT NEED THIS FILE. `ralph --init` seeds it with working
+#  defaults, and every value here just overrides the same key in the
+#  user-global ~/.config/ralph-workflow.toml.
 #
-# Most projects never touch this file. Ralph Workflow seeds a working
-# default from the bundled template at `ralph --init` time and the bundled
-# defaults are tuned for the default-active `claude` agent so a one-agent
-# first run works with no project-local edits at all.
+#  Edit it when THIS project needs a different model than your global setup
+#  -- that is section 1 below, and it is the only common reason to be here.
 #
-# If you DO edit it, the same two sections as the user-global file are
-# required when this file is in use:
+#     1. CHAINS  -- which agent/model does which job, for this project
+#     2. DRAINS  -- which chain runs which phase, for this project
 #
-#   1. [agents.*]  -- an uncommented block here REPLACES the user-global
-#                     active agent for this project. Most projects leave
-#                     the global agent alone.
-#   2. [agent_chains] -- per-project chain overrides win over the user-global
-#                       chains. Most projects leave the global chains alone.
+#  Everything past the OPTIONAL banner is machinery with a working default.
+#  You can stop reading at that banner.
 #
-# Every other section below is OPTIONAL with a working default -- only edit
-# it if you know you need it.
+# =============================================================================
+
+
+# =============================================================================
+# 1. CHAINS -- which agent/model does which job, for THIS project.
+# =============================================================================
+# A chain is an ORDERED FALLBACK LIST. The first entry is what actually runs;
+# the rest are tried, in order, only if it fails or exhausts its retries.
 #
-# Every non-secret field is listed below with its default value, commented out.
-# Uncomment and edit only the fields you want to change; everything else keeps
-# its documented default automatically.
+# What belongs where:
+#   planning, analysis  ->  your most capable model -- these phases review
+#                           work and catch mistakes.
+#   development         ->  a strong coder model -- this phase edits your files.
+#   commit              ->  something small, fast and cheap -- it only writes
+#                           commit messages.
 #
-# For MCP servers and web search, edit .agent/mcp.toml (project-local)
-# or ~/.config/ralph-workflow-mcp.toml (user-global).
+# Each entry is `agent/model`. One example per supported agent:
+#   claude/opus                          codex/gpt-5.4[effort=high]
+#   claude-headless/sonnet               opencode/openai/gpt-5.4
+#   cursor/claude-opus-4-8[effort=high]  nanocoder/ollama/llama3.1
+#   pi/anthropic/claude-sonnet-4:high    agy/"Claude Sonnet 4.6 (Thinking)"
+# Full per-agent syntax: docs/sphinx/agent-compatibility.md
+
+[agent_chains]
+planning = ["claude/opus"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
+commit = ["claude/haiku"]
+
+# Fallbacks are opt-in. The defaults above name only `claude`, so a one-agent
+# install works out of the box. To add one: install the CLI, confirm it is on
+# PATH, then extend the list:
+#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
+#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/configuration.md#ccs_aliases
+
+
+# =============================================================================
+# 2. DRAINS -- which chain runs which pipeline phase, for THIS project.
+# =============================================================================
+# A drain is a routing label: `phase = "chain name from section 1"`.
+# The bundled pipeline uses exactly this set. Change a value only to point a
+# phase at a different chain.
+
+[agent_drains]
+planning = "planning"
+planning_analysis = "analysis"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+analysis = "analysis"
+commit = "commit"
+
+
+# =============================================================================
+# OPTIONAL -- everything below this line has a working default.
+# Skip it unless you know you need something here.
+#
+# From here down every key is shown commented out at its default value;
+# uncomment only the ones you want to change. MCP servers and web search
+# live in .agent/mcp.toml (or ~/.config/ralph-workflow-mcp.toml), not here.
+# =============================================================================
 
 # -----------------------------------------------------------------------------
-# ACTIVE AGENT OVERRIDE (REQUIRED ONLY IF THIS PROJECT SWITCHES AGENTS)
+# AGENT CLI DEFINITIONS -- how to invoke each coding-agent CLI, for THIS project.
 # -----------------------------------------------------------------------------
-# [agents.*] -- Agent definitions
-# Uncomment and adjust to add or override agents for THIS project only.
+# Transport plumbing (binary name, flags, output parser), not a preference.
+# Uncommenting a block here REPLACES the user-global active agent for this
+# project only. Most projects leave the global agent alone.
 
 # [agents.claude]
 # cmd = "claude"
@@ -97,59 +146,6 @@
 # session_flag = "--session {}"
 # can_commit = true
 # display_name = "Pi"
-
-# -----------------------------------------------------------------------------
-# PROJECT-LOCAL CHAIN OVERRIDES (REQUIRED ONLY IF THIS PROJECT CHANGES FALLBACKS)
-# -----------------------------------------------------------------------------
-# [agent_chains.*] -- Named reusable chain definitions (list of agent names)
-#
-# Each chain is an ORDERED FALLBACK LIST: Ralph Workflow tries the first agent, and
-# if it fails (or exhausts its retries) it moves to the next one.
-#
-# What KIND of model belongs where (plain language):
-#   - planning / analysis  -> your most capable, reviewer-grade model.
-#   - development          -> a strong coder model.
-#   - commit               -> a small/cheap/fast model is fine.
-#
-# The bundled defaults below use ONLY the default-active `claude` agent
-# so a fresh first-run with just Claude installed works out of the box.
-# To add a fallback agent, install it, confirm `which <binary>` works, then
-# extend the chain's list. See docs/sphinx/agent-compatibility.md for the
-# per-agent model-string syntax.
-
-[agent_chains]
-planning = ["claude/opus"]
-development = ["claude/sonnet"]
-analysis = ["claude/opus"]
-commit = ["claude/haiku"]
-
-# After you install opencode and confirm `opencode` is on PATH:
-#   development = ["claude/sonnet", "opencode/openai/gpt-5.4"]
-# After you install codex:
-#   development = ["claude/sonnet", "codex"]
-# CCS alternative example: planning = ["ccs/work"]
-# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
-
-# -----------------------------------------------------------------------------
-# PROJECT-LOCAL DRAIN-TO-CHAIN BINDINGS (REQUIRED ONLY IF THIS PROJECT CHANGES ROUTING)
-# -----------------------------------------------------------------------------
-# [agent_drains.*] -- Drain-to-chain bindings for pipeline drains
-# A drain is a ROUTING LABEL that binds a pipeline phase to a chain.
-# IMPORTANT: the bundled pipeline uses the drain set below.
-
-[agent_drains]
-planning = "planning"
-planning_analysis = "analysis"
-development = "development"
-development_analysis = "analysis"
-development_commit = "commit"
-analysis = "analysis"
-commit = "commit"
-
-# =============================================================================
-# OPTIONAL -- everything below this line has a working default.
-# Skip this section unless you know you need it.
-# =============================================================================
 
 # Edit this only if you need to change Ralph Workflow's normal workflow settings.
 # -----------------------------------------------------------------------------
