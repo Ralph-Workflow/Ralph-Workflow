@@ -2170,8 +2170,10 @@ class ParallelDisplay:
         """
         timestamp = self._format_timestamp(self._clock())
         body = f"{transition} phase={phase}"
-        if agent_name is not None:
-            body = f"{body} agent={agent_name}"
+        # The record writer already carries the per-unit identity in its
+        # structured ``agent=`` field.  The lifecycle body stays canonical
+        # rather than repeating that identity as live chrome.
+        del agent_name
         # wt-028-display S-5 (AC-04): every unit's last-known phase
         # state is cached here so subsequent ``_append_recorded_entry``
         # calls (for ordinary activity events) can populate their

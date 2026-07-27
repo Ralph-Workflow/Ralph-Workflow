@@ -975,3 +975,4 @@ def test_production_path_text_thinking_companion_deduped_on_live_and_record(
         f"DA-002: live log body appears {live_log.count(dup_body)} times; "
         f"expected exactly 1:\n{live_log}"
     )
+
