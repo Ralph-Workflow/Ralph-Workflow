@@ -15,6 +15,8 @@ here so the rendered record and the live log can never drift.
 
 from __future__ import annotations
 
+import re
+
 #: Parser-channel prefixes that must NEVER reach an operator-facing
 #: surface. The four documented kinds in their short form, with the
 #: trailing colon and a single separating space. Agents that emit
@@ -45,6 +47,11 @@ _PARSER_CHANNEL_PREFIXES_SPACELESS: tuple[str, ...] = (
 )
 
 
+_LIVE_BADGE_PREFIX = re.compile(
+    r"^(?:[\u25d0\u25d1\u25d2\u25d3]\s+RUN\s+(?:\d{2}:\d{2}:\d{2}\s+)?\S+\s+)+"
+)
+
+
 def strip_parser_channel_prefix(content: str) -> str:
     """Return ``content`` with a leading parser-channel prefix removed.
 
@@ -62,6 +69,7 @@ def strip_parser_channel_prefix(content: str) -> str:
     remainder is empty / whitespace prefixed, is returned
     unchanged.
     """
+    content = _LIVE_BADGE_PREFIX.sub("", content)
     for prefix in _PARSER_CHANNEL_PREFIXES:
         if content.startswith(prefix):
             return content[len(prefix):]

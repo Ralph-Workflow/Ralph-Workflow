@@ -165,6 +165,44 @@ def test_quiet_mode_writes_rendered_writer(tmp_path: Path) -> None:
     assert "quiet event" in body
 
 
+def test_rendered_record_regression_strips_progress_badge_and_channel_chrome(tmp_path: Path) -> None:
+    """S-2: record entries retain one human body, not a live progress companion."""
+    pd, _buf = _make_display(tmp_path)
+    pd.emit_parsed_event(
+        unit_id="pi/model",
+        kind=ActivityEventKind.TOOL_USE,
+        content="◐ RUN 13:45:26 pi/model tool_use:read_file (path=ralph/display.py)",
+        metadata={},
+    )
+    pd.stop()
+    record = (
+        tmp_path / ".agent" / "raw" / f"{safe_id_for('pi/model')}.rendered.log"
+    ).read_text(encoding="utf-8")
+    assert "read_file (path=ralph/display.py)" in record
+    assert "◐ RUN" not in record
+    assert "tool_use:" not in record
+    assert record.count("[") == 1
+    assert record.count("agent=pi/model") == 1
+
+
+def test_rendered_record_regression_condenses_oversized_body_to_verbatim_log(tmp_path: Path) -> None:
+    """S-3: the record uses the shared condenser and preserves raw content."""
+    pd, _buf = _make_display(tmp_path)
+    body = "x" * 10_000
+    pd.emit_parsed_event(
+        unit_id="claude",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content=body,
+        metadata={},
+    )
+    pd.stop()
+    raw_dir = tmp_path / ".agent" / "raw"
+    record = (raw_dir / f"{safe_id_for('claude')}.rendered.log").read_text(encoding="utf-8")
+    assert "see .agent/raw/claude.log" in record
+    assert len(record) < len(body)
+    assert (raw_dir / "claude.log").exists()
+
+
 def test_drop_unit_flushes_rendered_writer(tmp_path: Path) -> None:
     """``drop_unit`` flushes the writer before discarding it."""
     pd, _buf = _make_display(tmp_path)

@@ -2103,9 +2103,25 @@ class ParallelDisplay:
                 if iter_ is None:
                     iter_ = cached_iter
 
+        overflow = self._get_overflow_log(unit_id)
+        visible_body, condensed = cast(
+            "tuple[str, bool]",
+            condense_content(
+                body,
+                options=CondenseOptions(
+                    soft_limit=self._ctx.condenser_soft_limit,
+                    hard_limit=self._ctx.condenser_hard_limit,
+                    overflow_ref=overflow.relative_reference(self._workspace_root),
+                ),
+            ),
+        )
+        # The live presentation seam already preserves the unabridged body
+        # in this same per-unit verbatim log. The record shares that reference;
+        # writing again would duplicate the capture.
+        del condensed
         event = make_event_for_emit(
             event_kind,
-            body,
+            visible_body,
             timestamp=timestamp,
             metadata=metadata or {},
             source=unit_id,
