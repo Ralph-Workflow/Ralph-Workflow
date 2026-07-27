@@ -43,6 +43,10 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(opencode): OpenCode tool calls fingerprint per tool, so the watchdog stops killing healthy agents** — `_resolve_tool_name_and_args` read only the top level, but OpenCode carries the tool name and arguments inside `part`, so every call fingerprinted as `("unknown", {})` and N calls to N *different* tools tripped `REPEATED_IDENTICAL_TOOL_CALL`. Replaying the captured raw logs: 8 of 19 runs tripped before, 0 after (1 distinct fingerprint before, 279 after). Also: an errored tool now classifies as `ERROR_LINE` (so `REPEATED_ERROR_LOOP` is reachable on this transport) and keeps its dispatch visible, `tool_result` no longer double-feeds the breaker, the step id is read from `part.id`, integer epoch timestamps are honored, and OpenCode API errors report `error.data.message` instead of `"APIError"`. Commit `5793de043`. Locked by `tests/agents/idle_watchdog/test_opencode_tool_call_fingerprints.py`, `tests/agents/parsers/test_opencode_uses_ndjson_base.py`, and `tests/agents/parsers/test_parse_error_extraction.py`.
+
 ## [0.9.4] - 2026-07-26
 
 Patch release. `__version__` moved from `0.9.3` to `0.9.4` in
