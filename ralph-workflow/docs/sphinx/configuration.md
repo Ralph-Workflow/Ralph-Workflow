@@ -357,8 +357,8 @@ commits, and a routine nothing-to-do there is not a fault:
   the commit seam. The other case that deliberately breaks the silence
   is an
   already-integrated tip read through an *unhealthy* refresh --
-  `origin unreachable`, `diverged from origin`, `no local branch`, `no remote
-  branch`, `no remote configured`,
+  `origin unreachable`, `diverged from origin`, `local ahead of remote`,
+  `no local branch`, `no remote branch`, `no remote configured`,
   `no origin remote`, or
   `refresh suppressed by throttle` -- which is recorded as a
   `no commits beyond target` skip carrying that refresh outcome,

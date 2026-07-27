@@ -258,3 +258,66 @@ def test_backoff_state_key_set_is_bounded() -> None:
     # Internal store stays at the cap.
     assert len(state._consecutive) <= 4
     assert len(state._last_attempt) <= 4
+
+
+def test_phase_transition_retries_timeout_publication_without_new_commit(monkeypatch) -> None:
+    """S-1: any typed failed push, not just a rejection, stays pending."""
+    from pathlib import Path
+
+    from ralph.git.remote_push import PushStatus
+    from ralph.pipeline import auto_integrate as mod
+    from ralph.pipeline.rebase_state import RebaseState
+
+    root = Path("/repo")
+    monkeypatch.setattr(Path, "exists", lambda self: self == root / ".git")
+    monkeypatch.setattr(mod, "resolve_integration_target", lambda *_a: "main")
+    monkeypatch.setattr(mod, "_worktree_is_clean", lambda *_a: True)
+    monkeypatch.setattr(mod, "branch_sha", lambda *_a: "same")
+    monkeypatch.setattr(mod, "get_head_sha", lambda *_a: "same")
+    retried: list[RebaseState] = []
+    monkeypatch.setattr(
+        mod,
+        "retry_pending_remote_publish",
+        lambda *_a: retried.append(_a[3]) or _a[3],
+    )
+
+    class Scope:
+        root = "/repo"
+
+    pending = RebaseState(last_target="main", last_push_status=PushStatus.TIMEOUT.value)
+    assert mod.auto_integrate_on_phase_transition(_config(), Scope(), pending) == pending
+    assert retried == [pending]
+
+
+def test_enabled_custom_remote_phase_transition_skips_legacy_origin_refresh(monkeypatch) -> None:
+    """S-2: configured remote sync never adds the legacy origin probe."""
+    from pathlib import Path
+
+    from ralph.pipeline import auto_integrate as mod
+    from ralph.pipeline.rebase_state import RebaseState
+
+    root = Path("/repo")
+    monkeypatch.setattr(Path, "exists", lambda self: self == root / ".git")
+    monkeypatch.setattr(mod, "resolve_integration_target", lambda *_a: "main")
+    monkeypatch.setattr(mod, "_worktree_is_clean", lambda *_a: True)
+    monkeypatch.setattr(mod, "branch_sha", lambda *_a: "same")
+    monkeypatch.setattr(mod, "get_head_sha", lambda *_a: "same")
+    monkeypatch.setattr(
+        mod,
+        "retry_pending_remote_publish",
+        lambda *_a: None,
+    )
+    monkeypatch.setattr(
+        mod,
+        "_refresh_target",
+        lambda *_a: (_ for _ in ()).throw(AssertionError("legacy origin refresh ran")),
+    )
+
+    class Scope:
+        root = "/repo"
+
+    record = mod.auto_integrate_on_phase_transition(
+        _config(auto_integrate_remote_target="upstream"), Scope(), RebaseState()
+    )
+    assert record is not None
+    assert record.last_reason == "no commits beyond target"

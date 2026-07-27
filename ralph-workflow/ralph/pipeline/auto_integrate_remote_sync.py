@@ -82,17 +82,10 @@ REMOTE_REJECTED_BY_HOOK = "rejected by remote hook"
 REMOTE_NON_FAST_FORWARD = "non-fast-forward"
 REMOTE_TIMEOUT = "timeout"
 
-#: Maximum per-seam remote-side reconcile attempts. This bounds one
-#: SEAM's effort -- pushing past it never disables a future seam's
-#: attempt. Mirrors ``_MAX_INTEGRATION_ATTEMPTS`` to keep the
-#: seam-budget vocabulary consistent.
+#: Per-seam remote reconcile cap; later seams always retry.
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
 
-#: Hard cap on the number of tracked ``(root, remote, target)``
-#: backoff windows, mirroring the boundary refresh throttle. The map
-#: is a long-lived mutable accumulator on ``self``, so
-#: ``ralph/testing/audit_resource_lifecycle.py`` requires an explicit
-#: bound: entries are evicted FIFO once this many keys are live.
+#: FIFO cap for tracked ``(root, remote, target)`` backoff windows.
 _MAX_BACKOFF_KEYS = 128
 
 
@@ -441,7 +434,9 @@ class _RemotePullThrottle:
 
     def __init__(self, *, max_tracked_keys: int = _MAX_BACKOFF_KEYS) -> None:
         self._max_tracked_keys = max(1, max_tracked_keys)
-        self._last_pull: OrderedDict[tuple[str, str, str], float] = OrderedDict()  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in arm()
+        self._last_pull: OrderedDict[tuple[str, str, str], float] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in arm()
 
     def should_pull(
         self,
@@ -578,7 +573,9 @@ def _coerce_push_result(
     if result == f"pushed {target} to {remote}":
         return _remote_push_module.PushResult(_remote_push_module.PushStatus.PUSHED, remote, target)
     if result == f"remote '{remote}' not configured":
-        return _remote_push_module.PushResult(_remote_push_module.PushStatus.MISSING_REMOTE, remote, target)
+        return _remote_push_module.PushResult(
+            _remote_push_module.PushStatus.MISSING_REMOTE, remote, target
+        )
     return _remote_push_module.PushResult(
         _remote_push_module.PushStatus.NON_FAST_FORWARD, remote, target, result
     )
@@ -753,8 +750,12 @@ class RemoteBackoffState:
     ) -> None:
         self._clock = clock
         self._max_tracked_keys = max(1, max_tracked_keys)
-        self._consecutive: OrderedDict[tuple[str, str, str], int] = OrderedDict()  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in _enforce_cap()
-        self._last_attempt: OrderedDict[tuple[str, str, str], float] = OrderedDict()  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in _enforce_cap()
+        self._consecutive: OrderedDict[tuple[str, str, str], int] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in _enforce_cap()
+        self._last_attempt: OrderedDict[tuple[str, str, str], float] = (
+            OrderedDict()
+        )  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in _enforce_cap()
 
     @classmethod
     def instance(cls) -> RemoteBackoffState:
@@ -830,7 +831,7 @@ class RemoteBackoffState:
         # cap by 2^N * base so a long consecutive streak never
         # overflows into a multi-hour wait
         exp: int = min(consecutive_value, 16)
-        bumped_exp: int = 2 ** exp
+        bumped_exp: int = 2**exp
         bumped: float = base * float(bumped_exp)
         capped: float = min(ceiling, bumped)
         # multiplicative jitter in [0.5, 1.5)

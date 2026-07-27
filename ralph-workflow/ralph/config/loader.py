@@ -412,7 +412,14 @@ def _maybe_imply_fetch_enabled(data: dict[str, object]) -> None:
         data["auto_integrate_fetch_enabled"] = True
 
 
-def load_config(  # noqa: PLR0912 - branch count grows with each propagation layer and per-layer deprecation sweep; each branch is a distinct guard
+def _apply_cli_overrides(
+    data: dict[str, object], cli_overrides: dict[str, object] | None
+) -> dict[str, object]:
+    """Apply optional highest-precedence CLI settings."""
+    return deep_merge(data, cli_overrides) if cli_overrides else data
+
+
+def load_config(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
     workspace_scope: WorkspaceScope | None = None,
@@ -472,8 +479,7 @@ def load_config(  # noqa: PLR0912 - branch count grows with each propagation lay
             _warn_deprecated_push_enabled(general_layer)
     merged_intermediate = deep_merge(global_data, propagated_data)
     merged_intermediate = deep_merge(merged_intermediate, local_data)
-    if cli_overrides:
-        merged_intermediate = deep_merge(merged_intermediate, cli_overrides)
+    merged_intermediate = _apply_cli_overrides(merged_intermediate, cli_overrides)
     merged_general = merged_intermediate.get("general")
     if isinstance(merged_general, dict):
         _maybe_imply_fetch_enabled(merged_general)
@@ -498,8 +504,7 @@ def load_config(  # noqa: PLR0912 - branch count grows with each propagation lay
     merged = deep_merge(merged, local_data)
 
     # Apply CLI overrides last
-    if cli_overrides:
-        merged = deep_merge(merged, cli_overrides)
+    merged = _apply_cli_overrides(merged, cli_overrides)
 
     try:
         config = UnifiedConfig.model_validate(merged)

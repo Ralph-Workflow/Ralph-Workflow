@@ -57,6 +57,7 @@ from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
     maybe_push_target,
+    retry_pending_remote_publish,
 )
 from ralph.pipeline.auto_integrate_outcome import (
     ACTION_MERGED as _ACTION_MERGED,
@@ -242,20 +243,20 @@ def auto_integrate_on_phase_transition(
         # A stale remote pointer must not let this cheap hook conclude
         # 'nothing to do'. Every free early return above still costs
         # nothing.
-        refresh = _refresh_target(config, root, target)
+        # Opted-in sync owns its configured remote fetch. Do not issue the
+        # legacy origin-only observation alongside it.
+        refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
         target_sha = branch_sha(root, target)
-        if (
-            target_sha is not None
-            and target_sha == get_head_sha(root)
-            and state.last_remote_sync != REMOTE_PUSH_REJECTED
-        ):
-            # Fully integrated and landed: the frequent-boundary case.
-            # Quiet only while the refreshed pointer that verdict was
-            # read through can be trusted (see ``record_when_stale``).
-            return record_when_stale(
-                _record_skip(reason="no commits beyond target", target=target),
-                refresh,
-            )
+        if target_sha is not None and target_sha == get_head_sha(root):
+            pending = retry_pending_remote_publish(config, root, target, state)
+            if pending is not None or state.last_remote_sync != REMOTE_PUSH_REJECTED:
+                # Fully integrated and landed: the frequent-boundary case.
+                # Quiet only while the refreshed pointer that verdict was
+                # read through can be trusted (see ``record_when_stale``).
+                return pending or record_when_stale(
+                    _record_skip(reason="no commits beyond target", target=target),
+                    refresh,
+                )
     except Exception as exc:
         # AC-08: never silently swallow a phase-transition pre-check
         # exception while ``auto_integrate_enabled`` is true. Surface

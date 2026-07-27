@@ -95,6 +95,32 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 
+def retry_pending_remote_publish(
+    config: UnifiedConfig | None,
+    repo_root: Path,
+    target: str,
+    record: RebaseState,
+) -> RebaseState | None:
+    """Retry any typed failed remote publication at a later clean seam."""
+    from ralph.git.remote_push import PushStatus
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        push_target_after_landing,
+        reconcile_after_rejected_push,
+        remote_sync_enabled,
+    )
+
+    if not remote_sync_enabled(config) or record.last_push_status in {
+        None,
+        PushStatus.PUSHED.value,
+        PushStatus.CREATED.value,
+    }:
+        return None
+    retried = push_target_after_landing(config, repo_root, target, record)
+    if retried.last_push_status == PushStatus.NON_FAST_FORWARD.value:
+        return reconcile_after_rejected_push(config, repo_root, target, retried)
+    return retried
+
+
 def fast_forward_target(
     repo_root: Path,
     target: str,
