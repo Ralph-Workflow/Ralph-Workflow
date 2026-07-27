@@ -479,6 +479,30 @@ def _record_attempt_budget_spent(record: RebaseState) -> RebaseState:
     )
 
 
+def _reintegrate_after_remote_reconcile(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    conflict_resolver: ConflictResolver | None,
+    *,
+    refresh: str | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    display: ParallelDisplay | None,
+) -> bool:
+    """Rebase and land the feature after a target-to-remote reconciliation."""
+    record, retry = _integrate_once(
+        config,
+        root,
+        target,
+        conflict_resolver,
+        refresh=refresh,
+        rebase_stop_resolver=rebase_stop_resolver,
+        display=display,
+        publish=False,
+    )
+    return record is not None and record.fast_forwarded and not retry
+
+
 def _integrate_once(
     config: UnifiedConfig,
     root: Path,
@@ -489,6 +513,7 @@ def _integrate_once(
     refresh: str | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
+    publish: bool = True,
 ) -> tuple[RebaseState | None, bool]:
     """Run one rebase-or-merge integration and report whether a landing race merits retry."""
     pre_feature_sha = get_head_sha(root)
@@ -614,16 +639,31 @@ def _integrate_once(
         # like ``"Branch is already up-to-date with upstream"``)
         # is scrubbed here. A clean-success state carries no reason.
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
-        # Opt-in configured-remote push. It runs only after the local
-        # fast-forward landed, so remote failure cannot undo local success.
-        # The fail-open helper records its summary without changing this
-        # landing result; disabled sync leaves legacy checkpoints clean.
-        record = maybe_push_target(config, root, target, record)
-        if record.last_push_status == "non_fast_forward":
-            # A non-fast-forward push is a remote race, not a failed local
-            # landing. Spend only this seam's bounded retry budget trying to
-            # reconcile and publish; the returned record remains fail-open.
-            record = reconcile_after_rejected_push(config, root, target, record)
+        if publish:
+            # Opt-in configured-remote push. It runs only after the local
+            # fast-forward landed, so remote failure cannot undo local success.
+            # The fail-open helper records its summary without changing this
+            # landing result; disabled sync leaves legacy checkpoints clean.
+            record = maybe_push_target(config, root, target, record)
+            if record.last_push_status == "non_fast_forward":
+                # A non-fast-forward push is a remote race, not a failed local
+                # landing. Re-integrate the feature after reconciling the target
+                # before retrying publication, without recursively publishing.
+                record = reconcile_after_rejected_push(
+                    config,
+                    root,
+                    target,
+                    record,
+                    reintegrate=lambda: _reintegrate_after_remote_reconcile(
+                        config,
+                        root,
+                        target,
+                        conflict_resolver,
+                        refresh=refresh_outcome,
+                        rebase_stop_resolver=rebase_stop_resolver,
+                        display=display,
+                    ),
+                )
         return record, False
     except BaseException:
         # R6/AC-06: terminal-state verification on the EXCEPTION

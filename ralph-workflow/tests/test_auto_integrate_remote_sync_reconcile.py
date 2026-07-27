@@ -205,8 +205,9 @@ def test_rejected_push_reintegrates_feature_before_repush(
         lambda *_a, **_kw: events.append("push") or "pushed main to origin",
     )
 
-    def integrate(*_a: object, **_kw: object) -> None:
+    def integrate(*_a: object, **_kw: object) -> bool:
         events.append("feature integration")
+        return True
 
     record = _record()
     mod.reconcile_after_rejected_push(

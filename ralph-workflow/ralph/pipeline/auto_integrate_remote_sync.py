@@ -506,7 +506,7 @@ def reconcile_after_rejected_push(
     *,
     remote: str | None = None,
     max_attempts: int = _MAX_REMOTE_SYNC_ATTEMPTS,
-    reintegrate: Callable[[], None] | None = None,
+    reintegrate: Callable[[], bool] | None = None,
 ) -> RebaseState:
     """Try a bounded reconcile-then-push cycle after a non-fast-forward.
 
@@ -554,7 +554,7 @@ def _attempt_reconcile_and_push(
     target: str,
     remote: str,
     config: UnifiedConfig | None,
-    reintegrate: Callable[[], None] | None,
+    reintegrate: Callable[[], bool] | None,
 ) -> _PushOutcome:
     """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
     refresh = refresh_target_from_remote(
@@ -583,8 +583,12 @@ def _attempt_reconcile_and_push(
         reconciled, reason = reconcile_target_onto_remote(repo_root, target, remote)
         if not reconciled:
             return _PushOutcome(success=False, summary=reason, pushed=False)
-    if reintegrate is not None:
-        reintegrate()
+    if reintegrate is not None and not reintegrate():
+        return _PushOutcome(
+            success=False,
+            summary="feature re-integration after remote reconciliation did not land",
+            pushed=False,
+        )
     result = _remote_push_module.push_branch_to_single_remote(
         repo_root,
         target,
