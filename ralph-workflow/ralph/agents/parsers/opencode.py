@@ -15,6 +15,15 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog import SubagentPidRegistry
 
 
+def _part_id_of(obj: dict[str, object]) -> str:
+    """Return ``part.id`` for an OpenCode event, or ``""`` when absent."""
+    part = obj.get("part")
+    if not isinstance(part, dict):
+        return ""
+    part_id = cast("dict[str, object]", part).get("id")
+    return part_id.strip() if isinstance(part_id, str) else ""
+
+
 class _OpenCodeDispatch:
     """Per-event-type dispatch for OpenCodeParser.
 
@@ -31,7 +40,11 @@ class _OpenCodeDispatch:
         event_type = str(obj.get("type", "unknown"))
 
         if event_type == "step_start":
-            step_id = str(obj.get("id", ""))
+            # OpenCode carries the part id at ``part.id``; there is no
+            # top-level ``id`` on any event it emits. Reading only the top
+            # level left ``_current_part_id`` permanently ``None``, which
+            # silently disabled the whole delta-accumulation path below.
+            step_id = str(obj.get("id", "")) or str(_part_id_of(obj))
             if step_id:
                 self._owner._current_part_id = step_id
             return
@@ -160,6 +173,12 @@ class _OpenCodeDispatch:
             return
 
         if status == "error":
+            # Same reasoning as the ``completed`` branch above: the dispatch
+            # itself is real and MUST stay visible. Emitting only the error
+            # erased the call from the tool timeline, so an errored ``task``
+            # dispatch reported "subagent dispatch was not observed" even
+            # though the subagent was genuinely dispatched.
+            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
             err = str(state_obj.get("error", "tool error"))
             yield AgentOutputLine(type="error", content=err, raw=raw, metadata=metadata)
             return
@@ -232,12 +251,14 @@ class OpenCodeParser(NdjsonParserBase):
     ) -> None:
         super().__init__()
         # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. OpenCode emits structured child-lifecycle events
-        # (child_started/child_progress/child_heartbeat/child_complete)
-        # that the OpenCode strategy ingests into a ChildLivenessRegistry;
-        # the parser-side registry hook is forward-compat for events that
-        # carry an embedded PID. OpenCode's PID stream flows through the
-        # ChildLivenessSubagentPidSource adapter on the OpenCode path.
+        # source label. The OpenCode strategy ingests structured
+        # child-lifecycle events (child_started/child_progress/
+        # child_heartbeat/child_complete) into a ChildLivenessRegistry, and the
+        # parser-side registry hook is forward-compat for events that carry an
+        # embedded PID. Verified against OpenCode 1.17.15: the live runtime
+        # emits NONE of those types and no event carries a PID, so both hooks
+        # are inert today -- real subagent dispatch arrives as a ``task`` tool
+        # call and is classified by ``_opencode_tool_signal`` instead.
         self._subagent_pid_registry = subagent_pid_registry
         self._subagent_source_label = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained

@@ -380,6 +380,9 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
         ActivityEventKind.TOOL_RESULT,
         ActivityEventKind.TOOL_USE,
         ActivityEventKind.TOOL_RESULT,
+        # An errored tool surfaces the dispatch BEFORE its error: the call is
+        # real and must stay on the tool timeline (see OpenCodeParser).
+        ActivityEventKind.TOOL_USE,
         ActivityEventKind.ERROR,
         ActivityEventKind.ERROR,
         ActivityEventKind.TEXT,
@@ -392,7 +395,9 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
     assert entries[0].body.endswith("Inspecting the display.")
     assert entries[5].body == "read"
     assert entries[6].body == "renderer source"
-    assert entries[10].body == "upstream disconnected"
+    assert entries[9].body == "bash"
+    assert entries[10].body == "exit status 1"
+    assert entries[11].body == "upstream disconnected"
 
 
 def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:

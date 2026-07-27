@@ -103,6 +103,39 @@ class TestExtractErrorMessage:
         """{'msg': 'msg-fallback'} -> 'msg-fallback' (generic's obj.get('msg') fallback)."""
         assert extract_error_message({"msg": "msg-fallback"}) == "msg-fallback"
 
+    def test_opencode_api_error_reports_nested_data_message(self) -> None:
+        """OpenCode nests the actionable text at ``error.data.message``.
+
+        A live capture of the real shape::
+
+            {"type": "error", "error": {"name": "APIError",
+             "data": {"message": "This request requires more credits ...",
+                      "statusCode": 402}}}
+
+        Falling straight through to ``name`` reported the operator-useless
+        string "APIError" and dropped the only diagnosable part.
+        """
+        case = {
+            "type": "error",
+            "error": {
+                "name": "APIError",
+                "data": {
+                    "message": (
+                        "This request requires more credits, or fewer max_tokens."
+                    ),
+                    "statusCode": 402,
+                },
+            },
+        }
+
+        assert extract_error_message(case) == (
+            "This request requires more credits, or fewer max_tokens."
+        )
+
+    def test_error_name_still_used_when_no_nested_message(self) -> None:
+        """``error.name`` stays the last resort when nothing deeper exists."""
+        assert extract_error_message({"error": {"name": "APIError"}}) == "APIError"
+
     def test_helper_lives_at_ralph_agents_parsers_base(self) -> None:
         """The helper must be importable from ralph.agents.parsers.base."""
         assert hasattr(base_module, "extract_error_message")

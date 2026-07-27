@@ -17,6 +17,8 @@ Recognised envelope shapes:
   (Claude content_block_start wrapped in stream_event)
 * ``{"event": "tool_use", "tool_name": "...", "arguments": {...}}``
 * ``{"tool": "<name>", "input": {...}}`` (raw provider shorthand)
+* ``{"type": "tool_use", "part": {"type": "tool", "tool": "...",
+  "state": {"input": {...}}}}`` (OpenCode part-nested tool envelope)
 * ``{"type": "tool_execution_start", "toolName": "...", "args": {...}}``
   (pi.dev top-level tool event)
 * ``{"type": "message_update", "assistantMessageEvent":
@@ -127,7 +129,18 @@ def _extract_tool_call_from_dict(
     """
     if not _is_tool_use_dict(obj):
         return None
-    return _resolve_tool_name_and_args(obj)
+    resolved = _resolve_tool_name_and_args(obj)
+    if resolved is None:
+        return None
+    tool_name, tool_args = resolved
+    if tool_name == "unknown" and not tool_args:
+        # Nothing distinguishing was recovered, so every such envelope would
+        # collapse onto ONE fingerprint and N unrelated tool calls would look
+        # to the repetition breaker like one call repeated N times. Skip the
+        # observation instead -- an unreadable envelope is not evidence of a
+        # wedge.
+        return None
+    return resolved
 
 
 def _is_tool_use_dict(obj: dict[str, object]) -> bool:
@@ -153,34 +166,29 @@ def _is_tool_use_dict(obj: dict[str, object]) -> bool:
 def _resolve_tool_name_and_args(
     obj: dict[str, object],
 ) -> tuple[str, dict[str, object]] | None:
+    opencode_part = obj.get("part")
+    if isinstance(opencode_part, dict):
+        return _resolve_opencode_part_tool_call(cast("dict[str, object]", opencode_part))
+
     cursor_tool_call = obj.get("tool_call")
     if isinstance(cursor_tool_call, dict):
         return _resolve_cursor_tool_call(cursor_tool_call)
 
     tool_call = obj.get("toolCall")
     if isinstance(tool_call, dict):
-        tool_call_dict = cast("dict[str, object]", tool_call)
-        tool_name_raw = (
-            tool_call_dict.get("name")
-            or tool_call_dict.get("tool_name")
-            or tool_call_dict.get("tool")
-            or tool_call_dict.get("toolName")
-        )
-        args_field = tool_call_dict.get("input")
-        if not isinstance(args_field, dict):
-            args_field = tool_call_dict.get("arguments")
-        if not isinstance(args_field, dict):
-            args_field = tool_call_dict.get("args")
-        if not isinstance(args_field, dict):
-            args_field = {}
-        if tool_name_raw is None:
-            tool_name = "unknown"
-        elif not isinstance(tool_name_raw, str):
-            return None
-        else:
-            tool_name = tool_name_raw.strip() or "unknown"
-        return tool_name, cast("dict[str, object]", args_field)
+        return _resolve_flat_tool_call(cast("dict[str, object]", tool_call))
 
+    return _resolve_flat_tool_call(obj)
+
+
+def _resolve_flat_tool_call(
+    obj: dict[str, object],
+) -> tuple[str, dict[str, object]] | None:
+    """Resolve ``(name, args)`` from a dict that carries both at its top level.
+
+    Shared by the pi.dev ``toolCall`` wrapper and the plain top-level envelope;
+    both spell the name and the arguments with the same set of aliases.
+    """
     tool_name_raw = (
         obj.get("name") or obj.get("tool_name") or obj.get("tool") or obj.get("toolName")
     )
@@ -196,6 +204,57 @@ def _resolve_tool_name_and_args(
         args_field = obj.get("arguments")
     if not isinstance(args_field, dict):
         args_field = obj.get("args")
+    if not isinstance(args_field, dict):
+        args_field = {}
+    return tool_name, cast("dict[str, object]", args_field)
+
+
+def _resolve_opencode_part_tool_call(
+    part: dict[str, object],
+) -> tuple[str, dict[str, object]] | None:
+    """Extract ``(tool, input)`` from OpenCode's ``part``-nested tool envelope.
+
+    OpenCode carries the tool name and its arguments INSIDE ``part``, never at
+    the top level::
+
+        {"type": "tool_use", "sessionID": "ses_...",
+         "part": {"type": "tool", "tool": "todowrite", "callID": "call_...",
+                  "state": {"status": "completed", "input": {...},
+                            "output": "..."}}}
+
+    Read through the top level (as every other branch here does) and EVERY
+    OpenCode tool call resolves to the same ``("unknown", {})`` fingerprint,
+    so five consecutive calls to five DIFFERENT tools look to
+    :class:`~ralph.agents.idle_watchdog.repetition_tracker.RepetitionTracker`
+    like one identical call repeated five times. The watchdog then fires
+    ``REPEATED_IDENTICAL_TOOL_CALL`` and kills a healthy agent mid-run --
+    observed live against OpenCode 1.17.15 with
+    ``ralph smoke-interactive-opencode``.
+
+    ``callID`` is deliberately NOT part of the fingerprint: it is unique per
+    call, so including it would make every call distinct and disable the
+    breaker for OpenCode entirely.
+
+    Returns ``None`` when the part is not a tool part or carries no usable
+    tool name, so the caller skips the observation rather than feeding the
+    breaker a meaningless blob.
+    """
+    if str(part.get("type", "")) != "tool":
+        return None
+    tool_name_raw = part.get("tool")
+    if not isinstance(tool_name_raw, str):
+        return None
+    tool_name = tool_name_raw.strip()
+    if not tool_name:
+        return None
+
+    args_field = part.get("input")
+    if not isinstance(args_field, dict):
+        state = part.get("state")
+        if isinstance(state, dict):
+            nested = cast("dict[str, object]", state).get("input")
+            if isinstance(nested, dict):
+                args_field = nested
     if not isinstance(args_field, dict):
         args_field = {}
     return tool_name, cast("dict[str, object]", args_field)

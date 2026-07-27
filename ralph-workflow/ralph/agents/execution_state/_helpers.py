@@ -174,6 +174,24 @@ _OPENCODE_CHILD_KIND = {  # bounded-accumulator-ok: static
 _OPENCODE_TOOL_EVENT_TYPES = frozenset({"tool_use", "tool_result"})
 
 
+def _opencode_tool_name(obj: dict[str, object]) -> str | None:
+    """Return the tool name of an OpenCode tool event, or ``None``.
+
+    ``None`` means the event is not an OpenCode tool event at all: a wrong
+    top-level type, a missing/non-dict ``part``, a ``part`` that is not a tool
+    part (e.g. ``step-start``), or a blank tool name.
+    """
+    if str(obj.get("type", "")) not in _OPENCODE_TOOL_EVENT_TYPES:
+        return None
+    part = obj.get("part")
+    if not isinstance(part, dict):
+        return None
+    part_obj = cast("dict[str, object]", part)
+    if str(part_obj.get("type", "")) != "tool":
+        return None
+    return str(part_obj.get("tool", "")).strip() or None
+
+
 def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySignal | None:
     """Classify an OpenCode tool event from its REAL wire shape.
 
@@ -188,20 +206,27 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
     other tool maps to TOOL_USE, which is what ``_tool_activity_seen`` looks
     for. Before this existed, every OpenCode line -- subagent dispatches
     included -- fell through to a plain OUTPUT_LINE.
+
+    A tool whose ``part.state.status`` is ``"error"`` is an ERROR_LINE, not a
+    tool call. This branch runs BEFORE the strategy ever reaches
+    :func:`_error_output_signal`, so without the check here that classifier is
+    unreachable on the OpenCode transport and an MCP retry storm (the
+    ``MCP error -32001: Request timed out`` loop the repeated-error breaker
+    exists to catch) was misrouted into the tool-call dimension.
     """
-    if str(obj.get("type", "")) not in _OPENCODE_TOOL_EVENT_TYPES:
+    tool_name = _opencode_tool_name(obj)
+    if tool_name is None:
         return None
-    part = obj.get("part")
-    if not isinstance(part, dict):
-        return None
-    part_obj = cast("dict[str, object]", part)
-    if str(part_obj.get("type", "")) != "tool":
-        return None
-    tool_name = str(part_obj.get("tool", "")).strip()
-    if not tool_name:
-        return None
+    tool_error = _tool_state_error_message(obj)
+    if tool_error is not None:
+        return AgentActivitySignal(AgentActivityKind.ERROR_LINE, raw=tool_error)
     if tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS:
         return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
+    if str(obj.get("type", "")) == "tool_result":
+        # OpenCode 1.17.x collapses call+result into one ``tool_use`` event, so
+        # this branch is defensive. Classifying a result as TOOL_USE would feed
+        # the tool-call repetition breaker twice for one call.
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
     return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
 
 

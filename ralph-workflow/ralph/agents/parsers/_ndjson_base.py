@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from ._event_classification import is_lifecycle_event
@@ -117,13 +117,22 @@ def _extract_source_timestamp(obj: dict[str, object]) -> str | None:
     clock rather than the display clock. Inspects the conventional
     keys (``timestamp``, ``time``, ``ts``) at the top level so a
     fixture can drive the assertion with ``{"timestamp": "..."}``
-    without re-shaping the wire format. Returns ``None`` for any
-    non-string value, any unparsable string, or any key whose value
-    is empty -- the caller falls back to the display clock on ``None``
-    so a buggy parser cannot silently inject ``[??:??:??]``.
+    without re-shaping the wire format. Numeric epoch values (seconds or
+    milliseconds) are accepted too, because OpenCode stamps every event
+    with an integer epoch-ms. Returns ``None`` for any unparsable string,
+    any implausible epoch, and any key whose value is empty -- the caller
+    falls back to the display clock on ``None`` so a buggy parser cannot
+    silently inject ``[??:??:??]``.
     """
     for key in ("timestamp", "time", "ts"):
         raw = obj.get(key)
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int | float):
+            epoch = _epoch_to_iso(float(raw))
+            if epoch is not None:
+                return epoch
+            continue
         if not isinstance(raw, str) or not raw.strip():
             continue
         candidate = raw.strip()
@@ -133,6 +142,36 @@ def _extract_source_timestamp(obj: dict[str, object]) -> str | None:
             continue
         return candidate
     return None
+
+
+#: Epoch values at or above this bound are milliseconds, not seconds. The
+#: boundary is ~1973 in ms and ~year 5138 in seconds, so no realistic agent
+#: event is misread in either direction.
+_EPOCH_MILLISECONDS_BOUND = 1e11
+
+#: Reject anything that resolves to before 2000-01-01. A transport that puts a
+#: sequence counter (or a duration) under ``time``/``ts`` must keep the
+#: display-clock fallback rather than render a bogus 1970 stamp.
+_EPOCH_SECONDS_FLOOR = 946_684_800.0
+
+
+def _epoch_to_iso(value: float) -> str | None:
+    """Convert a numeric epoch (seconds or milliseconds) to an ISO-8601 string.
+
+    OpenCode stamps every event with ``"timestamp": 1785133508187`` -- an
+    integer epoch in milliseconds. The string-only branch above skipped it, so
+    the DA-002 "preserve the agent's own clock" contract was silently unmet for
+    the whole OpenCode transport and every record fell back to the display
+    clock. Returns ``None`` for values outside the representable range so a
+    garbage number keeps the display-clock fallback rather than raising.
+    """
+    seconds = value / 1000.0 if abs(value) >= _EPOCH_MILLISECONDS_BOUND else value
+    if seconds < _EPOCH_SECONDS_FLOOR:
+        return None
+    try:
+        return datetime.fromtimestamp(seconds, tz=UTC).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 class NdjsonParserBase(ParserTemplateBase):
