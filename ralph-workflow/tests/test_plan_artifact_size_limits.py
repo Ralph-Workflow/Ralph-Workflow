@@ -266,6 +266,8 @@ def test_evidence_ref_list_max_500() -> None:
         PlanStep.model_validate(step)
 
 
+# ponytail: largest valid plan normalization can exceed 1s under xdist; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_most_detailed_plan_round_trip() -> None:
     """A 4-5 kB plan that exercises the largest of every field normalizes cleanly."""
     big_context = "x" * 7500

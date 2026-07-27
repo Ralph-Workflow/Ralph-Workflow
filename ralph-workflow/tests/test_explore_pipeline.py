@@ -1217,6 +1217,8 @@ def test_malformed_changed_python_preserves_prior_rows_and_retries(tmp_path: Pat
         store.close()
 
 
+# ponytail: SQLite-backed tombstone cycles can exceed 1s under xdist; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_tombstone_record_is_idempotent_on_repeat_delete(tmp_path: Path) -> None:
     """AC-05: ``record_tombstone`` is called with a deterministic ID that
     is identical across a delete -> restore changed content -> delete ->

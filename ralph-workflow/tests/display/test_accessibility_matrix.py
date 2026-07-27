@@ -12,7 +12,7 @@ tritanopia). Asserts from each render:
 * hierarchy survives as indentation and headings,
 * the attention slot is still reserved at 40 columns,
 * below the floor the surfaces stay honest in plain minimal form,
-* the live region does not re-emit unchanged content,
+* consecutive direct Status Bar renders of an unchanged model are byte-stable,
 * contrast clears the automated check on dark AND light backgrounds,
 * the identity palette is disjoint from the status-role palette.
 """
@@ -363,7 +363,7 @@ def test_status_bar_and_live_log_answer_operator_jobs_at_40x12() -> None:
 
 
 def test_status_bar_model_push_is_byte_stable_when_unchanged() -> None:
-    """AC-07 acceptance: an unchanged pushed model renders identical bytes at one tick."""
+    """AC-07 acceptance: consecutive direct renders of an unchanged model are byte-stable."""
     ctx = _ctx(width=40, height=12)
     model = _model(attention="waiting")
     first = render_status_bar(model, ctx, now_monotonic=100.0).plain

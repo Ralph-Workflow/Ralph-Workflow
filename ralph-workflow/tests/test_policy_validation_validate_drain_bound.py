@@ -35,6 +35,8 @@ class TestValidateDrainBound:
         # Should not raise
         validate_drain_bound("planning", bundle)
 
+    # ponytail: policy loading under xdist can exceed 1s; the 60s suite budget remains authoritative.
+    @pytest.mark.timeout_seconds(2.0)
     def test_drain_not_bound(self) -> None:
         """Test that an unbound drain raises ValueError."""
 

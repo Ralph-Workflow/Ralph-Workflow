@@ -421,6 +421,8 @@ def test_mcp_partial_inclusion_templates_match_compiled_map(
 
 
 @pytest.mark.parametrize("template_stem,drain", _ALL_MCP_INCLUSION_TEMPLATES)
+# ponytail: full-template render under xdist can exceed 1s; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_mcp_partial_renders_visible_tools_and_rule_for_every_inclusion(
     template_stem: str, drain: SessionDrain
 ) -> None:

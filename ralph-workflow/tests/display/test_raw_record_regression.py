@@ -572,6 +572,21 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert rendered.count("Inspecting the display.") == 1
     assert rendered.count("renderer source") == 1
     assert rendered.count("upstream disconnected") == 1
+    # S-6 / DA-002: the production record keeps each OpenCode tool event
+    # structurally greppable and informative. The role markers are emitted by
+    # the shared record writer, while the parser-normalized tool name/outcome
+    # remains in the same line for a reader skimming the record.
+    tool_call_lines = [line for line in lines if "role=tool_call" in line]
+    tool_result_lines = [line for line in lines if "role=tool_result" in line]
+    assert tool_call_lines, f"OpenCode calls lost their role marker:\n{rendered}"
+    assert tool_result_lines, f"OpenCode results lost their role marker:\n{rendered}"
+    tool_names = ("bash", "read", "grep")
+    assert all(any(name in line for name in tool_names) for line in tool_call_lines), (
+        f"OpenCode tool-call target missing from line:\n{rendered}"
+    )
+    assert all("PASS" in line or "FAIL" in line for line in tool_result_lines), (
+        f"OpenCode tool-result outcome missing from line:\n{rendered}"
+    )
     for forbidden in _FORBIDDEN_TOKENS:
         assert forbidden not in rendered
 

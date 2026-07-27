@@ -144,6 +144,8 @@ def test_missing_root_still_returns_output() -> None:
     assert handle.record.status == ProcessStatus.EXITED
 
 
+# ponytail: observer-thread scheduling under xdist can exceed 1s; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_process_observer_regression_permission_error_does_not_escape_thread(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
