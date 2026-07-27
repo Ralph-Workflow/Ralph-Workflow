@@ -30,12 +30,12 @@ from __future__ import annotations
 
 import io
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.syntax import Syntax
 
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
-from ralph.display.edit_preview import CONTENT_EDIT_TOOLS, build_edit_preview
+from ralph.display.edit_preview import CONTENT_EDIT_TOOLS, build_edit_preview, preview_header
 from ralph.display.parallel_display import ParallelDisplay
 
 
@@ -202,6 +202,59 @@ def test_build_edit_preview_edit_file_shows_old_and_new_with_markers() -> None:
     assert "def new" in rendered, f"new content missing:\n{rendered}"
     assert "return 1" in rendered
     assert "return 2" in rendered
+
+
+def test_build_edit_preview_edit_file_uses_present_start_line() -> None:
+    """A known edit position starts the new-content line numbers there."""
+    preview = build_edit_preview(
+        "edit_file",
+        {
+            "path": "src/example.py",
+            "edits": [{"newText": "def new():\n    return 2\n", "start_line": 27}],
+        },
+        width=80,
+    )
+    assert preview is not None
+    buf = io.StringIO()
+    Console(file=buf, force_terminal=False, color_system=None, width=80).print(preview)
+    rendered = buf.getvalue()
+    assert "27" in rendered, f"known start line missing from preview:\n{rendered}"
+    assert "28" in rendered, f"known subsequent line missing from preview:\n{rendered}"
+
+
+def test_build_edit_preview_edit_file_without_valid_start_line_starts_at_one() -> None:
+    """Absent or nonpositive positions retain snippet-relative numbering."""
+    for start_line in (None, False, 0, -1):
+        edit: dict[str, object] = {"newText": "x = 1\ny = 2\n"}
+        if start_line is not None:
+            edit["start_line"] = start_line
+        preview = build_edit_preview("edit_file", {"path": "a.py", "edits": [edit]}, width=80)
+        assert preview is not None
+        buf = io.StringIO()
+        Console(file=buf, force_terminal=False, color_system=None, width=80).print(preview)
+        rendered = buf.getvalue()
+        assert "1" in rendered and "2" in rendered, (
+            f"invalid start_line={start_line!r} must remain snippet-relative:\n{rendered}"
+        )
+
+
+def test_preview_header_survives_condensed_content() -> None:
+    """The separate file header remains visible when its preview is elided."""
+    preview = build_edit_preview(
+        "write_file",
+        {"path": "src/example.py", "content": "\n".join(f"line {i}" for i in range(41))},
+        width=80,
+    )
+    assert preview is not None
+    buf = io.StringIO()
+    Console(file=buf, force_terminal=False, color_system=None, width=80).print(
+        Group(preview_header("write_file", "src/example.py"), preview)
+    )
+    rendered = buf.getvalue()
+    header = "  ▸ write  src/example.py"
+    assert header in rendered
+    assert "more line" in rendered.lower()
+    assert rendered.index(header) < rendered.lower().index("more line")
 
 
 def test_build_edit_preview_ralph_edit_md_artifact_shows_diff() -> None:

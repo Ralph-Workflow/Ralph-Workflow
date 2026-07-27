@@ -51,10 +51,10 @@ Design:
 
 * Edit-style tools (``edit_file`` / ``ralph_edit_md_artifact``):
   every entry in ``edits`` is rendered as a ``- old / + new`` diff
-  with the new content syntax-highlighted under ``line_numbers=True``
-  starting at 1 (snippet-relative; the display path has the tool
-  input only, not the file on disk, so absolute file line numbers
-  are unavailable). The old lines use the ``theme.status.error``
+  with the new content syntax-highlighted under ``line_numbers=True``.
+  A positive integer ``start_line`` on an edit starts its new-content
+  line numbers at that known file position; absent or invalid values
+  remain snippet-relative at 1. The old lines use the ``theme.status.error``
   carrier (vermillion) and the new lines use the
   ``theme.status.success`` carrier (bluish-green) so the diff
   remains readable when color is disabled: the literal ``-`` and
@@ -286,6 +286,7 @@ def _make_syntax(
     *,
     is_markdown: bool,
     terminal_bg_is_light: bool | None,
+    start_line: int = 1,
 ) -> Syntax:
     """Build the themed ``Syntax`` renderable used by both preview shapes.
 
@@ -300,6 +301,7 @@ def _make_syntax(
         line_numbers=True,
         word_wrap=is_markdown,
         background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+        start_line=start_line,
     )
 
 
@@ -386,11 +388,17 @@ def _build_edit_preview(
         if new_safe:
             new_lines, new_omitted = _safe_lines(new_safe, max_lines=_MAX_PREVIEW_LINES)
             if new_lines:
+                start_line = edit.get("start_line")
                 new_syntax = _make_syntax(
                     "\n".join(new_lines),
                     lexer_name,
                     is_markdown=is_markdown,
                     terminal_bg_is_light=terminal_bg_is_light,
+                    start_line=(
+                        start_line
+                        if isinstance(start_line, int) and not isinstance(start_line, bool) and start_line > 0
+                        else 1
+                    ),
                 )
                 # Wrap the new block in a Text frame so the leading
                 # ``+`` marker on the first line is visible without

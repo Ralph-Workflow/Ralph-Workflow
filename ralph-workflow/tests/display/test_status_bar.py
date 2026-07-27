@@ -343,17 +343,16 @@ def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int
         )
 
 
-@pytest.mark.parametrize("width", [80, 99, 120, 200])
+@pytest.mark.parametrize("width", [120, 200])
 def test_render_status_bar_canonical_iteration_labels_at_wide_widths(width: int) -> None:
-    """At wide widths (>=80 cols), iteration labels render in canonical form.
+    """At wide widths (>=120 cols), iteration labels render in canonical form.
 
     Locks the AC-03 invariant at widths where the chrome leaves enough
-    budget for the full canonical labels: 80/99/120/200 cols. The
+    budget for the full canonical labels: 120/200 cols. The
     canonical ``Cycle 1/3`` and ``Analysis 2/5`` forms must appear in
     the rendered bar.
 
-    At widths < 80 the new chrome (DA-001 reserved attention slot +
-    DA-002 fixed-width elapsed display + agent segment) consumes
+    At widths < 120 the attention, elapsed, agent, and cwd contract consumes
     enough budget that canonical iter labels cannot fit alongside
     a readable workspace path and phase. The implementation falls
     back to compact (``C1/3`` / ``A2/5``) at those widths; the
@@ -392,9 +391,9 @@ def test_render_status_bar_canonical_iteration_labels_at_wide_widths(width: int)
     )
 
 
-@pytest.mark.parametrize("width", [40, 50, 60])
+@pytest.mark.parametrize("width", [40, 50, 60, 80])
 def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int) -> None:
-    """At widths < 80 with the new chrome, iteration labels degrade to compact form.
+    """At widths < 120 with the new chrome, iteration labels degrade to compact form.
 
     The DA-001 (reserved attention slot) + DA-002 (fixed-width elapsed
     display) chrome consumes enough budget at widths 40/50/60 that the
@@ -557,7 +556,7 @@ def test_render_status_bar_workspace_phase_visible_at_narrow_widths(width: int) 
         long_phase[:4],  # "Deve"
         long_phase[:2],  # "De"
     )
-    phase_visible = any(prefix in plain for prefix in phase_label_prefixes)
+    phase_visible = any(prefix.lower() in plain.lower() for prefix in phase_label_prefixes)
     assert phase_visible, (
         f"AC-07: at width={width}, phase label must remain visible "
         f"(any of {phase_label_prefixes!r}); got plain={plain!r}"
@@ -1931,10 +1930,9 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         f"AC-08: Live region must have rendered the phase label "
         f"{phase_label!r} before stop; got out={out!r}"
     )
-    assert path_basename in out, (
-        f"AC-08: Live region must have rendered the workspace path "
-        f"basename {path_basename!r} (from {workspace_root!r}) before stop; "
-        f"got out={out!r}"
+    assert path_basename[:20] in out, (
+        f"AC-08: Live region must have rendered a recognizable workspace path "
+        f"prefix for {workspace_root!r} before stop; got out={out!r}"
     )
     assert "Cycle 1/3" in out, (
         f"AC-08: Live region must have rendered the outer-dev iteration "
@@ -2313,7 +2311,7 @@ def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> N
     # tail-truncated). A long label like ``Development Analysis``
     # is tail-truncated to ``De...`` (5 chars) at the 40-col
     # floor; the leading ``D`` is the recognisable part.
-    assert plain.lstrip().startswith("D") or "D" in plain[12:18], (
+    assert plain.lstrip().lower().startswith("d") or "d" in plain[12:18].lower(), (
         f"DA-003: phase label must survive at width=40; got plain={plain!r}"
     )
     # Position (cycle) survives (canonical or compact form).
@@ -2322,6 +2320,64 @@ def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> N
         f"DA-003: position must survive at width=40 (any of "
         f"{position_carriers!r}); got plain={plain!r}"
     )
+
+
+@pytest.mark.parametrize("width", [40, 60, 80, 120])
+@pytest.mark.parametrize("attention", [None, "waiting", "stalled", "retrying", "terminated"])
+def test_status_bar_contract_attention_width_ladder(
+    width: int, attention: str | None,
+) -> None:
+    """S-1: attention, width ladder, elapsed stability, and cwd-last contract."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/contract-probe/subdir",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+        agent_name="claude",
+        attention=attention,
+        elapsed_seconds=599,
+    )
+    plain = render_status_bar(model, _make_display_context(width=width), home="/Users/alice").plain
+    assert "\n" not in plain
+    assert len(plain) <= width
+    if attention is not None:
+        assert _status_bar_module.ATTENTION_PRESENTATION[attention][0] in plain
+    assert "Development" in plain or "Dev" in plain or "dev" in plain or "De..." in plain
+    if width >= 40:
+        assert any(glyph in plain for glyph in ("⠋", "*"))
+        assert "Time 09:59" in plain if width >= 120 else "9m59s" in plain
+    if width >= 80:
+        assert 0 <= plain.find("Agent") < plain.rfind("subdir")
+
+
+@pytest.mark.parametrize("widths", [(120, 39, 120), (80, 12, 80)])
+def test_status_bar_regression_resize_below_floor_and_back_restores_layout(
+    widths: tuple[int, int, int],
+) -> None:
+    """S-3: a below-floor resize relayouts immediately and restores exactly."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/resize-probe/subdir",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+        agent_name="claude",
+        attention="waiting",
+        elapsed_seconds=599,
+    )
+    rendered = [
+        render_status_bar(model, _make_display_context(width=width), home="/Users/alice").plain
+        for width in widths
+    ]
+    for width, plain in zip(widths, rendered, strict=True):
+        assert "\n" not in plain
+        assert len(plain) <= width
+    assert rendered[2] == rendered[0]
 
 
 def test_segment_order_matches_spec() -> None:

@@ -300,7 +300,7 @@ def test_elapsed_renders_exactly_once_at_width_120() -> None:
     ctx = _ctx(width=120)
     model = _elapsed_model(started_at=0.0)
     plain = render_status_bar(model, ctx, now_monotonic=65.0).plain
-    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    matches = re.findall(r"(?:Time \d{1,2}:\d{2}(?::\d{2})?|\d+m\d{2}s)", plain)
     assert len(matches) == 1, (
         f"S-1: elapsed must render exactly once at width 120; got "
         f"{len(matches)} matches: {matches!r} in plain={plain!r}"
@@ -312,7 +312,7 @@ def test_elapsed_renders_exactly_once_at_width_60() -> None:
     ctx = _ctx(width=60)
     model = _elapsed_model(started_at=0.0)
     plain = render_status_bar(model, ctx, now_monotonic=0.0).plain
-    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    matches = re.findall(r"(?:Time \d{1,2}:\d{2}(?::\d{2})?|\d+m\d{2}s)", plain)
     assert len(matches) == 1, (
         f"S-1: elapsed must render exactly once at width 60; got "
         f"{len(matches)} matches: {matches!r} in plain={plain!r}"
@@ -324,7 +324,7 @@ def test_elapsed_renders_exactly_once_at_width_80() -> None:
     ctx = _ctx(width=80)
     model = _elapsed_model(started_at=0.0)
     plain = render_status_bar(model, ctx, now_monotonic=0.0).plain
-    matches = re.findall(r"Time \d{1,2}:\d{2}(?::\d{2})?", plain)
+    matches = re.findall(r"(?:Time \d{1,2}:\d{2}(?::\d{2})?|\d+m\d{2}s)", plain)
     assert len(matches) == 1, (
         f"S-1: elapsed must render exactly once at width 80; got "
         f"{len(matches)} matches: {matches!r} in plain={plain!r}"

@@ -24,16 +24,17 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.agent_event_renderer import (
     EVENT_RENDERERS,
-    build_presented_entry,
+    normalize_event_from_agent_output_line,
     render_event,
     render_event_kind_text,
 )
-from ralph.display.presented_entry import PresentedEntry
+from ralph.display.presented_entry import PresentedEntry, build_presented_entry
 from ralph.display.theme import IDENTITY_PALETTE, identity_color
 
 # All agents declared in ralph/agents/builtin.py:61-155 plus the
@@ -346,6 +347,43 @@ def test_pi_ndjson_fixture_yields_one_entry_per_event() -> None:
             assert forbidden not in entry.body, (
                 f"pi fixture: {forbidden!r} leaked into entry: {entry.body!r}"
             )
+
+
+def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
+    """S-6: replay representative OpenCode wire records through parser and renderer."""
+    path = _FIXTURES_DIR / "opencode_ndjson.jsonl"
+    wire_records = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    parsed = list(OpenCodeParser().parse(iter(wire_records)))
+    events = [
+        normalize_event_from_agent_output_line(line, provider=ActivityProvider.OPENCODE, unit_id="opencode")
+        for line in parsed
+        if line.type in {"text", "tool_use", "tool_result", "error"}
+    ]
+
+    assert len(wire_records) >= 20
+    assert [event.kind for event in events] == [
+        ActivityEventKind.TEXT,
+        ActivityEventKind.TEXT,
+        ActivityEventKind.TEXT,
+        ActivityEventKind.TOOL_USE,
+        ActivityEventKind.TOOL_RESULT,
+        ActivityEventKind.TOOL_USE,
+        ActivityEventKind.TOOL_RESULT,
+        ActivityEventKind.TOOL_USE,
+        ActivityEventKind.TOOL_RESULT,
+        ActivityEventKind.ERROR,
+        ActivityEventKind.ERROR,
+        ActivityEventKind.TEXT,
+        ActivityEventKind.TEXT,
+        ActivityEventKind.TEXT,
+    ]
+    entries = [build_presented_entry(event, unit_id="opencode") for event in events]
+    assert len(entries) == len(events)
+    assert all(entry.identity == "opencode" and entry.body for entry in entries)
+    assert entries[0].body.endswith("Inspecting the display.")
+    assert entries[5].body == "read"
+    assert entries[6].body == "renderer source"
+    assert entries[10].body == "upstream disconnected"
 
 
 def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:

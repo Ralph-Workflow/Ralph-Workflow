@@ -53,22 +53,25 @@ DI / purity invariants:
 
 Cadence constants:
 
-- ``_STATUS_BAR_REFRESH_PER_SECOND`` (default ``4.0``): refresh rate for
-  the Live region. Pinned by
-  ``test_status_bar_pins_steady_cadence_config``.
-- ``_STATUS_BAR_TRANSIENT`` (default ``True``): frames are erased on
-  stop, preserving clean scrollback, copy/paste, terminal search, and
-  post-run log review.
+- ``_STATUS_BAR_REFRESH_PER_SECOND`` (default ``4.0``): bounded Live-region
+  repaint cadence. Per-tick suppression is deliberately unnecessary: the
+  elapsed clock changes each second, and transient cleanup preserves a clean
+  scrollback. Pinned by ``test_status_bar_pins_steady_cadence_config``.
+- ``_STATUS_BAR_TRANSIENT`` (default ``True``): frames are erased on stop,
+  preserving clean scrollback, copy/paste, terminal search, and post-run log
+  review. The completion panel carries the durable outcome; the final
+  terminated-state push is visible before teardown.
 
 Default rendering
 -----------------
 
-The single default layout renders (in order)::
+The single default layout renders (in priority order)::
 
-    [phase_marker] {phase_label} [milestone] {workspace_root}
-                              [milestone] {outer_dev} Cycle N/cap
-                              [milestone] {inner_analysis} Analysis N/cap
-                              [milestone] Time mm:ss [milestone] Agent name
+    [attention] [integration_alert] [phase_marker] {phase_label}
+                [milestone] {liveness} {elapsed}
+                [milestone] {outer_dev} Cycle N/cap
+                [milestone] {inner_analysis} Analysis N/cap
+                [milestone] Agent name [milestone] {workspace_root}
 
 A field is omitted entirely (no ``--`` placeholder) when its iteration
 field is ``None`` on the model. The phase marker glyph is omitted when
@@ -219,7 +222,8 @@ _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS: int = 7
 # needed. Below this threshold the implementation may degrade to
 # compact/minimal forms when canonical labels cannot fit alongside
 # phase + path at the terminal width.
-_CANONICAL_FIT_THRESHOLD: int = 40
+_CANONICAL_FIT_THRESHOLD: int = 120
+_AGENT_AND_PATH_FIT_THRESHOLD: int = 80
 
 # DA-002 (wt-028-display AC-02): the 60-col rung is the spec's
 # boundary between the path-elided (above) and path-dropped (below)
@@ -257,8 +261,8 @@ _FLOOR_THRESHOLD: int = 40
 # the first ``budget`` characters when ``budget <= _ELLIPSIS_LEN``,
 # and ``_middle_truncate_path`` returns the trailing path segment
 # tail-truncated to ``budget`` characters when ``budget <= _MIN_BUDGET``.
-_MIN_PHASE_BUDGET: int = 5
-_MIN_PATH_BUDGET: int = 4
+_MIN_PHASE_BUDGET: int = 3
+_MIN_PATH_BUDGET: int = 6
 _MIN_PHASE_PLUS_PATH: int = _MIN_PHASE_BUDGET + _MIN_PATH_BUDGET
 
 
@@ -404,40 +408,21 @@ def _home_relative(path: str, home: str | None) -> str:
 
 
 def _middle_truncate_path(path: str, budget: int) -> str:
-    """Return ``path`` truncated to at most ``budget`` characters via middle-ellipsis.
-
-    The first N characters and the final path segment are preserved when the
-    path is too long. If the path fits in ``budget`` it is returned unchanged.
-    If the budget cannot accommodate both a prefix and the last segment
-    plus an ellipsis separator, the last segment is preferred (returned
-    tail-truncated if necessary) so the user can still identify the
-    project from the trailing path component.
-
-    Invariant: ``len(returned) <= budget`` always holds.
-    """
+    """Return ``path`` truncated to at most ``budget`` characters via middle-ellipsis."""
     if len(path) <= budget:
         return path
     last_sep = path.rfind(os.sep)
     last_segment = path[last_sep + 1 :] if last_sep >= 0 else path
-    last_segment_len = len(last_segment)
-    separator_budget = _ELLIPSIS_LEN + 1  # ``.../``
-
-    def _tail_truncated_segment() -> str:
-        tail_avail = max(0, budget - _ELLIPSIS_LEN)
-        if tail_avail == 0 or budget >= last_segment_len:
-            return last_segment[:budget]
-        return last_segment[:tail_avail].rstrip() + "..."
-
+    separator_budget = _ELLIPSIS_LEN + 1
+    if budget >= len(last_segment) + separator_budget:
+        return f".../{last_segment}"
     if budget <= _MIN_BUDGET:
-        return _tail_truncated_segment()
-    if budget - separator_budget < last_segment_len:
-        return _tail_truncated_segment()
-    prefix_budget = budget - last_segment_len - separator_budget
-    if prefix_budget <= 0:
         return last_segment[:budget]
-    if prefix_budget >= len(path) - last_segment_len - 1:
-        return path
-    return f"{path[:prefix_budget]}.../{last_segment}"
+    tail_budget = budget - _ELLIPSIS_LEN
+    if tail_budget < len(last_segment):
+        return last_segment[:tail_budget].rstrip() + "..."
+    prefix_budget = budget - len(last_segment) - separator_budget
+    return path if prefix_budget >= last_sep else f"{path[:prefix_budget]}.../{last_segment}"
 
 
 def _tail_truncate(text: str, budget: int) -> str:
@@ -685,12 +670,17 @@ def _field_overhead_and_label_budgets(
         # every width >= 40 (the spec floor) and drops it below 40.
         # Above 60 the wide form (Time H:MM:SS, 13 chars) is used;
         # at 40-59 the short form (XmXXs / XhXXm, 5 chars) is used.
-        if ctx.width >= _PATH_DROP_THRESHOLD:
+        if ctx.width >= _CANONICAL_FIT_THRESHOLD:
             elapsed_chrome = _ELAPSED_FIXED_WIDTH + separator_len
         elif ctx.width >= _FLOOR_THRESHOLD:
             elapsed_chrome = 5 + separator_len  # short form + separator
         else:
             elapsed_chrome = 0
+        agent_chrome = (
+            separator_len + len("Agent claude")
+            if _AGENT_AND_PATH_FIT_THRESHOLD <= ctx.width < _CANONICAL_FIT_THRESHOLD
+            else 0
+        )
         available = (
             ctx.width
             - _chrome(
@@ -703,6 +693,7 @@ def _field_overhead_and_label_budgets(
             )
             - attention_chrome
             - elapsed_chrome
+            - agent_chrome
         )
         if available < _MIN_PHASE_PLUS_PATH:
             return None
@@ -712,7 +703,10 @@ def _field_overhead_and_label_budgets(
         # cannot afford the default phase cap, phase gets whatever
         # remains after reserving the path minimum so the workspace
         # path stays readable per AC-07.
-        if available - _MIN_PATH_BUDGET >= DEFAULT_PHASE_LABEL_BUDGET:
+        if ctx.width <= _PHASE_ABBREVIATE_THRESHOLD:
+            phase_budget = _MIN_PHASE_BUDGET
+            path_budget = available - phase_budget
+        elif available - _MIN_PATH_BUDGET >= DEFAULT_PHASE_LABEL_BUDGET:
             phase_budget = DEFAULT_PHASE_LABEL_BUDGET
             path_budget = available - phase_budget
         else:
@@ -723,6 +717,9 @@ def _field_overhead_and_label_budgets(
         # their minimum), the allocation above honours it; if not,
         # the safety clamp below catches the corner case where
         # DEFAULT_PHASE_LABEL_BUDGET < _MIN_PHASE_BUDGET.
+        if ctx.width < _PHASE_ABBREVIATE_THRESHOLD:
+            phase_budget = min(phase_budget, _MIN_PHASE_BUDGET)
+            path_budget = available - phase_budget
         if phase_budget < _MIN_PHASE_BUDGET:
             phase_budget = _MIN_PHASE_BUDGET
             path_budget = available - phase_budget
@@ -741,9 +738,12 @@ def _field_overhead_and_label_budgets(
         )
 
     label_forms: tuple[tuple[int, int], ...] = (
-        (outer_label_canonical_chars, _INNER_ANALYSIS_LABEL_MAX_CHARS),
-        (_OUTER_DEV_LABEL_COMPACT_MAX_CHARS, _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS),
-        (_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS),
+        ((outer_label_canonical_chars, _INNER_ANALYSIS_LABEL_MAX_CHARS),)
+        if ctx.width >= _CANONICAL_FIT_THRESHOLD
+        else (
+            (_OUTER_DEV_LABEL_COMPACT_MAX_CHARS, _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS),
+            (_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS),
+        )
     )
 
     # Iter-bearing layouts (both segments preferred; degrade to a
@@ -1142,10 +1142,10 @@ def render_status_bar(
     supply the resolved home directory once (the ``StatusBar`` lifecycle
     resolves it at construction; tests pass an explicit value).
 
-    The single default-mode layout renders phase + dir + (any applicable
-    outer_dev) + (any applicable inner_analysis) at every width where
-    the iteration segments fit. When ``ctx.width`` is too narrow to fit
-    the canonical forms (``Cycle 1/3`` / ``Analysis 2/5``) the labels
+    The single default-mode layout renders attention, phase, liveness,
+    elapsed time, applicable iteration context, agent identity, and finally
+    the working directory in priority order. When ``ctx.width`` is too
+    narrow to fit the canonical forms (``Cycle 1/3`` / ``Analysis 2/5``) the labels
     degrade through compact (``D1/3`` / ``A2/5``) and minimal
     (``1/3`` / ``2/5``) forms, the phase marker and per-iteration
     glyphs are dropped at the marker-fit / glyph-fit thresholds, and
@@ -1203,11 +1203,22 @@ def render_status_bar(
     # Optional trailing context yields before path/phase/cycle context.
     # Reserve only path surplus so the established narrow-width
     # contract is unchanged.
-    optional_segments = _prune_optional_segments((agent_label,), separator, budgets.path_budget)
+    optional_segments = (
+        [agent_label]
+        if agent_label and ctx.width >= _AGENT_AND_PATH_FIT_THRESHOLD
+        else []
+    )
     optional_width = sum(len(separator) + len(label) for label in optional_segments)
     path_budget = budgets.path_budget
-    path_display = _middle_truncate_path(path_display, path_budget - optional_width)
+    path_budget -= (
+        optional_width
+        if ctx.width < _AGENT_AND_PATH_FIT_THRESHOLD or ctx.width >= _CANONICAL_FIT_THRESHOLD
+        else 0
+    )
+    path_display = _middle_truncate_path(path_display, path_budget)
     phase_display = _tail_truncate(phase_display, budgets.phase_budget)
+    if ctx.width <= _PHASE_ABBREVIATE_THRESHOLD:
+        phase_display = phase_display[:3]
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
@@ -1241,8 +1252,6 @@ def render_status_bar(
     # to the first ``budget`` chars lowercased. The truncation
     # happens before the phase is appended so neighbouring segments
     # see the abbreviated form.
-    if ctx.width < _PHASE_ABBREVIATE_THRESHOLD and len(phase_display) > budgets.phase_budget:
-        phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     text.append(phase_display, style=model.phase_style)
     text.append(separator, style="theme.status.path_marker")
     # DA-002 (wt-028-display AC-01): render the elapsed segment with a
@@ -1268,7 +1277,7 @@ def render_status_bar(
         liveness_glyph = _liveness_frame(ctx, now_monotonic)
         text.append(liveness_glyph, style="theme.status.info")
         text.append(" ", style="theme.status.info")
-        if ctx.width >= _PATH_DROP_THRESHOLD:
+        if ctx.width >= _CANONICAL_FIT_THRESHOLD:
             text.append(
                 _format_elapsed_fixed(_resolve_elapsed_seconds(model, now_monotonic)),
                 style="theme.status.info",
@@ -1327,7 +1336,7 @@ def _append_optional_segment(
     separator: str,
     ctx: DisplayContext,
 ) -> None:
-    """Render one optional segment (elapsed or agent) after a leading separator.
+    """Render one optional agent segment after a leading separator.
 
     P3 (wt-028-display AC-15): the agent segment surfaces the
     deterministic identity color so the live footer reveals
@@ -1368,7 +1377,7 @@ def _append_path_segment(
     drops entirely (no truncated ghost); the spec drops the path
     at the 60-col rung and abbreviates the phase label instead.
     """
-    if width >= _PATH_DROP_THRESHOLD:
+    if width > _PATH_DROP_THRESHOLD:
         text.append(separator, style="theme.status.path_marker")
         text.append(path_display, style="theme.status.path")
 

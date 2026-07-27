@@ -17,10 +17,7 @@ import re
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.agent_activity_event import AgentActivityEvent
-from ralph.display.agent_event_renderer import (
-    PresentedEntry,
-    build_presented_entry,
-)
+from ralph.display.presented_entry import PresentedEntry, build_presented_entry
 from ralph.display.record_writer import (
     RenderedRecordWriter,
     safe_id_for,

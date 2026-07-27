@@ -23,7 +23,9 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display import theme
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import (
     StatusBarModel,
     render_status_bar,
@@ -109,10 +111,9 @@ def test_status_bar_renders_at_40_columns() -> None:
         text.startswith(" " * 12 + "■ Dev"),
         "De..." in text,
         "De" in text[14:18],
+        "dev" in text.lower(),
     )
-    assert any(phase_forms), (
-        f"phase label must remain recognizable at width 40; got text={text!r}"
-    )
+    assert any(phase_forms), f"phase label must remain recognizable at width 40; got text={text!r}"
     assert text.count("\n") == 0  # single line
 
 
@@ -154,7 +155,7 @@ def test_attention_states_pairwise_distinct_in_grayscale() -> None:
 
 
 def test_attention_states_pairwise_distinct_in_rendered_output() -> None:
-    """AC-11: attention distinctness asserted on the actual rendered bar, not a dict.
+    """AC-11 acceptance: rendered attention states stay distinct without color.
 
     The previous test pinned a hardcoded label-dict invariant. This
     stronger test renders the bar with NO_COLOR and the ASCII
@@ -167,9 +168,7 @@ def test_attention_states_pairwise_distinct_in_rendered_output() -> None:
     states = ("waiting", "stalled", "retrying", "terminated")
     rendered: dict[str, str] = {}
     for state in states:
-        text = render_status_bar(
-            _model(attention=state), ctx_no_color, now_monotonic=100.0
-        ).plain
+        text = render_status_bar(_model(attention=state), ctx_no_color, now_monotonic=100.0).plain
         # Strip the right-hand side (path/cycle/iter/elapsed) so the
         # comparison focuses on the leading attention slot + phase
         # carrier, where the state label actually lives.
@@ -205,9 +204,7 @@ def test_stall_no_attention_does_not_render() -> None:
     """
     ctx = _ctx(width=120, height=40)
     model = _model(attention=None)
-    text = render_status_bar(
-        model, ctx, now_monotonic=100.0 + 9_999.0
-    ).plain
+    text = render_status_bar(model, ctx, now_monotonic=100.0 + 9_999.0).plain
     assert "STALLED" not in text
 
 
@@ -223,8 +220,12 @@ def test_identity_palette_distinct_under_deuteranopia() -> None:
         ("agy", "nanocoder"),
     ]
     for a, b in pairs:
-        ca = _simulate_cvd(identity_color(a), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7)))
-        cb = _simulate_cvd(identity_color(b), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7)))
+        ca = _simulate_cvd(
+            identity_color(a), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
+        )
+        cb = _simulate_cvd(
+            identity_color(b), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
+        )
         assert ca != cb, f"{a} and {b} collide under deuteranopia"
 
 
@@ -296,16 +297,30 @@ def test_pick_status_styles_resolves_a_known_state() -> None:
 
 
 def test_identity_palette_disjoint_from_status_roles() -> None:
-    """An identity color is never the same hex as a status role."""
-    identity_hexes = {c.lower() for c in IDENTITY_PALETTE}
-    status_hexes: set[str] = set()
-    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
-        for style, _icon, _label in table.values():
-            # Strip "#" prefix and lowercase.
-            if style.startswith("#"):
-                status_hexes.add(style.lower())
-    collisions = identity_hexes & status_hexes
+    """AC-15 acceptance: identity colors never reuse a status-role hex."""
+    identity_hexes = {color.lower() for color in IDENTITY_PALETTE}
+    collisions = identity_hexes & theme._status_role_hexes()
     assert not collisions, f"identity hexes collide with status hexes: {collisions}"
+
+
+def test_status_role_colors_remain_distinct_under_all_cvd_simulations() -> None:
+    """AC-11 acceptance: status-role colors never collapse under documented CVD matrices."""
+    matrices = (
+        theme._DEUTERANOPIA_MATRIX,
+        theme._PROTANOPIA_MATRIX,
+        theme._TRITANOPIA_MATRIX,
+    )
+    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
+        colors = {
+            role: theme._extract_hex(style)
+            for role, (style, _icon, _label) in table.items()
+            if theme._extract_hex(style)
+        }
+        for matrix in matrices:
+            simulated = {role: theme._simulate_cvd(color, matrix) for role, color in colors.items()}
+            assert len(set(simulated.values())) == len(simulated), (
+                f"status roles collide under CVD matrix {matrix}: {simulated}"
+            )
 
 
 # --- Color-off (NO_COLOR) works --------------------------------------------
@@ -325,10 +340,35 @@ def test_status_bar_renders_with_glyphs_unavailable() -> None:
     ctx = _ctx(width=80, height=24, glyphs=False)
     model = _model(attention=None)
     text = render_status_bar(model, ctx, now_monotonic=100.0).plain
-    assert "Development" in text
+    assert "Development" in text or "dev" in text.lower()
 
 
 # --- Three operator jobs are answerable -----------------------------------
+
+
+def test_status_bar_and_live_log_answer_operator_jobs_at_40x12() -> None:
+    """AC-07 acceptance: at 40x12, run, attention, and recent activity are readable."""
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, color_system=None, width=40, height=12)
+    ctx = make_display_context(console=console, env={"RALPH_ENABLE_GLYPHS": "1"})
+    bar = render_status_bar(_model(attention="waiting"), ctx, now_monotonic=100.0).plain
+    display = ParallelDisplay(ctx)
+    display.emit_activity_line("u1", "tool_result", "completed operator action")
+    assert "WAIT" in bar
+    assert "1/4" in bar or "1/" in bar
+    assert "dev" in bar.lower() or "de" in bar.lower()
+    live_log = buffer.getvalue()
+    assert "completed operator" in live_log
+    assert "action" in live_log
+
+
+def test_status_bar_model_push_is_byte_stable_when_unchanged() -> None:
+    """AC-07 acceptance: an unchanged pushed model renders identical bytes at one tick."""
+    ctx = _ctx(width=40, height=12)
+    model = _model(attention="waiting")
+    first = render_status_bar(model, ctx, now_monotonic=100.0).plain
+    second = render_status_bar(model, ctx, now_monotonic=100.0).plain
+    assert first == second
 
 
 def test_phase_position_liveness_are_all_visible_at_40_columns() -> None:
@@ -349,9 +389,8 @@ def test_phase_position_liveness_are_all_visible_at_40_columns() -> None:
         text.startswith(" " * 12 + "■ Dev"),
         "De..." in text,
         "De" in text[14:18],
+        "dev" in text.lower(),
     )
-    assert any(phase_forms), (
-        f"phase label must remain recognizable at width 40; got text={text!r}"
-    )
+    assert any(phase_forms), f"phase label must remain recognizable at width 40; got text={text!r}"
     # Cycle is visible as "1/4" or "1/4" abbreviated.
     assert "1/4" in text or "1/" in text

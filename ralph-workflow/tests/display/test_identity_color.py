@@ -149,7 +149,7 @@ def test_light_bg_identity_palette_pairwise_distance_meets_threshold() -> None:
 
 
 def test_identity_palette_disjoint_from_status_palette() -> None:
-    """No identity color is also a status color.
+    """AC-15 acceptance: no identity color is also a status color.
 
     A reader who can distinguish ``success`` (bluish-green) from
     ``error`` (vermillion) must NEVER confuse either with a name

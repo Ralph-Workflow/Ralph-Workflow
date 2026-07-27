@@ -27,10 +27,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.agent_activity_event import AgentActivityEvent
-from ralph.display.agent_event_renderer import render_event
+from ralph.display.agent_event_renderer import (
+    normalize_event_from_agent_output_line,
+    render_event,
+)
 from ralph.display.record_writer import RenderedRecordWriter
 
 if TYPE_CHECKING:
@@ -529,6 +533,47 @@ def _drive_fixture_through_production(
         record_path.read_text(encoding="utf-8"),
         buf.getvalue(),
     )
+
+
+def test_production_replay_opencode_fixture_preserves_parser_events(
+    tmp_path: Path,
+) -> None:
+    """S-6: OpenCode wire replay reaches the production record once per visible event."""
+    wire_path = _fixture("opencode_ndjson.jsonl")
+    parsed = list(
+        OpenCodeParser().parse(
+            iter(line for line in wire_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        )
+    )
+    visible = [
+        line for line in parsed if line.type in {"text", "tool_use", "tool_result", "error"}
+    ]
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for line in visible:
+        event = normalize_event_from_agent_output_line(
+            line, provider=ActivityProvider.OPENCODE, unit_id="opencode"
+        )
+        pd.emit_parsed_event(
+            unit_id="opencode",
+            kind=event.kind,
+            content=event.content,
+            metadata=event.metadata,
+            timestamp=line.timestamp,
+        )
+    pd.stop()
+
+    rendered = (tmp_path / ".agent" / "raw" / "opencode.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    lines = [line for line in rendered.splitlines() if line.strip()]
+    assert 0 < len(lines) <= len(visible)
+    assert all("[??:??:??]" not in line and "09:30:" in line for line in lines)
+    assert rendered.count("Inspecting the display.") == 1
+    assert rendered.count("renderer source") == 1
+    assert rendered.count("upstream disconnected") == 1
+    for forbidden in _FORBIDDEN_TOKENS:
+        assert forbidden not in rendered
 
 
 def test_production_path_pi_fixture_one_entry_per_event_with_real_timestamps(

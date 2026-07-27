@@ -64,16 +64,13 @@ from ralph.display._channel_prefix_stripper import (
     _PARSER_CHANNEL_PREFIXES_SPACELESS,
     strip_parser_channel_prefix,
 )
+from ralph.display._tool_result_syntax import append_tool_result_syntax
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.line_sanitizer import strip_terminal_control
-from ralph.display.presented_entry import (
-    PresentedEntry,
-    build_presented_entry,
-)
 from ralph.display.theme import STATUS_STYLES, identity_color
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
@@ -463,6 +460,28 @@ def _render_tool_use_event(
     return text
 
 
+def _append_tool_result_body(
+    text: Text,
+    body: str,
+    unit_id: str | None,
+    body_style: str,
+    tool_name: str,
+    ctx: DisplayContext | None,
+    escape_body: bool,
+) -> None:
+    """Append a result body, adding decorative syntax spans only when appropriate."""
+    if ctx is None or ctx.console.no_color:
+        _append_body_with_unit(text, body, unit_id, body_style, ctx=ctx, escape_body=escape_body)
+        return
+    prefix, remainder = _split_body_with_unit(body, unit_id)
+    if prefix:
+        text.append(escape(prefix) if escape_body else prefix, style=_identity_style_for(unit_id, ctx=ctx))
+    if not append_tool_result_syntax(
+        text, remainder, tool_name, terminal_bg_is_light=ctx.terminal_background_is_light
+    ):
+        text.append(escape(remainder) if escape_body else remainder, style=body_style)
+
+
 def _render_tool_result_event(
     event: AgentActivityEvent,
     ctx: DisplayContext | None = None,
@@ -534,7 +553,9 @@ def _render_tool_result_event(
         )
         text.append(" ", style=style)
     body_style = "theme.text.muted" if not is_error else style
-    _append_body_with_unit(text, body, unit_id, body_style, ctx=ctx, escape_body=escape_body)
+    _append_tool_result_body(
+        text, body, unit_id, body_style, tool_ref, ctx, escape_body
+    )
     return text
 
 
@@ -971,16 +992,3 @@ def normalize_event_from_agent_output_line(
             ),
         ),
     )
-
-
-# Re-exports (keep callers stable as the legacy renders are deleted).
-__all__ = [
-    "EVENT_RENDERERS",
-    "EventRenderer",
-    "PresentedEntry",
-    "build_presented_entry",
-    "make_event_for_emit",
-    "normalize_event_from_agent_output_line",
-    "render_event",
-    "render_event_kind_text",
-]

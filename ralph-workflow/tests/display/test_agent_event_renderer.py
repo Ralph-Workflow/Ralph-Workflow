@@ -127,6 +127,53 @@ def test_tool_result_renders_body() -> None:
     assert "out: ok" in rendered.plain
 
 
+def test_tool_result_json_from_bash_is_syntax_highlighted() -> None:
+    """S-4: recognized bash JSON results get ANSI-theme syntax decoration."""
+    ctx = _ctx()
+    rendered = render_event(
+        _event(
+            ActivityEventKind.TOOL_RESULT,
+            '{"ready": true}',
+            metadata={"tool_name": "bash"},
+        ),
+        ctx,
+    )
+    assert '{"ready": true}' in rendered.plain
+    assert any(
+        span.style not in {"on default", "on transparent"}
+        for span in rendered.spans
+    )
+
+
+def test_tool_result_unknown_tool_renders_plain() -> None:
+    """S-4: syntax-looking output from non-shell tools stays plain."""
+    ctx = _ctx()
+    rendered = render_event(
+        _event(
+            ActivityEventKind.TOOL_RESULT,
+            '{"ready": true}',
+            metadata={"tool_name": "read_file"},
+        ),
+        ctx,
+    )
+    assert rendered.plain.endswith('{"ready": true}')
+    assert not any("bright_" in str(span.style) for span in rendered.spans)
+
+
+def test_tool_result_highlighting_is_disabled_when_color_is_off() -> None:
+    """S-4: syntax is decorative and absent from color-disabled output."""
+    rendered = render_event(
+        _event(
+            ActivityEventKind.TOOL_RESULT,
+            '{"ready": true}',
+            metadata={"tool_name": "bash"},
+        ),
+        _ctx(no_color=True),
+    )
+    assert '{"ready": true}' in rendered.plain
+    assert all("bright_" not in str(span.style) for span in rendered.spans)
+
+
 def test_error_renders_with_error_carrier() -> None:
     ctx = _ctx()
     rendered = render_event(_event(ActivityEventKind.ERROR, "boom"), ctx)
