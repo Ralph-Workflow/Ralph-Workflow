@@ -74,9 +74,8 @@ _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 #: integration seam; two is enough to survive a single unavailable agent.
 _MAX_RESOLVER_AGENTS = 2
 
-#: Fallback wall-clock ceiling for the whole pipeline when the config does
-#: not carry the key (partially-constructed configs in tests).
-_DEFAULT_RESOLVE_TIMEOUT_SECONDS = 900.0
+#: Wall-clock ceiling for the whole conflict-resolution pipeline.
+RESOLVE_TIMEOUT_SECONDS = 900.0
 
 #: Shortest share worth spending on one attempt. Below it the remaining
 #: budget is declined rather than used to start an agent that would be
@@ -97,12 +96,13 @@ def resolution_deadline(config: UnifiedConfig, clock: MonotonicClock | None = No
 
     Public because a REBASE resolution spans several stops and every one
     of them must be bounded by ONE ceiling. A per-stop deadline would
-    multiply ``auto_integrate_resolve_timeout_seconds`` by
+    multiply the resolution timeout by
     :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`,
     turning a 15-minute budget into a 2.5-hour one. The caller takes this
     once before the loop and hands the same value to every stop.
     """
-    return (clock or time.monotonic)() + _resolve_ceiling(config)
+    del config
+    return (clock or time.monotonic)() + RESOLVE_TIMEOUT_SECONDS
 
 
 def run_rebase_conflict_resolution_pipeline(
@@ -422,24 +422,24 @@ def _default_invoker(
 
     ONE monotonic deadline is taken here and every attempt is bounded by
     what is LEFT of it. That is what keeps the pipeline inside
-    ``auto_integrate_resolve_timeout_seconds``: a per-round division
-    alone cannot, because :func:`_run_one_round` may run up to
-    ``_MAX_RESOLVER_AGENTS`` agents SEQUENTIALLY within a single round,
-    so ``ceiling / MAX_RESOLUTION_ROUNDS`` handed out unconditionally
-    would permit ``_MAX_RESOLVER_AGENTS`` times the configured ceiling.
+    :data:`RESOLVE_TIMEOUT_SECONDS`: a per-round division alone cannot,
+    because :func:`_run_one_round` may run up to ``_MAX_RESOLVER_AGENTS``
+    agents SEQUENTIALLY within a single round, so
+    ``ceiling / MAX_RESOLUTION_ROUNDS`` handed out unconditionally would
+    permit ``_MAX_RESOLVER_AGENTS`` times the ceiling.
 
     A caller-supplied ``deadline`` extends that guarantee across a whole
     multi-stop rebase: every stop shares one instant, so ten stops cost
     the configured ceiling in total rather than ten times over.
     """
-    effective_deadline = deadline if deadline is not None else clock() + _resolve_ceiling(config)
+    effective_deadline = deadline if deadline is not None else clock() + RESOLVE_TIMEOUT_SECONDS
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         budget = _attempt_budget(effective_deadline - clock(), round_index, round_cap)
         if budget < _MIN_ATTEMPT_SECONDS:
             logger.warning(
-                "conflict_resolution: the auto_integrate_resolve_timeout_seconds "
-                "budget is spent; declining to invoke '{}' for round {}",
+                "conflict_resolution: the resolution timeout budget is spent; "
+                "declining to invoke '{}' for round {}",
                 agent_name,
                 round_index,
             )
@@ -483,11 +483,3 @@ def _attempt_budget(
     """
     rounds_left = max(1, round_cap - round_index + 1)
     return max(0.0, remaining_seconds) / rounds_left
-
-
-def _resolve_ceiling(config: UnifiedConfig) -> float:
-    """Wall-clock ceiling for the whole pipeline, with a safe fallback."""
-    raw: object = getattr(config.general, "auto_integrate_resolve_timeout_seconds", None)
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
-        return float(raw)
-    return _DEFAULT_RESOLVE_TIMEOUT_SECONDS

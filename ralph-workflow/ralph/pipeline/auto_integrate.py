@@ -18,12 +18,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.merge import (
-    branch_exists,
-    branch_sha,
-    is_ancestor,
-    resolve_origin_head_branch,
-)
+from ralph.git.merge import branch_sha, is_ancestor
 from ralph.git.operations import GitOperationError, get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
@@ -114,35 +109,14 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-#: Target branch resolution order when ``auto_integrate_target`` is unset.
-#: Mirrors the prompt's ``origin/HEAD`` -> ``main`` -> ``master`` cascade.
-_AUTO_DETECT_TARGET_CANDIDATES: tuple[str, ...] = ("main", "master")
-
-
 def resolve_integration_target(
     config: UnifiedConfig,
     repo_root: Path | str,
 ) -> str | None:
-    """Resolve a configured local branch, origin's local default, main, or master."""
-    repo_root_path = Path(repo_root)
-    configured: str | None = None
-    configured_attr: object = getattr(config.general, "auto_integrate_target", None)
-    if isinstance(configured_attr, str) and configured_attr:
-        configured = configured_attr
-    if isinstance(configured, str) and configured:
-        if branch_exists(repo_root_path, configured):
-            return configured
-        return None
-
-    origin_default = resolve_origin_head_branch(repo_root_path)
-    if origin_default and branch_exists(repo_root_path, origin_default):
-        return origin_default
-
-    for candidate in _AUTO_DETECT_TARGET_CANDIDATES:
-        if branch_exists(repo_root_path, candidate):
-            return candidate
-
-    return None
+    """Return the configured local integration branch verbatim, if any."""
+    del repo_root
+    configured: object = getattr(config.general, "auto_integrate_target", None)
+    return configured if isinstance(configured, str) and configured else None
 
 
 # The record path / write_record / read_record / clear_record helpers
@@ -426,8 +400,7 @@ def _auto_integrate_after_commit_inner(
             # Only a merge-producing attempt suppresses the next
             # rebase: a plain ``git rebase`` carries no merge commits,
             # so replaying over the merge this attempt just created
-            # would discard a resolution an agent was paid up to
-            # ``auto_integrate_resolve_timeout_seconds`` to produce and
+            # would discard a resolution an agent was paid to produce and
             # walk straight back into the same conflict. A clean
             # rebase-only attempt still retries as a rebase and keeps
             # the history linear.

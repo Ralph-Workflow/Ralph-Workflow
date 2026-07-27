@@ -103,7 +103,6 @@ def _dirty_boundary_config() -> UnifiedConfig:
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": "main",
-                "auto_integrate_fetch_enabled": False,
             }
         }
     )

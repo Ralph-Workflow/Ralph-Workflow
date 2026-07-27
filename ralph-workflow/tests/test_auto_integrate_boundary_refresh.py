@@ -21,19 +21,16 @@ staleness the throttle was supposed to bound:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
-from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline import auto_integrate
 from ralph.pipeline import auto_integrate_recovery as recovery
 from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_sync import (
-    REFRESH_NO_ORIGIN,
     REFRESH_REFRESHED,
     REFRESH_SUPPRESSED,
     REFRESH_UNREACHABLE,
@@ -46,7 +43,6 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from ralph.git.subprocess_runner import GitRunOptions
 
 _TARGET_SHA = "1111111111111111111111111111111111111111"
 _HEAD_SHA = "2222222222222222222222222222222222222222"
@@ -240,7 +236,6 @@ def _config(*, fetch_enabled: bool = False) -> UnifiedConfig:
         "general": {
             "auto_integrate_enabled": True,
             "auto_integrate_target": "main",
-            "auto_integrate_fetch_enabled": fetch_enabled,
         }
     }
     return UnifiedConfig.model_validate(payload)
@@ -269,35 +264,6 @@ def test_dirty_boundary_records_the_refresh_outcome(
     assert outcome.last_refresh == REFRESH_REFRESHED
 
 
-def test_dirty_boundary_without_an_origin_records_no_origin_remote(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A linked-worktree fleet has no origin; that must be recorded, not hidden.
-
-    The local ref IS the authoritative pointer in that topology, so the
-    absent fetch is correct by construction -- but the operator still
-    has to be able to see why no fetch happened.
-    """
-    scope = _dirty_boundary_workspace(monkeypatch, tmp_path)
-
-    def _fake_run_git(
-        args: Sequence[str],
-        *,
-        cwd: Path | None = None,
-        label: str = "",
-        options: GitRunOptions | None = None,
-    ) -> GitRunResult:
-        # 'remote get-url origin' fails => no origin remote configured.
-        return GitRunResult(args=tuple(args), returncode=2, stdout="", stderr="")
-
-    monkeypatch.setattr("ralph.pipeline.auto_integrate_sync.run_git", _fake_run_git)
-
-    outcome = auto_integrate.auto_integrate_on_phase_transition(
-        _config(fetch_enabled=True), scope, RebaseState()
-    )
-
-    assert outcome is not None
-    assert outcome.last_refresh == REFRESH_NO_ORIGIN
 
 
 def test_throttled_boundary_records_the_suppression_without_refetching(

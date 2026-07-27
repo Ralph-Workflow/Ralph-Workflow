@@ -8,7 +8,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.auto_integrate_message import format_auto_integrate_message
-from ralph.pipeline import auto_integrate, auto_integrate_refresh
+from ralph.pipeline import auto_integrate
 from ralph.pipeline.auto_integrate_context import record_refresh, record_when_stale
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ALREADY_CURRENT,
@@ -24,13 +24,12 @@ _ROOT = Path("/workspace")
 _TARGET = "main"
 
 
-def _build_config(*, fetch_enabled: bool = True) -> UnifiedConfig:
+def _build_config() -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": _TARGET,
-                "auto_integrate_fetch_enabled": fetch_enabled,
             }
         }
     )
@@ -85,9 +84,7 @@ def _inject_integration_runner(
 def test_auto_integrate_passes_freshness_to_the_landing_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    events = _inject_integration_runner(
-        monkeypatch, initial_refresh=REFRESH_UNREACHABLE
-    )
+    events = _inject_integration_runner(monkeypatch, initial_refresh=REFRESH_UNREACHABLE)
 
     outcome = auto_integrate.auto_integrate_after_commit(
         _build_config(), WorkspaceScope(_ROOT), RebaseState()
@@ -115,9 +112,7 @@ def test_retry_refreshes_before_running_the_next_landing_attempt(
     monkeypatch.setattr(
         auto_integrate,
         "_refresh_target",
-        lambda _config, _root, _target: (
-            events.append("refresh") or REFRESH_LOCAL_FLEET
-        ),
+        lambda _config, _root, _target: events.append("refresh") or REFRESH_LOCAL_FLEET,
     )
 
     auto_integrate.auto_integrate_after_commit(
@@ -134,28 +129,6 @@ def test_retry_refreshes_before_running_the_next_landing_attempt(
         "refresh",
         f"integrate:{REFRESH_LOCAL_FLEET}",
     ]
-
-
-def test_fetch_disabled_reobserves_the_local_target_without_remote_io(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        auto_integrate_refresh,
-        "observe_target_sha",
-        lambda _root, _target: "local-sha",
-    )
-    monkeypatch.setattr(
-        auto_integrate_refresh,
-        "refresh_target_from_remote",
-        lambda *_args, **_kwargs: pytest.fail("fetch-disabled path contacted origin"),
-    )
-
-    assert (
-        auto_integrate_refresh.refresh_target(
-            _build_config(fetch_enabled=False), _ROOT, _TARGET
-        )
-        == REFRESH_LOCAL_FLEET
-    )
 
 
 @pytest.mark.parametrize(

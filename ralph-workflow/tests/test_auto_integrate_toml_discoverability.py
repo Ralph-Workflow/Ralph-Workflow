@@ -32,7 +32,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from ralph.config import bootstrap as _config_bootstrap
-from ralph.config.general_config import GeneralConfig
 
 
 def _bundled_paths() -> tuple[Path, Path]:
@@ -45,16 +44,26 @@ def _bundled() -> Iterator[tuple[str, Path]]:
         yield path.name, path
 
 
-#: Every ``auto_integrate_*`` key shipped in ``GeneralConfig``. The set
-#: is loaded via ``model_fields`` so an added key without a TOML block
-#: is caught here -- the test then fails with the missing key named,
-#: which is what an operator would want to know.
-_AUTO_INTEGRATE_KEYS: tuple[str, ...] = tuple(
-    sorted(
-        name
-        for name in GeneralConfig.model_fields
-        if name.startswith("auto_integrate_")
-    )
+#: The four operator-facing auto-integration keys, in documented order.
+_AUTO_INTEGRATE_KEYS = (
+    "auto_integrate_enabled",
+    "auto_integrate_target",
+    "auto_integrate_remote_enabled",
+    "auto_integrate_remote",
+)
+
+#: Removed names must not reappear in bundled operator templates.
+_RETIRED_AUTO_INTEGRATE_KEYS = (
+    "auto_integrate_fetch_enabled",
+    "auto_integrate_push_enabled",
+    "auto_integrate_remote_sync_enabled",
+    "auto_integrate_remote_target",
+    "auto_integrate_fetch_timeout_seconds",
+    "auto_integrate_push_timeout_seconds",
+    "auto_integrate_resolve_timeout_seconds",
+    "auto_integrate_remote_sync_interval_seconds",
+    "auto_integrate_remote_backoff_max_seconds",
+    "auto_integrate_remote_wait_seconds",
 )
 
 #: Banner header the discoverability rubric requires at the TOP of
@@ -214,20 +223,32 @@ def test_general_section_contains_required_prose_tokens() -> None:
         assert not missing, f"{path}: prose missing tokens: {missing!r}"
 
 
-def test_every_auto_integrate_key_appears_in_both_templates() -> None:
-    """Both bundled templates MUST list every ``auto_integrate_*`` key.
+def test_templates_list_exactly_four_live_auto_integrate_keys_in_order() -> None:
+    """S-7: templates expose the exact four-key surface in documented order."""
+    for _, path in _bundled():
+        commented = _commented_defaults(_read_text(path))
+        assert tuple(commented) == _AUTO_INTEGRATE_KEYS
 
-    The keys are commented out by default; presence in the file's text
-    (commented OR uncommented) is what the test pins. A key added to
-    ``GeneralConfig`` without listing here fails the test.
-    """
+
+def test_templates_omit_retired_auto_integrate_keys() -> None:
+    """S-7: removed key names are not discoverable from bundled templates."""
     for _, path in _bundled():
         text = _read_text(path)
-        missing = tuple(k for k in _AUTO_INTEGRATE_KEYS if k not in text)
-        assert not missing, (
-            f"{path}: missing auto_integrate_* keys in TOML template: "
-            f"{missing!r}"
+        assert not any(key in text for key in _RETIRED_AUTO_INTEGRATE_KEYS)
+
+
+def test_agent_definitions_precede_chains_and_general() -> None:
+    """S-7: agent definitions appear before routing and general settings."""
+    for _, path in _bundled():
+        text = _read_text(path)
+        agent_definition = next(
+            index
+            for index, line in enumerate(text.splitlines())
+            if line.lstrip("# ").startswith("[agents.")
         )
+        chains = text.index("[agent_chains]")
+        general = text.index("[general]")
+        assert agent_definition < chains < general
 
 
 def test_no_duplicate_auto_integrate_key_in_a_template() -> None:
@@ -257,18 +278,14 @@ def test_each_template_documents_model_defaults_in_comment_lines() -> None:
     for _, path in _bundled():
         text = _read_text(path)
         commented = _commented_defaults(text)
-        model_defaults = {
-            name: field.default
-            for name, field in GeneralConfig.model_fields.items()
+        defaults = {
+            "auto_integrate_enabled": True,
+            "auto_integrate_target": "main",
+            "auto_integrate_remote_enabled": False,
+            "auto_integrate_remote": "origin",
         }
-        for key in _AUTO_INTEGRATE_KEYS:
-            assert key in commented, (
-                f"{path}: no commented '# {key} = ...' line found"
-            )
+        for key, default_value in defaults.items():
             rhs = commented[key]
-            default_value = model_defaults[key]
-            if default_value is None:
-                continue  # None is not TOML-representable
             synthesized = f"_probe_ = {rhs}\n"
             try:
                 parsed = tomllib.loads(synthesized)
@@ -279,7 +296,7 @@ def test_each_template_documents_model_defaults_in_comment_lines() -> None:
                 ) from exc
             assert parsed["_probe_"] == default_value, (
                 f"{path}: commented default for {key!r} = {rhs!r} "
-                f"(parsed {parsed['_probe_']!r}) does not match model "
+                f"(parsed {parsed['_probe_']!r}) does not match documented "
                 f"default {default_value!r}"
             )
 

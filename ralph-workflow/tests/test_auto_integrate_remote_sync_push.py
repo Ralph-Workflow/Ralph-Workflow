@@ -5,7 +5,7 @@ runs STRICTLY after a successful local landing, is exactly one
 non-force push of the target refspec, never modifies other branches,
 and degrades to local-only on every failure (auth, timeout, hook
 rejection, missing remote). The deprecated
-``auto_integrate_push_enabled = true`` key still works (single-remote
+``auto_integrate_remote_enabled = true`` key still works (single-remote
 semantics; no fan-out) and is replaced by the new flag.
 """
 
@@ -36,13 +36,8 @@ def _config(
     return UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_remote_sync_enabled": enabled,
-                "auto_integrate_remote_target": remote,
-                "auto_integrate_remote_sync_interval_seconds": 300.0,
-                "auto_integrate_remote_backoff_max_seconds": 300.0,
-                "auto_integrate_remote_wait_seconds": 0.0,
-                "auto_integrate_fetch_timeout_seconds": fetch_timeout,
-                "auto_integrate_push_timeout_seconds": push_timeout,
+                "auto_integrate_remote_enabled": enabled,
+                "auto_integrate_remote": remote,
             },
         },
     )
@@ -159,14 +154,14 @@ def test_no_force_refspec_is_added(
 def test_legacy_push_enabled_key_still_triggers_remote_push(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC-49: deprecated ``auto_integrate_push_enabled`` still enables the push."""
+    """AC-49: deprecated ``auto_integrate_remote_enabled`` still enables the push."""
     from ralph.config.models import UnifiedConfig
 
     config = UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_push_enabled": True,
-                "auto_integrate_remote_target": "origin",
+                "auto_integrate_remote_enabled": True,
+                "auto_integrate_remote": "origin",
             },
         },
     )
@@ -201,8 +196,8 @@ def test_legacy_push_does_not_fan_out_to_other_remotes(
     config = UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_push_enabled": True,
-                "auto_integrate_remote_target": "upstream",
+                "auto_integrate_remote_enabled": True,
+                "auto_integrate_remote": "upstream",
             },
         },
     )
@@ -274,7 +269,7 @@ def test_remote_target_name_default_is_origin() -> None:
     # default config sets the key explicitly; verify the helper
     # returns "origin" when the value is omitted.
     cfg_default_dict = cfg_default.model_dump()
-    cfg_default_dict["general"]["auto_integrate_remote_target"] = "origin"
+    cfg_default_dict["general"]["auto_integrate_remote"] = "origin"
     from ralph.config.models import UnifiedConfig
 
     cfg2 = UnifiedConfig.model_validate(cfg_default_dict)

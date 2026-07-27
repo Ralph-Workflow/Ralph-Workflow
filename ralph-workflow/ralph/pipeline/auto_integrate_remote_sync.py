@@ -1,4 +1,4 @@
-"""Fail-open, opt-in pull, reconcile, push, retry, and wait helpers.
+"""Fail-open, opt-in pull, reconcile, push, and retry helpers.
 
 Remote work is disabled by default. When enabled, every operation records a
 bounded outcome and leaves local integration intact on failure.
@@ -6,7 +6,6 @@ bounded outcome and leaves local integration intact on failure.
 
 from __future__ import annotations
 
-import random
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -82,115 +81,30 @@ REMOTE_REJECTED_BY_HOOK = "rejected by remote hook"
 REMOTE_NON_FAST_FORWARD = "non-fast-forward"
 REMOTE_TIMEOUT = "timeout"
 
+FETCH_TIMEOUT_SECONDS = 10.0
+REMOTE_SYNC_INTERVAL_SECONDS = 300.0
+REMOTE_BACKOFF_MAX_SECONDS = 300.0
+
 #: Per-seam remote reconcile cap; later seams always retry.
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
-
-#: FIFO cap for tracked ``(root, remote, target)`` backoff windows.
-_MAX_BACKOFF_KEYS = 128
+_MAX_REMOTE_KEYS = 128
 
 
 # ----- Helpers ---------------------------------------------------------
 
 
 def remote_sync_enabled(config: object) -> bool:
-    """Whether the opt-in remote sync tier is enabled.
-
-    Returns ``False`` for every legacy ``GeneralConfig`` that pre-dates
-    the field, for configs that have it explicitly disabled, and for
-    configs where the call site mistakenly hands us something other
-    than a ``GeneralConfig`` instance. The helper is the single source
-    of the gated-on check across :mod:`ralph.pipeline.auto_integrate`
-    and its callers; reading the attribute everywhere risks a typo
-    loop and silent off-by-defaults.
-    """
-    if config is None:
-        return False
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return False
-    enabled_raw: object = getattr(raw, "auto_integrate_remote_sync_enabled", False)
-    legacy_raw: object = getattr(raw, "auto_integrate_push_enabled", False)
-    return (isinstance(enabled_raw, bool) and enabled_raw) or (
-        isinstance(legacy_raw, bool) and legacy_raw
-    )
+    """Whether the opt-in configured-remote tier is enabled."""
+    general: object = getattr(config, "general", None)
+    enabled: object = getattr(general, "auto_integrate_remote_enabled", False)
+    return isinstance(enabled, bool) and enabled
 
 
 def remote_target_name(config: object, *, default: str = DEFAULT_REFRESH_REMOTE) -> str:
-    """Configured remote-target name, or the default ``origin``."""
-    if config is None:
-        return default
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return default
-    text: object = getattr(raw, "auto_integrate_remote_target", default)
-    if isinstance(text, str) and text.strip():
-        return text.strip()
-    return default
-
-
-def remote_sync_interval_seconds(config: object, *, default: float = 300.0) -> float:
-    """Configured pull interval, default ``300.0``."""
-    if config is None:
-        return default
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return default
-    value: object = getattr(raw, "auto_integrate_remote_sync_interval_seconds", default)
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    return default
-
-
-def remote_backoff_max_seconds(config: object, *, default: float = 300.0) -> float:
-    """Configured per-remote backoff ceiling, default ``300.0``."""
-    if config is None:
-        return default
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return default
-    value: object = getattr(raw, "auto_integrate_remote_backoff_max_seconds", default)
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    return default
-
-
-def remote_wait_seconds(config: object, *, default: float = 0.0) -> float:
-    """Configured end-of-run wait budget, default ``0.0`` (no wait)."""
-    if config is None:
-        return default
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return default
-    value: object = getattr(raw, "auto_integrate_remote_wait_seconds", default)
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    return default
-
-
-def push_timeout_seconds(config: object, *, default: float = 30.0) -> float:
-    """Per-push timeout, default ``30.0`` seconds."""
-    if config is None:
-        return default
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return default
-    value: object = getattr(raw, "auto_integrate_push_timeout_seconds", default)
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    return default
-
-
-def fetch_timeout_seconds(config: object, *, default: float = 10.0) -> float:
-    """Per-fetch timeout, default ``10.0`` seconds."""
-    if config is None:
-        return default
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return default
-    value: object = getattr(raw, "auto_integrate_fetch_timeout_seconds", default)
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    return default
+    """Configured remote name, or the default ``origin``."""
+    general: object = getattr(config, "general", None)
+    remote: object = getattr(general, "auto_integrate_remote", default)
+    return remote.strip() if isinstance(remote, str) and remote.strip() else default
 
 
 # ----- Pull-side reconcile --------------------------------------------
@@ -203,16 +117,11 @@ def pull_and_reconcile_target(
     *,
     remote: str | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Run the throttled pull side; reconcile the local target from the remote.
 
-    Parametrised on the configured ``auto_integrate_remote_target``
-    rather than a hard-coded ``origin``. Under
-    ``auto_integrate_remote_sync_enabled = false`` the helper
-    short-circuits to the strict-local observe-only probe already
-    shipped in Part A -- the byte-identical contract for AC-13.
+    Uses the configured remote when remote integration is enabled; otherwise
+    it performs no remote operation.
 
     The throttle is keyed ``(root, remote, target)`` and armed only
     by a HEALTHY fetch: a transient blip cannot buy a whole window
@@ -245,10 +154,6 @@ def pull_and_reconcile_target(
         remote: Override the configured remote (test-only seam).
         clock: Monotonic time source for the throttle, injected so
             the test suite advances time without sleeping.
-        sleep: Sleep callable for jittered waits between cycles,
-            injected so the suite does not sleep.
-        jitter: Random source for the backoff jitter, injected so
-            the suite drives failures deterministically.
 
     Returns:
         :class:`RebaseState` annotated with ``last_remote_sync`` and
@@ -267,7 +172,7 @@ def pull_and_reconcile_target(
     refresh = refresh_target_from_remote(
         repo_root,
         target,
-        timeout_seconds=float(fetch_timeout_seconds(config)),
+        timeout_seconds=FETCH_TIMEOUT_SECONDS,
         remote=chosen_remote,
     )
     state = _dispatch_pull_outcome(refresh, repo_root, target, chosen_remote, clock)
@@ -432,11 +337,11 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
 class _RemotePullThrottle:
     """Rate-limits the periodic pull keyed per (root, remote, target)."""
 
-    def __init__(self, *, max_tracked_keys: int = _MAX_BACKOFF_KEYS) -> None:
+    def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
         self._max_tracked_keys = max(1, max_tracked_keys)
         self._last_pull: OrderedDict[tuple[str, str, str], float] = (
             OrderedDict()
-        )  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in arm()
+        )  # bounded-accumulator-ok: _MAX_REMOTE_KEYS FIFO cap applied in arm()
 
     def should_pull(
         self,
@@ -480,7 +385,7 @@ def _throttle_allows_pull(
     config: UnifiedConfig | None,
     clock: Callable[[], float],
 ) -> bool:
-    interval = remote_sync_interval_seconds(config)
+    interval = REMOTE_SYNC_INTERVAL_SECONDS
     return _REMOTE_PULL_THROTTLE.should_pull(
         repo_root,
         remote,
@@ -514,18 +419,13 @@ def push_target_after_landing(
     record: RebaseState,
     *,
     remote: str | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
 ) -> RebaseState:
     """Push the local target to the configured remote after a successful land.
 
     Returns the ``RebaseState`` annotated with ``last_remote_sync`` and
     ``last_push``. Never raises; never reverts a local landing. The
-    deprecated ``auto_integrate_push_enabled = true`` key also enables
-    the push via the same code path; the legacy key is treated as
-    equivalent to ``auto_integrate_remote_sync_enabled`` for back-compat.
     """
-    if not _any_push_enabled(config):
+    if not remote_sync_enabled(config):
         return record
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
 
@@ -535,7 +435,7 @@ def push_target_after_landing(
         repo_root,
         target,
         remote=chosen_remote,
-        timeout_seconds=float(push_timeout_seconds(config)),
+        timeout_seconds=_remote_push_module.PUSH_TIMEOUT_SECONDS,
     )
     typed_result = _coerce_push_result(result, remote=chosen_remote, target=target)
     return record.model_copy(
@@ -550,18 +450,6 @@ def push_target_after_landing(
         },
     )
 
-
-def _any_push_enabled(config: object) -> bool:
-    """Whether EITHER opt-in key enables the push side."""
-    if remote_sync_enabled(config):
-        return True
-    if config is None:
-        return False
-    raw: object = getattr(config, "general", None)
-    if raw is None:
-        return False
-    legacy: object = getattr(raw, "auto_integrate_push_enabled", False)
-    return isinstance(legacy, bool) and legacy
 
 
 def _coerce_push_result(
@@ -617,8 +505,6 @@ def reconcile_after_rejected_push(
     record: RebaseState,
     *,
     remote: str | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
     max_attempts: int = _MAX_REMOTE_SYNC_ATTEMPTS,
     reintegrate: Callable[[], None] | None = None,
 ) -> RebaseState:
@@ -631,14 +517,11 @@ def reconcile_after_rejected_push(
     ``REMOTE_PUSH_REJECTED`` and retried on the next seam, so the
     fail-open contract holds for the whole run, not just one seam.
     """
-    if not _any_push_enabled(config):
+    if not remote_sync_enabled(config):
         return record
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     final_record = record
     for _attempt in range(max_attempts):
-        # Normal seams never sleep: retry eligibility belongs to the next
-        # seam's clock-based throttle. Terminal waiting is the only path that
-        # deliberately sleeps for remote retry backoff.
         outcome = _attempt_reconcile_and_push(
             repo_root=repo_root,
             target=target,
@@ -677,7 +560,7 @@ def _attempt_reconcile_and_push(
     refresh = refresh_target_from_remote(
         repo_root,
         target,
-        timeout_seconds=float(fetch_timeout_seconds(config)),
+        timeout_seconds=FETCH_TIMEOUT_SECONDS,
         remote=remote,
     )
     if refresh == REFRESH_NO_REMOTE:
@@ -706,7 +589,7 @@ def _attempt_reconcile_and_push(
         repo_root,
         target,
         remote=remote,
-        timeout_seconds=float(push_timeout_seconds(config)),
+        timeout_seconds=_remote_push_module.PUSH_TIMEOUT_SECONDS,
     )
     typed_result = _coerce_push_result(result, remote=remote, target=target)
     return _PushOutcome(
@@ -716,211 +599,6 @@ def _attempt_reconcile_and_push(
         status=typed_result.status,
         created_remote_branch=typed_result.status is _remote_push_module.PushStatus.CREATED,
     )
-
-
-# ----- Backoff state ----------------------------------------------------
-
-
-class RemoteBackoffState:
-    """Per-(root, remote, target) exponential jittered backoff state.
-
-    Tracks consecutive remote-side failures with a monotonic-clock
-    gap. Consecutive failures widen the gap exponentially from the
-    configured ``auto_integrate_remote_sync_interval_seconds`` (the
-    BASE interval) up to ``auto_integrate_remote_backoff_max_seconds``
-    (the ceiling), with injected jitter. Any success resets the
-    counter to the base interval so the very next attempt is
-    permitted after one base interval.
-
-    The clock and jitter are injected, so the test suite drives
-    failures without ever calling :func:`time.sleep`. The state is a
-    long-lived mutable accumulator on ``self``, so the
-    ``_MAX_BACKOFF_KEYS`` FIFO cap is required by
-    ``ralph/testing/audit_resource_lifecycle.py``: entries are
-    evicted once ``_MAX_BACKOFF_KEYS`` keys are live.
-    """
-
-    _instance: RemoteBackoffState | None = None
-
-    def __init__(
-        self,
-        *,
-        clock: Callable[[], float] = time.monotonic,
-        max_tracked_keys: int = _MAX_BACKOFF_KEYS,
-    ) -> None:
-        self._clock = clock
-        self._max_tracked_keys = max(1, max_tracked_keys)
-        self._consecutive: OrderedDict[tuple[str, str, str], int] = (
-            OrderedDict()
-        )  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in _enforce_cap()
-        self._last_attempt: OrderedDict[tuple[str, str, str], float] = (
-            OrderedDict()
-        )  # bounded-accumulator-ok: _MAX_BACKOFF_KEYS FIFO cap applied in _enforce_cap()
-
-    @classmethod
-    def instance(cls) -> RemoteBackoffState:
-        """Process-wide singleton; tests construct their own instead."""
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Drop the singleton. Test-only."""
-        cls._instance = None
-
-    def _key(self, repo_root: Path | str, remote: str, target: str) -> tuple[str, str, str]:
-        return (str(repo_root), remote, target)
-
-    def _enforce_cap(self, key: tuple[str, str, str]) -> None:
-        """Evict FIFO oldest entries so the cap holds AFTER this key is written.
-
-        Distinct from a "reset": only keys NOT equal to ``key`` may be
-        popped, otherwise a single ``record_failure`` call would wipe
-        the counter it is about to increment (turning every failure
-        into "consecutive_failures == 1"). The cap is checked against
-        ``>= _max_tracked_keys`` because the caller is about to add
-        one more entry.
-        """
-        for store in (self._consecutive, self._last_attempt):
-            # Only evict when adding a NEW key; updating an existing
-            # entry does not need FIFO eviction.
-            if key in store:
-                continue
-            while len(store) >= self._max_tracked_keys:
-                store.popitem(last=False)
-
-    def record_success(self, repo_root: Path | str, remote: str, target: str) -> None:
-        """Any success resets the consecutive-failure counter to zero."""
-        key = self._key(repo_root, remote, target)
-        self._consecutive.pop(key, None)
-        self._last_attempt.pop(key, None)
-
-    def record_failure(self, repo_root: Path | str, remote: str, target: str) -> None:
-        """Increment the consecutive-failure counter for ``key``."""
-        key = self._key(repo_root, remote, target)
-        self._enforce_cap(key)
-        self._consecutive[key] = self._consecutive.get(key, 0) + 1
-        self._last_attempt[key] = self._clock()
-
-    def consecutive_failures(self, repo_root: Path | str, remote: str, target: str) -> int:
-        return self._consecutive.get(self._key(repo_root, remote, target), 0)
-
-    def next_gap(
-        self,
-        *,
-        repo_root: Path | str,
-        remote: str,
-        target: str,
-        config: UnifiedConfig | None,
-        jitter: Callable[[], float] = random.random,
-        clock: Callable[[], float] | None = None,
-    ) -> float:
-        """Return the seconds to wait before the NEXT attempt.
-
-        Bounds the GAP between attempts only -- it never bounds the
-        NUMBER of attempts (AC-37). Returns ``0.0`` when the gap has
-        already elapsed since the last attempt.
-        """
-        key = self._key(repo_root, remote, target)
-        consecutive_value: int = self._consecutive.get(key, 0) or 0
-        if consecutive_value == 0:
-            return 0.0
-        base: float = max(0.0, float(remote_sync_interval_seconds(config)))
-        ceiling: float = max(base, float(remote_backoff_max_seconds(config)))
-        # cap by 2^N * base so a long consecutive streak never
-        # overflows into a multi-hour wait
-        exp: int = min(consecutive_value, 16)
-        bumped_exp: int = 2**exp
-        bumped: float = base * float(bumped_exp)
-        capped: float = min(ceiling, bumped)
-        # multiplicative jitter in [0.5, 1.5)
-        raw_jitter: float = 0.5 + float(jitter())
-        jitter_val: float = max(0.5, min(1.4999, raw_jitter))
-        gap: float = min(ceiling, capped * jitter_val)
-        now: float = self._clock() if clock is None else clock()
-        last_value: float = float(self._last_attempt.get(key, now))
-        elapsed: float = now - last_value
-        if elapsed >= gap:
-            return 0.0
-        return float(gap - elapsed)
-
-
-# ----- End-of-run waiting state ----------------------------------------
-
-
-def wait_for_remote_publish(
-    config: UnifiedConfig | None,
-    repo_root: Path,
-    target: str,
-    *,
-    remote: str | None = None,
-    is_interrupted: Callable[[], bool] = lambda: False,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = random.random,
-    clock: Callable[[], float] = time.monotonic,
-    backoff_state: RemoteBackoffState | None = None,
-) -> tuple[bool, str]:
-    """Wait until the pending push lands or the wait budget is exhausted.
-
-    Only entered when ``auto_integrate_remote_sync_enabled`` is true
-    AND the run finished with an unpushed local target AND
-    ``auto_integrate_remote_wait_seconds > 0``. Default 0 makes the
-    call a strict no-op, preserving today's exit behavior.
-
-    The state is operator-visible through the live ``auto-integrate:``
-    line, interruptible through ``is_interrupted``, and capped at
-    ``auto_integrate_remote_wait_seconds`` total wall time. On success
-    the push is recorded as ``REMOTE_PUSHED``; on cap or interrupt the
-    unpushed-target phrase
-    ``"landed locally, not published to <remote>: <reason>"`` is
-    returned for the operator transcript and the run exit.
-
-    Returns:
-        ``(published, summary)``. ``published`` is ``True`` when the
-        push landed during the wait. ``summary`` is the
-        operator-visible phrase, ``""`` when nothing was attempted.
-    """
-    if not remote_sync_enabled(config):
-        return False, ""
-    budget = float(remote_wait_seconds(config))
-    if budget <= 0.0:
-        return False, ""
-
-    chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
-    deadline = clock() + budget
-    backoff_state = backoff_state if backoff_state is not None else RemoteBackoffState.instance()
-    published = False
-    last_summary = ""
-    while clock() < deadline and not is_interrupted():
-        outcome = _attempt_reconcile_and_push(
-            repo_root=repo_root,
-            target=target,
-            remote=chosen_remote,
-            config=config,
-            reintegrate=None,
-        )
-        last_summary = outcome.summary
-        if outcome.success:
-            published = True
-            backoff_state.record_success(repo_root, chosen_remote, target)
-            break
-        backoff_state.record_failure(repo_root, chosen_remote, target)
-        gap = backoff_state.next_gap(
-            repo_root=repo_root,
-            remote=chosen_remote,
-            target=target,
-            config=config,
-            jitter=jitter,
-            clock=clock,
-        )
-        if gap > 0.0:
-            sleep(min(float(gap), max(0.0, deadline - clock())))
-    if published:
-        return True, last_summary
-    if is_interrupted() or not last_summary:
-        return False, last_summary
-    return False, f"landed locally, not published to {chosen_remote}: {last_summary}"
 
 
 # ----- State helpers ---------------------------------------------------
@@ -944,10 +622,11 @@ def _record_remote_state(
 
 
 __all__ = [
+    "FETCH_TIMEOUT_SECONDS",
     "REMOTE_AUTH_FAILED",
+    "REMOTE_BACKOFF_MAX_SECONDS",
     "REMOTE_CREATED",
     "REMOTE_LOCAL_AHEAD",
-    "REMOTE_NON_FAST_FORWARD",
     "REMOTE_NO_REMOTE",
     "REMOTE_NO_REMOTE_BRANCH",
     "REMOTE_PULLED",
@@ -958,19 +637,13 @@ __all__ = [
     "REMOTE_RECONCILED",
     "REMOTE_REJECTED_BY_HOOK",
     "REMOTE_REMOTE_UNREACHABLE",
+    "REMOTE_SYNC_INTERVAL_SECONDS",
     "REMOTE_TIMEOUT",
-    "RemoteBackoffState",
-    "fetch_timeout_seconds",
     "pull_and_reconcile_target",
     "push_target_after_landing",
-    "push_timeout_seconds",
     "reconcile_after_rejected_push",
-    "remote_backoff_max_seconds",
     "remote_sync_enabled",
-    "remote_sync_interval_seconds",
     "remote_target_name",
-    "remote_wait_seconds",
-    "wait_for_remote_publish",
 ]
 
 

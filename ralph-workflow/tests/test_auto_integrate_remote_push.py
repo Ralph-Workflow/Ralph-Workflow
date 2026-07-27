@@ -13,13 +13,12 @@ from ralph.pipeline.rebase_state import RebaseState
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
-def _config(*, enabled: bool, timeout: float = 3.0) -> UnifiedConfig:
+def _config(*, enabled: bool) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_push_enabled": enabled,
-                "auto_integrate_push_timeout_seconds": timeout,
-                "auto_integrate_remote_target": "origin",
+                "auto_integrate_remote_enabled": enabled,
+                "auto_integrate_remote": "origin",
             }
         }
     )
@@ -51,8 +50,8 @@ def test_successful_landing_records_configured_remote_push_for_normal_and_recove
     assert normal.last_push == "pushed release to origin"
     assert recovery.last_push == "pushed release to origin"
     assert calls == [
-        (Path("/repo"), "release", "origin", 3.0),
-        (Path("/repo"), "release", "origin", 3.0),
+        (Path("/repo"), "release", "origin", 30.0),
+        (Path("/repo"), "release", "origin", 30.0),
     ]
 
 

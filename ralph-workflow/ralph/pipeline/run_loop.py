@@ -1604,48 +1604,27 @@ def _cleanup_pipeline(
         teardown()
 
 
-def _wait_for_pending_remote_publication(state: PipelineState, ctx: _LoopContext) -> PipelineState:
-    """Publish a terminal pending target only when remote waiting was opted in."""
-    from ralph.pipeline.auto_integrate import resolve_integration_target
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        REMOTE_PUSHED,
-        remote_sync_enabled,
-        remote_wait_seconds,
-        wait_for_remote_publish,
-    )
-
+def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+    """Record a final unpublished remote result without retrying or waiting."""
     pending_status = state.rebase.last_push_status
-    if (
-        pending_status in (None, "pushed", "created")
-        or not remote_sync_enabled(ctx.config)
-    ):
+    if pending_status in (None, "pushed", "created"):
         return state
+    from ralph.pipeline.auto_integrate import resolve_integration_target
+
     target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
     if target is None:
         return state
     remote = state.rebase.last_remote or "origin"
-    if remote_wait_seconds(ctx.config) <= 0.0:
-        reason = state.rebase.last_reason or state.rebase.last_push or pending_status
-        return state.copy_with(
-            rebase=state.rebase.model_copy(
-                update={"last_reason": f"landed locally, not published to {remote}: {reason}"}
-            )
+    reason = state.rebase.last_reason or state.rebase.last_push or pending_status
+    return state.copy_with(
+        rebase=state.rebase.model_copy(
+            update={
+                "last_reason": (
+                    f"local work landed on {target}; not published to {remote}: {reason}"
+                )
+            }
         )
-    published, summary = wait_for_remote_publish(
-        ctx.config,
-        ctx.workspace_scope.root,
-        target,
-        remote=remote,
-        sleep=ctx.sleep,
     )
-    updated = state.rebase.model_copy(
-        update={
-            "last_remote_sync": REMOTE_PUSHED if published else state.rebase.last_remote_sync,
-            "last_push_status": "pushed" if published else pending_status,
-            "last_reason": None if published else summary,
-        }
-    )
-    return state.copy_with(rebase=updated)
 
 
 def _execute_with_cleanup(
@@ -1687,7 +1666,7 @@ def _execute_with_cleanup(
                 return _handle_keyboard_interrupt(state, loop_ctx)
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
                 try:
-                    state = _wait_for_pending_remote_publication(state, loop_ctx)
+                    state = _report_pending_remote_publication(state, loop_ctx)
                 except KeyboardInterrupt:
                     return _handle_keyboard_interrupt(state, loop_ctx)
                 loop_ctx.active_display.emit(

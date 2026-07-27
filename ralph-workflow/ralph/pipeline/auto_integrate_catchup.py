@@ -61,7 +61,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from git import Repo, SymbolicReference
+from git import Repo
 from loguru import logger
 
 from ralph.git.merge import fast_forward_via_worktree
@@ -78,13 +78,6 @@ if TYPE_CHECKING:
 #: 30-second cadence is negligible next to the conflict-resolution
 #: tokens an accumulated divergence costs later.
 DEFAULT_CATCHUP_INTERVAL_SECONDS: float = 30.0
-
-#: Target auto-detection candidates when no target is configured and
-#: ``origin/HEAD`` does not name a local branch. MUST stay in lockstep
-#: with ``ralph.pipeline.auto_integrate._AUTO_DETECT_TARGET_CANDIDATES``:
-#: the catch-up moving the checkout toward a DIFFERENT branch than the
-#: seams integrate onto would be actively harmful.
-_AUTO_DETECT_TARGET_CANDIDATES: tuple[str, ...] = ("main", "master")
 
 #: Tick outcome tags. Exactly one is returned per
 #: :func:`attempt_catchup_fast_forward` call; only
@@ -123,38 +116,10 @@ def _current_branch_name(root: Path) -> str | None:
 
 
 def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
-    """Quiet in-process mirror of the seams' target resolution.
-
-    Same precedence, same refs-only contract as
-    :func:`ralph.pipeline.auto_integrate.resolve_integration_target`
-    (configured target verbatim when it exists locally, else the
-    ``origin/HEAD`` default-branch NAME when a local branch of that
-    name exists, else the first of ``('main', 'master')`` that exists
-    locally, else ``None``) -- but observed through GitPython ref reads
-    instead of ``run_git`` subprocesses, honouring this module's
-    quiet-probe contract. Its precedence table mirrors the seam resolver
-    so the catch-up cannot drift toward a different branch than the
-    seams land on.
-    """
-    repo: Repo | None = None
-    try:
-        repo = Repo(root)
-        configured_attr: object = getattr(config.general, "auto_integrate_target", None)
-        if isinstance(configured_attr, str) and configured_attr:
-            if _local_branch_exists(repo, configured_attr):
-                return configured_attr
-            return None
-        origin_default = _origin_head_branch_name(repo)
-        if origin_default is not None and _local_branch_exists(repo, origin_default):
-            return origin_default
-        for candidate in _AUTO_DETECT_TARGET_CANDIDATES:
-            if _local_branch_exists(repo, candidate):
-                return candidate
-        return None
-    except Exception:
-        return None
-    finally:
-        _close_repo(repo)
+    """Return the configured integration branch verbatim, if any."""
+    del root
+    configured: object = getattr(config.general, "auto_integrate_target", None)
+    return configured if isinstance(configured, str) and configured else None
 
 
 def _local_head(repo: Repo, name: str) -> Head | None:
@@ -174,30 +139,6 @@ def _local_head(repo: Repo, name: str) -> Head | None:
     except Exception:
         return None
 
-
-def _local_branch_exists(repo: Repo, name: str) -> bool:
-    """Whether ``refs/heads/<name>`` exists, via in-process ref lookup."""
-    return _local_head(repo, name) is not None
-
-
-def _origin_head_branch_name(repo: Repo) -> str | None:
-    """Branch NAME behind ``origin/HEAD``, or ``None`` when unset.
-
-    In-process read of the ``refs/remotes/origin/HEAD`` symbolic ref --
-    the quiet twin of :func:`ralph.git.merge.resolve_origin_head_branch`
-    (which shells out and would log). Only the NAME crosses this
-    boundary; remote state never influences which local refs exist,
-    matching the local-only integration contract.
-    """
-    try:
-        sym = SymbolicReference(repo, "refs/remotes/origin/HEAD")
-        ref_name = sym.reference.name
-    except Exception:
-        return None
-    prefix = "origin/"
-    if ref_name.startswith(prefix):
-        return ref_name[len(prefix) :]
-    return None
 
 
 def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:

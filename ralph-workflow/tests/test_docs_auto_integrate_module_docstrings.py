@@ -126,20 +126,11 @@ def test_resolver_docstring_attributes_merge_commit_to_endpoint_merge_only() -> 
         )
 
 
-def test_refresh_module_documents_local_observation_when_fetch_disabled() -> None:
-    """Fetch-disabled refresh is not a no-op; it re-observes the local ref.
-
-    Regression: ``refresh_target`` was documented as "a no-op returning
-    ``REFRESH_DISABLED`` when fetching is turned off", which stopped being
-    true when the local-fleet observation landed. Operators running a
-    worktree fleet with no remote read that as "freshness is off".
-    """
+def test_refresh_module_documents_local_observation_without_remote_io() -> None:
+    """Local refresh remains an observable no-remote operation."""
     doc = " ".join((auto_integrate_refresh.refresh_target.__doc__ or "").split())
     assert doc, "refresh_target must carry a docstring"
-    assert "REFRESH_LOCAL_FLEET" in doc, (
-        "refresh_target must document the local-fleet outcome for a "
-        f"fetch-disabled run, got: {doc!r}"
-    )
+    assert "without contacting a remote" in doc
     assert "no-op" not in doc.lower(), (
         "refresh_target is no longer a no-op when fetching is disabled, "
         f"got: {doc!r}"

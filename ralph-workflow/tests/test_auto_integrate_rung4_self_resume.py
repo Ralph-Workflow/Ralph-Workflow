@@ -66,7 +66,6 @@ def _build_config(target: str) -> UnifiedConfig:
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": target,
-                "auto_integrate_fetch_enabled": False,
             }
         }
     )

@@ -25,8 +25,8 @@ surface carries no timeout keys. The per-attempt wall-clock share is
 therefore applied by handing it a config whose
 ``general.agent_max_session_seconds`` is overridden, which is the value
 that function reads. That share is a slice of the integration-wide
-``auto_integrate_resolve_timeout_seconds`` deadline, so it is normally an
-order of magnitude SMALLER than the run-wide session defaults, and the
+resolution deadline, so it is normally an order of magnitude SMALLER
+than the run-wide session defaults, and the
 two values ``GeneralConfig`` orders against the ceiling --
 ``agent_idle_timeout_seconds`` and ``agent_session_soft_wrapup_seconds``
 -- are pulled down with it rather than left above it.

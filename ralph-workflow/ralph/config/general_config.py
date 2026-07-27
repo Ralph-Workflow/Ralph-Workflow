@@ -88,186 +88,21 @@ class GeneralConfig(RalphBaseModel):
     execution_history_limit: int = Field(default=1000, ge=1)
     auto_integrate_enabled: bool = Field(
         default=True,
-        description=(
-            "When true (default), auto-integration is re-evaluated statelessly"
-            " at every seam: startup, pre/post planning, before/after development,"
-            " after commit, phase boundaries, parallel workers, and background"
-            " catch-up. It rebases the feature branch onto the current local target,"
-            " falls back to an endpoint merge when needed, and fast-forwards the"
-            " target to the integrated feature tip. Equality and ancestor cases are"
-            " fast-forward-or-noop outcomes, not feature-disabling skips. Only"
-            " auto_integrate_enabled=false disables integration; false keeps git"
-            " behavior byte-identical to runs without auto-integration (no rebase,"
-            " merge, or ref movement), for operators managing integration manually."
-        ),
+        description="Enable local auto-integration at pipeline seams.",
     )
-    auto_integrate_target: str | None = Field(
-        default=None,
-        description=(
-            "Shared integration branch name. When set (e.g. 'develop') it is"
-            " used verbatim, provided that branch exists as a LOCAL branch."
-            " Resolution is a stateless local-refs-only check: a branch is"
-            " never created from refs/remotes/origin/<target>, so remote"
-            " state can never decide the base of a local rebase."
-            " When unset, the target is auto-detected: the origin/HEAD"
-            " default-branch name when a local branch of that name exists,"
-            " otherwise 'main', otherwise 'master'. If no candidate resolves"
-            " to an existing local branch the step skips with a recorded"
-            " reason -- it never guesses a branch that is not clearly the"
-            " shared mainline."
-        ),
+    auto_integrate_target: str = Field(
+        default="main",
+        min_length=1,
+        description="Local branch that receives integrated feature work.",
     )
-    auto_integrate_fetch_enabled: bool = Field(
+    auto_integrate_remote_enabled: bool = Field(
         default=False,
-        description=(
-            "When false (default), auto-integration is strictly local: no"
-            " network access, and the mainline pointer is re-observed from the"
-            " local ref store -- the right setting for a fleet of linked"
-            " worktrees sharing one git common directory, where the mainline"
-            " ref is already shared. When true, a bounded, read-only"
-            " 'git fetch origin <target>' runs before each attempt purely to"
-            " OBSERVE origin's position, which is recorded on the"
-            " auto-integrate line. The fetch never moves a local ref, never"
-            " pushes, and never affects the rebase, merge or landing: remote"
-            " state cannot change local auto-rebase behaviour in any"
-            " configuration."
-        ),
+        description="Enable opt-in remote synchronization for auto-integration.",
     )
-    auto_integrate_fetch_timeout_seconds: float = Field(
-        default=10.0,
-        gt=0.0,
-        le=120.0,
-        description=(
-            "Wall-clock budget for the auto-integration fetch. On timeout or"
-            " any remote failure the step falls back to local-only"
-            " integration and the run is never failed by an unreachable"
-            " remote. The degradation is not silent: the refresh outcome is"
-            " recorded on the run state and rendered to the operator in the"
-            " auto-integrate line."
-        ),
-    )
-    auto_integrate_resolve_timeout_seconds: float = Field(
-        default=900.0,
-        gt=0.0,
-        le=7200.0,
-        description=(
-            "ONE wall-clock ceiling SHARED by the complete"
-            " conflict-resolution operation during auto-integration. Every"
-            " rebase stop, every round within a stop, and every sequential"
-            " candidate agent invocation draw down this single budget --"
-            " none of them is granted a fresh ceiling of its own. On expiry"
-            " the in-flight invocation is cut, the in-progress rebase or"
-            " merge is aborted and the integration records a conflict, so a"
-            " hung resolver can never stall the run with a rebase or merge"
-            " in progress."
-        ),
-    )
-    auto_integrate_push_enabled: bool = Field(
-        default=False,
-        description=(
-            "Off by default: when false, auto-integration is strictly local"
-            " and the local mainline ref is never pushed to a remote."
-            " When true, this deprecated alias enables remote sync for"
-            " the single configured `auto_integrate_remote_target`. The"
-            " push runs only after local landing, is fail-open, never"
-            " force-pushes, and never changes the landing result."
-        ),
-    )
-    auto_integrate_push_timeout_seconds: float = Field(
-        default=30.0,
-        gt=0.0,
-        le=300.0,
-        description=(
-            "Wall-clock budget for the configured remote auto-integrate push"
-            " (must be > 0 and <= 300). On timeout the outcome is recorded"
-            " and the run continues without changing local success."
-        ),
-    )
-    auto_integrate_remote_sync_enabled: bool = Field(
-        default=False,
-        description=(
-            "OFF by default: when false (the default), auto-integration is"
-            " strictly local -- no `git fetch`, no `git push`, and no"
-            " remote-driven rebase or reconcile happens. Every existing"
-            " Part-A integration contract is preserved byte-identically:"
-            " git behavior with this flag false is identical to a run"
-            " on a previous version. Setting it to true opts the run"
-            " into the opt-in remote-sync tier: a throttled"
-            " `git fetch <remote_target> <target>` reconciles the local"
-            " mainline with the remote mainline before each seam, and"
-            " after every successful local landing the local target is"
-            " pushed to the single `auto_integrate_remote_target`. A"
-            " rejected push is reconciled (rebase local target onto"
-            " remote target) and re-attempted on a bounded, jittered,"
-            " exponential backoff. A run that finishes with an unpushed"
-            " target can opt into a visible waiting state via"
-            " `auto_integrate_remote_wait_seconds > 0`. Remote state"
-            " NEVER affects the rebase or merge base in any"
-            " configuration unless this flag is true, and turning it"
-            " on implies `auto_integrate_fetch_enabled = true` for the"
-            " freshness probe."
-        ),
-    )
-    auto_integrate_remote_target: str = Field(
+    auto_integrate_remote: str = Field(
         default="origin",
         min_length=1,
-        description=(
-            "The configured remote name to sync the local target branch"
-            ' against. Defaults to "origin"; any configured remote'
-            " name is accepted. When the named remote is not configured"
-            " in this repository, remote sync degrades to local-only"
-            " integration with a recorded skip reason -- it never"
-            " raises. The push side only ever touches this one remote;"
-            " the deprecated `auto_integrate_push_enabled = true` alias"
-            " enables the same single-remote behavior."
-        ),
-    )
-    auto_integrate_remote_sync_interval_seconds: float = Field(
-        default=300.0,
-        ge=0.0,
-        description=(
-            "Minimum wall-clock seconds between two PULLS for a given"
-            " `(repo root, remote, target)` triple. 0 means every seam."
-            " The push side is NOT throttled: it follows successful"
-            " landings, which are already bounded by the seams. A"
-            " failed fetch does NOT arm the next window; only a"
-            " healthy fetch arms it, so a transient blip never buys a"
-            " whole interval of unrefreshed probes."
-        ),
-    )
-    auto_integrate_remote_backoff_max_seconds: float = Field(
-        default=300.0,
-        ge=0.0,
-        description=(
-            "Upper bound on the per-remote exponential, jittered backoff"
-            " applied after consecutive remote-side failures, both"
-            " between seams and inside the end-of-run waiting state."
-            " The base is `auto_integrate_remote_sync_interval_seconds`;"
-            " consecutive failures widen the gap exponentially with"
-            " jitter, capped at this ceiling. Any successful remote"
-            " interaction resets the backoff to the base interval. This"
-            " bounds the GAP between attempts; it never bounds their"
-            " NUMBER -- a transient failure never stops a later seam"
-            " from trying again."
-        ),
-    )
-    auto_integrate_remote_wait_seconds: float = Field(
-        default=0.0,
-        ge=0.0,
-        description=(
-            "How long a FINISHED run may sit in the visible"
-            " waiting-for-remote state when it still holds an unpushed"
-            " target. 0 (default) means do not wait: preserve today's"
-            ' exit behavior verbatim -- record "landed locally, not'
-            ' published to <remote>: <reason>" and exit. Any positive'
-            " value opts the run into waiting: retry the"
-            " fetch -> reconcile -> push sequence on the exponential"
-            " jittered backoff capped by"
-            " `auto_integrate_remote_backoff_max_seconds`, until this"
-            " cap is reached or the push succeeds; the waiting state"
-            " is interruptible by the existing interrupt/exit-pause"
-            " path and never blocks the pipeline while work remains."
-        ),
+        description="Remote used when remote auto-integration is enabled.",
     )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
@@ -736,8 +571,10 @@ class GeneralConfig(RalphBaseModel):
                 " agent_idle_no_progress_waiting_on_child_seconds"
             )
             raise ValueError(msg)
-        if not self.auto_integrate_remote_target.strip():
-            raise ValueError("auto_integrate_remote_target must not be empty or whitespace")
+        if not self.auto_integrate_target.strip():
+            raise ValueError("auto_integrate_target must not be empty or whitespace")
+        if not self.auto_integrate_remote.strip():
+            raise ValueError("auto_integrate_remote must not be empty or whitespace")
         self._validate_workspace_change_weights()
         return self
 

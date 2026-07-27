@@ -34,13 +34,8 @@ def _config(**overrides: object):
 
     base = {
         "general": {
-            "auto_integrate_remote_sync_enabled": True,
-            "auto_integrate_remote_target": "origin",
-            "auto_integrate_remote_sync_interval_seconds": 300.0,
-            "auto_integrate_remote_backoff_max_seconds": 300.0,
-            "auto_integrate_remote_wait_seconds": 0.0,
-            "auto_integrate_fetch_timeout_seconds": 5.0,
-            "auto_integrate_push_timeout_seconds": 5.0,
+            "auto_integrate_remote_enabled": True,
+            "auto_integrate_remote": "origin",
         },
     }
     base["general"].update(overrides)
@@ -81,7 +76,6 @@ def test_successful_push_after_one_reconcile_succeeds(
         return summary
 
     monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", fake_push)
-    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_k: None)
     config = _config()
     record = _record()
     out = reconcile_after_rejected_push(config, Path("/repo"), "main", record)
@@ -104,7 +98,6 @@ def test_run_keeps_going_after_per_seam_exhaustion(
         return "push of main to origin failed: non-fast-forward"
 
     monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", fake_push)
-    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_k: None)
     config = _config()
     record = _record()
     out = reconcile_after_rejected_push(config, Path("/repo"), "main", record)
@@ -128,7 +121,6 @@ def test_per_seam_cap_is_three_attempts(
         return "push of main to origin failed: non-fast-forward"
 
     monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", fake_push)
-    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_k: None)
     config = _config()
     record = _record()
     reconcile_after_rejected_push(config, Path("/repo"), "main", record)
@@ -175,6 +167,7 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     monkeypatch.setattr(mod, "write_record", lambda *_a: None)
     monkeypatch.setattr(mod, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict"))
     monkeypatch.setattr(mod, "rebase_in_progress", lambda *_a: True)
+
     def resolver(*_a: object, **_kw: object) -> bool:
         return True
 
@@ -182,7 +175,9 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
     monkeypatch.setattr(
         mod,
         "resolve_rebase_in_progress",
-        lambda root, target, received: calls.append((root, target)) or received(root, target, object()),
+        lambda root, target, received: (
+            calls.append((root, target)) or received(root, target, object())
+        ),
     )
 
     success, _reason = mod.reconcile_target_onto_remote(
@@ -199,14 +194,24 @@ def test_rejected_push_reintegrates_feature_before_repush(
     from ralph.pipeline import auto_integrate_remote_sync as mod
 
     events: list[str] = []
-    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *_a, **_kw: events.append("fetch") or REFRESH_LOCAL_FLEET)
-    monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", lambda *_a, **_kw: events.append("push") or "pushed main to origin")
+    monkeypatch.setattr(
+        mod,
+        "refresh_target_from_remote",
+        lambda *_a, **_kw: events.append("fetch") or REFRESH_LOCAL_FLEET,
+    )
+    monkeypatch.setattr(
+        remote_push_module,
+        "push_branch_to_single_remote",
+        lambda *_a, **_kw: events.append("push") or "pushed main to origin",
+    )
 
     def integrate(*_a: object, **_kw: object) -> None:
         events.append("feature integration")
 
     record = _record()
-    mod.reconcile_after_rejected_push(_config(), Path("/repo"), "main", record, reintegrate=integrate)
+    mod.reconcile_after_rejected_push(
+        _config(), Path("/repo"), "main", record, reintegrate=integrate
+    )
     assert events == ["fetch", "feature integration", "push"]
 
 
@@ -217,8 +222,8 @@ def test_disabled_remote_sync_skips_reconcile() -> None:
     cfg = UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_remote_sync_enabled": False,
-                "auto_integrate_remote_target": "origin",
+                "auto_integrate_remote_enabled": False,
+                "auto_integrate_remote": "origin",
             },
         },
     )
@@ -226,33 +231,3 @@ def test_disabled_remote_sync_skips_reconcile() -> None:
     out = reconcile_after_rejected_push(cfg, Path("/repo"), "main", record)
     # Record returned unchanged from the caller's perspective
     assert out is not None
-
-
-def test_reconcile_attempts_use_jittered_backoff(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """AC-37: gaps between attempts use the configured jittered backoff."""
-    from ralph.pipeline import auto_integrate_remote_sync as mod
-
-    monkeypatch.setattr(mod, "refresh_target_from_remote", lambda *a, **kw: REFRESH_LOCAL_FLEET)
-
-    outcomes = iter(
-        [
-            "push of main to origin failed: non-fast-forward",
-            "push of main to origin failed: timeout",
-            "push of main to origin failed: rejected by remote hook",
-        ]
-    )
-
-    def fake_push(*a: object, **kw: object) -> str:
-        return next(outcomes)
-
-    monkeypatch.setattr(remote_push_module, "push_branch_to_single_remote", fake_push)
-    sleeps: list[float] = []
-    monkeypatch.setattr(mod.time, "sleep", sleeps.append)
-    config = _config()
-    record = _record()
-    reconcile_after_rejected_push(config, Path("/repo"), "main", record)
-    # Each retry (between attempts) should call sleep with a non-negative
-    # number; not all retries may sleep if backoff already elapsed.
-    assert isinstance(sleeps, list)

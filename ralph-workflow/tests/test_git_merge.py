@@ -31,7 +31,6 @@ from ralph.git.merge import (
     observe_branch_sha,
     paths_with_conflict_markers,
     reset_hard,
-    resolve_origin_head_branch,
     worktree_for_branch,
 )
 
@@ -321,30 +320,6 @@ def test_worktree_for_branch_returns_correct_path_and_none(
         _run(tmp_git_repo, "worktree", "remove", "--force", str(wt_path))
 
 
-def test_resolve_origin_head_branch_returns_default_branch(
-    tmp_git_repo: Path,
-) -> None:
-    """``resolve_origin_head_branch`` returns the origin default branch when set."""
-    base = _base_branch(tmp_git_repo)
-    bare_root = tmp_git_repo.parent / "bare.git"
-    _run(tmp_git_repo.parent, "init", "--bare", str(bare_root))
-    _run(tmp_git_repo, "remote", "add", "origin", str(bare_root))
-    # Push the local branch so the remote has refs to point HEAD at.
-    _run(tmp_git_repo, "push", "origin", base)
-    # Force origin/HEAD to a known branch (matches what
-    # ``git clone`` would set up).
-    _run(tmp_git_repo, "remote", "set-head", "origin", base)
-    assert resolve_origin_head_branch(tmp_git_repo) == base
-
-
-def test_resolve_origin_head_branch_returns_none_without_remote(
-    tmp_git_repo: Path,
-) -> None:
-    """``resolve_origin_head_branch`` returns None when no origin remote is configured."""
-    # The seed template repo has no remote by default.
-    assert resolve_origin_head_branch(tmp_git_repo) is None
-
-
 def test_merge_regression_lone_conflict_marker_is_reported(
     tmp_git_repo: Path,
 ) -> None:
@@ -381,12 +356,7 @@ def test_paths_with_conflict_markers_ignores_clean_and_unreadable_paths(
     """The positive control: a resolved file and a missing file stay silent."""
     (tmp_git_repo / "resolved.txt").write_text("merged content\n", encoding="utf-8")
 
-    assert (
-        paths_with_conflict_markers(
-            tmp_git_repo, ["resolved.txt", "never_written.txt"]
-        )
-        == []
-    )
+    assert paths_with_conflict_markers(tmp_git_repo, ["resolved.txt", "never_written.txt"]) == []
 
 
 def test_abort_merge_is_safe_when_no_merge_in_progress(tmp_git_repo: Path) -> None:

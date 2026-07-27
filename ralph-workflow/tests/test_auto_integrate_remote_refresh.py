@@ -1,11 +1,9 @@
-"""Regression coverage for the observe-only remote refresh of the target ref.
+"""Regression coverage for remote-sync target refresh.
 
 Auto-integration is a LOCAL feature: every rebase, merge and landing
 decision is made against the local ``refs/heads/<target>`` the fleet of
-linked worktrees advances directly. A configured origin may be fetched
-(when ``auto_integrate_fetch_enabled`` is explicitly turned on) purely
-to OBSERVE and report its position -- remote state must never move a
-local ref or otherwise affect local rebase operations. These tests
+linked worktrees advances directly. The opt-in remote-sync path may fetch its configured remote purely to
+observe and reconcile it; local-only integration never fetches. These tests
 prove both halves: the observation stays read-only, and integration
 proceeds against the local pointer regardless of what origin holds.
 
@@ -60,13 +58,11 @@ def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _build_config(*, fetch_timeout: float = 2.0) -> UnifiedConfig:
+def _build_config() -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_enabled": True,
-                "auto_integrate_fetch_enabled": True,
-                "auto_integrate_fetch_timeout_seconds": fetch_timeout,
             }
         }
     )
@@ -89,10 +85,7 @@ def _seed_bare_origin(tmp_git_repo: Path) -> tuple[Path, str]:
     """Return ``(bare_origin_path, main_branch_name)``."""
     main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
     bare = tmp_git_repo.parent / "origin.git"
-    assert (
-        _run(tmp_git_repo, "clone", "--bare", str(tmp_git_repo), str(bare)).returncode
-        == 0
-    )
+    assert _run(tmp_git_repo, "clone", "--bare", str(tmp_git_repo), str(bare)).returncode == 0
     return bare, main
 
 
@@ -107,9 +100,7 @@ def test_remote_ahead_refresh_keeps_the_local_target_unchanged(
 
     local_main = branch_sha(agent, main)
     assert local_main is not None
-    remote_sha = _commit(
-        tmp_git_repo, "remote.txt", "remote advance\n", "remote advance"
-    )
+    remote_sha = _commit(tmp_git_repo, "remote.txt", "remote advance\n", "remote advance")
     assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
     assert remote_sha != local_main
 
@@ -132,9 +123,7 @@ def test_unreachable_remote_degrades_to_local_integration(
     )
 
     assert (
-        refresh_target_from_remote(
-            Path("/workspace"), "main", timeout_seconds=2.0
-        )
+        refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
         == REFRESH_UNREACHABLE
     )
 
@@ -152,7 +141,9 @@ def _inject_remote_position(
         lambda _root, _target, _timeout, *, remote=None: True,
     )
     monkeypatch.setattr(
-        auto_integrate_sync, "_remote_tracking_sha", lambda _root, _target, _remote="origin": "remote"
+        auto_integrate_sync,
+        "_remote_tracking_sha",
+        lambda _root, _target, _remote="origin": "remote",
     )
     monkeypatch.setattr(auto_integrate_sync, "branch_sha", lambda _root, _target: "local")
     monkeypatch.setattr(
@@ -168,9 +159,7 @@ def test_diverged_remote_is_not_force_moved(
     """AC-03: a diverged origin must never force-move the local mainline."""
     _inject_remote_position(monkeypatch, ancestor=False)
     assert (
-        refresh_target_from_remote(
-            Path("/workspace"), "main", timeout_seconds=2.0
-        )
+        refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
         == REFRESH_DIVERGED
     )
 
@@ -203,9 +192,7 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
     monkeypatch.setattr(
         auto_integrate, "observe_conflict_identity", lambda _root, _target: "identity"
     )
-    monkeypatch.setattr(
-        auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True
-    )
+    monkeypatch.setattr(auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True)
     monkeypatch.setattr(
         auto_integrate,
         "_refresh_target",
@@ -251,9 +238,7 @@ def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(
     """
     _inject_remote_position(monkeypatch, ancestor=True)
     assert (
-        refresh_target_from_remote(
-            Path("/workspace"), "main", timeout_seconds=2.0
-        )
+        refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
         == REFRESH_ORIGIN_AHEAD
     )
 
@@ -283,8 +268,6 @@ def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(
     )
 
     assert (
-        refresh_target_from_remote(
-            Path("/workspace"), "main", timeout_seconds=2.0
-        )
+        refresh_target_from_remote(Path("/workspace"), "main", timeout_seconds=2.0)
         == REFRESH_UNREACHABLE
     )

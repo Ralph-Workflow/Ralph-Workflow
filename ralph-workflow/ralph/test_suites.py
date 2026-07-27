@@ -147,8 +147,6 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_remote_sync_pull.py",
     "tests/test_auto_integrate_remote_sync_push.py",
     "tests/test_auto_integrate_remote_sync_reconcile.py",
-    "tests/test_auto_integrate_remote_sync_retry.py",
-    "tests/test_auto_integrate_remote_wait.py",
     "tests/test_auto_integrate_stateless_seam.py",
     "tests/test_auto_integrate_env_pinning.py",
     "tests/test_auto_integrate_markerless_conflicts.py",
@@ -230,8 +228,7 @@ def partition_selected_files(
     # parameter type so the per-shard budget math below infers ``int``,
     # not ``Any``.
     weight_map: dict[str, int] = (
-        dict(effective_weights) if file_weights is not None
-        else dict.fromkeys(ordered_files, 1)
+        dict(effective_weights) if file_weights is not None else dict.fromkeys(ordered_files, 1)
     )
 
     # DA-001: round-robin distribute the required E2E files first so each
@@ -253,9 +250,7 @@ def partition_selected_files(
     # DA-001: LPT-place the remaining (non-E2E) files into whichever
     # shard has the lowest weight. Tie-break by shard index so the
     # assignment is deterministic.
-    remaining_files: list[str] = [
-        f for f in ordered_files if f not in e2e_set
-    ]
+    remaining_files: list[str] = [f for f in ordered_files if f not in e2e_set]
 
     def _remaining_sort_key(path: str) -> tuple[int, str]:
         return (-weight_map[path], path)

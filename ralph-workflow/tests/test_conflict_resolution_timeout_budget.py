@@ -1,6 +1,6 @@
 """Tests for the conflict-resolution wall-clock budget.
 
-``general.auto_integrate_resolve_timeout_seconds`` is the ceiling for the
+``RESOLVE_TIMEOUT_SECONDS`` is the ceiling for the
 WHOLE resolution pipeline. Two separate defects used to let a conflicted
 integration outlive it, and both are pinned here:
 
@@ -31,7 +31,10 @@ from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import effect_executor
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.driver import (
+    RESOLVE_TIMEOUT_SECONDS,
+    run_conflict_resolution_pipeline,
+)
 from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
 from ralph.pipeline.conflict_resolution.session import with_session_ceiling
 from ralph.pipeline.events import PipelineEvent
@@ -111,14 +114,10 @@ def _install_seams(
     )
     prompt_path = tmp_path / "conflict-prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
-    monkeypatch.setattr(
-        driver_module, "render_conflict_prompt", lambda **kwargs: prompt_path
-    )
+    monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **kwargs: prompt_path)
 
 
-def _run(
-    tmp_path: Path, *, clock: _FakeClock, config: UnifiedConfig | None = None
-) -> bool:
+def _run(tmp_path: Path, *, clock: _FakeClock, config: UnifiedConfig | None = None) -> bool:
     """Drive the pipeline through its REAL default invoker."""
     return run_conflict_resolution_pipeline(
         root=tmp_path,
@@ -133,9 +132,7 @@ def _run(
     )
 
 
-def _install_session(
-    monkeypatch: pytest.MonkeyPatch, session: _SpendingSession
-) -> None:
+def _install_session(monkeypatch: pytest.MonkeyPatch, session: _SpendingSession) -> None:
     """Cut the production path exactly where a process would be launched.
 
     ``session.py`` calls ``execute_agent_effect`` through the module
@@ -164,7 +161,7 @@ def _drive_exhausted(
 
 def test_default_resolve_ceiling_is_the_documented_value() -> None:
     """The arithmetic in this module rests on the shipped default."""
-    assert _config().general.auto_integrate_resolve_timeout_seconds == _CEILING_SECONDS
+    assert RESOLVE_TIMEOUT_SECONDS == _CEILING_SECONDS
 
 
 def test_every_attempt_receives_a_bounded_positive_maximum(
@@ -243,9 +240,7 @@ def test_a_generous_share_leaves_the_configured_watchdogs_alone() -> None:
     bounded = with_session_ceiling(config, 6_000.0).general
 
     assert bounded.agent_max_session_seconds == 6_000.0
-    assert (
-        bounded.agent_idle_timeout_seconds == config.general.agent_idle_timeout_seconds
-    )
+    assert bounded.agent_idle_timeout_seconds == config.general.agent_idle_timeout_seconds
     assert (
         bounded.agent_session_soft_wrapup_seconds
         == config.general.agent_session_soft_wrapup_seconds

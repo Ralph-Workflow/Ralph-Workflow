@@ -24,7 +24,7 @@ without the probe.
 The remote name is parameterized (``origin`` by default for
 backwards compatibility, any configured remote name when remote sync is
 opted into) so the same probe services both the legacy observe-only
-``origin`` probe and the opt-in ``auto_integrate_remote_target`` sync.
+the opt-in configured-remote sync.
 """
 
 from __future__ import annotations
@@ -39,9 +39,7 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 if TYPE_CHECKING:
     from pathlib import Path
 
-#: Default remote name for the observe-only probe. ``origin`` matches the
-#: clone topology every existing run started with; the opt-in remote
-#: sync tier configures its remote via ``auto_integrate_remote_target``.
+#: Default configured remote name.
 DEFAULT_REFRESH_REMOTE = "origin"
 
 #: Typed outcomes of :func:`refresh_target_from_remote`. The refresh is
@@ -156,9 +154,7 @@ def refresh_target_from_remote(
         target: Branch whose freshness to observe.
         timeout_seconds: Per-attempt wall-clock fetch budget.
         remote: The remote to fetch from. Defaults to ``origin`` for
-            backwards compatibility with the observe-only probe that
-            shipped first; the opt-in remote-sync tier passes the
-            configured ``auto_integrate_remote_target`` here.
+            the configured remote-sync tier passes its configured remote here.
     """
     if not _has_remote(repo_root, remote):
         return _observe_without_remote(repo_root, target, remote)

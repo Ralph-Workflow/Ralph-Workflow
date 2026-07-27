@@ -332,85 +332,39 @@ def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object])
 def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate simple configuration fields."""
     simple_fields = (
-        "developer_iters",
-        "developer_context",
-        "prompt_path",
-        "templates_dir",
-        "git_user_name",
-        "git_user_email",
-        "provider_fallback",  # RESERVED dead knob; see general_config.py
-        "max_same_agent_retries",
-        "max_commit_residual_retries",
-        "max_retries",
-        "retry_delay_ms",
-        "backoff_multiplier",
-        "max_backoff_ms",
-        "max_cycles",
-        "execution_history_limit",
-        "auto_integrate_enabled",
-        "auto_integrate_target",
-        "auto_integrate_fetch_enabled",
-        "auto_integrate_fetch_timeout_seconds",
-        "auto_integrate_resolve_timeout_seconds",
-        "auto_integrate_push_enabled",
-        "auto_integrate_push_timeout_seconds",
-        "auto_integrate_remote_sync_enabled",
-        "auto_integrate_remote_target",
-        "auto_integrate_remote_sync_interval_seconds",
-        "auto_integrate_remote_backoff_max_seconds",
-        "auto_integrate_remote_wait_seconds",
+        "developer_iters", "developer_context", "prompt_path", "templates_dir",
+        "git_user_name", "git_user_email", "provider_fallback", "max_same_agent_retries",
+        "max_commit_residual_retries", "max_retries", "retry_delay_ms", "backoff_multiplier",
+        "max_backoff_ms", "max_cycles", "execution_history_limit", "auto_integrate_enabled",
+        "auto_integrate_target", "auto_integrate_remote_enabled", "auto_integrate_remote",
     )
     for field in simple_fields:
         if field in data:
             general[field] = data.pop(field)
 
 
-def _warn_deprecated_push_enabled(data: dict[str, object]) -> None:
-    """Surface a deprecation warning when ``auto_integrate_push_enabled`` is set.
-
-    The legacy fan-out push (``auto_integrate_push_enabled``) is replaced
-    by the opt-in ``auto_integrate_remote_sync_enabled`` + single
-    configured ``auto_integrate_remote_target`` pair. The deprecated key
-    still drives the same on/off decision when read by the legacy
-    auto_integrate hook (so existing operators do not lose push behavior
-    on upgrade), but it NEVER re-introduces the fan-out: the legacy
-    remote-sync tier only uses the configured
-    ``auto_integrate_remote_target``. The warning names the
-    replacement so an operator can find the new flag without reading the
-    diff.
-    """
-    if "auto_integrate_push_enabled" not in data:
-        return
-    raw: object = data["auto_integrate_push_enabled"]
-    if not isinstance(raw, bool) or not raw:
-        return
-    logger.warning(
-        "`auto_integrate_push_enabled = true` is deprecated; use "
-        "`auto_integrate_remote_sync_enabled = true` together with "
-        '`auto_integrate_remote_target = "<remote>"`. The deprecated '
-        "key now enables only the SINGLE configured remote target."
-    )
+_RETIRED_AUTO_INTEGRATE_KEYS: dict[str, str] = {
+    "auto_integrate_fetch_enabled": "auto_integrate_remote_enabled",
+    "auto_integrate_push_enabled": "auto_integrate_remote_enabled",
+    "auto_integrate_remote_sync_enabled": "auto_integrate_remote_enabled",
+    "auto_integrate_remote_target": "auto_integrate_remote",
+    "auto_integrate_fetch_timeout_seconds": "FETCH_TIMEOUT_SECONDS",
+    "auto_integrate_push_timeout_seconds": "PUSH_TIMEOUT_SECONDS",
+    "auto_integrate_resolve_timeout_seconds": "RESOLVE_TIMEOUT_SECONDS",
+    "auto_integrate_remote_sync_interval_seconds": "REMOTE_SYNC_INTERVAL_SECONDS",
+    "auto_integrate_remote_backoff_max_seconds": "REMOTE_BACKOFF_MAX_SECONDS",
+    "auto_integrate_remote_wait_seconds": "removed without replacement",
+}
 
 
-def _maybe_imply_fetch_enabled(data: dict[str, object]) -> None:
-    """``auto_integrate_remote_sync_enabled = true`` implies the fetch probe.
-
-    The remote-sync tier is opt-in: when it is on, the operator has
-    explicitly accepted that ``origin`` (or the named remote) may be
-    contacted and has not asked for the freshness probe to stay off.
-    Implying ``auto_integrate_fetch_enabled = true`` here means the
-    existing ``refresh_target`` path still governs the fetch knob
-    itself and the test for "fetch disabled" still means what it meant
-    before. An explicit ``auto_integrate_fetch_enabled = false`` set by
-    the operator wins -- implication is only a default for unset.
-    """
-    if "auto_integrate_fetch_enabled" in data:
-        return
-    raw: object = data.get("auto_integrate_remote_sync_enabled")
-    legacy_raw: object = data.get("auto_integrate_push_enabled")
-    if (isinstance(raw, bool) and raw) or (isinstance(legacy_raw, bool) and legacy_raw):
-        data["auto_integrate_fetch_enabled"] = True
-
+def _warn_and_remove_retired_auto_integrate_keys(data: dict[str, object]) -> None:
+    """Warn once per retired key in a source layer, then ignore it."""
+    for key, replacement in _RETIRED_AUTO_INTEGRATE_KEYS.items():
+        if key in data:
+            data.pop(key)
+            logger.warning(
+                "`{}` is no longer supported and is ignored; use `{}` instead.", key, replacement
+            )
 
 def _apply_cli_overrides(
     data: dict[str, object], cli_overrides: dict[str, object] | None
@@ -464,36 +418,22 @@ def load_config(
                 propagated_data = deep_merge(propagated_data, propagated_data_for_path)
     local_data = load_toml(local_path)
 
-    # Convert legacy config format if needed
+    # Convert legacy config format and discard retired keys at their original
+    # source layer, so each warning names one file and never becomes unknown.
     global_data = _convert_legacy_config(global_data)
-    propagated_data = _convert_legacy_config(propagated_data)
     local_data = _convert_legacy_config(local_data)
-    # Run the deprecation-warning sweep over EACH layer so the operator
-    # can locate the file the deprecated key actually lives in. The
-    # implication helpers run on the MERGED data so a top-level
-    # ``auto_integrate_remote_sync_enabled = true`` (project-local) does
-    # imply fetch even when the global layer is silent on it.
-    for layer_data in (global_data, propagated_data, local_data):
+    for layer_data in (global_data, local_data):
         general_layer = layer_data.get("general")
         if isinstance(general_layer, dict):
-            _warn_deprecated_push_enabled(general_layer)
-    merged_intermediate = deep_merge(global_data, propagated_data)
-    merged_intermediate = deep_merge(merged_intermediate, local_data)
-    merged_intermediate = _apply_cli_overrides(merged_intermediate, cli_overrides)
-    merged_general = merged_intermediate.get("general")
-    if isinstance(merged_general, dict):
-        _maybe_imply_fetch_enabled(merged_general)
-    # Apply the implied-data mutation back into the per-layer dicts so
-    # downstream warnings (which iterate layers) see the effective
-    # shape and so the merged result we hand to Pydantic carries the
-    # implied value.
-    for layer_data in (global_data, propagated_data, local_data):
-        layer_general = layer_data.get("general")
-        if isinstance(layer_general, dict) and isinstance(merged_general, dict):
-            for implied_key in ("auto_integrate_fetch_enabled",):
-                implied_value = merged_general.get(implied_key)
-                if implied_key not in layer_general and implied_value is not None:
-                    layer_general[implied_key] = implied_value
+            _warn_and_remove_retired_auto_integrate_keys(general_layer)
+    propagated_data = {}
+    for index, (propagated_path, propagated_path_data) in enumerate(propagated_entries):
+        converted_entry = _convert_legacy_config(propagated_path_data)
+        general_layer = converted_entry.get("general")
+        if isinstance(general_layer, dict):
+            _warn_and_remove_retired_auto_integrate_keys(general_layer)
+        propagated_entries[index] = (propagated_path, converted_entry)
+        propagated_data = deep_merge(propagated_data, converted_entry)
     warn_unknown_fields(global_data, _global_config_path())
     for propagated_path, propagated_path_data in propagated_entries:
         warn_unknown_fields(propagated_path_data, propagated_path)
@@ -535,6 +475,9 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
     """
     data = load_toml(config_path)
     data = _convert_legacy_config(data)
+    general = data.get("general")
+    if isinstance(general, dict):
+        _warn_and_remove_retired_auto_integrate_keys(general)
     warn_unknown_fields(data, config_path)
     try:
         return UnifiedConfig.model_validate(data)

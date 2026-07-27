@@ -326,60 +326,18 @@ def maybe_push_target(
     target: str,
     record: RebaseState,
 ) -> RebaseState:
-    """Opt-in configured-remote push hook shared by successful local landings.
-
-    The happy path and crash-recovery continuation both call this helper after
-    a successful local landing so the configured remote can publish the target.
-
-    Never gates or alters the landing. A push failure is recorded
-    on ``RebaseState.last_push`` for operator visibility; the caller's
-    ``RebaseState`` is returned unchanged when push is disabled, when
-    the helper raised defensively, or when the helper produced no
-    summary.
-
-    Args:
-        config: Unified run configuration. ``None`` (the recovery
-            preamble's pre-seam callers may not have one) skips the
-            push entirely, mirroring the pre-seam byte-identical
-            behaviour. Otherwise ``config.general.auto_integrate_push_enabled``
-            gates the call; ``config.general.auto_integrate_push_timeout_seconds``
-            sets the push wall-clock budget. Both reads are
-            ``getattr``-guarded so legacy configs that pre-date the
-            push feature stay compatible.
-        repo_root: Repository root containing the configured remote.
-        target: Branch to push (``refs/heads/<target>:refs/heads/<target>``).
-        record: The ``RebaseState`` to annotate with ``last_push``. The
-            returned object is ``record`` unchanged when no push
-            happened, or ``record.model_copy(update={'last_push': summary})``
-            when a summary was produced.
-
-    Returns:
-        The ``RebaseState`` carrying ``last_push`` when push ran, else
-        ``record`` unchanged.
-    """
-    if config is None:
-        return record
-    if not hasattr(config, "general"):
-        return record
-    general_obj: object = config.general
-    if general_obj is None:
-        return record
-    # Both the new opt-in and the deprecated alias use the same single,
-    # configured remote.  The alias is a compatibility spelling, not a route
-    # to the unsafe historical fan-out behavior.
-    remote_sync_raw: object = getattr(general_obj, "auto_integrate_remote_sync_enabled", False)
-    push_enabled_raw: object = getattr(general_obj, "auto_integrate_push_enabled", False)
-    if not (
-        (isinstance(remote_sync_raw, bool) and remote_sync_raw)
-        or (isinstance(push_enabled_raw, bool) and push_enabled_raw)
-    ):
-        return record
+    """Publish a successful local landing only when remote sync is enabled."""
     from ralph.pipeline.auto_integrate_remote_sync import (
-        push_target_after_landing as _remote_push_hook,
+        push_target_after_landing as remote_push_hook,
+    )
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        remote_sync_enabled,
     )
 
+    if not remote_sync_enabled(config):
+        return record
     try:
-        return _remote_push_hook(config, repo_root, target, record)
+        return remote_push_hook(config, repo_root, target, record)
     except Exception as push_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate: remote-sync push hook raised unexpectedly: {}", push_exc)
         return record

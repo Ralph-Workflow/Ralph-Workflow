@@ -96,7 +96,6 @@ def test_fetch_disabled_still_observes_the_local_pointer(
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": "main",
-                "auto_integrate_fetch_enabled": False,
             }
         }
     )
@@ -174,7 +173,6 @@ def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": target,
-                "auto_integrate_fetch_enabled": False,
             }
         }
     )

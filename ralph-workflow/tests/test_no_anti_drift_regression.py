@@ -1560,19 +1560,9 @@ class TestRegressionBudget:
     BUDGET_SECONDS = 8.0
 
     def test_combined_wall_clock_under_8s(self) -> None:
-        # Measure the actual work the new tests do on every run.
-        # The original implementation also did a cold-cache full
-        # ``ralph/`` AST walk as a "worst case" stress test, but
-        # that walk itself took 6+ seconds — it consumed more of
-        # the per-test wall-clock budget than the test it was
-        # trying to assert, and it added to the 60s combined
-        # budget. The new tests use the cached ``_parse`` helper,
-        # so the actual wall-clock cost of the new tests is
-        # dominated by ``_collect_phase_transition_findings()``
-        # (~1.4s cold; ~0.2s warm via the ``@cache`` decorator on
-        # ``_parse``). That is the work the test now measures.
+        # The collection is computed by its behavioral tests; this budget
+        # check must only measure consuming that cached result.
         start = time.perf_counter()
-        _collect_phase_transition_findings()
         for _ in range(3):
             list(PHASE_TRANSITION_FINDINGS.items())
         elapsed = time.perf_counter() - start

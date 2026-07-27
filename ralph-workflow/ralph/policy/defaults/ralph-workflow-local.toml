@@ -20,56 +20,6 @@
 
 
 # =============================================================================
-# 1. CHAINS -- which agent/model does which job, for THIS project.
-# =============================================================================
-# A chain is an ORDERED FALLBACK LIST. The first entry is what actually runs;
-# the rest are tried, in order, only if it fails or exhausts its retries.
-#
-# What belongs where:
-#   planning, analysis  ->  your most capable model -- these phases review
-#                           work and catch mistakes.
-#   development         ->  a strong coder model -- this phase edits your files.
-#   commit              ->  something small, fast and cheap -- it only writes
-#                           commit messages.
-#
-# Each entry is `agent/model`. One example per supported agent:
-#   claude/opus                          codex/gpt-5.4[effort=high]
-#   claude-headless/sonnet               opencode/openai/gpt-5.4
-#   cursor/claude-opus-4-8[effort=high]  nanocoder/ollama/llama3.1
-#   pi/anthropic/claude-sonnet-4:high    agy/"Claude Sonnet 4.6 (Thinking)"
-# Full per-agent syntax: docs/sphinx/agent-compatibility.md
-
-[agent_chains]
-planning = ["claude/opus"]
-development = ["claude/sonnet"]
-analysis = ["claude/opus"]
-commit = ["claude/haiku"]
-
-# Fallbacks are opt-in. The defaults above name only `claude`, so a one-agent
-# install works out of the box. To add one: install the CLI, confirm it is on
-# PATH, then extend the list:
-#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
-#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/configuration.md#ccs_aliases
-
-
-# =============================================================================
-# 2. DRAINS -- which chain runs which pipeline phase, for THIS project.
-# =============================================================================
-# A drain is a routing label: `phase = "chain name from section 1"`.
-# The bundled pipeline uses exactly this set. Change a value only to point a
-# phase at a different chain.
-
-[agent_drains]
-planning = "planning"
-planning_analysis = "analysis"
-development = "development"
-development_analysis = "analysis"
-development_commit = "commit"
-analysis = "analysis"
-commit = "commit"
-
-
-# =============================================================================
 # OPTIONAL -- everything below this line has a working default.
 # Skip it unless you know you need something here.
 #
@@ -147,65 +97,83 @@ commit = "commit"
 # can_commit = true
 # display_name = "Pi"
 
+# =============================================================================
+# 1. CHAINS -- which agent/model does which job, for THIS project.
+# =============================================================================
+# A chain is an ORDERED FALLBACK LIST. The first entry is what actually runs;
+# the rest are tried, in order, only if it fails or exhausts its retries.
+#
+# What belongs where:
+#   planning, analysis  ->  your most capable model -- these phases review
+#                           work and catch mistakes.
+#   development         ->  a strong coder model -- this phase edits your files.
+#   commit              ->  something small, fast and cheap -- it only writes
+#                           commit messages.
+#
+# Each entry is `agent/model`. One example per supported agent:
+#   claude/opus                          codex/gpt-5.4[effort=high]
+#   claude-headless/sonnet               opencode/openai/gpt-5.4
+#   cursor/claude-opus-4-8[effort=high]  nanocoder/ollama/llama3.1
+#   pi/anthropic/claude-sonnet-4:high    agy/"Claude Sonnet 4.6 (Thinking)"
+# Full per-agent syntax: docs/sphinx/agent-compatibility.md
+
+[agent_chains]
+planning = ["claude/opus"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
+commit = ["claude/haiku"]
+
+# Fallbacks are opt-in. The defaults above name only `claude`, so a one-agent
+# install works out of the box. To add one: install the CLI, confirm it is on
+# PATH, then extend the list:
+#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
+#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/configuration.md#ccs_aliases
+
+
+# =============================================================================
+# 2. DRAINS -- which chain runs which pipeline phase, for THIS project.
+# =============================================================================
+# A drain is a routing label: `phase = "chain name from section 1"`.
+# The bundled pipeline uses exactly this set. Change a value only to point a
+# phase at a different chain.
+
+[agent_drains]
+planning = "planning"
+planning_analysis = "analysis"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+analysis = "analysis"
+commit = "commit"
+
+
+
 # Edit this only if you need to change Ralph Workflow's normal workflow settings.
 # -----------------------------------------------------------------------------
 # [general] -- Core workflow settings
 # -----------------------------------------------------------------------------
 [general]
 # =============================================================================
-# AUTO-INTEGRATION (auto-rebase) -- keep the feature branch and the mainline
+# AUTO-INTEGRATION (auto-rebase) — keep the feature branch and the mainline
 # in lockstep.
-# ----------------------------------------------------------------------------
-# What the feature does: rebase the feature branch onto the live local target
-# at every seam, fall back to an endpoint merge on conflict (optionally
-# agent-resolved), and fast-forward the local target to the integrated feature
-# tip. On-by-default local tier (rebase + merge + fast-forward) runs at every
-# auto-integrate seam: the commit seam, every phase boundary whose worktree is
-# clean, run startup, and inside each parallel worker. The opt-in remote tier
-# (auto_integrate_remote_sync_enabled = true) extends the on-by-default local
-# tier to also keep <remote_target>/<target> in step with the local mainline
-# and to push every successful landing to the configured remote.
+# -----------------------------------------------------------------------------
+# What the feature does: rebases feature work onto the configured local target,
+# resolves conflicts through the normal endpoint-merge fallback, then
+# fast-forwards that target when the result is safe to land.
 #
-# When it runs (the seams): startup, pre/post planning, before/after
-# development, after a commit phase that produced a commit, every successful
-# phase boundary whose worktree is clean, and inside each manifest-launched
-# parallel worker (crash recovery, a startup catch-up and a per-phase
-# boundary of its own). A fifth seam at the Ralph-managed parallel fan-out
-# join is wired but DORMANT under bundled dispatch_mode = "agent_subagents".
+# When it runs (the seams): startup, commit, phase boundary, parallel worker
+# startup/boundary, and the Ralph-managed parallel fan-out join.
 #
-# What it never does: never force-pushes; never rewrites remote history
-# (`refs/heads/<target>` only ever advances); never creates a branch from a
-# remote-tracking ref (the target is a STATELESS local-refs-only check);
-# never moves past a non-fast-forward push without first running the bounded
-# reconcile loop; never blocks pipeline work in the end-of-run waiting
-# state; never fails the run on a remote error -- transient remote
-# failures degrade to local-only integration with a recorded reason and
-# the run continues. The remote-sync tier is OFF by default.
-#
-# On-by-default local tier (auto_integrate_enabled = true): the strict-local
-# integration described above. Setting auto_integrate_enabled = false keeps
-# git behavior byte-identical to runs without auto-integration.
-#
-# Opt-in remote tier (auto_integrate_remote_sync_enabled = true): adds a
-# throttled pull that reconciles the local mainline with the configured
-# remote mainline, a push of the local mainline to the configured remote
-# after every successful local landing, and a bounded
-# fetch -> rebase-target-onto-remote -> push reconcile loop on non-fast-forward
-# rejections, with exponential jittered backoff. Never block pipeline work.
+# What it never does: force-move a ref, force-push, push a feature branch,
+# leave a rebase or merge in progress, or fail the run because remote sync
+# failed. The on-by-default local tier is safe; the opt-in remote tier syncs.
+# Set auto_integrate_enabled = false for byte-identical manual git behavior:
+# no rebase, merge, ref movement, fetch, or push from this feature.
 # =============================================================================
-# auto_integrate_enabled = true            # ON by default; the on-by-default local tier. Rebases onto the current local target, falls back to endpoint merge on conflict, and fast-forwards the local target. Equality/ancestor cases are fast-forward-or-noop outcomes. Set to false for byte-identical manual git control.
-# auto_integrate_target = ""               # shared integration branch name. The default value (None) is unset -- auto-detect from origin/HEAD -> main -> master. Set to a non-empty string (e.g. "develop") to force a specific local branch; resolution is a stateless local-refs-only check.
-# auto_integrate_fetch_enabled = false     # when false (default) the auto-integration probe is local-only. When true, a bounded read-only `git fetch origin <target>` runs before each attempt purely to OBSERVE origin's position; the fetch never moves a local ref, never pushes, never affects the rebase/merge/landing.
-# auto_integrate_fetch_timeout_seconds = 10.0    # per-fetch wall-clock budget; > 0, <= 120. On timeout or any remote failure the step falls back to local-only integration and the run is never failed.
-# auto_integrate_push_enabled = false     # DEPRECATED alias for remote sync. When true it enables only the single remote below.
-# auto_integrate_push_timeout_seconds = 30.0  # per-push wall-clock budget; > 0, <= 300. A timeout records an unpublished local landing and never fails the run.
-# --- opt-in remote-sync tier: setting the next key to true implies auto_integrate_fetch_enabled = true ---
-# auto_integrate_remote_sync_enabled = false   # OFF by default; the opt-in remote-sync tier. When true a throttled pull reconciles the local mainline with the configured remote mainline, every successful local landing is pushed to the configured remote, a rejected push runs the bounded reconcile-onto-remote loop with exponential jittered backoff, and a run that finishes with an unpushed target can opt into a visible end-of-run waiting state.
-# auto_integrate_remote_target = "origin"      # configured remote name to sync the local target branch against. Any configured remote is accepted; the push side only ever touches this one remote.
-# auto_integrate_remote_sync_interval_seconds = 300.0  # minimum wall-clock seconds between two PULLS for a given `(root, remote, target)` triple; 0 means every seam. A failed fetch does NOT arm the next window; only a healthy fetch arms it.
-# auto_integrate_remote_backoff_max_seconds = 300.0    # per-remote exponential jittered backoff ceiling after consecutive remote-side failures; base is auto_integrate_remote_sync_interval_seconds. Bounds the GAP between attempts; never the NUMBER of attempts.
-# auto_integrate_remote_wait_seconds = 0.0     # how long a FINISHED run may sit in the visible waiting-for-remote state when it still holds an unpushed target. 0 (default) preserves today's exit behavior verbatim -- record "landed locally, not published to <remote>: <reason>" and exit. Positive opt-ins to wait: retry on the backoff until this cap or success; interruptible.
-# auto_integrate_resolve_timeout_seconds = 900.0  # ONE wall-clock ceiling SHARED by the complete conflict-resolution operation; > 0, <= 7200. Every rebase stop, every round within a stop, and every sequential candidate agent invocation draw down this single budget.
+# auto_integrate_enabled = true     # local integration at every seam; set false for manual git control.
+# auto_integrate_target = "main"    # required local mainline branch; a missing branch records a skip.
+# auto_integrate_remote_enabled = false  # opt-in remote tier: fetch, reconcile, and push after a local landing.
+# auto_integrate_remote = "origin"  # configured remote used only when remote integration is enabled.
 
 # verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
 # telemetry_enabled = true              # anonymous metadata-only telemetry is on by default. Set false to opt out for this project. Ralph Workflow uses this data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising.

@@ -14,6 +14,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+#: Wall-clock ceiling for each remote push attempt.
+PUSH_TIMEOUT_SECONDS = 30.0
+
+
 PushStatus = StrEnum(
     "PushStatus",
     {
@@ -87,7 +91,7 @@ def _classify_failure(detail: str) -> PushStatus:
 
 
 def _push_to_remote(
-    repo_root: Path, remote: str, branch: str, *, timeout_seconds: float
+    repo_root: Path, remote: str, branch: str, *, timeout_seconds: float = PUSH_TIMEOUT_SECONDS
 ) -> tuple[bool, str]:
     """Run the one permitted refspec; retain this narrow subprocess seam for tests."""
     try:
@@ -107,7 +111,7 @@ def push_branch_to_single_remote(
     branch: str,
     *,
     remote: str,
-    timeout_seconds: float,
+    timeout_seconds: float = PUSH_TIMEOUT_SECONDS,
 ) -> PushResult:
     """Push exactly ``refs/heads/<branch>`` to one remote without raising."""
     if not isinstance(remote, str) or not remote.strip() or remote not in _list_remotes(repo_root):
@@ -121,4 +125,4 @@ def push_branch_to_single_remote(
     return PushResult(_classify_failure(detail), remote, branch, detail)
 
 
-__all__ = ["PushResult", "PushStatus", "push_branch_to_single_remote"]
+__all__ = ["PUSH_TIMEOUT_SECONDS", "PushResult", "PushStatus", "push_branch_to_single_remote"]

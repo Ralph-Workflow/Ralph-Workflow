@@ -1,7 +1,7 @@
 """Tests for the opt-in remote-sync pull side of auto-integration.
 
 Covers AC-15 to AC-20 of the PRODUCT_CRITERIA.md. The pull side
-periodically fetches ``<auto_integrate_remote_target> <target>``,
+periodically fetches ``<auto_integrate_remote> <target>``,
 reconciles the local target with the remote target, and degrades to
 local-only integration when the flag is off, the remote is missing,
 or the fetch fails.
@@ -51,13 +51,8 @@ def _config(remote: str = "origin", enabled: bool = True, interval: float = 300.
     return UnifiedConfig.model_validate(
         {
             "general": {
-                "auto_integrate_remote_sync_enabled": enabled,
-                "auto_integrate_remote_target": remote,
-                "auto_integrate_remote_sync_interval_seconds": interval,
-                "auto_integrate_remote_backoff_max_seconds": 300.0,
-                "auto_integrate_remote_wait_seconds": 0.0,
-                "auto_integrate_fetch_timeout_seconds": 5.0,
-                "auto_integrate_push_timeout_seconds": 5.0,
+                "auto_integrate_remote_enabled": enabled,
+                "auto_integrate_remote": remote,
             },
         },
     )

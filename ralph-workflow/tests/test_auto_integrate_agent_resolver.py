@@ -43,7 +43,7 @@ def _build_config() -> UnifiedConfig:
         {
             "general": {
                 "auto_integrate_enabled": True,
-                "auto_integrate_resolve_timeout_seconds": _RESOLVE_TIMEOUT_SECONDS,
+                "RESOLVE_TIMEOUT_SECONDS": _RESOLVE_TIMEOUT_SECONDS,
             }
         }
     )

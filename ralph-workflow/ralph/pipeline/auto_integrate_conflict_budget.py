@@ -6,8 +6,8 @@ When the rebase conflicts, the endpoint merge conflicts and the
 dev-agent conflict resolver cannot repair it, nothing about the
 repository changes -- so the very next seam repeats the identical
 sequence, paying up to ``_MAX_RESOLVER_AGENTS`` full agent invocations
-that SHARE one ``auto_integrate_resolve_timeout_seconds`` ceiling
-(900 s by default) -- shared per seam, but a fresh ceiling every seam.
+that share one 900-second resolution ceiling -- shared per seam, but a
+fresh ceiling every seam.
 Nothing bounded that repetition and nothing escalated, so a single
 unresolvable conflict made the run look stalled.
 

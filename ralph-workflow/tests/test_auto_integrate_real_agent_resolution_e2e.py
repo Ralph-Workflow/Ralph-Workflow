@@ -86,7 +86,6 @@ def _config(command: Path) -> UnifiedConfig:
             "general": {
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": "main",
-                "auto_integrate_fetch_enabled": False,
             },
             "agents": {
                 "claude": {

@@ -54,9 +54,6 @@ Public functions (every primitive has a docstring):
   failed query is never mistaken for "nobody holds it".
 * ``worktree_for_branch`` — Optional-returning wrapper over
   ``worktree_lookup`` for callers that need no such distinction.
-* ``resolve_origin_head_branch`` — strips
-  ``refs/remotes/origin/`` from ``git symbolic-ref --quiet
-  refs/remotes/origin/HEAD``.
 """
 
 from __future__ import annotations
@@ -68,7 +65,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
-from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -597,30 +594,6 @@ def worktree_for_branch(repo_root: Path | str, branch: str) -> Path | None:
     return path
 
 
-def resolve_origin_head_branch(repo_root: Path | str) -> str | None:
-    """Return the remote default branch name resolved via ``origin/HEAD``.
-
-    Strips the ``refs/remotes/origin/`` prefix. Returns ``None``
-    when the remote lacks a symbolic HEAD or no ``origin`` remote is
-    configured. Used by :func:`ralph.pipeline.auto_integrate.resolve_integration_target`
-    as the first auto-detection candidate.
-    """
-    repo_root_path = Path(repo_root)
-    result = run_git(
-        ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"),
-        cwd=repo_root_path,
-        label="git-symbolic-ref-origin-head",
-        options=GitRunOptions(),
-    )
-    if result.returncode != 0:
-        return None
-    ref = result.stdout.strip()
-    prefix = "refs/remotes/origin/"
-    if ref.startswith(prefix):
-        return ref[len(prefix) :]
-    return ref or None
-
-
 __all__ = [
     "MERGE_STATE_IN_PROGRESS",
     "MERGE_STATE_NONE",
@@ -641,7 +614,6 @@ __all__ = [
     "merge_target_into_current",
     "paths_with_conflict_markers",
     "reset_hard",
-    "resolve_origin_head_branch",
     "stage_paths",
     "worktree_for_branch",
     "worktree_lookup",

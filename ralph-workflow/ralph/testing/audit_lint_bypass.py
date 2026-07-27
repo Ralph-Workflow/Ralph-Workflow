@@ -197,22 +197,9 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # that AC-07/AC-06's terminal-state invariant depends on.
     ("auto_integrate_recovery", "PLR0911"),
     ("auto_integrate_recovery", "PLR0912"),
-    # wt-038 auto-rebase remote-sync: maybe_push_target (Part A
-    # landing hook) chains defensive None/missing-config guards before
-    # the actual push; every early return is a typed-config-vs-runtime
-    # gap and the gating is intentionally read top-down. The
-    # _dispatch_pull_outcome helper maps each REFRESH_* outcome to one
-    # branch in the byte-identical contract; consolidating the seven
-    # outcome branches into helper functions would scatter the
-    # documented REFRESH_* mapping across modules.
-    ("auto_integrate_ff", "PLR0911"),
     ("auto_integrate_remote_sync", "PLR0911"),
-    # wt-038 load_config: the loader walks every propagation layer in
-    # one pass (CLI > env > project > user-global > builtin) and now
-    # also runs the deprecation-sweep / fetch-enable side-effects for
-    # auto_integrate_remote_sync_enabled per layer; each branch is a
-    # distinct typed-layer guard and refactoring into helpers would
-    # scatter the per-layer precedence documented in CONTRIBUTING.md.
+    # The loader walks each propagation layer to remove retired keys before
+    # merging, preserving source-specific warnings and precedence.
     ("loader", "PLR0912"),
     # wt-047-stall-label: subscriber._format_waiting_status_line renders
     # one explicit line per WaitingStatusKind (ENTERED / PROGRESS /

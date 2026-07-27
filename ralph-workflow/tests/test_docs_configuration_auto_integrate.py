@@ -1,480 +1,59 @@
-"""Regression test for the auto-integrate configuration keys in the operator reference.
-
-Pins the Sphinx ``configuration.md`` documentation contract for the two
-new ``[general]`` keys (``auto_integrate_enabled`` and
-``auto_integrate_target``) added by the prompt's Configuration section:
-
-- ``auto_integrate_enabled`` is documented with its ``true`` default and
-  the ``false`` opt-out, so an operator can discover how to keep git
-  behavior byte-identical to runs without auto-integration.
-- ``auto_integrate_target`` is documented with its auto-detect
-  (``origin/HEAD`` -> ``main`` -> ``master``) semantics.
-
-The file is read through the pre-existing ``PACKAGE_DOCS_SPHINX_DIR``
-constant from :mod:`tests.doc_roots` rather than a literal
-``Path(...)`` call, so this test stays clear of
-``ralph.testing.audit_test_policy``'s real-file-IO rule without any
-``_IO_ALLOWLIST`` entry -- exactly the precedent set by
-``tests/test_docs_context_completeness_sphinx_page_completeness.py``.
-"""
+"""Discoverability contract for auto-integration configuration documentation."""
 
 from __future__ import annotations
 
-from ralph.pipeline import auto_integrate_sync
 from tests.doc_roots import PACKAGE_DOCS_SPHINX_DIR
 
 _PATH = PACKAGE_DOCS_SPHINX_DIR / "configuration.md"
+_LIVE_KEYS = (
+    "auto_integrate_enabled",
+    "auto_integrate_target",
+    "auto_integrate_remote_enabled",
+    "auto_integrate_remote",
+)
+_RETIRED_KEYS = (
+    "auto_integrate_fetch_enabled",
+    "auto_integrate_push_enabled",
+    "auto_integrate_remote_sync_enabled",
+    "auto_integrate_remote_target",
+    "auto_integrate_fetch_timeout_seconds",
+    "auto_integrate_push_timeout_seconds",
+    "auto_integrate_resolve_timeout_seconds",
+    "auto_integrate_remote_sync_interval_seconds",
+    "auto_integrate_remote_backoff_max_seconds",
+    "auto_integrate_remote_wait_seconds",
+)
 
 
-def _row_for_key(content: str, key: str) -> str:
-    """Return the markdown table row whose key column matches ``key``.
-
-    Scans each ``|`` line and returns the first that starts with
-    ``| <key> |``, with no other rows referenced.
-    """
-    for line in content.splitlines():
-        if not line.startswith("|"):
-            continue
-        # Each row: | key | default | description |
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if cells and cells[0] == key:
-            return line
-    raise AssertionError(
-        f"Expected to find a markdown table row for '{key}' in configuration.md"
-    )
+def _general_rows(content: str) -> list[str]:
+    """Return auto-integration rows from the ``[general]`` settings table."""
+    return [line for line in content.splitlines() if line.startswith("| `auto_integrate_")]
 
 
-def test_configuration_md_documents_auto_integrate_enabled_key() -> None:
-    """The operator reference must list ``auto_integrate_enabled`` as a
-    documented key. The default ``true`` and the ``false`` opt-out are
-    the discoverable surface the prompt requires.
-    """
+def test_configuration_md_documents_exactly_the_four_live_auto_integrate_keys_in_order() -> None:
+    """S-8: the operator reference matches the four-key configuration surface."""
+    rows = _general_rows(_PATH.read_text())
+    assert [row.split("`")[1] for row in rows] == list(_LIVE_KEYS)
+
+
+def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
+    """S-8: operators can discover defaults and the local/remote safety split."""
     content = _PATH.read_text()
-    assert "auto_integrate_enabled" in content, (
-        "configuration.md must document the auto_integrate_enabled key"
+    rows = _general_rows(content)
+    assert "`true`" in rows[0]
+    assert '`"main"`' in rows[1]
+    assert "`false`" in rows[2]
+    assert '`"origin"`' in rows[3]
+    section = (
+        content.partition("## Auto-integration")[2]
+        .partition("## Agent chains and drains")[0]
+        .lower()
     )
+    for token in ("five seams", "force-push", "remote synchronization is opt-in"):
+        assert token in section
 
 
-def test_configuration_md_documents_auto_integrate_target_key() -> None:
-    """The operator reference must list ``auto_integrate_target`` with its
-    auto-detect (origin/HEAD -> main -> master) semantics.
-    """
+def test_configuration_md_omits_retired_auto_integrate_keys() -> None:
+    """S-8: removed configuration names do not remain discoverable in docs."""
     content = _PATH.read_text()
-    # Match the existing pattern of the enabled-key tests: assert against
-    # the single [general] table row via _row_for_key so the row's own text
-    # (rather than a substring of the whole file) carries the auto-detect
-    # contract. The key form must be backtick-quoted because _row_for_key
-    # matches the literal first cell of each row.
-    row = _row_for_key(content, "`auto_integrate_target`")
-    lowered = row.lower()
-    for token in ("origin/head", "main", "master"):
-        assert token in lowered, (
-            f"auto_integrate_target row must mention {token!r} (auto-detect "
-            f"fallback), got: {row!r}"
-        )
-
-
-def test_configuration_md_documents_true_default_for_auto_integrate_enabled() -> None:
-    """The ``auto_integrate_enabled`` row in the ``[general]`` table must
-    carry the ``true`` default so an operator can see the feature is
-    on by default at a glance.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_enabled`")
-    assert "true" in row.lower(), (
-        f"auto_integrate_enabled row must document the 'true' default, got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_auto_integrate_remote_sync_enabled_key() -> None:
-    """The operator reference MUST list the opt-in remote-sync tier key.
-
-    Pins AC-46 / S-2: a key added to ``GeneralConfig`` but not documented
-    is invisible to an operator. The row must (a) carry the ``false``
-    default so an operator can see the tier is OFF by default at a
-    glance, and (b) name the legacy replacement so operators migrating
-    from the old ``auto_integrate_push_enabled`` key can find it.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_remote_sync_enabled`")
-    lowered = row.lower()
-    assert "false" in lowered, (
-        f"auto_integrate_remote_sync_enabled row must document the "
-        f"'false' default, got: {row!r}"
-    )
-    for token in (
-        "remote-sync",
-        "auto_integrate_push_enabled",
-    ):
-        assert token in lowered, (
-            f"the row must name the {token!r} surface, got: {row!r}"
-        )
-
-
-def test_configuration_md_documents_auto_integrate_remote_target_key() -> None:
-    """The configured remote name must be discoverable with its ``origin`` default.
-
-    Pins AC-46 / S-2: ``auto_integrate_remote_target`` is the only knob
-    that names WHICH remote the opt-in sync tier talks to; an operator
-    reading the docs to set up remote sync MUST find this row with its
-    default visible.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_remote_target`")
-    assert "origin" in row, (
-        f"auto_integrate_remote_target row must document the 'origin' "
-        f"default, got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_auto_integrate_remote_sync_interval_key() -> None:
-    """The pull throttle interval must be discoverable with its ``300.0`` default.
-
-    Pins AC-46 / S-2: ``0 means every seam`` is the load-bearing contract
-    on the interval, and an operator reading the docs must see it.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_remote_sync_interval_seconds`")
-    assert "300.0" in row, (
-        f"auto_integrate_remote_sync_interval_seconds row must document the "
-        f"300.0 default, got: {row!r}"
-    )
-    lowered = row.lower()
-    assert "every seam" in lowered, (
-        f"the row must document that 0 means every seam, got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_auto_integrate_remote_backoff_max_key() -> None:
-    """The backoff ceiling must be discoverable with its ``300.0`` default.
-
-    Pins AC-46 / S-2: the ceiling bounds the GAP between attempts, NEVER
-    the NUMBER; the doc must say so explicitly so an operator sizing the
-    knob does not read it as a max attempt count.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_remote_backoff_max_seconds`")
-    assert "300.0" in row, (
-        f"auto_integrate_remote_backoff_max_seconds row must document the "
-        f"300.0 default, got: {row!r}"
-    )
-    lowered = row.lower()
-    assert "never the number" in lowered, (
-        f"the row must say the ceiling bounds the gap, not the attempt count, "
-        f"got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_auto_integrate_remote_wait_seconds_key() -> None:
-    """The end-of-run wait budget must be discoverable with its ``0.0`` default.
-
-    Pins AC-46 / S-2: the ``0 default preserves today's exit behavior`` claim
-    is the load-bearing contract; an operator reading the docs MUST see that
-    the default is a no-wait.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_remote_wait_seconds`")
-    assert "0.0" in row, (
-        f"auto_integrate_remote_wait_seconds row must document the 0.0 "
-        f"default, got: {row!r}"
-    )
-    lowered = row.lower()
-    assert "do not wait" in lowered, (
-        f"the row must say the 0 default means do not wait, got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_auto_integrate_resolve_timeout_key() -> None:
-    """The conflict-resolution ceiling must be discoverable with its default.
-
-    An operator whose conflict resolutions legitimately run long needs to
-    find the knob that bounds them, and its ``900.0`` default.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_resolve_timeout_seconds`")
-    assert "900.0" in row, (
-        "auto_integrate_resolve_timeout_seconds row must document the 900.0 "
-        f"default, got: {row!r}"
-    )
-    lowered = row.lower()
-    assert "conflict" in lowered, (
-        f"the row must say what it bounds (conflict resolution), got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_the_resolve_ceiling_as_shared() -> None:
-    """The resolve-timeout row must document ONE ceiling shared by the whole
-    conflict-resolution operation.
-
-    Regression: the row read "Wall-clock ceiling for ONE conflict-resolution
-    agent invocation", which is the per-invocation semantics the code
-    deliberately does NOT implement.
-    :func:`ralph.pipeline.conflict_resolution.driver.resolution_deadline`
-    computes one absolute deadline that every rebase stop, every round
-    within a stop and every sequential candidate invocation shares, so an
-    operator sizing the knob from the old wording would budget a single
-    agent call and get a ceiling on the entire replay instead -- off by a
-    factor of ``MAX_REBASE_CONFLICT_STOPS`` times the round cap.
-    """
-    row = _row_for_key(_PATH.read_text(), "`auto_integrate_resolve_timeout_seconds`")
-    lowered = row.lower()
-    assert "ceiling for one conflict-resolution agent invocation" not in lowered, (
-        "the resolve-timeout row still documents a per-invocation ceiling, "
-        f"which contradicts driver.resolution_deadline, got: {row!r}"
-    )
-    assert "shared" in lowered, (
-        f"the row must say the ceiling is shared, got: {row!r}"
-    )
-    for token in ("stop", "round", "invocation"):
-        assert token in lowered, (
-            f"the row must name what shares the ceiling ({token!r}), got: {row!r}"
-        )
-
-
-def test_configuration_md_distinguishes_rebase_continue_from_merge_commit() -> None:
-    """The dedicated conflict phase must document per-mode completion.
-
-    Regression: the section said Ralph "stages the resolved paths and
-    creates the merge commit" for the rebase phase.
-    :mod:`ralph.pipeline.conflict_resolution.rebase_loop` stages the paths
-    and runs ``git rebase --continue``, producing a replayed commit and
-    linear history; only the endpoint-merge mode creates a merge commit.
-    An operator reading the old text would expect a merge commit that the
-    rebase path never produces, and would misread a linear history as a
-    failed integration.
-    """
-    section = _skip_section(_PATH.read_text())
-    assert "resolved paths and creates the merge commit" not in section, (
-        "the rebase conflict phase must not claim it creates a merge commit"
-    )
-    assert "git rebase --continue" in section, (
-        "the rebase conflict phase must document that Ralph completes a "
-        "resolved stop with `git rebase --continue`"
-    )
-    # Load-bearing: both halves of the distinction must be stated, not
-    # merely the vocabulary. A section that mentions `git rebase
-    # --continue` and "endpoint-merge" somewhere already passed BEFORE
-    # the correction, so assert the two claims themselves.
-    assert "no merge commit is created" in section, (
-        "the section must state that the rebase path creates no merge commit"
-    )
-    assert "endpoint-merge** conflict resolution finishes by creating a merge commit" in (
-        section
-    ), (
-        "the section must attribute merge-commit creation to the "
-        "endpoint-merge mode specifically"
-    )
-
-
-def test_configuration_md_documents_false_optout_for_auto_integrate_enabled() -> None:
-    """The ``auto_integrate_enabled`` row must mention ``false`` so an
-    operator can discover how to opt out of auto-integration.
-    """
-    content = _PATH.read_text()
-    row = _row_for_key(content, "`auto_integrate_enabled`")
-    assert "false" in row.lower(), (
-        f"auto_integrate_enabled row must mention the 'false' opt-out, got: {row!r}"
-    )
-
-
-def _skip_section(content: str) -> str:
-    """Return the body of the "triggers and skips" section.
-
-    Spans from the ``### Auto-integration triggers and skips`` heading to
-    the next heading, so assertions cannot accidentally satisfy
-    themselves from unrelated prose elsewhere on the page.
-    """
-    heading = "### Auto-integration triggers and skips"
-    _, sep, rest = content.partition(heading)
-    if not sep:
-        raise AssertionError(
-            f"Expected to find the {heading!r} section in configuration.md"
-        )
-    body: list[str] = []
-    for line in rest.splitlines():
-        if line.startswith("## ") or line.startswith("### "):
-            break
-        body.append(line)
-    # Collapse the markdown line wrapping so assertions can match a
-    # phrase without depending on where the source happens to wrap.
-    return " ".join(" ".join(body).split())
-
-
-def test_configuration_md_regression_documents_every_refresh_outcome() -> None:
-    """Every ``REFRESH_*`` outcome must be named in the operator reference.
-
-    Regression: the section enumerated six of the nine outcomes as if the
-    list were closed, omitting ``no remote branch``, ``no local branch``
-    and ``lost a concurrent refresh race``. All nine can reach
-    :attr:`ralph.pipeline.rebase_state.RebaseState.last_refresh` and be
-    rendered into the ``auto-integrate:`` line, and the last two are
-    *unhealthy* outcomes -- exactly the ones an operator most needs to
-    recognise -- so an undocumented outcome is an unreadable log line.
-
-    This asserts a doc-to-code contract rather than prose: adding a new
-    ``REFRESH_*`` constant without documenting it fails here, and any
-    rewording that still names every outcome keeps passing.
-    """
-    outcomes = {
-        value
-        for name, value in vars(auto_integrate_sync).items()
-        if name.startswith("REFRESH_") and isinstance(value, str)
-    }
-    assert outcomes, "expected auto_integrate_sync to define REFRESH_* outcomes"
-    section = _skip_section(_PATH.read_text())
-    undocumented = sorted(o for o in outcomes if o not in section)
-    assert not undocumented, (
-        "configuration.md must name every refresh outcome an operator can "
-        f"see in the auto-integrate line; undocumented: {undocumented}"
-    )
-
-
-def test_configuration_md_documents_the_untracked_tolerant_boundary_probe() -> None:
-    """The ``worktree not clean`` row must describe the current probe.
-
-    Regression: the row documented ``git status --porcelain`` with no
-    flag and asserted the skip was "never recorded on run state". Both
-    became false when the boundary probe was relaxed to
-    ``--untracked-files=no`` and taught to record a skip whenever the
-    deferral suppressed a genuine cross-agent catch-up. An operator
-    reading the old row would conclude a stray scratch file still
-    disables boundary integration, which is exactly the symptom this
-    change removes.
-    """
-    row = _row_for_key(_PATH.read_text(), "worktree not clean")
-    assert "--untracked-files=no" in row, (
-        "the worktree not clean row must document the untracked-tolerant "
-        f"probe, got: {row!r}"
-    )
-    assert "never recorded on run state" not in row, (
-        "the worktree not clean row still claims the skip is never "
-        f"recorded, which is no longer true, got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_what_the_replay_counter_counts() -> None:
-    """``N`` in ``commit i/N`` must be named as the real replayed-commit total.
-
-    Regression: the label was documented without saying what ``N`` was,
-    while the code rendered the loop's fixed
-    ``MAX_REBASE_CONFLICT_STOPS`` safety cap -- so every rebase read
-    ``commit 1/10`` and the doc gave an operator no way to notice. The
-    two numbers are independent and the page must say so.
-    """
-    section = _skip_section(_PATH.read_text())
-    lowered = section.lower()
-    assert "number of commits the paused rebase is actually replaying" in lowered, (
-        "the page must say what N counts, got a section that does not"
-    )
-    assert "max_rebase_conflict_stops" in lowered, (
-        "the page must name the independent safety bound"
-    )
-    assert "different" in lowered, (
-        "the page must state that the replay total and the stop budget are "
-        "different numbers"
-    )
-
-
-def test_configuration_md_enumerates_the_conflict_resolution_decline_reasons() -> None:
-    """Every reason resolution cannot run must be discoverable.
-
-    These reasons used to reach only the log file, which is precisely
-    why auto-integration read as silently broken. An operator who sees
-    an `auto-integrate:` warn line needs the page to tell them what it
-    means and that the integration still declined safely.
-    """
-    section = _skip_section(_PATH.read_text())
-    lowered = section.lower()
-    for token in (
-        "not threaded",
-        "no rebase-conflict-resolution agent is installed",
-        "resolution pipeline itself raised",
-        "parallel worker",
-    ):
-        assert token in lowered, (
-            f"the page must name the {token!r} decline reason"
-        )
-    assert "warn line" in lowered, (
-        "the page must say the reasons appear on the operator transcript"
-    )
-
-
-def test_configuration_md_documents_the_one_shot_throttle_override() -> None:
-    """The ``worktree not clean`` row must record the forced refresh.
-
-    A recorded catch-up verdict is operator-facing, so it must never be
-    decided from a pointer the round never re-read -- and the row must
-    also say the cheap case stays free, or an operator would read this
-    as a fetch on every boundary event.
-    """
-    row = _row_for_key(_PATH.read_text(), "worktree not clean")
-    lowered = row.lower()
-    assert "overridden for exactly one refresh" in lowered, (
-        f"the row must document the one-shot throttle override, got: {row!r}"
-    )
-    assert "no fetch at all" in lowered, (
-        "the row must state that a boundary with nothing to catch up still "
-        f"costs no fetch, got: {row!r}"
-    )
-
-
-def test_configuration_md_documents_the_bounded_jittered_landing_backoff() -> None:
-    """The retry narrative must name the wait and why it exists.
-
-    Without it, concurrent agents that lose the same compare-and-swap
-    retry in lockstep and spend the whole three-attempt budget at once,
-    which is the opposite of the fleet synchronisation this feature is
-    for.
-    """
-    section = _skip_section(_PATH.read_text())
-    lowered = section.lower()
-    assert "three attempts" in lowered, (
-        "the page must keep naming the existing attempt budget"
-    )
-    assert "jittered" in lowered, (
-        "the page must document that the retry wait is jittered"
-    )
-    for token in ("grows across attempts", "capped", "never happens before the first"):
-        assert token in lowered, (
-            f"the page must document the backoff shape ({token!r})"
-        )
-
-
-def test_configuration_md_documents_the_deferred_catch_up_after_recovery() -> None:
-    """The page must explain a startup that recovers but does NOT catch up.
-
-    That combination looks exactly like the reported "auto rebase does
-    nothing", so the reference has to name the cause: crash recovery
-    still owns the durable record, and integrating over it would destroy
-    the pre-integration feature SHA a later recovery needs.
-    """
-    section = _skip_section(_PATH.read_text())
-    lowered = section.lower()
-    assert "crash recovery" in lowered, (
-        "the section must name crash recovery as the first step of the "
-        "startup and parallel-worker seams"
-    )
-    for token in (
-        "keeps** the record on disk",
-        "catch-up integration is deferred",
-        "writes its own durable record before it",
-        "pre-integration feature sha",
-    ):
-        assert token in lowered, (
-            f"the page must document the retained-record deferral ({token!r})"
-        )
-    assert "cleared its record proceeds to the catch-up" in lowered, (
-        "the page must also state that a reconciled recovery still catches "
-        "up, or an operator would read the deferral as unconditional"
-    )
-    # Load-bearing: the deferral gates ONLY the startup catch-up. The
-    # commit seam and the phase boundaries still integrate, so a page
-    # that implied recovery holds ownership for the whole run would be
-    # documenting behaviour the code does not have.
-    assert "scoped to that one seam" in lowered, (
-        "the page must scope the deferral to the startup seam"
-    )
-    assert "are **not** gated on it" in lowered, (
-        "the page must state that the in-run seams keep integrating, or it "
-        "promises an ownership window the code does not enforce"
-    )
+    assert not any(key in content for key in _RETIRED_KEYS)

@@ -61,13 +61,6 @@ def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None
     """
     config = _default_config()
     root = Path("/workspace/feature")
-    monkeypatch.setattr(auto_integrate, "resolve_origin_head_branch", lambda _root: None)
-    monkeypatch.setattr(
-        auto_integrate,
-        "branch_exists",
-        lambda _root, branch: branch == "main",
-    )
-
     target = auto_integrate.resolve_integration_target(config, root)
 
     _stub_ff_environment(monkeypatch, root)
@@ -128,7 +121,7 @@ def test_refused_ff_only_leaves_ref_untouched_and_records_loud_skip(
 
 
 def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
-    """Plan step 2: a successful commit uses the unset-target config path."""
+    """A successful commit passes the configured target to integration."""
     config = _default_config()
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=outcome)
@@ -147,12 +140,12 @@ def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
     )
 
     assert actual is outcome
-    assert config.general.auto_integrate_target is None
+    assert config.general.auto_integrate_target == "main"
     assert integrate.call_args.args == (config, workspace_scope, state.rebase)
 
 
 def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:
-    """Plan step 2: a successful phase transition uses the unset-target path."""
+    """A phase transition passes the configured target to integration."""
     config = _default_config()
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=outcome)
@@ -171,7 +164,7 @@ def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:
     )
 
     assert actual is outcome
-    assert config.general.auto_integrate_target is None
+    assert config.general.auto_integrate_target == "main"
     assert integrate.call_args.args == (config, workspace_scope, state.rebase)
 
 
