@@ -138,7 +138,7 @@ from ralph.display.artifact_reader import (
 )
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
-from ralph.display.edit_preview import build_edit_preview
+from ralph.display.edit_preview import build_edit_preview, preview_header
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.line_sanitizer import strip_markup_safe, strip_terminal_control
 from ralph.display.phase_status import (
@@ -2519,7 +2519,9 @@ class ParallelDisplay:
                 )
                 if preview is not None:
                     with contextlib.suppress(Exception):
-                        self._console.print(preview)
+                        self._console.print(
+                            Group(preview_header(text_content, str(input_dict.get("path", "") or "") or None), preview)
+                        )
 
             if kind is ActivityEventKind.TOOL_RESULT and not self._is_quiet:
                 result_tool_name = str(metadata.get("tool_name", "") or "")
@@ -2532,7 +2534,9 @@ class ParallelDisplay:
                 )
                 if result_preview is not None:
                     with contextlib.suppress(Exception):
-                        self._console.print(result_preview)
+                        self._console.print(
+                            Group(preview_header(result_tool_name, result_path or None), result_preview)
+                        )
 
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
         # record append now lives at the shared presentation seam

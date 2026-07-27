@@ -274,6 +274,12 @@ def _elision_text(omitted: int) -> Text:
     return text
 
 
+def preview_header(tool_name: str, path: str | None) -> Text:
+    """Return the structural file-content header shown before a preview body."""
+    target = path or "artifact"
+    return Text(f"  ▸ {tool_name.removesuffix('_file')}  {target}", style="theme.text.emphasis")
+
+
 def _make_syntax(
     body: str,
     lexer_name: str,
@@ -307,7 +313,7 @@ def _build_write_preview(
 ) -> RenderableType | None:
     """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
     and the two artifact-stage / artifact-submit tools."""
-    del tool_name, width  # reserved for future width-aware wrapping; currently unused
+    del width  # reserved for future width-aware wrapping; currently unused
     if not content:
         return None
     lexer_name = "markdown" if path is None else _lexer_for_path(path)
@@ -394,7 +400,7 @@ def _build_edit_preview(
                 # ``Group`` already places the frame and the Syntax
                 # block on separate lines.
                 frame = Text()
-                frame.append(f"+ ({path or 'edit'})", style=new_style)
+                frame.append("+", style=new_style)
                 blocks.append(Group(frame, new_syntax))
                 total_omitted += new_omitted or 0
     if not blocks:
@@ -464,4 +470,5 @@ def build_edit_preview(
 
 __all__ = [
     "build_edit_preview",
+    "preview_header",
 ]

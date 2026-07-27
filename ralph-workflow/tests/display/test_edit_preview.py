@@ -343,6 +343,9 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
     assert "RUN" in output, f"header missing RUN carrier:\n{output!r}"
     assert "dev-1" in output, f"header missing unit_id:\n{output!r}"
     assert "ralph.edit_file" in output, f"header missing friendly tool name:\n{output!r}"
+    # File boundary precedes preview content in the shared live presentation.
+    assert "src/example.py" in output
+    assert output.index("src/example.py") < output.index("def old")
     # Preview content present.
     assert "def old" in output, f"preview missing old content:\n{output!r}"
     assert "def new" in output, f"preview missing new content:\n{output!r}"
@@ -365,6 +368,9 @@ def test_parallel_display_tool_result_read_file_prints_content_preview() -> None
     )
     pd.stop()
     output = buf.getvalue()
+    assert "  ▸ read  ralph/display/status_bar.py" in output
+    preview_start = output.index("  ▸ read  ralph/display/status_bar.py")
+    assert preview_start < output.index("def render", preview_start)
     assert "def render" in output, f"read preview missing content:\n{output!r}"
     assert "return 1" in output, f"read preview missing content:\n{output!r}"
 
