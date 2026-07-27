@@ -532,50 +532,29 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
     assert "\x1b[" not in body, f"ANSI escape leaked into record:\n{body}"
 
 
-# --- wt-028-display S-2 / S-3: production-path drive of the
-# canonical NDJSON fixtures. The earlier ``_drive_through_writer``
-# path tested the writer in isolation; these tests drive the same
-# fixtures through :class:`ParallelDisplay` so the live log and the
-# rendered record surface are both asserted.
-# ---------------------------------------------------------------------------
-
 
 def _drive_fixture_through_production(
-    fixture_name: str,
-    tmp_path: Path,
-    *,
-    unit_id: str,
+    fixture_name: str, tmp_path: Path, *, unit_id: str
 ) -> tuple[str, str]:
-    """Drive every event in ``fixture_name`` through the production path.
-
-    Returns ``(rendered_record, live_log)``. The rendered record is
-    read from ``.agent/raw/<unit_id>.rendered.log``; the live log
-    is read from the captured ``StringIO`` console sink. ``tmp_path``
-    is the workspace root.
-    """
-    path = _fixture(fixture_name)
+    """Return rendered-record and live-log output for a fixture replay."""
     records = [
-        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        json.loads(line)
+        for line in _fixture(fixture_name).read_text(encoding="utf-8").splitlines()
+        if line.strip()
     ]
-
-    pd, buf, _advance = _make_display_with_injected_clock(tmp_path)
-    pd.start()
+    display, output, _advance = _make_display_with_injected_clock(tmp_path)
+    display.start()
     for record in records:
-        kind_str = str(record.get("kind", "text"))
-        kind = ActivityEventKind(kind_str)
-        content = str(record.get("content", ""))
-        metadata = dict(record.get("metadata") or {})
-        pd.emit_parsed_event(
+        display.emit_parsed_event(
             unit_id=unit_id,
-            kind=kind,
-            content=content,
-            metadata=metadata,
+            kind=ActivityEventKind(str(record.get("kind", "text"))),
+            content=str(record.get("content", "")),
+            metadata=dict(record.get("metadata") or {}),
         )
-    pd.stop()
-    record_path = tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log"
+    display.stop()
     return (
-        record_path.read_text(encoding="utf-8"),
-        buf.getvalue(),
+        (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(encoding="utf-8"),
+        output.getvalue(),
     )
 
 

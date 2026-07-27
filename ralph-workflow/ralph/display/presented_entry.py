@@ -203,6 +203,7 @@ def build_presented_entry(
 
 _LIVE_BADGE_PREFIX = re.compile(r"^[✓✗⚠\u2139◐]\s+(?:PASS|FAIL|WARN|INFO|RUN)\s+")
 _LIVE_BADGE_ONLY = re.compile(r"^(?:\d{2}:\d{2}:\d{2}\s+)?\S+$")
+_LIVE_BADGE_IDENTITY_ONLY = re.compile(r"^\d{2}:\d{2}:\d{2}\s+[^\s]+$")
 
 
 def _strip_live_chrome(body: str) -> str:
@@ -217,7 +218,7 @@ def _strip_live_chrome(body: str) -> str:
     remainder = body[match.end() :].strip()
     if "↳" in remainder:
         return remainder.split("↳", 1)[1].strip()
-    if _LIVE_BADGE_ONLY.fullmatch(remainder):
+    if _LIVE_BADGE_ONLY.fullmatch(remainder) or _LIVE_BADGE_IDENTITY_ONLY.fullmatch(remainder):
         return ""
     return remainder
 

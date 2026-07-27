@@ -302,6 +302,28 @@ def test_all_documented_agents_receive_a_distinct_color(name: str) -> None:
     assert color in IDENTITY_PALETTE
 
 
+# --- Tool identities ----------------------------------------------------
+
+
+def test_tool_names_receive_collision_aware_accessible_identity_colors() -> None:
+    """S-4: unknown tool names use the same safe identity palette as agents."""
+    tools = ("read_file", "grep_files", "ralph.submit_artifact")
+    for matrix in (
+        theme._DEUTERANOPIA_MATRIX,
+        theme._PROTANOPIA_MATRIX,
+        theme._TRITANOPIA_MATRIX,
+    ):
+        colors = [theme._simulate_cvd(identity_color(tool), matrix) for tool in tools]
+        for first, second in combinations(colors, 2):
+            assert theme._hex_distance(first, second) >= _CVD_THRESHOLD
+    status_colors = {
+        extracted.lower()
+        for style, _icon, _label in STATUS_STYLES.values()
+        if (extracted := theme._extract_hex(style))
+    }
+    assert all(identity_color(tool).lower() not in status_colors for tool in tools)
+
+
 # --- Renderer application ----------------------------------------------
 
 

@@ -2318,6 +2318,14 @@ class ParallelDisplay:
             source=unit_id,
         )
 
+        # A parser's badge-only unknown event has no operator-facing body.
+        # Drop it before registry rendering so it cannot become an empty WARN row.
+        if kind is ActivityEventKind.UNKNOWN:
+            from ralph.display.presented_entry import build_presented_entry
+
+            if not build_presented_entry(event, unit_id=unit_id).body:
+                return
+
         tool_signature: tuple[str, str] | None = None
 
         # Hoist the TOOL_USE input_dict to method scope so the additive
