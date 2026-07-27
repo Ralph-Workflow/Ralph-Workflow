@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import pytest
-from rich.syntax import Syntax
+from pygments.token import Comment, Keyword, Name, Number, Operator, String
+from rich.syntax import PygmentsSyntaxTheme, Syntax
 from rich.text import Text
 
+from ralph.display import theme
 from ralph.display._tool_result_syntax import append_tool_result_syntax
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.theme import (
+    IDENTITY_PALETTE,
+    IDENTITY_PALETTE_ON_LIGHT_BG,
     SYNTAX_BACKGROUND_TRANSPARENT,
     SYNTAX_THEME_ON_DARK_BG,
     SYNTAX_THEME_ON_LIGHT_BG,
+    contrast_ratio,
     syntax_theme_for_background,
+)
+
+_TOKEN_ROLES = (Comment, Keyword, Name.Function, String, Number, Operator)
+_CVD_MATRICES = (
+    theme._DEUTERANOPIA_MATRIX,
+    theme._PROTANOPIA_MATRIX,
+    theme._TRITANOPIA_MATRIX,
 )
 
 
@@ -28,7 +40,7 @@ def test_syntax_theme_selects_the_background_safe_ansi_variant() -> None:
 )
 def test_file_syntax_uses_accessible_ansi_theme_without_painting_background(
     terminal_bg_is_light: bool,
-    expected_theme: str,
+    expected_theme: object,
 ) -> None:
     """S-3: syntax inherits the operator palette and leaves status colors untouched."""
     preview = build_edit_preview(
@@ -39,8 +51,40 @@ def test_file_syntax_uses_accessible_ansi_theme_without_painting_background(
     )
     assert isinstance(preview, Syntax)
     assert preview.background_color == SYNTAX_BACKGROUND_TRANSPARENT
-    assert preview._theme.__class__.__name__ == "ANSISyntaxTheme"
+    assert preview._theme.__class__.__name__ == "PygmentsSyntaxTheme"
     assert syntax_theme_for_background(terminal_bg_is_light) == expected_theme
+
+
+@pytest.mark.parametrize("terminal_bg_is_light", [False, True])
+def test_syntax_palette_is_contrast_safe_and_cvd_distinct_from_semantic_roles(
+    terminal_bg_is_light: bool,
+) -> None:
+    """DA-001 / S-3: token colors remain readable and non-semantic under CVD."""
+    syntax = Syntax(
+        "def render(value: str) -> int:\n    return 1\n",
+        "python",
+        theme=syntax_theme_for_background(terminal_bg_is_light),
+        background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+    )
+    assert isinstance(syntax._theme, PygmentsSyntaxTheme)
+    colors = {
+        str(token): f"#{color.get_truecolor().red:02X}{color.get_truecolor().green:02X}{color.get_truecolor().blue:02X}"
+        for token in _TOKEN_ROLES
+        if (color := syntax._theme.get_style_for_token(tuple(str(token).split(".")[1:])).color)
+        is not None
+    }
+    assert len(colors) == len(_TOKEN_ROLES)
+    background = "#FFFFFF" if terminal_bg_is_light else "#000000"
+    assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values())
+
+    identities = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light else IDENTITY_PALETTE
+    semantic_colors = (*identities, *theme._status_role_hexes())
+    for matrix in _CVD_MATRICES:
+        simulated = {role: theme._simulate_cvd(color, matrix) for role, color in colors.items()}
+        assert len(set(simulated.values())) == len(simulated)
+        assert not set(simulated.values()) & {
+            theme._simulate_cvd(color, matrix) for color in semantic_colors
+        }
 
 
 def test_tool_result_syntax_uses_the_same_transparent_palette_contract() -> None:

@@ -503,15 +503,8 @@ def _render_truecolor(preview: object) -> str:
     return buf.getvalue()
 
 
-def test_preview_emits_no_fixed_rgb_colours() -> None:
-    """Token colours must come from the terminal's own ANSI palette.
-
-    A fixed-RGB theme emits ``38;2;R;G;B`` sequences, which ignore the
-    operator's colour scheme entirely -- and pygments' ``default`` theme
-    (the previous setting) paints plain identifiers pure black, invisible
-    on a dark terminal. Assert no truecolor foreground escape is produced
-    at all, on either background.
-    """
+def test_preview_emits_fixed_rgb_colours() -> None:
+    """Syntax tokens use the shared, accessibility-checked palette."""
     for flag in (True, False, None):
         preview = build_edit_preview(
             "write_file",
@@ -519,11 +512,7 @@ def test_preview_emits_no_fixed_rgb_colours() -> None:
             width=80,
             terminal_bg_is_light=flag,
         )
-        rendered = _render_truecolor(preview)
-        assert "38;2;" not in rendered, (
-            f"fixed-RGB foreground leaked for terminal_bg_is_light={flag!r}; "
-            f"highlighting must use the terminal palette:\n{rendered!r}"
-        )
+        assert "38;2;" in _render_truecolor(preview)
 
 
 def test_preview_does_not_paint_its_own_background() -> None:

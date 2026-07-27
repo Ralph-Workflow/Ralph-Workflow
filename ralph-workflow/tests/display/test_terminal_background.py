@@ -147,13 +147,10 @@ def test_no_signal_is_undetermined() -> None:
     assert terminal_background_is_light({}) is None
 
 
-def test_syntax_theme_is_always_an_ansi_theme() -> None:
-    """Both themes are ANSI themes so token colours come from the operator's
-    own 16-colour scheme and no background is painted."""
-    for flag in (True, False, None):
-        assert syntax_theme_for_background(flag).startswith("ansi_"), (
-            f"background flag {flag!r} must resolve to an ANSI theme"
-        )
+def test_syntax_theme_is_background_specific_pygments_theme() -> None:
+    """Both themes are fixed token palettes chosen for the resolved background."""
+    assert syntax_theme_for_background(False) is SYNTAX_THEME_ON_DARK_BG
+    assert syntax_theme_for_background(True) is SYNTAX_THEME_ON_LIGHT_BG
 
 
 def test_syntax_theme_tracks_the_resolved_background() -> None:

@@ -65,9 +65,12 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 
+from pygments.style import Style as PygmentsStyle
+from pygments.token import Comment, Keyword, Name, Number, Operator, String
 from rich.console import Console
+from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
 
 if TYPE_CHECKING:
@@ -683,19 +686,39 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
     return terminal_background_is_light(env, measured_bg_hex=query_terminal_background_hex())
 
 
-#: Syntax-highlighting theme for code previews on a DARK terminal
-#: background. ``ansi_dark`` maps every token type onto one of the
-#: terminal's own 16 ANSI colours (bright blue for keywords, yellow for
-#: strings, dim for comments, ...) and leaves the background
-#: transparent. That is deliberate: the operator's terminal colour
-#: scheme already defines those 16 slots, so highlighted code inherits
-#: the scheme they configured instead of fighting it with fixed RGB.
-SYNTAX_THEME_ON_DARK_BG: Final[str] = "ansi_dark"
+class _SyntaxThemeOnDarkBackground(PygmentsStyle):
+    """Fixed token palette that clears contrast and CVD checks on dark terminals."""
 
-#: Same contract as :data:`SYNTAX_THEME_ON_DARK_BG` for a LIGHT terminal
-#: background: ``ansi_light`` uses the NORMAL (rather than bright) ANSI
-#: slots so the foregrounds stay dark enough to read.
-SYNTAX_THEME_ON_LIGHT_BG: Final[str] = "ansi_light"
+    default_style: ClassVar[str] = ""
+    styles: ClassVar[dict[object, str]] = {
+        Comment: "#0CB9F2",
+        Keyword: "#B543BF",
+        Name.Function: "#6DDCF2",
+        String: "#77D9B0",
+        Number: "#C9D921",
+        Operator: "#94D90B",
+    }
+
+
+class _SyntaxThemeOnLightBackground(PygmentsStyle):
+    """Fixed token palette that clears contrast and CVD checks on light terminals."""
+
+    default_style: ClassVar[str] = ""
+    styles: ClassVar[dict[object, str]] = {
+        Comment: "#854985",
+        Keyword: "#251947",
+        Name.Function: "#3C7F85",
+        String: "#3E4712",
+        Number: "#70703E",
+        Operator: "#330B03",
+    }
+
+
+#: Syntax-highlight palettes selected for dark and light terminal backgrounds.
+#: They use fixed RGB because stock ANSI slots are operator-configurable and
+#: therefore cannot satisfy the enforced contrast and CVD contract.
+SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnDarkBackground)
+SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnLightBackground)
 
 #: Rich's ``Syntax(background_color=...)`` sentinel meaning "do not
 #: paint a background; let the terminal's own background show through".
@@ -703,16 +726,13 @@ SYNTAX_THEME_ON_LIGHT_BG: Final[str] = "ansi_light"
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
 
-def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> str:
+def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxTheme:
     """Return the code-highlighting theme name for the given background.
 
-    Both returned themes are ANSI themes: they colour tokens with the
-    terminal's own 16-colour palette and paint no background, so
-    highlighted code automatically adopts the operator's terminal colour
-    scheme and always contrasts with whatever background that scheme
-    uses. A fixed-RGB pygments theme (such as pygments' ``default``,
-    which paints plain identifiers pure black) cannot make that
-    guarantee and renders unreadable on a dark terminal.
+    Both returned themes are fixed RGB Pygments styles selected against
+    the resolved background. This makes token contrast and CVD separation
+    mechanically checkable; stock ANSI slots are operator-configurable and
+    cannot provide that guarantee.
 
     An unknown background (``None``) resolves to the dark-background
     theme because dark terminals are the common case and the bright
@@ -723,7 +743,7 @@ def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> str:
             ``False`` for dark, ``None`` for unknown.
 
     Returns:
-        The Rich syntax theme name to pass to ``rich.syntax.Syntax``.
+        The Rich syntax theme to pass to ``rich.syntax.Syntax``.
     """
     if terminal_bg_is_light:
         return SYNTAX_THEME_ON_LIGHT_BG
