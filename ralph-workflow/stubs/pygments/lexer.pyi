@@ -4,3 +4,4 @@ from __future__ import annotations
 
 class Lexer:
     name: str
+    aliases: tuple[str, ...]

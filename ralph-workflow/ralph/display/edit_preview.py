@@ -74,13 +74,9 @@ Design:
 Background-aware highlighting
 -----------------------------
 
-Highlight colours are NOT fixed RGB. Every ``Syntax`` renderable this
-module builds is themed via
-:func:`ralph.display.theme.syntax_theme_for_background`, which returns
-an ANSI theme (``ansi_dark`` / ``ansi_light``). ANSI themes colour
-tokens with the terminal's own 16-colour palette and paint no
-background, so the preview inherits whatever colour scheme the
-operator configured and always contrasts with their background.
+Highlight colours are supplied by the fixed-RGB, contrast-tested Pygments
+themes in :func:`ralph.display.theme.syntax_theme_for_background`. The
+background is transparent, so previews retain the operator's terminal surface.
 
 The previous implementation pinned pygments' ``default`` theme, which
 is a *light-background* theme: it renders plain identifiers and
@@ -100,6 +96,7 @@ also clear WCAG contrast on a light terminal.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Final
 
 from rich.console import Group
@@ -303,6 +300,7 @@ def _build_write_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    start_line: int = 1,
 ) -> RenderableType | None:
     """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
     and the two artifact-stage / artifact-submit tools."""
@@ -319,6 +317,7 @@ def _build_write_preview(
         lexer_name,
         is_markdown=is_markdown,
         terminal_bg_is_light=terminal_bg_is_light,
+        start_line=start_line,
     )
     if omitted is None:
         return syntax
@@ -441,6 +440,7 @@ def build_edit_preview(
         A rich renderable, or ``None`` when there is nothing to preview.
     """
     bare = _normalize_tool_name(tool_name)
+    canonical: PreviewPayload | None
     if isinstance(input_dict, PreviewPayload):
         canonical = input_dict
     else:
@@ -464,6 +464,17 @@ def build_edit_preview(
     path = path_obj if isinstance(path_obj, str) and path_obj else None
     edits_obj = input_dict.get("edits")
     content_obj = input_dict.get("content")
+    start_line = input_dict.get("line_start", input_dict.get("offset", 1))
+    if isinstance(content_obj, str) and bare == "read_file":
+        try:
+            envelope: object = json.loads(content_obj)
+        except (TypeError, ValueError):
+            envelope = None
+        if isinstance(envelope, dict):
+            envelope_content = envelope.get("content")
+            if isinstance(envelope_content, str):
+                content_obj = envelope_content
+                start_line = envelope.get("line_start", start_line)
     if isinstance(edits_obj, list) and edits_obj:
         return _build_edit_preview(
             path,
@@ -478,6 +489,11 @@ def build_edit_preview(
             content_obj,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            start_line=(
+                start_line
+                if isinstance(start_line, int) and not isinstance(start_line, bool) and start_line > 0
+                else 1
+            ),
         )
     return None
 

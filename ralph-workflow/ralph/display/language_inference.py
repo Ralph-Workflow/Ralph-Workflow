@@ -19,8 +19,7 @@ def _sniff(prefix: str) -> str:
     return next((lexer for lexer, matched in choices if matched), "")
 
 
-@lru_cache(maxsize=512)
-def _infer(filename: str, prefix: str) -> str:
+def _infer_uncached(filename: str, prefix: str) -> str:
     lowered = filename.lower()
     lexer = "text" if lowered.endswith((".tar.gz", ".zip", ".png", ".jpg", ".pdf")) else _NAMES.get(lowered, "")
     if not lexer and (lowered.startswith(".env") or PurePath(lowered).name.startswith("requirements")):
@@ -31,22 +30,25 @@ def _infer(filename: str, prefix: str) -> str:
         lexer = _sniff(prefix)
     if not lexer:
         try:
-            aliases = getattr(get_lexer_for_filename(filename), "aliases", ())
-            lexer = str(aliases[0]) if aliases else ""
+            aliases = get_lexer_for_filename(filename).aliases
+            lexer = aliases[0] if aliases else ""
         except Exception:
             pass
     if not lexer:
         try:
-            aliases = getattr(guess_lexer(prefix), "aliases", ())
-            lexer = str(aliases[0]) if aliases else ""
+            aliases = guess_lexer(prefix).aliases
+            lexer = aliases[0] if aliases else ""
         except Exception:
             pass
     return lexer or "text"
 
 
+_cached_infer = lru_cache(maxsize=512)(_infer_uncached)
+
+
 def lexer_for_path(path: str | None, content: str = "") -> str:
     """Return a lexer alias for arbitrary path/content without raising."""
-    return _infer(path or "", content[:4096])
+    return _cached_infer(path or "", content[:4096])
 
 
 __all__ = ["lexer_for_path"]

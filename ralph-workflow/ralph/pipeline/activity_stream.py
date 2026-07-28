@@ -132,7 +132,7 @@ def stream_parsed_agent_activity(
     # SUBAGENT_PROGRESS display event can re-use the exact string the
     # sink received (avoids re-sanitizing or re-emitting raw payload).
     last_subagent_summary: list[str] = []
-    tool_targets: dict[str, str] = {}
+    tool_targets: dict[str, dict[str, object]] = {}
     for parsed_line in parser.parse(_iter_lines()):
         retained_line = _retain_tool_result_target(parsed_line, tool_targets)
         # Forward parsed lines to the per-parser subagent sink so the
@@ -186,25 +186,38 @@ def stream_parsed_agent_activity(
 
 
 def _retain_tool_result_target(
-    line: AgentOutputLine, tool_targets: dict[str, str]
+    line: AgentOutputLine, tool_targets: dict[str, dict[str, object]]
 ) -> AgentOutputLine:
-    """Carry a tool call's target into its matching result metadata."""
+    """Carry a tool call's structured target into its matching result metadata."""
     metadata = line.metadata
     tool = metadata.get("tool")
     tool_name = tool if isinstance(tool, str) else (line.content or "")
     call_id = metadata.get("tool_call_id")
     key = str(call_id) if call_id is not None else tool_name
     if line.type == "tool_use":
-        target = format_tool_input(metadata.get("input", metadata.get("args")))
+        raw_input = metadata.get("input", metadata.get("args", metadata.get("arguments")))
+        target = format_tool_input(raw_input)
         if target:
-            tool_targets[key] = target
+            retained: dict[str, object] = {"target": target, "tool_name": tool_name}
+            payload = raw_input
+            if isinstance(payload, dict):
+                for field in ("path", "file_path", "filePath", "filename"):
+                    value = payload.get(field)
+                    if isinstance(value, str) and value:
+                        retained["tool_path"] = value
+                        break
+                for field in ("line_start", "offset"):
+                    value = payload.get(field)
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        retained[field] = value
+            tool_targets[key] = retained
         return line
     if line.type != "tool_result" or not key or metadata.get("target"):
         return line
     retained_target = tool_targets.get(key)
     if not retained_target:
         return line
-    return replace(line, metadata={**metadata, "target": retained_target})
+    return replace(line, metadata={**metadata, **retained_target})
 
 
 def _capture_summary_into(

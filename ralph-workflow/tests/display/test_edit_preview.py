@@ -37,6 +37,7 @@ from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.edit_preview import CONTENT_EDIT_TOOLS, build_edit_preview, preview_header
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.preview_payload import payload_from_tool_event
 
 
 def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
@@ -82,6 +83,30 @@ def test_build_edit_preview_returns_none_for_empty_payload() -> None:
     assert build_edit_preview("write_file", {}, width=80) is None
     assert build_edit_preview("write_file", {"path": "a.py", "content": ""}, width=80) is None
     assert build_edit_preview("edit_file", {"path": "a.py", "edits": []}, width=80) is None
+
+
+def test_native_json_payload_and_patch_normalize_without_parser_identity() -> None:
+    """Native editor calls and JSON envelopes use the canonical payload boundary."""
+    write = payload_from_tool_event("Write", {"args": '{"file_path":"a.py","content":"x = 1"}'})
+    assert write is not None and write.path == "a.py" and write.operation == "write"
+    patch = payload_from_tool_event(
+        "apply_patch",
+        {"input": {"patch": "@@ -3,1 +3,1 @@\n-old\n+new\n"}},
+    )
+    assert patch is not None and patch.hunks[0].start_line == 3
+    preview = build_edit_preview("apply_patch", patch, width=80)
+    assert preview is not None
+
+
+def test_partial_read_envelope_uses_real_window_line_number() -> None:
+    """A read result envelope starts the gutter at its source window."""
+    preview = build_edit_preview(
+        "read_file",
+        {"path": "a.py", "content": '{"content":"x = 1","line_start":17}'},
+        width=80,
+    )
+    assert isinstance(preview, Syntax)
+    assert preview.start_line == 17
 
 
 # ---------------------------------------------------------------------------

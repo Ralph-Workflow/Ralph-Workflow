@@ -3262,6 +3262,20 @@ ralph.display.edit_preview
    :members:
    :show-inheritance:
 
+ralph.display.preview_payload
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.preview_payload
+   :members:
+   :show-inheritance:
+
+ralph.display.language_inference
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.language_inference
+   :members:
+   :show-inheritance:
+
 ralph.display.lifecycle_filter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

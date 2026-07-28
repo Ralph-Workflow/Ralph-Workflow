@@ -1942,6 +1942,15 @@ class ParallelDisplay:
             )
         return self._overflow_logs[unit_id]
 
+    def _result_preview_target(self, unit_id: str, metadata: dict[str, object]) -> tuple[str, str]:
+        """Return a correlated result tool name/path, with display-local fallback."""
+        tool_name = str(metadata.get("tool_name", "") or "")
+        path = str(metadata.get("tool_path", "") or "")
+        if not path and (previous := self._last_emitted_tool_signature.get(unit_id)) is not None:
+            tool_name = tool_name or previous[0]
+            path = previous[1]
+        return tool_name, path
+
     def _get_rendered_writer(self, unit_id: str) -> RenderedRecordWriter | None:
         """Return the per-unit rendered-record writer, lazy-created.
 
@@ -2528,11 +2537,10 @@ class ParallelDisplay:
                         )
 
             if kind is ActivityEventKind.TOOL_RESULT and not self._is_quiet:
-                result_tool_name = str(metadata.get("tool_name", "") or "")
-                result_path = str(metadata.get("tool_path", "") or "")
+                result_tool_name, result_path = self._result_preview_target(unit_id, metadata)
                 result_preview = build_edit_preview(
                     result_tool_name,
-                    {"path": result_path, "content": text_content},
+                    {"path": result_path, "content": text_content, "line_start": metadata.get("line_start", metadata.get("offset", 1))},
                     width=self._ctx.width,
                     terminal_bg_is_light=self._terminal_bg_is_light,
                 )
