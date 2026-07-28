@@ -100,15 +100,15 @@ also clear WCAG contrast on a light terminal.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
-from pygments.lexers import get_lexer_for_filename
-from pygments.util import ClassNotFound
 from rich.console import Group
 from rich.syntax import Syntax
 from rich.text import Text
 
+from ralph.display.language_inference import lexer_for_path
 from ralph.display.line_sanitizer import strip_terminal_control
+from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
     SYNTAX_BACKGROUND_TRANSPARENT,
     pick_status_styles,
@@ -116,8 +116,6 @@ from ralph.display.theme import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from rich.console import RenderableType
 
 #: Bare tool names that produce a content preview. The MCP prefix
@@ -133,6 +131,12 @@ CONTENT_EDIT_TOOLS: Final[frozenset[str]] = frozenset(
         "ralph_stage_md_artifact",
         "ralph_submit_md_artifact",
         "read_file",
+        "read_multiple_files",
+        "grep_files",
+        "search_files",
+        "git_diff",
+        "git_show",
+        "git_log",
     }
 )
 
@@ -203,7 +207,7 @@ def _normalize_tool_name(name: str) -> str:
     return name
 
 
-def _lexer_for_path(path: str) -> str:
+def _legacy_lexer_for_path(path: str) -> str:
     """Return the pygments lexer name for ``path`` based on its extension.
 
     Unknown extensions fall back to ``pygments.lexers.get_lexer_for_filename``
@@ -217,20 +221,7 @@ def _lexer_for_path(path: str) -> str:
     display name (``"Python"``) made every fallback-path preview
     silently degrade to unhighlighted plain text.
     """
-    # Cheap suffix scan first: avoids pygments lookup for the common
-    # types and keeps the lexer name stable across pygments versions.
-    lowered = path.lower()
-    for suffix, alias in _SUFFIX_LEXER.items():
-        if lowered.endswith(suffix):
-            return alias
-    try:
-        lexer: object = get_lexer_for_filename(path)
-    except ClassNotFound:
-        return "text"
-    except Exception:
-        return "text"
-    aliases = cast("Sequence[str]", getattr(lexer, "aliases", ()))
-    return aliases[0] if aliases else "text"
+    return lexer_for_path(path)
 
 
 #: Lexer aliases that identify markdown. ``get_lexer_for_filename``
@@ -318,7 +309,7 @@ def _build_write_preview(
     del width  # reserved for future width-aware wrapping; currently unused
     if not content:
         return None
-    lexer_name = "markdown" if path is None else _lexer_for_path(path)
+    lexer_name = "markdown" if path is None else lexer_for_path(path, content)
     is_markdown = _is_markdown_lexer(lexer_name)
     lines, omitted = _safe_lines(content, max_lines=_MAX_PREVIEW_LINES)
     if not lines:
@@ -356,7 +347,7 @@ def _build_edit_preview(
     del width  # reserved for future width-aware wrapping; currently unused
     if not edits:
         return None
-    lexer_name = "markdown" if path is None else _lexer_for_path(path or "")
+    lexer_name = "markdown" if path is None else lexer_for_path(path or "")
     is_markdown = _is_markdown_lexer(lexer_name)
     old_style = _diff_marker_style(_DIFF_OLD_STATUS, terminal_bg_is_light=terminal_bg_is_light)
     new_style = _diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)
@@ -418,7 +409,7 @@ def _build_edit_preview(
 
 def build_edit_preview(
     tool_name: str,
-    input_dict: dict[str, object],
+    input_dict: dict[str, object] | PreviewPayload,
     *,
     width: int,
     terminal_bg_is_light: bool | None = None,
@@ -450,7 +441,22 @@ def build_edit_preview(
         A rich renderable, or ``None`` when there is nothing to preview.
     """
     bare = _normalize_tool_name(tool_name)
-    if bare not in CONTENT_EDIT_TOOLS:
+    if isinstance(input_dict, PreviewPayload):
+        canonical = input_dict
+    else:
+        canonical = payload_from_tool_event(tool_name, {"input": input_dict})
+    if canonical is not None:
+        input_dict = {
+            "path": canonical.path,
+            "content": canonical.content,
+            "edits": [
+                {"oldText": hunk.old_text, "newText": hunk.new_text, "start_line": hunk.start_line}
+                for hunk in canonical.hunks
+            ],
+        }
+        if canonical.operation == "patch" and canonical.content:
+            input_dict["content"] = canonical.content
+    if bare not in CONTENT_EDIT_TOOLS and canonical is None:
         return None
     if not isinstance(input_dict, dict) or not input_dict:
         return None
