@@ -55,3 +55,40 @@ def test_enable_detected_agents_activates_only_detected_and_is_idempotent(
         '# @AGENT-BLOCK-START: pi\n# [agents.pi]\n# cmd = "pi"\n# @AGENT-BLOCK-END\n'
     )
     assert enable_detected_agents(config) == []
+
+
+def test_autowire_chains_regression_replaces_pristine_defaults_for_detected_agent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-1: pristine Claude chains switch to the detected CLI when Claude is absent."""
+    from ralph.config.agent_detection import autowire_chains_to_detected_agent
+
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    config = tmp_path / "ralph-workflow.toml"
+    original = (defaults / "ralph-workflow.toml").read_text(encoding="utf-8")
+    config.write_text(original, encoding="utf-8")
+    monkeypatch.setattr("ralph.config.agent_detection.shutil.which", lambda _: None)
+
+    assert autowire_chains_to_detected_agent(config, detected=["codex"]) == ["claude"]
+
+    rewritten = config.read_text(encoding="utf-8")
+    for chain in ("planning", "development", "analysis", "commit"):
+        assert f'{chain} = ["codex"]' in rewritten
+    assert rewritten.replace('["codex"]', '["claude/opus"]', 1) != original
+
+
+def test_autowire_chains_regression_preserves_user_customized_chains(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-1: a customized chain is never replaced by PATH detection."""
+    from ralph.config.agent_detection import autowire_chains_to_detected_agent
+
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    config = tmp_path / "ralph-workflow.toml"
+    original = (defaults / "ralph-workflow.toml").read_text(encoding="utf-8")
+    customized = original.replace('development = ["claude/sonnet"]', 'development = ["pi"]')
+    config.write_text(customized, encoding="utf-8")
+    monkeypatch.setattr("ralph.config.agent_detection.shutil.which", lambda _: None)
+
+    assert autowire_chains_to_detected_agent(config, detected=["codex"]) is None
+    assert config.read_text(encoding="utf-8") == customized

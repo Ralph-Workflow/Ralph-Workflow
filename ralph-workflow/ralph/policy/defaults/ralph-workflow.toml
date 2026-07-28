@@ -9,8 +9,8 @@
 #  The ONE thing most operators ever edit is section 1 below -- which model
 #  does which job. That is why it is the first thing in the file.
 #
-#     1. CHAINS  -- which agent/model does which job   <- edit this
-#     2. DRAINS  -- which chain runs which phase       <- rarely changed
+#     1. [agent_chains] -- which agent/model does which job   <- edit this
+#     2. [agent_drains] -- which chain runs which phase       <- rarely changed
 #
 #  Everything past the OPTIONAL banner is machinery with a working default.
 #  You can stop reading there.
@@ -88,7 +88,7 @@ commit = "commit"
 # -----------------------------------------------------------------------------
 # PROMPT HELPER -- which agent refines PROMPT.md. Rarely changed.
 # -----------------------------------------------------------------------------
-# Default: the first agent in [agents.*], or the built-in "opencode" agent if
+# Default: the first agent in ralph-workflow-agents.toml's [agents.*], or the built-in "opencode" agent if
 # none is configured. Uncomment both lines to force a specific one.
 # [prompt_helper]
 # agent = "claude"

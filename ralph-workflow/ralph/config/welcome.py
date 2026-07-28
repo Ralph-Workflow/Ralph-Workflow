@@ -132,6 +132,7 @@ def emit_first_run_welcome(
     *,
     agent_registry: HasListAgents | None = None,
     newly_enabled: list[str] | None = None,
+    rewired: list[str] | None = None,
     is_regenerate: bool = False,
     display_context: DisplayContext,
 ) -> None:
@@ -141,6 +142,7 @@ def emit_first_run_welcome(
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
         newly_enabled: Agents automatically enabled because their CLI was found on PATH.
+        rewired: Default chains replaced with a detected agent because Claude is absent.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
         display_context: Display context for adaptive layout (required).
             The banner and panel are both emitted on ``display_context.console``.
@@ -189,6 +191,13 @@ def emit_first_run_welcome(
         content.append(
             Text(
                 "Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled),
+                style="theme.status.success",
+            )
+        )
+    if rewired:
+        content.append(
+            Text(
+                "Detected agent set for [agent_chains]; edit section 1 to change models.",
                 style="theme.status.success",
             )
         )

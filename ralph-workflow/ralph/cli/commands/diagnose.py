@@ -668,7 +668,7 @@ def _check_agents_impl(
                     and dict(availability).get(name) != "available"
                 ):
                     install_hint = install_url_for(name) or "No install link available"
-                    config_hint = f"edit \\[agents.{name}] in ralph-workflow.toml"
+                    config_hint = f"edit \\[agents.{name}] in ralph-workflow-agents.toml"
                     rows.append((name, config_cell, path_status, install_hint, config_hint))
                 else:
                     rows.append((name, config_cell, path_status, "", ""))

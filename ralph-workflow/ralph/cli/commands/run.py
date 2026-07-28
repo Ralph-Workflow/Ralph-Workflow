@@ -43,6 +43,7 @@ from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
     PolicyValidationError,
     validate_agent_chains_satisfiable,
+    validate_chain_agents_on_path,
     validate_checkpoint_against_policy,
     validate_drain_contracts,
     validate_policy_completeness,
@@ -331,6 +332,11 @@ def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
     validate_drain_contracts(policy_bundle)
 
 
+def _warn_missing_chain_fallback(message: str) -> None:
+    """Log a non-fatal missing fallback without disrupting the preflight."""
+    logger.warning(message)
+
+
 def _run_policy_preflight_checks(
     request: _PolicyPreflightRequest,
     *,
@@ -341,6 +347,7 @@ def _run_policy_preflight_checks(
     try:
         agent_registry = AgentRegistry.from_config(request.config)
         validate_agent_chains_satisfiable(request.policy_bundle, agent_registry)
+        validate_chain_agents_on_path(request.policy_bundle.agents, warn=_warn_missing_chain_fallback)
     except PolicyValidationError as e:
         display.emit_warning(_preflight_error_text(e.message).plain)
         return _EXIT_PREFLIGHT

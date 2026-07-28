@@ -75,8 +75,8 @@ class GeneralConfig(RalphBaseModel):
     # ``Field(description=...)`` exposing the dead knob through Pydantic
     # JSON schema. A regression-guard test in tests/test_config_loader.py
     # asserts it is absent from every bundled ralph/policy/defaults/*.toml.
-    # This comment IS the label required by principle 7 (make it real,
-    # remove it, or label it).
+    # The loader warns when a non-empty legacy value is encountered so users
+    # get the active [agent_chains] replacement at the point of use.
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
     max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)

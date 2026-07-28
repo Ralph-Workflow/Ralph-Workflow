@@ -38,12 +38,9 @@ opening any other config file before your first run.
    artifact: it names the change, checks run, and review focus before you
    decide what to do next.
 
-The canonical first-run walkthrough — with screenshots of the bundled
-config layout, the per-agent model-string cheat sheet, and what each
-diagnostic flag actually checks — is in
-[Getting started](docs/sphinx/getting-started.md). It is the single
-home for the first-run sequence and does not require opening any other
-config file before your first run.
+The canonical first-run walkthrough is [Getting started](docs/sphinx/getting-started.md).
+For agent-specific model-string formats, see
+[Agent compatibility](docs/sphinx/agent-compatibility.md).
 
 ## Supported agents
 

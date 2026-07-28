@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+import shutil
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.agents.agent_install_links import install_url_for
+from ralph.agents.builtin import builtin_supports
 from ralph.onboarding import (
     STARTER_PROMPT_SENTINEL,
     missing_prompt_validation_hint,
@@ -47,6 +50,7 @@ if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnitsPlan
+    from ralph.policy.models._agents_policy import AgentsPolicy
     from ralph.policy.models._pipeline_policy import PipelinePolicy
     from ralph.policy.models._policy_bundle import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
@@ -317,6 +321,46 @@ def validate_agent_chains_satisfiable(
             "Agent chains reference unknown agents (check configuration, not PATH): "
             + "; ".join(unknown_agents)
         )
+
+
+def validate_chain_agents_on_path(
+    agents: AgentsPolicy,
+    *,
+    available: Callable[[str], bool] | None = None,
+    warn: Callable[[str], None] | None = None,
+) -> None:
+    """Fail before spawning when a configured chain has no available CLI."""
+    supports = {support.name: support for support in builtin_supports()}
+
+    def is_available(agent_name: str) -> bool:
+        if available is not None:
+            return available(agent_name)
+        base_name = agent_name.split("/", 1)[0]
+        support = supports.get(base_name)
+        override_name = {"agy": "RALPH_AGY_BINARY", "cursor": "RALPH_CURSOR_BINARY"}.get(base_name)
+        command = os.environ.get(override_name) if override_name is not None else None
+        return support is not None and shutil.which((command or support.cmd).split(maxsplit=1)[0]) is not None
+
+    used_chains = {drain.chain for drain in agents.agent_drains.values()}
+    for chain_name in used_chains:
+        entries = agents.agent_chains[chain_name].agents
+        missing = [entry for entry in entries if not is_available(entry)]
+        if len(missing) == len(entries):
+            install_hints = "; ".join(
+                f"{entry}: {install_url_for(entry.split('/', 1)[0]) or 'no install link available'}"
+                for entry in missing
+            )
+            raise PolicyValidationError(
+                f"Agent chain '{chain_name}' has no CLI available on PATH ({', '.join(missing)}). "
+                f"Install: {install_hints}. WHY: Ralph cannot start this chain. FIX: install a CLI "
+                "or edit [agent_chains] in ralph-workflow.toml and [agents.<name>] in "
+                "ralph-workflow-agents.toml, then run `ralph --diagnose`."
+            )
+        if missing and warn is not None:
+            warn(
+                f"Agent chain '{chain_name}' has unavailable fallback entries: {', '.join(missing)}. "
+                "The available entry will be used."
+            )
 
 
 def validate_recovery_config(bundle: PolicyBundle) -> None:

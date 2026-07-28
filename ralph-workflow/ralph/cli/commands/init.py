@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, cast
 import typer
 
 import ralph.policy
-from ralph.config.agent_detection import enable_detected_agents
+from ralph.config.agent_detection import autowire_chains_to_detected_agent, enable_detected_agents
 from ralph.config.bootstrap import (
     BootstrapResult,
     auto_seed_default_git_exclude,
@@ -33,6 +33,7 @@ from ralph.config.bootstrap import (
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_global_policy_configs,
+    resolve_global_config_dir,
 )
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.onboarding import (
@@ -66,7 +67,7 @@ if TYPE_CHECKING:
 
 
 from ralph.display.context import make_display_context
-from ralph.display.parallel_display import resolve_active_display
+from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills.manager import SkillManager
 
@@ -145,16 +146,16 @@ def init_command(
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
         display.emit_status(f"Created: {config_path}")
         newly_enabled = enable_detected_agents(config_path)
+        rewired = autowire_chains_to_detected_agent(config_path)
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
-        if newly_enabled:
-            display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
+        _emit_agent_setup_status(display, newly_enabled, rewired)
         if failures:
             display.emit_skill_failure_warning(failures)
     elif config_path is not None:
         newly_enabled = enable_detected_agents(config_path)
+        rewired = autowire_chains_to_detected_agent(config_path)
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
-        if newly_enabled:
-            display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
+        _emit_agent_setup_status(display, newly_enabled, rewired)
         if failures:
             display.emit_skill_failure_warning(failures)
     else:
@@ -166,6 +167,8 @@ def init_command(
         ]
         all_results = global_results
         newly_enabled = enable_detected_agents()
+        global_main_config = resolve_global_config_dir() / "ralph-workflow.toml"
+        rewired = autowire_chains_to_detected_agent(global_main_config) if global_main_config.exists() else None
 
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
 
@@ -176,6 +179,7 @@ def init_command(
                 all_results,
                 agent_registry=registry,
                 newly_enabled=newly_enabled,
+                rewired=rewired,
                 display_context=ctx,
             )
             if failures:
@@ -184,6 +188,7 @@ def init_command(
             _print_fallback_next_steps(
                 target,
                 newly_enabled=newly_enabled,
+                rewired=rewired,
                 failures=failures,
                 display_context=ctx,
             )
@@ -236,18 +241,28 @@ def _ensure_baseline_capabilities(
         return CapabilityState(), []
 
 
+def _emit_agent_setup_status(
+    display: ParallelDisplay, newly_enabled: list[str], rewired: list[str] | None
+) -> None:
+    """Report PATH discovery and the safe default-chain rewrite."""
+    if newly_enabled:
+        display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
+    if rewired:
+        display.emit_status("Detected agent set for [agent_chains]; edit section 1 to change models.")
+
+
 def _print_fallback_next_steps(
     target: Path,
     *,
     newly_enabled: list[str] | None = None,
+    rewired: list[str] | None = None,
     failures: list[str] | None = None,
     display_context: DisplayContext,
 ) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
     display = resolve_active_display(None, display_context)
     display.emit_status(f"Ralph Workflow initialized in: {target}")
-    if newly_enabled:
-        display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
+    _emit_agent_setup_status(display, newly_enabled or [], rewired)
     display.emit_status(
         "\nRalph Workflow orchestrates AI coding agents through a"
         " planning → development loop driven by PROMPT.md."

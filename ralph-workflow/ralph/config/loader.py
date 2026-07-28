@@ -381,6 +381,16 @@ def _warn_and_remove_retired_auto_integrate_keys(data: dict[str, object]) -> Non
                 "`{}` is no longer supported and is ignored; use `{}` instead.", key, replacement
             )
 
+def _warn_reserved_provider_fallback(data: dict[str, object]) -> None:
+    """Explain the legacy knob when a user actually sets it."""
+    provider_fallback = data.get("provider_fallback")
+    if provider_fallback:
+        logger.warning(
+            "`general.provider_fallback` is reserved and read by nothing; agent fallback "
+            "lives in [agent_chains] as an ordered fallback list."
+        )
+
+
 def _apply_cli_overrides(
     data: dict[str, object], cli_overrides: dict[str, object] | None
 ) -> dict[str, object]:
@@ -444,12 +454,14 @@ def load_config(
         general_layer = layer_data.get("general")
         if isinstance(general_layer, dict):
             _warn_and_remove_retired_auto_integrate_keys(general_layer)
+            _warn_reserved_provider_fallback(general_layer)
     propagated_data = {}
     for index, (propagated_path, propagated_path_data) in enumerate(propagated_entries):
         converted_entry = _convert_legacy_config(propagated_path_data)
         general_layer = converted_entry.get("general")
         if isinstance(general_layer, dict):
             _warn_and_remove_retired_auto_integrate_keys(general_layer)
+            _warn_reserved_provider_fallback(general_layer)
         propagated_entries[index] = (propagated_path, converted_entry)
         propagated_data = deep_merge(propagated_data, converted_entry)
     warn_unknown_fields(agents_data, agents_path)
@@ -500,6 +512,7 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
     general = data.get("general")
     if isinstance(general, dict):
         _warn_and_remove_retired_auto_integrate_keys(general)
+        _warn_reserved_provider_fallback(general)
     warn_unknown_fields(data, config_path)
     try:
         return UnifiedConfig.model_validate(data)

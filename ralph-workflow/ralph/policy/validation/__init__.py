@@ -3,6 +3,7 @@
 from ralph.policy.validation._api import (
     get_drain_resolution_matrix,
     validate_agent_chains_satisfiable,
+    validate_chain_agents_on_path,
     validate_chain_exists,
     validate_checkpoint_against_policy,
     validate_checkpoint_compatible,
@@ -27,6 +28,7 @@ __all__ = [
     "PolicyValidationError",
     "get_drain_resolution_matrix",
     "validate_agent_chains_satisfiable",
+    "validate_chain_agents_on_path",
     "validate_chain_exists",
     "validate_checkpoint_against_policy",
     "validate_checkpoint_compatible",
