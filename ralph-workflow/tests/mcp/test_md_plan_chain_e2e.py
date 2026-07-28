@@ -178,6 +178,46 @@ def test_hollow_plan_surfaces_cost_named_warnings_not_errors() -> None:
         )
 
 
+def test_override_tool_payload_keeps_reason_visible_after_validation() -> None:
+    """A recorded override remains visible on the public validation payload.
+
+    The plan's coordinating step intentionally omits ``Files``. Its override
+    removes the advisory from active diagnostics, but the public handler must
+    retain the matched rule, reason, and original observation for later review.
+    """
+    plan = """---
+type: plan
+---
+## Steps
+
+### [S-1] Coordinate the release
+Type: file_change
+
+## Verification
+- [V-1] pytest tests/x.py -q
+  Expect: the focused tests pass with exit code 0
+
+## Validation Overrides
+- [PLAN010] This is a coordinating step, not a file_change
+"""
+
+    payload = _verify_payload(plan)
+
+    assert all(item["rule_id"] != "PLAN010" for item in payload["diagnostics"])
+    overrides = payload["overridden"]
+    assert isinstance(overrides, list)
+    assert len(overrides) == 1
+    override = overrides[0]
+    assert override["rule_id"] == "PLAN010"
+    assert override["reason"] == "This is a coordinating step, not a file_change"
+    assert override["section"] is None
+    diagnostic = override["diagnostic"]
+    assert diagnostic["rule_id"] == "PLAN010"
+    assert diagnostic["section"] == "Steps"
+    assert diagnostic["severity"] == "warning"
+    assert "Files" in diagnostic["message"]
+
+
 def test_hollow_plan_tool_payload_reports_warnings_and_zero_overrides() -> None:
     """The tool payload shape surfaces warnings and an empty override list.
 
