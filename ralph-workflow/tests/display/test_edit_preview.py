@@ -29,6 +29,7 @@ Coverage:
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 from rich.console import Console, Group
 from rich.markdown import Markdown
@@ -36,7 +37,12 @@ from rich.syntax import Syntax
 
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
-from ralph.display.edit_preview import CONTENT_EDIT_TOOLS, build_edit_preview, preview_header
+from ralph.display.edit_preview import (
+    CONTENT_EDIT_TOOLS,
+    build_edit_preview,
+    preview_header,
+    render_markdown_preview,
+)
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.preview_payload import payload_from_tool_event
@@ -105,10 +111,30 @@ def test_preview_payload_parser_metadata_matrix() -> None:
     """S-1: every structured parser envelope maps native tools or declines them."""
     cases = (
         ("claude", "Write", {"input": {"file_path": "a.py", "content": "x = 1"}}, "write"),
-        ("codex", "Edit", {"input": '{"path":"a.py","old_string":"x","new_string":"y"}'}, "replace"),
-        ("cursor", "MultiEdit", {"args": {"path": "a.py", "edits": [{"old_string": "x", "new_string": "y"}]}}, "replace"),
-        ("pi", "NotebookEdit", {"args": {"path": "a.ipynb", "kernel": "python", "source": "x = 1"}}, "write"),
-        ("opencode", "str_replace", {"args": {"path": "a.py", "old_string": "x", "new_string": "y"}}, "replace"),
+        (
+            "codex",
+            "Edit",
+            {"input": '{"path":"a.py","old_string":"x","new_string":"y"}'},
+            "replace",
+        ),
+        (
+            "cursor",
+            "MultiEdit",
+            {"args": {"path": "a.py", "edits": [{"old_string": "x", "new_string": "y"}]}},
+            "replace",
+        ),
+        (
+            "pi",
+            "NotebookEdit",
+            {"args": {"path": "a.ipynb", "kernel": "python", "source": "x = 1"}},
+            "write",
+        ),
+        (
+            "opencode",
+            "str_replace",
+            {"args": {"path": "a.py", "old_string": "x", "new_string": "y"}},
+            "replace",
+        ),
         ("gemini", "Read", {"args": '{"file_path":"a.py","content":"x = 1"}'}, "read"),
     )
     for _parser, tool_name, metadata, operation in cases:
@@ -243,11 +269,41 @@ def test_build_edit_preview_artifact_submit_uses_markdown_lexer() -> None:
 
 def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None:
     """S-3: representative suffixes, names, and safe content sniffing resolve."""
-    assert lexer_for_path("types.d.ts") == "typescript"
-    assert lexer_for_path("Dockerfile") == "docker"
-    assert lexer_for_path("archive.tar.gz") == "text"
+    cases = {
+        "types.d.ts": "typescript",
+        "component.spec.ts": "typescript",
+        "styles.module.css": "css",
+        "values.yaml.j2": "yaml",
+        "Dockerfile": "docker",
+        "CMakeLists.txt": "cmake",
+        ".env.production": "bash",
+        "main.cpp": "cpp",
+        "service.kt": "kotlin",
+        "schema.graphql": "graphql",
+        "infra.tf": "hcl",
+        "script.ps1": "powershell",
+        "archive.tar.gz": "text",
+    }
+    for path, lexer in cases.items():
+        assert lexer_for_path(path) == lexer
     assert lexer_for_path(None, "#!/usr/bin/env python3\nprint(1)\n") == "python"
     assert lexer_for_path(None, "@@ -1 +1 @@\n-old\n+new\n") == "diff"
+    assert lexer_for_path(None, "<?xml version='1.0'?><root />") == "xml"
+    assert lexer_for_path(None, '{"enabled": true}') == "json"
+
+
+def test_language_inference_never_raises_for_adversarial_content() -> None:
+    """S-3: malformed, binary, escaped, and oversized input remains display-safe."""
+    hostile = "\x1b[31m" + ("x" * 10_000) + "\x00"
+    for path, content in (
+        (None, ""),
+        ("unknown.unrecognized", ""),
+        ("unknown.unrecognized", hostile),
+        ("image.png", "\x00\xff"),
+    ):
+        lexer = lexer_for_path(path, content)
+        assert isinstance(lexer, str)
+        assert lexer
 
 
 def test_build_edit_preview_unknown_extension_falls_back_to_plain() -> None:
@@ -315,6 +371,17 @@ def test_build_edit_preview_edit_file_uses_present_start_line() -> None:
     rendered = buf.getvalue()
     assert "27" in rendered, f"known start line missing from preview:\n{rendered}"
     assert "28" in rendered, f"known subsequent line missing from preview:\n{rendered}"
+
+
+def test_build_edit_preview_edit_file_marks_unknown_line_numbers_as_snippet() -> None:
+    """Unknown edit positions visibly distinguish snippet-relative gutters (S-5)."""
+    preview = build_edit_preview(
+        "edit_file", {"path": "a.py", "edits": [{"newText": "x = 1\ny = 2\n"}]}, width=80
+    )
+    assert preview is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
+    assert "(snippet)" in rendered.getvalue()
 
 
 def test_build_edit_preview_edit_file_without_valid_start_line_starts_at_one() -> None:
@@ -460,6 +527,35 @@ def test_build_edit_preview_truncates_long_content_with_elision() -> None:
     )
 
 
+def test_render_markdown_preview_uses_background_aware_fenced_code_theme() -> None:
+    """S-5: fenced Markdown code uses the same fixed-RGB syntax theme as previews."""
+    markdown = "# Heading\n\n```python\nx = 1\n```"
+    dark = _render_truecolor(
+        render_markdown_preview(markdown, width=80, terminal_bg_is_light=False)
+    )
+    light = _render_truecolor(
+        render_markdown_preview(markdown, width=80, terminal_bg_is_light=True)
+    )
+    assert "x" in dark and "\x1b[" in dark
+    assert dark != light
+
+
+def test_build_edit_preview_multiple_hunks_share_line_budget_and_report_total_omitted() -> None:
+    """S-5: a single 40-line budget preserves both hunk ends and one total count."""
+    source = "\n".join(f"line {index}" for index in range(30))
+    preview = build_edit_preview(
+        "edit_file",
+        {"path": "a.py", "edits": [{"oldText": source}, {"newText": source}]},
+        width=80,
+    )
+    assert preview is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
+    output = rendered.getvalue()
+    assert output.count("more lines") == 1
+    assert "line 0" in output and "line 29" in output
+
+
 # ---------------------------------------------------------------------------
 # 8. Integration with ParallelDisplay.emit_parsed_event
 # ---------------------------------------------------------------------------
@@ -538,6 +634,47 @@ def test_parallel_display_tool_result_read_multiple_files_prints_each_file_previ
     assert "settings.yaml" in output
     assert "x = 1" in output
     assert "key: value" in output
+
+
+def test_parallel_display_records_plain_preview_and_uses_ascii_fallback(tmp_path: Path) -> None:
+    """S-4: records retain plain, greppable previews even when live glyphs fall back."""
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=80)
+    ctx = make_display_context(console=console, env={"TERM": "dumb"}, force_glyphs=False)
+    display = ParallelDisplay(ctx, workspace_root=tmp_path)
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__edit_file",
+        metadata={
+            "input": {
+                "path": "a.py",
+                "edits": [{"oldText": "old = 1", "newText": "new = 2", "start_line": 7}],
+            }
+        },
+    )
+    display.stop()
+    output = buf.getvalue()
+    assert "  > edit  a.py" in output
+    assert "\u001b" not in output
+    record = (tmp_path / ".agent" / "raw" / "dev-1.rendered.log").read_text(encoding="utf-8")
+    assert "> edit  a.py" in record
+    assert "-    7 old = 1" in record
+    assert "+    7 new = 2" in record
+    assert "\u001b" not in record
+
+
+def test_parallel_display_quiet_mode_suppresses_tool_result_preview() -> None:
+    """S-4: quiet mode suppresses result previews from the terminal."""
+    display, buf = _make_quiet_display()
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="S4_QUIET_RESULT_SENTINEL",
+        metadata={"tool_name": "read_file", "tool_path": "a.py"},
+    )
+    display.stop()
+    assert "S4_QUIET_RESULT_SENTINEL" not in buf.getvalue()
 
 
 def test_parallel_display_quiet_mode_suppresses_tool_use_preview() -> None:

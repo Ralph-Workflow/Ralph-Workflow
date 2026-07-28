@@ -344,6 +344,40 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     )
 
 
+def test_stream_parsed_agent_activity_correlates_read_result_preview_target(tmp_path: Path) -> None:
+    """A Claude result inherits the dispatched read path and source window."""
+    pd, buf = _make_display(tmp_path)
+    tool_use = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "id": "call-1",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "src/example.py", "line_start": 17},
+            },
+        }
+    )
+    tool_result = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_result",
+                "tool_use_id": "call-1",
+                "content": '{"content":"def render():\\n    return 1\\n","total_lines":50}',
+            },
+        }
+    )
+    stream_parsed_agent_activity(
+        [tool_use, tool_result], parser_type="claude", agent_name="claude/sonnet", display=pd
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert "  ▸ read  src/example.py" in output
+    assert "def render" in output
+    assert "17" in output
+
+
 def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:
     """_stream_parsed_agent_activity routes tool_use via emit_parsed_event with no duplication."""
 

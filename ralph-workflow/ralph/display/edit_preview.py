@@ -211,11 +211,14 @@ def _safe_lines(content: str, *, max_lines: int) -> tuple[list[str], list[str], 
     return raw_lines[:head_count], raw_lines[-tail_count:], len(raw_lines) - max_lines
 
 
-def _elision_text(omitted: int, glyph: str = _ELISION_GLYPH) -> Text:
+def _elision_text(
+    omitted: int, glyph: str = _ELISION_GLYPH, overflow_ref: str | None = None
+) -> Text:
     """Build a muted elision Text for the truncation marker."""
     noun = "line" if omitted == 1 else "lines"
+    citation = f" [see {overflow_ref}]" if overflow_ref else ""
     text = Text()
-    text.append(f"{glyph} ({omitted} more {noun})", style=_ELISION_STYLE)
+    text.append(f"{glyph} ({omitted} more {noun}){citation}", style=_ELISION_STYLE)
     return text
 
 
@@ -224,10 +227,71 @@ def _binary_note(content: str) -> Text | None:
     return Text("[binary content omitted]", style=_ELISION_STYLE) if "\x00" in content else None
 
 
-def preview_header(tool_name: str, path: str | None) -> Text:
+def preview_header(tool_name: str, path: str | None, *, glyphs_enabled: bool = True) -> Text:
     """Return the structural file-content header shown before a preview body."""
     target = path or "artifact"
-    return Text(f"  ▸ {tool_name.removesuffix('_file')}  {target}", style="theme.text.emphasis")
+    marker = "▸" if glyphs_enabled else ">"
+    bare = _normalize_tool_name(tool_name)
+    return Text(f"  {marker} {bare.removesuffix('_file')}  {target}", style="theme.text.emphasis")
+
+
+def preview_record_text(
+    tool_name: str,
+    input_dict: dict[str, object] | PreviewPayload,
+    *,
+    overflow_ref: str | None = None,
+    glyphs_enabled: bool = True,
+) -> tuple[str, str | None]:
+    """Return a plain preview projection and its full sanitized source.
+
+    The display owner writes the latter only when the bounded live preview
+    elides content; keeping file I/O outside this pure module preserves the
+    preview builder's no-I/O contract.
+    """
+    canonical = (
+        input_dict
+        if isinstance(input_dict, PreviewPayload)
+        else payload_from_tool_event(
+            tool_name,
+            input_dict
+            if any(key in input_dict for key in ("input", "args", "arguments"))
+            else {"input": input_dict},
+        )
+    )
+    if canonical is None:
+        return "", None
+    marker = ">" if not glyphs_enabled else "▸"
+    bare = _normalize_tool_name(tool_name)
+    lines = [f"  {marker} {bare.removesuffix('_file')}  {canonical.path or 'artifact'}"]
+    source_parts: list[str] = []
+    for hunk in canonical.hunks:
+        if hunk.label:
+            lines.append(f"  {hunk.label}")
+        for prefix, body in (("-", hunk.old_text), ("+", hunk.new_text)):
+            safe = strip_terminal_control(body)
+            if not safe:
+                continue
+            source_parts.append(safe)
+            start = hunk.start_line or 1
+            for number, line in enumerate(safe.splitlines(), start):
+                lines.append(f"{prefix} {number:>4} {line}")
+    content = canonical.content
+    if isinstance(content, str) and content:
+        safe = strip_terminal_control(content)
+        source_parts.append(safe)
+        start = canonical.start_line or 1
+        for number, line in enumerate(safe.splitlines(), start):
+            lines.append(f"  {number:>4} {line}")
+    full_source = "\n".join(source_parts) or None
+    visible_source_lines = sum(part.count("\n") + 1 for part in source_parts)
+    if visible_source_lines > _MAX_PREVIEW_LINES:
+        omitted = visible_source_lines - _MAX_PREVIEW_LINES
+        citation = f" [see {overflow_ref}]" if overflow_ref else ""
+        lines = lines[: _MAX_PREVIEW_LINES + 1]
+        lines.append(
+            f"{'...' if not glyphs_enabled else _ELISION_GLYPH} ({omitted} more lines){citation}"
+        )
+    return "\n".join(lines), full_source
 
 
 def render_markdown_preview(
@@ -277,6 +341,7 @@ def _build_write_preview(
     width: int,
     terminal_bg_is_light: bool | None,
     start_line: int = 1,
+    overflow_ref: str | None = None,
 ) -> RenderableType | None:
     """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
     and the two artifact-stage / artifact-submit tools."""
@@ -296,14 +361,23 @@ def _build_write_preview(
         return (
             render_markdown_preview(body, width=width, terminal_bg_is_light=terminal_bg_is_light)
             if is_markdown
-            else _make_syntax(body, lexer_name, is_markdown=False,
-                              terminal_bg_is_light=terminal_bg_is_light, start_line=line)
+            else _make_syntax(
+                body,
+                lexer_name,
+                is_markdown=False,
+                terminal_bg_is_light=terminal_bg_is_light,
+                start_line=line,
+            )
         )
 
     preview = render(head, start_line)
     if omitted is None:
         return preview
-    return Group(preview, _elision_text(omitted), render(tail, start_line + len(head) + omitted))
+    return Group(
+        preview,
+        _elision_text(omitted, overflow_ref=overflow_ref),
+        render(tail, start_line + len(head) + omitted),
+    )
 
 
 def _build_multiple_read_preview(
@@ -351,6 +425,7 @@ def _build_edit_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    overflow_ref: str | None = None,
 ) -> RenderableType | None:
     """Build a diff-style preview for ``edit_file`` / ``ralph_edit_md_artifact``.
 
@@ -371,79 +446,71 @@ def _build_edit_preview(
     is_markdown = _is_markdown_lexer(lexer_name)
     old_style = _diff_marker_style(_DIFF_OLD_STATUS, terminal_bg_is_light=terminal_bg_is_light)
     new_style = _diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)
+    safe_edits = [
+        (
+            edit,
+            strip_terminal_control(str(edit.get("oldText", "") or "")),
+            strip_terminal_control(str(edit.get("newText", "") or "")),
+        )
+        for edit in edits
+    ]
+    source_blocks = sum(bool(old) + bool(new) for _, old, new in safe_edits)
+    if not source_blocks:
+        return None
     blocks: list[RenderableType] = []
+    remaining_lines = _MAX_PREVIEW_LINES
+    remaining_blocks = source_blocks
     total_omitted = 0
-    for edit in edits:
-        old_text = str(edit.get("oldText", "") or "")
-        new_text = str(edit.get("newText", "") or "")
-        if not old_text and not new_text:
+    for edit, old_safe, new_safe in safe_edits:
+        if not old_safe and not new_safe:
             continue
-        old_safe = strip_terminal_control(old_text)
-        new_safe = strip_terminal_control(new_text)
         label = edit.get("label")
         if isinstance(label, str) and label:
             blocks.append(Text(f"  {label}", style="theme.text.muted"))
-        # Keep the textual '-' carrier while lexing the old code just like the new code.
-        if old_safe:
-            old_lines, old_tail, old_omitted = _safe_lines(old_safe, max_lines=_MAX_PREVIEW_LINES)
-            old_body = "\n".join(old_lines)
-            old_frame = Text("-", style=old_style)
-            old_syntax = _make_syntax(
-                old_body,
-                lexer_name,
-                is_markdown=is_markdown,
-                terminal_bg_is_light=terminal_bg_is_light,
+        start_line_obj = edit.get("start_line")
+        start_line = (
+            start_line_obj
+            if isinstance(start_line_obj, int)
+            and not isinstance(start_line_obj, bool)
+            and start_line_obj > 0
+            else 1
+        )
+        if start_line_obj != start_line:
+            blocks.append(Text("  (snippet)", style="theme.text.muted"))
+        for marker, source, style in (("-", old_safe, old_style), ("+", new_safe, new_style)):
+            if not source:
+                continue
+            allocation = max(1, remaining_lines // remaining_blocks)
+            head, tail, omitted = _safe_lines(source, max_lines=allocation)
+            remaining_lines -= len(head) + len(tail)
+            remaining_blocks -= 1
+            total_omitted += omitted or 0
+            body = "\n".join(head)
+            blocks.append(
+                Group(
+                    Text(marker, style=style),
+                    _make_syntax(
+                        body,
+                        lexer_name,
+                        is_markdown=is_markdown,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=start_line,
+                    ),
+                )
             )
-            blocks.append(Group(old_frame, old_syntax))
-            if old_omitted is not None:
-                blocks.extend((_elision_text(old_omitted), _make_syntax("\n".join(old_tail), lexer_name, is_markdown=is_markdown, terminal_bg_is_light=terminal_bg_is_light, start_line=len(old_lines) + old_omitted + 1)))
-            total_omitted += old_omitted or 0
-        # New block: Syntax-highlighted with line numbers starting at 1.
-        if new_safe:
-            new_lines, new_tail, new_omitted = _safe_lines(new_safe, max_lines=_MAX_PREVIEW_LINES)
-            if new_lines:
-                start_line_obj = edit.get("start_line")
-                start_line = (
-                    start_line_obj
-                    if isinstance(start_line_obj, int)
-                    and not isinstance(start_line_obj, bool)
-                    and start_line_obj > 0
-                    else 1
-                )
-                new_syntax = _make_syntax(
-                    "\n".join(new_lines),
-                    lexer_name,
-                    is_markdown=is_markdown,
-                    terminal_bg_is_light=terminal_bg_is_light,
-                    start_line=start_line,
-                )
-                # Wrap the new block in a Text frame so the leading
-                # ``+`` marker on the first line is visible without
-                # disturbing the Syntax line-number column. The diff
-                # prefix carries the meaning; the per-line new content
-                # remains syntax-highlighted. No trailing newline:
-                # ``Group`` already places the frame and the Syntax
-                # block on separate lines.
-                frame = Text()
-                frame.append("+", style=new_style)
-                blocks.append(Group(frame, new_syntax))
-                if new_omitted is not None:
-                    tail_start = start_line + len(new_lines) + new_omitted
-                    blocks.extend(
-                        (
-                            _elision_text(new_omitted),
-                            _make_syntax(
-                                "\n".join(new_tail),
-                                lexer_name,
-                                is_markdown=is_markdown,
-                                terminal_bg_is_light=terminal_bg_is_light,
-                                start_line=tail_start,
-                            ),
-                        )
+            if tail:
+                tail_start = start_line + len(head) + (omitted or 0)
+                blocks.append(
+                    _make_syntax(
+                        "\n".join(tail),
+                        lexer_name,
+                        is_markdown=is_markdown,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=tail_start,
                     )
-                total_omitted += new_omitted or 0
-    if not blocks:
-        return None
+                )
+    if total_omitted:
+        blocks.append(_elision_text(total_omitted, overflow_ref=overflow_ref))
     return Group(*blocks)
 
 
@@ -453,6 +520,7 @@ def build_edit_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None = None,
+    overflow_ref: str | None = None,
 ) -> RenderableType | None:
     """Return a rich renderable previewing the edit described by ``input_dict``.
 
@@ -522,6 +590,7 @@ def build_edit_preview(
             ],
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            overflow_ref=overflow_ref,
         )
     if isinstance(content_obj, str) and bare == "read_multiple_files":
         return _build_multiple_read_preview(
@@ -531,15 +600,22 @@ def build_edit_preview(
         preview_path = path
         if canonical.language_hint and path is None:
             preview_path = f"preview.{canonical.language_hint}"
+        elif bare in {"git_diff", "git_show"} or (
+            bare == "exec" and any(marker in content_obj for marker in ("---", "+++", "@@"))
+        ):
+            preview_path = "preview.diff"
         return _build_write_preview(
             bare,
             preview_path,
             content_obj,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            overflow_ref=overflow_ref,
             start_line=(
                 start_line
-                if isinstance(start_line, int) and not isinstance(start_line, bool) and start_line > 0
+                if isinstance(start_line, int)
+                and not isinstance(start_line, bool)
+                and start_line > 0
                 else 1
             ),
         )
@@ -549,5 +625,6 @@ def build_edit_preview(
 __all__ = [
     "build_edit_preview",
     "preview_header",
+    "preview_record_text",
     "render_markdown_preview",
 ]

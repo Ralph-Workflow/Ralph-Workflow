@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 _MAX_TEXT_LENGTH = 200
 _MAX_TOOL_RESULT_BRIEF = 80
 _MAX_METADATA_SUMMARY_LENGTH = 120
+_MAX_RETAINED_TOOL_TARGETS = 128
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
@@ -186,6 +187,15 @@ def stream_parsed_agent_activity(
             _record_activity_on_subscriber(subscriber, retained_line, rendered, agent_name)
 
 
+def _tool_correlation_key(metadata: dict[str, object], tool_name: str) -> str:
+    """Return the documented cross-parser call identifier, falling back to tool name."""
+    for field in ("tool_call_id", "toolCallId", "tool_use_id", "id"):
+        value = metadata.get(field)
+        if isinstance(value, str) and value:
+            return value
+    return tool_name
+
+
 def _retain_tool_result_target(
     line: AgentOutputLine, tool_targets: dict[str, dict[str, object]]
 ) -> AgentOutputLine:
@@ -193,8 +203,7 @@ def _retain_tool_result_target(
     metadata = line.metadata
     tool = metadata.get("tool")
     tool_name = tool if isinstance(tool, str) else (line.content or "")
-    call_id = metadata.get("tool_call_id")
-    key = str(call_id) if call_id is not None else tool_name
+    key = _tool_correlation_key(metadata, tool_name)
     if line.type == "tool_use":
         raw_input = metadata.get("input", metadata.get("args", metadata.get("arguments")))
         target = format_tool_input(raw_input)
@@ -216,11 +225,14 @@ def _retain_tool_result_target(
                     value = payload.get(field)
                     if isinstance(value, int) and not isinstance(value, bool):
                         retained[field] = value
-            tool_targets[key] = retained
+            if key:
+                if len(tool_targets) >= _MAX_RETAINED_TOOL_TARGETS:
+                    tool_targets.pop(next(iter(tool_targets)))
+                tool_targets[key] = retained
         return line
     if line.type != "tool_result" or not key or metadata.get("target"):
         return line
-    retained_target = tool_targets.get(key)
+    retained_target = tool_targets.pop(key, None)
     if not retained_target:
         return line
     return replace(line, metadata={**metadata, **retained_target})

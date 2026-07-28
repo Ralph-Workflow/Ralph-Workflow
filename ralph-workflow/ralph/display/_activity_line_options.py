@@ -40,3 +40,4 @@ class ActivityLineOptions:
     # the data per consumer.
     indent_level: int = 0
     grouping_role: str = "agent_text"
+    record_body: str | None = None

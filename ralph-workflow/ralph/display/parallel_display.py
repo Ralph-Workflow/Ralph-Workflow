@@ -138,7 +138,12 @@ from ralph.display.artifact_reader import (
 )
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
-from ralph.display.edit_preview import build_edit_preview, preview_header
+from ralph.display.edit_preview import (
+    build_edit_preview,
+    preview_header,
+    preview_record_text,
+    render_markdown_preview,
+)
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.line_sanitizer import strip_markup_safe, strip_terminal_control
 from ralph.display.phase_status import (
@@ -176,6 +181,7 @@ _NEVER_WARNED: float = float("-inf")
 _MAX_RENDERED_UNIT_ID_CHARS = 24
 _MAX_STREAMING_FRAGMENTS: int = 2048
 _SECONDS_PER_MINUTE: int = 60
+_PREVIEW_MAX_LINES: int = 40
 
 # A tool activity is "repeated" (coalesced with a "xN" count in the live status)
 # starting from the second consecutive identical call.
@@ -558,7 +564,9 @@ class ParallelDisplay:
         # record entries. The lifetime never exceeds the per-wave set
         # so the bounded-accumulator contract carries through.
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._last_recorded_body: dict[str, tuple[ActivityEventKind, str]] = {}  # bounded-accumulator-ok: drop_unit
+        self._last_recorded_body: dict[
+            str, tuple[ActivityEventKind, str]
+        ] = {}  # bounded-accumulator-ok: drop_unit
         # DA-002 (wt-028-display S-2 / S-3): the streaming-block
         # live-log dedup. When a ``TEXT`` streaming block closes and
         # the next event opens a ``THINKING`` streaming block with
@@ -575,7 +583,9 @@ class ParallelDisplay:
         # distinct identical ``text`` events (the tool_use flood
         # case adapted for streaming) both keep their live entries.
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._last_text_thinking_block_close: dict[str, tuple[ActivityEventKind, str]] = {}  # bounded-accumulator-ok: drop_unit
+        self._last_text_thinking_block_close: dict[
+            str, tuple[ActivityEventKind, str]
+        ] = {}  # bounded-accumulator-ok: drop_unit
 
         # wt-028-display S-5 (AC-04): the most recent (phase, cycle,
         # iter_) seen per active unit, refreshed by
@@ -584,7 +594,9 @@ class ParallelDisplay:
         # record's ``phase`` / ``cycle`` / ``iter_`` fields are
         # populated instead of ``None``. Keyed per unit and
         # bounded by ``drop_unit`` (S-23).
-        self._last_phase_per_unit: dict[str, tuple[str, int | None, str | None]] = {}  # bounded-accumulator-ok: drop_unit
+        self._last_phase_per_unit: dict[
+            str, tuple[str, int | None, str | None]
+        ] = {}  # bounded-accumulator-ok: drop_unit
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
@@ -619,7 +631,9 @@ class ParallelDisplay:
         # bounded by the number of phase transitions per run, so
         # even an aggressive failure loop cannot accumulate
         # unbounded entries.
-        self._pending_phase_headers: list[dict[str, object]] = []  # bounded-accumulator-ok: _flush_pending_phase_headers
+        self._pending_phase_headers: list[
+            dict[str, object]
+        ] = []  # bounded-accumulator-ok: _flush_pending_phase_headers
 
         self._activity_router: ActivityRouter = ActivityRouter(
             on_event=self._on_activity_router_event,
@@ -1016,9 +1030,7 @@ class ParallelDisplay:
             # live log surface only needs the indent column. The
             # read here is the pinned structural-position probe
             # that the DA-002 / AC-07 contract depends on.
-            grouping_role: str = (
-                str(opts.grouping_role) if opts.grouping_role else "agent_text"
-            )
+            grouping_role: str = str(opts.grouping_role) if opts.grouping_role else "agent_text"
             del grouping_role
             level_indent = " " * (_INDENT_WIDTH * indent_level)
             # The level indent prefixes the chrome column on the
@@ -1172,7 +1184,7 @@ class ParallelDisplay:
         self._append_recorded_entry(
             unit_id,
             event_kind=event_kind,
-            body=sanitized,
+            body=opts.record_body or sanitized,
             timestamp=timestamp,
             metadata=opts.activity_metadata,
         )
@@ -1399,9 +1411,7 @@ class ParallelDisplay:
             "content": ActivityEventKind.TEXT,
             "think": ActivityEventKind.THINKING,
         }
-        close_record_kind = _base_tag_to_record_kind.get(
-            base_tag, ActivityEventKind.TEXT
-        )
+        close_record_kind = _base_tag_to_record_kind.get(base_tag, ActivityEventKind.TEXT)
         if (
             close_record_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
             and visible.strip()
@@ -1419,17 +1429,13 @@ class ParallelDisplay:
                 # follow-up identical event still dedups against
                 # the SAME previous entry.
                 return
-        start_str = (
-            self._format_hh_mm_ss(open_wall) if open_wall is not None else "??:??:??"
-        )
+        start_str = self._format_hh_mm_ss(open_wall) if open_wall is not None else "??:??:??"
         end_str = self._format_hh_mm_ss(end_wall)
         if open_mono is not None:
             duration_str = self._format_duration(end_mono - open_mono)
         else:
             duration_str = "0s"
-        body = (
-            f"\u22ef {base_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
-        )
+        body = f"\u22ef {base_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
         # S-7 (AC-07): quiet mode suppresses the terminal surface;
         # the record append below still runs so the file surface
         # keeps the same close entry.
@@ -1949,7 +1955,55 @@ class ParallelDisplay:
         if not path and (previous := self._last_emitted_tool_signature.get(unit_id)) is not None:
             tool_name = tool_name or previous[0]
             path = previous[1]
-        return tool_name, path
+        return tool_name.removeprefix("mcp__ralph__").removeprefix("ralph."), path
+
+    def _emit_file_preview(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        tool_name: str,
+        preview_input: dict[str, object],
+        timestamp: str,
+    ) -> None:
+        """Project a file preview to the record and, unless quiet, terminal."""
+        overflow = self._get_overflow_log(unit_id)
+        overflow_ref = overflow.relative_reference(self._workspace_root)
+        record_preview, full_source = preview_record_text(
+            tool_name,
+            preview_input,
+            overflow_ref=overflow_ref,
+            glyphs_enabled=self._ctx.glyphs_enabled,
+        )
+        record_body = record_preview or None
+        if full_source is not None and full_source.count("\n") + 1 > _PREVIEW_MAX_LINES:
+            overflow.append(full_source)
+            self._check_overflow_size(unit_id, overflow)
+        if self._is_quiet:
+            return
+        preview = build_edit_preview(
+            tool_name,
+            preview_input,
+            width=self._ctx.width,
+            terminal_bg_is_light=self._terminal_bg_is_light,
+            overflow_ref=overflow_ref,
+        )
+        if preview is None:
+            return
+        path = ""
+        payload = preview_input.get("input")
+        if isinstance(payload, dict):
+            path_value = payload.get("path", "")
+            path = path_value if isinstance(path_value, str) else ""
+        with contextlib.suppress(Exception):
+            self._console.print(
+                Group(
+                    preview_header(
+                        tool_name, path or None, glyphs_enabled=self._ctx.glyphs_enabled
+                    ),
+                    preview,
+                )
+            )
+        del record_body, kind, timestamp
 
     def _get_rendered_writer(self, unit_id: str) -> RenderedRecordWriter | None:
         """Return the per-unit rendered-record writer, lazy-created.
@@ -1970,9 +2024,7 @@ class ParallelDisplay:
         and progress through their own sinks).
         """
         if unit_id not in self._rendered_writers:
-            self._rendered_writers[unit_id] = RenderedRecordWriter(
-                self._workspace_root, unit_id
-            )
+            self._rendered_writers[unit_id] = RenderedRecordWriter(self._workspace_root, unit_id)
             # S-15 (AC-05): a phase_start may have arrived before any
             # unit produced a visible event. Flush the buffered
             # headers into the freshly-spawned writer so the
@@ -2450,9 +2502,7 @@ class ParallelDisplay:
             # parser-kind identifier). For streaming kinds we keep the
             # raw fragment text so the close path can join the buffered
             # passage without the registry's per-fragment chrome.
-            body_text_for_wrap = (
-                text_content if kind.value in _STREAMING_KINDS else visible
-            )
+            body_text_for_wrap = text_content if kind.value in _STREAMING_KINDS else visible
             # DA-002 (S-12 / AC-07): the canonical ``PresentedEntry``
             # hierarchy data drives the live log's hanging-indent
             # continuation column. The record writer already consumes
@@ -2472,14 +2522,24 @@ class ParallelDisplay:
             # ``event.timestamp`` (already normalised by
             # ``make_event_for_emit``) so we prefer the event's own
             # value over ``self._clock().isoformat()``.
-            entry_timestamp = (
-                event.timestamp if event.timestamp else self._clock().isoformat()
-            )
+            entry_timestamp = event.timestamp if event.timestamp else self._clock().isoformat()
             _entry = build_presented_entry(
                 event,
                 unit_id=unit_id,
                 timestamp=entry_timestamp,
             )
+            record_preview_tool_name = text_content
+            record_preview_input: dict[str, object] = metadata
+            if kind is ActivityEventKind.TOOL_RESULT:
+                result_tool_name, result_path = self._result_preview_target(unit_id, metadata)
+                record_preview_tool_name = result_tool_name
+                record_preview_input = {
+                    "input": {
+                        "path": result_path,
+                        "content": text_content,
+                        "line_start": metadata.get("line_start", metadata.get("offset", 1)),
+                    }
+                }
             self.emit_activity_line(
                 unit_id,
                 kind.value,
@@ -2493,6 +2553,15 @@ class ParallelDisplay:
                     activity_metadata=metadata,
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
+                    record_body=(
+                        preview_record_text(
+                            record_preview_tool_name,
+                            record_preview_input,
+                            overflow_ref=overflow_ref,
+                            glyphs_enabled=self._ctx.glyphs_enabled,
+                        )[0]
+                        or None
+                    ) if kind in {ActivityEventKind.TOOL_USE, ActivityEventKind.TOOL_RESULT} else None,
                 ),
                 # DA-003 (wt-028-display): forward the
                 # source-event timestamp so the rendered record
@@ -2523,38 +2592,22 @@ class ParallelDisplay:
             # pygments / rich renderable failure cannot break the live
             # display path (R-3) -- the header line is the canonical
             # surface and must survive even when the preview cannot.
-            if kind is ActivityEventKind.TOOL_USE and not self._is_quiet:
-                preview = build_edit_preview(
-                    text_content,
-                    metadata,
-                    width=self._ctx.width,
-                    terminal_bg_is_light=self._terminal_bg_is_light,
-                )
-                if preview is not None:
-                    with contextlib.suppress(Exception):
-                        self._console.print(
-                            Group(preview_header(text_content, str(input_dict.get("path", "") or "") or None), preview)
-                        )
-
-            if kind is ActivityEventKind.TOOL_RESULT and not self._is_quiet:
+            preview_tool_name = text_content
+            preview_input: dict[str, object] = metadata
+            if kind is ActivityEventKind.TOOL_RESULT:
                 result_tool_name, result_path = self._result_preview_target(unit_id, metadata)
-                result_preview = build_edit_preview(
-                    result_tool_name,
-                    {
-                        "input": {
-                            "path": result_path,
-                            "content": text_content,
-                            "line_start": metadata.get("line_start", metadata.get("offset", 1)),
-                        }
-                    },
-                    width=self._ctx.width,
-                    terminal_bg_is_light=self._terminal_bg_is_light,
+                preview_tool_name = result_tool_name
+                preview_input = {
+                    "input": {
+                        "path": result_path,
+                        "content": text_content,
+                        "line_start": metadata.get("line_start", metadata.get("offset", 1)),
+                    }
+                }
+            if kind in {ActivityEventKind.TOOL_USE, ActivityEventKind.TOOL_RESULT}:
+                self._emit_file_preview(
+                    unit_id, kind, preview_tool_name, preview_input, entry_timestamp
                 )
-                if result_preview is not None:
-                    with contextlib.suppress(Exception):
-                        self._console.print(
-                            Group(preview_header(result_tool_name, result_path or None), result_preview)
-                        )
 
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
         # record append now lives at the shared presentation seam
@@ -2854,9 +2907,7 @@ class ParallelDisplay:
             iter_parts.append(("iterations", f"dev:{orientation.developer_iters}"))
         parallel_parts: list[tuple[str, str]] = []
         if orientation.parallel_max_workers is not None:
-            parallel_parts.append(
-                ("parallel", f"max_workers={orientation.parallel_max_workers}")
-            )
+            parallel_parts.append(("parallel", f"max_workers={orientation.parallel_max_workers}"))
         plan_val = "ready" if orientation.plan_present else "absent"
         plan_parts: list[tuple[str, str]] = [("plan", plan_val)]
         if orientation.verbosity is not None:
@@ -2965,9 +3016,7 @@ class ParallelDisplay:
         condensed_chars = 0
         for _group_label, items in groups:
             for key, value in items:
-                rendered = self._render_run_start_field(
-                    timestamp, key, value, body_budget
-                )
+                rendered = self._render_run_start_field(timestamp, key, value, body_budget)
                 if rendered is None:
                     condensed_count += 1
                     condensed_chars += len(value)
@@ -3007,9 +3056,7 @@ class ParallelDisplay:
         """
         rendered = f"{key}={value}"
         if len(rendered) <= body_budget:
-            line = self._build_line(
-                timestamp, "INFO", "META", f"[run-start]   {rendered}"
-            )
+            line = self._build_line(timestamp, "INFO", "META", f"[run-start]   {rendered}")
             return line
         # Leave room for ``key=`` plus the elision glyph and the
         # closing ``\u2026`` so the operator still sees which key this
@@ -3030,9 +3077,7 @@ class ParallelDisplay:
             # preserves the no-silent-drop guarantee if the budget
             # arithmetic changes.
             rendered = rendered[:body_budget]
-        return self._build_line(
-            timestamp, "INFO", "META", f"[run-start]   {rendered}"
-        )
+        return self._build_line(timestamp, "INFO", "META", f"[run-start]   {rendered}")
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters."""
@@ -3521,8 +3566,7 @@ class ParallelDisplay:
                 cycle=entry.outer_dev_iteration,
                 iter_=(
                     f"{entry.inner_analysis}/{entry.inner_analysis_cap}"
-                    if entry.inner_analysis is not None
-                    and entry.inner_analysis_cap is not None
+                    if entry.inner_analysis is not None and entry.inner_analysis_cap is not None
                     else None
                 ),
                 agent_name=entry.agent_name,
@@ -4001,10 +4045,17 @@ class ParallelDisplay:
         *,
         indent: bool = False,
     ) -> None:
-        lines = [line.rstrip() for line in body.splitlines() if line.strip()]
-        if indent:
-            lines = [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
-        self._render_titled_lines(title, style_phase, lines)
+        del style_phase, indent
+        self._console.print()
+        self._console.print(Rule(title))
+        self._console.print(
+            render_markdown_preview(
+                body,
+                width=self._ctx.width,
+                terminal_bg_is_light=self._terminal_bg_is_light,
+            )
+        )
+        self._console.print(Rule())
 
     # -- Welcome-banner, first-run-panel, table, capability-summary, status -
 

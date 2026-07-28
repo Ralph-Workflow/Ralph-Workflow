@@ -117,22 +117,33 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
             _atomic_append_text(exclude_path, payload)
             logger.debug("Added {} patterns to .git/info/exclude", len(new_patterns))
 
-        tracked_output = cast(
-            "str", repo.git.ls_files("--cached", "-z")
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        tracked: list[str] = [path for path in tracked_output.split("\0") if path]
-        tracked_secrets: list[str] = [
-            path
-            for path in tracked
-            if _is_recognized_secret_name(PurePosixPath(path).name)
-            and any(_sensitive_pattern_matches_path(pattern, path) for pattern in patterns)
-        ]
-        if tracked_secrets:
-            repo.git.rm("-f", "--cached", "--", *tracked_secrets)
-            logger.debug(
-                "Untracked {} recognized secret file(s) while retaining working-tree copies",
-                len(tracked_secrets),
+        sensitive_patterns = [
+            pattern
+            for pattern in patterns
+            if _is_recognized_secret_name(
+                PurePosixPath(pattern.strip().replace("\\", "/")).name
             )
+        ]
+        if sensitive_patterns:
+            tracked_output = cast(
+                "str", repo.git.ls_files("--cached", "-z")
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            tracked: list[str] = [path for path in tracked_output.split("\0") if path]
+            tracked_secrets: list[str] = [
+                path
+                for path in tracked
+                if _is_recognized_secret_name(PurePosixPath(path).name)
+                and any(
+                    _sensitive_pattern_matches_path(pattern, path)
+                    for pattern in sensitive_patterns
+                )
+            ]
+            if tracked_secrets:
+                repo.git.rm("-f", "--cached", "--", *tracked_secrets)
+                logger.debug(
+                    "Untracked {} recognized secret file(s) while retaining working-tree copies",
+                    len(tracked_secrets),
+                )
     finally:
         repo.close()
 

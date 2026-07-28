@@ -679,10 +679,10 @@ def test_ensure_local_configs_does_not_overignore_tracked_conventions(
     )
 
 
-def test_ensure_local_configs_gitignore_idempotent_for_new_categories(
+def test_ensure_local_configs_regression_idempotent_excludes_do_not_timeout(
     tmp_git_repo: Path,
 ) -> None:
-    """Re-running ensure_local_configs must not duplicate the new gitignore lines."""
+    """Plan S-1: repeated local config seeding must finish within the test budget."""
     agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
     ensure_local_configs(agent_dir)
