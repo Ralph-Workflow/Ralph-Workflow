@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,8 @@ from ralph.mcp.tools.names import RalphToolName
 from ralph.prompts import template_variables
 from ralph.prompts.template_context import TemplateContext
 from ralph.skills import get_skill_content
+
+PLANNING_SKILLS = ("submit-plan-artifact.md", "writing-plans.md")
 
 ARTIFACT_SKILLS = (
     "submit-artifact.md",
@@ -63,6 +66,26 @@ def test_plan_skill_native_markdown_example_matches_validator() -> None:
 
     assert not [item for item in diagnostics if item.severity == "error"]
     assert len(normalized["steps"]) >= 2
+
+
+def test_planning_skill_and_format_doc_keep_advice_nonblocking() -> None:
+    for name in PLANNING_SKILLS:
+        text = _read(name)
+        assert "Warnings and info are advice" in text or name == "writing-plans.md"
+        assert "advisory findings are errors" not in text
+
+    format_doc = (
+        Path(__file__).resolve().parents[1]
+        / "ralph"
+        / "mcp"
+        / "artifacts"
+        / "format_docs"
+        / "planning_analysis_decision.md"
+    ).read_text(encoding="utf-8")
+    assert "Observation:" in format_doc
+    assert "Cost:" in format_doc
+    assert "Fix:" in format_doc
+    assert "Critical Files omits" not in format_doc
 
 
 def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:

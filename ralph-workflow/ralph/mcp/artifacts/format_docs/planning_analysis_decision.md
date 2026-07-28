@@ -35,11 +35,13 @@ status: request_changes
 
 ## What Came Up Short
 
-- [PA-001] Critical Files omits the real target file.
+- [PA-001] Observation: The plan changes retry behavior but does not characterize the current behavior.
+  Cost: The implementation could preserve or regress the wrong behavior because the executor has no baseline.
+  Fix: Add a focused characterization step with the observed current retry behavior and the evidence that establishes it.
 
 ## How To Fix
 
-- [PA-001] Add the target file to `## Critical Files` and resubmit the plan.
+- [PA-001] Add the characterization step and resubmit the plan.
 ```
 
 ## Frontmatter

@@ -16,23 +16,3 @@ Be concrete where it survives contact with the repository: outcome, real
 files, current behavior, proof, and known risks. Let implementation detail
 change as discovery teaches you more. Keep commitments next to the step they
 describe and state each one once so the plan remains readable mid-run.
-
-## Plan validation and revision
-
-The plan format guide at `.agent/artifact-formats/plan.md` offers a useful
-default structure; it does not require a uniform document. A step may use
-`### [S-n] Title`; IDs are stable and never renumbered when your plan needs
-them. Use `Type: verify` for a test-running step when useful; step types are
-preserved verbatim. `PLAN001` is the only blocking plan diagnostic: the submission is empty, too short, or plainly
-not a plan. Warnings and info are advice. Record a normal, reasoned decision
-to proceed past advice under `## Validation Overrides`; tool results retain
-those reasons.
-
-Submit a complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
-(`artifact_type="plan"`). For a similar revision, use
-{{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} on the staged draft; it resubmits once
-validates. Use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} with `mode="replace_all"`
-only for a wholesale rewrite. {{GET_MD_DRAFT_TOOL_REFERENCE}} shows the draft,
-and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} submits an assembled staged draft.
-Do not write canonical plan files directly. After a valid receipt, call
-{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action.

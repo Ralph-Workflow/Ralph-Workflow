@@ -8,13 +8,15 @@ from pathlib import Path
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 
-SKILL_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ralph"
-    / "skills"
-    / "content"
-    / "submit-plan-artifact.md"
-)
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+SKILL_PATH = PACKAGE_ROOT / "ralph" / "skills" / "content" / "submit-plan-artifact.md"
+
+
+def test_installed_planning_skills_match_packaged_content() -> None:
+    for name in ("submit-plan-artifact", "writing-plans"):
+        packaged = PACKAGE_ROOT / "ralph" / "skills" / "content" / f"{name}.md"
+        installed = PACKAGE_ROOT.parent / ".opencode" / "skills" / name / "SKILL.md"
+        assert installed.read_text(encoding="utf-8") == packaged.read_text(encoding="utf-8")
 
 
 def _worked_plan() -> str:

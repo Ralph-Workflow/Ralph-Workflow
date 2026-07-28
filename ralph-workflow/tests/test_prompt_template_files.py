@@ -19,12 +19,14 @@ def test_planning_templates_use_standard_markdown_artifact_tools() -> None:
         assert retired not in combined
 
 
-def test_plan_authoring_guidance_has_one_shared_owner() -> None:
-    thinking = _source("shared/_planning_thinking.jinja")
-    assert ".agent/artifact-formats/plan.md" in thinking
-    assert "PLAN001" in thinking
+def test_plan_authoring_guidance_keeps_thinking_and_mechanics_separate() -> None:
+    mechanics = _source("shared/_planning_submission_mechanics.j2")
+    assert ".agent/artifact-formats/plan.md" in mechanics
+    assert "PLAN001" in mechanics
     for name in ("planning.jinja", "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja"):
-        assert "shared/_planning_thinking.j2" in _source(name)
+        source = _source(name)
+        assert "shared/_planning_thinking.j2" in source
+        assert "shared/_planning_submission_mechanics.j2" in source
 
 
 def test_analysis_prompt_owns_substantive_review_contract() -> None:

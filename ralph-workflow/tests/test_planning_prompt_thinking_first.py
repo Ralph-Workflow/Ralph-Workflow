@@ -11,7 +11,9 @@ def _source(name: str) -> str:
 
 def test_planning_variants_share_the_thinking_contract() -> None:
     for name in ("planning.jinja", "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja"):
-        assert "shared/_planning_thinking.j2" in _source(name)
+        source = _source(name)
+        assert "shared/_planning_thinking.j2" in source
+        assert "shared/_planning_submission_mechanics.j2" in source
 
 
 def test_shared_thinking_contract_requires_the_four_work_phases() -> None:
@@ -27,15 +29,25 @@ def test_shared_thinking_contract_prefers_evidence_to_guesses() -> None:
     assert "turn unknowns into a discovery step" in source
 
 
-def test_shared_thinking_contract_states_plan001_is_the_only_blocker() -> None:
-    source = _source("shared/_planning_thinking.jinja")
+def test_planning_variants_put_thinking_first_and_submission_before_payload() -> None:
+    payload_markers = {
+        "planning.jinja": "USER REQUEST:",
+        "planning_fallback.jinja": "REQUEST (`{{PROMPT_PATH}}`):",
+        "planning_edit.jinja": "ORIGINAL REQUEST:",
+        "planning_edit_fallback.jinja": "REQUEST (`{{PROMPT_PATH}}`):",
+    }
+    for name, payload in payload_markers.items():
+        source = _source(name)
+        assert source.index("shared/_planning_thinking.j2") < source.index(
+            "shared/_planning_submission_mechanics.j2"
+        ) < source.index(payload)
+
+
+def test_submission_mechanics_keeps_plan001_and_standard_artifact_flow() -> None:
+    source = _source("shared/_planning_submission_mechanics.j2")
     assert "`PLAN001` is the only blocking plan diagnostic" in source
     assert "Warnings and info are advice" in source
     assert "Validation Overrides" in source
-
-
-def test_shared_thinking_contract_teaches_standard_artifact_revision() -> None:
-    source = _source("shared/_planning_thinking.jinja")
     for variable in (
         "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE",
         "EDIT_MD_ARTIFACT_TOOL_REFERENCE",
@@ -44,11 +56,6 @@ def test_shared_thinking_contract_teaches_standard_artifact_revision() -> None:
         "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE",
     ):
         assert variable in source
-
-
-def test_primary_prompt_keeps_thinking_before_the_request() -> None:
-    source = _source("planning.jinja")
-    assert source.index("shared/_planning_thinking.j2") < source.index("USER REQUEST:")
 
 
 def test_planning_analysis_is_shorter_than_the_previous_property_rubric() -> None:

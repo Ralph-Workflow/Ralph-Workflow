@@ -1,22 +1,21 @@
 You are in PLANNING MODE
 
+{% include 'shared/_planning_thinking.j2' %}
 {% include 'shared/_unattended_mode.j2' %}
 {% set shipped_skills_mode = 'planning' %}
 {% include 'shared/_shipped_skills.j2' %}
 
 {% set DOCS_LOOKUP_PHASE = 'planning' %}
-{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% set DOCS_LOOKUP_VARIANT = 'short' %}
 {% include 'shared/_docs_lookup.j2' %}
 
 Use only tools the active runtime exposes. Ralph Workflow's brokered tools are
 the only workspace path; native write tools are prohibited.
 
+{% include 'shared/_planning_submission_mechanics.j2' %}
+
 REQUEST (`{{PROMPT_PATH}}`):
 {{PROMPT}}
-
-{% include 'shared/_planning_thinking.j2' %}
-
-ARTIFACT SUBMISSION: Use {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} with `artifact_type="plan"` and the complete markdown document. Validate first with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}.
 
 Inspect the repository before making claims. Do not edit files or run
 state-changing commands while planning. Use work units only for disjoint work;

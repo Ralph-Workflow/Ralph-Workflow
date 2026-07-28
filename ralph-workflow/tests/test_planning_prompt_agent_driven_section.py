@@ -18,7 +18,7 @@ def test_planning_prompt_keeps_optional_parallelism_concise() -> None:
 
 
 def test_planning_prompt_keeps_readable_optional_structure() -> None:
-    source = _source("shared/_planning_thinking.jinja")
+    source = _source("shared/_planning_submission_mechanics.j2")
     assert "### [S-n] Title" in source
     assert "stable and never renumbered" in source
     assert "Project-specific `Type:` values are accepted" not in source
