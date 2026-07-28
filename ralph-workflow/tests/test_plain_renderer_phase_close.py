@@ -142,7 +142,7 @@ def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
     out = buf.getvalue()
     assert "phase=fix" in out
     assert "[Cycle #2]" in out
-    assert "[Analysis #1]" in out
+    assert "[iter #1]" in out
     assert "fix: applied" in out
 
 
@@ -167,14 +167,14 @@ def test_phase_close_iteration_context_empty_no_labels() -> None:
 
 
 def test_phase_close_iteration_context_analysis_with_cap() -> None:
-    """emit_phase_close with inner_analysis + cap shows [Analysis N/cap] label."""
+    """emit_phase_close with inner_analysis + cap shows [iter N/cap] label."""
     pd, buf = _make_display()
     ctx = PhaseIterationContext(inner_analysis=3, inner_analysis_cap=5)
     pd.emit_phase_close(
         "development_analysis", "analysis: done", options=PhaseCloseOptions(iteration_context=ctx)
     )
     out = buf.getvalue()
-    assert "[Analysis 3/5]" in out
+    assert "[iter 3/5]" in out
 
 
 def test_phase_close_exit_trigger_included_in_output() -> None:

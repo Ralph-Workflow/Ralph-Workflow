@@ -53,10 +53,10 @@ def format_dev_cycle(n: int, cap: int | None = None) -> str:
 
 
 def format_analysis_cycle(n: int, cap: int | None = None) -> str:
-    """Return canonical label for inner analysis cycle (1-indexed)."""
-    if cap is not None:
-        return f"Analysis {n}/{cap}"
-    return f"Analysis #{n}"
+    """Return the phase-neutral label for an inner iteration (1-indexed)."""
+    if cap is not None and cap > 0:
+        return f"iter {n}/{cap}"
+    return f"iter #{n}"
 
 
 def format_dev_cycle_compact(n: int, cap: int | None = None) -> str:
@@ -80,13 +80,13 @@ def format_dev_cycle_compact(n: int, cap: int | None = None) -> str:
 def format_analysis_cycle_compact(n: int, cap: int | None = None) -> str:
     """Return compact analysis cycle label for narrow-terminal rendering.
 
-    Shortens ``Analysis N/cap`` to ``A1/3`` (4 chars) and ``Analysis #N``
-    to ``A#1`` (3 chars). The ``A`` prefix keeps the label distinct
-    from the dev-cycle compact form.
+    Shortens ``iter N/cap`` to ``i1/3`` (4 chars) and ``iter #N``
+    to ``i#1`` (3 chars). The ``i`` prefix keeps the label distinct
+    from the outer-cycle compact form.
     """
     if cap is not None and cap > 0:
-        return f"A{n}/{cap}"
-    return f"A#{n}"
+        return f"i{n}/{cap}"
+    return f"i#{n}"
 
 
 def format_dev_cycle_minimal(n: int, cap: int | None = None) -> str:

@@ -74,6 +74,10 @@ _CLEANUP_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "cleanup.py"
 _STAR_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "star.py"
 _CONTRIBUTE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "contribute.py"
 _SMOKE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "smoke.py"
+_CLI_ENTRY_PATHS = (
+    _REPO_ROOT / "ralph" / "cli" / "main.py",
+    _REPO_ROOT / "ralph" / "cli" / "_prompt_helper_entry.py",
+)
 
 
 # Per-test pytest marker: the AST-walking and parallel-display
@@ -503,6 +507,16 @@ def test_smoke_fold_drops_bare_print_outside_exit_code_seam() -> None:
         "smoke.py has bare stdout calls outside the EXIT_CODE seam at "
         f"{bare_stdout_lines!r}; route display output through display.emit_*(...) "
         "instead (S-14)."
+    )
+
+
+@pytest.mark.parametrize("path", _CLI_ENTRY_PATHS)
+def test_cli_entry_modules_drop_bare_print_calls(path: Path) -> None:
+    """S-7: CLI entry modules must route terminal output through shared logging/display."""
+    violators = _find_bare_print_calls(path.read_text(encoding="utf-8"))
+    assert not violators, (
+        f"{path.relative_to(_REPO_ROOT)} calls print(...) at lines {violators!r}; "
+        "route output through the shared display or logger instead."
     )
 
 

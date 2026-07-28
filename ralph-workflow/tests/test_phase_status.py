@@ -20,14 +20,14 @@ def test_format_dev_cycle_renders_number() -> None:
 
 
 def test_format_analysis_cycle_without_cap() -> None:
-    assert format_analysis_cycle(1) == "Analysis #1"
-    assert format_analysis_cycle(3) == "Analysis #3"
+    assert format_analysis_cycle(1) == "iter #1"
+    assert format_analysis_cycle(3) == "iter #3"
 
 
 def test_format_analysis_cycle_with_cap() -> None:
-    assert format_analysis_cycle(1, 3) == "Analysis 1/3"
-    assert format_analysis_cycle(3, 3) == "Analysis 3/3"
-    assert format_analysis_cycle(2, 5) == "Analysis 2/5"
+    assert format_analysis_cycle(1, 3) == "iter 1/3"
+    assert format_analysis_cycle(3, 3) == "iter 3/3"
+    assert format_analysis_cycle(2, 5) == "iter 2/5"
 
 
 # --- PhaseIterationContext tests ---
@@ -62,8 +62,8 @@ def test_phase_iteration_context_labels_full_context() -> None:
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
     assert "Cycle #2" in texts
-    assert "Analysis 1/3" in texts
-    assert len(texts) == len({"Cycle #2", "Analysis 1/3"})
+    assert "iter 1/3" in texts
+    assert len(texts) == len({"Cycle #2", "iter 1/3"})
 
 
 def test_phase_iteration_context_labels_order() -> None:
@@ -75,7 +75,7 @@ def test_phase_iteration_context_labels_order() -> None:
     )
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
-    assert texts.index("Cycle #2") < texts.index("Analysis 1/3")
+    assert texts.index("Cycle #2") < texts.index("iter 1/3")
 
 
 # --- Tests for format_transition_context_items ---

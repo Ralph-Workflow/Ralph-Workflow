@@ -54,9 +54,8 @@ DI / purity invariants:
 Cadence constants:
 
 - ``_STATUS_BAR_REFRESH_PER_SECOND`` (default ``4.0``): bounded Live-region
-  repaint cadence. Per-tick suppression is deliberately unnecessary: the
-  elapsed clock changes each second, and transient cleanup preserves a clean
-  scrollback. Pinned by ``test_status_bar_pins_steady_cadence_config``.
+  repaint cadence. The elapsed clock changes each second while a run is active;
+  unchanged frames are not re-emitted by the non-interactive fallback.
 - ``_STATUS_BAR_TRANSIENT`` (default ``True``): frames are erased on stop,
   preserving clean scrollback, copy/paste, terminal search, and post-run log
   review. The completion panel carries the durable outcome; the final
@@ -70,7 +69,7 @@ The single default layout renders (in priority order)::
     [attention] [integration_alert] [phase_marker] {phase_label}
                 [milestone] {liveness} {elapsed}
                 [milestone] {outer_dev} Cycle N/cap
-                [milestone] {inner_analysis} Analysis N/cap
+                [milestone] {inner_analysis} iter N/cap
                 [milestone] Agent name [milestone] {workspace_root}
 
 A field is omitted entirely (no ``--`` placeholder) when its iteration
@@ -193,15 +192,15 @@ def _safe_single_line(text: str) -> str:
     return cleaned.strip()
 
 
-# Canonical label widths (full form: ``Cycle 1/3`` / ``Analysis 2/5``).
+# Canonical label widths (full form: ``Cycle 1/3`` / ``iter 2/5``).
 # These reflect the WORST-CASE actual label length with multi-digit
-# caps (e.g. ``Cycle 99/999`` is 12 chars; ``Analysis 99/999`` is 14
+# caps (e.g. ``Cycle 99/999`` is 12 chars; ``iter 99/999`` is 11
 # chars). The budget allocator reserves exactly these widths, so the
 # canonical form fits even at the narrowest AC-03 width (40 cols)
 # where the label MUST render (only path/phase truncation adapts to
 # width — the AC-03 invariant).
 _OUTER_DEV_LABEL_MAX_CHARS: int = 10
-_INNER_ANALYSIS_LABEL_MAX_CHARS: int = 14
+_INNER_ANALYSIS_LABEL_MAX_CHARS: int = 11
 # Compact label widths (D1/3 / A2/5).
 _OUTER_DEV_LABEL_COMPACT_MAX_CHARS: int = 4
 _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS: int = 4
@@ -223,14 +222,10 @@ _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS: int = 7
 # compact/minimal forms when canonical labels cannot fit alongside
 # phase + path at the terminal width.
 _CANONICAL_FIT_THRESHOLD: int = 120
-_AGENT_AND_PATH_FIT_THRESHOLD: int = 80
+_AGENT_FIT_THRESHOLD: int = 60
 
-# DA-002 (wt-028-display AC-02): the 60-col rung is the spec's
-# boundary between the path-elided (above) and path-dropped (below)
-# layouts. Below this width the elapsed display, agent segment, and
-# workspace path are all dropped; above it the bar carries the full
-# optional-width pool. The constant lands every ``if ctx.width >= 60``
-# check in this module on the same spec source.
+# The 60-col rung drops only the path. The agent remains visible at 60,
+# then yields at the 40-col floor with the rest of the optional context.
 _PATH_DROP_THRESHOLD: int = 60
 
 # DA-003 (wt-028-display AC-02): the 80-col rung is the spec's
@@ -678,7 +673,7 @@ def _field_overhead_and_label_budgets(
             elapsed_chrome = 0
         agent_chrome = (
             separator_len + len("Agent claude")
-            if _AGENT_AND_PATH_FIT_THRESHOLD <= ctx.width < _CANONICAL_FIT_THRESHOLD
+            if _AGENT_FIT_THRESHOLD <= ctx.width < _CANONICAL_FIT_THRESHOLD
             else 0
         )
         available = (
@@ -1136,8 +1131,8 @@ def render_status_bar(
     The single default-mode layout renders attention, phase, liveness,
     elapsed time, applicable iteration context, agent identity, and finally
     the working directory in priority order. When ``ctx.width`` is too
-    narrow to fit the canonical forms (``Cycle 1/3`` / ``Analysis 2/5``) the labels
-    degrade through compact (``D1/3`` / ``A2/5``) and minimal
+    narrow to fit the canonical forms (``Cycle 1/3`` / ``iter 2/5``) the labels
+    degrade through compact (``C1/3`` / ``i2/5``) and minimal
     (``1/3`` / ``2/5``) forms, the phase marker and per-iteration
     glyphs are dropped at the marker-fit / glyph-fit thresholds, and
     finally the iteration segments drop one at a time at very narrow
@@ -1196,14 +1191,14 @@ def render_status_bar(
     # contract is unchanged.
     optional_segments = (
         [agent_label]
-        if agent_label and ctx.width >= _AGENT_AND_PATH_FIT_THRESHOLD
+        if agent_label and ctx.width >= _AGENT_FIT_THRESHOLD
         else []
     )
     optional_width = sum(len(separator) + len(label) for label in optional_segments)
     path_budget = budgets.path_budget
     path_budget -= (
         optional_width
-        if ctx.width < _AGENT_AND_PATH_FIT_THRESHOLD or ctx.width >= _CANONICAL_FIT_THRESHOLD
+        if ctx.width < _AGENT_FIT_THRESHOLD or ctx.width >= _CANONICAL_FIT_THRESHOLD
         else 0
     )
     path_display = _middle_truncate_path(path_display, path_budget)
@@ -1292,7 +1287,7 @@ def render_status_bar(
             )
         )
     if render_inner_analysis:
-        text.append(separator, style="theme.status.path_marker")
+        text.append(" · " if render_outer_dev else separator, style="theme.status.path_marker")
         if budgets.render_iter_glyph:
             text.append(ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis")
         text.append(

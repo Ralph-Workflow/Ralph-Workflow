@@ -124,7 +124,7 @@ def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
     assert "Development" in plain
     assert "my-cool-project" in plain
     assert "Cycle 1/3" in plain
-    assert "Analysis 2/5" in plain
+    assert "iter 2/5" in plain
 
 
 def test_render_status_bar_shows_integration_alert() -> None:
@@ -233,7 +233,7 @@ def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
     Note: width 100 is excluded here because the new chrome
     (DA-001 reserved attention slot ~12 cols + DA-002 fixed-width
     elapsed display ~13 cols) consumes enough budget that
-    canonical-form ``Cycle 1/3`` + ``Analysis 2/5`` + the full
+    canonical-form ``Cycle 1/3`` + ``iter 2/5`` + the full
     workspace path cannot fit at 100 cols without dropping one
     of them. The 100-col rung is covered by the
     ``test_render_status_bar_drops_path_at_60`` family at 60 and
@@ -254,7 +254,7 @@ def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
     assert "Development" in plain
     assert "my-cool-project" in plain
     assert "Cycle 1/3" in plain
-    assert "Analysis 2/5" in plain
+    assert "iter 2/5" in plain
 
 
 @pytest.mark.parametrize("width", [40, 50, 60, 80, 99])
@@ -336,7 +336,7 @@ def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int
     # the BUG (inner_analysis rendered but elapsed dropped); the
     # spec is the other way around at the floor.
     if width >= 50:
-        inner_forms = ("Analysis 2/5", "A2/5", "2/5")
+        inner_forms = ("iter 2/5", "i2/5", "2/5")
         assert any(form in plain for form in inner_forms), (
             f"inner_analysis must render in canonical/compact/minimal form at "
             f"width={width}; got {plain!r}"
@@ -349,13 +349,13 @@ def test_render_status_bar_canonical_iteration_labels_at_wide_widths(width: int)
 
     Locks the AC-03 invariant at widths where the chrome leaves enough
     budget for the full canonical labels: 120/200 cols. The
-    canonical ``Cycle 1/3`` and ``Analysis 2/5`` forms must appear in
+    canonical ``Cycle 1/3`` and ``iter 2/5`` forms must appear in
     the rendered bar.
 
     At widths < 120 the attention, elapsed, agent, and cwd contract consumes
     enough budget that canonical iter labels cannot fit alongside
     a readable workspace path and phase. The implementation falls
-    back to compact (``C1/3`` / ``A2/5``) at those widths; the
+    back to compact (``C1/3`` / ``i2/5``) at those widths; the
     narrow-width behaviour is covered by
     ``test_render_status_bar_iteration_labels_compact_at_narrow_widths``
     below. Below 40 cols the implementation may shorten further to
@@ -377,8 +377,8 @@ def test_render_status_bar_canonical_iteration_labels_at_wide_widths(width: int)
     assert "Cycle 1/3" in plain, (
         f"AC-03: 'Cycle 1/3' must render in canonical form at width={width}; got {plain!r}"
     )
-    assert "Analysis 2/5" in plain, (
-        f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; got {plain!r}"
+    assert "iter 2/5" in plain, (
+        f"AC-03: 'iter 2/5' must render in canonical form at width={width}; got {plain!r}"
     )
     # Width-fit invariant.
     assert len(plain) <= width, (
@@ -397,7 +397,7 @@ def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int)
 
     The DA-001 (reserved attention slot) + DA-002 (fixed-width elapsed
     display) chrome consumes enough budget at widths 40/50/60 that the
-    full canonical ``Cycle 1/3`` + ``Analysis 2/5`` labels cannot fit
+    full canonical ``Cycle 1/3`` + ``iter 2/5`` labels cannot fit
     alongside the workspace path and phase. The implementation falls
     back to compact (``C1/3`` / ``A2/5``) at these widths so the bar
     stays single-line and within the terminal width.
@@ -429,7 +429,7 @@ def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int)
     # 5-segment floor contract (attention, phase, liveness,
     # position, elapsed).
     if width >= 50:
-        inner_forms = ("A2/5", "2/5")
+        inner_forms = ("i2/5", "2/5")
         assert any(form in plain for form in inner_forms), (
             f"inner_analysis must render in compact/minimal form at width={width}; got {plain!r}"
         )
@@ -453,8 +453,8 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
     with long workspace paths and both iteration fields. The fix
     protects the workspace path and phase label with a minimum budget
     (_MIN_PATH_BUDGET / _MIN_PHASE_BUDGET) and degrades the iteration
-    label form from canonical (``Dev 1/3`` / ``Analysis 2/5``) to
-    compact (``D1/3`` / ``A2/5``) to minimal (``1/3`` / ``2/5``), and
+    label form from canonical (``Cycle 1/3`` / ``iter 2/5``) to
+    compact (``C1/3`` / ``i2/5``) to minimal (``1/3`` / ``2/5``), and
     drops the iteration segments (outer_dev first, then
     inner_analysis) so workspace + phase remain readable at every
     applicable width. Below the iteration-visibility threshold the
@@ -752,7 +752,7 @@ def test_render_status_bar_dev_iteration_format_without_cap() -> None:
 
 
 def test_render_status_bar_analysis_iteration_format_with_cap() -> None:
-    """inner_analysis=3, inner_analysis_cap=7 -> 'Analysis 3/7'."""
+    """inner_analysis=3, inner_analysis_cap=7 -> 'iter 3/7'."""
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
         phase_label="Development Analysis",
@@ -764,11 +764,11 @@ def test_render_status_bar_analysis_iteration_format_with_cap() -> None:
     )
     ctx = _make_display_context(width=140)
     text = render_status_bar(model, ctx, home="/Users/alice")
-    assert "Analysis 3/7" in _plain_text(text)
+    assert "iter 3/7" in _plain_text(text)
 
 
 def test_render_status_bar_analysis_iteration_format_without_cap() -> None:
-    """inner_analysis=1, inner_analysis_cap=None -> 'Analysis #1' fallback."""
+    """inner_analysis=1, inner_analysis_cap=None -> 'iter #1' fallback."""
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
         phase_label="Development Analysis",
@@ -780,7 +780,7 @@ def test_render_status_bar_analysis_iteration_format_without_cap() -> None:
     )
     ctx = _make_display_context(width=140)
     text = render_status_bar(model, ctx, home="/Users/alice")
-    assert "Analysis #1" in _plain_text(text)
+    assert "iter #1" in _plain_text(text)
 
 
 # ---------------------------------------------------------------------------
@@ -2266,7 +2266,7 @@ def test_status_bar_regression_value_changes_preserve_surviving_segment_columns(
     # At constrained widths the layout is deliberately allowed to choose a
     # smaller surviving set; stable columns apply to values that keep their
     # rendered form, while the existing tests pin the width ladder itself.
-    anchors = ("Development", "Cycle", "Analysis", "Agent", "subdir")
+    anchors = ("Development", "Cycle", "iter", "Agent", "subdir")
     for changed in transitions:
         for anchor in anchors:
             baseline_column = baseline.find(anchor)
@@ -2280,6 +2280,33 @@ def test_status_bar_regression_value_changes_preserve_surviving_segment_columns(
                     f"S-2: {anchor} shifted at width={width}; "
                     f"baseline={baseline!r}, changed={changed!r}"
                 )
+
+
+def test_status_bar_regression_agent_name_reflow_at_60_keeps_preceding_columns() -> None:
+    """S-4: agent-name growth at the 60-column rung does not reflow the bar."""
+    def render(agent_name: str) -> str:
+        return render_status_bar(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/reflow-probe/subdir",
+                phase_label="Development",
+                phase_style="theme.phase.development",
+                outer_dev_iteration=1,
+                outer_dev_cap=3,
+                inner_analysis=2,
+                inner_analysis_cap=5,
+                agent_name=agent_name,
+                elapsed_seconds=599,
+            ),
+            _make_display_context(width=60),
+            home="/Users/alice",
+        ).plain
+
+    short, long = render("claude"), render("claude-headless")
+    assert "subdir" not in short and "subdir" not in long
+    for anchor in ("Dev", "C1/3", "i2/5", "Agent"):
+        assert short.find(anchor) == long.find(anchor), (
+            f"S-4: {anchor} shifted when agent name grew: {short!r} -> {long!r}"
+        )
 
 
 def test_status_bar_drops_path_at_60() -> None:
@@ -2420,6 +2447,9 @@ def test_status_bar_contract_attention_width_ladder(
     if width >= 40:
         assert any(glyph in plain for glyph in ("⠋", "*"))
         assert "Time 09:59" in plain if width >= 120 else "9m59s" in plain
+    if width == 60:
+        assert "Agent claude" in plain
+        assert "subdir" not in plain
     if width >= 80:
         assert 0 <= plain.find("Agent") < plain.rfind("subdir")
 
@@ -2446,8 +2476,13 @@ def test_status_bar_regression_resize_below_floor_and_back_restores_layout(
         for width in widths
     ]
     for width, plain in zip(widths, rendered, strict=True):
-        assert "\n" not in plain
+        assert plain.count("\n") == 0
         assert len(plain) <= width
+    floor = render_status_bar(
+        model, _make_display_context(width=40), home="/Users/alice"
+    ).plain
+    for identity in ("WAITING", "Dev", "1/3"):
+        assert identity in floor
     assert rendered[2] == rendered[0]
 
 
@@ -2482,7 +2517,7 @@ def test_segment_order_matches_spec() -> None:
     elapsed_pos = phase_end + len("◆ ")
     elapsed_end = plain.find("◆", elapsed_pos + 13)
     cycle_pos = plain.find("Cycle", elapsed_end)
-    iter_pos = plain.find("Analysis", cycle_pos)
+    iter_pos = plain.find("iter", cycle_pos)
     agent_pos = plain.find("Agent", iter_pos)
     # Path search: the trailing segment ``subdir`` is always present.
     path_pos = plain.find("subdir", agent_pos)
