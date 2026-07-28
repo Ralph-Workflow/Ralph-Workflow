@@ -365,16 +365,17 @@ while healthy, so a waiting, stalled, retrying, completed, failed, or cancelled
 state does not shift neighbouring fields.
 
 At 120 columns every segment is shown. At 80 columns the directory is
-left-elided; at 60 it drops and the phase abbreviates; at the supported
-40-column floor attention, phase, liveness, elapsed time, and position remain.
+left-elided; at 60 it drops, the phase abbreviates, and the agent remains; at
+the supported 40-column floor attention, phase, liveness, elapsed time, and
+position remain.
 The footer never wraps. Below that floor it uses a plain minimal form until the
 terminal recovers. Resizing reflows the footer immediately in both width and
 height; it remains one row on a 12-row viewport.
 
 The liveness cell advances from the injected monotonic clock during quiet work,
 while the watchdog remains the sole authority for the ``STALLED`` state. The
-live footer suppresses an unchanged rendered frame, preserving scrollback and
-avoiding redundant live-region announcements. ``NO_COLOR`` and
+live footer refreshes at a bounded cadence so elapsed time can advance;
+unchanged direct renders remain byte-stable. ``NO_COLOR`` and
 ``RALPH_FORCE_ASCII`` preserve the same labels and hierarchy.
 
 The single layout keeps phase, cycle/iter (or round), elapsed time, and identity
@@ -394,11 +395,11 @@ consistently across all three display surfaces.
    * - Label format
      - Style
      - Meaning
-   * - ``Dev N/cap`` or ``Dev #N``
+   * - ``Cycle N/cap`` or ``Cycle #N``
      - Bold sky-blue (``theme.outer_dev``)
      - Outer development cycle number (1-indexed).  Shows ``N/cap`` when the
        total budget is known, ``#N`` otherwise.
-   * - ``Analysis N/cap`` or ``Analysis #N``
+   * - ``iter N/cap`` or ``iter #N``
      - Purple (``theme.inner_analysis``)
      - Inner analysis loop iteration.  Shows ``N/cap`` when the loop cap is
        known, ``#N`` otherwise.
@@ -441,12 +442,12 @@ Phase-close line format
 After each phase ends, a structured ``[phase-close]`` line is written to the
 transcript::
 
-    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev N/cap] [Analysis N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Cycle N/cap] [iter N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
 
 - The ``<glyph>`` prefix (``◆`` Unicode, ``*`` ASCII) appears only for
   milestone-role phases (execution, review, fix).
-- Canonical iteration labels (``[Dev N/cap]`` or ``[Dev #N]``,
-  ``[Analysis N/cap]`` or ``[Analysis #N]``, etc.) appear between the phase
+- Canonical iteration labels (``[Cycle N/cap]`` or ``[Cycle #N]``,
+  ``[iter N/cap]`` or ``[iter #N]``, etc.) appear between the phase
   name and the produced-artifact summary when a
   :class:`~ralph.display.phase_status.PhaseIterationContext` is provided.
 - ``exit=<trigger>`` (e.g. ``exit=produced``) appears after the artifact

@@ -125,11 +125,13 @@ show_phase_start("planning", display_context=ctx)
 
 The persistent one-row Status Bar uses one responsive layout. At 120 columns
 it shows attention, phase, liveness, elapsed time, run position, agent, and
-working directory. At 80 columns the directory left-elides; at 60 it drops and
-the phase abbreviates; at the 40-column floor attention, phase, liveness,
-elapsed time, and position remain. The watchdog alone supplies `STALLED`; the
-injected monotonic clock advances the liveness frame during quiet work without
-repainting an unchanged frame. Width and height changes reflow the footer
+working directory. At 80 columns the directory left-elides; at 60 it drops,
+the phase abbreviates, and the agent remains; at the 40-column floor attention,
+phase, liveness, elapsed time, and position remain. Position uses `cycle` for
+the outer loop, `iter` for the inner loop, and `round` only for conflict
+resolution. The watchdog alone supplies `STALLED`; the
+injected monotonic clock advances the liveness frame during quiet work at the
+bounded live-refresh cadence. Width and height changes reflow the footer
 immediately, including 12-row and temporarily below-floor terminals.
 
 ### Color Precedence

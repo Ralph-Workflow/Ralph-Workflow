@@ -12,7 +12,8 @@ tritanopia). Asserts from each render:
 * hierarchy survives as indentation and headings,
 * the attention slot is still reserved at 40 columns,
 * below the floor the surfaces stay honest in plain minimal form,
-* consecutive direct Status Bar renders of an unchanged model are byte-stable,
+* consecutive direct Status Bar renders of an unchanged model are byte-stable
+  (the Live region still refreshes on its bounded cadence so elapsed time can tick),
 * contrast clears the automated check on dark AND light backgrounds,
 * the identity palette is disjoint from the status-role palette.
 """

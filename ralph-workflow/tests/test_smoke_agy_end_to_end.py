@@ -130,7 +130,7 @@ def test_mock_smoke_log_documents_real_agy_invocation(tmp_path: Path) -> None:
     assert "--dangerously-skip-permissions" in log_text, (
         "Invoking line is missing --dangerously-skip-permissions"
     )
-    assert "mock_agy" in log_text, (
+    assert "mock_agy" in "".join(log_text.split()), (
         "Log does not show a mock-AGY invocation (the mock is the only "
         "binary used by this fresh-evidence test)"
     )
