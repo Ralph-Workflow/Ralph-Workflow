@@ -1397,9 +1397,13 @@ class StatusBar:
         "_fallback_frame",
         "_fallback_rendered",
         "_home",
+        "_last_live_frame",
         "_live",
+        "_live_frame_rendered",
         "_lock",
         "_model",
+        "_ticker",
+        "_ticker_stop",
     )
 
     def __init__(
@@ -1412,9 +1416,13 @@ class StatusBar:
         self._home = str(pathlib.Path.home())
         self._model: StatusBarModel | None = None
         self._live: _Live | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._fallback_rendered = False
         self._fallback_frame: str | None = None
+        self._last_live_frame: str | None = None
+        self._live_frame_rendered = False
+        self._ticker: threading.Thread | None = None
+        self._ticker_stop: threading.Event | None = None
         # P0 (wt-028-display AC-01): injectable clock so the bar can
         # recompute elapsed on every Live tick without touching
         # ``time.monotonic`` directly (and so tests can drive the
@@ -1549,6 +1557,49 @@ class StatusBar:
         file_obj.write("\r\x1b[1A\x1b[2K")
         file_obj.flush()
 
+    def _refresh_live_if_changed(self) -> bool:
+        """Refresh the interactive footer only when its visible frame changed."""
+        with self._lock:
+            live = self._live
+            if live is None:
+                return False
+            frame = self._renderable().plain
+            if frame == self._last_live_frame:
+                return False
+            self._last_live_frame = frame
+            with contextlib.suppress(Exception):
+                live.refresh()
+                self._live_frame_rendered = True
+                return True
+        return False
+
+    def _run_ticker(self, stop: threading.Event) -> None:
+        """Poll the live frame at the bounded status-bar cadence."""
+        while not stop.wait(1 / _STATUS_BAR_REFRESH_PER_SECOND):
+            self._refresh_live_if_changed()
+
+    def _start_ticker(self) -> None:
+        stop = threading.Event()
+        ticker = threading.Thread(
+            target=self._run_ticker,
+            args=(stop,),
+            name="ralph-status-bar",
+            daemon=True,
+        )
+        self._ticker_stop = stop
+        self._ticker = ticker
+        ticker.start()
+
+    def _stop_ticker(self) -> None:
+        stop = self._ticker_stop
+        ticker = self._ticker
+        self._ticker_stop = None
+        self._ticker = None
+        if stop is not None:
+            stop.set()
+        if ticker is not None and ticker is not threading.current_thread():
+            ticker.join(timeout=1.0)
+
     def start(self) -> None:
         """Begin rendering the Status Bar inside a transient Rich Live region.
 
@@ -1574,16 +1625,22 @@ class StatusBar:
         with contextlib.suppress(Exception):
             from rich.live import Live
 
+            renderable = self._renderable()
             live = Live(
-                self._renderable(),
+                renderable,
                 console=self._ctx().console,
                 transient=_STATUS_BAR_TRANSIENT,
-                refresh_per_second=_STATUS_BAR_REFRESH_PER_SECOND,
+                auto_refresh=False,
                 screen=False,
                 get_renderable=self._renderable,
             )
             live.start()
             self._live = live
+            self._last_live_frame = renderable.plain
+            with contextlib.suppress(Exception):
+                live.refresh()
+                self._live_frame_rendered = True
+            self._start_ticker()
             self._fallback_render_once()
 
     def stop(self) -> None:
@@ -1592,8 +1649,14 @@ class StatusBar:
         if live is None:
             return
         self._live = None
+        self._last_live_frame = None
+        self._stop_ticker()
+        if self._live_frame_rendered:
+            with contextlib.suppress(Exception):
+                live.update(Text(" "), refresh=False)
         with contextlib.suppress(Exception):
             live.stop()
+        self._live_frame_rendered = False
         with contextlib.suppress(Exception):
             self._fallback_cleanup()
 

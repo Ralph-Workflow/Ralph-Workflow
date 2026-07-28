@@ -459,3 +459,53 @@ def test_status_bar_regression_liveness_frame_advances_without_reflow() -> None:
     assert first_liveness != second_liveness
     assert len(first_liveness) == len(second_liveness)
     assert first.index("Time") == second.index("Time")
+
+
+def test_status_bar_refreshes_only_for_changed_live_frames() -> None:
+    """The bounded ticker emits only when elapsed, attention, or width changes."""
+    from ralph.display.status_bar import StatusBar
+
+    class _StubDisplay:
+        def __init__(self) -> None:
+            self._ctx = _ctx(width=120)
+            self._is_quiet = False
+
+    class _Live:
+        def __init__(self) -> None:
+            self.refreshes = 0
+
+        def refresh(self) -> None:
+            self.refreshes += 1
+
+    clock = [100.0]
+    display = _StubDisplay()
+    bar = StatusBar(display, clock=lambda: clock[0])
+    bar.update(_model(started_at=100.0))
+    live = _Live()
+    bar._live = live
+    bar._last_live_frame = bar._renderable().plain
+
+    assert bar._refresh_live_if_changed() is False
+    assert live.refreshes == 0
+
+    clock[0] = 101.0
+    assert bar._refresh_live_if_changed() is True
+    assert live.refreshes == 1
+
+    waiting_model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=100.0,
+        attention="waiting",
+    )
+    bar.update(waiting_model)
+    assert bar._refresh_live_if_changed() is True
+    assert live.refreshes == 2
+
+    display._ctx = _ctx(width=80)
+    assert bar._refresh_live_if_changed() is True
+    assert live.refreshes == 3

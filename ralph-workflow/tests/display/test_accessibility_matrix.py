@@ -142,17 +142,22 @@ def test_status_bar_below_floor_stays_honest() -> None:
 # --- Attention states pairwise distinct in grayscale ---------------------
 
 
-def test_attention_states_pairwise_distinct_in_grayscale() -> None:
-    """Each attention state has a distinct label carrier (hue alone is not enough)."""
-    label_carriers = {
-        "healthy": "RUN",
+def test_attention_states_have_distinct_rendered_grayscale_labels() -> None:
+    """Every attention state remains identifiable from the color-free bar."""
+    ctx_no_color = _ctx(width=120, height=40, color=False, glyphs=False)
+    expected = {
         "waiting": "WAIT",
         "stalled": "STALLED",
         "retrying": "RETRY",
-        "terminated": "STOP",
+        "terminated": "DONE",
     }
-    seen = set(label_carriers.values())
-    assert len(seen) == len(label_carriers), "labels must be pairwise distinct"
+    rendered = {
+        state: render_status_bar(_model(attention=state), ctx_no_color, now_monotonic=100.0).plain
+        for state in expected
+    }
+    for state, label in expected.items():
+        assert label in rendered[state], f"{state} must retain its grayscale label"
+    assert len(set(rendered.values())) == len(rendered)
 
 
 def test_attention_states_pairwise_distinct_in_rendered_output() -> None:
