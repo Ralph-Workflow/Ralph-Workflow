@@ -57,7 +57,7 @@ commit = ["claude/haiku"]
 # PATH, uncomment its block in the AGENT CLI DEFINITIONS section below, then
 # extend the list:
 #   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
-#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/configuration.md#ccs_aliases
+#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/agent-compatibility.md#ccs_aliases
 
 
 # =============================================================================
