@@ -29,6 +29,7 @@ Coverage:
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 
 from rich.console import Console, Group
@@ -866,6 +867,72 @@ def test_edit_preview_module_uses_no_hex_color_literals() -> None:
         f"edit_preview.py must not contain hex color literals "
         f"(Okabe-Ito discipline); found {hits!r}"
     )
+
+
+def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> None:
+    """S-1: result hits keep their source paths, line numbers, and match carrier."""
+    grep = build_edit_preview(
+        "grep_files",
+        {
+            "content": '{"matches":[{"path":"a.py","line":17,"text":"needle = 1"}]}',
+            "pattern": "needle",
+        },
+        width=80,
+    )
+    assert grep is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(grep)
+    assert "a.py:17" in rendered.getvalue()
+    assert "needle = 1" in rendered.getvalue()
+
+    search = build_edit_preview(
+        "search_files", {"content": '{"matches":["a.py","settings.yaml"]}'}, width=80
+    )
+    assert search is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(search)
+    assert "a.py" in rendered.getvalue() and "settings.yaml" in rendered.getvalue()
+
+
+def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None:
+    """S-2: adding a parser requires an explicit mapped or declined classification."""
+    parser_dir = Path(__file__).parents[2] / "ralph" / "agents" / "parsers"
+    shipped = {
+        path.stem
+        for path in parser_dir.glob("*.py")
+        if not path.stem.startswith("_") and path.stem not in {"base", "agent_output_line", "text_accumulator", "interactive_transcript_event"}
+    }
+    classified = {
+        "claude", "codex", "cursor", "gemini", "opencode", "pi",
+        "agy", "generic", "nanocoder", "claude_interactive", "claude_interactive_transcript_parser",
+    }
+    assert shipped == classified
+
+
+def test_build_edit_preview_uses_ascii_elision_when_glyphs_are_disabled() -> None:
+    """S-3: live ASCII terminals never receive a Unicode truncation glyph."""
+    preview = build_edit_preview(
+        "write_file", {"path": "a.py", "content": "\n".join(str(i) for i in range(41))},
+        width=80, glyphs_enabled=False,
+    )
+    assert preview is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
+    assert "... (1 more line)" in rendered.getvalue()
+    assert "…" not in rendered.getvalue()
+
+
+def test_multiple_read_preview_shares_one_line_budget() -> None:
+    """S-4: three files cannot multiply the 40-line preview allowance."""
+    body = "\n".join(f"line {index}" for index in range(40))
+    payload = json.dumps({"files": [{"path": f"file{index}.py", "content": body} for index in range(3)]})
+    preview = build_edit_preview("read_multiple_files", {"content": payload}, width=80)
+    assert preview is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
+    output = rendered.getvalue()
+    assert output.count("more lines") == 1
+    assert len([line for line in output.splitlines() if line.strip()]) <= 44
 
 
 # ---------------------------------------------------------------------------

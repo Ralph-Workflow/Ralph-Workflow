@@ -1986,6 +1986,7 @@ class ParallelDisplay:
             width=self._ctx.width,
             terminal_bg_is_light=self._terminal_bg_is_light,
             overflow_ref=overflow_ref,
+            glyphs_enabled=self._ctx.glyphs_enabled,
         )
         if preview is None:
             return

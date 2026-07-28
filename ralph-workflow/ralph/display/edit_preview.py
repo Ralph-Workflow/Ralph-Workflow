@@ -342,6 +342,8 @@ def _build_write_preview(
     terminal_bg_is_light: bool | None,
     start_line: int = 1,
     overflow_ref: str | None = None,
+    glyphs_enabled: bool = True,
+    max_lines: int = _MAX_PREVIEW_LINES,
 ) -> RenderableType | None:
     """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
     and the two artifact-stage / artifact-submit tools."""
@@ -352,7 +354,7 @@ def _build_write_preview(
     binary = _binary_note(content)
     if binary is not None:
         return binary
-    head, tail, omitted = _safe_lines(content, max_lines=_MAX_PREVIEW_LINES)
+    head, tail, omitted = _safe_lines(content, max_lines=max_lines)
     if not head:
         return None
 
@@ -375,7 +377,7 @@ def _build_write_preview(
         return preview
     return Group(
         preview,
-        _elision_text(omitted, overflow_ref=overflow_ref),
+        _elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref),
         render(tail, start_line + len(head) + omitted),
     )
 
@@ -385,6 +387,8 @@ def _build_multiple_read_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    glyphs_enabled: bool,
+    overflow_ref: str | None,
 ) -> RenderableType | None:
     """Render each successful ``read_multiple_files`` result as its own file block."""
     try:
@@ -398,6 +402,8 @@ def _build_multiple_read_preview(
         return None
     blocks: list[RenderableType] = []
     files: list[object] = list(files_obj)
+    remaining = _MAX_PREVIEW_LINES
+    omitted_total = 0
     for entry_obj in files:
         if not isinstance(entry_obj, dict):
             continue
@@ -406,16 +412,53 @@ def _build_multiple_read_preview(
         line_start: object = entry_obj.get("line_start")
         if not isinstance(path, str) or not isinstance(body, str) or not body:
             continue
+        line_count = len(strip_terminal_control(body).splitlines())
+        shown = min(line_count, remaining)
+        omitted_total += line_count - shown
+        if shown <= 0:
+            continue
         preview = _build_write_preview(
-            "read_multiple_files",
-            path,
-            body,
-            width=width,
+            "read_multiple_files", path, body, width=width,
             terminal_bg_is_light=terminal_bg_is_light,
             start_line=line_start if isinstance(line_start, int) and line_start > 0 else 1,
+            glyphs_enabled=glyphs_enabled, max_lines=shown,
         )
+        remaining -= shown
         if preview is not None:
             blocks.extend((Text(f"  {path}", style="theme.text.muted"), preview))
+    if omitted_total:
+        blocks.append(_elision_text(omitted_total, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref))
+    return Group(*blocks) if blocks else None
+
+
+def _build_search_result_preview(content: str, *, pattern: str | None) -> RenderableType | None:
+    """Render structured grep/search matches without treating their JSON as source text."""
+    try:
+        envelope: object = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(envelope, dict):
+        return None
+    matches: object = envelope.get("matches")
+    if not isinstance(matches, list):
+        return None
+    blocks: list[RenderableType] = []
+    for match in matches[:_MAX_PREVIEW_LINES]:
+        if isinstance(match, str):
+            blocks.append(Text(f"  {match}", style="theme.text.muted"))
+            continue
+        if not isinstance(match, dict):
+            continue
+        path, line, text = match.get("path"), match.get("line"), match.get("text")
+        if not isinstance(path, str) or not isinstance(line, int) or not isinstance(text, str):
+            continue
+        safe = strip_terminal_control(text)
+        hit = Text(f"  {path}:{line}  {safe}")
+        if pattern:
+            start = safe.find(pattern)
+            if start >= 0:
+                hit.stylize("theme.text.emphasis", start=len(f"  {path}:{line}  ") + start, end=len(f"  {path}:{line}  ") + start + len(pattern))
+        blocks.append(hit)
     return Group(*blocks) if blocks else None
 
 
@@ -426,6 +469,7 @@ def _build_edit_preview(
     width: int,
     terminal_bg_is_light: bool | None,
     overflow_ref: str | None = None,
+    glyphs_enabled: bool = True,
 ) -> RenderableType | None:
     """Build a diff-style preview for ``edit_file`` / ``ralph_edit_md_artifact``.
 
@@ -510,7 +554,7 @@ def _build_edit_preview(
                     )
                 )
     if total_omitted:
-        blocks.append(_elision_text(total_omitted, overflow_ref=overflow_ref))
+        blocks.append(_elision_text(total_omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref))
     return Group(*blocks)
 
 
@@ -521,6 +565,7 @@ def build_edit_preview(
     width: int,
     terminal_bg_is_light: bool | None = None,
     overflow_ref: str | None = None,
+    glyphs_enabled: bool = True,
 ) -> RenderableType | None:
     """Return a rich renderable previewing the edit described by ``input_dict``.
 
@@ -591,10 +636,17 @@ def build_edit_preview(
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
             overflow_ref=overflow_ref,
+            glyphs_enabled=glyphs_enabled,
         )
+    if isinstance(content_obj, str) and bare in {"grep_files", "search_files"}:
+        payload_input = input_dict if isinstance(input_dict, dict) else {}
+        raw_input = payload_input.get("input", payload_input)
+        pattern = raw_input.get("pattern") if isinstance(raw_input, dict) else None
+        return _build_search_result_preview(content_obj, pattern=pattern if isinstance(pattern, str) else None)
     if isinstance(content_obj, str) and bare == "read_multiple_files":
         return _build_multiple_read_preview(
-            content_obj, width=width, terminal_bg_is_light=terminal_bg_is_light
+            content_obj, width=width, terminal_bg_is_light=terminal_bg_is_light,
+            glyphs_enabled=glyphs_enabled, overflow_ref=overflow_ref,
         )
     if isinstance(content_obj, str) and content_obj:
         preview_path = path
@@ -611,6 +663,7 @@ def build_edit_preview(
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
             overflow_ref=overflow_ref,
+            glyphs_enabled=glyphs_enabled,
             start_line=(
                 start_line
                 if isinstance(start_line, int)
