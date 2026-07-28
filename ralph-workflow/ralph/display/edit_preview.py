@@ -304,6 +304,45 @@ def _build_write_preview(
     return Group(syntax, _elision_text(omitted))
 
 
+def _build_multiple_read_preview(
+    content: str,
+    *,
+    width: int,
+    terminal_bg_is_light: bool | None,
+) -> RenderableType | None:
+    """Render each successful ``read_multiple_files`` result as its own file block."""
+    try:
+        envelope: object = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(envelope, dict):
+        return None
+    files_obj: object = envelope.get("files")
+    if not isinstance(files_obj, list):
+        return None
+    blocks: list[RenderableType] = []
+    files: list[object] = list(files_obj)
+    for entry_obj in files:
+        if not isinstance(entry_obj, dict):
+            continue
+        path: object = entry_obj.get("path")
+        body: object = entry_obj.get("content")
+        line_start: object = entry_obj.get("line_start")
+        if not isinstance(path, str) or not isinstance(body, str) or not body:
+            continue
+        preview = _build_write_preview(
+            "read_multiple_files",
+            path,
+            body,
+            width=width,
+            terminal_bg_is_light=terminal_bg_is_light,
+            start_line=line_start if isinstance(line_start, int) and line_start > 0 else 1,
+        )
+        if preview is not None:
+            blocks.extend((Text(f"  {path}", style="theme.text.muted"), preview))
+    return Group(*blocks) if blocks else None
+
+
 def _build_edit_preview(
     path: str | None,
     edits: list[dict[str, object]],
@@ -459,6 +498,10 @@ def build_edit_preview(
             ],
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+        )
+    if isinstance(content_obj, str) and bare == "read_multiple_files":
+        return _build_multiple_read_preview(
+            content_obj, width=width, terminal_bg_is_light=terminal_bg_is_light
         )
     if isinstance(content_obj, str) and content_obj:
         preview_path = path

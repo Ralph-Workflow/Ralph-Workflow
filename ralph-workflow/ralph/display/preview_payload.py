@@ -19,7 +19,7 @@ PreviewOperation = Literal["read", "write", "append", "replace", "patch"]
 
 
 @dataclass(frozen=True)
-class PreviewHunk:
+class _PreviewHunk:
     """One ordered old/new fragment with an optional absolute new-file line."""
 
     old_text: str = ""
@@ -29,13 +29,13 @@ class PreviewHunk:
 
 
 @dataclass(frozen=True)
-class PreviewPayload:
+class _PreviewPayload:
     """Canonical, display-safe description of recognized file activity."""
 
     path: str | None
     language_hint: str | None
     operation: PreviewOperation
-    hunks: tuple[PreviewHunk, ...] = ()
+    hunks: tuple[_PreviewHunk, ...] = ()
     content: str | None = None
     start_line: int | None = None
 
@@ -76,31 +76,31 @@ def _line(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
-def _patch_hunks(patch: str) -> tuple[PreviewHunk, ...]:
+def _patch_hunks(patch: str) -> tuple[_PreviewHunk, ...]:
     """Extract unified-diff hunks with their new-file source line and label."""
     matches = list(_PATCH_HUNK_RE.finditer(patch))
-    hunks: list[PreviewHunk] = []
+    hunks: list[_PreviewHunk] = []
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(patch)
         body = patch[match.end() : end]
         old = "\n".join(line[1:] for line in body.splitlines() if line.startswith("-") and not line.startswith("---"))
         new = "\n".join(line[1:] for line in body.splitlines() if line.startswith("+") and not line.startswith("+++"))
         start = int(match.group("new"))
-        hunks.append(PreviewHunk(old, new, start, f"hunk {index + 1} (line {start})"))
+        hunks.append(_PreviewHunk(old, new, start, f"hunk {index + 1} (line {start})"))
     return tuple(hunks)
 
 
-def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[PreviewHunk, ...]:
+def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[_PreviewHunk, ...]:
     """Normalize one replacement or the documented ordered ``edits`` list."""
     edits = payload.get("edits")
     items: tuple[object, ...] = tuple(edits) if isinstance(edits, list) else (() if multiple else (payload,))
-    hunks: list[PreviewHunk] = []
+    hunks: list[_PreviewHunk] = []
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
             continue
         old = item.get("oldText", item.get("old_string", ""))
         new = item.get("newText", item.get("new_string", ""))
-        hunks.append(PreviewHunk(
+        hunks.append(_PreviewHunk(
             old if isinstance(old, str) else "",
             new if isinstance(new, str) else "",
             _line(item.get("start_line", item.get("line_start"))),
@@ -109,22 +109,26 @@ def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[PreviewH
     return tuple(hunks)
 
 
-def _content_payload(operation: PreviewOperation, path: str | None, payload: dict[str, object]) -> PreviewPayload:
+def _content_payload(operation: PreviewOperation, path: str | None, payload: dict[str, object]) -> _PreviewPayload:
     content = payload.get("content")
-    return PreviewPayload(path, None, operation, content=content if isinstance(content, str) else None, start_line=_line(payload.get("line_start")))
+    return _PreviewPayload(path, None, operation, content=content if isinstance(content, str) else None, start_line=_line(payload.get("line_start")))
 
 
-def _notebook_payload(path: str | None, payload: dict[str, object]) -> PreviewPayload:
+def _notebook_payload(path: str | None, payload: dict[str, object]) -> _PreviewPayload:
     source = payload.get("new_source", payload.get("content", payload.get("source")))
     language = payload.get("kernel", payload.get("language"))
-    return PreviewPayload(path, language if isinstance(language, str) else None, "write", content=source if isinstance(source, str) else None)
+    return _PreviewPayload(path, language if isinstance(language, str) else None, "write", content=source if isinstance(source, str) else None)
 
 
-def _patch_payload(path: str | None, payload: dict[str, object]) -> PreviewPayload | None:
+def _patch_payload(path: str | None, payload: dict[str, object]) -> _PreviewPayload | None:
     patch = payload.get("patch", payload.get("input"))
     if not isinstance(patch, str):
         return None
-    return PreviewPayload(path, "diff", "patch", _patch_hunks(patch), patch)
+    return _PreviewPayload(path, "diff", "patch", _patch_hunks(patch), patch)
+
+
+PreviewHunk = _PreviewHunk
+PreviewPayload = _PreviewPayload
 
 
 def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> PreviewPayload | None:
@@ -144,9 +148,9 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
     if operation is not None:
         return _content_payload(operation, path, payload)
     if bare in {"edit_file", "Edit", "str_replace", "ralph_edit_md_artifact"}:
-        return PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=False))
+        return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=False))
     if bare == "MultiEdit":
-        return PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=True))
+        return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=True))
     if bare == "NotebookEdit":
         return _notebook_payload(path, payload)
     return _patch_payload(path, payload) if bare == "apply_patch" else None

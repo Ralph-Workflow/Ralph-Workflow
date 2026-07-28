@@ -124,6 +124,22 @@ def test_preview_payload_rejects_unknown_tools_and_invalid_json() -> None:
     assert payload_from_tool_event("Write", {"args": "not JSON"}) is None
 
 
+def test_build_edit_preview_read_multiple_files_renders_each_file_with_its_lexer() -> None:
+    """S-2: multi-file read results preserve individual file boundaries and lexers."""
+    preview = build_edit_preview(
+        "read_multiple_files",
+        {
+            "content": '{"files":[{"path":"a.py","content":"x = 1"},{"path":"settings.yaml","content":"key: value"}]}'
+        },
+        width=80,
+    )
+    assert isinstance(preview, Group)
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
+    assert "a.py" in rendered.getvalue()
+    assert "settings.yaml" in rendered.getvalue()
+
+
 def test_partial_read_envelope_uses_real_window_line_number() -> None:
     """A read result envelope starts the gutter at its source window."""
     preview = build_edit_preview(
@@ -483,6 +499,23 @@ def test_parallel_display_tool_result_read_file_prints_content_preview() -> None
     assert preview_start < output.index("def render", preview_start)
     assert "def render" in output, f"read preview missing content:\n{output!r}"
     assert "return 1" in output, f"read preview missing content:\n{output!r}"
+
+
+def test_parallel_display_tool_result_read_multiple_files_prints_each_file_preview() -> None:
+    """S-2: correlated multi-file reads render every returned path as a separate block."""
+    pd, buf = _make_display()
+    pd.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content='{"files":[{"path":"a.py","content":"x = 1"},{"path":"settings.yaml","content":"key: value"}]}',
+        metadata={"tool_name": "read_multiple_files", "exit_code": 0},
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert "a.py" in output
+    assert "settings.yaml" in output
+    assert "x = 1" in output
+    assert "key: value" in output
 
 
 def test_parallel_display_quiet_mode_suppresses_tool_use_preview() -> None:
