@@ -23,6 +23,16 @@ _NAMES: Final[dict[str, str]] = {
 _BINARY_SUFFIXES: Final[tuple[str, ...]] = (".tar.gz", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".pdf")
 
 
+def _suffix_length(item: tuple[str, str]) -> int:
+    """Return a suffix's length so compound extensions take precedence."""
+    return len(item[0])
+
+
+_SUFFIXES_BY_LENGTH: Final[tuple[tuple[str, str], ...]] = tuple(
+    sorted(_SUFFIXES.items(), key=_suffix_length, reverse=True)
+)
+
+
 def _sniff(prefix: str) -> str:
     """Return a conservative lexer hint from a bounded content prefix."""
     stripped = prefix.lstrip()
@@ -56,7 +66,7 @@ def _infer_uncached(filename: str, prefix: str) -> str:
     if not lexer and (PurePath(lowered).name.startswith(".env") or PurePath(lowered).name.startswith("requirements")):
         lexer = "bash" if PurePath(lowered).name.startswith(".env") else "text"
     if not lexer:
-        lexer = next((value for suffix, value in _SUFFIXES.items() if lowered.endswith(suffix)), "")
+        lexer = next((value for suffix, value in _SUFFIXES_BY_LENGTH if lowered.endswith(suffix)), "")
     if not lexer:
         lexer = _sniff(prefix)
     if not lexer:

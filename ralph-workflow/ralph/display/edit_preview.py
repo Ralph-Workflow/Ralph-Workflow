@@ -198,30 +198,30 @@ def _is_markdown_lexer(lexer_name: str) -> bool:
     return lexer_name.lower() in _MARKDOWN_LEXER_ALIASES
 
 
-def _safe_lines(content: str, *, max_lines: int) -> tuple[list[str], int | None]:
-    """Sanitize ``content`` and split into at most ``max_lines`` lines.
-
-    Returns a ``(lines, omitted_count)`` pair. ``omitted_count`` is
-    ``None`` when no truncation was needed. Terminal-escape sequences
-    are stripped from every line so a hostile payload cannot paint
-    the operator's terminal (R-1).
-    """
+def _safe_lines(content: str, *, max_lines: int) -> tuple[list[str], list[str], int | None]:
+    """Sanitize and middle-trim content into head, tail, and omitted count."""
     sanitized = strip_terminal_control(content)
     if not sanitized:
-        return [], None
+        return [], [], None
     raw_lines = sanitized.splitlines()
     if len(raw_lines) <= max_lines:
-        return raw_lines, None
-    omitted = len(raw_lines) - max_lines
-    return raw_lines[:max_lines], omitted
+        return raw_lines, [], None
+    head_count = max_lines // 2
+    tail_count = max_lines - head_count
+    return raw_lines[:head_count], raw_lines[-tail_count:], len(raw_lines) - max_lines
 
 
-def _elision_text(omitted: int) -> Text:
-    """Build a muted ``… (N more lines)`` Text for the truncation marker."""
+def _elision_text(omitted: int, glyph: str = _ELISION_GLYPH) -> Text:
+    """Build a muted elision Text for the truncation marker."""
     noun = "line" if omitted == 1 else "lines"
     text = Text()
-    text.append(f"{_ELISION_GLYPH} ({omitted} more {noun})", style=_ELISION_STYLE)
+    text.append(f"{glyph} ({omitted} more {noun})", style=_ELISION_STYLE)
     return text
+
+
+def _binary_note(content: str) -> Text | None:
+    """Return a safe note instead of rendering NUL-containing binary content."""
+    return Text("[binary content omitted]", style=_ELISION_STYLE) if "\x00" in content else None
 
 
 def preview_header(tool_name: str, path: str | None) -> Text:
@@ -284,24 +284,26 @@ def _build_write_preview(
         return None
     lexer_name = "markdown" if path is None else lexer_for_path(path, content)
     is_markdown = _is_markdown_lexer(lexer_name)
-    lines, omitted = _safe_lines(content, max_lines=_MAX_PREVIEW_LINES)
-    if not lines:
+    binary = _binary_note(content)
+    if binary is not None:
+        return binary
+    head, tail, omitted = _safe_lines(content, max_lines=_MAX_PREVIEW_LINES)
+    if not head:
         return None
-    body = "\n".join(lines)
-    syntax: RenderableType = (
-        render_markdown_preview(body, width=width, terminal_bg_is_light=terminal_bg_is_light)
-        if is_markdown
-        else _make_syntax(
-            body,
-            lexer_name,
-            is_markdown=False,
-            terminal_bg_is_light=terminal_bg_is_light,
-            start_line=start_line,
+
+    def render(lines: list[str], line: int) -> RenderableType:
+        body = "\n".join(lines)
+        return (
+            render_markdown_preview(body, width=width, terminal_bg_is_light=terminal_bg_is_light)
+            if is_markdown
+            else _make_syntax(body, lexer_name, is_markdown=False,
+                              terminal_bg_is_light=terminal_bg_is_light, start_line=line)
         )
-    )
+
+    preview = render(head, start_line)
     if omitted is None:
-        return syntax
-    return Group(syntax, _elision_text(omitted))
+        return preview
+    return Group(preview, _elision_text(omitted), render(tail, start_line + len(head) + omitted))
 
 
 def _build_multiple_read_preview(
@@ -383,7 +385,7 @@ def _build_edit_preview(
             blocks.append(Text(f"  {label}", style="theme.text.muted"))
         # Keep the textual '-' carrier while lexing the old code just like the new code.
         if old_safe:
-            old_lines, old_omitted = _safe_lines(old_safe, max_lines=_MAX_PREVIEW_LINES)
+            old_lines, old_tail, old_omitted = _safe_lines(old_safe, max_lines=_MAX_PREVIEW_LINES)
             old_body = "\n".join(old_lines)
             old_frame = Text("-", style=old_style)
             old_syntax = _make_syntax(
@@ -394,23 +396,26 @@ def _build_edit_preview(
             )
             blocks.append(Group(old_frame, old_syntax))
             if old_omitted is not None:
-                blocks.append(_elision_text(old_omitted))
+                blocks.extend((_elision_text(old_omitted), _make_syntax("\n".join(old_tail), lexer_name, is_markdown=is_markdown, terminal_bg_is_light=terminal_bg_is_light, start_line=len(old_lines) + old_omitted + 1)))
             total_omitted += old_omitted or 0
         # New block: Syntax-highlighted with line numbers starting at 1.
         if new_safe:
-            new_lines, new_omitted = _safe_lines(new_safe, max_lines=_MAX_PREVIEW_LINES)
+            new_lines, new_tail, new_omitted = _safe_lines(new_safe, max_lines=_MAX_PREVIEW_LINES)
             if new_lines:
-                start_line = edit.get("start_line")
+                start_line_obj = edit.get("start_line")
+                start_line = (
+                    start_line_obj
+                    if isinstance(start_line_obj, int)
+                    and not isinstance(start_line_obj, bool)
+                    and start_line_obj > 0
+                    else 1
+                )
                 new_syntax = _make_syntax(
                     "\n".join(new_lines),
                     lexer_name,
                     is_markdown=is_markdown,
                     terminal_bg_is_light=terminal_bg_is_light,
-                    start_line=(
-                        start_line
-                        if isinstance(start_line, int) and not isinstance(start_line, bool) and start_line > 0
-                        else 1
-                    ),
+                    start_line=start_line,
                 )
                 # Wrap the new block in a Text frame so the leading
                 # ``+`` marker on the first line is visible without
@@ -422,6 +427,20 @@ def _build_edit_preview(
                 frame = Text()
                 frame.append("+", style=new_style)
                 blocks.append(Group(frame, new_syntax))
+                if new_omitted is not None:
+                    tail_start = start_line + len(new_lines) + new_omitted
+                    blocks.extend(
+                        (
+                            _elision_text(new_omitted),
+                            _make_syntax(
+                                "\n".join(new_tail),
+                                lexer_name,
+                                is_markdown=is_markdown,
+                                terminal_bg_is_light=terminal_bg_is_light,
+                                start_line=tail_start,
+                            ),
+                        )
+                    )
                 total_omitted += new_omitted or 0
     if not blocks:
         return None
@@ -466,7 +485,12 @@ def build_edit_preview(
     if isinstance(input_dict, PreviewPayload):
         canonical = input_dict
     else:
-        canonical = payload_from_tool_event(tool_name, {"input": input_dict})
+        tool_envelope: dict[str, object] = (
+            input_dict
+            if any(key in input_dict for key in ("input", "args", "arguments"))
+            else {"input": input_dict}
+        )
+        canonical = payload_from_tool_event(tool_name, tool_envelope)
     if canonical is None:
         return None
     path = canonical.path
@@ -475,14 +499,14 @@ def build_edit_preview(
     start_line = canonical.start_line or 1
     if isinstance(content_obj, str) and bare == "read_file":
         try:
-            envelope: object = json.loads(content_obj)
+            read_envelope: object = json.loads(content_obj)
         except (TypeError, ValueError):
-            envelope = None
-        if isinstance(envelope, dict):
-            envelope_content = envelope.get("content")
+            read_envelope = None
+        if isinstance(read_envelope, dict):
+            envelope_content = read_envelope.get("content")
             if isinstance(envelope_content, str):
                 content_obj = envelope_content
-                envelope_start = envelope.get("line_start", start_line)
+                envelope_start = read_envelope.get("line_start", start_line)
                 start_line = envelope_start if isinstance(envelope_start, int) else start_line
     if edits_obj:
         return _build_edit_preview(

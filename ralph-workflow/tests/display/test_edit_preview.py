@@ -118,6 +118,28 @@ def test_preview_payload_parser_metadata_matrix() -> None:
         assert payload_from_tool_event("Write", {"raw_parser": parser}) is None
 
 
+def test_preview_payload_accepts_gemini_documented_literal_args() -> None:
+    """S-1: Gemini's documented stringified argument mapping stays previewable."""
+    payload = payload_from_tool_event(
+        "Write", {"args": "{'file_path': 'a.py', 'content': 'x = 1'}"}
+    )
+    assert payload is not None
+    assert payload.path == "a.py"
+    assert payload.content == "x = 1"
+
+
+def test_build_edit_preview_binary_content_degrades_to_note() -> None:
+    """S-2: binary payloads are never rendered as raw bytes."""
+    preview = build_edit_preview(
+        "read_file", {"path": "image.bin", "content": "\x00unsafe"}, width=80
+    )
+    assert preview is not None
+    rendered = io.StringIO()
+    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
+    assert "binary content omitted" in rendered.getvalue()
+    assert "unsafe" not in rendered.getvalue()
+
+
 def test_preview_payload_rejects_unknown_tools_and_invalid_json() -> None:
     """S-1: unknown names and malformed JSON never trigger content guessing."""
     assert payload_from_tool_event("unrecognized_editor", {"args": {"content": "x"}}) is None
@@ -432,9 +454,9 @@ def test_build_edit_preview_truncates_long_content_with_elision() -> None:
     # appear to signal truncation.
     has_marker = "more line" in rendered.lower() or "\u2026" in rendered or "..." in rendered
     assert has_marker, f"elision marker missing from truncated preview:\n{rendered[-500:]!r}"
-    # The very last line in the source must NOT appear (it was truncated).
-    assert "line 0199" not in rendered, (
-        f"truncation cap not enforced; final source line still rendered:\n{rendered[-500:]!r}"
+    # Middle trimming preserves the end of a long edit as well as its start.
+    assert "line 0000" in rendered and "line 0199" in rendered, (
+        f"middle-trim must retain both ends of the source:\n{rendered[-500:]!r}"
     )
 
 

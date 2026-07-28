@@ -7,10 +7,11 @@ return ``None``.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, cast
 
 _PATCH_HUNK_RE: Final[re.Pattern[str]] = re.compile(
     r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", re.MULTILINE
@@ -40,17 +41,36 @@ class _PreviewPayload:
     start_line: int | None = None
 
 
+def _json_value(value: str) -> object:
+    """Parse JSON at one typed boundary."""
+    parsed: object = json.loads(value)
+    return parsed
+
+
+def _python_literal(value: str) -> object:
+    """Parse Gemini's documented Python-style argument mapping at one boundary."""
+    parsed: object = ast.literal_eval(value)
+    return parsed
+
+
 def _mapping(value: object) -> dict[str, object] | None:
-    """Return a string-keyed mapping directly or from one JSON object string."""
-    parsed = value
-    if isinstance(parsed, str):
+    """Return a string-keyed mapping from a mapping, JSON, or Python literal."""
+    parsed: object = value
+    if isinstance(value, str):
         try:
-            parsed = json.loads(parsed)
+            parsed = _json_value(value)
         except (TypeError, ValueError):
-            return None
+            try:
+                parsed = _python_literal(value)
+            except (SyntaxError, ValueError):
+                return None
     if not isinstance(parsed, dict):
         return None
-    return {key: item for key, item in parsed.items() if isinstance(key, str)}
+    return {
+        key: item
+        for key, item in cast("dict[object, object]", parsed).items()
+        if isinstance(key, str)
+    }
 
 
 def _input(metadata: dict[str, object]) -> dict[str, object] | None:

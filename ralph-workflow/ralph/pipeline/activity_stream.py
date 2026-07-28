@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import replace
 from importlib import import_module
@@ -199,7 +200,12 @@ def _retain_tool_result_target(
         target = format_tool_input(raw_input)
         if target:
             retained: dict[str, object] = {"target": target, "tool_name": tool_name}
-            payload = raw_input
+            payload: object = raw_input
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except (TypeError, ValueError):
+                    payload = None
             if isinstance(payload, dict):
                 for field in ("path", "file_path", "filePath", "filename"):
                     value = payload.get(field)

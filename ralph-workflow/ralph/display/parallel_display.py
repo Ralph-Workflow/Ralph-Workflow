@@ -2526,7 +2526,7 @@ class ParallelDisplay:
             if kind is ActivityEventKind.TOOL_USE and not self._is_quiet:
                 preview = build_edit_preview(
                     text_content,
-                    input_dict,
+                    metadata,
                     width=self._ctx.width,
                     terminal_bg_is_light=self._terminal_bg_is_light,
                 )
@@ -2540,7 +2540,13 @@ class ParallelDisplay:
                 result_tool_name, result_path = self._result_preview_target(unit_id, metadata)
                 result_preview = build_edit_preview(
                     result_tool_name,
-                    {"path": result_path, "content": text_content, "line_start": metadata.get("line_start", metadata.get("offset", 1))},
+                    {
+                        "input": {
+                            "path": result_path,
+                            "content": text_content,
+                            "line_start": metadata.get("line_start", metadata.get("offset", 1)),
+                        }
+                    },
                     width=self._ctx.width,
                     terminal_bg_is_light=self._terminal_bg_is_light,
                 )
