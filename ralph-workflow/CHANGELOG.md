@@ -43,6 +43,10 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Documentation
+
+- **docs(mcp): align the plan-spec contract with PLAN001-only blocking** — the public module docstring now says parsed consumer anchors are best-effort advisory diagnostics, matching the implemented severity policy. Locked by `tests/mcp/test_md_plan_advisory.py` and `tests/mcp/test_md_plan_not_a_plan.py`.
+
 ## [0.9.5] - 2026-07-28
 
 Patch release. `__version__` moved from `0.9.4` to `0.9.5` in

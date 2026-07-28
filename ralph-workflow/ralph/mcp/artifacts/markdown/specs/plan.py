@@ -1,11 +1,10 @@
 """Markdown mapping and validation rules for ``plan`` artifacts.
 
 The plan grammar is deliberately shape-free. Conventional headings, order,
-and prose are recommendations rather than validation requirements. The
-pipeline-consumed anchors remain strict: ``type: plan``; document-wide,
-parseable, unique ``S-n`` step IDs; resolvable consumed references; parseable
-work-unit markers when fan-out is declared; and concrete, evaluatable
-acceptance/verification checks.
+and prose are recommendations rather than validation requirements. ``PLAN001``
+is the sole blocking diagnostic: it identifies a submission that is not a plan,
+so analysis and execution have nothing to consume. All other findings,
+including parsed anchors and consumed references, are advisory.
 
 Grammar summary (three field kinds, closed key sets per context — see
 :mod:`ralph.mcp.artifacts.markdown._fields`):
@@ -17,23 +16,15 @@ Grammar summary (three field kinds, closed key sets per context — see
 Steps are ``### [S-n] Title`` blocks under any ``##`` heading. Work-unit
 sections may repeat so each unit can own a complete nested mini-plan.
 
-Consumed-structure map (what stays strict vs. what is descriptive):
+Consumed-structure map:
 
-- STRICT — structure a downstream consumer parses out of the plan:
-  ``### [S-n]`` step IDs and their document-wide uniqueness/shape
-  (development_result "Plan Items Proven"
-  proof IDs cross-reference ``steps[].number`` in
-  ``ralph/phases/execution.py``), ``Depends on:`` / ``Satisfied by:``
-  step references and cycle checks, step-type contracts (``file_change``
-  needs ``Files:``, ``verify`` needs ``Verify:``/``Location:``), and
-  ``## Parallel Plan`` / ``## Work Units`` item fields (worker fan-out
-  parses unit IDs, edit areas, and dependencies in
-  ``ralph/pipeline/work_units.py`` / ``fan_out.py``). The
-  shell-invocation guard on verification commands also stays hard.
-- TOLERANT — all headings, ordering, descriptive prose, labels, and
-  recommended vocabularies. Unknown sections and repeated conventional
-  sections are valid. Descriptive fields are enforced only when their
-  content is consumed by one of the strict anchors above.
+- PARSED AND CONSUMED — ``### [S-n]`` step IDs, ``Depends on:`` /
+  ``Satisfied by:`` references, step-type fields, and ``## Parallel Plan`` /
+  ``## Work Units`` markers are mapped best-effort for proof and fan-out
+  consumers. Violations remain actionable advisory diagnostics, never blockers.
+- DESCRIPTIVE — headings, ordering, prose, labels, and recommended
+  vocabularies are likewise advisory. Unknown or repeated conventional
+  sections remain valid.
 """
 
 from __future__ import annotations
