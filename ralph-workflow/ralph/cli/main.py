@@ -323,8 +323,10 @@ def _try_load_registry() -> AgentRegistry | None:
         return None
 
 
-def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
-    """Create user-global config files from bundled templates if they don't exist."""
+def _bootstrap_global_configs(
+    *, display_context: DisplayContext, emit_welcome: bool = True
+) -> None:
+    """Create user-global configs, optionally leaving onboarding to the caller."""
     results = [
         ensure_global_config(),
         ensure_global_agents_config(),
@@ -334,14 +336,17 @@ def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
     registry = None
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()
-    emit_first_run_welcome(
-        results,
-        agent_registry=registry,
-        display_context=display_context,
-    )
+    if emit_welcome:
+        emit_first_run_welcome(
+            results,
+            agent_registry=registry,
+            display_context=display_context,
+        )
 
 
-def _bootstrap_global_configs_or_exit(display_context: DisplayContext) -> None:
+def _bootstrap_global_configs_or_exit(
+    display_context: DisplayContext, *, emit_welcome: bool = True
+) -> None:
     """Run ``bootstrap_global_configs`` and render the envelope on config error.
 
     ``load_toml`` raises ``ConfigTomlError`` when a pre-existing
@@ -351,7 +356,30 @@ def _bootstrap_global_configs_or_exit(display_context: DisplayContext) -> None:
     raw ``ValueError`` propagate as a traceback.
     """
     try:
-        bootstrap_global_configs(display_context=display_context)
+        if emit_welcome:
+            bootstrap_global_configs(display_context=display_context)
+        else:
+            _bootstrap_global_configs(display_context=display_context, emit_welcome=False)
+    except ConfigTomlError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(code=1) from None
+
+
+def _bootstrap_for_command(
+    *, init_requested: bool, regenerate_config: bool, display_context: DisplayContext
+) -> None:
+    """Bootstrap commands that need global config before their dedicated handler."""
+    if not init_requested:
+        _bootstrap_global_configs_or_exit(
+            display_context,
+            emit_welcome=not regenerate_config,
+        )
+
+
+def _handle_init(*, template: str | None, config: str | None, display_context: DisplayContext) -> None:
+    """Run init and preserve the setup-time TOML error envelope."""
+    try:
+        init_command(template, _config_path(config), display_context=display_context)
     except ConfigTomlError as exc:
         logger.error(str(exc))
         raise typer.Exit(code=1) from None
@@ -989,15 +1017,15 @@ def main(
 
     _cli_ctx = _get_cli_context()
 
-    _bootstrap_global_configs_or_exit(_cli_ctx)
+    # Configure logging before bootstrap/init so setup never leaks loader DEBUG lines.
+    configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))
+    _bootstrap_for_command(
+        init_requested=init is not None or "--init" in sys.argv[1:],
+        regenerate_config=regenerate_config,
+        display_context=_cli_ctx,
+    )
     _init_telemetry()
     _record_cli_command(ctx)
-
-    # Set up logging based on verbosity. Wire the Console-backed sanitizing
-    # sink so log records are printed through the same DisplayContext Console
-    # that owns the rich Live status bar; the logger is no longer an
-    # independent painter that Live's cursor-relative erases can wipe out.
-    configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))
 
     _validate_prompt_flags(prompt, quick)
 
@@ -1043,7 +1071,7 @@ def main(
         raise typer.Exit(code=exit_code)
 
     if init is not None:
-        init_command(init, _config_path(config), display_context=_cli_ctx)
+        _handle_init(template=init, config=config, display_context=_cli_ctx)
         raise typer.Exit()
 
     if regenerate_config:
@@ -1586,10 +1614,8 @@ def _configure_logging(
 
     if verbosity == Verbosity.QUIET:
         logger.add(sink, level="ERROR")
-    elif verbosity == Verbosity.NORMAL:
+    elif verbosity in {Verbosity.NORMAL, Verbosity.VERBOSE}:
         logger.add(sink, level="INFO")
-    elif verbosity == Verbosity.VERBOSE:
-        logger.add(sink, level="DEBUG")
     elif verbosity == Verbosity.FULL:
         logger.add(sink, level="DEBUG", format="{time:HH:mm:ss} {level} {message}")
     else:  # DEBUG

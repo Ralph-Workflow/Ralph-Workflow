@@ -56,3 +56,23 @@ def test_welcome_panel_next_steps_lists_opencode_skills_exactly_once() -> None:
         f"Expected exactly one occurrence of {PROJECT_CANONICAL_SKILLS_PATH!r}, "
         f"got {output.count(PROJECT_CANONICAL_SKILLS_PATH)}"
     )
+
+
+def test_welcome_panel_next_steps_lead_with_first_run_path() -> None:
+    """S-3 regression: first-run guidance precedes optional setup detail."""
+    steps = welcome_panel_next_steps()
+    assert steps[:3] == (
+        "Edit PROMPT.md with your implementation task",
+        "Run `ralph --diagnose` to check your setup",
+        "Run `ralph` to start the pipeline",
+    )
+    assert "skills/ and symlinked" in "\n".join(steps)
+
+
+def test_fallback_next_steps_lead_with_first_run_path() -> None:
+    """S-3 regression: a re-run keeps the actionable path ahead of optional notes."""
+    assert fallback_next_steps()[:3] == (
+        "Edit PROMPT.md with your implementation task",
+        "Run `ralph --diagnose` to check your setup",
+        "Run `ralph` to start the pipeline",
+    )

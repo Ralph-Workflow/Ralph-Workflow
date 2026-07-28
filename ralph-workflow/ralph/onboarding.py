@@ -74,60 +74,34 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
 
 
 def welcome_panel_next_steps() -> tuple[str, ...]:
-    """Return the richer onboarding steps shown after initialization succeeds."""
+    """Return required first-run steps followed by quiet optional details."""
     explanation = init_local_config_override_explanation()
-
     siblings = ", ".join(sibling.agent for sibling in sibling_agent_skill_roots())
     project_siblings = ", ".join(PROJECT_SIBLING_SKILL_PATHS)
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
-        "Skills and a batteries-included .gitignore are auto-seeded on every `ralph` run when "
-        "missing (project scope: .opencode/skills/ canonical + symlinks to .claude/skills/, "
-        ".codex/skills/, .gemini/antigravity-cli/skills/). Run `ralph --force-init-skills` to "
-        "repair or overwrite a conflict.",
-        "Install AI agents if missing (e.g., `claude`, `opencode`, `nanocoder`, `agy`, `cursor`)",
-        f"Skills were installed to ~/.claude/skills/ and symlinked to {siblings}",
-        f"Project-local skills were seeded to {PROJECT_CANONICAL_SKILLS_PATH}and symlinked to "
-        f"{project_siblings} so every supported agent finds the same baseline. "
-        f"Edit the SKILL.md in that canonical directory to customize; sibling symlinks are "
-        f"preserved across `ralph` re-runs.",
-        "The default .gitignore was seeded with patterns for Python, Node, Rust, Go, "
-        "Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, "
-        "and common IDE/OS files",
-        f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
-        "(Recommended) From a human-operated shell outside any Ralph-managed agent "
-        f"session, run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
-        "before the first real run",
-        f"From that same human-operated shell, run {RUN_COMMAND} to start the pipeline",
-        "Run `ralph --regenerate-config` to reset configs",
-        CODEBERG_STAR_CTA,
+        f"Run `{DIAGNOSE_COMMAND}` to check your setup",
+        f"Run `{RUN_COMMAND}` to start the pipeline",
+        "Optional: install an AI agent if diagnose says none are available (for example, "
+        "`claude`, `opencode`, `nanocoder`, or `agy`).",
+        f"Optional: skills are in ~/.claude/skills/ and symlinked to {siblings}.",
+        f"Optional: project skills are in {PROJECT_CANONICAL_SKILLS_PATH} and symlinked to "
+        f"{project_siblings}; edit its SKILL.md to customize.",
+        f"Optional: run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}.",
     )
 
 
 def fallback_next_steps() -> tuple[str, ...]:
-    """Return rerun guidance after init when files already exist."""
+    """Return concise re-run guidance after init when files already exist."""
     explanation = init_local_config_override_explanation()
-    project_siblings = ", ".join(PROJECT_SIBLING_SKILL_PATHS)
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
-        f"(Optional) Read {GETTING_STARTED_DOC} for a step-by-step first-run walkthrough",
-        "Re-running init is idempotent; skills were re-checked and the default "
-        ".gitignore was updated to cover common project structures (Python, Node, "
-        "Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, "
-        "Terraform, IDE/OS). A normal `ralph` run also auto-seeds the project-scope "
-        "skills and .gitignore when missing, without requiring `ralph --init`.",
-        f"Project-local skills under {PROJECT_CANONICAL_SKILLS_PATH}and the sibling symlinks "
-        f"{project_siblings} were re-checked; re-running `ralph` is idempotent and will "
-        f"not overwrite SKILL.md files you have edited.",
-        f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
-        "(Optional) Configure MCP servers in `.agent/mcp.toml` or "
-        "`~/.config/ralph-workflow-mcp.toml`",
-        "(Optional) Review `.agent/pipeline.toml` and `.agent/artifacts.toml` "
-        "if you need advanced workflow overrides",
-        "(Recommended) From a human-operated shell outside any Ralph-managed agent "
-        f"session, run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
-        "before the first real run",
-        f"From that same human-operated shell, run {RUN_COMMAND} to start the pipeline",
+        f"Run `{DIAGNOSE_COMMAND}` to check your setup",
+        f"Run `{RUN_COMMAND}` to start the pipeline",
+        f"Optional: read {GETTING_STARTED_DOC} for the walkthrough.",
+        "Optional: re-running init is idempotent; it does not overwrite your PROMPT.md or "
+        "your skills/.gitignore customizations.",
+        f"Optional: run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}.",
     )
 
 
