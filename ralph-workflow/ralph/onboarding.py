@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Final
 
+from ralph.project_urls import GETTING_STARTED_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
 
-GETTING_STARTED_DOC: Final[str] = "docs/sphinx/getting-started.md"
+GETTING_STARTED_DOC: Final[str] = GETTING_STARTED_URL
 PROMPT_FILE: Final[str] = "PROMPT.md"
 INIT_COMMAND: Final[str] = "ralph --init"
 INIT_LOCAL_CONFIG_COMMAND: Final[str] = "ralph --init-local-config"
@@ -216,6 +217,5 @@ def starter_prompt_validation_hint() -> str:
         "... -->` marker once you have replaced the example content. "
         f"{DIAGNOSE_COMMAND} is a recommended verification step after initialization. "
         f"Then re-run `{RUN_COMMAND}`. New to Ralph Workflow? See {GETTING_STARTED_DOC} "
-        "for a walkthrough, or docs/sphinx/concepts.md for what a good PROMPT.md should "
-        "contain."
+        "for a walkthrough."
     )

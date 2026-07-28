@@ -57,6 +57,8 @@ from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sin
 from ralph.display.parallel_display import resolve_active_display
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
+from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
+from ralph.policy.validation import validate_agent_chains_satisfiable, validate_chain_agents_on_path
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -1470,7 +1472,16 @@ def _handle_check_config(
     try:
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        registry = _load_agent_registry_factory().from_config(config_value)
+        if config_path is not None:
+            bundle = load_policy(config_path.parent, config=config_value)
+        else:
+            if workspace_scope is None:
+                raise RuntimeError("workspace scope is required for the active configuration")
+            bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
+        validate_agent_chains_satisfiable(bundle, registry)
+        validate_chain_agents_on_path(bundle.agents)
         display.emit_status("Configuration is valid")
         return 0
     except Exception as e:
@@ -1758,7 +1769,16 @@ def handle_check_config(
     try:
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        registry = _load_agent_registry_factory().from_config(config_value)
+        if config_path is not None:
+            bundle = load_policy(config_path.parent, config=config_value)
+        else:
+            if workspace_scope is None:
+                raise RuntimeError("workspace scope is required for the active configuration")
+            bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
+        validate_agent_chains_satisfiable(bundle, registry)
+        validate_chain_agents_on_path(bundle.agents)
         display.emit_status("Configuration is valid")
         return 0
     except Exception as e:

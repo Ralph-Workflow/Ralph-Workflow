@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import typer
+from loguru import logger
 
 import ralph.policy
 from ralph.config.agent_detection import autowire_chains_to_detected_agent, enable_detected_agents
@@ -137,7 +138,8 @@ def init_command(
         )
 
     auto_seed_default_gitignore(target)
-    auto_seed_default_git_exclude(target)
+    if (target / ".git").exists():
+        auto_seed_default_git_exclude(target)
 
     bundled_defaults = Path(ralph.policy.__file__).parent / "defaults"
 
@@ -200,7 +202,12 @@ def _try_load_registry() -> AgentRegistry | None:
         cfg = _load_config_loader()(None, {})
         registry_type = _load_agent_registry_factory()
         return registry_type.from_config(cfg)
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Could not load configured agents after setup: {}. "
+            "Run `ralph --diagnose` to see the configuration problem and fix it.",
+            exc,
+        )
         return None
 
 

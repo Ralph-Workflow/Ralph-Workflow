@@ -11,6 +11,7 @@ GITHUB_MIRROR_URL = "https://github.com/Ralph-Workflow/Ralph-Workflow"
 CODEBERG_ISSUES_URL = f"{CODEBERG_REPOSITORY_URL}/issues/new"
 CODEBERG_REPOSITORY_GIT_URL = f"{CODEBERG_REPOSITORY_URL}.git"
 GITHUB_MIRROR_GIT_URL = f"{GITHUB_MIRROR_URL}.git"
+GETTING_STARTED_URL = f"{CODEBERG_REPOSITORY_URL}/src/branch/main/ralph-workflow/docs/sphinx/getting-started.md"
 
 # Ralph-Workflow-Pro is a separate, optional GUI layer that runs the
 # engine as a subprocess. It lives in its own Codeberg repository and
@@ -22,6 +23,7 @@ __all__ = [
     "CODEBERG_ISSUES_URL",
     "CODEBERG_REPOSITORY_GIT_URL",
     "CODEBERG_REPOSITORY_URL",
+    "GETTING_STARTED_URL",
     "GITHUB_MIRROR_GIT_URL",
     "GITHUB_MIRROR_URL",
     "RALPH_WORKFLOW_PRO_REPOSITORY_URL",

@@ -109,29 +109,28 @@ commit = "commit"
 # auto_integrate_remote_enabled = false  # opt-in remote tier: fetch, reconcile, and push after a local landing.
 # auto_integrate_remote = "origin"  # configured remote used only when remote integration is enabled.
 
-# verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
-# telemetry_enabled = true              # anonymous metadata-only telemetry is on by default. Set false to opt out for this project. Ralph Workflow uses this data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising.
-# Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
-# Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
-# developer_context = 1                 # developer context level (>=1)
-# prompt_path = "/path/to/PROMPT.md"    # override default PROMPT.md path (comment out to use default)
-# templates_dir = "/path/to/templates"  # user templates directory (comment out to use bundled)
-# git_user_name = "Your Name"           # git author name for commits (comment out to use git config)
-# git_user_email = "you@example.com"    # git author email for commits (comment out to use git config)
-# max_same_agent_retries = 10           # max consecutive retries on the same agent (>=0)
-# max_commit_residual_retries = 10      # max extra residual commit retries (>=0)
-# max_retries = 3                       # max retries per agent attempt (>=0)
-# retry_delay_ms = 1000                 # base delay between retries in ms (>=0)
-# backoff_multiplier = 2.0              # exponential backoff multiplier (>=1.0)
-# max_backoff_ms = 60000                # maximum retry backoff delay in ms (>=0)
-# max_cycles = 3                        # max full fallback cycles through a drain (>=1)
-# execution_history_limit = 1000        # max execution history entries in memory (>=1)
+# verbosity = 2                         # Change only when this project's output needs to be quieter or more detailed.
+# telemetry_enabled = true              # Set false only when this project must opt out of anonymous reliability telemetry.
+# Loop iteration caps live in pipeline.toml; leave them alone until this project needs more or fewer review loops.
+# developer_context = 1                 # Change only when this project's agent needs more task context.
+# prompt_path = "/path/to/PROMPT.md"    # Set only when this project keeps its task file somewhere else.
+# templates_dir = "/path/to/templates"  # Set only when this project owns custom starter templates.
+# git_user_name = "Your Name"           # Set only when this project needs a different commit author.
+# git_user_email = "you@example.com"    # Set only when this project needs a different commit email.
+# max_same_agent_retries = 10           # Lower only when repeated same-agent retries waste time here.
+# max_commit_residual_retries = 10      # Change only when this project's commit cleanup needs a different retry limit.
+# max_retries = 3                       # Change only when this project needs more chances after transient failures.
+# retry_delay_ms = 1000                 # Increase only when this provider asks you to slow down.
+# backoff_multiplier = 2.0              # Leave alone unless you deliberately tune retry pacing.
+# max_backoff_ms = 60000                # Change only when a provider needs a different maximum retry wait.
+# max_cycles = 3                        # Raise only for work that needs more fallback cycles.
+# execution_history_limit = 1000        # Leave alone unless a long project run needs more retained history.
 
 # [general.workflow] -- Workflow automation flags
 
 [general.workflow]
-# checkpoint_enabled = true     # enable checkpoint/resume functionality
-# unsafe_mode = false          # merge Ralph Workflow MCP into agent MCP config instead of overwriting it
+# checkpoint_enabled = true     # Leave enabled unless this project must not resume interrupted runs.
+# unsafe_mode = false          # Change only when you intentionally want this project's existing agent MCP settings merged.
 
 # Edit this only if you use Claude Code Switch (CCS).
 # -----------------------------------------------------------------------------

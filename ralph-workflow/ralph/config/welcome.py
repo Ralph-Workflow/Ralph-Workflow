@@ -165,6 +165,13 @@ def emit_first_run_welcome(
     intro.append("planning → development loop", style="theme.phase.planning")
     intro.append(" driven by your PROMPT.md.")
     content.append(intro)
+    content.append(
+        Text(
+            "Project setup: Ralph Workflow installed project skills. In a git repo, it also adds its "
+            "local-artifact rules to .gitignore.",
+            style="theme.text.muted",
+        )
+    )
 
     docs_line1 = Text(getting_started_pointer_sentence(), style="theme.text.muted")
     content.append(docs_line1)
@@ -201,7 +208,7 @@ def emit_first_run_welcome(
                 style="theme.status.success",
             )
         )
-    if not is_regenerate:
+    if not is_regenerate and not newly_enabled:
         content.extend(_build_agent_availability_content(agent_registry))
 
     global_files, local_files = _partition_config_files(results)

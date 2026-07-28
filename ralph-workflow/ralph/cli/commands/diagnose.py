@@ -44,6 +44,7 @@ from ralph.policy.loader import (
 from ralph.policy.validation import (
     PolicyValidationError,
     validate_agent_chains_satisfiable,
+    validate_chain_agents_on_path,
     validate_recovery_config,
 )
 from ralph.pro_support.prompt import resolve_effective_prompt_path
@@ -188,6 +189,8 @@ def _check_capability_state(*, display: object) -> bool:
             Text("yes", style="theme.status.warning") if entry.update_available else Text("no")
         )
         last_ok = entry.last_check_ok_iso or "(never)"
+        if label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED:
+            last_ok = "Optional — configure and start a docs MCP server when you need library lookup"
         rows.append((label, "Managed", status_text, update_text, last_ok))
     _emit_simple_table(display, "Baseline Capabilities", rows)
     return True
@@ -209,25 +212,22 @@ def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...
     for cell in rows[0] if rows else ("Check", "Status"):
         if isinstance(cell, Text):
             pass
-    # Build a generic 5-column layout matching the row shape used by the
-    # capability / git / configuration / workspace tables in this module.
-    column_styles = [
-        "theme.cat.meta",
-        None,
-        "theme.status.success",
-        "theme.text.muted",
-        "theme.text.muted",
-    ]
-    headers = ["Capability", "Type", "Status", "Update Available", "Last Checked"]
-    if not rows:
-        for header, style in zip(headers, column_styles, strict=False):
-            table.add_column(header, style=style) if style else table.add_column(header)
-    else:
-        for header, style in zip(headers, column_styles, strict=False):
-            table.add_column(header, style=style) if style else table.add_column(header)
+    headers = {
+        "Baseline Capabilities": ["Capability", "Source", "Status", "Update", "Last checked"],
+        "Version": ["Item", "Value"],
+        "Agents": ["Agent", "Configured command", "PATH", "Install", "Config"],
+        "Git Repository": ["Check", "Result"],
+        "Configuration": ["Setting", "Value"],
+        "Pre-flight Validation": ["Check", "Result"],
+        "Workspace Files": ["File", "Status"],
+        "Filesystem Health": ["Volume", "Spotlight", "Journal", "Warnings"],
+    }.get(title, ["Check", "Result"])
+    column_styles = ["theme.cat.meta", None, "theme.status.success", "theme.text.muted", "theme.text.muted"]
+    for header, style in zip(headers, column_styles, strict=False):
+        table.add_column(header, style=style) if style else table.add_column(header)
     for row in rows:
-        cells = list(row) + [None] * (5 - len(row))
-        table.add_row(*(str(cell) if cell is not None else "-" for cell in cells[:5]))
+        cells = list(row) + [None] * (len(headers) - len(row))
+        table.add_row(*(str(cell) if cell is not None else "-" for cell in cells[: len(headers)]))
     display.emit_renderable(table)
 
 
@@ -321,44 +321,11 @@ def _run_preflight_validation(
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         registry = AgentRegistry.from_config(config)
 
-        if config_path is not None:
-            policy_dir = config_path.parent
-            has_effective_policy_files = any(
-                (policy_dir / name).exists()
-                for name in (
-                    "ralph-workflow.toml",
-                    "agents.toml",
-                    "pipeline.toml",
-                    "artifacts.toml",
-                )
-            )
-        else:
-            policy_dir = workspace_scope.resolve_agent_file("pipeline.toml").parent
-            has_effective_policy_files = any(
-                workspace_scope.resolve_agent_file(name).exists()
-                for name in (
-                    "ralph-workflow.toml",
-                    "agents.toml",
-                    "pipeline.toml",
-                    "artifacts.toml",
-                )
-            )
-        if not has_effective_policy_files:
-            rows.append(
-                (
-                    "Pre-flight",
-                    Text(
-                        "Skipped: project is not initialized yet (run `ralph --init`)",
-                        style="theme.status.warning",
-                    ),
-                    "",
-                    "",
-                    "",
-                )
-            )
-            _emit_simple_table(display, "Pre-flight Validation", rows)
-            return True
-
+        policy_dir = (
+            config_path.parent
+            if config_path is not None
+            else workspace_scope.resolve_agent_file("pipeline.toml").parent
+        )
         bundle = (
             load_policy(policy_dir, config=config)
             if config_path is not None
@@ -366,6 +333,7 @@ def _run_preflight_validation(
         )
 
         validate_agent_chains_satisfiable(bundle, registry)
+        validate_chain_agents_on_path(bundle.agents)
         validate_recovery_config(bundle)
 
         rows.append(("Agent chains", Text("Satisfiable", style="theme.status.success"), "", "", ""))
@@ -443,7 +411,15 @@ def _check_git_repo(*, display: object) -> bool:
         repo_root = find_repo_root()
         rows.append(("Repository root", str(repo_root), "", "", ""))
     except Exception as e:
-        rows.append(("Repository", _status_text("Error", str(e), "theme.status.error"), "", "", ""))
+        rows.append(
+            (
+                "Repository",
+                _status_text("Error", f"{e}. FIX: run `git init` before running Ralph Workflow.", "theme.status.error"),
+                "",
+                "",
+                "",
+            )
+        )
         _emit_simple_table(display, "Git Repository", rows)
         return False
 
@@ -865,7 +841,12 @@ def _check_workspace_files(*, display: object) -> bool:
                 )
             )
         else:
-            rows.append((file_label, Text("Not found", style="theme.status.warning"), "", "", ""))
+            missing = (
+                "Optional — not created; run `ralph --init-local-config` to add it"
+                if file_path == ".agent/ralph-workflow.toml"
+                else "Not found"
+            )
+            rows.append((file_label, Text(missing, style="theme.status.warning"), "", "", ""))
 
     _emit_simple_table(display, "Workspace Files", rows)
     return True

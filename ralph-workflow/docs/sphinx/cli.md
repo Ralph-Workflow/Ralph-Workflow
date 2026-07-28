@@ -37,7 +37,7 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Automatically install the bundled skill bundle into `~/.claude/skills/` and symlink it into the documented supported-agents sibling roots (currently Codex `~/.codex/skills/`, OpenCode `~/.config/opencode/skills/`, AGY `~/.gemini/antigravity-cli/skills/`; OpenCode's documented `~/.claude/skills/` fallback is covered by the Claude install; Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage> so no user-global install target is created). Adds a batteries-included `.gitignore` covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns. Idempotent — re-running on an initialized project re-checks skills (printing the full capability summary table) and refreshes missing gitignore entries. |
+| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. It creates `.gitignore` only in a git repo. Use `--init-local-config` only when this repo needs project-local overrides. |
 | `--force-init-skills` | | `False` | Re-run baseline skill installation (user-global + project-scope) and exit. Pairs with `--init` for an explicit re-init; standalone forces the recheck path on a normal `ralph` run. |
 | `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
 | `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |
@@ -45,10 +45,10 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 ## What `--init` does on first run
 
 1. **Scaffolds `PROMPT.md`** at the project root using the starter template (the `<!-- ralph:starter-prompt: ... -->` sentinel marks it for validation).
-2. **Installs local configs** under `.agent/` (`mcp.toml`, `pipeline.toml`, `artifacts.toml`) plus the user-global set under `~/.config/` (`ralph-workflow.toml` and the policy files).
+2. **Creates the user-global set** under `~/.config/` (`ralph-workflow.toml` and policy files). It does not create project-local `.agent/` configuration unless you later run `ralph --init-local-config`.
 3. **Installs skills + symlinks siblings** by materializing the bundled skill bundle at `~/.claude/skills/` and symlinking it into the documented supported-agents sibling roots (Codex, OpenCode, AGY).
 4. **Wires Pi as a transport without a skill-fan-out target** — pi.dev is wired as a transport (so the `pi` BuiltinAgentSpec, `pi/<model>` resolver, and `PiCommandBuilder` are all available end-to-end) but pi.dev has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so no Pi user-global install target is created and no `.pi/skills/` directory is written. Skills loaded on the pi side use the per-invocation `--skill <path>` flag.
-5. **Seeds batteries-included `.gitignore`** with patterns for Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS files. Re-runs add any new patterns that have been added to the default set since the last init.
+5. **Seeds `.gitignore` only in a git repo** with common local-artifact patterns; it never creates one in a non-git directory. Re-runs add any new patterns that have been added to the default set since the last init.
 
 ## Quick mode
 
