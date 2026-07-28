@@ -42,6 +42,7 @@ from ralph.display.edit_preview import (
     CONTENT_EDIT_TOOLS,
     build_edit_preview,
     preview_header,
+    preview_record_text,
     render_markdown_preview,
 )
 from ralph.display.language_inference import lexer_for_path
@@ -870,7 +871,7 @@ def test_edit_preview_module_uses_no_hex_color_literals() -> None:
 
 
 def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> None:
-    """S-1: result hits keep their source paths, line numbers, and match carrier."""
+    """S-1: result hits preserve each source lexer, line number, and match carrier."""
     grep = build_edit_preview(
         "grep_files",
         {
@@ -879,10 +880,14 @@ def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> 
         },
         width=80,
     )
-    assert grep is not None
+    assert isinstance(grep, Group)
+    syntax = next(item for item in grep.renderables if isinstance(item, Syntax))
+    assert syntax.lexer.name == "Python"
+    assert syntax.start_line == 17
+    assert syntax._stylized_ranges  # matched text has a named emphasis carrier
     rendered = io.StringIO()
     Console(file=rendered, force_terminal=False, color_system=None, width=80).print(grep)
-    assert "a.py:17" in rendered.getvalue()
+    assert "a.py" in rendered.getvalue()
     assert "needle = 1" in rendered.getvalue()
 
     search = build_edit_preview(
@@ -892,6 +897,19 @@ def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> 
     rendered = io.StringIO()
     Console(file=rendered, force_terminal=False, color_system=None, width=80).print(search)
     assert "a.py" in rendered.getvalue() and "settings.yaml" in rendered.getvalue()
+
+
+def test_grep_record_projection_is_numbered_ansi_free_and_shared_budgeted() -> None:
+    """S-1: records retain hit structure while a result cannot exceed the shared cap."""
+    matches = [{"path": "a.py", "line": index, "text": f"needle = {index}"} for index in range(50)]
+    record, _ = preview_record_text(
+        "grep_files", {"input": {"content": json.dumps({"matches": matches}), "pattern": "needle"}},
+        glyphs_enabled=False,
+    )
+    assert "\x1b" not in record
+    assert "a.py:   0 needle = 0" in record
+    assert "   1 needle = 1" in record
+    assert "... (10 more lines)" in record
 
 
 def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None:

@@ -276,7 +276,16 @@ def preview_record_text(
             for number, line in enumerate(safe.splitlines(), start):
                 lines.append(f"{prefix} {number:>4} {line}")
     content = canonical.content
-    if isinstance(content, str) and content:
+    if isinstance(content, str) and _normalize_tool_name(tool_name) in {"grep_files", "search_files"}:
+        search_lines = _search_record_lines(content)
+        if search_lines is not None:
+            source_parts.extend(search_lines)
+            lines.extend(search_lines[:_MAX_PREVIEW_LINES])
+            omitted = len(search_lines) - _MAX_PREVIEW_LINES
+            if omitted > 0:
+                citation = f" [see {overflow_ref}]" if overflow_ref else ""
+                lines.append(f"{'...' if not glyphs_enabled else _ELISION_GLYPH} ({omitted} more lines){citation}")
+    elif isinstance(content, str) and content:
         safe = strip_terminal_control(content)
         source_parts.append(safe)
         start = canonical.start_line or 1
@@ -284,7 +293,7 @@ def preview_record_text(
             lines.append(f"  {number:>4} {line}")
     full_source = "\n".join(source_parts) or None
     visible_source_lines = sum(part.count("\n") + 1 for part in source_parts)
-    if visible_source_lines > _MAX_PREVIEW_LINES:
+    if visible_source_lines > _MAX_PREVIEW_LINES and _normalize_tool_name(tool_name) not in {"grep_files", "search_files"}:
         omitted = visible_source_lines - _MAX_PREVIEW_LINES
         citation = f" [see {overflow_ref}]" if overflow_ref else ""
         lines = lines[: _MAX_PREVIEW_LINES + 1]
@@ -431,8 +440,37 @@ def _build_multiple_read_preview(
     return Group(*blocks) if blocks else None
 
 
-def _build_search_result_preview(content: str, *, pattern: str | None) -> RenderableType | None:
-    """Render structured grep/search matches without treating their JSON as source text."""
+def _search_record_lines(content: str) -> list[str] | None:
+    """Return greppable numbered hit lines from a result envelope, if present."""
+    try:
+        envelope: object = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("matches"), list):
+        return None
+    lines: list[str] = []
+    matches = envelope.get("matches")
+    if not isinstance(matches, list):
+        return None
+    for match in matches:
+        if isinstance(match, str):
+            lines.append(f"  {match}")
+        elif isinstance(match, dict):
+            path, line, text = match.get("path"), match.get("line"), match.get("text")
+            if isinstance(path, str) and isinstance(line, int) and isinstance(text, str):
+                lines.append(f"  {path}:{line:>4} {strip_terminal_control(text)}")
+    return lines
+
+
+def _build_search_result_preview(
+    content: str,
+    *,
+    pattern: str | None,
+    terminal_bg_is_light: bool | None,
+    glyphs_enabled: bool,
+    overflow_ref: str | None,
+) -> RenderableType | None:
+    """Render structured grep/search matches with per-file lexers and real gutters."""
     try:
         envelope: object = json.loads(content)
     except (TypeError, ValueError):
@@ -443,7 +481,11 @@ def _build_search_result_preview(content: str, *, pattern: str | None) -> Render
     if not isinstance(matches, list):
         return None
     blocks: list[RenderableType] = []
-    for match in matches[:_MAX_PREVIEW_LINES]:
+    omitted = 0
+    for match in matches:
+        if len(blocks) >= _MAX_PREVIEW_LINES:
+            omitted += 1
+            continue
         if isinstance(match, str):
             blocks.append(Text(f"  {match}", style="theme.text.muted"))
             continue
@@ -453,12 +495,22 @@ def _build_search_result_preview(content: str, *, pattern: str | None) -> Render
         if not isinstance(path, str) or not isinstance(line, int) or not isinstance(text, str):
             continue
         safe = strip_terminal_control(text)
-        hit = Text(f"  {path}:{line}  {safe}")
-        if pattern:
-            start = safe.find(pattern)
-            if start >= 0:
-                hit.stylize("theme.text.emphasis", start=len(f"  {path}:{line}  ") + start, end=len(f"  {path}:{line}  ") + start + len(pattern))
-        blocks.append(hit)
+        binary = _binary_note(safe)
+        if binary is not None:
+            blocks.extend((Text(f"  {path}", style="theme.text.muted"), binary))
+            continue
+        syntax = _make_syntax(
+            safe,
+            lexer_for_path(path, safe),
+            is_markdown=False,
+            terminal_bg_is_light=terminal_bg_is_light,
+            start_line=line,
+        )
+        if pattern and (start := safe.find(pattern)) >= 0:
+            syntax.stylize_range("theme.text.emphasis", (0, start), (0, start + len(pattern)))
+        blocks.extend((Text(f"  {path}", style="theme.text.muted"), syntax))
+    if omitted:
+        blocks.append(_elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref))
     return Group(*blocks) if blocks else None
 
 
@@ -642,7 +694,13 @@ def build_edit_preview(
         payload_input = input_dict if isinstance(input_dict, dict) else {}
         raw_input = payload_input.get("input", payload_input)
         pattern = raw_input.get("pattern") if isinstance(raw_input, dict) else None
-        return _build_search_result_preview(content_obj, pattern=pattern if isinstance(pattern, str) else None)
+        return _build_search_result_preview(
+            content_obj,
+            pattern=pattern if isinstance(pattern, str) else None,
+            terminal_bg_is_light=terminal_bg_is_light,
+            glyphs_enabled=glyphs_enabled,
+            overflow_ref=overflow_ref,
+        )
     if isinstance(content_obj, str) and bare == "read_multiple_files":
         return _build_multiple_read_preview(
             content_obj, width=width, terminal_bg_is_light=terminal_bg_is_light,
