@@ -1,8 +1,8 @@
-"""Normalize recognized file tool events into canonical preview payloads.
+"""Normalize recognized file-activity events into bounded preview payloads.
 
-The display layer uses this parser-agnostic boundary rather than learning each
-agent parser's metadata shape. Unknown tools and malformed JSON deliberately
-produce ``None``.
+The display layer consumes these parser-agnostic values rather than branching
+on agent parser identity. Unknown tools and malformed envelopes deliberately
+return ``None``.
 """
 
 from __future__ import annotations
@@ -10,52 +10,51 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 _PATCH_HUNK_RE: Final[re.Pattern[str]] = re.compile(
-    r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", re.MULTILINE
+    r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", re.MULTILINE
 )
+PreviewOperation = Literal["read", "write", "append", "replace", "patch"]
 
 
 @dataclass(frozen=True)
-class _PreviewHunk:
-    """One ordered old/new fragment and its optional absolute new-file line."""
+class PreviewHunk:
+    """One ordered old/new fragment with an optional absolute new-file line."""
 
     old_text: str = ""
     new_text: str = ""
     start_line: int | None = None
-
-
-type PreviewHunk = _PreviewHunk
-"""Public type alias for a canonical preview hunk."""
+    label: str | None = None
 
 
 @dataclass(frozen=True)
 class PreviewPayload:
-    """Canonical display-safe description of recognized file activity."""
+    """Canonical, display-safe description of recognized file activity."""
 
     path: str | None
     language_hint: str | None
-    operation: str
+    operation: PreviewOperation
     hunks: tuple[PreviewHunk, ...] = ()
     content: str | None = None
+    start_line: int | None = None
 
 
 def _mapping(value: object) -> dict[str, object] | None:
-    """Return a string-keyed mapping directly or from a JSON object string."""
-    parsed: object = value
-    if isinstance(value, str):
+    """Return a string-keyed mapping directly or from one JSON object string."""
+    parsed = value
+    if isinstance(parsed, str):
         try:
-            parsed = json.loads(value)
+            parsed = json.loads(parsed)
         except (TypeError, ValueError):
             return None
     if not isinstance(parsed, dict):
         return None
-    return {key: value for key, value in parsed.items() if isinstance(key, str)}
+    return {key: item for key, item in parsed.items() if isinstance(key, str)}
 
 
 def _input(metadata: dict[str, object]) -> dict[str, object] | None:
-    """Extract only the documented parser input/args envelopes."""
+    """Extract documented parser input/args envelopes without guessing keys."""
     for key in ("input", "args", "arguments"):
         payload = _mapping(metadata.get(key))
         if payload is not None:
@@ -64,7 +63,7 @@ def _input(metadata: dict[str, object]) -> dict[str, object] | None:
 
 
 def _path(payload: dict[str, object]) -> str | None:
-    """Return a known file-path field without inferring arbitrary keys."""
+    """Return a documented path field, if present."""
     for key in ("path", "file_path", "filePath", "filename"):
         value = payload.get(key)
         if isinstance(value, str) and value:
@@ -73,12 +72,12 @@ def _path(payload: dict[str, object]) -> str | None:
 
 
 def _line(value: object) -> int | None:
-    """Return a positive integer source line, excluding bool."""
+    """Return a positive source line while rejecting bool."""
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 def _patch_hunks(patch: str) -> tuple[PreviewHunk, ...]:
-    """Extract unified-diff bodies with real new-file line numbers."""
+    """Extract unified-diff hunks with their new-file source line and label."""
     matches = list(_PATCH_HUNK_RE.finditer(patch))
     hunks: list[PreviewHunk] = []
     for index, match in enumerate(matches):
@@ -86,68 +85,62 @@ def _patch_hunks(patch: str) -> tuple[PreviewHunk, ...]:
         body = patch[match.end() : end]
         old = "\n".join(line[1:] for line in body.splitlines() if line.startswith("-") and not line.startswith("---"))
         new = "\n".join(line[1:] for line in body.splitlines() if line.startswith("+") and not line.startswith("+++"))
-        hunks.append(_PreviewHunk(old, new, int(match.group(1))))
+        start = int(match.group("new"))
+        hunks.append(PreviewHunk(old, new, start, f"hunk {index + 1} (line {start})"))
     return tuple(hunks)
 
 
 def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[PreviewHunk, ...]:
-    """Normalize one edit or an ordered ``edits`` array."""
+    """Normalize one replacement or the documented ordered ``edits`` list."""
     edits = payload.get("edits")
     items: tuple[object, ...] = tuple(edits) if isinstance(edits, list) else (() if multiple else (payload,))
     hunks: list[PreviewHunk] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
             continue
         old = item.get("oldText", item.get("old_string", ""))
         new = item.get("newText", item.get("new_string", ""))
-        hunks.append(
-            _PreviewHunk(
-                old if isinstance(old, str) else "",
-                new if isinstance(new, str) else "",
-                _line(item.get("start_line")),
-            )
-        )
+        hunks.append(PreviewHunk(
+            old if isinstance(old, str) else "",
+            new if isinstance(new, str) else "",
+            _line(item.get("start_line", item.get("line_start"))),
+            f"edit {index}" if multiple else None,
+        ))
     return tuple(hunks)
 
 
-def _content_payload(
-    operation: str, path: str | None, payload: dict[str, object]
-) -> PreviewPayload:
-    """Build the canonical payload for a whole-content operation."""
+def _content_payload(operation: PreviewOperation, path: str | None, payload: dict[str, object]) -> PreviewPayload:
     content = payload.get("content")
-    return PreviewPayload(path, None, operation, content=content if isinstance(content, str) else None)
+    return PreviewPayload(path, None, operation, content=content if isinstance(content, str) else None, start_line=_line(payload.get("line_start")))
 
 
 def _notebook_payload(path: str | None, payload: dict[str, object]) -> PreviewPayload:
-    """Build a notebook-cell preview using its declared kernel language."""
     source = payload.get("new_source", payload.get("content", payload.get("source")))
     language = payload.get("kernel", payload.get("language"))
-    return PreviewPayload(
-        path,
-        language if isinstance(language, str) else None,
-        "write",
-        content=source if isinstance(source, str) else None,
-    )
+    return PreviewPayload(path, language if isinstance(language, str) else None, "write", content=source if isinstance(source, str) else None)
 
 
 def _patch_payload(path: str | None, payload: dict[str, object]) -> PreviewPayload | None:
-    """Build a unified-diff payload when the documented patch string exists."""
     patch = payload.get("patch", payload.get("input"))
-    return PreviewPayload(path, "diff", "patch", _patch_hunks(patch), patch) if isinstance(patch, str) else None
+    if not isinstance(patch, str):
+        return None
+    return PreviewPayload(path, "diff", "patch", _patch_hunks(patch), patch)
 
 
 def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> PreviewPayload | None:
-    """Normalize a recognized native or Ralph file tool event, else ``None``."""
+    """Normalize a recognized Ralph/native file event; otherwise return ``None``."""
     payload = _input(metadata)
     if payload is None:
         return None
     bare = tool_name.removeprefix("mcp__ralph__").removeprefix("ralph.")
     path = _path(payload)
-    operation = {
-        "read_file": "read", "Read": "read", "write_file": "write", "Write": "write",
-        "append_file": "append", "Append": "append", "ralph_stage_md_artifact": "write",
-        "ralph_submit_md_artifact": "write",
-    }.get(bare)
+    operations: dict[str, PreviewOperation] = {
+        "read_file": "read", "Read": "read", "read_multiple_files": "read", "grep_files": "read",
+        "search_files": "read", "git_diff": "read", "git_show": "read", "git_log": "read",
+        "write_file": "write", "Write": "write", "append_file": "append", "Append": "append",
+        "ralph_stage_md_artifact": "write", "ralph_submit_md_artifact": "write",
+    }
+    operation = operations.get(bare)
     if operation is not None:
         return _content_payload(operation, path, payload)
     if bare in {"edit_file", "Edit", "str_replace", "ralph_edit_md_artifact"}:
@@ -159,4 +152,4 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
     return _patch_payload(path, payload) if bare == "apply_patch" else None
 
 
-__all__ = ["PreviewHunk", "PreviewPayload", "payload_from_tool_event"]
+__all__ = ["PreviewHunk", "PreviewOperation", "PreviewPayload", "payload_from_tool_event"]

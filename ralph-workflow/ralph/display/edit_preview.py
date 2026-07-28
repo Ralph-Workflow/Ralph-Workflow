@@ -100,6 +100,7 @@ import json
 from typing import TYPE_CHECKING, Final
 
 from rich.console import Group
+from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -143,28 +144,6 @@ CONTENT_EDIT_TOOLS: Final[frozenset[str]] = frozenset(
 _MCP_RALPH_PREFIX: Final[str] = "mcp__ralph__"
 _RA_PREFIX: Final[str] = "ralph."
 
-#: Suffix -> lexer name map for the most common file types. Anything
-#: not in this map falls back to ``pygments.lexers.get_lexer_for_filename``
-#: (and ultimately to plain text on lookup failure).
-_SUFFIX_LEXER: Final[dict[str, str]] = {
-    ".py": "python",
-    ".md": "markdown",
-    ".toml": "toml",
-    ".yaml": "yaml",
-    ".yml": "yaml",
-    ".json": "json",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".sh": "bash",
-    ".rs": "rust",
-    ".go": "go",
-    ".html": "html",
-    ".css": "css",
-    ".xml": "xml",
-}
-
 #: Maximum number of lines a preview may show. Anything longer is
 #: truncated and replaced with a muted elision line so the preview
 #: stays scannable and the panel cannot grow without bound.
@@ -202,23 +181,6 @@ def _normalize_tool_name(name: str) -> str:
     if name.startswith(_RA_PREFIX):
         return name[len(_RA_PREFIX) :]
     return name
-
-
-def _legacy_lexer_for_path(path: str) -> str:
-    """Return the pygments lexer name for ``path`` based on its extension.
-
-    Unknown extensions fall back to ``pygments.lexers.get_lexer_for_filename``
-    and ultimately to ``"text"`` (plain text) so the preview never
-    raises on an unexpected extension.
-
-    The returned value is always a pygments *alias* (``"python"``,
-    ``"markdown"``, ``"text"``) rather than a display name, because
-    ``rich.syntax.Syntax`` resolves its lexer argument through
-    ``get_lexer_by_name``, which only accepts aliases. Returning the
-    display name (``"Python"``) made every fallback-path preview
-    silently degrade to unhighlighted plain text.
-    """
-    return lexer_for_path(path)
 
 
 #: Lexer aliases that identify markdown. ``get_lexer_for_filename``
@@ -268,6 +230,20 @@ def preview_header(tool_name: str, path: str | None) -> Text:
     return Text(f"  ▸ {tool_name.removesuffix('_file')}  {target}", style="theme.text.emphasis")
 
 
+def render_markdown_preview(
+    text: str,
+    *,
+    width: int,
+    terminal_bg_is_light: bool | None,
+) -> Markdown:
+    """Return the shared, sanitized Markdown renderer used by display previews."""
+    del width
+    return Markdown(
+        strip_terminal_control(text),
+        code_theme="ansi_light" if terminal_bg_is_light else "ansi_dark",
+    )
+
+
 def _make_syntax(
     body: str,
     lexer_name: str,
@@ -304,7 +280,6 @@ def _build_write_preview(
 ) -> RenderableType | None:
     """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
     and the two artifact-stage / artifact-submit tools."""
-    del width  # reserved for future width-aware wrapping; currently unused
     if not content:
         return None
     lexer_name = "markdown" if path is None else lexer_for_path(path, content)
@@ -312,12 +287,17 @@ def _build_write_preview(
     lines, omitted = _safe_lines(content, max_lines=_MAX_PREVIEW_LINES)
     if not lines:
         return None
-    syntax = _make_syntax(
-        "\n".join(lines),
-        lexer_name,
-        is_markdown=is_markdown,
-        terminal_bg_is_light=terminal_bg_is_light,
-        start_line=start_line,
+    body = "\n".join(lines)
+    syntax: RenderableType = (
+        render_markdown_preview(body, width=width, terminal_bg_is_light=terminal_bg_is_light)
+        if is_markdown
+        else _make_syntax(
+            body,
+            lexer_name,
+            is_markdown=False,
+            terminal_bg_is_light=terminal_bg_is_light,
+            start_line=start_line,
+        )
     )
     if omitted is None:
         return syntax
@@ -359,20 +339,23 @@ def _build_edit_preview(
             continue
         old_safe = strip_terminal_control(old_text)
         new_safe = strip_terminal_control(new_text)
-        # Old block: prefixed "-" lines, dimmed, no lexer (raw diff).
+        label = edit.get("label")
+        if isinstance(label, str) and label:
+            blocks.append(Text(f"  {label}", style="theme.text.muted"))
+        # Keep the textual '-' carrier while lexing the old code just like the new code.
         if old_safe:
             old_lines, old_omitted = _safe_lines(old_safe, max_lines=_MAX_PREVIEW_LINES)
-            old_block = Text()
-            for index, line in enumerate(old_lines, start=1):
-                old_block.append(f"{index:>3} - {line}\n", style=old_style)
+            old_body = "\n".join(old_lines)
+            old_frame = Text("-", style=old_style)
+            old_syntax = _make_syntax(
+                old_body,
+                lexer_name,
+                is_markdown=is_markdown,
+                terminal_bg_is_light=terminal_bg_is_light,
+            )
+            blocks.append(Group(old_frame, old_syntax))
             if old_omitted is not None:
-                old_block.append_text(_elision_text(old_omitted))
-            # Drop the trailing newline: Console.print already ends the
-            # renderable with one, and the extra blank line between the
-            # ``-`` and ``+`` halves makes a two-line edit read as four
-            # disconnected fragments.
-            old_block.rstrip()
-            blocks.append(old_block)
+                blocks.append(_elision_text(old_omitted))
             total_omitted += old_omitted or 0
         # New block: Syntax-highlighted with line numbers starting at 1.
         if new_safe:
@@ -450,7 +433,7 @@ def build_edit_preview(
     path = canonical.path
     edits_obj = canonical.hunks
     content_obj = canonical.content
-    start_line = 1
+    start_line = canonical.start_line or 1
     if isinstance(content_obj, str) and bare == "read_file":
         try:
             envelope: object = json.loads(content_obj)
@@ -460,7 +443,8 @@ def build_edit_preview(
             envelope_content = envelope.get("content")
             if isinstance(envelope_content, str):
                 content_obj = envelope_content
-                start_line = envelope.get("line_start", start_line)
+                envelope_start = envelope.get("line_start", start_line)
+                start_line = envelope_start if isinstance(envelope_start, int) else start_line
     if edits_obj:
         return _build_edit_preview(
             path,
@@ -469,6 +453,7 @@ def build_edit_preview(
                     "oldText": hunk.old_text,
                     "newText": hunk.new_text,
                     "start_line": hunk.start_line,
+                    "label": hunk.label,
                 }
                 for hunk in edits_obj
             ],
@@ -497,4 +482,5 @@ def build_edit_preview(
 __all__ = [
     "build_edit_preview",
     "preview_header",
+    "render_markdown_preview",
 ]

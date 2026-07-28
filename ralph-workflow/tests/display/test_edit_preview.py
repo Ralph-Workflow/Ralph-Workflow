@@ -31,11 +31,13 @@ from __future__ import annotations
 import io
 
 from rich.console import Console, Group
+from rich.markdown import Markdown
 from rich.syntax import Syntax
 
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.edit_preview import CONTENT_EDIT_TOOLS, build_edit_preview, preview_header
+from ralph.display.language_inference import lexer_for_path
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.preview_payload import payload_from_tool_event
 
@@ -94,6 +96,7 @@ def test_native_json_payload_and_patch_normalize_without_parser_identity() -> No
         {"input": {"patch": "@@ -3,1 +3,1 @@\n-old\n+new\n"}},
     )
     assert patch is not None and patch.hunks[0].start_line == 3
+    assert patch.hunks[0].label == "hunk 1 (line 3)"
     preview = build_edit_preview("apply_patch", patch, width=80)
     assert preview is not None
 
@@ -181,9 +184,7 @@ def test_build_edit_preview_artifact_stage_uses_markdown_lexer() -> None:
         width=80,
     )
     assert preview is not None, "stage artifact with content must produce a preview"
-    assert isinstance(preview, Syntax)
-    assert preview.lexer.name == "Markdown", f"expected Markdown lexer, got {preview.lexer.name!r}"
-    assert preview.word_wrap is True, "markdown previews must word-wrap"
+    assert isinstance(preview, Markdown)
 
 
 def test_build_edit_preview_artifact_submit_uses_markdown_lexer() -> None:
@@ -194,13 +195,21 @@ def test_build_edit_preview_artifact_submit_uses_markdown_lexer() -> None:
         width=80,
     )
     assert preview is not None
-    assert isinstance(preview, Syntax)
-    assert preview.lexer.name == "Markdown"
+    assert isinstance(preview, Markdown)
 
 
 # ---------------------------------------------------------------------------
 # 4. Unknown extension -> plain text fallback (no raise)
 # ---------------------------------------------------------------------------
+
+
+def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None:
+    """S-3: representative suffixes, names, and safe content sniffing resolve."""
+    assert lexer_for_path("types.d.ts") == "typescript"
+    assert lexer_for_path("Dockerfile") == "docker"
+    assert lexer_for_path("archive.tar.gz") == "text"
+    assert lexer_for_path(None, "#!/usr/bin/env python3\nprint(1)\n") == "python"
+    assert lexer_for_path(None, "@@ -1 +1 @@\n-old\n+new\n") == "diff"
 
 
 def test_build_edit_preview_unknown_extension_falls_back_to_plain() -> None:
