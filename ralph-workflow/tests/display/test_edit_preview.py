@@ -498,7 +498,13 @@ _PY_SNIPPET = 'import os\n\n\ndef handler(value: int) -> str:\n    # note\n    r
 def _render_truecolor(preview: object) -> str:
     """Render with escape codes intact so colour choices are inspectable."""
     buf = io.StringIO()
-    console = Console(file=buf, force_terminal=True, color_system="truecolor", width=80)
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        color_system="truecolor",
+        no_color=False,
+        width=80,
+    )
     console.print(preview)
     return buf.getvalue()
 

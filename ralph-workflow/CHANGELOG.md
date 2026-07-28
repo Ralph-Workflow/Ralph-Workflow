@@ -43,6 +43,14 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-07-28
+
+Patch release. `__version__` moved from `0.9.4` to `0.9.5` in
+`ralph/__init__.py` (the canonical version source `pyproject.toml`
+reads via `[tool.hatch.version]`), with `skills-package/package.json`
+kept in parity by `tests/test_skills_package_version_parity.py`.
+Carries the watchdog and Status Bar fixes below.
+
 ### Fixed
 
 - **fix(display): remove the dead Status Bar attention timestamp and document fan-out semantics** — `STALLED` remains exclusively watchdog-sourced; the renderer no longer accepts an unused timestamp, and the shared fan-out slot is explicitly last-writer-wins until concurrent per-unit stalls need separate operator visibility. Locked by `tests/display/test_status_bar_live_activity_anchor.py` and `tests/unit/display/test_parallel_display_t22.py`.
