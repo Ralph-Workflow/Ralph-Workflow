@@ -1,98 +1,30 @@
 ---
 name: submit-plan-artifact
-description: Use when authoring, validating, staging, or submitting a native-markdown plan, or recovering from plan section, stable-ID, dependency, acceptance-criteria, or step-contract diagnostics
+description: Use when authoring or revising a markdown plan artifact
 version: 2.1.0
 ---
 
 # submit-plan-artifact
 
-## Overview
+A plan is one Markdown document. Read `.agent/artifact-formats/plan.md` for
+its optional structure. Everything else is a recommended authoring pattern, not required grammar.
+`PLAN001` is the only blocking plan diagnostic: empty, too-short, or recognizably
+non-plan text. Warnings and info are advice; record a reason under
+`## Validation Overrides` when proceeding is the informed choice.
 
-A plan is one native-markdown document. Explanations are prose; structured
-values use labeled fields. Steps are `### [S-n] Title` blocks with stable IDs
-that are never renumbered.
+## Author and submit
 
-Validate with `ralph_verify_md_artifact`, submit with
-`ralph_submit_md_artifact` (`artifact_type: plan`). To revise a submitted plan,
-stage the complete revised document with `ralph_stage_md_artifact`
-(`mode="replace_all"`), edit the staged text directly, inspect with
-`ralph_get_md_draft`, then submit with `ralph_finalize_md_artifact`.
-
-## Document shape
-
-Universal anchors:
-
-- Frontmatter contains `type: plan`.
-- At least one complete `### [S-n] Title` step block exists unless the plan
-  explicitly declares `noop: true`.
-- Step IDs are unique across the whole document.
-- Dependencies and acceptance-criterion references resolve to existing IDs.
-- Every verification or acceptance criterion is evaluatable with a concrete
-  command and expected result, or a specific file/artifact to inspect.
-
-Everything else is a recommended authoring pattern, not required grammar.
-`## Summary`, `## Scope`, `## Skills MCP`, `## Steps`, `## Critical Files`,
-`## Risks`, and `## Verification` are useful conventional sections, but plans
-with radically different headings, ordering, prose, or nested subplans remain
-valid when the universal anchors and consumed references parse.
-
-Use `## Work Units` for small bounded tasks or verification gates. Use
-repeatable `## <Name> Subplan` or `## Subplan: <Name>` sections when each
-execution subagent needs a substantial scoped mini-plan. Large plans normally
-fan out four or five independent execution Subplans, then fan in through an
-ordinary main-session integration and verification section that is not itself
-labeled as a Subplan. Prefix/suffix recognition is case-insensitive and also
-accepts `Sub-plan` plus colon or dash variants.
-
-An exact, case-sensitive `## Work Units` or `## Parallel Plan` heading opts
-into fail-closed unit parsing. Loose top-level body prose and malformed bullets
-are errors. Stable-ID list items must be valid `- [unit-id] description`
-markers or evaluatable `- [AC-n]` criteria; nested `### [S-n]` step blocks may
-follow unit markers. The section must declare at least one real unit.
-Acceptance-criterion items are criteria, never phantom work units. Lowercase
-lookalikes and other arbitrary headings remain descriptive.
-
-Keep every executable step under an exact Work Unit, including a small final
-integration gate. With execution Subplans, keep cross-subplan fan-in as global
-`S-n` steps in the main session so the final result proves those steps too.
-
-Each step may use description prose and these useful fields:
-
-- `Type: <free-form value>`; recommended built-ins are `file_change`,
-  `action`, `research`, and `verify`
-- `Priority: critical|high|medium|low`
-- `Files:` followed by free-form actions such as `- modify path`,
-  `- create path`, or `- inspect path`
-- `Depends on: S-1, S-2`
-- `Satisfies: AC-01`
-- `Verify: pytest ...` plus `Expect: the named tests pass with exit code 0`, or
-  `Location: path`
-- `Rationale: ...`
-- `Evidence:` followed by `- file: path`, `- test_name: node`, or
-  `- command_output: command`
-
-Project-specific `Type:` values and target actions are preserved verbatim
-without coercion; use repository vocabulary that helps the executor. `Intent`,
-`Coverage`, scope `Category`, step `Priority`, and risk `Severity` are also
-free-form descriptive hints. The listed values are conventions, not validation
-gates.
-
-The built-in `file_change` and `verify` contracts activate their specific
-requirements: `file_change` must name `Files:`.
-Every `Verify:` command must have a specific `Expect:` result; a verify step
-may instead name a specific
-`Location:` artifact. Dependencies must name existing IDs and form a DAG. A
-conventional criterion is `- [AC-01] description`, with `Satisfied by: S-1`
-and either `Verify:` plus `Expect:`, or a specific `Evidence:` artifact.
-Legacy plans may reuse a global Verification item when its command text
-matches exactly.
-
-## Core flow
-
-1. Write the full document.
-2. Call `ralph_verify_md_artifact` with `artifact_type: plan`; repair every
-   error at its reported line and section.
-3. Call `ralph_submit_md_artifact` with the same artifact type and content.
+1. Ground the outcome, current behavior, target files, risks, and proof in
+   repository evidence.
+2. Cover Orient, Characterize, Change, and Verify. Use a discovery step for an
+   unknown rather than inventing a path or command.
+3. Optionally check with `ralph_verify_md_artifact`, then submit with
+   `ralph_submit_md_artifact` using `artifact_type: plan` and the full text.
+4. For a similar revision, use `ralph_edit_md_artifact` on the staged draft;
+   it submits when valid. Use `ralph_stage_md_artifact` with `replace_all` only
+   for a wholesale rewrite. `ralph_get_md_draft` inspects the draft and
+   `ralph_finalize_md_artifact` submits an assembled staged draft.
+5. `ralph_discard_md_draft` is only for a genuine wholesale restart.
 
 Worked example:
 
@@ -100,86 +32,25 @@ Worked example:
 ---
 type: plan
 ---
-## Summary
-foo() crashes on out-of-range indexes.
+## Work
 
-Intent: Clamp indexes and prove the behavior.
-Coverage: bugfix, test
-
-## Scope
-- [SC-1] Add a failing regression test
-  Category: test
-- [SC-2] Clamp indexes in src/foo.py
-  Category: bugfix
-- [SC-3] Run focused verification
-  Category: test
-
-## Skills MCP
-Skills: test-driven-development
-
-## Steps
-
-### [S-1] Add the regression test
-Add test_clamp_out_of_range before changing production code.
+### [S-1] Characterize the retry default
+Inspect the current retry behavior and add a focused regression before changing it.
 
 Type: file_change
 Files:
-- modify tests/test_foo.py
+- modify ralph/retry.py
+- modify tests/test_retry.py
 
-### [S-2] Clamp the index
-Clamp negative and oversized indexes without changing foo()'s signature.
-
-Type: file_change
-Files:
-- modify src/foo.py
-Depends on: S-1
-
-### [S-3] Run the focused suite
-Prove the regression is fixed.
+### [S-2] Change and prove the timeout behavior
+Implement the smallest timeout change, then run the focused regression.
 
 Type: verify
-Depends on: S-2
-Verify: pytest tests/test_foo.py -q
-Expect: test_clamp_out_of_range passes with exit code 0
-
-## Critical Files
-- [CF-1] src/foo.py
-  Action: modify
-- [CF-2] tests/test_foo.py
-  Action: modify
-
-## Risks
-- [R-1] Clamping could mask a caller bug
-  Mitigation: Assert the exact boundary result.
+Depends on: S-1
+Verify: pytest tests/test_retry.py -q
+Expect: the focused retry tests pass with exit code 0
 
 ## Verification
-- [V-1] pytest tests/test_foo.py -q
-  Expect: test_clamp_out_of_range passes
-  Timeout: 60
+- [V-1] pytest tests/test_retry.py -q
+  Expect: the focused retry tests pass with exit code 0
 ```
-
-## Staged authoring
-
-For a long plan:
-
-1. Append chunks with `ralph_stage_md_artifact` (`mode: append`), or replace
-   the draft with `mode: replace_all`.
-2. Inspect the full draft with `ralph_get_md_draft`.
-3. Edit the staged draft directly — there is no per-step edit endpoint.
-4. Submit the assembled draft with `ralph_finalize_md_artifact`. Failed
-   validation preserves the draft.
-5. Use `ralph_discard_md_draft` only when intentionally starting over.
-
-## Error recovery
-
-- Missing or malformed universal anchor: add `type: plan`, a unique step ID, or
-  the concrete evaluatable verification detail named by the diagnostic.
-- `file_change` without `Files:`, a `Verify:` command without a specific
-  `Expect:`, or a verify step without a specific `Location:` alternative:
-  add the consumed field named by the diagnostic.
-- Unknown dependency or acceptance-criterion reference: use an existing stable
-  ID; IDs are never inferred or renumbered.
-- Unknown descriptive label: keep it when it helps the plan; descriptive prose
-  and labels that the pipeline does not consume are tolerated.
-- Shell guard: verification methods must not start with `bash -c`, `sh -c`,
-  or `eval`.
