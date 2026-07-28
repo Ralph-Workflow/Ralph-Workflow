@@ -27,6 +27,7 @@ from ralph.display._terminal_bg_query import parse_osc11_reply
 from ralph.display.theme import (
     SYNTAX_THEME_ON_DARK_BG,
     SYNTAX_THEME_ON_LIGHT_BG,
+    SYNTAX_THEME_ON_UNKNOWN_BG,
     background_hex_is_light,
     syntax_theme_for_background,
     terminal_background_is_light,
@@ -154,7 +155,7 @@ def test_syntax_theme_is_background_specific_pygments_theme() -> None:
 
 
 def test_syntax_theme_tracks_the_resolved_background() -> None:
-    """Light backgrounds get the normal ANSI slots; dark and unknown get bright."""
+    """Each resolved background chooses its contrast-safe fixed-RGB palette."""
     assert syntax_theme_for_background(True) == SYNTAX_THEME_ON_LIGHT_BG
     assert syntax_theme_for_background(False) == SYNTAX_THEME_ON_DARK_BG
-    assert syntax_theme_for_background(None) == SYNTAX_THEME_ON_DARK_BG
+    assert syntax_theme_for_background(None) == SYNTAX_THEME_ON_UNKNOWN_BG

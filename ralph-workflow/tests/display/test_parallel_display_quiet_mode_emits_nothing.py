@@ -61,6 +61,24 @@ def test_quiet_mode_emits_nothing_for_lifecycle_methods() -> None:
     assert buf.getvalue() == "", f"Quiet mode must emit zero output, got:\n{buf.getvalue()!r}"
 
 
+def test_quiet_mode_suppresses_file_preview_but_keeps_its_plain_record(tmp_path: Path) -> None:
+    """S-3: quiet tool events preserve the ANSI-free audit projection only."""
+    pd, buf, _root = _make_quiet_display(tmp_path)
+    pd.emit_parsed_event(
+        unit_id="claude",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__write_file",
+        metadata={"input": {"path": "a.py", "content": "\x1b[31manswer = 42\x1b[0m"}},
+    )
+    pd.stop()
+    assert buf.getvalue() == ""
+    record = (
+        tmp_path / ".agent" / "raw" / f"{safe_id_for('claude')}.rendered.log"
+    ).read_text(encoding="utf-8")
+    assert "answer = 42" in record
+    assert "\x1b" not in record
+
+
 def test_quiet_mode_writes_agent_event_records(tmp_path: Path) -> None:
     """S-7 (AC-07): agent events still reach ``.agent/raw/<safe_id>.rendered.log``.
 

@@ -227,10 +227,10 @@ def test_identity_palette_distinct_under_deuteranopia() -> None:
     ]
     for a, b in pairs:
         ca = _simulate_cvd(
-            identity_color(a), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
+            identity_color(a, terminal_bg_is_light=False), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
         )
         cb = _simulate_cvd(
-            identity_color(b), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
+            identity_color(b, terminal_bg_is_light=False), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
         )
         assert ca != cb, f"{a} and {b} collide under deuteranopia"
 
@@ -245,8 +245,8 @@ def test_identity_palette_distinct_under_protanopia() -> None:
     if a is None:
         return  # No collision -> trivially satisfied
     active = [a, b]
-    ca = _simulate_cvd(identity_color(a, active=active), matrix)
-    cb = _simulate_cvd(identity_color(b, active=active), matrix)
+    ca = _simulate_cvd(identity_color(a, active=active, terminal_bg_is_light=False), matrix)
+    cb = _simulate_cvd(identity_color(b, active=active, terminal_bg_is_light=False), matrix)
     assert ca != cb, f"{a} and {b} collide under protanopia"
 
 
@@ -257,8 +257,8 @@ def test_identity_palette_distinct_under_tritanopia() -> None:
     if a is None:
         return
     active = [a, b]
-    ca = _simulate_cvd(identity_color(a, active=active), matrix)
-    cb = _simulate_cvd(identity_color(b, active=active), matrix)
+    ca = _simulate_cvd(identity_color(a, active=active, terminal_bg_is_light=False), matrix)
+    cb = _simulate_cvd(identity_color(b, active=active, terminal_bg_is_light=False), matrix)
     assert ca != cb, f"{a} and {b} collide under tritanopia"
 
 

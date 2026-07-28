@@ -97,10 +97,10 @@ also clear WCAG contrast on a light terminal.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final, cast
 
-from rich.console import Group
-from rich.markdown import Markdown
+from rich.console import Console, ConsoleOptions, Group, RenderResult
+from rich.markdown import CodeBlock, Markdown, MarkdownElement
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -303,6 +303,46 @@ def preview_record_text(
     return "\n".join(lines), full_source
 
 
+class _BackgroundAwareCodeBlock(CodeBlock):
+    """Rich fenced-code block using Ralph's fixed, transparent palette."""
+
+    @classmethod
+    def create(cls, markdown: Markdown, token: object) -> _BackgroundAwareCodeBlock:
+        node_info = str(cast("object", getattr(token, "info", "")) or "")
+        candidate = cast("object", getattr(markdown, "terminal_bg_is_light", None))
+        background = candidate if isinstance(candidate, bool) else None
+        return cls(node_info.partition(" ")[0] or "text", background)
+
+    def __init__(self, lexer_name: str, terminal_bg_is_light: bool | None) -> None:
+        self.lexer_name = lexer_name
+        self.terminal_bg_is_light = terminal_bg_is_light
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        del console, options
+        yield Syntax(
+            str(self.text).rstrip(),
+            self.lexer_name,
+            theme=syntax_theme_for_background(self.terminal_bg_is_light),
+            background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+            word_wrap=True,
+            padding=1,
+        )
+
+
+class _BackgroundAwareMarkdown(Markdown):
+    """Markdown whose fenced code shares preview syntax contrast guarantees."""
+
+    elements: ClassVar[dict[str, type[MarkdownElement]]] = {
+        **Markdown.elements,
+        "fence": _BackgroundAwareCodeBlock,
+        "code_block": _BackgroundAwareCodeBlock,
+    }
+
+    def __init__(self, markup: str, *, terminal_bg_is_light: bool | None) -> None:
+        super().__init__(markup)
+        self.terminal_bg_is_light = terminal_bg_is_light
+
+
 def render_markdown_preview(
     text: str,
     *,
@@ -311,9 +351,8 @@ def render_markdown_preview(
 ) -> Markdown:
     """Return the shared, sanitized Markdown renderer used by display previews."""
     del width
-    return Markdown(
-        strip_terminal_control(text),
-        code_theme="ansi_light" if terminal_bg_is_light else "ansi_dark",
+    return _BackgroundAwareMarkdown(
+        strip_terminal_control(text), terminal_bg_is_light=terminal_bg_is_light
     )
 
 
@@ -327,9 +366,9 @@ def _make_syntax(
 ) -> Syntax:
     """Build the themed ``Syntax`` renderable used by both preview shapes.
 
-    ``background_color`` is transparent and the theme is an ANSI theme,
-    so the block never paints over the terminal background and its token
-    colours come from the operator's own 16-colour scheme.
+    ``background_color`` is transparent and the theme uses fixed RGB,
+    so the block never paints over the terminal background while its token
+    colours remain contrast-tested rather than operator-slot dependent.
     """
     return Syntax(
         body,
@@ -615,7 +654,7 @@ def build_edit_preview(
     input_dict: dict[str, object] | PreviewPayload,
     *,
     width: int,
-    terminal_bg_is_light: bool | None = None,
+    terminal_bg_is_light: bool | None,
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
 ) -> RenderableType | None:

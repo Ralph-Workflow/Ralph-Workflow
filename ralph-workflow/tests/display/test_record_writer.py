@@ -142,6 +142,25 @@ def test_writer_records_have_no_color_codes(tmp_path: Path) -> None:
     assert "RED text" in text
 
 
+def test_writer_record_structure_is_ansi_free_for_every_field(tmp_path: Path) -> None:
+    """S-3: record structure sanitizes metadata as well as the body."""
+    writer = RenderedRecordWriter(tmp_path, "claude")
+    writer.append(
+        _entry(
+            timestamp="2026-01-01T12:34:56+00:00\x1b[31m",
+            phase="dev\x1b[31m",
+            iter="1/2\x1b[31m",
+            agent="claude\x1b[31m",
+            severity="info\x1b[31m",
+            body="body\x1b[31m",
+        )
+    )
+    writer.flush()
+    text = writer.path.read_text(encoding="utf-8")
+    assert "\x1b" not in text
+    assert text.startswith("[12:34:56] dev cycle=3 iter=1/2 agent=claude severity=info body")
+
+
 def test_writer_records_are_single_line(tmp_path: Path) -> None:
     """Body newlines are flattened so a grep never matches a partial line."""
     writer = RenderedRecordWriter(tmp_path, "claude")

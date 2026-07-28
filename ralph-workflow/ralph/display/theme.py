@@ -314,7 +314,7 @@ def identity_color(
     name: str,
     *,
     active: Iterable[str] | None = None,
-    terminal_bg_is_light: bool | None = None,
+    terminal_bg_is_light: bool | None,
 ) -> str:
     """Return the hex color for an identity, with collision-nudge.
 
@@ -714,11 +714,26 @@ class _SyntaxThemeOnLightBackground(PygmentsStyle):
     }
 
 
+class _SyntaxThemeOnUnknownBackground(PygmentsStyle):
+    """Mid-luminance tokens readable on both black and white terminals."""
+
+    default_style: ClassVar[str] = ""
+    styles: ClassVar[dict[object, str]] = {
+        Comment: "#B05C5C",
+        Keyword: "#9E684C",
+        Name.Function: "#79773A",
+        String: "#4E8417",
+        Number: "#13884E",
+        Operator: "#178383",
+    }
+
+
 #: Syntax-highlight palettes selected for dark and light terminal backgrounds.
 #: They use fixed RGB because stock ANSI slots are operator-configurable and
 #: therefore cannot satisfy the enforced contrast and CVD contract.
 SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnDarkBackground)
 SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnLightBackground)
+SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnUnknownBackground)
 
 #: Rich's ``Syntax(background_color=...)`` sentinel meaning "do not
 #: paint a background; let the terminal's own background show through".
@@ -734,9 +749,8 @@ def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxThem
     mechanically checkable; stock ANSI slots are operator-configurable and
     cannot provide that guarantee.
 
-    An unknown background (``None``) resolves to the dark-background
-    theme because dark terminals are the common case and the bright
-    ANSI slots stay legible on mid-tone backgrounds.
+    An unknown background (``None``) resolves to a mid-luminance palette
+    whose tokens each clear the contrast floor on both black and white.
 
     Parameters:
         terminal_bg_is_light: ``True`` for light backgrounds,
@@ -745,9 +759,22 @@ def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxThem
     Returns:
         The Rich syntax theme to pass to ``rich.syntax.Syntax``.
     """
-    if terminal_bg_is_light:
+    if terminal_bg_is_light is True:
         return SYNTAX_THEME_ON_LIGHT_BG
-    return SYNTAX_THEME_ON_DARK_BG
+    if terminal_bg_is_light is False:
+        return SYNTAX_THEME_ON_DARK_BG
+    return SYNTAX_THEME_ON_UNKNOWN_BG
+
+
+STATUS_STYLES_ON_UNKNOWN_BG: Final[dict[str, tuple[str, str, str]]] = {
+    "success": ("bold #13884E", "\u2713", "PASS"),
+    "running": ("bold #0074E8", "\u25d0", "RUN"),
+    "warning": ("bold #BA5D00", "\u26a0", "WARN"),
+    "error": ("bold #B05C5C", "\u2717", "FAIL"),
+    "skipped": ("bold #79773A", "\u25cb", "SKIP"),
+    "pending": ("bold #757575", "\u25cb", "WAIT"),
+    "info": ("bold #178383", "\u2139", "INFO"),
+}
 
 
 def pick_status_styles(terminal_bg_is_light: bool | None) -> dict[str, tuple[str, str, str]]:
@@ -765,9 +792,11 @@ def pick_status_styles(terminal_bg_is_light: bool | None) -> dict[str, tuple[str
     Returns:
         A mapping from status name to ``(label, glyph, style)``.
     """
-    if terminal_bg_is_light:
+    if terminal_bg_is_light is True:
         return STATUS_STYLES_ON_LIGHT_BG
-    return STATUS_STYLES
+    if terminal_bg_is_light is False:
+        return STATUS_STYLES
+    return STATUS_STYLES_ON_UNKNOWN_BG
 
 
 def _state_payload_for_background(
@@ -919,9 +948,11 @@ __all__ = [
     "SKY_BLUE",
     "STATUS_STYLES",
     "STATUS_STYLES_ON_LIGHT_BG",
+    "STATUS_STYLES_ON_UNKNOWN_BG",
     "SYNTAX_BACKGROUND_TRANSPARENT",
     "SYNTAX_THEME_ON_DARK_BG",
     "SYNTAX_THEME_ON_LIGHT_BG",
+    "SYNTAX_THEME_ON_UNKNOWN_BG",
     "UNICODE_GLYPHS",
     "VERMILLION",
     "YELLOW",

@@ -175,15 +175,15 @@ def _format_entry_line(entry: object) -> str:
     to ``str(entry)`` when the shape is unknown so a future event
     kind cannot crash the writer.
     """
-    timestamp = _extract_field(entry, "timestamp")
-    phase = _extract_field(entry, "phase")
-    cycle = _extract_field(entry, "cycle")
-    iter_ = _extract_field(entry, "iter")
-    agent = _extract_field(entry, "agent")
-    severity = _extract_field(entry, "severity")
+    timestamp = _strip_ansi(_extract_field(entry, "timestamp"))
+    phase = _strip_ansi(_extract_field(entry, "phase"))
+    cycle = _strip_ansi(_extract_field(entry, "cycle"))
+    iter_ = _strip_ansi(_extract_field(entry, "iter"))
+    agent = _strip_ansi(_extract_field(entry, "agent"))
+    severity = _strip_ansi(_extract_field(entry, "severity"))
     body = _extract_field(entry, "body")
     indent_level = _extract_indent_level(entry)
-    grouping_role = _extract_field(entry, "grouping_role")
+    grouping_role = _strip_ansi(_extract_field(entry, "grouping_role"))
 
     hh_mm_ss = _to_hh_mm_ss(timestamp)
     indent_prefix = " " * (_INDENT_WIDTH * max(0, indent_level))
@@ -191,9 +191,9 @@ def _format_entry_line(entry: object) -> str:
     parts.append(f"[{hh_mm_ss}]")
     if phase:
         parts.append(str(phase))
-    if cycle is not None:
+    if cycle != "":
         parts.append(f"cycle={cycle}")
-    if iter_ is not None:
+    if iter_:
         parts.append(f"iter={iter_}")
     if agent:
         parts.append(f"agent={agent}")
@@ -208,6 +208,16 @@ def _format_entry_line(entry: object) -> str:
         # This is a contract addition, kept narrow.
         parts.append(f"role={grouping_role}")
     return indent_prefix + " ".join(parts)
+
+
+def _strip_ansi(value: object) -> str:
+    """Return a string field safe for the plain-text record."""
+    if value is None:
+        return ""
+    try:
+        return _ANSI_ESCAPE_RE.sub("", str(value))
+    except Exception:
+        return ""
 
 
 def _extract_field(entry: object, name: str) -> object:

@@ -159,7 +159,7 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
     bare = tool_name.removeprefix("mcp__ralph__").removeprefix("ralph.")
     path = _path(payload)
     operations: dict[str, PreviewOperation] = {
-        "read_file": "read", "Read": "read", "read_multiple_files": "read", "grep_files": "read",
+        "read_file": "read", "read": "read", "Read": "read", "read_multiple_files": "read", "grep_files": "read",
         "search_files": "read", "git_diff": "read", "git_show": "read", "git_log": "read",
         "write_file": "write", "Write": "write", "append_file": "append", "Append": "append",
         "ralph_stage_md_artifact": "write", "ralph_submit_md_artifact": "write",

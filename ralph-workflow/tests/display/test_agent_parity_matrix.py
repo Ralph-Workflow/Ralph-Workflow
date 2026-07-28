@@ -183,14 +183,14 @@ def test_same_event_different_agents_differs_only_by_identity() -> None:
 def test_composite_identity_keeps_one_color() -> None:
     """`pi · minimax/MiniMax-3` keeps one stable, accessible color distinct
     from the bare ``pi`` identity."""
-    pi_color = identity_color("pi")
-    composite_color = identity_color("pi · minimax/MiniMax-3")
+    pi_color = identity_color("pi", terminal_bg_is_light=False)
+    composite_color = identity_color("pi · minimax/MiniMax-3", terminal_bg_is_light=False)
     assert composite_color in IDENTITY_PALETTE
     assert pi_color in IDENTITY_PALETTE
     # The composite is normalized as a distinct identity: it must hash
     # to a stable slot. We don't pin "different" (the deterministic
     # slot may coincide) but we do pin "stable" and "in palette".
-    repeated = identity_color("pi · minimax/MiniMax-3")
+    repeated = identity_color("pi · minimax/MiniMax-3", terminal_bg_is_light=False)
     assert repeated == composite_color
 
 

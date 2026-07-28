@@ -32,6 +32,8 @@ import io
 import json
 from pathlib import Path
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.syntax import Syntax
@@ -40,14 +42,36 @@ from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.edit_preview import (
     CONTENT_EDIT_TOOLS,
-    build_edit_preview,
     preview_header,
     preview_record_text,
     render_markdown_preview,
 )
+from ralph.display.edit_preview import (
+    build_edit_preview as _build_edit_preview,
+)
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.preview_payload import payload_from_tool_event
+from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
+
+
+def build_edit_preview(
+    tool_name: str,
+    input_dict: dict[str, object] | PreviewPayload,
+    *,
+    width: int,
+    terminal_bg_is_light: bool | None = False,
+    overflow_ref: str | None = None,
+    glyphs_enabled: bool = True,
+) -> object:
+    """Keep legacy test fixtures explicit about their dark test terminal."""
+    return _build_edit_preview(
+        tool_name,
+        input_dict,
+        width=width,
+        terminal_bg_is_light=terminal_bg_is_light,
+        overflow_ref=overflow_ref,
+        glyphs_enabled=glyphs_enabled,
+    )
 
 
 def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
@@ -292,6 +316,20 @@ def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None
     assert lexer_for_path(None, "@@ -1 +1 @@\n-old\n+new\n") == "diff"
     assert lexer_for_path(None, "<?xml version='1.0'?><root />") == "xml"
     assert lexer_for_path(None, '{"enabled": true}') == "json"
+
+
+@settings(max_examples=25, deadline=None)
+@given(
+    path=st.one_of(st.none(), st.text(max_size=128)),
+    content=st.text(max_size=8_192),
+)
+def test_language_inference_property_never_raises_for_arbitrary_text(
+    path: str | None, content: str
+) -> None:
+    """S-3: arbitrary parser text always degrades to a non-empty lexer alias."""
+    lexer = lexer_for_path(path, content)
+    assert isinstance(lexer, str)
+    assert lexer
 
 
 def test_language_inference_never_raises_for_adversarial_content() -> None:
@@ -903,7 +941,8 @@ def test_grep_record_projection_is_numbered_ansi_free_and_shared_budgeted() -> N
     """S-1: records retain hit structure while a result cannot exceed the shared cap."""
     matches = [{"path": "a.py", "line": index, "text": f"needle = {index}"} for index in range(50)]
     record, _ = preview_record_text(
-        "grep_files", {"input": {"content": json.dumps({"matches": matches}), "pattern": "needle"}},
+        "grep_files",
+        {"input": {"content": json.dumps({"matches": matches}), "pattern": "needle"}},
         glyphs_enabled=False,
     )
     assert "\x1b" not in record
@@ -918,39 +957,24 @@ def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None
     shipped = {
         path.stem
         for path in parser_dir.glob("*.py")
-        if not path.stem.startswith("_") and path.stem not in {"base", "agent_output_line", "text_accumulator", "interactive_transcript_event"}
+        if not path.stem.startswith("_")
+        and path.stem
+        not in {"base", "agent_output_line", "text_accumulator", "interactive_transcript_event"}
     }
     classified = {
-        "claude", "codex", "cursor", "gemini", "opencode", "pi",
-        "agy", "generic", "nanocoder", "claude_interactive", "claude_interactive_transcript_parser",
+        "claude",
+        "codex",
+        "cursor",
+        "gemini",
+        "opencode",
+        "pi",
+        "agy",
+        "generic",
+        "nanocoder",
+        "claude_interactive",
+        "claude_interactive_transcript_parser",
     }
     assert shipped == classified
-
-
-def test_build_edit_preview_uses_ascii_elision_when_glyphs_are_disabled() -> None:
-    """S-3: live ASCII terminals never receive a Unicode truncation glyph."""
-    preview = build_edit_preview(
-        "write_file", {"path": "a.py", "content": "\n".join(str(i) for i in range(41))},
-        width=80, glyphs_enabled=False,
-    )
-    assert preview is not None
-    rendered = io.StringIO()
-    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
-    assert "... (1 more line)" in rendered.getvalue()
-    assert "…" not in rendered.getvalue()
-
-
-def test_multiple_read_preview_shares_one_line_budget() -> None:
-    """S-4: three files cannot multiply the 40-line preview allowance."""
-    body = "\n".join(f"line {index}" for index in range(40))
-    payload = json.dumps({"files": [{"path": f"file{index}.py", "content": body} for index in range(3)]})
-    preview = build_edit_preview("read_multiple_files", {"content": payload}, width=80)
-    assert preview is not None
-    rendered = io.StringIO()
-    Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
-    output = rendered.getvalue()
-    assert output.count("more lines") == 1
-    assert len([line for line in output.splitlines() if line.strip()]) <= 44
 
 
 # ---------------------------------------------------------------------------

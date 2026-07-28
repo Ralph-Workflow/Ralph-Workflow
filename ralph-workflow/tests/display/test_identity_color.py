@@ -63,10 +63,10 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 def test_identity_color_is_deterministic_across_calls() -> None:
     """Same name -> same color, every call."""
-    first = identity_color("claude")
-    second = identity_color("claude")
+    first = identity_color("claude", terminal_bg_is_light=False)
+    second = identity_color("claude", terminal_bg_is_light=False)
     assert first == second
-    third = identity_color("claude")
+    third = identity_color("claude", terminal_bg_is_light=False)
     assert third == first
 
 
@@ -74,9 +74,9 @@ def test_identity_color_is_stable_across_palette_hits() -> None:
     """Two distinct names that hash to the same slot are still deterministic."""
     # Recompute and assert that the same name always picks the same
     # slot, even when the call is interleaved with other lookups.
-    a = identity_color("claude")
-    b = identity_color("codex")
-    c = identity_color("claude")
+    a = identity_color("claude", terminal_bg_is_light=False)
+    b = identity_color("codex", terminal_bg_is_light=False)
+    c = identity_color("claude", terminal_bg_is_light=False)
     assert a == c
     assert a != b
 
@@ -106,7 +106,7 @@ def test_normalize_identity_name_preserves_dash_distinction(variant: str, expect
     """
     assert theme._normalize_identity_name(variant) == expected
     # Same identity -> same color regardless of how it was spelled.
-    assert identity_color(variant) == identity_color(expected)
+    assert identity_color(variant, terminal_bg_is_light=False) == identity_color(expected, terminal_bg_is_light=False)
 
 
 def test_empty_name_falls_back_to_unknown() -> None:
@@ -120,8 +120,8 @@ def test_empty_name_falls_back_to_unknown() -> None:
     assert theme._normalize_identity_name("") == "unknown"
     assert theme._normalize_identity_name("   ") == "unknown"
     assert theme._normalize_identity_name("---") == "unknown"
-    assert identity_color("") == identity_color("unknown")
-    assert identity_color("") == identity_color("   ")
+    assert identity_color("", terminal_bg_is_light=False) == identity_color("unknown", terminal_bg_is_light=False)
+    assert identity_color("", terminal_bg_is_light=False) == identity_color("   ", terminal_bg_is_light=False)
 
 
 # --- Pairwise RGB distance ----------------------------------------------
@@ -238,8 +238,8 @@ def test_identity_color_collision_nudge_picks_different_color() -> None:
     """
     # Take the deterministic slot of "claude" out of the running;
     # the returned color must not be that slot.
-    base = identity_color("claude")
-    nudged = identity_color("claude", active=["claude"])
+    base = identity_color("claude", terminal_bg_is_light=False)
+    nudged = identity_color("claude", active=["claude"], terminal_bg_is_light=False)
     assert nudged != base
     # The nudged color is still in the palette.
     assert nudged in IDENTITY_PALETTE
@@ -253,10 +253,10 @@ def test_identity_color_active_must_not_contain_self() -> None:
     still returns it deterministically (the caller does not pass
     the agent's own name in ``active``).
     """
-    base = identity_color("claude")
+    base = identity_color("claude", terminal_bg_is_light=False)
     # active excludes some other agents; the base slot is free so
     # the function returns the deterministic color.
-    same = identity_color("claude", active=["codex", "opencode"])
+    same = identity_color("claude", active=["codex", "opencode"], terminal_bg_is_light=False)
     assert same == base
 
 
@@ -298,7 +298,7 @@ def test_all_documented_agents_receive_a_distinct_color(name: str) -> None:
     visible. The collision-nudge path covers the rare case where
     two agents land on the same slot.
     """
-    color = identity_color(name)
+    color = identity_color(name, terminal_bg_is_light=False)
     assert color in IDENTITY_PALETTE
 
 
@@ -313,7 +313,7 @@ def test_tool_names_receive_collision_aware_accessible_identity_colors() -> None
         theme._PROTANOPIA_MATRIX,
         theme._TRITANOPIA_MATRIX,
     ):
-        colors = [theme._simulate_cvd(identity_color(tool), matrix) for tool in tools]
+        colors = [theme._simulate_cvd(identity_color(tool, terminal_bg_is_light=False), matrix) for tool in tools]
         for first, second in combinations(colors, 2):
             assert theme._hex_distance(first, second) >= _CVD_THRESHOLD
     status_colors = {
@@ -321,7 +321,7 @@ def test_tool_names_receive_collision_aware_accessible_identity_colors() -> None
         for style, _icon, _label in STATUS_STYLES.values()
         if (extracted := theme._extract_hex(style))
     }
-    assert all(identity_color(tool).lower() not in status_colors for tool in tools)
+    assert all(identity_color(tool, terminal_bg_is_light=False).lower() not in status_colors for tool in tools)
 
 
 # --- Renderer application ----------------------------------------------
@@ -340,7 +340,7 @@ def test_identity_style_for_returns_empty_for_no_unit() -> None:
 def test_identity_style_for_returns_palette_color() -> None:
     """A unit_id picks the deterministic identity color."""
     style = _identity_style_for("claude")
-    assert style == identity_color("claude")
+    assert style == identity_color("claude", terminal_bg_is_light=False)
     assert style in IDENTITY_PALETTE
 
 
@@ -375,7 +375,7 @@ def test_event_renderer_unit_prefix_carries_identity_color() -> None:
     assert "claude hello world" in rendered.plain
     # The rich-Text path colors the prefix segment with the
     # identity hex; the rest of the body uses the default style.
-    expected_color = identity_color("claude")
+    expected_color = identity_color("claude", terminal_bg_is_light=False)
     # At least one span carries the identity color, and that span
     # covers the unit prefix substring (e.g. ``"claude "``).
     identity_spans = [s for s in rendered.spans if s.style == expected_color]
@@ -452,7 +452,7 @@ def test_status_bar_agent_segment_carries_identity_color() -> None:
     rendered = render_status_bar(model, _ctx())
     assert "claude" in rendered.plain
     # The agent segment is colored with the identity color.
-    expected_color = identity_color("claude")
+    expected_color = identity_color("claude", terminal_bg_is_light=False)
     assert any(span.style == expected_color for span in rendered.spans), (
         f"Status Bar agent segment missing identity color {expected_color}"
     )
@@ -475,5 +475,5 @@ def test_identity_color_handles_unicode_name() -> None:
     user-defined model name might not be) must still get a
     deterministic color.
     """
-    color = identity_color("café")
+    color = identity_color("café", terminal_bg_is_light=False)
     assert color in IDENTITY_PALETTE
