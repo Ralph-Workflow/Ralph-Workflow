@@ -445,26 +445,12 @@ def build_edit_preview(
         canonical = input_dict
     else:
         canonical = payload_from_tool_event(tool_name, {"input": input_dict})
-    if canonical is not None:
-        input_dict = {
-            "path": canonical.path,
-            "content": canonical.content,
-            "edits": [
-                {"oldText": hunk.old_text, "newText": hunk.new_text, "start_line": hunk.start_line}
-                for hunk in canonical.hunks
-            ],
-        }
-        if canonical.operation == "patch" and canonical.content:
-            input_dict["content"] = canonical.content
-    if bare not in CONTENT_EDIT_TOOLS and canonical is None:
+    if canonical is None:
         return None
-    if not isinstance(input_dict, dict) or not input_dict:
-        return None
-    path_obj = input_dict.get("path")
-    path = path_obj if isinstance(path_obj, str) and path_obj else None
-    edits_obj = input_dict.get("edits")
-    content_obj = input_dict.get("content")
-    start_line = input_dict.get("line_start", input_dict.get("offset", 1))
+    path = canonical.path
+    edits_obj = canonical.hunks
+    content_obj = canonical.content
+    start_line = 1
     if isinstance(content_obj, str) and bare == "read_file":
         try:
             envelope: object = json.loads(content_obj)
@@ -475,17 +461,27 @@ def build_edit_preview(
             if isinstance(envelope_content, str):
                 content_obj = envelope_content
                 start_line = envelope.get("line_start", start_line)
-    if isinstance(edits_obj, list) and edits_obj:
+    if edits_obj:
         return _build_edit_preview(
             path,
-            [e for e in edits_obj if isinstance(e, dict)],
+            [
+                {
+                    "oldText": hunk.old_text,
+                    "newText": hunk.new_text,
+                    "start_line": hunk.start_line,
+                }
+                for hunk in edits_obj
+            ],
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
         )
     if isinstance(content_obj, str) and content_obj:
+        preview_path = path
+        if canonical.language_hint and path is None:
+            preview_path = f"preview.{canonical.language_hint}"
         return _build_write_preview(
             bare,
-            path,
+            preview_path,
             content_obj,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,

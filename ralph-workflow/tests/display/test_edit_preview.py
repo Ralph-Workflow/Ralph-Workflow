@@ -86,7 +86,7 @@ def test_build_edit_preview_returns_none_for_empty_payload() -> None:
 
 
 def test_native_json_payload_and_patch_normalize_without_parser_identity() -> None:
-    """Native editor calls and JSON envelopes use the canonical payload boundary."""
+    """S-1: documented parser envelopes normalize native editor calls."""
     write = payload_from_tool_event("Write", {"args": '{"file_path":"a.py","content":"x = 1"}'})
     assert write is not None and write.path == "a.py" and write.operation == "write"
     patch = payload_from_tool_event(
@@ -96,6 +96,29 @@ def test_native_json_payload_and_patch_normalize_without_parser_identity() -> No
     assert patch is not None and patch.hunks[0].start_line == 3
     preview = build_edit_preview("apply_patch", patch, width=80)
     assert preview is not None
+
+
+def test_preview_payload_parser_metadata_matrix() -> None:
+    """S-1: every structured parser envelope maps native tools or declines them."""
+    cases = (
+        ("claude", "Write", {"input": {"file_path": "a.py", "content": "x = 1"}}, "write"),
+        ("codex", "Edit", {"input": '{"path":"a.py","old_string":"x","new_string":"y"}'}, "replace"),
+        ("cursor", "MultiEdit", {"args": {"path": "a.py", "edits": [{"old_string": "x", "new_string": "y"}]}}, "replace"),
+        ("pi", "NotebookEdit", {"args": {"path": "a.ipynb", "kernel": "python", "source": "x = 1"}}, "write"),
+        ("opencode", "str_replace", {"args": {"path": "a.py", "old_string": "x", "new_string": "y"}}, "replace"),
+        ("gemini", "Read", {"args": '{"file_path":"a.py","content":"x = 1"}'}, "read"),
+    )
+    for _parser, tool_name, metadata, operation in cases:
+        payload = payload_from_tool_event(tool_name, metadata)
+        assert payload is not None and payload.operation == operation
+    for parser in ("agy", "generic", "nanocoder", "claude_interactive"):
+        assert payload_from_tool_event("Write", {"raw_parser": parser}) is None
+
+
+def test_preview_payload_rejects_unknown_tools_and_invalid_json() -> None:
+    """S-1: unknown names and malformed JSON never trigger content guessing."""
+    assert payload_from_tool_event("unrecognized_editor", {"args": {"content": "x"}}) is None
+    assert payload_from_tool_event("Write", {"args": "not JSON"}) is None
 
 
 def test_partial_read_envelope_uses_real_window_line_number() -> None:
