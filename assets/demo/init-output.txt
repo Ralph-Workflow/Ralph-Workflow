@@ -36,13 +36,13 @@ PROMPT-driven agent orchestrator
 │  config before the first real run                                            │
 │    5. Run ralph to start the pipeline                                        │
 │    6. Run `ralph --regenerate-config` to reset configs                       │
-│    7. ⭐ Star https://codeberg.org/RalphWorkflow/Ralph-Workflow so we know   │
+│    7. ⭐ Star https://github.com/Ralph-Workflow/Ralph-Workflow so we know   │
 │  you're using it — stars drive development priority                          │
 │  Error reporting: Ralph Workflow sends anonymous crash data and performance  │
 │  metrics. No personal data is collected. See                                 │
 │  ~/.config/ralph-workflow-user.ini for details.                              │
 │                                                                              │
-│  ⭐ Star https://codeberg.org/RalphWorkflow/Ralph-Workflow so we know        │
+│  ⭐ Star https://github.com/Ralph-Workflow/Ralph-Workflow so we know        │
 │  you're using it — stars drive development priority                          │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯

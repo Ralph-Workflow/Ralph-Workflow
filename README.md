@@ -54,7 +54,7 @@ story is in [`agents`](ralph-workflow/docs/sphinx/agents.md) and
 - **Runtime:** Python ≥ 3.12, local-first.
 - **License:** AGPL-3.0-or-later.
 - **PyPI:** <https://pypi.org/project/ralph-workflow/>
-- **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Issue tracker:** <https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new>
 - **Contribution route:** [`CONTRIBUTING.md`](CONTRIBUTING.md) →
   [`ralph-workflow/CONTRIBUTING.md`](ralph-workflow/CONTRIBUTING.md)
 

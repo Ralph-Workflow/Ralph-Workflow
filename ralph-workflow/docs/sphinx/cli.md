@@ -185,20 +185,20 @@ ralph cleanup --force       # remove without prompting for confirmation
 
 ### `ralph contribute`
 
-Open the canonical Ralph Workflow repository in your default browser so you can review contribution options. Codeberg is the primary repo (default); GitHub is available via `--source github` for contributors who cannot use Codeberg. No git repository, configuration, or authentication is required. Pull requests on either forge must check the CLA box in the PR template.
+Open the canonical Ralph Workflow repository in your default browser so you can review contribution options. GitHub is the primary repo (default); the Codeberg mirror remains available via `--source codeberg`. No git repository, configuration, or authentication is required. Pull requests on either forge must check the CLA box in the PR template.
 
 ```bash
-ralph contribute                         # open Codeberg (default)
-ralph contribute --source github         # open GitHub instead
-ralph contribute --source codeberg       # explicit form of the default
+ralph contribute                         # open GitHub (default)
+ralph contribute --source codeberg       # open the Codeberg mirror
+ralph contribute --source github         # explicit form of the default
 ```
 
 ### `ralph star`
 
-Open the Codeberg repository in your default browser so you can star Ralph Workflow. Use `--no-browser` to print the link without launching a browser.
+Open the GitHub repository in your default browser so you can star Ralph Workflow. Use `--no-browser` to print the link without launching a browser.
 
 ```bash
-ralph star                # open Codeberg in your browser
+ralph star                # open GitHub in your browser
 ralph star --no-browser   # print the link instead
 ```
 

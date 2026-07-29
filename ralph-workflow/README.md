@@ -82,8 +82,8 @@ concepts, troubleshooting, diagnostics, and developer internals.
 
 ## Project home
 
-- **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Repository:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 - **PyPI:** <https://pypi.org/project/ralph-workflow/>
-- **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Issue tracker:** <https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new>
 - **Contribution route:**
   [`CONTRIBUTING.md`](CONTRIBUTING.md)

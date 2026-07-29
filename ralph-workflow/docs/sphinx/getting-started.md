@@ -321,7 +321,7 @@ test coverage for empty and whitespace-only input.
 ```
 
 The live, inspectable example bundle sits at
-[`examples/first-review-bundle/`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle).
+[`examples/first-review-bundle/`](https://github.com/Ralph-Workflow/Ralph-Workflow/tree/main/examples/first-review-bundle).
 Open the `PROMPT.md`, the `DEVELOPMENT_RESULT.md`, the
 `ISSUES.md`, the `FIX_RESULT.md`, and the Markdown artifacts to see the
 validated trail. The receipt tells you what changed, what

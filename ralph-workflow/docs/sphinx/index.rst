@@ -8,7 +8,7 @@ Ralph Workflow manual
 Ralph Workflow is a free and open-source AI agent orchestrator for
 coding work. The product positioning is stated once in the
 `root README.md
-<https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md>`_.
+<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/README.md>`_.
 
 Where to go next
 ----------------

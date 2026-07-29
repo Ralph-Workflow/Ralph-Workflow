@@ -37,7 +37,7 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.onboarding import CODEBERG_STAR_CTA
+from ralph.onboarding import GITHUB_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
@@ -1461,7 +1461,7 @@ def _emit_success_exit(
     # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 2 runs.
     show_cta = (hash(str(os.getpid()) + str(getenv("USER") or "")) % 2) == 0
     if show_cta:
-        emit_activity_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
+        emit_activity_line(display, None, f"[bold yellow]{GITHUB_STAR_CTA}[/bold yellow]")
     return 0
 
 

@@ -7,7 +7,7 @@ This directory contains the maintained Python package.
 If this is your first contribution, the shortest path is:
 
 ```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
 make dev              # sync the uv environment (editable install + dev extras)
 # ...make your change...
@@ -42,8 +42,8 @@ A few practical notes for a first patch:
   on-ramp.
 
 When you're ready to ship the patch, push your branch and open a PR
-on Codeberg or GitHub. Codeberg remains the primary development repo,
-and GitHub is available for contributors who cannot use Codeberg. The
+on GitHub or Codeberg. GitHub is the primary development repo; the
+Codeberg mirror remains available for the time being. The
 full verification contract, the guardrails, and the contribution
 policy follow below.
 
@@ -69,7 +69,7 @@ offering.
 ## Development setup
 
 ```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
 make dev
 ```

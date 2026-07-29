@@ -388,6 +388,6 @@ first-party typed helpers and adapters instead) and the strict flags
 Run `cd ralph-workflow && make verify` for the canonical gate. The gate
 runs the docs build, ruff, mypy --strict, the 60-second-capped
 pytest suite, and the audit scripts. See
-[docs/agents/verification.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/agents/verification.md)
+[docs/agents/verification.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/verification.md)
 for the full ordered step list, the combined test budget, and the
 non-circumvention rules.

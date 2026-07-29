@@ -12,8 +12,8 @@ from ralph.agents.agent_install_links import AGENT_INSTALL_URLS
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.display.context import DisplayContext
 from ralph.onboarding import (
-    CODEBERG_STAR_CTA,
     ERROR_REPORTING_DISCLOSURE,
+    GITHUB_STAR_CTA,
     getting_started_pointer_sentence,
     welcome_panel_next_steps,
 )
@@ -229,6 +229,6 @@ def emit_first_run_welcome(
 
     # Star CTA — highest-leverage conversion from install → repo adoption
     content.append(Text())  # blank line
-    content.append(Text(CODEBERG_STAR_CTA, style="theme.status.warning"))
+    content.append(Text(GITHUB_STAR_CTA, style="theme.status.warning"))
 
     display.emit_first_run_panel(content)

@@ -4,7 +4,7 @@ Ralph Workflow accepts contributions under this Contributor License Agreement
 so the project can continue publishing the public code under
 AGPL-3.0-or-later while also offering commercial licenses.
 
-By checking the CLA box in a pull request on Codeberg or GitHub, you agree to
+By checking the CLA box in a pull request on GitHub or Codeberg, you agree to
 these terms for every contribution in that pull request:
 
 1. You keep your copyright.

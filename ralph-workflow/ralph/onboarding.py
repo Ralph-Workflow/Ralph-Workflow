@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast
 
-from ralph.project_urls import GETTING_STARTED_URL
+from ralph.project_urls import GETTING_STARTED_URL, GITHUB_REPOSITORY_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
 
 if TYPE_CHECKING:
@@ -23,17 +23,17 @@ PROJECT_SIBLING_SKILL_PATHS: Final[tuple[str, ...]] = (
     "./.codex/skills/",
     "./.gemini/antigravity-cli/skills/",
 )
-CODEBERG_REPO: Final[str] = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+GITHUB_REPO: Final[str] = GITHUB_REPOSITORY_URL
 ERROR_REPORTING_DISCLOSURE: Final[str] = (
     "Error reporting: Ralph Workflow sends anonymous crash data and performance metrics. "
     "No personal data is collected. See ~/.config/ralph-workflow-user.ini for details."
 )
-CODEBERG_STAR_CTA: Final[str] = (
-    f"⭐ Star {CODEBERG_REPO} so we know you're using it — "
+GITHUB_STAR_CTA: Final[str] = (
+    f"⭐ Star {GITHUB_REPO} so we know you're using it — "
     "stars drive development priority. Run `ralph star` to star from your terminal."
 )
 RUN_COMPLETION_STAR_CTA: Final[str] = (
-    f"⭐ If Ralph Workflow saved you time, star the repo: {CODEBERG_REPO}"
+    f"⭐ If Ralph Workflow saved you time, star the repo: {GITHUB_REPO}"
 )
 STARTER_PROMPT_SENTINEL: Final[str] = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"

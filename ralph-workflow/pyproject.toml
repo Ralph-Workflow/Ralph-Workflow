@@ -91,11 +91,11 @@ ralph-prompt = "ralph.cli._prompt_helper_entry:main"
 [project.urls]
 Homepage = "https://ralphworkflow.com"
 Documentation = "https://ralphworkflow.com/docs"
-Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
-Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
-Community = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues"
-"GitHub Mirror" = "https://github.com/Ralph-Workflow/Ralph-Workflow"
-Changelog = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/CHANGELOG.md"
+Repository = "https://github.com/Ralph-Workflow/Ralph-Workflow"
+Issues = "https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new"
+Community = "https://github.com/Ralph-Workflow/Ralph-Workflow/issues"
+"Codeberg Mirror" = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+Changelog = "https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/CHANGELOG.md"
 
 [tool.hatch.version]
 source = "code"

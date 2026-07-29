@@ -9,6 +9,6 @@ contact_links:
   - name: Example review bundle
     url: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/example-review-bundle.md
     about: See what a good morning-after handoff should look like before opening an issue.
-  - name: GitHub mirror
+  - name: GitHub (primary)
     url: https://github.com/Ralph-Workflow/Ralph-Workflow
-    about: PRs are accepted with the CLA gate. Please open issues on Codeberg when possible.
+    about: The primary repository and issue tracker; PRs are accepted with the CLA gate.
