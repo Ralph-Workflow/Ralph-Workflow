@@ -2489,10 +2489,10 @@ class ParallelDisplay:
             input_obj = metadata.get("input", metadata.get("args"))
             input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
             original_name = text_content
-            tool_path = str(input_dict.get("path", "") or "")
-            tool_workdir = str(input_dict.get("workdir", "") or "")
-            tool_command = str(input_dict.get("command", "") or "")
-            tool_pattern = str(input_dict.get("pattern", "") or "")
+            tool_path = strip_terminal_control(str(input_dict.get("path", "") or ""))
+            tool_workdir = strip_terminal_control(str(input_dict.get("workdir", "") or ""))
+            tool_command = strip_terminal_control(str(input_dict.get("command", "") or ""))
+            tool_pattern = strip_terminal_control(str(input_dict.get("pattern", "") or ""))
             tool_signature = (original_name, tool_path)
             # Subscriber receives the registry-rendered text so the
             # recorded line matches what the operator sees in the log.
@@ -2519,7 +2519,7 @@ class ParallelDisplay:
         # picks up the ``[see .agent/raw/unit-N.log]`` ref), and the
         # registry's default 200-cell cap would otherwise pre-truncate
         # short of ``soft_limit`` and silently bypass overflow tracking.
-        text = render_event(event, unit_id=unit_id, escape_body=False).plain
+        text = strip_terminal_control(render_event(event, unit_id=unit_id, escape_body=False).plain)
         if len(text) > self._ctx.condenser_hard_limit + 256:
             # Defensive cap: even the plain-text path must hand the
             # condenser a bounded payload, otherwise a pathologically

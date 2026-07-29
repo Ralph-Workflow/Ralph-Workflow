@@ -124,6 +124,9 @@ _RA_PREFIX: Final[str] = "ralph."
 #: stays scannable and the panel cannot grow without bound.
 _MAX_PREVIEW_LINES: Final[int] = 40
 
+#: A diff block needs one marker row and at least one source row.
+_MIN_RENDER_ROWS_FOR_BLOCK: Final[int] = 2
+
 #: Elision line shown when the content exceeds ``_MAX_PREVIEW_LINES``.
 #: Uses the Unicode horizontal-ellipsis glyph so the operator sees a
 #: clear truncation cue.
@@ -206,7 +209,7 @@ def preview_header(tool_name: str, path: str | None, *, glyphs_enabled: bool = T
     """Return the structural file-content header shown before a preview body."""
     marker = "▸" if glyphs_enabled else ">"
     bare = _normalize_tool_name(tool_name)
-    target = f"  {path}" if path else ""
+    target = f"  {strip_terminal_control(path)}" if path else ""
     return Text(f"  {marker} {bare.removesuffix('_file')}{target}", style="theme.text.emphasis")
 
 
@@ -237,12 +240,12 @@ def preview_record_text(
         return "", None
     marker = ">" if not glyphs_enabled else "▸"
     bare = _normalize_tool_name(tool_name)
-    target = f"  {canonical.path}" if canonical.path else ""
+    target = f"  {strip_terminal_control(canonical.path)}" if canonical.path else ""
     lines = [f"  {marker} {bare.removesuffix('_file')}{target}"]
     source_parts: list[str] = []
     for hunk in canonical.hunks:
         if hunk.label:
-            lines.append(f"  {hunk.label}")
+            lines.append(f"  {strip_terminal_control(hunk.label)}")
         for prefix, body in (("-", hunk.old_text), ("+", hunk.new_text)):
             safe = strip_terminal_control(body)
             if not safe:
@@ -465,7 +468,7 @@ def _build_multiple_read_preview(
         )
         remaining -= shown
         if preview is not None:
-            blocks.extend((Text(f"  {path}", style="theme.text.muted"), preview))
+            blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), preview))
     if omitted_total:
         blocks.append(
             _elision_text(
@@ -489,11 +492,11 @@ def _search_record_lines(content: str) -> list[str] | None:
         return None
     for match in matches:
         if isinstance(match, str):
-            lines.append(f"  {match}")
+            lines.append(f"  {strip_terminal_control(match)}")
         elif isinstance(match, dict):
             path, line, text = match.get("path"), match.get("line"), match.get("text")
             if isinstance(path, str) and isinstance(line, int) and isinstance(text, str):
-                lines.append(f"  {path}:{line:>4} {strip_terminal_control(text)}")
+                lines.append(f"  {strip_terminal_control(path)}:{line:>4} {strip_terminal_control(text)}")
     return lines
 
 
@@ -522,7 +525,7 @@ def _build_search_result_preview(
             omitted += 1
             continue
         if isinstance(match, str):
-            blocks.append(Text(f"  {match}", style="theme.text.muted"))
+            blocks.append(Text(f"  {strip_terminal_control(match)}", style="theme.text.muted"))
             continue
         if not isinstance(match, dict):
             continue
@@ -532,11 +535,11 @@ def _build_search_result_preview(
         safe = strip_terminal_control(text)
         binary = _binary_note(safe)
         if binary is not None:
-            blocks.extend((Text(f"  {path}", style="theme.text.muted"), binary))
+            blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), binary))
             continue
         syntax = _make_syntax(
             safe,
-            lexer_for_path(path, safe),
+            lexer_for_path(strip_terminal_control(path), safe),
             is_markdown=False,
             terminal_bg_is_light=terminal_bg_is_light,
             start_line=line,
@@ -548,7 +551,7 @@ def _build_search_result_preview(
                 (1, start + len(pattern)),
                 style_before=False
             )
-        blocks.extend((Text(f"  {path}", style="theme.text.muted"), syntax))
+        blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), syntax))
     if omitted:
         blocks.append(
             _elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref)
@@ -596,15 +599,17 @@ def _build_edit_preview(
     if not source_blocks:
         return None
     blocks: list[RenderableType] = []
-    remaining_lines = _MAX_PREVIEW_LINES
+    # Reserve one row for the shared elision marker when this preview overflows.
+    remaining_lines = _MAX_PREVIEW_LINES - 1
     remaining_blocks = source_blocks
     total_omitted = 0
     for edit, old_safe, new_safe in safe_edits:
         if not old_safe and not new_safe:
             continue
         label = edit.get("label")
-        if isinstance(label, str) and label:
-            blocks.append(Text(f"  {label}", style="theme.text.muted"))
+        if isinstance(label, str) and label and remaining_lines > 0:
+            blocks.append(Text(f"  {strip_terminal_control(label)}", style="theme.text.muted"))
+            remaining_lines -= 1
         start_line_obj = edit.get("start_line")
         start_line = (
             start_line_obj
@@ -613,26 +618,29 @@ def _build_edit_preview(
             and start_line_obj > 0
             else 1
         )
-        if start_line_obj != start_line:
+        if start_line_obj != start_line and remaining_lines > 0:
             blocks.append(Text("  (snippet)", style="theme.text.muted"))
+            remaining_lines -= 1
         for marker, source, style in (("-", old_safe, old_style), ("+", new_safe, new_style)):
             if not source:
                 continue
-            allocation = max(1, remaining_lines // remaining_blocks)
+            source_lines = len(source.splitlines())
+            if remaining_lines < _MIN_RENDER_ROWS_FOR_BLOCK:
+                total_omitted += source_lines
+                remaining_blocks -= 1
+                continue
+            allocation = min(remaining_lines - 1, max(1, remaining_lines // remaining_blocks))
             head, tail, omitted = _safe_lines(source, max_lines=allocation)
-            remaining_lines -= len(head) + len(tail)
+            shown = len(head) + len(tail)
+            remaining_lines -= shown + 1  # marker plus syntax rows
             remaining_blocks -= 1
             total_omitted += omitted or 0
-            body = "\n".join(head)
             blocks.append(
                 Group(
                     Text(marker, style=style),
                     _make_syntax(
-                        body,
-                        lexer_name,
-                        is_markdown=is_markdown,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=start_line,
+                        "\n".join(head), lexer_name, is_markdown=is_markdown,
+                        terminal_bg_is_light=terminal_bg_is_light, start_line=start_line,
                     ),
                 )
             )
@@ -640,11 +648,8 @@ def _build_edit_preview(
                 tail_start = start_line + len(head) + (omitted or 0)
                 blocks.append(
                     _make_syntax(
-                        "\n".join(tail),
-                        lexer_name,
-                        is_markdown=is_markdown,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=tail_start,
+                        "\n".join(tail), lexer_name, is_markdown=is_markdown,
+                        terminal_bg_is_light=terminal_bg_is_light, start_line=tail_start,
                     )
                 )
     if total_omitted:
@@ -684,18 +689,44 @@ def _build_content_preview(
     hunks = list(re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", content, re.MULTILINE))
     if is_diff and hunks:
         blocks: list[RenderableType] = []
+        remaining = _MAX_PREVIEW_LINES - 1
+        omitted_total = 0
         for index, hunk in enumerate(hunks):
-            header_start = 0 if index == 0 else hunk.start()
-            header = content[header_start : hunk.end()].rstrip("\n")
             body_end = hunks[index + 1].start() if index + 1 < len(hunks) else len(content)
-            body = content[hunk.end() : body_end].strip("\n")
+            body = strip_terminal_control(content[hunk.end() : body_end].strip("\n"))
+            body_lines = body.splitlines()
+            if remaining <= 1:
+                omitted_total += len(body_lines)
+                continue
+            header_start = 0 if index == 0 else hunk.start()
+            header = strip_terminal_control(content[header_start : hunk.end()].rstrip("\n"))
             blocks.append(Text(header, style="theme.text.muted"))
-            preview = _build_write_preview(
-                bare, preview_path, body, width=width, terminal_bg_is_light=terminal_bg_is_light,
-                overflow_ref=overflow_ref, glyphs_enabled=glyphs_enabled, start_line=int(hunk.group(1)),
+            remaining -= 1
+            shown = min(len(body_lines), remaining)
+            head, tail, omitted = _safe_lines(body, max_lines=shown)
+            omitted_total += omitted or 0
+            if head:
+                blocks.append(
+                    _make_syntax(
+                        "\n".join(head), lexer_for_path(preview_path, body), is_markdown=False,
+                        terminal_bg_is_light=terminal_bg_is_light, start_line=int(hunk.group(1)),
+                    )
+                )
+            if tail:
+                blocks.append(
+                    _make_syntax(
+                        "\n".join(tail), lexer_for_path(preview_path, body), is_markdown=False,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=int(hunk.group(1)) + len(head) + (omitted or 0),
+                    )
+                )
+            remaining -= len(head) + len(tail)
+        if omitted_total:
+            blocks.append(
+                _elision_text(
+                    omitted_total, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref
+                )
             )
-            if preview is not None:
-                blocks.append(preview)
         return Group(*blocks) if blocks else None
     preview_start = start_line if isinstance(start_line, int) and start_line > 0 else 1
     preview = _build_write_preview(
