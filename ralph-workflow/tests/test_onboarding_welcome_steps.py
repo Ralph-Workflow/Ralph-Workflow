@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ralph.config.bootstrap import resolve_global_config_dir
 from ralph.onboarding import (
     PROJECT_CANONICAL_SKILLS_PATH,
@@ -66,6 +68,16 @@ def test_next_steps_name_global_agent_chains_config() -> None:
         output = "\n".join(steps)
         assert "[agent_chains]" in output
         assert str(expected_path) in output
+
+
+def test_welcome_panel_next_steps_rejects_invalid_config_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-001: dynamic bootstrap attributes are checked before invocation."""
+    monkeypatch.setattr("ralph.config.bootstrap.resolve_global_config_dir", object())
+
+    with pytest.raises(RuntimeError, match="resolve_global_config_dir"):
+        welcome_panel_next_steps()
 
 
 def test_welcome_panel_next_steps_lead_with_first_run_path() -> None:

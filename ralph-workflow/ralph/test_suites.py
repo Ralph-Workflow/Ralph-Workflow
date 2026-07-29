@@ -106,22 +106,10 @@ _MIN_PYTEST_WORKERS = 8
 # below to stay below the per-test 1 s SIGALRM contention
 # threshold.
 _MAX_PYTEST_WORKERS = 24
-# DA-003 (wt-028-display P1 / AC-08 / S-13): the auto-resolution
-# target. On a 12-core host, picking only ``cpu_count`` workers
-# leaves the slowest shard at ~56 s wall clock (the immutable
-# 60 s budget does not survive the +1 s drain + +3 s collection
-# margin). 1.5x oversubscription up to ``_MAX_PYTEST_WORKERS``
-# gives 18 workers on a 12-core host; the slowest shard drops to
-# ~30-40 s wall clock (well under the 60 s budget with >15 s of
-# margin for variance). The 1.5x oversubscription is acceptable
-# because the heavy AST-scanning tests like
-# ``test_status_bar_single_owner`` (0.54 s alone) have to share
-# CPUs with neighbors on this host: under 1.5x oversubscription
-# (18 workers on 12 cores) the wall-clock push is ~1.5x, so
-# 0.54 s CPU becomes ~0.81 s wall — safely under the 1 s
-# SIGALRM cap; the 1.17x and 1.33x tiers gave straggler shards
-# that exceeded the cumulative 60 s budget on this host.
-_AUTO_WORKER_OVERSCRIPTION = 1.5
+# Two workers per core reaches the existing 24-worker cap on a 12-core
+# host. The 18-worker profile exceeded the immutable deadline during shard
+# teardown, while the 24-worker cap leaves enough room for that drain.
+_AUTO_WORKER_OVERSCRIPTION = 2.0
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -300,19 +288,9 @@ def _pytest_workers() -> str:
         cores = multiprocessing.cpu_count()
     except Exception:
         return str(_MIN_PYTEST_WORKERS)
-    # DA-003 (wt-028-display P1 / AC-08 / S-13): the auto-resolution
-    # targets ``cpu_count * 1.5`` (capped at ``_MAX_PYTEST_WORKERS``)
-    # instead of plain ``cpu_count``. On a 12-core host, 12 workers
-    # leave the slowest shard at ~56 s wall clock (the immutable
-    # 60 s budget does not survive +1 s drain + +3 s collection
-    # margin); 18 workers (1.5x oversubscription) cut per-shard
-    # collection and bind the slowest shard at ~30-40 s wall clock
-    # (well under the 60 s budget with >15 s of margin for variance).
-    # The 1.5x ratio stays just under the per-test 1 s SIGALRM
-    # contention threshold (the test suite contains heavy
-    # AST-scanning tests like ``test_status_bar_single_owner``
-    # that take 0.54 s of CPU alone and become ~0.81 s wall under
-    # 1.5x oversubscription, still under the 1 s cap).
+    # The 18-worker profile on a 12-core host exceeded the immutable
+    # deadline during shard teardown. Two workers per core reaches the
+    # existing 24-worker cap and leaves room for that drain.
     target = int(cores * _AUTO_WORKER_OVERSCRIPTION)
     return str(min(max(target, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
 

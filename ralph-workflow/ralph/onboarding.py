@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast
 from ralph.project_urls import GETTING_STARTED_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
 
@@ -77,9 +77,13 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
     )
 
 
-@runtime_checkable
 class _GlobalConfigDirResolver(Protocol):
     def __call__(self) -> Path: ...
+
+
+def _is_global_config_dir_resolver(value: object) -> TypeGuard[_GlobalConfigDirResolver]:
+    """Return whether a bootstrap export can resolve the global config directory."""
+    return callable(value)
 
 
 def _global_main_config_path() -> Path:
@@ -87,8 +91,9 @@ def _global_main_config_path() -> Path:
     bootstrap = import_module("ralph.config.bootstrap")
     namespace = cast("dict[str, object]", bootstrap.__dict__)
     resolver = namespace.get("resolve_global_config_dir")
-    if not isinstance(resolver, _GlobalConfigDirResolver):
-        raise RuntimeError("ralph.config.bootstrap has no global config directory resolver")
+    if not _is_global_config_dir_resolver(resolver):
+        msg = "ralph.config.bootstrap.resolve_global_config_dir must be callable"
+        raise RuntimeError(msg)
     return resolver() / "ralph-workflow.toml"
 
 
