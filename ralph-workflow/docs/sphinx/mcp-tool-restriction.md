@@ -88,7 +88,7 @@ Reference: https://platform.openai.com/docs/codex
 
 The latest v1.1.8 live smoke observed AGY create its requested file and show
 parser/tool activity without a permission prompt, but it did not submit
-`smoke_test_result` or write the durable completion sentinel. Ralph reports the
+`smoke_test_result` or write the durable completion sentinel. Ralph Workflow reports the
 missing canonical artifact and completion evidence as a nonzero smoke failure;
 end-to-end AGY artifact submission is not yet proven. When submission succeeds,
 direct MCP submission and markdown fallback promotion both validate to the same

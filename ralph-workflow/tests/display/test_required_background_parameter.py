@@ -68,15 +68,20 @@ def _violations(tree: ast.AST) -> list[str]:
     return sorted(violations)
 
 
+_DISPLAY = Path(__file__).parents[2] / "ralph" / "display"
+_BACKGROUND_PARAMETER_VIOLATIONS = [
+    f"{path.relative_to(_DISPLAY)}:{violation}"
+    for path in _DISPLAY.glob("*.py")
+    for violation in _violations(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+]
+
+
 def test_s1_color_builders_require_resolved_background() -> None:
     """AC-C7: AST discovery catches future colour paths without a hardcoded list."""
-    display = Path(__file__).parents[2] / "ralph" / "display"
-    violations = [
-        f"{path.relative_to(display)}:{violation}"
-        for path in display.glob("*.py")
-        for violation in _violations(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
-    ]
-    assert not violations, f"colour builders need required terminal_bg_is_light: {violations}"
+    assert not _BACKGROUND_PARAMETER_VIOLATIONS, (
+        "colour builders need required terminal_bg_is_light: "
+        f"{_BACKGROUND_PARAMETER_VIOLATIONS}"
+    )
 
 
 def test_s1_guard_regression_rejects_defaulted_background_on_renderable_constructor() -> None:
