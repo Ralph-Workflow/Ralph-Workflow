@@ -147,12 +147,19 @@ def test_invoke_wires_process_monitor_for_transport(
         AgentTransport.AGY,
     ],
 )
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_discovery_strategy_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """Non-OpenCode transports get NullDiscoveryStrategy (consolidated)."""
+    """Non-OpenCode transports get NullDiscoveryStrategy (consolidated).
+
+    The six invoke-path cases share process-startup work; under full xdist load
+    that occasionally exceeds the default one-second test cap. This registered
+    per-test override matches the neighboring invoke wiring coverage without
+    changing the immutable combined verification budget.
+    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
