@@ -113,31 +113,8 @@ from ralph.display.theme import (
 if TYPE_CHECKING:
     from rich.console import RenderableType
 
-#: Bare tool names that produce a content preview. The MCP prefix
-#: ``mcp__ralph__`` and the alias prefix ``ralph.`` are stripped
-#: before the lookup so ``mcp__ralph__write_file`` and
-#: ``ralph.write_file`` both resolve to ``write_file``.
-CONTENT_EDIT_TOOLS: Final[frozenset[str]] = frozenset(
-    {
-        "edit_file",
-        "write_file",
-        "append_file",
-        "ralph_edit_md_artifact",
-        "ralph_stage_md_artifact",
-        "ralph_submit_md_artifact",
-        "read_file",
-        "read_multiple_files",
-        "grep_files",
-        "search_files",
-        "git_diff",
-        "git_show",
-        "git_log",
-    }
-)
-
-#: MCP and alias prefixes stripped from a tool name before the
-#: ``CONTENT_EDIT_TOOLS`` lookup. Order matters: the longer
-#: ``mcp__ralph__`` prefix is checked first.
+#: MCP and alias prefixes stripped from a tool name. Order matters: the
+#: longer ``mcp__ralph__`` prefix is checked first.
 _MCP_RALPH_PREFIX: Final[str] = "mcp__ralph__"
 _RA_PREFIX: Final[str] = "ralph."
 
@@ -273,7 +250,10 @@ def preview_record_text(
             for number, line in enumerate(safe.splitlines(), start):
                 lines.append(f"{prefix} {number:>4} {line}")
     content = canonical.content
-    if isinstance(content, str) and _normalize_tool_name(tool_name) in {"grep_files", "search_files"}:
+    if isinstance(content, str) and _normalize_tool_name(tool_name) in {
+        "grep_files",
+        "search_files",
+    }:
         search_lines = _search_record_lines(content)
         if search_lines is not None:
             source_parts.extend(search_lines)
@@ -281,7 +261,9 @@ def preview_record_text(
             omitted = len(search_lines) - _MAX_PREVIEW_LINES
             if omitted > 0:
                 citation = f" [see {overflow_ref}]" if overflow_ref else ""
-                lines.append(f"{'...' if not glyphs_enabled else _ELISION_GLYPH} ({omitted} more lines){citation}")
+                lines.append(
+                    f"{'...' if not glyphs_enabled else _ELISION_GLYPH} ({omitted} more lines){citation}"
+                )
     elif isinstance(content, str) and content:
         safe = strip_terminal_control(content)
         source_parts.append(safe)
@@ -290,7 +272,10 @@ def preview_record_text(
             lines.append(f"  {number:>4} {line}")
     full_source = "\n".join(source_parts) or None
     visible_source_lines = sum(part.count("\n") + 1 for part in source_parts)
-    if visible_source_lines > _MAX_PREVIEW_LINES and _normalize_tool_name(tool_name) not in {"grep_files", "search_files"}:
+    if visible_source_lines > _MAX_PREVIEW_LINES and _normalize_tool_name(tool_name) not in {
+        "grep_files",
+        "search_files",
+    }:
         omitted = visible_source_lines - _MAX_PREVIEW_LINES
         citation = f" [see {overflow_ref}]" if overflow_ref else ""
         lines = lines[: _MAX_PREVIEW_LINES + 1]
@@ -467,16 +452,24 @@ def _build_multiple_read_preview(
         if shown <= 0:
             continue
         preview = _build_write_preview(
-            "read_multiple_files", path, body, width=width,
+            "read_multiple_files",
+            path,
+            body,
+            width=width,
             terminal_bg_is_light=terminal_bg_is_light,
             start_line=line_start if isinstance(line_start, int) and line_start > 0 else 1,
-            glyphs_enabled=glyphs_enabled, max_lines=shown,
+            glyphs_enabled=glyphs_enabled,
+            max_lines=shown,
         )
         remaining -= shown
         if preview is not None:
             blocks.extend((Text(f"  {path}", style="theme.text.muted"), preview))
     if omitted_total:
-        blocks.append(_elision_text(omitted_total, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref))
+        blocks.append(
+            _elision_text(
+                omitted_total, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref
+            )
+        )
     return Group(*blocks) if blocks else None
 
 
@@ -550,7 +543,9 @@ def _build_search_result_preview(
             syntax.stylize_range("theme.text.emphasis", (0, start), (0, start + len(pattern)))
         blocks.extend((Text(f"  {path}", style="theme.text.muted"), syntax))
     if omitted:
-        blocks.append(_elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref))
+        blocks.append(
+            _elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref)
+        )
     return Group(*blocks) if blocks else None
 
 
@@ -646,7 +641,11 @@ def _build_edit_preview(
                     )
                 )
     if total_omitted:
-        blocks.append(_elision_text(total_omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref))
+        blocks.append(
+            _elision_text(
+                total_omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref
+            )
+        )
     return Group(*blocks)
 
 
@@ -744,8 +743,11 @@ def build_edit_preview(
         )
     if isinstance(content_obj, str) and bare == "read_multiple_files":
         return _build_multiple_read_preview(
-            content_obj, width=width, terminal_bg_is_light=terminal_bg_is_light,
-            glyphs_enabled=glyphs_enabled, overflow_ref=overflow_ref,
+            content_obj,
+            width=width,
+            terminal_bg_is_light=terminal_bg_is_light,
+            glyphs_enabled=glyphs_enabled,
+            overflow_ref=overflow_ref,
         )
     if isinstance(content_obj, str) and content_obj:
         preview_path = path

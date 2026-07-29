@@ -13,10 +13,8 @@ from pygments.token import (
 )
 from pygments.token import Text as PygmentsText
 from rich.syntax import PygmentsSyntaxTheme, Syntax
-from rich.text import Text
 
 from ralph.display import theme
-from ralph.display._tool_result_syntax import append_tool_result_syntax
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.theme import (
     IDENTITY_PALETTE,
@@ -83,19 +81,33 @@ def test_syntax_palette_is_contrast_safe_and_cvd_distinct_from_semantic_roles(
     )
     assert isinstance(syntax._theme, PygmentsSyntaxTheme)
     colors = {
-        str(token): f"#{color.get_truecolor().red:02X}{color.get_truecolor().green:02X}{color.get_truecolor().blue:02X}"
+        str(
+            token
+        ): f"#{color.get_truecolor().red:02X}{color.get_truecolor().green:02X}{color.get_truecolor().blue:02X}"
         for token in _TOKEN_ROLES
         if (color := syntax._theme.get_style_for_token(tuple(str(token).split(".")[1:])).color)
         is not None
     }
     assert len(colors) == len(_TOKEN_ROLES)
-    backgrounds = ("#FFFFFF",) if terminal_bg_is_light is True else (
-        ("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF")
+    backgrounds = (
+        ("#FFFFFF",)
+        if terminal_bg_is_light is True
+        else (("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF"))
     )
-    assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values() for background in backgrounds)
+    assert all(
+        contrast_ratio(color, background) >= 4.5
+        for color in colors.values()
+        for background in backgrounds
+    )
 
-    identities = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light is True else (
-        theme.IDENTITY_PALETTE_ON_UNKNOWN_BG if terminal_bg_is_light is None else IDENTITY_PALETTE
+    identities = (
+        IDENTITY_PALETTE_ON_LIGHT_BG
+        if terminal_bg_is_light is True
+        else (
+            theme.IDENTITY_PALETTE_ON_UNKNOWN_BG
+            if terminal_bg_is_light is None
+            else IDENTITY_PALETTE
+        )
     )
     semantic_colors = (*identities, *theme._status_role_hexes())
     for matrix in _CVD_MATRICES:
@@ -117,23 +129,27 @@ def test_syntax_palette_fallback_tokens_are_contrast_safe(
         theme=syntax_theme_for_background(terminal_bg_is_light),
         background_color=SYNTAX_BACKGROUND_TRANSPARENT,
     )
-    backgrounds = ("#FFFFFF",) if terminal_bg_is_light is True else (
-        ("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF")
+    backgrounds = (
+        ("#FFFFFF",)
+        if terminal_bg_is_light is True
+        else (("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF"))
     )
     for token in _FALLBACK_TOKEN_ROLES:
         color = syntax._theme.get_style_for_token(tuple(str(token).split(".")[1:])).color
         assert color is not None
         hex_color = f"#{color.get_truecolor().red:02X}{color.get_truecolor().green:02X}{color.get_truecolor().blue:02X}"
-        assert all(contrast_ratio(hex_color, background) >= 4.5 for background in backgrounds), token
+        assert all(contrast_ratio(hex_color, background) >= 4.5 for background in backgrounds), (
+            token
+        )
 
 
-def test_tool_result_syntax_uses_the_same_transparent_palette_contract() -> None:
-    """S-3: recognized result payloads cannot paint a conflicting background."""
-    text = Text()
-    assert append_tool_result_syntax(
-        text,
-        '{"result": 1}',
-        "mcp__ralph__read_file",
+def test_result_preview_uses_the_same_transparent_palette_contract() -> None:
+    """S-2: result previews use the shared safe palette without a fill."""
+    preview = build_edit_preview(
+        "read_file",
+        {"path": "result.json", "content": '{"result": 1}'},
+        width=80,
         terminal_bg_is_light=False,
     )
-    assert text.plain.rstrip("\n") == '{"result": 1}'
+    assert isinstance(preview, Syntax)
+    assert preview.background_color == SYNTAX_BACKGROUND_TRANSPARENT

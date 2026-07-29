@@ -153,6 +153,8 @@ from ralph.display.phase_status import (
     format_elapsed_seconds,
     format_transition_context_items,
 )
+from ralph.display.presented_entry import outcome_is_failure
+from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
@@ -569,7 +571,9 @@ class ParallelDisplay:
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}  # bounded-accumulator-ok
+        self._last_emitted_tool_signature: dict[
+            str, tuple[str, str, str]
+        ] = {}  # bounded-accumulator-ok
         # S-13 (wt-028-display P1 / AC-02 / AC-03): cross-kind
         # identical-content dedup at the rendered-record seam. The
         # ``pi`` agent (and others) can emit a ``text:`` event and a
@@ -991,12 +995,20 @@ class ParallelDisplay:
         # ``_STREAMING_KINDS`` branch; ``tool_use`` / ``status`` /
         # ``raw`` / ``progress`` are not body-bearing lines and
         # may legitimately carry no body, so they are excluded.
-        if kind in {"text", "thinking", "error", "tool_result"} and not sanitized.strip():
+        if (
+            kind in {"text", "thinking", "error", "tool_result"}
+            and not sanitized.strip()
+            and opts.record_body is None
+        ):
             return
 
         if kind == "tool_use" and opts.tool_signature is not None:
             tool_name, tool_path = opts.tool_signature
-            self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
+            self._last_emitted_tool_signature[unit_id] = (
+                tool_name,
+                tool_path,
+                str((opts.activity_metadata or {}).get("pattern", "") or ""),
+            )
 
         self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
 
@@ -1759,7 +1771,7 @@ class ParallelDisplay:
         if not is_repeat and snapshot.active_tool and snapshot.active_path:
             tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
-                last_tool, last_path = tool_sig
+                last_tool, last_path, _last_pattern = tool_sig
                 if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
                     return []
 
@@ -1982,6 +1994,38 @@ class ParallelDisplay:
             tool_name = tool_name or previous[0]
             path = previous[1]
         return tool_name.removeprefix("mcp__ralph__").removeprefix("ralph."), path
+
+    def _result_preview_input(
+        self, unit_id: str, metadata: dict[str, object], content: str
+    ) -> tuple[str, dict[str, object], bool]:
+        """Build a correlated result envelope and report whether it is previewable."""
+        tool_name, path = self._result_preview_target(unit_id, metadata)
+        payload: dict[str, object] = {
+            "path": path,
+            "content": content,
+            "line_start": metadata.get("line_start", metadata.get("offset", 1)),
+        }
+        preview_input: dict[str, object] = {"input": payload}
+        if tool_name in {"grep_files", "search_files"}:
+            previous = self._last_emitted_tool_signature.get(unit_id)
+            if previous is not None:
+                payload["pattern"] = previous[2]
+        return (
+            tool_name,
+            preview_input,
+            payload_from_tool_event(tool_name, preview_input) is not None,
+        )
+
+    def _emit_activity_preview(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        tool_name: str,
+        preview_input: dict[str, object],
+        timestamp: str,
+    ) -> None:
+        """Print a tool-use or recognized successful result preview."""
+        self._emit_file_preview(unit_id, kind, tool_name, preview_input, timestamp)
 
     def _emit_file_preview(
         self,
@@ -2520,6 +2564,17 @@ class ParallelDisplay:
         # fragment. The close path formats the joined passage itself via
         # ``_build_line`` so per-fragment formatting must be skipped here.
         content_for_emit = text_content if kind.value in _STREAMING_KINDS else visible
+        result_preview_tool_name = ""
+        result_preview_input: dict[str, object] = {}
+        previewed_result = kind is ActivityEventKind.TOOL_RESULT and not outcome_is_failure(
+            metadata
+        )
+        if previewed_result:
+            result_preview_tool_name, result_preview_input, previewed_result = (
+                self._result_preview_input(unit_id, metadata, text_content)
+            )
+            if previewed_result:
+                content_for_emit = f"↳ {result_preview_tool_name}"
 
         # S-7 (wt-028-display P1): SUBAGENT_PROGRESS is a watchdog-side
         # companion event. The audit trail (rendered record writer below)
@@ -2535,7 +2590,13 @@ class ParallelDisplay:
             # parser-kind identifier). For streaming kinds we keep the
             # raw fragment text so the close path can join the buffered
             # passage without the registry's per-fragment chrome.
-            body_text_for_wrap = text_content if kind.value in _STREAMING_KINDS else visible
+            body_text_for_wrap = (
+                content_for_emit
+                if previewed_result
+                else text_content
+                if kind.value in _STREAMING_KINDS
+                else visible
+            )
             # DA-002 (S-12 / AC-07): the canonical ``PresentedEntry``
             # hierarchy data drives the live log's hanging-indent
             # continuation column. The record writer already consumes
@@ -2563,16 +2624,9 @@ class ParallelDisplay:
             )
             record_preview_tool_name = text_content
             record_preview_input: dict[str, object] = metadata
-            if kind is ActivityEventKind.TOOL_RESULT:
-                result_tool_name, result_path = self._result_preview_target(unit_id, metadata)
-                record_preview_tool_name = result_tool_name
-                record_preview_input = {
-                    "input": {
-                        "path": result_path,
-                        "content": text_content,
-                        "line_start": metadata.get("line_start", metadata.get("offset", 1)),
-                    }
-                }
+            if previewed_result:
+                record_preview_tool_name = result_preview_tool_name
+                record_preview_input = result_preview_input
             self.emit_activity_line(
                 unit_id,
                 kind.value,
@@ -2594,7 +2648,9 @@ class ParallelDisplay:
                             glyphs_enabled=self._ctx.glyphs_enabled,
                         )[0]
                         or None
-                    ) if kind in {ActivityEventKind.TOOL_USE, ActivityEventKind.TOOL_RESULT} else None,
+                    )
+                    if kind in {ActivityEventKind.TOOL_USE, ActivityEventKind.TOOL_RESULT}
+                    else None,
                 ),
                 # DA-003 (wt-028-display): forward the
                 # source-event timestamp so the rendered record
@@ -2612,34 +2668,13 @@ class ParallelDisplay:
                 body_text=body_text_for_wrap,
             )
 
-            # wt-046-syntax (P0 / AC-01..AC-05): after the registry-rendered
-            # one-line TOOL_USE header above, surface a syntax-highlighted
-            # preview of the file content the agent is editing. The preview
-            # is purely additive: the header line is byte-identical to the
-            # existing baseline and the preview is gated on (a) the kind
-            # being TOOL_USE (so non-content events never print a preview),
-            # (b) the quiet-mode flag (so single-line / machine-friendly
-            # runs stay clean), and (c) a successful ``build_edit_preview``
-            # call (so non-edit tools and empty payloads cleanly skip).
-            # ``contextlib.suppress(Exception)`` wraps the print so a
-            # pygments / rich renderable failure cannot break the live
-            # display path (R-3) -- the header line is the canonical
-            # surface and must survive even when the preview cannot.
-            preview_tool_name = text_content
-            preview_input: dict[str, object] = metadata
-            if kind is ActivityEventKind.TOOL_RESULT:
-                result_tool_name, result_path = self._result_preview_target(unit_id, metadata)
-                preview_tool_name = result_tool_name
-                preview_input = {
-                    "input": {
-                        "path": result_path,
-                        "content": text_content,
-                        "line_start": metadata.get("line_start", metadata.get("offset", 1)),
-                    }
-                }
-            if kind is ActivityEventKind.TOOL_USE:
-                self._emit_file_preview(
-                    unit_id, kind, preview_tool_name, preview_input, entry_timestamp
+            if kind is ActivityEventKind.TOOL_USE or previewed_result:
+                self._emit_activity_preview(
+                    unit_id,
+                    kind,
+                    result_preview_tool_name if previewed_result else text_content,
+                    result_preview_input if previewed_result else metadata,
+                    entry_timestamp,
                 )
 
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
@@ -4335,7 +4370,9 @@ class ParallelDisplay:
             for label, entry in managed_rows:
                 if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
                     status_text = Text("OK", style="theme.status.success")
-                elif label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED:
+                elif (
+                    label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED
+                ):
                     status_text = Text(
                         DOCS_MCP_NOT_INSTALLED_MESSAGE,
                         style="theme.status.warning",

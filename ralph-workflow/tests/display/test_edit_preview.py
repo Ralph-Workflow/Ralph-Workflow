@@ -41,13 +41,12 @@ from rich.syntax import Syntax
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.edit_preview import (
-    CONTENT_EDIT_TOOLS,
+    build_edit_preview as _build_edit_preview,
+)
+from ralph.display.edit_preview import (
     preview_header,
     preview_record_text,
     render_markdown_preview,
-)
-from ralph.display.edit_preview import (
-    build_edit_preview as _build_edit_preview,
 )
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.parallel_display import ParallelDisplay
@@ -73,11 +72,13 @@ def build_edit_preview(
         glyphs_enabled=glyphs_enabled,
     )
 
+
 def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx), buf
+
 
 def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
@@ -85,9 +86,11 @@ def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx, is_quiet=True), buf
 
+
 # ---------------------------------------------------------------------------
 # 1. Non-edit tools return None
 # ---------------------------------------------------------------------------
+
 
 def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
     """Commands without file content do not produce a preview."""
@@ -95,6 +98,7 @@ def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
         assert build_edit_preview(name, {"path": "a.py"}, width=80) is None, (
             f"{name!r} must not produce a preview"
         )
+
 
 def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     """Read results get the same file-content preview as writes (S-3)."""
@@ -105,6 +109,7 @@ def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     )
     assert isinstance(preview, Syntax)
     assert preview.lexer.name == "Python"
+
 
 def test_build_edit_preview_returns_none_for_empty_payload() -> None:
     """Empty input_dict or empty content returns None."""
@@ -627,8 +632,8 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
     assert "+" in output and "-" in output
 
 
-def test_parallel_display_tool_result_read_file_stays_one_result_entry() -> None:
-    """A read result stays one live entry; its content is not re-emitted as a preview."""
+def test_parallel_display_regression_read_result_is_highlighted_once() -> None:
+    """S-2: a successful read result reaches the live preview seam exactly once."""
     pd, buf = _make_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
@@ -642,15 +647,13 @@ def test_parallel_display_tool_result_read_file_stays_one_result_entry() -> None
     )
     pd.stop()
     output = buf.getvalue()
-    lines = [line for line in output.splitlines() if line.strip()]
-    assert len(lines) == 2
-    assert "read_file" in lines[0]
-    assert "def render" in output
-    assert "return 1" in output
+    assert "ralph/display/status_bar.py" in output
+    assert output.count("def render") == 1
+    assert output.count("return 1") == 1
 
 
-def test_parallel_display_tool_result_read_multiple_files_stays_one_entry() -> None:
-    """A multi-file result is one live entry rather than a repeated preview block."""
+def test_parallel_display_read_multiple_files_result_uses_per_file_preview() -> None:
+    """S-2: a multi-file result prints separately labelled file blocks once."""
     pd, buf = _make_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
@@ -660,11 +663,26 @@ def test_parallel_display_tool_result_read_multiple_files_stays_one_entry() -> N
     )
     pd.stop()
     output = buf.getvalue()
-    lines = [line for line in output.splitlines() if line.strip()]
-    assert len(lines) == 2
-    assert "read_multiple_files" in lines[0]
-    assert "a.py" in output
-    assert "settings.yaml" in output
+    assert output.count("a.py") == 1
+    assert output.count("settings.yaml") == 1
+    assert output.count("x = 1") == 1
+    assert output.count("key: value") == 1
+
+
+def test_parallel_display_exec_diff_result_uses_diff_preview() -> None:
+    """S-2: exec output is previewed only when it is a unified diff."""
+    pd, buf = _make_display()
+    pd.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="@@ -1 +1 @@\n-old\n+new\n",
+        metadata={"tool_name": "exec", "exit_code": 0},
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert output.count("@@ -1 +1 @@") == 1
+    assert output.count("-old") == 1
+    assert output.count("+new") == 1
 
 
 def test_parallel_display_records_plain_preview_and_uses_ascii_fallback(tmp_path: Path) -> None:
@@ -971,21 +989,3 @@ def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None
 # ---------------------------------------------------------------------------
 # Toolset sanity check: the bare names match the plan.
 # ---------------------------------------------------------------------------
-
-
-def test_content_edit_tools_set_includes_all_required_bare_names() -> None:
-    """The public ``CONTENT_EDIT_TOOLS`` set covers every content-edit tool
-    named in the plan (write_file / append_file / edit_file plus the three
-    artifact tools). The MCP-prefix normalisation is exercised in
-    ``test_build_edit_preview_returns_none_for_non_edit_tools``."""
-    expected = {
-        "edit_file",
-        "write_file",
-        "append_file",
-        "ralph_edit_md_artifact",
-        "ralph_stage_md_artifact",
-        "ralph_submit_md_artifact",
-    }
-    assert expected <= CONTENT_EDIT_TOOLS, (
-        f"missing tools in CONTENT_EDIT_TOOLS: {expected - CONTENT_EDIT_TOOLS}"
-    )

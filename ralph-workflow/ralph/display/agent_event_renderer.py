@@ -64,7 +64,6 @@ from ralph.display._channel_prefix_stripper import (
     _PARSER_CHANNEL_PREFIXES_SPACELESS,
     strip_parser_channel_prefix,
 )
-from ralph.display._tool_result_syntax import append_tool_result_syntax
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
@@ -461,17 +460,9 @@ def _append_tool_result_body(
     ctx: DisplayContext | None,
     escape_body: bool,
 ) -> None:
-    """Append a result body, adding decorative syntax spans only when appropriate."""
-    if ctx is None or ctx.console.no_color:
-        _append_body_with_unit(text, body, unit_id, body_style, ctx=ctx, escape_body=escape_body)
-        return
-    prefix, remainder = _split_body_with_unit(body, unit_id)
-    if prefix:
-        text.append(escape(prefix) if escape_body else prefix, style=_identity_style_for(unit_id, ctx=ctx))
-    if not append_tool_result_syntax(
-        text, remainder, tool_name, terminal_bg_is_light=ctx.terminal_background_is_light
-    ):
-        text.append(escape(remainder) if escape_body else remainder, style=body_style)
+    """Append a result body with its established identity and status carriers."""
+    del tool_name
+    _append_body_with_unit(text, body, unit_id, body_style, ctx=ctx, escape_body=escape_body)
 
 
 def _render_tool_result_event(

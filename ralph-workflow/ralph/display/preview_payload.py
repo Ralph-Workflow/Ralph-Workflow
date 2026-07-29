@@ -103,8 +103,16 @@ def _patch_hunks(patch: str) -> tuple[_PreviewHunk, ...]:
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(patch)
         body = patch[match.end() : end]
-        old = "\n".join(line[1:] for line in body.splitlines() if line.startswith("-") and not line.startswith("---"))
-        new = "\n".join(line[1:] for line in body.splitlines() if line.startswith("+") and not line.startswith("+++"))
+        old = "\n".join(
+            line[1:]
+            for line in body.splitlines()
+            if line.startswith("-") and not line.startswith("---")
+        )
+        new = "\n".join(
+            line[1:]
+            for line in body.splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        )
         start = int(match.group("new"))
         hunks.append(_PreviewHunk(old, new, start, f"hunk {index + 1} (line {start})"))
     return tuple(hunks)
@@ -113,31 +121,47 @@ def _patch_hunks(patch: str) -> tuple[_PreviewHunk, ...]:
 def _edit_hunks(payload: dict[str, object], *, multiple: bool) -> tuple[_PreviewHunk, ...]:
     """Normalize one replacement or the documented ordered ``edits`` list."""
     edits = payload.get("edits")
-    items: tuple[object, ...] = tuple(edits) if isinstance(edits, list) else (() if multiple else (payload,))
+    items: tuple[object, ...] = (
+        tuple(edits) if isinstance(edits, list) else (() if multiple else (payload,))
+    )
     hunks: list[_PreviewHunk] = []
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
             continue
         old = item.get("oldText", item.get("old_string", ""))
         new = item.get("newText", item.get("new_string", ""))
-        hunks.append(_PreviewHunk(
-            old if isinstance(old, str) else "",
-            new if isinstance(new, str) else "",
-            _line(item.get("start_line", item.get("line_start"))),
-            f"edit {index}" if multiple else None,
-        ))
+        hunks.append(
+            _PreviewHunk(
+                old if isinstance(old, str) else "",
+                new if isinstance(new, str) else "",
+                _line(item.get("start_line", item.get("line_start"))),
+                f"edit {index}" if multiple else None,
+            )
+        )
     return tuple(hunks)
 
 
-def _content_payload(operation: PreviewOperation, path: str | None, payload: dict[str, object]) -> _PreviewPayload:
+def _content_payload(
+    operation: PreviewOperation, path: str | None, payload: dict[str, object]
+) -> _PreviewPayload:
     content = payload.get("content")
-    return _PreviewPayload(path, None, operation, content=content if isinstance(content, str) else None, start_line=_line(payload.get("line_start")))
+    return _PreviewPayload(
+        path,
+        None,
+        operation,
+        content=content if isinstance(content, str) else None,
+        start_line=_line(payload.get("line_start")),
+    )
 
 
 def _notebook_payload(path: str | None, payload: dict[str, object]) -> _PreviewPayload:
     source = payload.get("new_source", payload.get("content", payload.get("source")))
     language = payload.get("kernel", payload.get("language"))
-    hint = language if isinstance(language, str) else ("python" if path and path.endswith(".ipynb") else None)
+    hint = (
+        language
+        if isinstance(language, str)
+        else ("python" if path and path.endswith(".ipynb") else None)
+    )
     return _PreviewPayload(path, hint, "write", content=source if isinstance(source, str) else None)
 
 
@@ -160,14 +184,35 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
     bare = tool_name.removeprefix("mcp__ralph__").removeprefix("ralph.")
     path = _path(payload)
     operations: dict[str, PreviewOperation] = {
-        "read_file": "read", "read": "read", "Read": "read", "read_multiple_files": "read", "grep_files": "read",
-        "search_files": "read", "git_diff": "read", "git_show": "read", "git_log": "read",
-        "write_file": "write", "Write": "write", "append_file": "append", "Append": "append",
-        "ralph_stage_md_artifact": "write", "ralph_submit_md_artifact": "write",
+        "read_file": "read",
+        "read": "read",
+        "Read": "read",
+        "read_multiple_files": "read",
+        "grep_files": "read",
+        "search_files": "read",
+        "git_diff": "read",
+        "git_show": "read",
+        "git_log": "read",
+        "exec": "read",
+        "write_file": "write",
+        "Write": "write",
+        "append_file": "append",
+        "Append": "append",
+        "ralph_stage_md_artifact": "write",
+        "ralph_submit_md_artifact": "write",
     }
     operation = operations.get(bare)
     if operation is not None:
-        return _content_payload(operation, path, payload)
+        content = payload.get("content")
+        return (
+            _PreviewPayload(None, "diff", "read", content=content)
+            if bare == "exec"
+            and isinstance(content, str)
+            and all(marker in content for marker in ("---", "+++", "@@"))
+            else _content_payload(operation, path, payload)
+            if bare != "exec"
+            else None
+        )
     if bare in {"edit_file", "Edit", "str_replace", "ralph_edit_md_artifact"}:
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=False))
     if bare == "MultiEdit":
