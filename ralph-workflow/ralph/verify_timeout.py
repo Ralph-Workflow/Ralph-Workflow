@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult, ProcessRunOptions, run_process
+from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
 DEFAULT_TEST_TIMEOUT_SECONDS: Final = 1.0
@@ -254,6 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns the subprocess returncode, or 124 on ``SuiteTimeoutError``
     (matching the conventional ``timeout(1)`` exit code).
     """
+    sanitize_process_environment()
     suite_timeout_seconds, command = _parse_args(argv or sys.argv[1:])
     test_timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
     env = build_timeout_env(

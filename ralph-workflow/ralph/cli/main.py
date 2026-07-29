@@ -59,6 +59,7 @@ from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
 from ralph.policy.validation import validate_agent_chains_satisfiable, validate_chain_agents_on_path
+from ralph.process._spawn_env import sanitize_process_environment
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -978,6 +979,8 @@ def main(
         ``declare_complete`` on success. Bounded subprocesses are
         routed through ``ralph.process.manager``.
     """
+    sanitize_process_environment()
+
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
     counter_overrides = _parse_counter_overrides(list(counter) if counter else [])
 

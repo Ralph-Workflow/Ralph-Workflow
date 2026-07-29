@@ -88,7 +88,7 @@ class _Recorder:
         self.phases.append(phase)
         if phase == PHASE_REMEDIATION:
             self._remediation_calls += 1
-            if self.fix_on_call is not None and self._remediation_calls >= self.fix_on_call:
+            if self.fix_on_call is not None and self._remediation_calls == self.fix_on_call:
                 seed_complete_corpus(self.workspace)
             return True
         decision = self.decisions.pop(0) if self.decisions else "request_changes"

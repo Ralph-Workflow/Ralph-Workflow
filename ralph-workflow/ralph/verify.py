@@ -72,6 +72,7 @@ from ralph.executor.process import (
     ProcessRunOptions,
     run_process,
 )
+from ralph.process._spawn_env import sanitize_process_environment
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -750,6 +751,7 @@ def main(
     """
     if argv:
         raise SystemExit("ralph.verify does not accept positional arguments")
+    sanitize_process_environment()
     resolved_cwd = cwd if cwd is not None else Path(__file__).parent.parent
     return run_verify(cwd=resolved_cwd, runner=runner)
 

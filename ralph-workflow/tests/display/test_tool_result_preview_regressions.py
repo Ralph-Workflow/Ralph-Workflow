@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+import string
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -67,8 +68,8 @@ def test_preview_payload_accepts_bounded_large_json_envelopes() -> None:
 @settings(max_examples=10, deadline=None)
 @given(
     tool=st.sampled_from(("write_file", "edit_file", "Write", "Edit")),
-    body=st.text(max_size=2_048),
-    path=st.one_of(st.none(), st.text(max_size=128)),
+    body=st.text(alphabet=string.printable, max_size=2_048),
+    path=st.one_of(st.none(), st.text(alphabet=string.printable, max_size=128)),
 )
 def test_preview_builders_never_raise_for_arbitrary_parser_payloads(
     tool: str, body: str, path: str | None

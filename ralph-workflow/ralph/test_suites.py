@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import TIMEOUT_EXIT_CODE
+from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
@@ -557,6 +558,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments are rejected with ``SystemExit`` to surface silent
     misuse.
     """
+    sanitize_process_environment()
     arguments = tuple(argv or ())
     if arguments == ("--auto-integrate-e2e",):
         return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)

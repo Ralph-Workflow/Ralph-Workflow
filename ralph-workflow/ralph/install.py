@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
+from ralph.process._spawn_env import sanitize_process_environment
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -161,6 +162,7 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Install the dev build by default, or the stable build with ``--stable``."""
+    sanitize_process_environment()
     stable, version = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
 

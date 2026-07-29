@@ -45,6 +45,8 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(process): strip inherited macOS malloc stack-logging toggles at every spawn-capable entry point** — descendants no longer inherit `MallocStackLogging` noise or stack-logging overhead, while explicit child debug environments remain intact. Locked by `tests/process/test_spawn_env_sanitizer.py` and `tests/process/test_spawn_env_containment.py`.
+
 - **test(display): replay parser-native captures through the shared presentation path** — Claude, Claude Headless, Claude Interactive, Codex, OpenCode, Pi, Cursor, AGY, Nanocoder, Gemini, and generic/malformed fallback captures now pass through parser, normalizer, live display, and rendered record together. Locked by `tests/display/test_universality_replay.py`.
 
 - **fix(display): collapse duplicate pi tool-call aliases into one presentation entry** — parser aliases sharing a tool-call id now emit one shared call entry. Commit `3c7d9ef79`. Locked by `tests/display/test_record_surface_residuals.py` and `tests/display/test_real_corpus_regression.py`.

@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import sys
 
+from ralph.process._spawn_env import sanitize_process_environment
+
 
 def main() -> None:
     """Launch the interactive prompt-helper (same as `ralph --prompt-helper`)."""
+    sanitize_process_environment()
     from ralph.config.bootstrap import (
         ensure_global_agents_config,
         ensure_global_config,

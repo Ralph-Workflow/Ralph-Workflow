@@ -195,6 +195,21 @@ after the bound and the executor returns the standard
 (see
 `tests/test_executor_process.py::test_run_process_post_terminate_drain_is_bounded`).
 
+## Spawn environment hygiene
+
+Every spawn-capable process entry point must call
+`ralph.process._spawn_env.sanitize_process_environment()` before work that can
+launch descendants. This includes `[project.scripts]` targets, `__main__`
+modules, and direct `python -m` entry points that reach the process manager.
+
+The sanitizer removes inherited `MallocStackLogging` and
+`MallocStackLoggingNoCompact` once from Ralph's base environment. macOS reads
+them before Ralph starts, so this does not alter Ralph's allocator; it prevents
+children and grandchildren from paying libmalloc stack-logging overhead or
+emitting `MallocStackLogging` stderr noise. A caller that explicitly supplies
+one of these variables in a child-specific environment retains that deliberate
+debug setting.
+
 ## Transport teardown
 
 `StdioTransport.close()` (`ralph/mcp/protocol/transport.py`) joins the
