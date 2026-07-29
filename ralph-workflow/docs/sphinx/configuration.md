@@ -52,7 +52,7 @@ Ralph Workflow manages a standard config set across two scopes.
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
 | `.agent/ralph-workflow.toml` | Optional project-specific overrides for agents, chains, drains, and main settings |
 
-Run `ralph --init` to create the standard project-local support files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
+`ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create project-local config files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
 
 ## Advanced config map
 

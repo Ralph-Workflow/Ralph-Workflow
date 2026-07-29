@@ -60,6 +60,8 @@ if TYPE_CHECKING:
             self,
             config_path: Path | None = None,
             cli_overrides: dict[str, object] | None = None,
+            *,
+            workspace_scope: object | None = None,
         ) -> UnifiedConfig: ...
 
     class _AgentRegistryFactory(Protocol):
@@ -71,6 +73,7 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills.manager import SkillManager
+from ralph.workspace.scope import resolve_workspace_scope
 
 STARTER_PROMPT_SENTINEL = _STARTER_PROMPT_SENTINEL
 
@@ -199,7 +202,7 @@ def init_command(
 def _try_load_registry() -> AgentRegistry | None:
     """Attempt to load the agent registry; returns None on failure."""
     try:
-        cfg = _load_config_loader()(None, {})
+        cfg = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
         registry_type = _load_agent_registry_factory()
         return registry_type.from_config(cfg)
     except Exception as exc:

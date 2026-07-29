@@ -4262,7 +4262,10 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[capabilities]")
-            from ralph.cli._capability_summary import collect_skill_root_rows
+            from ralph.cli._capability_summary import (
+                DOCS_MCP_NOT_INSTALLED_MESSAGE,
+                collect_skill_root_rows,
+            )
             from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
             from ralph.skills._capability_status import CapabilityStatus
 
@@ -4286,6 +4289,11 @@ class ParallelDisplay:
             for label, entry in managed_rows:
                 if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
                     status_text = Text("OK", style="theme.status.success")
+                elif label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED:
+                    status_text = Text(
+                        DOCS_MCP_NOT_INSTALLED_MESSAGE,
+                        style="theme.status.warning",
+                    )
                 elif entry.update_available:
                     status_text = Text(
                         "Update available \u2014 run `ralph --init` to update",

@@ -15,6 +15,7 @@ from rich.text import Text
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
+from ralph.cli._capability_summary import DOCS_MCP_NOT_INSTALLED_MESSAGE
 from ralph.config.loader import (
     _global_config_path,
     collect_unknown_config_fields,
@@ -190,7 +191,7 @@ def _check_capability_state(*, display: object) -> bool:
         )
         last_ok = entry.last_check_ok_iso or "(never)"
         if label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED:
-            last_ok = "Optional — configure and start a docs MCP server when you need library lookup"
+            last_ok = DOCS_MCP_NOT_INSTALLED_MESSAGE
         rows.append((label, "Managed", status_text, update_text, last_ok))
     _emit_simple_table(display, "Baseline Capabilities", rows)
     return True
@@ -227,7 +228,9 @@ def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...
         table.add_column(header, style=style) if style else table.add_column(header)
     for row in rows:
         cells = list(row) + [None] * (len(headers) - len(row))
-        table.add_row(*(str(cell) if cell is not None else "-" for cell in cells[: len(headers)]))
+        table.add_row(
+            *(cell if isinstance(cell, Text) else str(cell) if cell is not None else "-" for cell in cells[: len(headers)])
+        )
     display.emit_renderable(table)
 
 

@@ -23,6 +23,8 @@ def test_chain_availability_regression_fails_before_spawn_when_every_entry_is_mi
     message = excinfo.value.message
     assert "planning" in message
     assert "codex" in message
+    assert "Install: codex:" in message
+    assert "Install: codex/pi:" not in message
     assert "https://codex.openai.com" in message
     assert "ralph-workflow.toml" in message
     assert "ralph-workflow-agents.toml" in message

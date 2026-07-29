@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands.diagnose import build_next_steps, check_agents
 from ralph.cli.main import app
 from ralph.config import bootstrap as bootstrap_module
@@ -247,6 +248,33 @@ def test_diagnose_alias_path_status_rendered_in_cli(
             f"python is on PATH but 'my-alias' row shows wrong status: {alias_line!r}\n"
             f"Full output:\n{output}"
         )
+
+
+def test_diagnose_preflight_keeps_literal_config_sections() -> None:
+    """Missing-agent preflight guidance must preserve its TOML section names."""
+    output = StringIO()
+    ctx = make_display_context(
+        console=Console(file=output, force_terminal=False, theme=RALPH_THEME, width=200), env={}
+    )
+    display = diagnose_module.resolve_active_display(None, ctx)
+    diagnose_module._emit_simple_table(
+        display,
+        "Pre-flight Validation",
+        [
+            (
+                "Policy validation",
+                diagnose_module._status_text(
+                    "Failed",
+                    "FIX: install a CLI or edit [agent_chains] in ralph-workflow.toml and "
+                    "[agents.<name>] in ralph-workflow-agents.toml.",
+                    "theme.status.error",
+                ),
+            )
+        ],
+    )
+    rendered = output.getvalue()
+    assert "[agent_chains]" in rendered
+    assert "[agents.<name>]" in rendered
 
 
 def test_diagnose_missing_agent_shows_install_link_and_config_section(

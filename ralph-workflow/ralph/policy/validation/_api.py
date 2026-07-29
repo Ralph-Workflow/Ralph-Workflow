@@ -347,7 +347,7 @@ def validate_chain_agents_on_path(
         missing = [entry for entry in entries if not is_available(entry)]
         if len(missing) == len(entries):
             install_hints = "; ".join(
-                f"{entry}: {install_url_for(entry.split('/', 1)[0]) or 'no install link available'}"
+                f"{entry.split('/', 1)[0]}: {install_url_for(entry.split('/', 1)[0]) or 'no install link available'}"
                 for entry in missing
             )
             raise PolicyValidationError(

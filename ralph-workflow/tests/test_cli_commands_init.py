@@ -64,6 +64,37 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
 
 
 @pytest.mark.timeout_seconds(3)
+def test_try_load_registry_uses_the_current_workspace_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First-run registry loading must use the workspace-aware config path."""
+    expected_scope = object()
+    received_scope: object | None = None
+
+    def fake_load_config(
+        _config_path: Path | None,
+        _overrides: dict[str, object],
+        *,
+        workspace_scope: object,
+    ) -> object:
+        nonlocal received_scope
+        received_scope = workspace_scope
+        return object()
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: object) -> object:
+            return object()
+
+    monkeypatch.setattr(init_module, "resolve_workspace_scope", lambda: expected_scope)
+    monkeypatch.setattr(init_module, "_load_config_loader", lambda: fake_load_config)
+    monkeypatch.setattr(init_module, "_load_agent_registry_factory", lambda: FakeRegistry)
+
+    assert init_module._try_load_registry() is not None
+    assert received_scope is expected_scope
+
+
+@pytest.mark.timeout_seconds(3)
 def test_init_command_calls_ensure_baseline_capabilities(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
