@@ -120,3 +120,25 @@ def test_cleanup_codex_homes_keeps_lifetime_cap_evictions_on_disk(tmp_path: Path
         codex_module._allocated_codex_homes = original_deque
         codex_module._all_allocated_codex_homes = original_set
         codex_module._ALL_CODEX_HOMES_CAP = original_cap
+
+
+def test_cleanup_codex_homes_reaps_fifo_evicted_orphans(tmp_path: Path) -> None:
+    """DA-004: atexit cleanup must reap homes evicted from the FIFO registry."""
+    original_deque = codex_module._allocated_codex_homes
+    original_set = codex_module._all_allocated_codex_homes
+    codex_module._allocated_codex_homes = collections.deque(maxlen=2)
+    codex_module._all_allocated_codex_homes = set()
+    try:
+        dirs = [_allocate_codex_home_dir(workspace_path=tmp_path) for _ in range(4)]
+
+        assert len(codex_module._allocated_codex_homes) == 2
+        assert len(codex_module._all_allocated_codex_homes) == 4
+
+        cleanup_codex_homes()
+
+        assert all(not directory.exists() for directory in dirs)
+        assert list(codex_module._allocated_codex_homes) == []
+        assert codex_module._all_allocated_codex_homes == set()
+    finally:
+        codex_module._allocated_codex_homes = original_deque
+        codex_module._all_allocated_codex_homes = original_set

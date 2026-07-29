@@ -231,11 +231,11 @@ class ClaudeInteractiveTranscriptParser:
     thinking-status variant needed a dedicated pattern.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS) -> None:
         self.session_id: str | None = None
         self._last_emitted_signature: tuple[str, str, object] | None = None
         self._buffer = BoundedTextBuffer(
-            max_chars=DEFAULT_MAX_BUFFER_CHARS, label="claude_interactive_transcript"
+            max_chars=max_buffer_chars, label="claude_interactive_transcript"
         )
         self._current_content_mode: str | None = None
 

@@ -786,8 +786,9 @@ _AUDIT_SUBSTRINGS: tuple[str, ...] = (
     "subprocess",
     "subprocess.run(", "subprocess.call(", "subprocess.check_call(",
     "subprocess.check_output(", "subprocess.Popen(", "subprocess.getoutput(",
-    "subprocess.getstatusoutput(", "os.system(", "os.spawn", "os.posix_spawn(",
-    "os.fork(", "asyncio.create_subprocess_exec(", "asyncio.create_subprocess_shell(",
+    "subprocess.getstatusoutput(", "os.system(", "system(", "os.spawn", "spawn",
+    "os.posix_spawn(", "posix_spawn(", "os.fork(", "fork(",
+    "asyncio.create_subprocess_exec(", "asyncio.create_subprocess_shell(",
     # accumulator constructors (contract 4) — alias-resolved
     # call patterns. The bare ``=[]`` / ``={}`` / ``[]`` / ``{}``
     # literal patterns are also included: a file that lacks every

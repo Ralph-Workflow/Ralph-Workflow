@@ -176,6 +176,8 @@ class PtyLineReader:
         ctx: _AgentRunCtx,
         clock: Clock,
         extras: _PtyExtras | None,
+        *,
+        max_pending_chars: int = DEFAULT_MAX_BUFFER_CHARS,
     ) -> None:
         _extras = extras or _PtyExtras()
         self._handle = handle
@@ -188,6 +190,7 @@ class PtyLineReader:
             "Path | None", getattr(ctx, "workspace_path", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         self._clock = clock
+        self._max_pending_chars = max_pending_chars
         self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
@@ -515,7 +518,7 @@ class PtyLineReader:
             if not chunk:
                 break
             pending += decoder.decode(chunk)
-            pending = clamp_tail(pending, max_chars=DEFAULT_MAX_BUFFER_CHARS)
+            pending = clamp_tail(pending, max_chars=self._max_pending_chars)
             completed, pending = _split_complete_vt_lines(pending)
             if completed:
                 with self._lines_lock:
@@ -553,7 +556,7 @@ class PtyLineReader:
                 if chunk is None:
                     break
                 pending += decoder.decode(chunk)
-                pending = clamp_tail(pending, max_chars=DEFAULT_MAX_BUFFER_CHARS)
+                pending = clamp_tail(pending, max_chars=self._max_pending_chars)
                 completed, pending = _split_complete_vt_lines(pending)
                 if completed:
                     with self._lines_lock:

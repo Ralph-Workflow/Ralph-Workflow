@@ -43,6 +43,17 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(agents): bound Claude text accumulators and partial transcript/PTY tails** — preserves healthy streams while retaining only bounded tails. Locked by `tests/test_bounded_text_buffer.py`, `tests/test_text_accumulator_bound.py`, `tests/test_claude_interactive_transcript_buffer_bound.py`, and `tests/test_pty_line_reader_pending_bound.py`.
+- **fix(mcp): bound saturated dispatch waits at the modeled deadline** — caller threads return saturation on timeout and queued work is cancelled. Locked by `tests/test_mcp_saturated_dispatch_bounded_result.py`.
+- **fix(mcp): unlink failed exec spill files** — write errors no longer orphan mkstemp output. Locked by `tests/test_tool_exec_large_output_spill.py`.
+- **fix(mcp): unlink standalone session metadata when spawn fails** — failed bridge startup leaves no session JSON behind. Locked by `tests/test_mcp_lifecycle_session_file_cleanup.py`.
+- **fix(diagnostics): route mdutil through ProcessManager** — filesystem probes now share tracked child teardown. Locked by `tests/test_fs_health_process_manager.py`.
+- **fix(codex): cap outstanding home atexit tracking** — registry eviction never deletes active directories. Locked by `tests/integration/test_codex_home_cap_eviction.py`.
+- **fix(artifacts): skip redundant RunStateDB schema initialization** — existing databases use the schema version guard. Locked by `tests/test_state_db_schema_guard.py`.
+- **fix(audits): detect unbounded Future results and direct child spawns** — lifecycle regressions now fail verification. Locked by `tests/test_audit_mcp_timeout.py` and `tests/test_audit_resource_lifecycle.py`.
+
 ### Documentation
 
 - **docs(lifecycle): record bounded text, dispatch, file, child-process, Codex-home, and schema-init fixes with Future-result and direct-child-spawn audit contracts** — lifecycle guidance now states the shipped caps, caller-release limitation, and explicit upstream-pooling non-goal. Locked by `tests/test_audit_mcp_timeout.py` and `tests/test_audit_resource_lifecycle.py`.

@@ -858,3 +858,14 @@ def test_direct_subprocess_spawn_marker_suppresses(tmp_path: Path) -> None:
 
 def test_process_manager_spawn_is_clean(tmp_path: Path) -> None:
     assert not _audit(tmp_path, "get_process_manager().spawn(['x'])\n")
+
+
+def test_from_os_import_spawn_forms_are_flagged(tmp_path: Path) -> None:
+    """DA-005: the fast pre-filter must admit from-imported os spawn calls."""
+    for source in (
+        "from os import system\nsystem('x')\n",
+        "from os import fork\nfork()\n",
+        "from os import posix_spawn\nposix_spawn('x', [], {})\n",
+    ):
+        violations = _audit(tmp_path, source)
+        assert any(_category(item) == "direct_child_spawn" for item in violations)
