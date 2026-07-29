@@ -997,7 +997,7 @@ class ParallelDisplay:
             input_obj = metadata.get("input", metadata.get("args"))
             input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
             pattern = input_dict.get("pattern", metadata.get("pattern", ""))
-            line_start = input_dict.get("line_start", input_dict.get("offset"))
+            line_start = input_dict.get("line_start")
             self._last_emitted_tool_signature[unit_id] = (
                 tool_name,
                 tool_path,
@@ -1999,7 +1999,7 @@ class ParallelDisplay:
         tool_name, path = self._result_preview_target(unit_id, metadata)
         previous = self._last_emitted_tool_signature.get(unit_id)
         correlated_start = previous[3] if previous is not None else None
-        result_start = metadata.get("line_start", metadata.get("offset"))
+        result_start = metadata.get("line_start")
         result_content: object = content
         if tool_name == "read_file":
             with contextlib.suppress(ValueError):
@@ -2016,6 +2016,7 @@ class ParallelDisplay:
             "path": path,
             "content": result_content,
             "line_start": result_start if isinstance(result_start, int) else correlated_start or 1,
+            "is_snippet": bool(result_start is None and correlated_start is None),
         }
         preview_input: dict[str, object] = {"input": payload}
         if tool_name in {"grep_files", "search_files"}:
@@ -4164,9 +4165,9 @@ class ParallelDisplay:
         *,
         indent: bool = False,
     ) -> None:
-        del style_phase, indent
+        del indent
         self._console.print()
-        self._console.print(Rule(title))
+        self._console.print(Rule(title, style=_phase_style(style_phase)))
         self._console.print(
             render_markdown_preview(
                 body,
@@ -4174,7 +4175,7 @@ class ParallelDisplay:
                 terminal_bg_is_light=self._terminal_bg_is_light,
             )
         )
-        self._console.print(Rule())
+        self._console.print(Rule(style=_phase_style(style_phase)))
 
     # -- Welcome-banner, first-run-panel, table, capability-summary, status -
 

@@ -40,6 +40,7 @@ class _PreviewPayload:
     hunks: tuple[_PreviewHunk, ...] = ()
     content: str | None = None
     start_line: int | None = None
+    is_snippet: bool = False
 
 
 def _json_value(value: str) -> object:
@@ -154,6 +155,7 @@ def _content_payload(
         operation,
         content=content if isinstance(content, str) else None,
         start_line=_line(payload.get("line_start")),
+        is_snippet=bool(payload.get("is_snippet", False)),
     )
 
 

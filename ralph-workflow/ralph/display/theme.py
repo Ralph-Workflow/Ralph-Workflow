@@ -720,7 +720,8 @@ def _markdown_styles(default: str, accent: str, link: str, url: str, bullet: str
         "markdown.table.header": f"bold {default}", "markdown.block_quote": accent,
         "markdown.link": f"underline {link}", "markdown.link_url": url,
         **{f"markdown.h{level}": f"bold {accent}" for level in range(1, 7)},
-        "markdown.item.bullet": bullet, "markdown.hr": rule,
+        "markdown.item.bullet": bullet, "markdown.item.number": bullet,
+        "markdown.list": bullet, "markdown.kbd": f"bold {accent}", "markdown.hr": rule,
     }
 
 

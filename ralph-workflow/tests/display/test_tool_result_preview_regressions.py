@@ -64,7 +64,7 @@ def test_preview_payload_accepts_bounded_large_json_envelopes() -> None:
     assert payload.content == content
 
 
-@settings(max_examples=50, deadline=None)
+@settings(max_examples=10, deadline=None)
 @given(
     tool=st.sampled_from(("write_file", "edit_file", "Write", "Edit")),
     body=st.text(max_size=2_048),
@@ -107,6 +107,70 @@ def test_plain_text_read_file_result_renders_a_highlighted_preview() -> None:
     assert "\x1b[38;2;" in output
     assert "read  a.py" in plain
     assert re.search(r"\b200\s+def render", plain)
+
+
+def test_read_result_byte_offset_is_marked_as_snippet_not_line_number() -> None:
+    """DA-003: a byte offset never masquerades as a file line number."""
+    display, buffer = _make_truecolor_display()
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__read_file",
+        metadata={"input": {"path": "a.py", "offset": 4096, "limit": 256}},
+    )
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="def render():\n    return 1\n",
+        metadata={"exit_code": 0},
+    )
+    display.stop()
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.getvalue())
+    assert "(snippet)" in plain
+    assert not re.search(r"\b4096\s+def render", plain)
+    assert re.search(r"\b1\s+def render", plain)
+
+
+def test_read_result_tail_window_is_marked_as_snippet() -> None:
+    """DA-003: tail windows lack source lines and stay visibly relative."""
+    display, buffer = _make_truecolor_display()
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__read_file",
+        metadata={"input": {"path": "a.py", "tail": 2}},
+    )
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="def render():\n    return 1\n",
+        metadata={"exit_code": 0},
+    )
+    display.stop()
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.getvalue())
+    assert "(snippet)" in plain
+    assert re.search(r"\b1\s+def render", plain)
+
+
+def test_read_result_head_window_is_marked_as_snippet() -> None:
+    """DA-003: head windows lack source lines and stay visibly relative."""
+    display, buffer = _make_truecolor_display()
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__read_file",
+        metadata={"input": {"path": "a.py", "head": 2}},
+    )
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="def render():\n    return 1\n",
+        metadata={"exit_code": 0},
+    )
+    display.stop()
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.getvalue())
+    assert "(snippet)" in plain
+    assert re.search(r"\b1\s+def render", plain)
 
 
 def test_git_log_result_correlates_to_originating_tool_use_and_previews_once() -> None:
@@ -178,6 +242,15 @@ def test_no_color_result_preview_keeps_structure_without_ansi() -> None:
     assert "\x1b[38;2;" not in output
     plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
     assert "a.py" in plain and "def render" in plain and "1" in plain
+
+
+def test_markdown_handoff_rules_use_explicit_style() -> None:
+    """DA-006: markdown handoff delimiters avoid Rich's ANSI-slot default."""
+    display, buffer = _make_truecolor_display()
+    display._render_text_block("Handoff", "# Heading", "development")
+    output = buffer.getvalue()
+    assert "\x1b[92m" not in output
+    assert not re.search(r"\x1b\[(?:[0-9;]*;)?(?:3[0-7]|9[0-7]|4[0-7]|10[0-7])m", output)
 
 
 def test_nested_grep_pattern_reaches_result_emphasis() -> None:

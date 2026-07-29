@@ -58,6 +58,9 @@ _NAMES: Final[dict[str, str]] = {
 _BINARY_SUFFIXES: Final[tuple[str, ...]] = (
     ".zip", ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".gz", ".wasm",
 )
+_TEMPLATE_SUFFIXES: Final[tuple[str, ...]] = (
+    ".template", ".mustache", ".jinja", ".tmpl", ".j2", ".hbs",
+)
 
 
 def _suffix_length(item: tuple[str, str]) -> int:
@@ -110,6 +113,13 @@ def _infer_uncached(filename: str, prefix: str) -> str:
         lexer = "text"
     if not lexer:
         lexer = next((alias for suffix, alias in _SUFFIXES_BY_LENGTH if lowered.endswith(suffix)), "")
+    if not lexer:
+        inner_name = next(
+            (lowered[: -len(suffix)] for suffix in _TEMPLATE_SUFFIXES if lowered.endswith(suffix)), ""
+        )
+        lexer = next(
+            (alias for suffix, alias in _SUFFIXES_BY_LENGTH if inner_name.endswith(suffix)), ""
+        )
     if not lexer:
         lexer = _sniff(prefix)
     if not lexer:

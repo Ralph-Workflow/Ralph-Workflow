@@ -85,7 +85,8 @@ def _shapes(background: bool | None) -> dict[str, object]:
         "markdown": render_markdown_preview(
             "# Heading\n\n## Subheading\n\n*emphasis* and **strong** and `inline code`.\n\n"
             "> block quote\n\n---\n\n| left | right |\n| --- | --- |\n| one | two |\n\n"
-            "- bullet\n\n[link](https://example.com)\n\n```python\nx = 1\n```",
+            "- bullet\n1. one\n2. two\n\nPress <kbd>Ctrl</kbd>.\n\n"
+            "[link](https://example.com)\n\n```python\nx = 1\n```",
             **common,
         ),
         "tool-result": build_edit_preview(

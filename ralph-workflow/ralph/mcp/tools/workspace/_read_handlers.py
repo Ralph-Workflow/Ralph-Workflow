@@ -1008,6 +1008,8 @@ def _read_multiple_item(
         "content": content,
         "truncated": truncated,
     }
+    if line_start is not None:
+        path_payload["line_start"] = line_start
     if return_metadata:
         path_payload["content_hash"] = _hash_file(workspace, normalized)
         path_payload.update(_freshness_for_read(session))

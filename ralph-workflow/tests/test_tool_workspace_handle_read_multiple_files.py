@@ -37,6 +37,19 @@ class TestHandleReadMultipleFiles:
         assert payload["files"][0]["content"] == "content1"
         assert payload["files"][1]["content"] == "content2"
 
+    def test_line_scoped_item_reports_its_real_start_line(self) -> None:
+        ws = MagicMock()
+        ws.read_lines.return_value = ("content", {})
+
+        result = handle_read_multiple_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"items": [{"path": "file.py", "line_start": 20, "line_end": 23}]},
+        )
+
+        payload = json.loads(result.content[0].text)
+        assert payload["files"][0]["line_start"] == 20
+
     def test_partial_failure_returns_error_per_file(self) -> None:
         ws = MagicMock()
         ws.read.side_effect = ["content1", FileNotFoundError("not found")]

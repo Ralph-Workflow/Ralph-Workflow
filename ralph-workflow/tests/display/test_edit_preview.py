@@ -186,7 +186,7 @@ def test_build_edit_preview_read_multiple_files_renders_each_file_with_its_lexer
     preview = build_edit_preview(
         "read_multiple_files",
         {
-            "content": '{"files":[{"path":"a.py","content":"x = 1"},{"path":"settings.yaml","content":"key: value"}]}'
+            "content": '{"files":[{"path":"a.py","content":"x = 1","line_start":20},{"path":"settings.yaml","content":"key: value"}]}'
         },
         width=80,
     )
@@ -195,6 +195,7 @@ def test_build_edit_preview_read_multiple_files_renders_each_file_with_its_lexer
     Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
     assert "a.py" in rendered.getvalue()
     assert "settings.yaml" in rendered.getvalue()
+    assert re.search(r"\b20\s+x = 1", rendered.getvalue())
 
 
 def test_partial_read_envelope_uses_real_window_line_number() -> None:
@@ -271,6 +272,8 @@ def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None
         "component.spec.ts": "typescript",
         "styles.module.css": "css",
         "values.yaml.j2": "yaml",
+        "nginx.conf.tmpl": "ini",
+        "deploy.sh.tmpl": "bash",
         "Dockerfile": "docker",
         "CMakeLists.txt": "cmake",
         ".env.production": "bash",
