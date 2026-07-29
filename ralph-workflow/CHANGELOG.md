@@ -43,6 +43,14 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-07-29
+
+Patch release. `__version__` moved from `0.9.5` to `0.9.6` in
+`ralph/__init__.py` (the canonical version source `pyproject.toml`
+reads via `[tool.hatch.version]`), with `skills-package/package.json`
+kept in parity by `tests/test_skills_package_version_parity.py`.
+Carries the process-spawn and display fixes below.
+
 ### Changed
 
 - **fix(process): strip inherited macOS malloc stack-logging toggles at every spawn-capable entry point** — descendants no longer inherit `MallocStackLogging` noise or stack-logging overhead, while explicit child debug environments remain intact. Locked by `tests/process/test_spawn_env_sanitizer.py` and `tests/process/test_spawn_env_containment.py`.
