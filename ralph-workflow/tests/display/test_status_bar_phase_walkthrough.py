@@ -309,6 +309,21 @@ def test_remediation_push_helper_produces_correct_model(attempt: int) -> None:
     assert "Cycle" not in text.plain
 
 
+def test_remediation_push_helper_carries_live_elapsed_anchor() -> None:
+    """Remediation status models tick from the active display's run anchor."""
+    capture = _CapturingDisplay()
+    scope = WorkspaceScope(
+        root=Path("/tmp/remediation-live-anchor"),
+        allowed_roots=frozenset({Path("/tmp/remediation-live-anchor")}),
+    )
+    status_bar_module.push_remediation_status_bar(
+        capture, scope, max_attempts=3, run_started_monotonic=100.0
+    )
+    assert capture.last_model is not None
+    assert "Time 00:00" in render_status_bar(capture.last_model, _ctx(), now_monotonic=100.0).plain
+    assert "Time 10:00" in render_status_bar(capture.last_model, _ctx(), now_monotonic=700.0).plain
+
+
 def test_conflict_resolution_push_helper_produces_correct_model() -> None:
     """Drive the real ``push_conflict_status_bar`` and assert exact values.
 
@@ -346,6 +361,22 @@ def test_conflict_resolution_push_helper_produces_correct_model() -> None:
     assert "Time 1:01:01" in text.plain
     assert "Agent resolver-agent" in text.plain
     assert "Cycle" not in text.plain
+
+
+def test_conflict_resolution_push_helper_carries_live_elapsed_anchor() -> None:
+    """Conflict-resolution status models tick from the active display's run anchor."""
+    capture = _CapturingDisplay()
+    push_conflict_status_bar(
+        capture,
+        Path("/tmp/conflict-live-anchor"),
+        target="main",
+        round_index=1,
+        round_cap=3,
+        run_started_monotonic=100.0,
+    )
+    assert capture.last_model is not None
+    assert "Time 00:00" in render_status_bar(capture.last_model, _ctx(), now_monotonic=100.0).plain
+    assert "Time 10:00" in render_status_bar(capture.last_model, _ctx(), now_monotonic=700.0).plain
 
 
 def test_truncation_stability_across_widths() -> None:

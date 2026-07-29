@@ -747,6 +747,10 @@ def _dispatch_preflight_result(
     # before each remediation iteration so the footer shows
     # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
     with display:
+        anchor_value: object = getattr(display, "run_started_monotonic", None)
+        run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
+        attention_value: object = getattr(display, "watchdog_attention", None)
+        attention = attention_value if isinstance(attention_value, str) else None
 
         def _on_remediation_attempt(attempt: int) -> None:
             push_remediation_status_bar(
@@ -754,9 +758,17 @@ def _dispatch_preflight_result(
                 workspace_scope,
                 DEFAULT_MAX_REMEDIATION_ATTEMPTS,
                 attempt=attempt,
+                run_started_monotonic=run_started_monotonic,
+                attention=attention,
             )
 
-        push_remediation_status_bar(display, workspace_scope, DEFAULT_MAX_REMEDIATION_ATTEMPTS)
+        push_remediation_status_bar(
+            display,
+            workspace_scope,
+            DEFAULT_MAX_REMEDIATION_ATTEMPTS,
+            run_started_monotonic=run_started_monotonic,
+            attention=attention,
+        )
         final = run_policy_pipeline(
             workspace,
             stack,

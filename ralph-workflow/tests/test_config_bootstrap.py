@@ -6,7 +6,6 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from git import Repo
 from pathspec import GitIgnoreSpec
 
 if TYPE_CHECKING:
@@ -806,15 +805,9 @@ def test_global_template_missing_active_drain_heals_on_first_run_startup(
 # identifier ``completion_sentinel_*.json``).
 
 
-def test_ensure_local_configs_seeds_git_exclude(tmp_path: Path) -> None:
-    """``ensure_local_configs`` must seed ``.git/info/exclude`` with the canonical patterns.
-
-    Note: ``.git/info/exclude`` only lives inside an actual git repo, so this
-    test uses a real ``Repo.init``-created repo instead of a bare tmp_path.
-    """
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+def test_ensure_local_configs_seeds_git_exclude(tmp_git_repo: Path) -> None:
+    """``ensure_local_configs`` must seed ``.git/info/exclude`` with canonical patterns."""
+    repo_root = tmp_git_repo
     agent_dir = repo_root / ".agent"
 
     ensure_local_configs(agent_dir)
@@ -826,11 +819,9 @@ def test_ensure_local_configs_seeds_git_exclude(tmp_path: Path) -> None:
         assert pattern in content, f"Missing canonical exclude pattern: {pattern!r}"
 
 
-def test_ensure_local_configs_git_exclude_idempotent(tmp_path: Path) -> None:
+def test_ensure_local_configs_git_exclude_idempotent(tmp_git_repo: Path) -> None:
     """Re-running bootstrap must not duplicate any canonical exclude pattern."""
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+    repo_root = tmp_git_repo
     agent_dir = repo_root / ".agent"
 
     ensure_local_configs(agent_dir)

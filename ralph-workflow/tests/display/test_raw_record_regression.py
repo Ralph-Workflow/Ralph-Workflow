@@ -715,6 +715,25 @@ def test_production_tool_entries_state_each_identity_and_tool_once(tmp_path: Pat
     assert "Bash ok agent_event_renderer.py" in result
 
 
+def test_oversized_tool_result_emits_one_live_and_record_entry(tmp_path: Path) -> None:
+    """An oversized result has one presented entry, not a summary plus result."""
+    pd, live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="result " * 900,
+        metadata={"tool_name": "bash", "exit_code": 0},
+    )
+    pd.stop()
+
+    live_entries = [line for line in live.getvalue().splitlines() if "[result][pi]" in line]
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    assert len(live_entries) == 1
+    assert "\u21b3 summary:" not in live.getvalue()
+    assert sum("role=tool_result" in line for line in record.splitlines()) == 1
+
+
 def test_tool_result_is_one_live_row_with_consistent_failure_severity(tmp_path: Path) -> None:
     """A failed result is one FAIL row live and one error entry in the record."""
     pd, live, _advance = _make_display_with_injected_clock(tmp_path)

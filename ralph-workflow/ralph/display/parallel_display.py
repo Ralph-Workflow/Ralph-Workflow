@@ -2599,23 +2599,9 @@ class ParallelDisplay:
             overflow.append(text)
             self._check_overflow_size(unit_id, overflow)
 
-        effective_summary_line = summary_line
-        if (
-            kind is ActivityEventKind.TOOL_RESULT
-            and summary_line is None
-            and text.strip()
-            and len(text) >= self._ctx.tool_result_headline_min_chars
-        ):
-            # S-7 (wt-028-display P1): the per-event ``\u21b3 summary:``
-            # supplement line is retired. ``build_headline_or_placeholder``
-            # used to drive a duplicate ``[tool-result][u1] \u21b3 summary: <headline>``
-            # line above the actual content, which violates the
-            # one-entry-per-event contract. The tool_result's own content
-            # line is the entry; the headline is no longer surfaced here.
-            del effective_summary_line
-            effective_summary_line = None
-        else:
-            effective_summary_line = summary_line
+        # A tool result's own row is its summary. Rendering the condenser's
+        # headline as a supplement duplicates that event in the live log.
+        effective_summary_line = None if kind is ActivityEventKind.TOOL_RESULT else summary_line
 
         # S-7 (wt-028-display P1): streaming kinds must buffer raw content,
         # not the registry-rendered visible text. The registry's render_event
