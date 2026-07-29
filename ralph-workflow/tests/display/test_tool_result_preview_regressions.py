@@ -43,6 +43,28 @@ def test_unpreviewable_successful_results_keep_their_inline_body() -> None:
         assert plain.count(body) == 1
 
 
+def test_git_log_result_correlates_to_originating_tool_use_and_previews_once() -> None:
+    """S-1: the seventh read tool inherits its call identity before rendering."""
+    display, buffer = _make_truecolor_display()
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__git_log",
+        metadata={"input": {"count": 1}, "tool_call_id": "git-log-1"},
+    )
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="abc1234 Add preview coverage\n",
+        metadata={"exit_code": 0, "tool_call_id": "git-log-1"},
+    )
+    display.stop()
+    output = buffer.getvalue()
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    assert "git_log" in plain
+    assert plain.count("abc1234 Add preview coverage") == 1
+
+
 def test_nested_grep_pattern_reaches_result_emphasis() -> None:
     """DA-003: production-shaped nested tool input keeps match emphasis."""
     display, buffer = _make_truecolor_display()
