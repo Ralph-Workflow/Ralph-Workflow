@@ -53,7 +53,7 @@ Eight built-in agents ship with Ralph Workflow:
 | **Codex** | OpenAI's Codex CLI. |
 | **OpenCode** | Open-source terminal coding agent. |
 | **Nanocoder** | Local-only TUI coding agent. |
-| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`); live paid-operation verification is pending. |
+| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`), measured on v1.1.8; re-measure periodically because published IDs and flags can change. Live paid-operation verification is pending. |
 | **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>`. |
 | **Cursor** | Cursor Agent CLI (`agent`), headless `--print` mode. |
 

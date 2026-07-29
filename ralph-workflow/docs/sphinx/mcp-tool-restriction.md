@@ -91,8 +91,13 @@ Ralph Workflow has an AGY MCP integration path, but the v1.1.8 paid probe for
 live AGY reaches MCP tools, submits artifacts, declares completion, or
 preserves unattended operation. The deterministic mock exercises Ralph Workflow's harness only; it is not evidence about the AGY CLI.
 
-Run the manual paid diagnostic deliberately before relying on these paths, and
-record the result in `tmp/agy-source-of-truth.txt`.
+Until that probe is run, AGY artifacts use Ralph Workflow's supported markdown
+fallback-promotion path: write `.agent/tmp/<type>.md`, then
+`promote_fallback_artifact` promotes it to a canonical receipt. See
+[Markdown fallback promotion](../agents/artifact-submission-contract.md#markdown-fallback-promotion).
+
+Run the manual paid diagnostic deliberately before relying on live MCP paths,
+and record the result in `tmp/agy-source-of-truth.txt`.
 
 ## 3. Known Bugs and Limitations
 

@@ -189,7 +189,8 @@ signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
 As of the v1.1.8 source record, paid probes for model acceptance, effort,
 continuation, MCP/artifact submission, permission prompts, and stream-json
-progress were not run. Do not infer those behaviours from the command, a
+progress were not run. Re-measure periodically because AGY updates can change
+published IDs and flags. Do not infer those behaviours from the command, a
 published option, or a mock. The no-cost `agy agents` observation reported no
 agents on the measured installation; that is not a universal delegation claim.
 

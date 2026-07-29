@@ -40,7 +40,7 @@ phases to:
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
-| `agy`             | `agy`        | Interactive (PTY)    | Manual paid probe pending | Google's Antigravity CLI (v1.1.8 free discovery) |
+| `agy`             | `agy`        | Interactive (PTY)    | Manual paid probe pending | Google's Antigravity CLI (v1.1.8 free discovery; re-measure periodically because published IDs and flags can change) |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 

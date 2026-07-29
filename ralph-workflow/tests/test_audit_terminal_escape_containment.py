@@ -521,11 +521,16 @@ def test_audit_blocks_regression_when_logging_configure_logging_drops_console_si
     assert "sys.stderr" in captured.out
 
 
+@pytest.mark.timeout_seconds(5)
 def test_audit_blocks_regression_when_cli_configure_logging_drops_sink(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Adversarial: revert ralph.cli.main._configure_logging to raw ``sys.stderr``."""
+    """Adversarial: revert ralph.cli.main._configure_logging to raw ``sys.stderr``.
+
+    This runs the whole AST audit under parallel worker contention, so it has
+    the same five-second resource headroom as the clean-tree audit above.
+    """
     path = "cli/main.py"
 
     def _transform(src: str) -> str:
