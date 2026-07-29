@@ -2604,7 +2604,7 @@ class ParallelDisplay:
                         "line_start": metadata.get("line_start", metadata.get("offset", 1)),
                     }
                 }
-            if kind in {ActivityEventKind.TOOL_USE, ActivityEventKind.TOOL_RESULT}:
+            if kind is ActivityEventKind.TOOL_USE:
                 self._emit_file_preview(
                     unit_id, kind, preview_tool_name, preview_input, entry_timestamp
                 )

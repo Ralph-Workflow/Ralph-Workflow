@@ -211,7 +211,7 @@ def test_omitted_tool_data_renders_without_collapse() -> None:
     )
     text = render_event(event, unit_id="claude").plain
     assert "raw stdout" in text
-    assert "claude" in text
+    assert "claude" not in text
 
 
 def test_omitted_phase_renders_without_shift() -> None:

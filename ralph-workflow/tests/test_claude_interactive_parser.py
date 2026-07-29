@@ -253,7 +253,7 @@ def test_claude_interactive_activity_stream_regression_renders_tool_result() -> 
     # meaning survives color-off rendering.
     assert "◐" in tool_line
     result_line = rendered[1]
-    assert "claude/haiku" in result_line
+    assert "claude/haiku" not in result_line
     assert "prompt contents" in result_line
     # The plain-text path carries the icon (✓ for success) so the
     # meaning survives color-off rendering.

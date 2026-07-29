@@ -73,13 +73,11 @@ def build_edit_preview(
         glyphs_enabled=glyphs_enabled,
     )
 
-
 def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx), buf
-
 
 def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
@@ -87,11 +85,9 @@ def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx, is_quiet=True), buf
 
-
 # ---------------------------------------------------------------------------
 # 1. Non-edit tools return None
 # ---------------------------------------------------------------------------
-
 
 def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
     """Commands without file content do not produce a preview."""
@@ -99,7 +95,6 @@ def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
         assert build_edit_preview(name, {"path": "a.py"}, width=80) is None, (
             f"{name!r} must not produce a preview"
         )
-
 
 def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     """Read results get the same file-content preview as writes (S-3)."""
@@ -110,7 +105,6 @@ def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     )
     assert isinstance(preview, Syntax)
     assert preview.lexer.name == "Python"
-
 
 def test_build_edit_preview_returns_none_for_empty_payload() -> None:
     """Empty input_dict or empty content returns None."""
@@ -623,22 +617,18 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
     )
     pd.stop()
     output = buf.getvalue()
-    # Header line still present and byte-identical to the baseline shape.
     assert "RUN" in output, f"header missing RUN carrier:\n{output!r}"
     assert "dev-1" in output, f"header missing unit_id:\n{output!r}"
     assert "ralph.edit_file" in output, f"header missing friendly tool name:\n{output!r}"
-    # File boundary precedes preview content in the shared live presentation.
     assert "src/example.py" in output
     assert output.index("src/example.py") < output.index("def old")
-    # Preview content present.
     assert "def old" in output, f"preview missing old content:\n{output!r}"
     assert "def new" in output, f"preview missing new content:\n{output!r}"
-    # Preview carries diff markers.
     assert "+" in output and "-" in output
 
 
-def test_parallel_display_tool_result_read_file_prints_content_preview() -> None:
-    """A read result is rendered as a subordinate, syntax-aware file block (S-3)."""
+def test_parallel_display_tool_result_read_file_stays_one_result_entry() -> None:
+    """A read result stays one live entry; its content is not re-emitted as a preview."""
     pd, buf = _make_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
@@ -652,15 +642,15 @@ def test_parallel_display_tool_result_read_file_prints_content_preview() -> None
     )
     pd.stop()
     output = buf.getvalue()
-    assert "  ▸ read  ralph/display/status_bar.py" in output
-    preview_start = output.index("  ▸ read  ralph/display/status_bar.py")
-    assert preview_start < output.index("def render", preview_start)
-    assert "def render" in output, f"read preview missing content:\n{output!r}"
-    assert "return 1" in output, f"read preview missing content:\n{output!r}"
+    lines = [line for line in output.splitlines() if line.strip()]
+    assert len(lines) == 2
+    assert "read_file" in lines[0]
+    assert "def render" in output
+    assert "return 1" in output
 
 
-def test_parallel_display_tool_result_read_multiple_files_prints_each_file_preview() -> None:
-    """S-2: correlated multi-file reads render every returned path as a separate block."""
+def test_parallel_display_tool_result_read_multiple_files_stays_one_entry() -> None:
+    """A multi-file result is one live entry rather than a repeated preview block."""
     pd, buf = _make_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
@@ -670,10 +660,11 @@ def test_parallel_display_tool_result_read_multiple_files_prints_each_file_previ
     )
     pd.stop()
     output = buf.getvalue()
+    lines = [line for line in output.splitlines() if line.strip()]
+    assert len(lines) == 2
+    assert "read_multiple_files" in lines[0]
     assert "a.py" in output
     assert "settings.yaml" in output
-    assert "x = 1" in output
-    assert "key: value" in output
 
 
 def test_parallel_display_records_plain_preview_and_uses_ascii_fallback(tmp_path: Path) -> None:

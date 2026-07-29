@@ -240,6 +240,40 @@ def test_tool_result_with_is_error_metadata_uses_error_carrier() -> None:
     assert "permission denied" in rendered.plain
 
 
+def test_tool_result_exit_code_failure_uses_error_carrier() -> None:
+    """A nonzero exit code cannot disagree with the record's error severity."""
+    rendered = render_event(
+        _event(
+            ActivityEventKind.TOOL_RESULT,
+            "boom",
+            metadata={"exit_code": 1, "tool_name": "bash"},
+        ),
+        _ctx(),
+        unit_id="pi",
+    )
+    assert "FAIL" in rendered.plain
+    assert "PASS" not in rendered.plain
+
+
+def test_tool_result_body_omits_identity_when_live_chrome_owns_it() -> None:
+    """A result carries its agent identity once, in the shared chrome only."""
+    rendered = render_event(
+        _event(
+            ActivityEventKind.TOOL_RESULT,
+            "contents",
+            metadata={"tool_name": "read_file"},
+        ),
+        _ctx(),
+        unit_id="opencode",
+    )
+    assert "opencode" not in rendered.plain
+
+
+def test_error_body_omits_identity_when_live_chrome_owns_it() -> None:
+    rendered = render_event(_event(ActivityEventKind.ERROR, "boom"), _ctx(), unit_id="opencode")
+    assert "opencode" not in rendered.plain
+
+
 def test_tool_result_renders_body_unabridged() -> None:
     """TOOL_RESULT body is rendered UNABRIDGED so the caller's overflow-aware condenser sees the complete original payload.
 

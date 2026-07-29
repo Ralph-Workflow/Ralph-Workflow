@@ -71,6 +71,7 @@ from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.line_sanitizer import strip_terminal_control
+from ralph.display.presented_entry import outcome_is_failure
 from ralph.display.theme import STATUS_STYLES, identity_color
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
@@ -509,7 +510,7 @@ def _render_tool_result_event(
     group marker so the result visually nests under its paired
     tool call (AC-05 / grouping).
     """
-    is_error = _metadata_truthy(event.metadata.get("is_error"))
+    is_error = outcome_is_failure(event.metadata)
     state = "error" if is_error else "success"
     style, icon, label = _state_payload(state)
     raw_body = _normalized_event_content(event)
@@ -523,10 +524,7 @@ def _render_tool_result_event(
             # "Agent output:" lines) preserve the structured payload.
             serialised = json.dumps(result_meta, sort_keys=True, default=str)
             raw_body = f"result={serialised}"
-    if unit_id and not _has_explicit_unit_prefix(raw_body, unit_id):
-        body = _format_body_with_unit(raw_body, unit_id)
-    else:
-        body = raw_body
+    body = raw_body
     tool_ref = _tool_name_for_result(event)
     metadata = event.metadata or {}
     target = metadata.get("target")
@@ -574,7 +572,7 @@ def _render_error_event(
     body so the meaning persists with color disabled.
     """
     style, icon, label = _state_payload("error")
-    body = _format_body_with_unit(_normalized_event_content(event) or "unknown error", unit_id)
+    body = _normalized_event_content(event) or "unknown error"
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)

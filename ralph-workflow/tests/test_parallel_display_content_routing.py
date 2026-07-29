@@ -344,8 +344,8 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     )
 
 
-def test_stream_parsed_agent_activity_correlates_read_result_preview_target(tmp_path: Path) -> None:
-    """A Claude result inherits the dispatched read path and source window."""
+def test_stream_parsed_agent_activity_correlates_read_result_without_preview_duplication(tmp_path: Path) -> None:
+    """A Claude result retains its correlated content in its single result entry."""
     pd, buf = _make_display(tmp_path)
     tool_use = json.dumps(
         {
@@ -373,9 +373,9 @@ def test_stream_parsed_agent_activity_correlates_read_result_preview_target(tmp_
     )
     pd.stop()
     output = buf.getvalue()
-    assert "  ▸ read  src/example.py" in output
+    assert "read_file" in output
     assert "def render" in output
-    assert "17" in output
+    assert "src/example.py" in output
 
 
 def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:

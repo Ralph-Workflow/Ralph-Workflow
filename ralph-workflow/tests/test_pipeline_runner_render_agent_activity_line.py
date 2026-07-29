@@ -446,9 +446,8 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        # After wt-028-display the registry's cell-aware truncation owns
-        # the limit. The plain-text line must contain the body AND fit
-        # the registry's default max_chars (200 cells).
+        # Text rows retain their inline identity for compatibility; tool
+        # results instead use the shared live chrome as their sole identity.
         assert "dev" in rendered.plain
         # Total plain length stays within the registry's 200-cell cap.
         assert len(rendered.plain) <= 250  # body + icon + label + agent prefix + ts
@@ -504,10 +503,8 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        # After wt-028-display the registry owns the cell-aware truncation.
-        # The total plain line fits the registry's default cap so the
-        # scrollback stays scannable.
-        assert "dev" in rendered.plain
+        # Tool-result identity belongs to the shared live chrome, not its body.
+        assert "dev" not in rendered.plain
         assert len(rendered.plain) <= 250
 
     def test_metadata_summary_caps_total_length(self) -> None:

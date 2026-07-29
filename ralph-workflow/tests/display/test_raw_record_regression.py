@@ -607,9 +607,6 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert rendered.count("Inspecting the display.") == 1
     assert rendered.count("renderer source") == 1
     assert rendered.count("upstream disconnected") == 1
-    # S-5 / DA-003: the OpenCode wire fixture reaches the production record
-    # once per visible parser event, preserving role markers, timestamps, and
-    # tool hierarchy rather than relying on renderer-only parity coverage.
     tool_call_lines = [line for line in lines if "role=tool_call" in line]
     tool_result_lines = [line for line in lines if "role=tool_result" in line]
     assert tool_call_lines, f"OpenCode calls lost their role marker:\n{rendered}"
@@ -625,6 +622,28 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert any(line.startswith("  ") for line in lines if "role=tool_" in line)
     for forbidden in _FORBIDDEN_TOKENS:
         assert forbidden not in rendered
+
+
+def test_tool_result_is_one_live_row_with_consistent_failure_severity(tmp_path: Path) -> None:
+    """A failed result is one FAIL row live and one error entry in the record."""
+    pd, live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="path=src/file.py",
+        metadata={"tool_name": "read_file", "exit_code": 1},
+    )
+    pd.stop()
+
+    live_lines = [line for line in live.getvalue().splitlines() if line.strip()]
+    assert len(live_lines) == 1
+    assert "FAIL" in live_lines[0]
+    assert "PASS" not in live_lines[0]
+    assert live.getvalue().count("path=src/file.py") == 1
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    assert "severity=error" in record
+    assert record.count("pi") == 0
 
 
 def test_production_path_pi_fixture_one_entry_per_event_with_real_timestamps(
@@ -741,10 +760,6 @@ def test_production_path_pi_fixture_no_role_progress_duplicate(
     rendered, _live = _drive_fixture_through_production(
         "pi_ndjson.jsonl", tmp_path, unit_id="pi"
     )
-    # The real entry may carry its own ``role=reasoning`` /
-    # ``role=tool_call`` / ``role=tool_result`` marker (the
-    # structured grouping role), but the duplicate ``role=progress``
-    # echo that the pre-fix corpus produced for every event is gone.
     assert "role=progress" not in rendered, (
         f"role=progress echo leaked into record:\n{rendered}"
     )
@@ -800,13 +815,9 @@ def test_subagent_progress_companion_does_not_duplicate_record_entry(
         f"Production-path rendered record missing at {record_path}"
     )
     record_body = record_path.read_text(encoding="utf-8")
-    # The record carries the close entry for the TEXT block; the
-    # SUBAGENT_PROGRESS companion does NOT add a separate
-    # ``role=progress`` echo line.
     assert "role=progress" not in record_body, (
         f"role=progress echo leaked into record (DA-001):\n{record_body}"
     )
-    # The body appears once -- in the close entry -- not twice.
     assert record_body.count(body) == 1, (
         f"body appears {record_body.count(body)} times in record; "
         f"expected exactly 1:\n{record_body}"
@@ -971,8 +982,6 @@ def test_production_path_text_thinking_companion_deduped_on_live_and_record(
     )
     pd.stop()
 
-    # Record surface: identical-body dedup drops the cross-kind
-    # THINKING companion.
     record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
         encoding="utf-8"
     )
@@ -981,8 +990,6 @@ def test_production_path_text_thinking_companion_deduped_on_live_and_record(
         f"expected exactly 1:\n{record_body}"
     )
 
-    # Live surface: the dedup also fires at close time so the operator
-    # scrolling back sees the body once, not twice.
     live_log = buf.getvalue()
     assert live_log.count(dup_body) == 1, (
         f"DA-002: live log body appears {live_log.count(dup_body)} times; "

@@ -252,7 +252,7 @@ def _derive_severity(
     if kind is ActivityEventKind.ERROR:
         return "error"
     if kind is ActivityEventKind.TOOL_RESULT:
-        if _outcome_is_failure(metadata):
+        if outcome_is_failure(metadata):
             return "error"
         return "info"
     if kind is ActivityEventKind.UNKNOWN:
@@ -260,7 +260,7 @@ def _derive_severity(
     return "info"
 
 
-def _outcome_is_failure(metadata: dict[str, object]) -> bool:
+def outcome_is_failure(metadata: dict[str, object]) -> bool:
     """True when the tool-result outcome metadata flags a failure.
 
     Inspects the conventional parser metadata keys
@@ -335,4 +335,4 @@ _KIND_TO_GROUPING: dict[ActivityEventKind, tuple[str, int]] = {
 }
 
 
-__all__ = ["PresentedEntry", "build_presented_entry"]
+__all__ = ["PresentedEntry", "build_presented_entry", "outcome_is_failure"]
