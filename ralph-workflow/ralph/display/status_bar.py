@@ -196,7 +196,7 @@ def _safe_single_line(text: str) -> str:
 # These reflect the WORST-CASE actual label length with multi-digit
 # caps (e.g. ``Cycle 99/999`` is 12 chars; ``iter 99/999`` is 11
 # chars). The budget allocator reserves exactly these widths, so the
-# canonical form fits even at the narrowest AC-03 width (40 cols)
+# canonical form fits at the AC-03 canonical threshold (120 cols),
 # where the label MUST render (only path/phase truncation adapts to
 # width — the AC-03 invariant).
 _OUTER_DEV_LABEL_MAX_CHARS: int = 10
@@ -411,13 +411,7 @@ def _middle_truncate_path(path: str, budget: int) -> str:
     separator_budget = _ELLIPSIS_LEN + 1
     if budget >= len(last_segment) + separator_budget:
         return f".../{last_segment}"
-    if budget <= _MIN_BUDGET:
-        return last_segment[:budget]
-    tail_budget = budget - _ELLIPSIS_LEN
-    if tail_budget < len(last_segment):
-        return last_segment[:tail_budget].rstrip() + "..."
-    prefix_budget = budget - len(last_segment) - separator_budget
-    return path if prefix_budget >= last_sep else f"{path[:prefix_budget]}.../{last_segment}"
+    return _tail_truncate(last_segment, budget)
 
 
 def _tail_truncate(text: str, budget: int) -> str:
@@ -470,7 +464,7 @@ class _FieldBudgets:
     applicable outer_dev) + (any applicable inner_analysis) at every
     width where the iteration segments fit.
 
-    AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40
+    AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (120
     cols) the iteration label form is ALWAYS the canonical
     (``Cycle 1/3`` / ``iter 2/5``) form regardless of how much
     phase/path truncation is needed. Only path middle-truncation and
@@ -511,7 +505,7 @@ def _field_overhead_and_label_budgets(
 ) -> _FieldBudgets:
     """Derive width-aware budgets that always fit ``ctx.width``.
 
-    AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40 cols)
+    AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (120 cols)
     the iteration label form is ALWAYS canonical (``Cycle N/cap`` /
     ``iter N/cap``); only path middle-truncation and phase
     tail-truncation budgets adapt to width. Below the threshold the
@@ -621,11 +615,10 @@ def _field_overhead_and_label_budgets(
         include_outer: bool = True,
         include_inner: bool = True,
     ) -> int:
-        """Total chrome excluding phase + path: marker + sep + iter segments."""
+        """Total chrome excluding phase + path: marker + iter segments."""
         ml = marker_len if with_marker else 0
         return (
             ml
-            + separator_len
             + _iter_width(
                 outer_label,
                 inner_label,
@@ -673,9 +666,10 @@ def _field_overhead_and_label_budgets(
             elapsed_chrome = 0
         agent_chrome = (
             separator_len + len("Agent claude")
-            if _AGENT_FIT_THRESHOLD <= ctx.width < _CANONICAL_FIT_THRESHOLD
+            if ctx.width >= _AGENT_FIT_THRESHOLD
             else 0
         )
+        path_chrome = separator_len if ctx.width > _PATH_DROP_THRESHOLD else 0
         available = (
             ctx.width
             - _chrome(
@@ -689,6 +683,7 @@ def _field_overhead_and_label_budgets(
             - attention_chrome
             - elapsed_chrome
             - agent_chrome
+            - path_chrome
         )
         if available < _MIN_PHASE_PLUS_PATH:
             return None
@@ -1194,17 +1189,20 @@ def render_status_bar(
         if agent_label and ctx.width >= _AGENT_FIT_THRESHOLD
         else []
     )
-    optional_width = sum(len(separator) + len(label) for label in optional_segments)
-    path_budget = budgets.path_budget
-    path_budget -= (
-        optional_width
-        if ctx.width < _AGENT_FIT_THRESHOLD or ctx.width >= _CANONICAL_FIT_THRESHOLD
-        else 0
-    )
-    path_display = _middle_truncate_path(path_display, path_budget)
     phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     if ctx.width <= _PHASE_ABBREVIATE_THRESHOLD:
         phase_display = phase_display[:3]
+    # A short phase returns its unused fixed allocation to the trailing cwd.
+    path_budget = budgets.path_budget + budgets.phase_budget - len(phase_display)
+    # ``_field_overhead_and_label_budgets`` already reserves the agent
+    # segment's chrome. Do not emit a partial basename when an agent consumes
+    # that last space: cwd yields to its higher-priority neighbour.
+    last_segment = path_display.rsplit(os.sep, 1)[-1]
+    path_display = (
+        ""
+        if optional_segments and path_budget < len(last_segment) + _ELLIPSIS_LEN + 1
+        else _middle_truncate_path(path_display, path_budget)
+    )
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
@@ -1239,7 +1237,6 @@ def render_status_bar(
     # happens before the phase is appended so neighbouring segments
     # see the abbreviated form.
     text.append(phase_display, style=model.phase_style)
-    text.append(separator, style="theme.status.path_marker")
     # DA-002 (wt-028-display AC-01): render the elapsed segment with a
     # fixed-width buffer so neighbouring segments stay byte-stable
     # across the elapsed format roll-overs (mm:ss -> H:mm:ss ->
@@ -1273,7 +1270,6 @@ def render_status_bar(
                 _format_elapsed_short(_resolve_elapsed_seconds(model, now_monotonic)),
                 style="theme.status.info",
             )
-        text.append(separator, style="theme.status.path_marker")
     if render_outer_dev:
         text.append(separator, style="theme.status.path_marker")
         if budgets.render_iter_glyph:
@@ -1303,11 +1299,8 @@ def render_status_bar(
     # agent) so it is the trailing optional segment that elides /
     # drops first at narrow widths.
     _append_path_segment(text, path_display, separator, ctx.width)
-    # Final width clamp: at extremely narrow widths (1-2 cols) the
-    # phase|path separator alone exceeds the budget so the rendered text
-    # cannot fit. Truncate the rendered text to ``ctx.width`` so the
-    # ``len(text.plain) <= ctx.width`` invariant holds at every width,
-    # including widths below the iteration-visibility threshold (14 cols).
+    # Final width clamp is a defensive guard for widths below the supported
+    # floor and hostile optional alerts; normal layouts fit by allocation.
     if ctx.width < 1:
         return Text(" ")
     if len(text.plain) > ctx.width:
@@ -1363,7 +1356,7 @@ def _append_path_segment(
     drops entirely (no truncated ghost); the spec drops the path
     at the 60-col rung and abbreviates the phase label instead.
     """
-    if width > _PATH_DROP_THRESHOLD:
+    if width > _PATH_DROP_THRESHOLD and path_display:
         text.append(separator, style="theme.status.path_marker")
         text.append(path_display, style="theme.status.path")
 

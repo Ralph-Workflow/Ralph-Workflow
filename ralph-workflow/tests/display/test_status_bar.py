@@ -2161,6 +2161,45 @@ def test_status_bar_start_rolls_back_live_on_startup_failure(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/home/u/proj/ralph-workflow",
+        "/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-028-display",
+    ),
+)
+def test_status_bar_regression_middle_truncate_path_honours_every_budget(path: str) -> None:
+    """DA-001: middle truncation never exceeds its requested budget."""
+    for budget in range(1, len(path) + 5):
+        result = _status_bar_module._middle_truncate_path(path, budget)
+        assert len(result) <= budget, (
+            f"DA-001: budget={budget}, result={result!r}, path={path!r}"
+        )
+
+
+@pytest.mark.parametrize("width", range(61, 201))
+def test_status_bar_regression_path_elision_preserves_basename(width: int) -> None:
+    """DA-001/DA-002: ordinary layouts preserve the complete trailing basename."""
+    plain = render_status_bar(
+        StatusBarModel(
+            workspace_root="/home/u/proj/ralph-workflow",
+            phase_label="Development",
+            phase_style="theme.phase.development",
+            outer_dev_iteration=3,
+            outer_dev_cap=4,
+            inner_analysis=2,
+            inner_analysis_cap=5,
+            agent_name="claude",
+            elapsed_seconds=761,
+        ),
+        _make_display_context(width=width),
+        home=None,
+    ).plain
+    assert "ralph-workflow" not in plain or plain.endswith("ralph-workflow"), (
+        f"DA-001/DA-002: width={width} clipped basename: {plain!r}"
+    )
+
+
 @pytest.mark.parametrize("width", [120, 80, 60])
 @pytest.mark.parametrize(
     "attention_value",
@@ -2188,7 +2227,7 @@ def test_attention_arrival_does_not_shift_neighbours(
     )
     ctx = _make_display_context(width=width)
     healthy = render_status_bar(
-        model,
+        dataclasses.replace(model, attention=None),
         _make_display_context(width=width),
         home="/Users/alice",
     ).plain
@@ -2210,8 +2249,7 @@ def test_attention_arrival_does_not_shift_neighbours(
     )
 
 
-@pytest.mark.parametrize("elapsed_seconds", [3599, 3600, 36000, 36001])
-def test_elapsed_format_change_does_not_shift_path(elapsed_seconds: int) -> None:
+def test_elapsed_format_change_does_not_shift_path() -> None:
     """DA-002 (AC-01): the elapsed format roll-over shifts no neighbour.
 
     The elapsed display uses a fixed-width buffer (13 chars,
@@ -2227,14 +2265,17 @@ def test_elapsed_format_change_does_not_shift_path(elapsed_seconds: int) -> None
         outer_dev_cap=3,
         inner_analysis=2,
         inner_analysis_cap=5,
-        elapsed_seconds=float(elapsed_seconds),
     )
-    ctx = _make_display_context(width=120)
-    plain = render_status_bar(model, ctx, home="/Users/alice").plain
-    assert plain.find("elapsed-probe") >= 0, (
-        f"DA-002: workspace path must remain in the bar at width=120; "
-        f"plain={plain!r}, elapsed_seconds={elapsed_seconds}"
-    )
+    paths = []
+    for elapsed_seconds in (3599, 3600, 36000, 36001):
+        plain = render_status_bar(
+            dataclasses.replace(model, elapsed_seconds=float(elapsed_seconds)),
+            _make_display_context(width=120),
+            home="/Users/alice",
+        ).plain
+        paths.append(plain.find("elapsed-probe"))
+    assert all(position >= 0 for position in paths), f"DA-002: path missing: {paths!r}"
+    assert len(set(paths)) == 1, f"DA-002: elapsed rollover shifted path: {paths!r}"
 
 
 
