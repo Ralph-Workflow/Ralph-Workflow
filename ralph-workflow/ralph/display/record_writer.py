@@ -303,10 +303,10 @@ class RenderedRecordWriter:
     Lifecycle (matches the ``RawOverflowLog`` pattern: bounded
     buffer, flush interval, silent-disable on I/O error):
 
-    * ``append(entry)`` formats one entry to a plain line and
-      pushes it into a bounded ``deque(maxlen=_DEFAULT_BUFFER_CAP)``.
-      The oldest line is dropped silently when the cap is hit so a
-      chatty stream cannot exhaust the writer's memory.
+    * ``append(entry)`` formats one entry to a bounded
+      ``deque(maxlen=_DEFAULT_BUFFER_CAP)``. It flushes before the
+      deque can evict an accepted line, so a chatty stream cannot
+      exhaust memory or silently lose record entries.
     * ``flush()`` writes the buffered lines to disk under
       ``.agent/raw/<safe_id>.rendered.log`` and clears the buffer.
       Failures are caught and recorded via the optional
@@ -409,11 +409,11 @@ class RenderedRecordWriter:
         cannot collectively push the buffer past ``_DEFAULT_BUFFER_CAP``
         between the check and the flush.
         """
-        if self._disabled:
-            return
         line = _format_entry_line(entry)
         should_flush = False
         with self._lock:
+            if self._disabled:
+                return
             self._buffer.append(line)
             if len(self._buffer) >= _BUFFER_FLUSH_THRESHOLD:
                 should_flush = True
@@ -433,23 +433,24 @@ class RenderedRecordWriter:
         so the display path is never crashed by a transient disk
         error.
         """
-        if self._disabled:
-            return 0
+        error: OSError | None = None
         with self._lock:
-            if not self._buffer:
+            if self._disabled or not self._buffer:
                 return 0
             lines = list(self._buffer)
             self._buffer.clear()
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._path.open("a", encoding="utf-8") as fp:
-                fp.write("\n".join(lines))
-                fp.write("\n")
-        except OSError as exc:
-            self._disabled = True
+            try:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                with self._path.open("a", encoding="utf-8") as fp:
+                    fp.write("\n".join(lines))
+                    fp.write("\n")
+            except OSError as exc:
+                self._disabled = True
+                error = exc
+        if error is not None:
             if self._on_error is not None:
                 with contextlib.suppress(Exception):
-                    self._on_error(exc)
+                    self._on_error(error)
             return 0
         return len(lines)
 

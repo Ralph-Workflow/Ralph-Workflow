@@ -362,7 +362,9 @@ class TestVcsCommandsConstant:
 def test_unsafe_exec_large_output_spills_to_file(tmp_path: Path) -> None:
     spill_dir = tmp_path / "spill"
     spill_dir.mkdir()
-    body = "".join(f"line-{i:08d}\n" for i in range(150_000)).encode()
+    # Just over the spill threshold: enough to exercise the branch without
+    # making the default-suite regression depend on slow external storage.
+    body = "".join(f"line-{i:08d}\n" for i in range(80_000)).encode()
 
     def _run(_argv: list[str], _cwd: Path, _timeout: float | None) -> _CompletedProcessAdapter:
         return _CompletedProcessAdapter(stdout=body, stderr=b"", returncode=0)
@@ -386,7 +388,7 @@ def test_unsafe_exec_large_output_spills_to_file(tmp_path: Path) -> None:
     assert str(spilled) in content.text
     contents = spilled.read_text()
     assert "line-00000000" in contents
-    assert "line-00149999" in contents
+    assert "line-00079999" in contents
 
 
 def test_unsafe_exec_runs_via_bounded_sh_path_and_spills_truncated(tmp_path: Path) -> None:
