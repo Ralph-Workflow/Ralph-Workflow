@@ -85,10 +85,12 @@ def test_every_renderer_returns_a_rich_text() -> None:
         assert isinstance(rendered, Text)
 
 
-def test_unknown_kind_renders_with_warning_carrier() -> None:
+def test_unknown_kind_renders_with_info_carrier() -> None:
+    """DA-004: unknown input is informative, not an invented warning."""
     ctx = _ctx()
     rendered = render_event(_event(ActivityEventKind.UNKNOWN, "foo"), ctx)
-    assert "WARN" in rendered.plain or "?" in rendered.plain
+    assert "INFO" in rendered.plain
+    assert "WARN" not in rendered.plain
 
 
 # ---------------------------------------------------------------------------

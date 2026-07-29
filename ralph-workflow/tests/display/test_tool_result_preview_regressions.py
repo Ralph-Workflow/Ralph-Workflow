@@ -173,6 +173,27 @@ def test_read_result_head_window_is_marked_as_snippet() -> None:
     assert re.search(r"\b1\s+def render", plain)
 
 
+def test_tool_result_regression_preserves_traceback_lines_in_live_log() -> None:
+    """DA-003: an unpreviewable multiline result keeps source line boundaries."""
+    display, buffer = _make_truecolor_display()
+    traceback = (
+        "Traceback (most recent call last):\n"
+        '  File "x.py", line 3\n'
+        '    raise ValueError("boom")\n'
+        "ValueError: boom"
+    )
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content=traceback,
+        metadata={"tool_name": "Bash", "exit_code": 1},
+    )
+    display.stop()
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.getvalue())
+    assert any(line.endswith("ValueError: boom") for line in plain.splitlines())
+    assert any('File "x.py", line 3' in line for line in plain.splitlines())
+
+
 def test_git_log_result_correlates_to_originating_tool_use_and_previews_once() -> None:
     """S-1: the seventh read tool inherits its call identity before rendering."""
     display, buffer = _make_truecolor_display()

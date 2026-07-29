@@ -858,14 +858,21 @@ class ParallelDisplay:
         # thing that gets broken, and the surrounding chrome tokens
         # (``PASS``, ``read_file``, the result marker) are preserved
         # on the line that introduces them.
-        wrapped = textwrap.wrap(
-            body,
-            width=budget,
-            initial_indent="",
-            subsequent_indent="",
-            break_long_words=False,
-            break_on_hyphens=False,
-        )
+        wrapped = [
+            chunk
+            for line in body.split("\n")
+            for chunk in (
+                textwrap.wrap(
+                    line,
+                    width=budget,
+                    initial_indent="",
+                    subsequent_indent="",
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [line]
+            )
+        ]
         if not wrapped:
             # All chrome tokens survived but the longest one
             # overflowed the budget; allow ``break_long_words`` for

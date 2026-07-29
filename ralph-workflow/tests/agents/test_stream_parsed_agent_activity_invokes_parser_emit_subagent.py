@@ -157,20 +157,13 @@ def test_stream_parsed_agent_activity_renders_raw_content_verbatim() -> None:
         rendered_output_sink=rendered,
     )
 
-    # After wt-028-display the pipeline runner routes through the single
-    # agent-event renderer registry. The generic parser classifies a
-    # non-JSON line as ``type="raw"`` which the registry maps to
-    # ``ActivityEventKind.UNKNOWN``; the canonical renderer therefore
-    # carries the ``warning`` carrier (⚠ + ``WARN`` label) so an
-    # unrecognized parser event surfaces as something the operator
-    # notices without being mistaken for a hard failure. The body
-    # and the agent prefix still reach the operator verbatim.
+    # Unknown generic input is informational rather than an invented
+    # warning. The surrounding display owns identity chrome, so this
+    # renderer keeps only the canonical labeled body.
     assert len(rendered) == 1
-    assert "provider/model" in rendered[0]
+    assert "INFO" in rendered[0]
+    assert "WARN" not in rendered[0]
     assert "meaningful provider output" in rendered[0]
-    # Plain-text path uses the registry redundant icon + label so
-    # meaning survives color-off.
-    assert "⚠" in rendered[0] or "WARN" in rendered[0]
 
 
 def test_stream_parsed_agent_activity_does_not_invoke_sink_when_none_set(

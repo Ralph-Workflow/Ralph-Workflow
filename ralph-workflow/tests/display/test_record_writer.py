@@ -169,6 +169,18 @@ def test_writer_regression_preserves_multiline_body_with_hanging_indent(tmp_path
     assert "line one line two" not in "\n".join(lines)
 
 
+def test_writer_regression_preserves_file_indentation_blank_lines_and_diff_context(tmp_path: Path) -> None:
+    """DA-001: record continuations retain source whitespace and blank lines."""
+    writer = RenderedRecordWriter(tmp_path, "claude")
+    writer.append(_entry(body="def a():\n    return 1\n\ndef b():\n    return 2"))
+    writer.append(_entry(body="-alpha\n+beta\n gamma"))
+    writer.flush()
+    lines = writer.path.read_text(encoding="utf-8").splitlines()
+    assert "      return 1" in lines
+    assert "  " in lines
+    assert "   gamma" in lines
+
+
 def test_writer_handles_missing_optional_fields(tmp_path: Path) -> None:
     """Missing cycle / iter / phase / agent / severity are omitted (no filler)."""
     writer = RenderedRecordWriter(tmp_path, "claude")

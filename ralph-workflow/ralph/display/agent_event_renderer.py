@@ -641,8 +641,8 @@ def _render_unknown_event(
     summary is rendered instead so the operator still sees the
     key=value context.
     """
-    style, icon, label = _state_payload("warning")
-    body = _format_body_with_unit(_normalized_event_content(event), unit_id)
+    style, icon, label = _state_payload("info")
+    body = _normalized_event_content(event)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     if body:

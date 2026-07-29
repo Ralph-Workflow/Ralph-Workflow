@@ -234,18 +234,19 @@ def test_omitted_phase_renders_without_shift() -> None:
 # --- Unknown / malformed input still renders with hierarchy ---------------
 
 
-def test_unknown_event_renders_with_accessible_carrier() -> None:
-    """An unknown event still carries the icon + label carrier pair."""
+def test_unknown_event_regression_uses_canonical_info_severity_without_repeating_identity() -> None:
+    """DA-004: fallback severity and identity have one canonical owner."""
     event = _make_event(
         ActivityProvider.CLAUDE,
         ActivityEventKind.UNKNOWN,
         "no clue",
         metadata={"status": "unparsed", "phase": "scanning"},
     )
+    entry = build_presented_entry(event, unit_id="claude")
     text = render_event(event, unit_id="claude").plain
-    # The unknown-event carrier is "warning" -- icon + ASCII label.
-    assert "WARN" in text or "?" in text  # ASCII label fallback
-    # The body is preserved.
+    assert entry.severity == "info"
+    assert "WARN" not in text
+    assert text.count("claude") <= 1
     assert "no clue" in text
 
 
@@ -261,9 +262,9 @@ def test_malformed_event_renders_via_registry_fallback() -> None:
             "edge",
         )
         text = render_event(event, unit_id="claude").plain
-        # The fallback renders identity + body; never crashes.
+        # The fallback renders a labeled body; never crashes.
         assert "edge" in text
-        assert "claude" in text
+        assert "INFO" in text
     finally:
         EVENT_RENDERERS.update(original)
 

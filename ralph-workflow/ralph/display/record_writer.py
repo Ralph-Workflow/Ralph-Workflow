@@ -265,16 +265,15 @@ def _body_lines(body: object) -> tuple[str, ...]:
     if body is None:
         return ()
     text = body if isinstance(body, str) else " ".join(str(item) for item in body) if isinstance(body, Iterable) else str(body)
-    lines = tuple(
-        _ANSI_ESCAPE_RE.sub("", line.replace("\t", " ")).strip()
+    return tuple(
+        _ANSI_ESCAPE_RE.sub("", line.replace("\t", " ")).rstrip()
         for line in text.replace("\r\n", "\n").split("\n")
     )
-    return tuple(line for line in lines if line)
 
 
 def _flatten_body(body: object) -> str:
     """Return the first normalized body line for the entry header."""
-    return " ".join(_body_lines(body)[:1])
+    return _body_lines(body)[0].strip() if _body_lines(body) else ""
 
 
 class RenderedRecordWriter:
