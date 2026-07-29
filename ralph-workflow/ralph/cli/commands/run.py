@@ -258,7 +258,12 @@ def _load_configuration(
     display = resolve_active_display(None, display_context)
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        config = load_config(
+            config_path,
+            cli_overrides,
+            workspace_scope=workspace_scope,
+            unknown_field_warning=display.emit_warning,
+        )
     except Exception as e:
         logger.error("Failed to load configuration: {}", e)
         return _EXIT_CONFIG_ERROR

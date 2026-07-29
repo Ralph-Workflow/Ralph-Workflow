@@ -307,6 +307,40 @@ def test_init_label_over_existing_prompt_unknown_label_exits_nonzero(
 
 
 @pytest.mark.timeout_seconds(3)
+def test_init_rerun_without_agents_warns_with_install_and_rerun_steps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-1: re-running init must not silently leave an operator without an agent CLI."""
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.setattr(init_module, "detect_installed_agents", lambda: [])
+
+    init_module._print_fallback_next_steps(
+        tmp_path,
+        display_context=DisplayContext(
+            console=Console(file=stream, force_terminal=False, theme=RALPH_THEME),
+            theme=RALPH_THEME,
+            width=80,
+            mode="default",
+            color_enabled=True,
+            glyphs_enabled=True,
+            headline_max_chars=120,
+            condenser_soft_limit=400,
+            condenser_hard_limit=4000,
+            streaming_checkpoint_chars=4000,
+            streaming_checkpoint_fragments=20,
+            streaming_dedup_enabled=True,
+            streaming_checkpoints_enabled=True,
+            thinking_preview_min_chars=80,
+            tool_result_headline_min_chars=80,
+        ),
+    )
+
+    output = stream.getvalue()
+    assert "No agent CLIs found on PATH" in output
+    assert "https://" in output
+    assert "re-run `ralph --init`" in output
+
+
 def test_init_no_template_over_existing_prompt_stays_silent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

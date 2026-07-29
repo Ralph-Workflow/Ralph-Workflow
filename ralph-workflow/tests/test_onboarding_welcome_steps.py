@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.config.bootstrap import resolve_global_config_dir
 from ralph.onboarding import (
     PROJECT_CANONICAL_SKILLS_PATH,
     PROJECT_SIBLING_SKILL_PATHS,
@@ -56,6 +57,15 @@ def test_welcome_panel_next_steps_lists_opencode_skills_exactly_once() -> None:
         f"Expected exactly one occurrence of {PROJECT_CANONICAL_SKILLS_PATH!r}, "
         f"got {output.count(PROJECT_CANONICAL_SKILLS_PATH)}"
     )
+
+
+def test_next_steps_name_global_agent_chains_config() -> None:
+    """S-1: model guidance names the exact global config and section to edit."""
+    expected_path = resolve_global_config_dir() / "ralph-workflow.toml"
+    for steps in (welcome_panel_next_steps(), fallback_next_steps()):
+        output = "\n".join(steps)
+        assert "[agent_chains]" in output
+        assert str(expected_path) in output
 
 
 def test_welcome_panel_next_steps_lead_with_first_run_path() -> None:

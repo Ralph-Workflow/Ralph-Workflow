@@ -383,11 +383,10 @@ def _warn_and_remove_retired_auto_integrate_keys(data: dict[str, object]) -> Non
 
 def _warn_reserved_provider_fallback(data: dict[str, object]) -> None:
     """Explain the legacy knob when a user actually sets it."""
-    provider_fallback = data.get("provider_fallback")
-    if provider_fallback:
+    if "provider_fallback" in data:
         logger.warning(
-            "`general.provider_fallback` is reserved and read by nothing; agent fallback "
-            "lives in [agent_chains] as an ordered fallback list."
+            "`general.provider_fallback` is accepted but read by nothing and never will be — "
+            "delete it; agent fallback lives in [agent_chains] as an ordered fallback list."
         )
 
 
@@ -402,6 +401,7 @@ def load_config(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
     workspace_scope: WorkspaceScope | None = None,
+    unknown_field_warning: Callable[[str], None] | None = None,
 ) -> UnifiedConfig:
     """Build merged UnifiedConfig from all layers.
 
@@ -464,11 +464,17 @@ def load_config(
             _warn_reserved_provider_fallback(general_layer)
         propagated_entries[index] = (propagated_path, converted_entry)
         propagated_data = deep_merge(propagated_data, converted_entry)
-    warn_unknown_fields(agents_data, agents_path)
-    warn_unknown_fields(global_data, _global_config_path())
-    for propagated_path, propagated_path_data in propagated_entries:
-        warn_unknown_fields(propagated_path_data, propagated_path)
-    warn_unknown_fields(local_data, local_path)
+    warning_layers = [
+        (agents_data, agents_path),
+        (global_data, _global_config_path()),
+        *((data, path) for path, data in propagated_entries),
+        (local_data, local_path),
+    ]
+    for layer_data, layer_path in warning_layers:
+        warn_unknown_fields(layer_data, layer_path)
+        if unknown_field_warning is not None:
+            for warning in collect_unknown_config_fields(layer_data, layer_path):
+                unknown_field_warning(warning)
 
     # Merge: agents -> global -> propagated -> local. The agents file sits
     # lowest so an [agents.*] table still present in an operator's existing

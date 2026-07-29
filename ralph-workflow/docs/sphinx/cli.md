@@ -37,7 +37,7 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. It creates `.gitignore` only in a git repo. Use `--init-local-config` only when this repo needs project-local overrides. |
+| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. Labels: `feature-spec`, `guardrail` (or `bug-fix`), `refactor`, `test-coverage`, `docs`. It creates `.gitignore` only in a git repo. Use `--init-local-config` only when this repo needs project-local overrides. |
 | `--force-init-skills` | | `False` | Re-run baseline skill installation (user-global + project-scope) and exit. Pairs with `--init` for an explicit re-init; standalone forces the recheck path on a normal `ralph` run. |
 | `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
 | `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |

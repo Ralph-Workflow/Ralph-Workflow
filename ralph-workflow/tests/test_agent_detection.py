@@ -90,5 +90,5 @@ def test_autowire_chains_regression_preserves_user_customized_chains(
     config.write_text(customized, encoding="utf-8")
     monkeypatch.setattr("ralph.config.agent_detection.shutil.which", lambda _: None)
 
-    assert autowire_chains_to_detected_agent(config, detected=["codex"]) is None
+    assert autowire_chains_to_detected_agent(config, detected=["codex"]) == "chains-customized"
     assert config.read_text(encoding="utf-8") == customized

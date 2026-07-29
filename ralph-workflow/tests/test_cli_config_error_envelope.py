@@ -11,13 +11,18 @@ from __future__ import annotations
 
 import contextlib
 import sys
+from io import StringIO
 
 import pytest
 from loguru import logger as _loguru_logger
+from rich.console import Console
 from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.main import app
 from ralph.config.loader import ConfigTomlError
+from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.display.theme import RALPH_THEME
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -52,6 +57,34 @@ def captured_stderr() -> None:
     finally:
         with contextlib.suppress(ValueError):
             _loguru_logger.remove(handler_id)
+
+
+def test_run_configuration_typo_emits_visible_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S-4: a valid config typo is visible at run start, not only in logs."""
+    from ralph.cli.commands import run as run_module
+
+    stream = StringIO()
+    context = make_display_context(
+        console=Console(file=stream, force_terminal=False, theme=RALPH_THEME), env={}
+    )
+
+    def fake_load_config(*_args: object, **kwargs: object) -> UnifiedConfig:
+        callback = kwargs["unknown_field_warning"]
+        assert callable(callback)
+        callback("What failed: unknown setting `gneral`")
+        return UnifiedConfig()
+
+    monkeypatch.setattr(run_module, "load_config", fake_load_config)
+
+    result = run_module._load_configuration(
+        __file__,
+        {},
+        False,
+        display_context=context,
+    )
+
+    assert result != 1
+    assert "unknown setting `gneral`" in stream.getvalue()
 
 
 class TestConfigErrorEnvelope:

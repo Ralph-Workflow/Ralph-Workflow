@@ -114,6 +114,22 @@ def test_welcome_names_auto_enabled_agents() -> None:
     assert "Auto-enabled agents (found on PATH): claude, codex" in console.getvalue()
 
 
+def test_welcome_explains_why_default_or_custom_chains_were_unchanged() -> None:
+    """S-1: a declined safe rewrite is visible instead of silent."""
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+    for outcome, expected in (
+        ("kept-default-agent", "kept claude (found on PATH)"),
+        ("chains-customized", "chains already customized — left unchanged"),
+    ):
+        buf, console = _make_console()
+        emit_first_run_welcome(
+            results,
+            autowire_outcome=outcome,
+            display_context=_make_display_context_for_console(console),
+        )
+        assert expected in buf.getvalue()
+
+
 def test_emit_first_run_welcome_prints_when_any_regenerated() -> None:
     """Welcome should print when at least one file is regenerated."""
     console = StringIO()

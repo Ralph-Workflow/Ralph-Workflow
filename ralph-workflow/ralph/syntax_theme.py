@@ -5,7 +5,17 @@ from __future__ import annotations
 from typing import cast
 
 from pygments.style import Style as PygmentsStyle
-from pygments.token import Comment, Generic, Keyword, Name, Number, Operator, Punctuation, String, Text
+from pygments.token import (
+    Comment,
+    Generic,
+    Keyword,
+    Name,
+    Number,
+    Operator,
+    Punctuation,
+    String,
+    Text,
+)
 
 
 class SyntaxThemes:

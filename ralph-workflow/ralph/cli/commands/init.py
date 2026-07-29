@@ -25,7 +25,12 @@ import typer
 from loguru import logger
 
 import ralph.policy
-from ralph.config.agent_detection import autowire_chains_to_detected_agent, enable_detected_agents
+from ralph.agents.agent_install_links import install_url_for
+from ralph.config.agent_detection import (
+    autowire_chains_to_detected_agent,
+    detect_installed_agents,
+    enable_detected_agents,
+)
 from ralph.config.bootstrap import (
     BootstrapResult,
     auto_seed_default_git_exclude,
@@ -184,7 +189,8 @@ def init_command(
                 all_results,
                 agent_registry=registry,
                 newly_enabled=newly_enabled,
-                rewired=rewired,
+                rewired=rewired if isinstance(rewired, list) else None,
+                autowire_outcome=rewired if isinstance(rewired, str) else None,
                 display_context=ctx,
             )
             if failures:
@@ -193,7 +199,8 @@ def init_command(
             _print_fallback_next_steps(
                 target,
                 newly_enabled=newly_enabled,
-                rewired=rewired,
+                rewired=rewired if isinstance(rewired, list) else None,
+                autowire_outcome=rewired if isinstance(rewired, str) else None,
                 failures=failures,
                 display_context=ctx,
             )
@@ -252,13 +259,17 @@ def _ensure_baseline_capabilities(
 
 
 def _emit_agent_setup_status(
-    display: ParallelDisplay, newly_enabled: list[str], rewired: list[str] | None
+    display: ParallelDisplay, newly_enabled: list[str], rewired: list[str] | str | None
 ) -> None:
     """Report PATH discovery and the safe default-chain rewrite."""
     if newly_enabled:
         display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
-    if rewired:
+    if isinstance(rewired, list):
         display.emit_status("Detected agent set for [agent_chains]; edit section 1 to change models.")
+    elif rewired == "kept-default-agent":
+        display.emit_status("kept claude (found on PATH)")
+    elif rewired == "chains-customized":
+        display.emit_status("chains already customized — left unchanged")
 
 
 def _print_fallback_next_steps(
@@ -266,19 +277,31 @@ def _print_fallback_next_steps(
     *,
     newly_enabled: list[str] | None = None,
     rewired: list[str] | None = None,
+    autowire_outcome: str | None = None,
     failures: list[str] | None = None,
     display_context: DisplayContext,
 ) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
     display = resolve_active_display(None, display_context)
     display.emit_status(f"Ralph Workflow initialized in: {target}")
-    _emit_agent_setup_status(display, newly_enabled or [], rewired)
+    _emit_agent_setup_status(display, newly_enabled or [], rewired or autowire_outcome)
     display.emit_status(
         "\nRalph Workflow orchestrates AI coding agents through a"
         " planning → development loop driven by PROMPT.md."
     )
     display.emit_status(f"\nDocs: {getting_started_pointer_sentence()}")
     display.emit_fallback_next_steps(list(fallback_next_steps()))
+    detected = detect_installed_agents()
+    if not detected:
+        install_options = ", ".join(
+            f"{name}: {url}"
+            for name in ("claude", "codex", "opencode", "nanocoder", "agy", "pi", "cursor")
+            if (url := install_url_for(name)) is not None
+        )
+        display.emit_warning(
+            "No agent CLIs found on PATH. Install one of: "
+            f"{install_options}. Then re-run `ralph --init`."
+        )
     if failures:
         display.emit_skill_failure_warning(failures)
     display.emit_status("\nTo reset configs later: ralph --regenerate-config")

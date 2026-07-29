@@ -36,14 +36,15 @@ def test_provider_fallback_regression_warns_when_set(
     load_config(config_path=tmp_path / LOCAL_CONFIG_PATH.name)
 
     assert len(warnings) == 1
-    assert "reserved" in warnings[0].lower()
+    assert "read by nothing" in warnings[0]
+    assert "delete it" in warnings[0]
     assert "[agent_chains]" in warnings[0]
 
 
-def test_provider_fallback_regression_empty_value_stays_silent(
+def test_provider_fallback_regression_empty_value_warns_on_presence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """S-1: empty legacy provider_fallback produces no operator noise."""
+    """S-3: an empty legacy knob still warns because it does nothing."""
     global_path = tmp_path / GLOBAL_CONFIG_PATH.name
     global_path.write_text("[general]\nprovider_fallback = {}\n", encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)
@@ -52,4 +53,6 @@ def test_provider_fallback_regression_empty_value_stays_silent(
 
     load_config(config_path=tmp_path / LOCAL_CONFIG_PATH.name)
 
-    assert warnings == []
+    assert len(warnings) == 1
+    assert "read by nothing" in warnings[0]
+    assert "delete it" in warnings[0]

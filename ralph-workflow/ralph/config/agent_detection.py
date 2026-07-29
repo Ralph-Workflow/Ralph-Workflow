@@ -8,7 +8,7 @@ import shutil
 import tomllib
 from pathlib import Path
 from re import Match
-from typing import cast
+from typing import Literal, cast
 
 from ralph.agents.builtin import builtin_supports
 from ralph.config.bootstrap import resolve_global_config_dir
@@ -45,14 +45,14 @@ def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
 
 def autowire_chains_to_detected_agent(
     main_config_path: Path, *, detected: list[str] | None = None
-) -> list[str] | None:
+) -> list[str] | Literal["kept-default-agent", "chains-customized"] | None:
     """Point untouched default chains at a detected CLI when Claude is unavailable."""
     defaults_path = Path(__file__).parents[1] / "policy" / "defaults" / "ralph-workflow.toml"
     text = main_config_path.read_text(encoding="utf-8")
     default_text = defaults_path.read_text(encoding="utf-8")
     default_chains = _agent_chains_from_toml(default_text)
     if _agent_chains_from_toml(text) != default_chains:
-        return None
+        return "chains-customized"
 
     supports = {support.name: support for support in builtin_supports()}
     default_agents = {
@@ -65,7 +65,7 @@ def autowire_chains_to_detected_agent(
         for name in default_agents
         if (support := supports.get(name)) is not None
     ):
-        return None
+        return "kept-default-agent"
 
     selected = (detected if detected is not None else detect_installed_agents())
     if not selected:

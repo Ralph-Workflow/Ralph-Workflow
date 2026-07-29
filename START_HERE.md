@@ -17,7 +17,7 @@ is the single home for the install → init → diagnose → spec → run →
 review sequence, inlined as runnable commands so a non-developer can
 copy-paste without bouncing between files. The
 [`README.md`](README.md#first-run) first-run block has the same shape
-in fewer steps; both point at the same operator manual.
+with the same six steps; both point at the same operator manual.
 
 ## Success looks like
 

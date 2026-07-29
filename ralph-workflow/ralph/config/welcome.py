@@ -133,6 +133,7 @@ def emit_first_run_welcome(
     agent_registry: HasListAgents | None = None,
     newly_enabled: list[str] | None = None,
     rewired: list[str] | None = None,
+    autowire_outcome: str | None = None,
     is_regenerate: bool = False,
     display_context: DisplayContext,
 ) -> None:
@@ -143,6 +144,7 @@ def emit_first_run_welcome(
         agent_registry: Optional agent registry for availability checking.
         newly_enabled: Agents automatically enabled because their CLI was found on PATH.
         rewired: Default chains replaced with a detected agent because Claude is absent.
+        autowire_outcome: Why safe autowiring deliberately left chains unchanged.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
         display_context: Display context for adaptive layout (required).
             The banner and panel are both emitted on ``display_context.console``.
@@ -207,6 +209,12 @@ def emit_first_run_welcome(
                 "Detected agent set for [agent_chains]; edit section 1 to change models.",
                 style="theme.status.success",
             )
+        )
+    elif autowire_outcome == "kept-default-agent":
+        content.append(Text("kept claude (found on PATH)", style="theme.status.success"))
+    elif autowire_outcome == "chains-customized":
+        content.append(
+            Text("chains already customized — left unchanged", style="theme.status.success")
         )
     if not is_regenerate and not newly_enabled:
         content.extend(_build_agent_availability_content(agent_registry))

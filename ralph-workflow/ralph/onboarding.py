@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Final
+from importlib import import_module
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from ralph.project_urls import GETTING_STARTED_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 GETTING_STARTED_DOC: Final[str] = GETTING_STARTED_URL
 PROMPT_FILE: Final[str] = "PROMPT.md"
@@ -74,11 +78,24 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
     )
 
 
+class _GlobalConfigDirResolver(Protocol):
+    def __call__(self) -> Path: ...
+
+
+def _global_main_config_path() -> Path:
+    """Resolve the user-global main config without bootstrap's import cycle."""
+    bootstrap = import_module("ralph.config.bootstrap")
+    namespace = cast("dict[str, object]", bootstrap.__dict__)
+    resolver = cast("_GlobalConfigDirResolver", namespace["resolve_global_config_dir"])
+    return resolver() / "ralph-workflow.toml"
+
+
 def welcome_panel_next_steps() -> tuple[str, ...]:
     """Return required first-run steps followed by quiet optional details."""
     explanation = init_local_config_override_explanation()
     siblings = ", ".join(sibling.agent for sibling in sibling_agent_skill_roots())
     project_siblings = ", ".join(PROJECT_SIBLING_SKILL_PATHS)
+    config_path = _global_main_config_path()
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         f"Run `{DIAGNOSE_COMMAND}` to check your setup",
@@ -88,6 +105,7 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
         f"Optional: skills are in ~/.claude/skills/ and symlinked to {siblings}.",
         f"Optional: project skills are in {PROJECT_CANONICAL_SKILLS_PATH} and symlinked to "
         f"{project_siblings}; edit its SKILL.md to customize.",
+        f"Optional: change which model does which job by editing section 1 (`[agent_chains]`) of {config_path}.",
         f"Optional: run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}.",
     )
 
@@ -95,6 +113,7 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
 def fallback_next_steps() -> tuple[str, ...]:
     """Return concise re-run guidance after init when files already exist."""
     explanation = init_local_config_override_explanation()
+    config_path = _global_main_config_path()
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         f"Run `{DIAGNOSE_COMMAND}` to check your setup",
@@ -102,6 +121,7 @@ def fallback_next_steps() -> tuple[str, ...]:
         f"Optional: read {GETTING_STARTED_DOC} for the walkthrough.",
         "Optional: re-running init is idempotent; it does not overwrite your PROMPT.md or "
         "your skills/.gitignore customizations.",
+        f"Optional: change which model does which job by editing section 1 (`[agent_chains]`) of {config_path}.",
         f"Optional: run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}.",
     )
 
