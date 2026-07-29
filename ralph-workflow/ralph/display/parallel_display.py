@@ -106,6 +106,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
 from rich.console import Group
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -2080,10 +2081,13 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._console.print(
                 Group(
-                    preview_header(
-                        tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
+                    Padding(
+                        preview_header(
+                            tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
+                        ),
+                        (0, 0, 0, _INDENT_WIDTH),
                     ),
-                    preview,
+                    Padding(preview, (0, 0, 0, _INDENT_WIDTH * 2)),
                 )
             )
         del kind, timestamp
@@ -3633,7 +3637,7 @@ class ParallelDisplay:
             return
         self.flush_blocks()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[phase-start]")
+            self._emit_section_rule("")
             c = self._console
             style = _phase_style(phase, pipeline_policy)
             label = _phase_label(phase)
@@ -3670,7 +3674,7 @@ class ParallelDisplay:
             return
         self.flush_blocks()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[phase-start]")
+            self._emit_section_rule("")
             c = self._console
             style = _phase_style(entry.phase_name, pipeline_policy)
             label = entry.human_label()

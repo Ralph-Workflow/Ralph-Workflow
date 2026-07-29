@@ -450,3 +450,61 @@ def test_visual_hierarchy_emit_completion_summary_panel() -> None:
         f"section rule line must carry the theme.banner.border sky-blue ANSI "
         f"({_SKY_BLUE_24BIT_ANSI!r}); got:\n{text!r}"
     )
+
+
+def test_visual_hierarchy_regression_preview_body_is_nested_below_header() -> None:
+    """DA-002: file-preview bodies stay below their structural header at all widths."""
+    from ralph.display.activity_event_kind import ActivityEventKind
+
+    for force_terminal, width in ((False, 100), (True, 100), (False, 40), (True, 40)):
+        buf = io.StringIO()
+        console = Console(
+            file=buf,
+            force_terminal=force_terminal,
+            color_system=("truecolor" if force_terminal else None),
+            width=width,
+            theme=RALPH_THEME,
+        )
+        pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
+        pd.emit_parsed_event(
+            unit_id="claude",
+            kind=ActivityEventKind.TOOL_USE,
+            content="read_file",
+            metadata={
+                "tool_name": "read_file",
+                "input": {
+                    "path": "a/very/long/path/that/wraps/at/the/terminal/floor/example.py",
+                    "content": "first preview line\nsecond preview line",
+                },
+            },
+        )
+        pd.stop()
+        plain = _ANSI_ESCAPE_RE.sub("", buf.getvalue())
+        header_index = next(index for index, line in enumerate(plain.splitlines()) if "▸ read" in line)
+        body_lines = [
+            line
+            for line in plain.splitlines()[header_index + 1 :]
+            if line.lstrip(" ").startswith(("1 ", "2 "))
+        ]
+        assert len(body_lines) == 2, f"preview body missing at width={width}:\n{plain!r}"
+        assert all(len(line) - len(line.lstrip(" ")) >= 4 for line in body_lines), (
+            f"preview body escaped its header at width={width}:\n{plain!r}"
+        )
+
+
+def test_visual_hierarchy_regression_phase_start_hides_internal_title() -> None:
+    """DA-003: both phase-start APIs use human labels, never event names."""
+    from ralph.display.phase_lifecycle import PhaseEntryModel
+
+    for emit in (
+        lambda pd: pd.emit_phase_start("development", agent_name="claude"),
+        lambda pd: pd.emit_phase_start_from_entry(
+            PhaseEntryModel(phase_name="development", agent_name="claude")
+        ),
+    ):
+        pd, buf = _make_display(force_terminal=False)
+        emit(pd)
+        pd.stop()
+        text = buf.getvalue()
+        assert "[phase-start]" not in text
+        assert "Development" in text and "claude" in text

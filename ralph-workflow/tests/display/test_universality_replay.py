@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
 
@@ -57,9 +57,10 @@ def _replay(
     tmp_path: Path,
     *,
     include_condensation: bool = False,
+    wire_lines: Iterable[str] | None = None,
 ) -> tuple[str, str, list[str]]:
     parser = parser_factory()
-    parsed = list(parser.parse(iter(_wire(name))))
+    parsed = list(parser.parse(iter(_wire(name) if wire_lines is None else wire_lines)))
     visible = [line for line in parsed if line.type not in {"stop", "status", "session"}]
     output = io.StringIO()
     display = ParallelDisplay(
@@ -124,6 +125,19 @@ def test_parser_native_replay_condenses_every_agent_payload(
         assert f"CONDENSE-{name}" in surface
         assert "truncated" in surface
         assert " B, see .agent/raw/" in surface
+
+
+def test_parser_native_replay_uses_supplied_wire_lines(tmp_path: Path) -> None:
+    """DA-001: corpus replay parses supplied captures, not the named fixture."""
+    record, _live, expected_bodies = _replay(
+        "claude",
+        ActivityProvider.CLAUDE,
+        ClaudeParser,
+        tmp_path,
+        wire_lines=_wire("claude")[:1],
+    )
+    assert len(expected_bodies) == 1
+    assert expected_bodies[0] in record
 
 
 def test_parser_native_generic_malformed_payload_still_has_hierarchy(tmp_path: Path) -> None:
