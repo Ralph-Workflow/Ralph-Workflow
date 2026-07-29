@@ -307,6 +307,18 @@ def test_gemini_input_format_renders() -> None:
 
 
 _FIXTURES_DIR = Path(__file__).parent / "_fixtures"
+_CORPUS_CASES: tuple[tuple[str, str], ...] = (
+    ("claude_ndjson.jsonl", "claude"),
+    ("claude_ndjson.jsonl", "claude-headless"),
+    ("codex_ndjson.jsonl", "codex"),
+    ("cursor_ndjson.jsonl", "cursor"),
+    ("agy_ndjson.jsonl", "agy"),
+    ("nanocoder_ndjson.jsonl", "nanocoder"),
+    ("generic_ndjson.jsonl", "generic"),
+    ("malformed_ndjson.jsonl", "generic"),
+    ("gemini_ndjson.jsonl", "gemini"),
+    ("pi_ndjson.jsonl", "pi"),
+)
 
 
 def _load_ndjson_fixture(name: str) -> list[dict[str, object]]:
@@ -444,18 +456,7 @@ def _replay_fixture_through_parallel_display(
 
 @pytest.mark.parametrize(
     ("fixture_name", "unit_id"),
-    (
-        ("claude_ndjson.jsonl", "claude"),
-        ("claude_ndjson.jsonl", "claude-headless"),
-        ("codex_ndjson.jsonl", "codex"),
-        ("cursor_ndjson.jsonl", "cursor"),
-        ("agy_ndjson.jsonl", "agy"),
-        ("nanocoder_ndjson.jsonl", "nanocoder"),
-        ("generic_ndjson.jsonl", "generic"),
-        ("malformed_ndjson.jsonl", "generic"),
-        ("gemini_ndjson.jsonl", "gemini"),
-        ("pi_ndjson.jsonl", "pi"),
-    ),
+    _CORPUS_CASES,
 )
 def test_ndjson_corpus_renders_identically_on_live_and_record_surfaces(
     fixture_name: str, unit_id: str, tmp_path: Path
@@ -484,6 +485,47 @@ def test_ndjson_corpus_renders_identically_on_live_and_record_surfaces(
     if fixture_name == "malformed_ndjson.jsonl":
         assert "Unparsed line retained." in rendered
         assert "role=unrecognized" in rendered
+
+
+@pytest.mark.parametrize(("fixture_name", "unit_id"), _CORPUS_CASES)
+def test_missing_metadata_keeps_each_agent_on_the_shared_presentation_path(
+    fixture_name: str, unit_id: str, tmp_path: Path
+) -> None:
+    """S-5: missing optional metadata omits detail without flattening either surface."""
+    del fixture_name
+    provider = _PROVIDER_BY_AGENT.get(unit_id, ActivityProvider.GENERIC)
+    from rich.console import Console
+
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+
+    output = io.StringIO()
+    display = ParallelDisplay(
+        make_display_context(
+            console=Console(file=output, force_terminal=False, width=200, color_system=None),
+            env={"CI": "1"},
+        ),
+        workspace_root=tmp_path,
+        clock=lambda: datetime(2026, 7, 25, 9, 30, 0),
+        monotonic=lambda: 0.0,
+    )
+    display.start()
+    display.emit_parsed_event(
+        unit_id=unit_id,
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="partial result",
+        metadata={"provider": provider.value},
+    )
+    display.stop()
+    rendered = (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    line = rendered.rstrip("\n")
+    assert "partial result" in line
+    assert "role=tool_result" in line
+    assert "tool=" not in line and "target=" not in line
+    assert line.startswith("  [")
+    assert "partial result" in output.getvalue()
 
 
 def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:

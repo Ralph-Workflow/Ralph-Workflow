@@ -2070,7 +2070,7 @@ class ParallelDisplay:
             self._console.print(
                 Group(
                     preview_header(
-                        tool_name, path or None, glyphs_enabled=self._ctx.glyphs_enabled
+                        tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
                     ),
                     preview,
                 )

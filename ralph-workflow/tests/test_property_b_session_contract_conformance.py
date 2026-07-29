@@ -205,6 +205,7 @@ def test_no_isinstance_narrowing_on_session_in_mcp_package(tmp_path: Path) -> No
     assert not hits, f"isinstance narrowing of session to FileBackedSession: {hits}"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
     """Audit: no ... in ralph/ — the storm-enabling laundering."""
     ralph_root = Path(__file__).parent.parent / "ralph"
