@@ -56,24 +56,6 @@ _BUFFER_FLUSH_THRESHOLD: Final[int] = 480
 #: ISO-8601 timestamp. Eight characters: hh, ``:``, mm, ``:``, ss.
 _HHMMSS_LEN: Final[int] = 8
 
-#: Field-order template for the rendered record. The order is
-#: part of the contract: an operator (or a screen reader / braille
-#: display) that learns the layout in one run reads every subsequent
-#: file the same way. Keys appear in this exact order:
-#: timestamp -> phase -> cycle/iter -> agent -> severity -> body.
-#: A missing optional field is omitted (no placeholder), so the
-#: record stays greppable without "---" filler.
-_RECORD_FIELD_ORDER: Final[tuple[str, ...]] = (
-    "timestamp",
-    "phase",
-    "cycle",
-    "iter",
-    "agent",
-    "severity",
-    "role",
-    "body",
-)
-
 #: P1 (wt-028-display S-12 / AC-07): the record carries real
 #: hierarchy via indentation. Two-space indent per ``indent_level``
 #: keeps the file diff-friendly; the field column starts at column
@@ -82,14 +64,6 @@ _RECORD_FIELD_ORDER: Final[tuple[str, ...]] = (
 #: phase rule; condensation markers stay at the body level of
 #: the entry they replace.
 _INDENT_WIDTH: Final[int] = 2
-
-#: P1 (wt-028-display S-12 / AC-07): the columns in the rendered
-#: record are fixed so a tool result visibly hangs under its call
-#: and a phase header still aligns its field column. The first
-#: non-indent column is reserved for the timestamp ``[hh:mm:ss]``
-#: token; the rest follows the same _RECORD_FIELD_ORDER contract.
-_FIELD_COLUMN_START: Final[int] = 0
-
 
 #: ANSI / CSI escape sequence stripper for the rendered record. The
 #: writer is the destination for the human-readable file; a stray
@@ -499,5 +473,4 @@ __all__ = [
 # caller can invoke without a Rich dependency. The shape of
 # ``PresentedEntry`` is documented at the top of the file; if the
 # canonical presenter grows a new field, add it to
-# ``_RECORD_FIELD_ORDER`` so the rendered record's field order stays
-# stable.
+# the formatter so the rendered record's field order stays stable.

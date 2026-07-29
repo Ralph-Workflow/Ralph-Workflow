@@ -642,7 +642,7 @@ def test_record_regression_read_result_keeps_a_structured_preview(
     tmp_path: Path,
 ) -> None:
     """Read results retain their outcome in the structured preview record."""
-    pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd, live, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
     pd.emit_parsed_event(
         unit_id="claude",
@@ -660,10 +660,30 @@ def test_record_regression_read_result_keeps_a_structured_preview(
 
     record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
     result = next(line for line in record.splitlines() if "role=tool_result" in line)
-    assert "contents read" in record
-    assert "▸ read  src/file.py" in result
+    assert "contents read" in result
+    assert record.count("▸ read  src/file.py") == 1
+    assert "▸ read  src/file.py" not in result
+    assert live.getvalue().count("read_file (path=src/file.py)") == 1
     assert "artifact" not in result
     assert result.count("read_file") == 1
+
+
+def test_production_thinking_record_strips_markdown_emphasis(tmp_path: Path) -> None:
+    """Text-first reasoning keeps words, not Markdown presentation syntax."""
+    pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.THINKING,
+        content="# **Fixing import order** and then some more reasoning text.",
+        metadata={},
+    )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    assert "**" not in record
+    assert "# " not in record
+    assert "Fixing import order" in record
 
 
 def test_production_tool_entries_state_each_identity_and_tool_once(tmp_path: Path) -> None:

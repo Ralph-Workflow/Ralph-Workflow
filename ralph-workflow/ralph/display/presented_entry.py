@@ -167,6 +167,8 @@ def build_presented_entry(
         identity,
         preserve_before_pair=event.kind is ActivityEventKind.TOOL_USE,
     )
+    if event.kind in {ActivityEventKind.TEXT, ActivityEventKind.THINKING}:
+        body = _strip_markdown_emphasis(body)
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
@@ -209,6 +211,20 @@ def build_presented_entry(
         indent_level=indent_level,
         grouping_role=grouping_role,
     )
+
+
+def _strip_markdown_emphasis(body: str) -> str:
+    """Remove prose-only Markdown chrome from canonical event bodies."""
+    if not body:
+        return body
+    def unwrapped(match: re.Match[str]) -> str:
+        return match.group(2) or match.group(4)
+
+    return re.sub(
+        r"(?<!\w)(\*\*|__)(.+?)\1(?!\w)|(?<!\w)([*_])(.+?)\3(?!\w)",
+        unwrapped,
+        re.sub(r"^#{1,6}\s+", "", body),
+    ).lstrip()
 
 
 def _tool_result_record_body(body: str, metadata: dict[str, object], severity: str) -> str:

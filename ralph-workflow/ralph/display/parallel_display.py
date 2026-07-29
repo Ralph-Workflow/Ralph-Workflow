@@ -1405,6 +1405,10 @@ class ParallelDisplay:
         # log under .agent/raw/<safe_id>.log remains the destination.
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
+        if base_tag == "think":
+            from ralph.display.presented_entry import _strip_markdown_emphasis
+
+            sanitized_joined = _strip_markdown_emphasis(sanitized_joined)
         visible, condensed_flag = cast(
             "tuple[str, bool]",
             condense_content(
@@ -2037,9 +2041,13 @@ class ParallelDisplay:
         tool_name: str,
         preview_input: dict[str, object],
         timestamp: str,
+        *,
+        include_header: bool = True,
     ) -> None:
         """Print a tool-use or recognized successful result preview."""
-        self._emit_file_preview(unit_id, kind, tool_name, preview_input, timestamp)
+        self._emit_file_preview(
+            unit_id, kind, tool_name, preview_input, timestamp, include_header=include_header
+        )
 
     def _emit_file_preview(
         self,
@@ -2048,6 +2056,8 @@ class ParallelDisplay:
         tool_name: str,
         preview_input: dict[str, object],
         timestamp: str,
+        *,
+        include_header: bool = True,
     ) -> None:
         """Project a file preview to the record and, unless quiet, terminal."""
         overflow = self._get_overflow_log(unit_id)
@@ -2079,17 +2089,21 @@ class ParallelDisplay:
             path_value = payload.get("path", "")
             path = path_value if isinstance(path_value, str) else ""
         with contextlib.suppress(Exception):
-            self._console.print(
-                Group(
-                    Padding(
-                        preview_header(
-                            tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
+            preview_body = Padding(preview, (0, 0, 0, _INDENT_WIDTH * 2))
+            if include_header:
+                self._console.print(
+                    Group(
+                        Padding(
+                            preview_header(
+                                tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
+                            ),
+                            (0, 0, 0, _INDENT_WIDTH),
                         ),
-                        (0, 0, 0, _INDENT_WIDTH),
-                    ),
-                    Padding(preview, (0, 0, 0, _INDENT_WIDTH * 2)),
+                        preview_body,
+                    )
                 )
-            )
+            else:
+                self._console.print(preview_body)
         del kind, timestamp
 
     def _get_rendered_writer(self, unit_id: str) -> RenderedRecordWriter | None:
@@ -2613,17 +2627,21 @@ class ParallelDisplay:
             result_preview_tool_name, result_preview_input, _is_previewable_result = (
                 self._result_preview_input(unit_id, metadata, text_content)
             )
-            previewed_result = _is_previewable_result and build_edit_preview(
+            previewed_result = (
+                unit_id in self._last_emitted_tool_signature
+                and _is_previewable_result
+                and build_edit_preview(
                 result_preview_tool_name,
                 result_preview_input,
                 width=self._ctx.width,
                 terminal_bg_is_light=self._terminal_bg_is_light,
                 overflow_ref=overflow_ref,
-                glyphs_enabled=self._ctx.glyphs_enabled,
-            ) is not None
+                    glyphs_enabled=self._ctx.glyphs_enabled,
+                )
+                is not None
+            )
             if previewed_result:
                 content_for_emit = f"↳ {result_preview_tool_name}"
-
         # S-7 (wt-028-display P1): SUBAGENT_PROGRESS is a watchdog-side
         # companion event. The audit trail (rendered record writer below)
         # still records it, but the live console must not surface a
@@ -2693,16 +2711,6 @@ class ParallelDisplay:
                         or None
                     )
                     if kind is ActivityEventKind.TOOL_USE
-                    else (
-                        preview_record_text(
-                            result_preview_tool_name,
-                            result_preview_input,
-                            overflow_ref=overflow_ref,
-                            glyphs_enabled=self._ctx.glyphs_enabled,
-                        )[0]
-                        or text_content
-                    )
-                    if previewed_result
                     else text_content
                     if kind is ActivityEventKind.TOOL_RESULT
                     else None,
@@ -2730,6 +2738,7 @@ class ParallelDisplay:
                     result_preview_tool_name if previewed_result else text_content,
                     result_preview_input if previewed_result else metadata,
                     entry_timestamp,
+                    include_header=True,
                 )
 
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
