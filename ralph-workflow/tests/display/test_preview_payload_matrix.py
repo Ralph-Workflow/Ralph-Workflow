@@ -165,3 +165,21 @@ def test_bounded_previews_use_ascii_elision_and_one_multi_file_budget() -> None:
     Console(file=output, force_terminal=False, color_system=None, width=80).print(multi)
     assert output.getvalue().count("more lines") == 1
     assert len([line for line in output.getvalue().splitlines() if line.strip()]) <= 44
+
+
+def test_diff_preview_elision_reports_omitted_bytes() -> None:
+    """A truncated diff reports the byte size of the hidden hunk body."""
+    diff = "@@ -1,60 +1,60 @@\n" + "\n".join(f"+line {index}" for index in range(60))
+    preview = build_edit_preview(
+        "git_diff",
+        {"content": diff},
+        width=80,
+        terminal_bg_is_light=False,
+        overflow_ref=".agent/raw/claude.log",
+    )
+    output = io.StringIO()
+    Console(file=output, force_terminal=False, color_system=None, width=80).print(preview)
+    rendered = output.getvalue()
+    assert "more lines" in rendered
+    assert "· 0 B)" not in rendered
+    assert "[see .agent/raw/claude.log]" in rendered

@@ -724,12 +724,14 @@ def _build_content_preview(
         blocks: list[RenderableType] = []
         remaining = _MAX_PREVIEW_LINES - 1
         omitted_total = 0
+        omitted_source: list[str] = []
         for index, hunk in enumerate(hunks):
             body_end = hunks[index + 1].start() if index + 1 < len(hunks) else len(content)
             body = strip_terminal_control(content[hunk.end() : body_end].strip("\n"))
             body_lines = body.splitlines()
             if remaining <= 1:
                 omitted_total += len(body_lines)
+                omitted_source.extend(body_lines)
                 continue
             header_start = 0 if index == 0 else hunk.start()
             header = strip_terminal_control(content[header_start : hunk.end()].rstrip("\n"))
@@ -738,6 +740,8 @@ def _build_content_preview(
             shown = min(len(body_lines), remaining)
             head, tail, omitted = _safe_lines(body, max_lines=shown)
             omitted_total += omitted or 0
+            if omitted:
+                omitted_source.extend(body_lines[len(head) : len(body_lines) - len(tail)])
             if head:
                 blocks.append(
                     _make_syntax(
@@ -762,7 +766,10 @@ def _build_content_preview(
         if omitted_total:
             blocks.append(
                 _elision_text(
-                    omitted_total, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref
+                    omitted_total,
+                    "..." if not glyphs_enabled else _ELISION_GLYPH,
+                    overflow_ref,
+                    "\n".join(omitted_source),
                 )
             )
         return Group(*blocks) if blocks else None

@@ -159,7 +159,7 @@ from ralph.display.phase_status import (
 from ralph.display.presented_entry import outcome_is_failure
 from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
-from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter
+from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter, rendered_record_path
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import detect_terminal_background_is_light
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
@@ -3589,6 +3589,7 @@ class ParallelDisplay:
             from ralph.display.completion_summary import (
                 CompletionSummaryOptions,
                 _exit_trigger_label,
+                render_completion_summary,
                 style_for_role,
                 style_for_terminal_failure,
             )
@@ -3641,10 +3642,27 @@ class ParallelDisplay:
                 # uses the same vocabulary as the live log's content
                 # condensation markers (``-- condensed`` / ``-- in <file>``)
                 # so it reads as one rule, not a new convention.
+                condensed_sections = (
+                    "Plan",
+                    "Metrics",
+                    "Decisions",
+                    "Review",
+                    "Analysis",
+                    "Iteration",
+                    "Activity",
+                    "Commit",
+                    "auto-integrate",
+                )
+                record_path = rendered_record_path(
+                    resolved_options.workspace_root or Path(), snapshot.active_agent or "unknown"
+                )
+                condensed_chars = len(
+                    render_completion_summary(snapshot, options=resolved_options).plain
+                )
                 self._console.print(
                     Text(
-                        "  -- sections condensed for short terminal -- "
-                        "full panel in .agent/raw/<id>.rendered.log",
+                        f"  -- {len(condensed_sections)} sections condensed · "
+                        f"{condensed_chars} chars · in {record_path}",
                         style="theme.text.muted",
                     )
                 )

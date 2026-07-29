@@ -345,6 +345,34 @@ def test_emit_completion_panel_degrades_at_12_rows() -> None:
         assert corner not in output, (
             f"panel corner {corner!r} survived at 12 rows: {output!r}"
         )
+    assert "sections condensed" in output
+    assert "chars" in output
+    assert "<id>" not in output
+    assert ".agent/raw/unknown.rendered.log" in output
+
+
+def test_short_completion_marker_counts_condensed_panel_content(tmp_path: Path) -> None:
+    """The short-terminal marker measures the actual omitted panel, not its labels."""
+    short_display, short_buffer = _height_aware_display(height=12)
+    short_display.emit_completion_summary_panel(
+        _make_snapshot(plan_summary="brief"),
+        options=CompletionSummaryOptions(workspace_root=tmp_path),
+    )
+    short_display.stop()
+
+    detailed_display, detailed_buffer = _height_aware_display(height=12)
+    detailed_display.emit_completion_summary_panel(
+        _make_snapshot(plan_summary="detailed " * 50),
+        options=CompletionSummaryOptions(workspace_root=tmp_path),
+    )
+    detailed_display.stop()
+
+    def condensed_size(output: str) -> int:
+        marker = next(line for line in output.splitlines() if "sections condensed" in line)
+        return int(marker.split(" · ")[1].split()[0])
+
+    assert condensed_size(detailed_buffer.getvalue()) > condensed_size(short_buffer.getvalue())
+    assert str(tmp_path / ".agent/raw/unknown.rendered.log") in detailed_buffer.getvalue().replace("\n", "")
 
 
 def test_emit_completion_panel_degrades_at_11_rows() -> None:
