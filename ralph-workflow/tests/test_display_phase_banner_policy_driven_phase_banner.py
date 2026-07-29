@@ -198,7 +198,7 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
 
 
 def test_show_phase_start_from_entry_outer_dev_label() -> None:
-    """emit_phase_start_from_entry renders canonical Dev N/cap label."""
+    """emit_phase_start_from_entry renders canonical Cycle N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=3, outer_dev_cap=7)

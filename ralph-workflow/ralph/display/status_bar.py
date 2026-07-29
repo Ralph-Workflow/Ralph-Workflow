@@ -1295,9 +1295,19 @@ def render_status_bar(
         )
     for label in optional_segments:
         _append_optional_segment(text, label, model, separator, ctx)
-    # DA-004 (wt-028-display AC-02): cwd path renders LAST (after
-    # agent) so it is the trailing optional segment that elides /
-    # drops first at narrow widths.
+    # CWD renders last, so measure its actual remaining room after every
+    # higher-priority segment.  The allocator is deliberately conservative,
+    # but this final measurement prevents the defensive whole-line clamp
+    # from silently clipping a basename when its chrome estimate differs.
+    path_room = ctx.width - len(text.plain) - len(separator)
+    last_segment = path_display.rsplit(os.sep, 1)[-1]
+    path_display = (
+        _middle_truncate_path(path_display, path_room)
+        if path_room >= len(last_segment) + _ELLIPSIS_LEN + 1
+        # A final segment is still an honest, recognizable path when full
+        # left elision cannot fit; omit it only when even that would clip.
+        else last_segment if path_room >= len(last_segment) else ""
+    )
     _append_path_segment(text, path_display, separator, ctx.width)
     # Final width clamp is a defensive guard for widths below the supported
     # floor and hostile optional alerts; normal layouts fit by allocation.

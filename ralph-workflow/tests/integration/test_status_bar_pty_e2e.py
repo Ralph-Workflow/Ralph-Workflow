@@ -36,7 +36,7 @@ Six assertions across four tests:
 
 - AC-01 (test 1 + 2 + 3): workspace_root basename + canonical phase
   label surface in the captured stream.
-- AC-03 (test 3): the outer-dev iteration ``Dev N/cap`` is visible in
+- AC-03 (test 3): the outer-cycle label ``Cycle N/cap`` is visible in
   the captured stream.
 - AC-02 (test 1): no ``--`` placeholder for omitted iteration fields.
 - AC-08 (test 4): no Status Bar frame content appears when the CLI is

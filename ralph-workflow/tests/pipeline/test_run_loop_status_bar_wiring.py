@@ -467,8 +467,8 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
        a recognizable prefix of the human phase label
        (e.g. ``Dev`` for ``Development Analysis``); path shows a
        recognizable trailing segment (e.g. ``sub`` for
-       ``.../subdir``). At width 40 the canonical ``Dev N/cap`` /
-       ``Analysis N/cap`` iteration labels also render; at width 20
+       ``.../subdir``). At width 40 the canonical ``Cycle N/cap`` /
+       ``iter N/cap`` iteration labels also render; at width 20
        the iteration labels render in compact/minimal form (one or
        both segments may be dropped at very narrow widths to keep
        workspace + phase visible); at width 14 the outer iter may

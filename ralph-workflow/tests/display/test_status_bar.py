@@ -714,7 +714,7 @@ def test_render_status_bar_no_dash_placeholder_in_ascii_mode() -> None:
 
 
 # ---------------------------------------------------------------------------
-# render_status_bar — Dev label formatting
+# render_status_bar — Cycle label formatting
 # ---------------------------------------------------------------------------
 
 
@@ -2178,11 +2178,20 @@ def test_status_bar_regression_middle_truncate_path_honours_every_budget(path: s
 
 
 @pytest.mark.parametrize("width", range(61, 201))
-def test_status_bar_regression_path_elision_preserves_basename(width: int) -> None:
-    """DA-001/DA-002: ordinary layouts preserve the complete trailing basename."""
+@pytest.mark.parametrize(
+    ("workspace_root", "home"),
+    (
+        ("/home/u/proj/ralph-workflow", None),
+        ("/Users/alice/code/ralph-workflow", "/Users/alice"),
+    ),
+)
+def test_status_bar_regression_path_elision_preserves_basename(
+    width: int, workspace_root: str, home: str | None
+) -> None:
+    """DA-001/DA-002: ordinary layouts either drop cwd or preserve its full basename."""
     plain = render_status_bar(
         StatusBarModel(
-            workspace_root="/home/u/proj/ralph-workflow",
+            workspace_root=workspace_root,
             phase_label="Development",
             phase_style="theme.phase.development",
             outer_dev_iteration=3,
@@ -2193,9 +2202,10 @@ def test_status_bar_regression_path_elision_preserves_basename(width: int) -> No
             elapsed_seconds=761,
         ),
         _make_display_context(width=width),
-        home=None,
+        home=home,
     ).plain
-    assert "ralph-workflow" not in plain or plain.endswith("ralph-workflow"), (
+    cwd = plain.rsplit("Agent claude", 1)[-1].strip()
+    assert not cwd or cwd.endswith("ralph-workflow"), (
         f"DA-001/DA-002: width={width} clipped basename: {plain!r}"
     )
 

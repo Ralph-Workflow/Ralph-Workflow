@@ -269,7 +269,7 @@ def test_completion_summary_outer_dev_uses_canonical_label() -> None:
 
 
 def test_completion_summary_outer_dev_with_cap_shows_n_of_total() -> None:
-    """Dev N/cap format used when budget_progress has a tracks_budget counter with cap."""
+    """Cycle N/cap format used when budget_progress has a tracks_budget counter with cap."""
     snap = PipelineSnapshot(
         phase="fix",
         previous_phase="development",
