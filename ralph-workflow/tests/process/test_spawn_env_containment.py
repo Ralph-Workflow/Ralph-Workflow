@@ -6,6 +6,8 @@ import ast
 import tomllib
 from pathlib import Path
 
+import pytest
+
 PACKAGE_ROOT = Path(__file__).parents[2]
 RALPH_ROOT = PACKAGE_ROOT / "ralph"
 
@@ -54,7 +56,9 @@ def _module_path(path: Path) -> str:
 
 
 def _parsed_modules() -> dict[str, ast.Module]:
-    script_paths = {module.replace(".", "/") + ".py" for module in _script_modules()}
+    script_paths = {
+        module.replace(".", "/") + ".py" for module in _script_module_names()
+    }
     modules: dict[str, ast.Module] = {}
     for path in RALPH_ROOT.rglob("*.py"):
         relative_path = path.relative_to(PACKAGE_ROOT).as_posix()
@@ -136,11 +140,62 @@ def _calls_sanitizer(statement: ast.stmt) -> bool:
     )
 
 
-def _script_modules() -> set[str]:
-    scripts = tomllib.loads((PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
-        "scripts"
-    ]
-    return {str(target).partition(":")[0] for target in scripts.values()}
+def _string_keyed_mapping(value: object, label: str) -> dict[str, object]:
+    assert isinstance(value, dict), f"{label} must be a mapping"
+    result: dict[str, object] = {}
+    for key, item in value.items():
+        assert isinstance(key, str), f"{label} keys must be strings"
+        result[key] = item
+    return result
+
+
+def _script_targets() -> dict[str, set[str]]:
+    parsed: object = tomllib.loads((PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = _string_keyed_mapping(parsed, "pyproject")
+    scripts = _string_keyed_mapping(project["project"], "project")
+    targets: dict[str, set[str]] = {}
+    for target in _string_keyed_mapping(scripts["scripts"], "project.scripts").values():
+        module, separator, attribute = str(target).partition(":")
+        assert separator and module and attribute, f"invalid console-script target: {target!r}"
+        targets.setdefault(module, set()).add(attribute)
+    return targets
+
+
+def _script_module_names() -> set[str]:
+    return set(_script_targets())
+
+
+def _callback_entry_name(tree: ast.Module, attribute: str) -> str | None:
+    """Resolve ``app.callback()(main)``-style console-script targets."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Call):
+            continue
+        callback = node.func
+        if not isinstance(callback.func, ast.Attribute) or callback.func.attr != "callback":
+            continue
+        if not isinstance(callback.func.value, ast.Name) or callback.func.value.id != attribute:
+            continue
+        if len(node.args) == 1 and isinstance(node.args[0], ast.Name):
+            return node.args[0].id
+    return None
+
+
+def _declared_entry_names(tree: ast.Module, module_name: str, attributes: set[str]) -> set[str]:
+    functions = _function_definitions(tree)
+    entry_names: set[str] = set()
+    for attribute in attributes:
+        if attribute in functions:
+            entry_names.add(attribute)
+            continue
+        callback_name = _callback_entry_name(tree, attribute)
+        assert callback_name is not None, (
+            f"{module_name}:{attribute} must resolve to a function or callback"
+        )
+        assert callback_name in functions, (
+            f"{module_name}:{attribute} callback must resolve to a module-level function"
+        )
+        entry_names.add(callback_name)
+    return entry_names
 
 
 def test_spawn_capable_entry_points_sanitize_before_work() -> None:
@@ -157,7 +212,8 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
     )
     assert not unclassified_guards, unclassified_guards
 
-    discovered_modules = _script_modules()
+    script_targets = _script_targets()
+    discovered_modules = set(script_targets)
     for path in spawn_guard_paths:
         discovered_modules.add(_module_path(PACKAGE_ROOT / path))
 
@@ -166,12 +222,14 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
         path = module_name.replace(".", "/") + ".py"
         tree = modules[path]
         functions = _function_definitions(tree)
-        entry_names = _guard_entry_names(tree) if _has_main_guard(tree) else {"main"}
-        if module_name in _script_modules() and "main" in functions:
-            entry_names.add("main")
+        entry_names = (
+            _guard_entry_names(tree).intersection(functions) if _has_main_guard(tree) else set()
+        )
+        if attributes := script_targets.get(module_name):
+            entry_names.update(_declared_entry_names(tree, module_name, attributes))
+        assert entry_names, f"{module_name} has no resolvable entry function"
         for entry_name in entry_names:
-            if entry_name not in functions:
-                continue
+            assert entry_name in functions, f"{module_name}.{entry_name} must be module-level"
             function = functions[entry_name]
             assert _calls_sanitizer(_first_statement(function)), (
                 f"{module_name}.{entry_name} must call sanitize_process_environment first"
@@ -187,3 +245,29 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
         "ralph.verify.main",
         "ralph.verify_timeout.main",
     }
+
+
+def test_spawn_env_containment_regression_checks_declared_script_attribute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-001: a non-``main`` console-script target cannot evade the sweep."""
+    fake_module = "ralph.fake_b"
+    monkeypatch.setattr(
+        __import__(__name__, fromlist=["_script_targets"]),
+        "_script_targets",
+        lambda: {fake_module: {"launch"}},
+    )
+    monkeypatch.setattr(
+        __import__(__name__, fromlist=["_parsed_modules"]),
+        "_parsed_modules",
+        lambda: {
+            "ralph/fake_b.py": ast.parse(
+                "from ralph.executor.process import run_process\n\n"
+                "def launch():\n"
+                "    run_process('child')\n"
+            )
+        },
+    )
+
+    with pytest.raises(AssertionError, match=r"ralph\.fake_b\.launch"):
+        test_spawn_capable_entry_points_sanitize_before_work()
