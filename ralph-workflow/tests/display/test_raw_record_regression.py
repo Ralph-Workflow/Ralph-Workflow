@@ -804,3 +804,37 @@ def test_production_path_pi_fixture_no_role_progress_duplicate(
     rendered, _live = _drive_fixture_through_production("pi_ndjson.jsonl", tmp_path, unit_id="pi")
     assert "role=progress" not in rendered, f"role=progress echo leaked into record:\n{rendered}"
 
+
+
+def test_codex_wire_regression_completed_calls_become_correlated_results(tmp_path: Path) -> None:
+    """DA-001/DA-002: Codex start/completion pairs render one call and one outcome."""
+    from ralph.agents.parsers.codex import CodexParser
+
+    wire_path = _fixture("codex_wire.jsonl")
+    parsed = list(CodexParser().parse(iter(wire_path.read_text(encoding="utf-8").splitlines())))
+    visible = [line for line in parsed if line.type in {"tool_use", "tool_result"}]
+    assert [line.type for line in visible] == ["tool_use", "tool_result", "tool_use", "tool_result"]
+
+    pd, live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for line in visible:
+        event = normalize_event_from_agent_output_line(
+            line, provider=ActivityProvider.CODEX, unit_id="codex"
+        )
+        pd.emit_parsed_event(
+            unit_id="codex",
+            kind=event.kind,
+            content=event.content,
+            metadata=event.metadata,
+        )
+    pd.stop()
+
+    rendered = (tmp_path / ".agent" / "raw" / "codex.rendered.log").read_text(encoding="utf-8")
+    lines = [line for line in rendered.splitlines() if line.strip()]
+    assert sum("role=tool_call" in line for line in lines) == 2
+    assert sum("role=tool_result" in line for line in lines) == 2
+    assert all(first != second for first, second in pairwise(lines))
+    results = [line for line in lines if "role=tool_result" in line]
+    assert any("ok" in line and "resources" in line for line in results)
+    assert any("bash" in line and "failed" in line and "severity=error" in line for line in results)
+    assert "RUN" not in "\n".join(line for line in live.getvalue().splitlines() if "[result]" in line)
