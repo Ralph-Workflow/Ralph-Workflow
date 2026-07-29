@@ -41,6 +41,7 @@ _SUFFIXES: Final[dict[str, str]] = {
     ".diff": "diff", ".patch": "diff", ".ps1": "powershell", ".bat": "bat",
     ".cmd": "bat", ".fish": "fish", ".zsh": "bash", ".sh": "bash",
     ".s": "asm", ".asm": "asm", ".sol": "solidity", ".jl": "julia",
+    ".python": "python", ".julia": "julia",
     ".fs": "fsharp", ".fsx": "fsharp", ".groovy": "groovy", ".vim": "vim",
     ".md": "markdown", ".html": "html", ".htm": "html", ".xml": "xml",
     ".js": "javascript", ".jsx": "javascript", ".ts": "typescript", ".tsx": "typescript",

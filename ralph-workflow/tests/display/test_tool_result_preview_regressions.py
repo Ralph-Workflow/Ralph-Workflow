@@ -65,6 +65,47 @@ def test_git_log_result_correlates_to_originating_tool_use_and_previews_once() -
     assert plain.count("abc1234 Add preview coverage") == 1
 
 
+def test_git_log_preview_preserves_each_commit_line_as_plain_text() -> None:
+    """DA-002: git_log results retain commit boundaries instead of markdown reflow."""
+    display, buffer = _make_truecolor_display()
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="mcp__ralph__git_log",
+        metadata={"input": {"count": 3}, "tool_call_id": "git-log-lines"},
+    )
+    commits = "abc1234 First commit\ndef5678 Second commit\n9876abc # literal subject\n"
+    display.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content=commits,
+        metadata={"exit_code": 0, "tool_call_id": "git-log-lines"},
+    )
+    display.stop()
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.getvalue())
+    assert all(any(commit in line for line in plain.splitlines()) for commit in commits.splitlines() if commit)
+
+
+def test_no_color_result_preview_keeps_structure_without_ansi() -> None:
+    """DA-003: NO_COLOR disables preview color without dropping file content."""
+    buffer = io.StringIO()
+    console = Console(file=buffer, force_terminal=True, color_system="truecolor", width=100)
+    display = ParallelDisplay(make_display_context(console=console, env={"NO_COLOR": "1"}))
+    display.emit_parsed_event(
+        unit_id="dev-1", kind=ActivityEventKind.TOOL_USE, content="mcp__ralph__read_file",
+        metadata={"input": {"path": "a.py"}, "tool_call_id": "no-color-read"},
+    )
+    display.emit_parsed_event(
+        unit_id="dev-1", kind=ActivityEventKind.TOOL_RESULT, content="def render():\n    return 1\n",
+        metadata={"exit_code": 0, "tool_call_id": "no-color-read"},
+    )
+    display.stop()
+    output = buffer.getvalue()
+    assert "\x1b[38;2;" not in output
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    assert "a.py" in plain and "def render" in plain and "1" in plain
+
+
 def test_nested_grep_pattern_reaches_result_emphasis() -> None:
     """DA-003: production-shaped nested tool input keeps match emphasis."""
     display, buffer = _make_truecolor_display()

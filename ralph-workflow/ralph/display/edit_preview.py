@@ -671,10 +671,12 @@ def _build_content_preview(
     """Render a content payload, keeping diff metadata outside file gutters."""
     preview_path = path
     is_diff = bare in {"git_diff", "git_show"} or canonical.language_hint == "diff"
-    if canonical.language_hint and path is None:
-        preview_path = f"preview.{canonical.language_hint}"
-    elif is_diff:
+    if is_diff:
         preview_path = "preview.diff"
+    elif canonical.language_hint:
+        preview_path = f"preview.{canonical.language_hint}"
+    elif bare == "git_log":
+        preview_path = "preview.txt"
     hunks = list(re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", content, re.MULTILINE))
     if is_diff and hunks:
         blocks: list[RenderableType] = []
