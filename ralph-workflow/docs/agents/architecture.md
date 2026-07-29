@@ -187,10 +187,11 @@ default 5-minute print timeout; a billed amount requires the unrun pricing
 probe. It reports file, session, parser-event, tool-activity, and artifact
 signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
-The v1.1.8 manual record observed model acceptance, an explicit
-`gemini-3.6-flash-high --effort high` invocation, and stream-json events. The
-latest smoke created the requested file and showed plain-text parser/tool
-activity without a permission prompt. AGY wrote a valid fallback artifact; Ralph
+The v1.1.8 manual record observed `gemini-3.6-flash-low` acceptance, an explicit
+`gemini-3.6-flash-high --effort high` invocation, and stream-json `init`,
+`step_update`, and successful `result` events. The latest smoke exited 0 after
+creating the requested file and showing plain-text parser/tool activity without
+a permission prompt. AGY wrote a valid fallback artifact; Ralph validated and
 promoted it, recorded the canonical receipt, and wrote host-owned durable
 completion evidence after AGY missed the MCP completion call. The plain-text
 parser remains the smoke default because it retained file and tool visibility.

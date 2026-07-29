@@ -40,11 +40,11 @@ phases to:
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
-| `agy`             | `agy`        | Interactive (PTY)    | Manual paid diagnostic | Google's Antigravity CLI (v1.1.8 live model, effort, stream-json, artifact, and completion observations; re-measure periodically because published IDs and flags can change) |
+| `agy`             | `agy`        | Interactive (PTY)    | Manual paid diagnostic | Google's Antigravity CLI (v1.1.8 observed `gemini-3.6-flash-low`, high effort, stream-json `init`/`step_update`/`result`, and exit-0 fallback-artifact smoke path; re-measure after updates) |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 
-The registry resolves dynamic aliases. AGY v1.1.8 probes accepted the documented default model and `gemini-3.6-flash-high --effort high`; aliases validate published IDs and the `low`, `medium`, or `high` effort suffix before invocation. Re-measure published IDs after AGY updates. Their syntax differs by agent;
+The registry resolves dynamic aliases. AGY v1.1.8 probes accepted `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`; aliases validate published IDs and the `low`, `medium`, or `high` effort suffix before invocation. Re-measure published IDs after AGY updates. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
 rather than assuming one shared provider/model format. It includes every
 built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
@@ -185,9 +185,10 @@ process cleanup through the Nanocoder smoke test.
 ### AGY (PTY)
 
 The AGY command builder has a PTY integration path. v1.1.8 manual probes
-observed live output, an explicit `gemini-3.6-flash-high --effort high` run,
-stream-json events, unattended file creation, canonical artifact submission,
-and completion evidence. The plain-text parser remains the smoke default;
+observed `gemini-3.6-flash-low`, an explicit `gemini-3.6-flash-high --effort high`
+run, stream-json `init`/`step_update`/successful `result` events, and an exit-0
+smoke that created a file and validated/promoted its fallback artifact before
+completion evidence was recorded. The plain-text parser remains the smoke default;
 stream-json is a separately observed CLI format. Session resume remains
 unavailable because the continuation probes did not expose session identity.
 See `tmp/agy-source-of-truth.txt` for the exact observations.
@@ -237,9 +238,10 @@ command-builder surface for each agent, plus the committed wire-format
 fixture where applicable. They do **not** claim live MCP wiring for agents
 that have no documented CLI MCP path.
 
-AGY's v1.1.8 source record includes manual observations for model acceptance,
-an explicit `gemini-3.6-flash-high --effort high` invocation, stream-json, and
-the full smoke artifact/completion path. The continuation probes did not
+AGY's v1.1.8 source record includes manual observations for
+`gemini-3.6-flash-low`, an explicit `gemini-3.6-flash-high --effort high`
+invocation, stream-json `init`/`step_update`/`result`, and the exit-0 smoke
+artifact/completion path. The continuation probes did not
 establish a resumed-session identity, so the integration keeps AGY session reuse
 disabled. The deterministic mock verifies the Ralph Workflow harness; the
 source record preserves the separate live evidence.

@@ -252,13 +252,14 @@ a billed amount requires the unrun pricing probe.
 python -m ralph smoke-interactive-agy
 ```
 
-On v1.1.8, manual probes accepted the default model ID, explicit
-`gemini-3.6-flash-high --effort high`, and stream-json output. Ralph Workflow
-therefore accepts `agy/<published-id>[:low|medium|high]` aliases. The latest
-live smoke created its requested file and showed parser/tool activity without a
+On v1.1.8, manual probes accepted `gemini-3.6-flash-low`, explicit
+`gemini-3.6-flash-high --effort high`, and stream-json `init`, `step_update`,
+and successful `result` events. Ralph Workflow therefore accepts
+`agy/<published-id>[:low|medium|high]` aliases. The latest live smoke exited 0
+after creating its requested file and showing parser/tool activity without a
 permission prompt. It wrote a valid fallback `smoke_test_result`; Ralph Workflow
-promoted it, recorded the receipt, and wrote host-owned durable completion
-evidence after AGY missed the MCP completion call. Continuation remains disabled:
+validated and promoted it, recorded the receipt, and wrote host-owned durable
+completion evidence after AGY missed the MCP completion call. Continuation remains disabled:
 `--continue` and `--conversation` accepted a prompt but did not expose proof
 that they resumed the intended conversation. See `tmp/agy-source-of-truth.txt`
 for verbatim observations before manually running a paid probe.
