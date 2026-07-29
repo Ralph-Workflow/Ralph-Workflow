@@ -49,6 +49,8 @@ tag exists yet — a link to one would be a dead link.
 
 - **fix(display): lock production-path tool-result flood handling and per-agent rendered-record parity** — 120 distinct tool results with progress companions remain distinguishable without progress echoes or contradictory running text; codex, cursor, agy, nanocoder, generic, malformed, claude, and pi fixture streams now exercise both display surfaces. Locked by `tests/display/test_raw_record_regression.py` and `tests/display/test_agent_parity_matrix.py`.
 
+- **fix(display): make tool outcomes self-describing across both surfaces** — tool-result and error bodies no longer restate agent identity, previews remain on the call side, and the shared failure predicate keeps durable records aligned with the live carrier. Locked by `tests/display/test_raw_record_regression.py` and `tests/display/test_agent_event_renderer.py`.
+
 - **refactor(display): guard command output through the shared display surface** — check-policy, commit, diagnose, explain, init, prompt-helper, run, and conflict resolution join the existing cleanup, star, contribute, and smoke folds; smoke `EXIT_CODE=N` remains the sole machine-readable exception. Locked by `tests/display/test_parallel_display_drift_prevention.py` and `scripts/wt028-drift-check.sh`.
 
 ### Documentation

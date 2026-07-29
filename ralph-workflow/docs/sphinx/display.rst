@@ -388,7 +388,9 @@ The text-first ``.agent/raw/<id>.rendered.log`` record groups event rows under
 a readable phase header. The header carries the phase label, cycle/iteration
 position, and agent identity once. Indented event rows carry a timestamp,
 body, and ``role=...`` marker; healthy ``info`` severity is omitted while
-warnings and errors remain explicit. This keeps the record greppable without
+warnings and errors remain explicit. Tool results name their tool, target, and
+terminal outcome once; identity remains on the enclosing phase header and
+previews remain with the corresponding tool call. This keeps the record greppable without
 repeating chrome on every event. The verbatim ``.log`` capture remains the
 unabridged target for condensation markers. Every supported agent and the
 generic fallback use this same production path; malformed input becomes an

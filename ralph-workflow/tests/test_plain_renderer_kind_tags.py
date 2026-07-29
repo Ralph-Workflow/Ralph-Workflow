@@ -30,6 +30,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
 from ralph.display._plain_constants import LEVELS
@@ -397,6 +398,7 @@ def test_whitespace_only_thinking_emits_nothing() -> None:
     assert buf.getvalue() == "", f"Expected empty output, got: {buf.getvalue()!r}"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_tab_only_thinking_emits_nothing() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "thinking", "\t\n  ")

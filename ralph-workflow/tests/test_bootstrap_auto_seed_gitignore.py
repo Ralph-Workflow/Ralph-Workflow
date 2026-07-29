@@ -9,16 +9,14 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.config import bootstrap as bs_module
 from ralph.config.bootstrap import (
     _DEFAULT_GITIGNORE_PATTERNS,
     auto_seed_default_gitignore,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_auto_seed_creates_gitignore_when_missing(tmp_path: Path) -> None:
@@ -212,6 +210,7 @@ def test_auto_seed_gitignore_warns_on_unreadable_existing_file(
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_auto_seed_git_exclude_warns_on_unreadable_existing_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -262,20 +262,7 @@ _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
 def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
-    """Print version information.
-
-    wt-028-display S-7: this callback is the LAST private display
-    path -- the only ``console.print`` outside :mod:`ralph.display`.
-    The S-7 work routes the output through the canonical
-    :func:`ralph.display.parallel_display.resolve_active_display`
-    factory and the existing ``emit_welcome_banner`` panel (its
-    height-constrained presentation already prints the version
-    line on a single row, exactly what ``--version`` wants on a
-    12-row split pane or a magnified
-    screen). A new presentation variant is intentionally NOT
-    added: the welcome banner IS the version line on the height-
-    constrained surface that ``--version`` typically runs on.
-    """
+    """Route ``--version`` through the shared display welcome banner."""
     if version:
         from ralph.display.parallel_display import resolve_active_display
 

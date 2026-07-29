@@ -190,7 +190,9 @@ def _format_entry_line(entry: object) -> str:
     parts = [f"[{hh_mm_ss}]"]
     if grouping_role == "phase_header":
         if phase:
-            parts.append(phase.replace("_", " "))
+            from ralph.display.parallel_display import phase_label
+
+            parts.append(phase_label(phase))
         if cycle:
             parts.append(f"cycle={cycle}")
         if iter_:

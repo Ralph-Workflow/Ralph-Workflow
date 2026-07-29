@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+import pytest
+
 from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -193,6 +195,7 @@ def test_insignificant_content_never_prompts() -> None:
     assert markers.AGENTS_BLOCK_BEGIN in ws.read(markers.AGENTS_MD)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_existing_managed_block_never_prompts() -> None:
     """A repo that already bootstrapped must not be re-asked."""
     ws = MemoryWorkspace()

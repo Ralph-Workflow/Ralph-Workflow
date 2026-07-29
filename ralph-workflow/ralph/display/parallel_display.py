@@ -96,6 +96,7 @@ import textwrap
 import threading
 import time
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -2049,15 +2050,19 @@ class ParallelDisplay:
         for entry in self._pending_phase_headers:
             cycle_value = entry["cycle"]
             cycle_int = int(cycle_value) if isinstance(cycle_value, int) else None
+            phase = str(entry["phase"]) if entry["phase"] is not None else None
+            iter_ = str(entry["iter_"]) if entry["iter_"] is not None else None
             self._append_recorded_entry(
                 unit_id,
                 event_kind=ActivityEventKind.LIFECYCLE,
                 body=str(entry["body"]),
                 timestamp=str(entry["timestamp"]),
-                phase=str(entry["phase"]) if entry["phase"] is not None else None,
+                phase=phase,
                 cycle=cycle_int,
-                iter_=str(entry["iter_"]) if entry["iter_"] is not None else None,
+                iter_=iter_,
             )
+            if phase is not None:
+                self._last_phase_per_unit[unit_id] = (phase, cycle_int, iter_)
         self._pending_phase_headers.clear()
 
     def _append_recorded_entry(
@@ -2190,6 +2195,8 @@ class ParallelDisplay:
             cycle=cycle,
             iter_=iter_,
         )
+        if phase is not None and entry.grouping_role != "phase_header":
+            entry = replace(entry, indent_level=entry.indent_level + 1)
         with contextlib.suppress(Exception):
             writer.append(entry)
             self._last_recorded_body[unit_id] = (event_kind, body)
@@ -3514,6 +3521,7 @@ class ParallelDisplay:
         """
         if self._is_quiet:
             return
+        self.flush_blocks()
         with contextlib.suppress(Exception):
             self._emit_section_rule("[phase-start]")
             c = self._console
@@ -3550,6 +3558,7 @@ class ParallelDisplay:
         """
         if self._is_quiet:
             return
+        self.flush_blocks()
         with contextlib.suppress(Exception):
             self._emit_section_rule("[phase-start]")
             c = self._console
@@ -3625,6 +3634,7 @@ class ParallelDisplay:
         """
         if self._is_quiet:
             return
+        self.flush_blocks()
         with contextlib.suppress(Exception):
             c = self._console
             style = _phase_style(to_phase, pipeline_policy)

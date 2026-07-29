@@ -115,7 +115,7 @@ def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Pa
             unit_id="pi",
             kind=ActivityEventKind.TOOL_RESULT,
             content=target,
-            metadata={"tool_name": "read_file", "exit_code": 0},
+            metadata={"tool_name": "read_file", "exit_code": 1 if index == 119 else 0},
         )
         display.emit_parsed_event(
             unit_id="pi",
@@ -127,18 +127,19 @@ def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Pa
             advance(1)
     display.stop()
 
-    rendered = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
-        encoding="utf-8"
-    )
+    rendered = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
     lines = [line for line in rendered.splitlines() if line.strip()]
     assert len(lines) == 120
     assert all("role=tool_result" in line for line in lines)
     assert all(first != second for first, second in pairwise(lines))
     assert "role=progress" not in rendered
-    assert "(running...)" not in rendered
+    assert "RUN" not in rendered
+    assert "◐" not in rendered
+    assert any("severity=error" in line for line in lines)
     for index in range(120):
         assert rendered.count(f"path=src/file_{index}.py") == 1
-
+        assert "read_file" in next(line for line in lines if f"file_{index}.py" in line)
+    assert all("severity=error" in line or "ok" in line.lower() for line in lines)
 
 def test_pi_ndjson_re_renders_one_entry_per_event(tmp_path: Path) -> None:
     """The pi PTY NDJSON fixture produces exactly one line per event."""
@@ -211,7 +212,7 @@ def test_presented_entry_regression_strips_live_badge_identity_chrome() -> None:
         metadata={},
     )
     entry = build_presented_entry(event, unit_id="pi/minimax/MiniMax-3")
-    assert entry.body == "grep_files path=ralph/"
+    assert entry.body == "tool ok grep_files path=ralph/"
 
 
 def test_presented_entry_regression_drops_badge_only_body() -> None:

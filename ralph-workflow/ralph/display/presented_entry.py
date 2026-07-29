@@ -22,6 +22,7 @@ from ralph.display._channel_prefix_stripper import (
     strip_parser_channel_prefix,
 )
 from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.display.tool_args import friendly_tool_name
 
 if TYPE_CHECKING:
     from ralph.display.agent_activity_event import AgentActivityEvent
@@ -164,6 +165,8 @@ def build_presented_entry(
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
+    if event.kind is ActivityEventKind.TOOL_RESULT:
+        body = _tool_result_record_body(body, metadata, severity)
     grouping_role, indent_level = _KIND_TO_GROUPING.get(
         event.kind, ("agent_text", 0)
     )
@@ -199,6 +202,33 @@ def build_presented_entry(
         indent_level=indent_level,
         grouping_role=grouping_role,
     )
+
+
+def _tool_result_record_body(body: str, metadata: dict[str, object], severity: str) -> str:
+    """Include a result's tool, target, and terminal outcome in its record body."""
+    raw_tool = next(
+        (
+            value
+            for key in ("tool_name", "name", "tool")
+            if isinstance(value := metadata.get(key), str) and value
+        ),
+        "tool",
+    )
+    tool = friendly_tool_name(raw_tool)
+    target = next(
+        (
+            f"{key}={value}"
+            for key in ("target", "path", "command", "workdir")
+            if isinstance(value := metadata.get(key), str) and value
+        ),
+        "",
+    )
+    outcome = "failed" if severity == "error" else "ok"
+    parts = [tool]
+    if target and target not in body:
+        parts.append(target)
+    parts.extend((outcome, body))
+    return " ".join(part for part in parts if part)
 
 
 _LIVE_BADGE_PREFIX = re.compile(r"^[✓✗⚠\u2139◐]\s+(?:PASS|FAIL|WARN|INFO|RUN)\s+")

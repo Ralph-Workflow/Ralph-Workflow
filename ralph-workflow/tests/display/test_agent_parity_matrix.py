@@ -398,7 +398,7 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
     assert all(entry.identity == "opencode" and entry.body for entry in entries)
     assert entries[0].body.endswith("Inspecting the display.")
     assert entries[5].body == "read"
-    assert entries[6].body == "renderer source"
+    assert entries[6].body == "read ok renderer source"
     assert entries[9].body == "bash"
     assert entries[10].body == "exit status 1"
     assert entries[11].body == "upstream disconnected"
