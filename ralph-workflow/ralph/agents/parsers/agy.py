@@ -1,4 +1,4 @@
-"""Parser for the AGY v1.0.8 --print wire format.
+"""Parser for the AGY v1.0.8 --print wire format (v1.1.8 re-measurement pending).
 
 Source of truth: ``ralph-workflow/tmp/agy-source-of-truth.txt``.
 
@@ -59,7 +59,7 @@ __all__ = ["AgyParser"]
 
 
 class AgyParser(NdjsonParserBase):
-    """Plain-text parser for AGY v1.0.8 --print output.
+    """Plain-text parser for AGY v1.0.8 --print output (v1.1.8 pending).
 
     Inherits the NDJSON state machine from :class:`NdjsonParserBase` (SSE
     strip, ``[DONE]`` short-circuit, lifecycle suppression, error

@@ -88,7 +88,7 @@ Reference: https://platform.openai.com/docs/codex
 
 Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. Ralph Workflow automatically injects the run-scoped Ralph Workflow MCP endpoint into AGY's global `~/.gemini/antigravity-cli/mcp_config.json` before AGY launches using the `agy_workspace_mcp_endpoint` context manager, and restores the file after the run. Measured behaviour shows AGY's headless `--print` mode only initialises its MCP client when this global config file exists; the workspace-level `.agents/mcp_config.json` is not sufficient. The provider-visible config written by this context manager contains only the Ralph Workflow MCP server entry, matching Ralph Workflow's strict-authority-mode contract. No manual pre-configuration of the Ralph Workflow endpoint is required. Ralph Workflow still discovers user-configured AGY upstream servers from `~/.gemini/antigravity-cli/mcp_config.json` and workspace `.agents/mcp_config.json` for the upstream proxy.
 
-AGY participates fully in Ralph Workflow's upstream proxy model, capability-gated MCP model, and completion contract. This is a setup difference, not a capability limitation.
+AGY's `--print` MCP calls are unverified on measured v1.1.8. Ralph Workflow therefore keeps the supported direct-write Markdown promotion path for artifact submission; completion still requires the canonical receipt and durable sentinel.
 
 ## 3. Known Bugs and Limitations
 

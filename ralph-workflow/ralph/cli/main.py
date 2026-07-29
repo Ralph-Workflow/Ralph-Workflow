@@ -1166,8 +1166,8 @@ app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
 def smoke_interactive_agy(
     agent: str = typer.Option(
-        "agy/Gemini 3.5 Flash (Medium)",
-        help="AGY model alias to smoke (e.g. agy/Gemini 3.5 Flash (Medium)).",
+        "agy/gemini-3.6-flash-low",
+        help="AGY model alias to smoke (e.g. agy/gemini-3.6-flash-low).",
     ),
     subagents: bool = typer.Option(
         False,

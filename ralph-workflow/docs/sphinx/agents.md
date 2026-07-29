@@ -40,12 +40,12 @@ phases to:
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
-| `agy`             | `agy`        | Interactive (PTY)    | Yes (mock-backed) | Google's Antigravity CLI (v1.0.9+)              |
+| `agy`             | `agy`        | Interactive (PTY)    | Yes (mock-backed) | Google's Antigravity CLI (measured v1.1.8)      |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 
 The registry resolves dynamic aliases such as
-`agy/Gemini 3.5 Flash (Medium)` at runtime. Their syntax differs by agent;
+`agy/gemini-3.6-flash-low` at runtime. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
 rather than assuming one shared provider/model format. It includes every
 built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
@@ -242,14 +242,14 @@ The canonical end-to-end AGY verification (mock-backed, always green) is:
 ```bash
 cd ralph-workflow && \
   RALPH_AGY_BINARY="$(pwd)/tests/_support/mock_agy.sh" \
-  uv run python -m ralph smoke-interactive-agy --agent 'agy/Gemini 3.5 Flash (Medium)'
+  uv run python -m ralph smoke-interactive-agy --agent agy/gemini-3.6-flash-low
 ```
 
 Expected green parity table excerpt:
 
 ```text
 | Agent                         | Transport | File | Session                                       | Parser events | Tool activity | Artifact | Breaks |
-| agy/Gemini 3.5 Flash (Medium) | agy       | yes  | interactive-agy-smoke-Gemini-3.5-Flash-Medium | 1             | yes           | yes      | none   |
+| agy/gemini-3.6-flash-low | agy       | yes  | interactive-agy-smoke-gemini-3.6-flash-low | 1 | yes | yes | none |
 ```
 
 ## Completion and observability

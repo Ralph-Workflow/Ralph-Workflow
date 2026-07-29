@@ -22,7 +22,7 @@ which model an agent should run.
 | Codex (`codex`) | `codex/<model>[effort=<level>]` | `codex/gpt-5.4[effort=high]` | `--model gpt-5.4 -c 'model_reasoning_effort = "high"'` |
 | OpenCode (`opencode`) | `opencode/<provider>/<model>` | `opencode/openai/gpt-5.4` | `-m openai/gpt-5.4` |
 | Nanocoder (`nanocoder`) | `nanocoder/<provider>/<model>` | `nanocoder/ollama/llama3.1` | `--provider ollama --model llama3.1` |
-| Google Anti Gravity (`agy`) | `agy/<display name>` | `agy/Claude Sonnet 4.6 (Thinking)` | `--model 'Claude Sonnet 4.6 (Thinking)'` |
+| Google Anti Gravity (`agy`) | `agy/<model>[:effort]` | `agy/gemini-3.6-flash-low:medium` | `--model gemini-3.6-flash-low --effort medium` |
 | Pi (`pi`) | `pi/<provider/model[:thinking]>` | `pi/anthropic/claude-sonnet-4:high` | `--model anthropic/claude-sonnet-4:high` |
 | Cursor (`cursor`) | `cursor/<model id>` | `cursor/claude-opus-4-8[context=1m,effort=high,fast=false]` | `--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'` |
 
@@ -100,7 +100,7 @@ json_parser = "opencode"
 
 - **CLI**: `agy`
 - **Transport**: `agy`
-- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`
+- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; measured v1.1.8 accepts published `--model` IDs and publishes `--effort low|medium|high` (end-to-end effort effect remains unverified).
 - **Parser**: `generic` (native AGY parser; plain-text, not NDJSON)
 - **Caveats**:
     - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
@@ -108,6 +108,8 @@ json_parser = "opencode"
     - Completion contract: the durable `declare_complete` sentinel is always required; required-artifact phases also need the run-scoped artifact receipt, the same contract used by Claude interactive and headless Claude.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
+    - Session continuation is unproven: v1.1.8 publishes `--continue` and `--conversation`, but a resume probe has not been run, so Ralph does not reuse AGY sessions.
+    - `agy agents` reported no available agents on the measured stock v1.1.8 install. This is an install observation, not a universal capability claim; parallel plans use the existing sequential fallback unless a runtime exposes verified native delegation.
     - AGY is a supported orchestration path, not a replacement for Ralph Workflow.
 
 ```toml

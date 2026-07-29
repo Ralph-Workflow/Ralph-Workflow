@@ -534,7 +534,7 @@ def smoke_interactive_claude_command(
 
 
 def smoke_interactive_agy_command(
-    agent_name: str = "agy/Gemini 3.5 Flash (Medium)",
+    agent_name: str = "agy/gemini-3.6-flash-low",
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -545,14 +545,11 @@ def smoke_interactive_agy_command(
     """Run the manual AGY end-to-end smoke harness via the PTY contract.
 
     This drives the live ``agy`` binary (or the ``RALPH_AGY_BINARY`` override
-    when set). The default alias is ``agy/Gemini 3.5 Flash (Medium)`` because
-    that model ships with a generous per-account quota in the
-    ``agy models`` list and reliably produces output in the harness
-    environment. The 7 live regression tests in
-    ``tests/test_agy_live_regression.py`` all use the same default alias so
-    the public CLI command and the live regression suite share one
-    repo-consistent, directly verified smoke path. Use ``--agent`` to pin a
-    different ``agy/<model>`` alias from ``agy models``.
+    when set). The default alias is ``agy/gemini-3.6-flash-low``, a low-tier model ID
+    published by the measured AGY v1.1.8 CLI. Its price ordering is
+    unverified, so this remains a manual diagnostic rather than a routine
+    verification path. Use ``--agent`` to pin another published
+    ``agy/<model>`` alias.
     """
     agy_binary = get_agy_binary_override()
     if shutil.which(agy_binary) is None and not (
@@ -573,7 +570,7 @@ def smoke_interactive_agy_command(
     if agent_config is None:
         logger.error(
             "Agent '{}' is not available. Use --agent with an agy/<model> alias, "
-            "e.g. --agent 'agy/Gemini 3.5 Flash (Medium)'.",
+            "e.g. --agent agy/gemini-3.6-flash-low.",
             agent_name,
         )
         return 2

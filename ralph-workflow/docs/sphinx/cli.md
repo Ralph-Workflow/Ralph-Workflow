@@ -241,14 +241,14 @@ scenario.
 
 ### `ralph smoke-interactive-agy`
 
-Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Gemini 3.5 Flash (Medium)`; override it with `--agent agy/<model>`.
+Run this manual, paid-usage diagnostic one at a time for Google Anti Gravity (AGY). It drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports file creation, session capture, parser events, tool activity, and artifact submission. It is never part of `make verify`. The default `agy/gemini-3.6-flash-low` is a low-tier ID published by measured AGY v1.1.8; its price ordering remains unverified.
 
 ```bash
-python -m ralph smoke-interactive-agy                                  # default model
-python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'   # explicit override
+python -m ralph smoke-interactive-agy
+python -m ralph smoke-interactive-agy --agent agy/claude-sonnet-4-6:medium
 ```
 
-Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
+Published model IDs are validated before launch. An unknown model or effort fails immediately instead of silently falling back. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream binary returned no stdout; the diagnostic names an actionable quota, authentication, or model cause when its log provides one.
 
 Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
 
@@ -294,16 +294,14 @@ wrapper, alternate live binary, or an operator-wired test stub). There
 is no bundled mock for Cursor (unlike AGY); non-executable paths are
 ignored with a WARNING.
 
-The eight canonical `agy/<display-name>` aliases accepted by `--agent` (the override flag, default `agy/Gemini 3.5 Flash (Medium)`):
+The measured v1.1.8 `agy models` IDs accepted by `--agent` are:
 
-- `agy/Gemini 3.5 Flash (Medium)`
-- `agy/Gemini 3.5 Flash (High)`
-- `agy/Gemini 3.5 Flash (Low)`
-- `agy/Gemini 3.1 Pro (Low)`
-- `agy/Gemini 3.1 Pro (High)`
-- `agy/Claude Sonnet 4.6 (Thinking)`
-- `agy/Claude Opus 4.6 (Thinking)`
-- `agy/GPT-OSS 120B (Medium)`
+- `gemini-3.6-flash-high`, `gemini-3.6-flash-medium`, `gemini-3.6-flash-low`
+- `gemini-3.5-flash-high`, `gemini-3.5-flash-medium`, `gemini-3.5-flash-low`
+- `gemini-3.1-pro-high`, `gemini-3.1-pro-low`
+- `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`
+
+Append `:low`, `:medium`, or `:high` to request AGY's published effort flag. Its end-to-end effect has not yet been manually observed.
 
 ## Related pages
 

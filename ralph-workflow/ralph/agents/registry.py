@@ -105,6 +105,23 @@ _MIN_AGY_SEGMENTS = 2
 _MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
 _CODEX_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
+_AGY_REASONING_EFFORTS = frozenset({"low", "medium", "high"})
+# Measured from `agy models` v1.1.8; refresh only from a new AGY measurement.
+_AGY_MODELS = frozenset(
+    {
+        "gemini-3.6-flash-high",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.5-flash-high",
+        "gemini-3.5-flash-medium",
+        "gemini-3.5-flash-low",
+        "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
+    }
+)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -574,19 +591,28 @@ def _resolve_dynamic_simple_prefixed_agent(
                 if model is not None:
                     model_flag += f" --model {shlex.quote(model)}"
                 return base_config.model_copy(update={"model_flag": model_flag, "can_commit": True})
-    elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS and segments[1]:
+    elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS:
+        alias = _parse_agy_alias(name.removeprefix("agy/"))
         base_config = base_lookup("agy")
-        if base_config is not None:
-            # AGY model IDs from `agy models` are display names and may contain
-            # spaces/parentheses (e.g. "Claude Sonnet 4.6 (Thinking)"). Quote the
-            # value so shlex.split in the command builder keeps it as one argument.
-            return base_config.model_copy(
-                update={
-                    "model_flag": f"--model {shlex.quote(segments[1])}",
-                    "can_commit": True,
-                }
-            )
+        if alias is not None and base_config is not None:
+            model_id, effort = alias
+            model_flag = f"--model {shlex.quote(model_id)}"
+            if effort is not None:
+                model_flag += f" --effort {effort}"
+            return base_config.model_copy(update={"model": model_id, "model_flag": model_flag})
     return None
+
+
+def _parse_agy_alias(alias_value: str) -> tuple[str, str | None] | None:
+    """Parse a measured ``agy/<model>[:effort]`` alias without fallback."""
+    model_id, separator, effort = alias_value.rpartition(":")
+    if not separator:
+        model_id, effort = alias_value, None
+    if model_id not in _AGY_MODELS:
+        return None
+    if effort is not None and (effort not in _AGY_REASONING_EFFORTS or model_id.endswith(f"-{effort}")):
+        return None
+    return model_id, effort
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:

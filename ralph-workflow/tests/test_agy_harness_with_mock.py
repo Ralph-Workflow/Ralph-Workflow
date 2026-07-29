@@ -51,7 +51,7 @@ def _run_agy_smoke_plumbing(
     monkeypatch: pytest.MonkeyPatch,
     *,
     behavior: str = "normal",
-    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+    agent_name: str = "agy/gemini-3.6-flash-low",
 ) -> SmokeRunResult:
     """Drive ``run_smoke_plumbing`` with the mock AGY binary in ``tmp_path``."""
     mock_path = _mock_agy_path()
@@ -259,7 +259,7 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     """Mock AGY proves receipt promotion plus explicit completion durability.
 
     Drives the full smoke harness with the deterministic mock AGY binary
-    using the ``agy/Gemini 3.5 Flash (Medium)`` alias (the same alias used
+    using the ``agy/gemini-3.6-flash-low`` alias (the same alias used
     by the live regression suite and by the smoke CLI default). Asserts
     the five contract surfaces the completion contract requires:
 

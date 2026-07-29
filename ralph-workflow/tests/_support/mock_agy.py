@@ -1,4 +1,4 @@
-"""Deterministic simulator for the AGY v1.0.8 --print wire format.
+"""Deterministic simulator for the measured AGY v1.1.8 CLI surface.
 
 This module is importable and runnable as ``python -m tests._support.mock_agy``.
 It is used by the Ralph smoke harness when ``RALPH_AGY_BINARY`` points at it
@@ -29,6 +29,18 @@ from pathlib import Path
 
 CANONICAL_MODELS: frozenset[str] = frozenset(
     {
+        "gemini-3.6-flash-high",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.5-flash-high",
+        "gemini-3.5-flash-medium",
+        "gemini-3.5-flash-low",
+        "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
+        # Legacy fixtures remain accepted by the deterministic simulator only.
         "Gemini 3.5 Flash (Medium)",
         "Gemini 3.5 Flash (High)",
         "Gemini 3.5 Flash (Low)",
@@ -56,6 +68,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dangerously-skip-permissions", action="store_true")
     parser.add_argument("--model", default=None)
     parser.add_argument("--add-dir", action="append", default=[])
+    parser.add_argument("--effort", choices=("low", "medium", "high"), default=None)
     parser.add_argument("--print-timeout", default=None)
     parser.add_argument("--conversation", default=None)
     parser.add_argument("--sandbox", action="store_true")

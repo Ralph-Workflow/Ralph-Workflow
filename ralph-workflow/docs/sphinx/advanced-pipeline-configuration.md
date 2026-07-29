@@ -225,7 +225,7 @@ Use this when you want a planning artifact to split work into multiple developme
 
 ### What changed
 
-Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, AGY task tooling, etc.). Pi.dev is wired as a transport but has no documented sub-agent / task tooling per the public pi.dev design philosophy, so `work_units` and `parallel_plan` run sequentially in `unit_id` order for the `pi` transport.
+Parallel plan execution is **delegated to the executing AI agent's native sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex sub-agents, etc.). On the measured stock AGY v1.1.8 install, `agy agents` reported no available agents; AGY therefore uses the sequential fallback unless a runtime exposes verified native delegation. Pi.dev likewise runs `work_units` and `parallel_plan` sequentially in `unit_id` order.
 
 The bundled `pipeline.toml` ships with `dispatch_mode = "agent_subagents"` on the development phase, so the executing agent is the actor that dispatches its own sub-agents and produces the matching `plan_items_proven` evidence. Ralph-managed fan-out is dormant in this build: the same-workspace fan-out worker machinery is retained in policy for future re-arming, but the bundled default does not use it for parallel plan execution.
 
@@ -246,7 +246,7 @@ When a plan declares `work_units` or `parallel_plan`, the executing agent:
 2. Dispatches a sub-agent per unit in dependency order.
 3. Aggregates each sub-agent's `plan_items_proven` evidence into the `development_result` artifact.
 
-For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). Agents without usable sub-agent capability (e.g. `nanocoder` and `pi`) execute the same plan sequentially in `unit_id` order — no correctness loss.
+For capable agents, the agent's native sub-agent / task capability is enabled by default via `[agents.<name>] subagent_capability = true` in `ralph-workflow.toml` (see the [Configuration Reference](configuration.md) table for the per-agent default). Agents without usable sub-agent capability (e.g. `agy` on the measured stock install, `nanocoder`, and `pi`) execute the same plan sequentially in `unit_id` order — no correctness loss.
 
 The planning prompt (`planning.jinja`) carries the `## Agent-Driven Parallel Execution` block that tells the planner to write agent-facing intent (work units, dependencies, scope) and forbids routing parallel plan work through Ralph-managed coordination. The continuation template (`developer_iteration_continuation.jinja`) carries the matching `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the sub-agent dispatch guidance.
 

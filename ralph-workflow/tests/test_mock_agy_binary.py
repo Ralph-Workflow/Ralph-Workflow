@@ -56,7 +56,7 @@ def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )
@@ -82,7 +82,7 @@ def test_mock_quota_exhausted_returns_empty(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         behavior="quota_exhausted",
         artifact_dir=tmp_path,
@@ -97,7 +97,7 @@ def test_mock_invalid_model_returns_empty(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         behavior="invalid_model",
         artifact_dir=tmp_path,
@@ -111,7 +111,7 @@ def test_mock_missing_print_exits_2(tmp_path: Path) -> None:
     result = _run_mock_agy(
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )
@@ -120,12 +120,12 @@ def test_mock_missing_print_exits_2(tmp_path: Path) -> None:
 
 
 def test_mock_different_canonical_model_name(tmp_path: Path) -> None:
-    """The mock accepts any canonical display name from ``agy models``."""
+    """The mock accepts any published model ID from ``agy models``."""
     result = _run_mock_agy(
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Gemini 3.5 Flash (Low)",
+        "gemini-3.5-flash-low",
         "hello",
         artifact_dir=tmp_path,
     )
@@ -141,7 +141,7 @@ def test_mock_artifact_schema_validates(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )
