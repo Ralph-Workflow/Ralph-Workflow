@@ -253,12 +253,13 @@ python -m ralph smoke-interactive-agy
 ```
 
 On v1.1.8, manual probes accepted the default model ID, an explicit effort
-flag, and stream-json output. The live smoke created its requested file,
-submitted `smoke_test_result` through the canonical receipt path, and wrote its
-completion sentinel without a permission prompt. Continuation remains disabled:
-`--continue` and `--conversation` accepted a prompt but did not expose proof
-that they resumed the intended conversation. See `tmp/agy-source-of-truth.txt`
-for verbatim observations before manually running a paid probe.
+flag, and stream-json output. The latest live smoke created its requested file
+and showed parser/tool activity without a permission prompt, but did not submit
+`smoke_test_result` or write its completion sentinel; it correctly exits
+nonzero with those missing signals. Continuation remains disabled: `--continue`
+and `--conversation` accepted a prompt but did not expose proof that they
+resumed the intended conversation. See `tmp/agy-source-of-truth.txt` for
+verbatim observations before manually running a paid probe.
 
 Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic
 mock at `tests/_support/mock_agy.sh` for CI. The mock tests Ralph Workflow's harness;
