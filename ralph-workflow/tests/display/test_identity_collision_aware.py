@@ -23,6 +23,7 @@ from __future__ import annotations
 from ralph.display.agent_event_renderer import _identity_style_for
 from ralph.display.theme import (
     IDENTITY_PALETTE,
+    IDENTITY_PALETTE_ON_UNKNOWN_BG,
     _simulate_cvd,
 )
 
@@ -139,4 +140,4 @@ def test_identity_style_for_resolves_to_palette_member() -> None:
     for name in ("claude", "codex", "opencode", "pi", "cursor", "agy", "nanocoder"):
         for active in [None, ["claude"], ["codex", "opencode"]]:
             hex_color = _identity_style_for(name, active=active)
-            assert hex_color in IDENTITY_PALETTE
+            assert hex_color in IDENTITY_PALETTE_ON_UNKNOWN_BG

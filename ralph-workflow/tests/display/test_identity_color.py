@@ -50,6 +50,7 @@ from ralph.display.status_bar import StatusBarModel, render_status_bar
 from ralph.display.theme import (
     IDENTITY_PALETTE,
     IDENTITY_PALETTE_ON_LIGHT_BG,
+    IDENTITY_PALETTE_ON_UNKNOWN_BG,
     STATUS_STYLES,
     STATUS_STYLES_ON_LIGHT_BG,
     identity_color,
@@ -225,6 +226,15 @@ def test_light_bg_palette_clears_contrast_on_white() -> None:
         assert ratio >= 4.5, f"light-bg {color} = {ratio:.2f} on white"
 
 
+def test_unknown_bg_identity_palette_clears_contrast_on_black_and_white() -> None:
+    """DA-002: unresolved terminals must not inherit dark-only identity colours."""
+    for color in IDENTITY_PALETTE_ON_UNKNOWN_BG:
+        assert theme.contrast_ratio(color, "#000000") >= 4.5
+        assert theme.contrast_ratio(color, "#FFFFFF") >= 4.5
+        assert color in IDENTITY_PALETTE_ON_UNKNOWN_BG
+    assert identity_color("claude", terminal_bg_is_light=None) in IDENTITY_PALETTE_ON_UNKNOWN_BG
+
+
 # --- Collision nudge -----------------------------------------------------
 
 
@@ -340,8 +350,8 @@ def test_identity_style_for_returns_empty_for_no_unit() -> None:
 def test_identity_style_for_returns_palette_color() -> None:
     """A unit_id picks the deterministic identity color."""
     style = _identity_style_for("claude")
-    assert style == identity_color("claude", terminal_bg_is_light=False)
-    assert style in IDENTITY_PALETTE
+    assert style == identity_color("claude", terminal_bg_is_light=None)
+    assert style in IDENTITY_PALETTE_ON_UNKNOWN_BG
 
 
 def test_split_body_with_unit_separates_prefix() -> None:
@@ -375,7 +385,7 @@ def test_event_renderer_unit_prefix_carries_identity_color() -> None:
     assert "claude hello world" in rendered.plain
     # The rich-Text path colors the prefix segment with the
     # identity hex; the rest of the body uses the default style.
-    expected_color = identity_color("claude", terminal_bg_is_light=False)
+    expected_color = identity_color("claude", terminal_bg_is_light=None)
     # At least one span carries the identity color, and that span
     # covers the unit prefix substring (e.g. ``"claude "``).
     identity_spans = [s for s in rendered.spans if s.style == expected_color]
@@ -452,7 +462,7 @@ def test_status_bar_agent_segment_carries_identity_color() -> None:
     rendered = render_status_bar(model, _ctx())
     assert "claude" in rendered.plain
     # The agent segment is colored with the identity color.
-    expected_color = identity_color("claude", terminal_bg_is_light=False)
+    expected_color = identity_color("claude", terminal_bg_is_light=None)
     assert any(span.style == expected_color for span in rendered.spans), (
         f"Status Bar agent segment missing identity color {expected_color}"
     )
@@ -466,6 +476,7 @@ def test_identity_color_is_in_theme_module_public_surface() -> None:
     assert "identity_color" in theme.__all__
     assert "IDENTITY_PALETTE" in theme.__all__
     assert "IDENTITY_PALETTE_ON_LIGHT_BG" in theme.__all__
+    assert "IDENTITY_PALETTE_ON_UNKNOWN_BG" in theme.__all__
 
 
 def test_identity_color_handles_unicode_name() -> None:

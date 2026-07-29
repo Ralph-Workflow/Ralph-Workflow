@@ -238,6 +238,12 @@ IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
     "#1A1A1A",
 )
 
+#: Mid-luminance identity colours proven readable on both black and white.
+IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
+    "#0070F0", "#0080A0", "#3070E0", "#308080", "#508040", "#6070C0",
+    "#608000", "#7060F0", "#807080", "#9060C0", "#907000", "#907030",
+)
+
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
 
 
@@ -260,7 +266,7 @@ def _identity_slot(name: str) -> int:
 
 def _status_role_hexes() -> frozenset[str]:
     hexes: set[str] = set()
-    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
+    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG, STATUS_STYLES_ON_UNKNOWN_BG):
         for style, _icon, _label in table.values():
             extracted = _extract_hex(style)
             if extracted:
@@ -333,7 +339,12 @@ def identity_color(
     color. This prevents N identities that share K base slots from
     all landing on the same nudge slot.
     """
-    palette = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light else IDENTITY_PALETTE
+    if terminal_bg_is_light is True:
+        palette = IDENTITY_PALETTE_ON_LIGHT_BG
+    elif terminal_bg_is_light is False:
+        palette = IDENTITY_PALETTE
+    else:
+        palette = IDENTITY_PALETTE_ON_UNKNOWN_BG
     base_slot = _identity_slot(name)
     if active is None:
         return palette[base_slot]
@@ -719,12 +730,12 @@ class _SyntaxThemeOnUnknownBackground(PygmentsStyle):
 
     default_style: ClassVar[str] = ""
     styles: ClassVar[dict[object, str]] = {
-        Comment: "#B05C5C",
-        Keyword: "#9E684C",
-        Name.Function: "#79773A",
-        String: "#4E8417",
-        Number: "#13884E",
-        Operator: "#178383",
+        Comment: "#2070F0",
+        Keyword: "#2080A0",
+        Name.Function: "#408070",
+        String: "#5070D0",
+        Number: "#608020",
+        Operator: "#7070A0",
     }
 
 
@@ -744,7 +755,7 @@ SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxTheme:
     """Return the code-highlighting theme name for the given background.
 
-    Both returned themes are fixed RGB Pygments styles selected against
+    All three returned themes are fixed RGB Pygments styles selected against
     the resolved background. This makes token contrast and CVD separation
     mechanically checkable; stock ANSI slots are operator-configurable and
     cannot provide that guarantee.
@@ -781,9 +792,8 @@ def pick_status_styles(terminal_bg_is_light: bool | None) -> dict[str, tuple[str
     """Return the status style table for the given background.
 
     Maps the boolean/None flag to the matching palette table. A
-    ``None`` flag selects the dark-background default so callers
-    that cannot detect the background still get a contrast-safe
-    palette.
+    ``None`` selects the unknown-background table, whose colours clear
+    the contrast floor on both black and white terminals.
 
     Parameters:
         terminal_bg_is_light: ``True`` for light backgrounds,
@@ -849,7 +859,7 @@ def assert_status_styles_meet_contrast(
 
     Parameters:
         terminal_bg_is_light: ``True`` for light backgrounds,
-            ``False`` for dark, ``None`` for unknown (uses dark).
+            ``False`` for dark, ``None`` for unknown (checks both).
         min_ratio: Minimum acceptable contrast ratio (default
             ``_MIN_CONTRAST_RATIO``).
 
@@ -858,21 +868,24 @@ def assert_status_styles_meet_contrast(
             contrast check.
     """
     table = pick_status_styles(terminal_bg_is_light)
-    bg_hex = _LIGHT_BG_HEX if terminal_bg_is_light else _DARK_BG_HEX
+    backgrounds = (_LIGHT_BG_HEX,) if terminal_bg_is_light is True else (
+        (_DARK_BG_HEX,) if terminal_bg_is_light is False else (_DARK_BG_HEX, _LIGHT_BG_HEX)
+    )
     failures: list[str] = []
     for state, payload in table.items():
         style = payload[0]
         fg_hex = _extract_hex(style)
         if not fg_hex:
             continue
-        ratio = contrast_ratio(fg_hex, bg_hex)
-        if ratio < min_ratio:
-            failures.append(f"  {state}: {fg_hex} on {bg_hex} = {ratio:.2f}:1 (< {min_ratio})")
+        for bg_hex in backgrounds:
+            ratio = contrast_ratio(fg_hex, bg_hex)
+            if ratio < min_ratio:
+                failures.append(f"  {state}: {fg_hex} on {bg_hex} = {ratio:.2f}:1 (< {min_ratio})")
     if failures:
         joined = "\n".join(failures)
         raise RuntimeError(
             "STATUS_STYLES foregrounds fail WCAG contrast on the resolved "
-            f"terminal background ({bg_hex}):\n{joined}"
+            f"terminal background ({', '.join(backgrounds)}):\n{joined}"
         )
 
 
@@ -942,6 +955,7 @@ __all__ = [
     "BLUISH_GREEN",
     "IDENTITY_PALETTE",
     "IDENTITY_PALETTE_ON_LIGHT_BG",
+    "IDENTITY_PALETTE_ON_UNKNOWN_BG",
     "ORANGE",
     "RALPH_THEME",
     "REDDISH_PURPLE",

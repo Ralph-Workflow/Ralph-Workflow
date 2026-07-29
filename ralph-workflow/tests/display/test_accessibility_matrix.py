@@ -35,6 +35,7 @@ from ralph.display.theme import (
     IDENTITY_PALETTE,
     STATUS_STYLES,
     STATUS_STYLES_ON_LIGHT_BG,
+    STATUS_STYLES_ON_UNKNOWN_BG,
     _simulate_cvd,
     assert_status_styles_meet_contrast,
     identity_color,
@@ -289,6 +290,11 @@ def test_status_styles_pass_contrast_on_light_background() -> None:
     assert_status_styles_meet_contrast(terminal_bg_is_light=True)
 
 
+def test_status_styles_pass_contrast_on_unknown_background() -> None:
+    """Unknown terminals require a palette readable against both possible backgrounds."""
+    assert_status_styles_meet_contrast(terminal_bg_is_light=None)
+
+
 def test_pick_status_styles_resolves_a_known_state() -> None:
     """``pick_status_styles`` returns a status style table for a known context."""
     table = pick_status_styles(False)
@@ -316,7 +322,7 @@ def test_status_role_colors_remain_distinct_under_all_cvd_simulations() -> None:
         theme._PROTANOPIA_MATRIX,
         theme._TRITANOPIA_MATRIX,
     )
-    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
+    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG, STATUS_STYLES_ON_UNKNOWN_BG):
         colors = {
             role: theme._extract_hex(style)
             for role, (style, _icon, _label) in table.items()

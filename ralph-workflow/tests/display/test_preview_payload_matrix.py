@@ -29,6 +29,8 @@ def test_preview_payload_parser_coverage_matrix_uses_parser_emitted_shapes() -> 
             "NotebookEdit",
             {"args": {"path": "a.ipynb", "kernel": "python", "source": "x = 1"}},
         ),
+        ("claude_interactive", "Write", {"tool": "Write", "input": {"file_path": "a.py", "content": "x = 1"}}),
+        ("claude_interactive_transcript_parser", "Write", {"tool": "Write", "input": {"file_path": "a.py", "content": "x = 1"}}),
     )
     for parser, tool_name, metadata in mapped:
         payload = payload_from_tool_event(tool_name, metadata)
@@ -41,8 +43,6 @@ def test_preview_payload_parser_coverage_matrix_uses_parser_emitted_shapes() -> 
         "agy",
         "generic",
         "nanocoder",
-        "claude_interactive",
-        "claude_interactive_transcript_parser",
     }
     parser_dir = Path(__file__).parents[2] / "ralph" / "agents" / "parsers"
     shipped = {path.stem for path in parser_dir.glob("*.py") if not path.stem.startswith("_")} - {
@@ -52,9 +52,18 @@ def test_preview_payload_parser_coverage_matrix_uses_parser_emitted_shapes() -> 
         "interactive_transcript_event",
     }
     assert shipped == {entry[0] for entry in mapped} | declined
-    assert all(
-        payload_from_tool_event("Write", {"raw_parser": parser}) is None for parser in declined
+    assert all(payload_from_tool_event("Write", {"event": parser}) is None for parser in declined)
+
+
+def test_notebook_edit_uses_notebook_path_and_python_fallback() -> None:
+    """DA-007: Claude NotebookEdit keeps its path and cell-language preview."""
+    payload = payload_from_tool_event(
+        "NotebookEdit",
+        {"input": {"notebook_path": "analysis.ipynb", "cell_id": "c1", "new_source": "import pandas as pd\n"}},
     )
+    assert payload is not None and payload.path == "analysis.ipynb" and payload.language_hint == "python"
+    preview = build_edit_preview("NotebookEdit", payload, width=80, terminal_bg_is_light=False)
+    assert preview is not None
 
 
 def test_bounded_previews_use_ascii_elision_and_one_multi_file_budget() -> None:

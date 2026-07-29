@@ -16,6 +16,7 @@ from ralph.display.theme import (
     SYNTAX_BACKGROUND_TRANSPARENT,
     SYNTAX_THEME_ON_DARK_BG,
     SYNTAX_THEME_ON_LIGHT_BG,
+    SYNTAX_THEME_ON_UNKNOWN_BG,
     contrast_ratio,
     syntax_theme_for_background,
 )
@@ -32,14 +33,19 @@ def test_syntax_theme_selects_the_background_safe_ansi_variant() -> None:
     """Syntax highlights select the terminal palette variant for the background."""
     assert syntax_theme_for_background(False) == SYNTAX_THEME_ON_DARK_BG
     assert syntax_theme_for_background(True) == SYNTAX_THEME_ON_LIGHT_BG
+    assert syntax_theme_for_background(None) == SYNTAX_THEME_ON_UNKNOWN_BG
 
 
 @pytest.mark.parametrize(
     ("terminal_bg_is_light", "expected_theme"),
-    [(False, SYNTAX_THEME_ON_DARK_BG), (True, SYNTAX_THEME_ON_LIGHT_BG)],
+    [
+        (False, SYNTAX_THEME_ON_DARK_BG),
+        (True, SYNTAX_THEME_ON_LIGHT_BG),
+        (None, SYNTAX_THEME_ON_UNKNOWN_BG),
+    ],
 )
 def test_file_syntax_uses_accessible_ansi_theme_without_painting_background(
-    terminal_bg_is_light: bool,
+    terminal_bg_is_light: bool | None,
     expected_theme: object,
 ) -> None:
     """S-3: syntax inherits the operator palette and leaves status colors untouched."""
@@ -55,7 +61,7 @@ def test_file_syntax_uses_accessible_ansi_theme_without_painting_background(
     assert syntax_theme_for_background(terminal_bg_is_light) == expected_theme
 
 
-@pytest.mark.parametrize("terminal_bg_is_light", [False, True])
+@pytest.mark.parametrize("terminal_bg_is_light", [False, True, None])
 def test_syntax_palette_is_contrast_safe_and_cvd_distinct_from_semantic_roles(
     terminal_bg_is_light: bool,
 ) -> None:
@@ -74,10 +80,14 @@ def test_syntax_palette_is_contrast_safe_and_cvd_distinct_from_semantic_roles(
         is not None
     }
     assert len(colors) == len(_TOKEN_ROLES)
-    background = "#FFFFFF" if terminal_bg_is_light else "#000000"
-    assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values())
+    backgrounds = ("#FFFFFF",) if terminal_bg_is_light is True else (
+        ("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF")
+    )
+    assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values() for background in backgrounds)
 
-    identities = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light else IDENTITY_PALETTE
+    identities = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light is True else (
+        theme.IDENTITY_PALETTE_ON_UNKNOWN_BG if terminal_bg_is_light is None else IDENTITY_PALETTE
+    )
     semantic_colors = (*identities, *theme._status_role_hexes())
     for matrix in _CVD_MATRICES:
         simulated = {role: theme._simulate_cvd(color, matrix) for role, color in colors.items()}

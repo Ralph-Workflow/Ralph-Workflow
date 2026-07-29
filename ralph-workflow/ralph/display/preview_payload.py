@@ -84,7 +84,7 @@ def _input(metadata: dict[str, object]) -> dict[str, object] | None:
 
 def _path(payload: dict[str, object]) -> str | None:
     """Return a documented path field, if present."""
-    for key in ("path", "file_path", "filePath", "filename"):
+    for key in ("path", "file_path", "filePath", "filename", "notebook_path"):
         value = payload.get(key)
         if isinstance(value, str) and value:
             return value
@@ -137,7 +137,8 @@ def _content_payload(operation: PreviewOperation, path: str | None, payload: dic
 def _notebook_payload(path: str | None, payload: dict[str, object]) -> _PreviewPayload:
     source = payload.get("new_source", payload.get("content", payload.get("source")))
     language = payload.get("kernel", payload.get("language"))
-    return _PreviewPayload(path, language if isinstance(language, str) else None, "write", content=source if isinstance(source, str) else None)
+    hint = language if isinstance(language, str) else ("python" if path and path.endswith(".ipynb") else None)
+    return _PreviewPayload(path, hint, "write", content=source if isinstance(source, str) else None)
 
 
 def _patch_payload(path: str | None, payload: dict[str, object]) -> _PreviewPayload | None:
