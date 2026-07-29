@@ -54,5 +54,6 @@ def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -
             CompletionCheckOptions(
                 execution_strategy=strategy_for_transport(AgentTransport.AGY),
                 workspace_path=tmp_path,
+                agy_cli_log_path=tmp_path / "missing-cli.log",
             ),
         )

@@ -367,7 +367,9 @@ def test_graph_rejects_oversized_timeout_ms(tmp_path: Path) -> None:
         store.close()
 
 
-def test_graph_rejects_zero_timeout_ms(tmp_path: Path) -> None:
+@pytest.mark.parametrize("timeout_ms", (0, -1))
+def test_graph_rejects_non_positive_timeout_ms(tmp_path: Path, timeout_ms: int) -> None:
+    """Regression: graph validation rejects every non-positive timeout cheaply."""
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)
     try:
@@ -381,28 +383,7 @@ def test_graph_rejects_zero_timeout_ms(tmp_path: Path) -> None:
                 {
                     "query_type": "neighbors",
                     "target": "module.hello",
-                    "timeout_ms": 0,
-                },
-            )
-    finally:
-        store.close()
-
-
-def test_graph_rejects_negative_timeout_ms(tmp_path: Path) -> None:
-    workspace = _seed_workspace(tmp_path)
-    store = _build_index(workspace, tmp_path)
-    try:
-        session = _FakeSession(explore_index=_FakeIndex(store))
-        from ralph.mcp.tools.coordination import InvalidParamsError
-
-        with pytest.raises(InvalidParamsError):
-            handle_ralph_graph(
-                session,
-                _Workspace(workspace),
-                {
-                    "query_type": "neighbors",
-                    "target": "module.hello",
-                    "timeout_ms": -1,
+                    "timeout_ms": timeout_ms,
                 },
             )
     finally:
