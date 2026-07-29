@@ -416,11 +416,10 @@ def _render_tool_use_event(
     :class:`ParallelDisplay.emit_activity_line` already stamps every
     emitted line with ``hh:mm:ss``; rendering it in the body too
     duplicates the timestamp on the live log and the rendered record
-    (the defect the analysis feedback flagged). The unit identity
-    stays in the body so the plain-text path's ``"{unit_id} ..."``
-    grep contract is held.
+    (the defect the analysis feedback flagged). Identity is carried
+    by the caller's ``[call][unit]`` chrome, never repeated in the body.
 
-    Layout: ``<icon><label> <unit_id> <friendly-tool-name> (<args>)``.
+    Layout: ``<icon><label> <friendly-tool-name> (<args>)``.
 
     The friendly tool name (e.g. ``mcp__ralph__read_file`` ->
     ``ralph.read_file``) and the formatted input come from
@@ -430,17 +429,14 @@ def _render_tool_use_event(
     :data:`_TOOL_PAIR_MARKER` so the operator can pair this line
     with its follow-up TOOL_RESULT in grep / scrollback.
 
-    When ``unit_id`` is set the unit prefix threads into the body so
-    the plain-text path matches the legacy ``agent_name`` contract.
+    When ``unit_id`` is set the caller's badge carries it once; the
+    body remains tool name plus arguments so all consumers share one shape.
     """
     style, icon, label = _state_payload("running")
     raw_name = _normalized_event_content(event) or "tool"
     tool_name = friendly_tool_name(raw_name)
     args_str = _format_event_input(event.metadata)
-    body_segments: list[str] = []
-    if unit_id:
-        body_segments.append(f"{unit_id}")
-    body_segments.append(tool_name)
+    body_segments: list[str] = [tool_name]
     if args_str:
         body_segments.append(args_str)
     body = " ".join(body_segments)

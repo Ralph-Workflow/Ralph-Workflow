@@ -246,7 +246,7 @@ def test_claude_interactive_activity_stream_regression_renders_tool_result() -> 
     # name + formatted args.
     assert len(rendered) == 2
     tool_line = rendered[0]
-    assert "claude/haiku" in tool_line
+    assert "claude/haiku" not in tool_line
     assert "ralph.read_file" in tool_line
     assert "path=PROMPT.md" in tool_line
     # The plain-text path carries the icon (◐ for running) so the

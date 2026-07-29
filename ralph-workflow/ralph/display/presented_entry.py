@@ -161,10 +161,16 @@ def build_presented_entry(
     # consolidated the stripper into a single leaf module
     # (:mod:`ralph.display._channel_prefix_stripper`) so the live
     # log and the rendered record cannot drift.
-    body = _strip_live_chrome(strip_parser_channel_prefix(body), identity)
+    body = _strip_live_chrome(
+        strip_parser_channel_prefix(body),
+        identity,
+        preserve_before_pair=event.kind is ActivityEventKind.TOOL_USE,
+    )
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
+    if event.kind is ActivityEventKind.TOOL_USE:
+        body = _tool_call_record_body(body, metadata)
     if event.kind is ActivityEventKind.TOOL_RESULT:
         body = _tool_result_record_body(body, metadata, severity)
     if identity and event.kind in {ActivityEventKind.STATUS, ActivityEventKind.UNKNOWN}:
@@ -224,6 +230,7 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
         "",
     )
     outcome = "failed" if severity == "error" else "ok"
+    body = _strip_leading_tokens(body, tool, outcome)
     parts = [tool]
     if target and target not in body:
         parts.append(target)
@@ -231,12 +238,44 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
     return " ".join(part for part in parts if part)
 
 
+def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
+    """Remove live-only residue while preserving a tool name on every record call."""
+    body = body.rstrip().removesuffix("↳").rstrip()
+    raw_tool = next(
+        (
+            value
+            for key in ("tool_name", "name", "tool")
+            if isinstance(value := metadata.get(key), str) and value
+        ),
+        "tool",
+    )
+    tool = friendly_tool_name(raw_tool)
+    if body.startswith("(") or not body.casefold().startswith(tool.casefold()):
+        return f"{tool} {body}"
+    return body
+
+
+def _strip_leading_tokens(body: str, tool: str, outcome: str) -> str:
+    """Remove live-rendered duplicate tool/outcome prefixes from a result body."""
+    while body:
+        for token in (tool, outcome):
+            prefix = f"{token} "
+            if body.casefold().startswith(prefix.casefold()):
+                body = body[len(prefix) :]
+                break
+            if body.casefold() == token.casefold():
+                return ""
+        else:
+            return body
+    return body
+
+
 _LIVE_BADGE_PREFIX = re.compile(r"^[✓✗⚠\u2139◐]\s+(?:PASS|FAIL|WARN|INFO|RUN)\s+")
 _LIVE_BADGE_ONLY = re.compile(r"^(?:\d{2}:\d{2}:\d{2}\s+)?\S+$")
 _LIVE_BADGE_IDENTITY_ONLY = re.compile(r"^\d{2}:\d{2}:\d{2}\s+[^\s]+$")
 
 
-def _strip_live_chrome(body: str, identity: str) -> str:
+def _strip_live_chrome(body: str, identity: str, *, preserve_before_pair: bool = False) -> str:
     """Remove a live-rendered badge/identity prefix from a record body.
 
     The canonical entry is text-first; status, time, and identity belong to
@@ -247,7 +286,7 @@ def _strip_live_chrome(body: str, identity: str) -> str:
     if match is None:
         return body
     remainder = body[match.end() :].strip()
-    if "↳" in remainder:
+    if "↳" in remainder and not preserve_before_pair:
         return remainder.split("↳", 1)[1].strip()
     if _LIVE_BADGE_ONLY.fullmatch(remainder) or _LIVE_BADGE_IDENTITY_ONLY.fullmatch(remainder):
         return ""

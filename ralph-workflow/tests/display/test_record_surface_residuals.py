@@ -74,6 +74,28 @@ def test_tool_call_record_carries_args_once(tmp_path: Path) -> None:
     assert "command=pytest -q" in calls[0]
 
 
+def test_tool_call_record_omits_pair_marker_and_normalizes_call_shapes(tmp_path: Path) -> None:
+    """DA-003: text-first calls have one shape and no live pairing residue."""
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for content, metadata in (
+        ("read", {"input": {"path": "a/b.py"}}),
+        ("bash", {"input": {"command": "ls -la"}}),
+        ("grep", {"input": {"pattern": "foo"}}),
+    ):
+        pd.emit_parsed_event(
+            unit_id="pi", kind=ActivityEventKind.TOOL_USE, content=content, metadata=metadata
+        )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    calls = [line for line in record.splitlines() if "role=tool_call" in line]
+    assert len(calls) == 3
+    assert all("↳" not in line for line in calls)
+    assert all(line.startswith("[09:30:00] ") and line.endswith(" role=tool_call") for line in calls)
+    assert all(tool in line for tool, line in zip(("read", "bash", "grep"), calls, strict=True))
+
+
 def test_event_rows_indent_beneath_phase_headers(tmp_path: Path) -> None:
     """Phase-owned record entries start below the header margin."""
     pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)

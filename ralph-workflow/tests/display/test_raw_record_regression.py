@@ -643,6 +643,35 @@ def test_record_regression_tool_result_omits_preceding_preview_and_placeholder_t
     assert result.count("read_file") == 1
 
 
+def test_production_tool_entries_state_each_identity_and_tool_once(tmp_path: Path) -> None:
+    """DA-001/DA-002: canonical tool entries never repeat their actor or tool."""
+    pd, live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi/minimax/MiniMax-3",
+        kind=ActivityEventKind.TOOL_USE,
+        content="Bash",
+        metadata={"input": {"command": "ls ralph/display"}},
+    )
+    pd.emit_parsed_event(
+        unit_id="pi/minimax/MiniMax-3",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="Bash agent_event_renderer.py",
+        metadata={"tool_name": "Bash", "exit_code": 0},
+    )
+    pd.stop()
+
+    live_call = next(line for line in live.getvalue().splitlines() if "[call]" in line)
+    assert live_call.count("pi/minimax/MiniMax-3") == 1
+    assert "Bash (command=ls ralph/display)" in live_call
+    record = (tmp_path / ".agent" / "raw" / "pi_minimax_MiniMax-3.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    result = next(line for line in record.splitlines() if "role=tool_result" in line)
+    assert result.count("Bash") == 1
+    assert "Bash ok agent_event_renderer.py" in result
+
+
 def test_tool_result_is_one_live_row_with_consistent_failure_severity(tmp_path: Path) -> None:
     """A failed result is one FAIL row live and one error entry in the record."""
     pd, live, _advance = _make_display_with_injected_clock(tmp_path)

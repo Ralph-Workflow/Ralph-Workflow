@@ -1224,10 +1224,11 @@ class ParallelDisplay:
             # Defensive: unrecognised kinds still reach the live log but skip
             # the record append rather than crash the seam.
             return
+        record_body = opts.record_body or sanitized
         self._append_recorded_entry(
             unit_id,
             event_kind=event_kind,
-            body=opts.record_body or sanitized,
+            body=record_body,
             timestamp=timestamp,
             metadata=opts.activity_metadata,
         )
@@ -2645,7 +2646,11 @@ class ParallelDisplay:
                     summary_line=effective_summary_line,
                     ai_summary_line=ai_summary_line,
                     tool_signature=tool_signature,
-                    activity_metadata=metadata,
+                    activity_metadata=(
+                        {**metadata, "tool": text_content}
+                        if kind is ActivityEventKind.TOOL_USE
+                        else metadata
+                    ),
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
                     record_body=(
