@@ -599,7 +599,9 @@ def _resolve_dynamic_simple_prefixed_agent(
             model_flag = f"--model {shlex.quote(model_id)}"
             if effort is not None:
                 model_flag += f" --effort {effort}"
-            return base_config.model_copy(update={"model": model_id, "model_flag": model_flag})
+            return base_config.model_copy(
+                update={"model": model_id, "model_flag": model_flag, "can_commit": True}
+            )
     return None
 
 

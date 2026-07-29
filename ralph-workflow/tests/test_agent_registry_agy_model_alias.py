@@ -28,12 +28,12 @@ from ralph.config.models import UnifiedConfig
         "agy/gpt-oss-120b-medium",
     ],
 )
-def test_agy_model_alias_sets_published_model_flag_without_commit_permission(name: str) -> None:
+def test_agy_model_alias_sets_published_model_flag_with_commit_permission(name: str) -> None:
     config = AgentRegistry.from_config(UnifiedConfig()).get(name)
 
     assert config is not None
     assert config.model_flag == f"--model {shlex.quote(name.removeprefix('agy/'))}"
-    assert config.can_commit is False
+    assert config.can_commit is True
 
 
 @pytest.mark.parametrize("name", ["agy", "agy/", "agy/not-published"])

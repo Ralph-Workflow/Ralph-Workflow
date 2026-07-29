@@ -14,7 +14,7 @@ def test_agy_model_resolution_accepts_published_id_and_effort() -> None:
     assert config is not None
     assert config.model == "gemini-3.6-flash-low"
     assert config.model_flag == "--model gemini-3.6-flash-low --effort medium"
-    assert config.can_commit is False
+    assert config.can_commit is True
 
 
 @pytest.mark.parametrize(
