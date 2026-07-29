@@ -385,9 +385,10 @@ python -m ralph smoke-interactive-agy
 To exercise the shared subagent lifecycle contract, add `--subagents` only to
 an interactive smoke command whose transport has native sub-agent support. A
 transport without native sub-agent support fails the subagent check explicitly;
-it does not fall back to direct execution. On a stock AGY v1.1.8 installation,
-`smoke-interactive-agy --subagents` fails because `agy agents` reports no
-sub-agents. A passing supported-transport run shows exactly one native subagent
+it does not fall back to direct execution. On the measured AGY v1.1.8
+installation, `agy agents` reported no sub-agents; the routed AGY fan-out path
+therefore fails explicitly with that cause rather than falling back to direct
+execution. A passing supported-transport run shows exactly one native subagent
 dispatch, its correlated result, later main-agent activity, and normal smoke
 completion. Use a non-empty UTF-8 task file inside the current workspace when
 the default read-only child task does not cover the edge case under investigation:

@@ -16,7 +16,7 @@ availability remains the CLI provider's responsibility.
 | `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
 | `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
 | `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
-| `agy/<published-id>[:effort]` | `--model <published-id>` and optional `--effort <effort>` | Example: `agy/gemini-3.6-flash-high:high`. Measured v1.1.8 accepts `low`, `medium`, and `high` with the published model IDs. |
+| `agy/<published-id>[:effort]` | `--model <published-id>` and optional `--effort <effort>` | Example: `agy/gemini-3.6-flash-high:high`. The v1.1.8 probe accepted `gemini-3.6-flash-high --effort high`; aliases validate `low`, `medium`, and `high` before invocation. |
 | `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
 | `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
 | `ccs/<alias>` | The configured CCS alias command | Define the alias under `[ccs_aliases]`. |

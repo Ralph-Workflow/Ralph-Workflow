@@ -187,19 +187,18 @@ default 5-minute print timeout; a billed amount requires the unrun pricing
 probe. It reports file, session, parser-event, tool-activity, and artifact
 signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
-The v1.1.8 manual record observed model acceptance, a no-model effort
-invocation, and stream-json events. It also observed that AGY rejects every
-tested `--effort` plus explicit `--model` combination, so Ralph aliases do not
-combine them. The latest smoke created the requested file and showed plain-text
-parser/tool activity without a permission prompt. AGY wrote a valid fallback
-artifact; Ralph promoted it, recorded the canonical receipt, and wrote
-host-owned durable completion evidence after AGY missed the MCP completion call.
-The plain-text parser remains the smoke default because it retained file and tool
-visibility. Continuation remains disabled: `--continue`
-and `--conversation` accepted prompts but did not establish that a specific
-earlier conversation resumed. Re-measure periodically because AGY updates can
-change published IDs and flags. The no-cost `agy agents` observation reported
-no agents on the measured installation; that is not a universal delegation claim.
+The v1.1.8 manual record observed model acceptance, an explicit
+`gemini-3.6-flash-high --effort high` invocation, and stream-json events. The
+latest smoke created the requested file and showed plain-text parser/tool
+activity without a permission prompt. AGY wrote a valid fallback artifact; Ralph
+promoted it, recorded the canonical receipt, and wrote host-owned durable
+completion evidence after AGY missed the MCP completion call. The plain-text
+parser remains the smoke default because it retained file and tool visibility.
+Continuation remains disabled: `--continue` and `--conversation` accepted
+prompts but did not establish that a specific earlier conversation resumed.
+Re-measure periodically because AGY updates can change published IDs and flags.
+The no-cost `agy agents` observation reported no agents on the measured
+installation; that is not a universal delegation claim.
 
 The exact free observations and manual probe ledger are in
 `tmp/agy-source-of-truth.txt`. A valid smoke artifact is stored at

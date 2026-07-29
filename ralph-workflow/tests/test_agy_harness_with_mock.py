@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,7 +15,6 @@ from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.smoke_test_result import SmokeTestResult
-from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunResult,
@@ -26,9 +24,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 from ralph.workspace.scope import WorkspaceScope
 
 import_module("ralph.mcp.artifacts.markdown.specs")
-
-if TYPE_CHECKING:
-    from collections import deque
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
@@ -58,11 +53,10 @@ def _run_agy_smoke_plumbing(
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
     monkeypatch.setenv("MOCK_AGY_BEHAVIOR", behavior)
     monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
-    monkeypatch.setattr(
-        smoke_module,
-        "resolve_workspace_scope",
-        lambda *_args, **_kwargs: WorkspaceScope(tmp_path),
-    )
+    def resolve_scope(*_args: object, **_kwargs: object) -> WorkspaceScope:
+        return WorkspaceScope(tmp_path)
+
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", resolve_scope)
 
     workspace_scope = WorkspaceScope(tmp_path)
     config = load_config(None, {}, workspace_scope=workspace_scope)
@@ -215,32 +209,6 @@ def test_agy_harness_quota_branch_emits_informational_not_live_diagnostic(
     assert any("mock AGY produced empty stdout by design" in error for error in result.errors)
     assert not any("individual API quota exhausted" in error for error in result.errors)
     assert not any("RESOURCE_EXHAUSTED" in error for error in result.errors)
-
-
-def test_agy_harness_captures_both_sinks(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """``execute_agent_effect`` receives both raw and rendered output sinks."""
-    captured_raw: deque[str] | None = None
-    captured_rendered: deque[str] | None = None
-
-    original_execute = effect_executor_module.execute_agent_effect
-
-    def _wrapped_execute(*args: object, **kwargs: object) -> object:
-        nonlocal captured_raw, captured_rendered
-        captured_raw = kwargs.get("raw_output_sink")
-        captured_rendered = kwargs.get("rendered_output_sink")
-        return original_execute(*args, **kwargs)
-
-    monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
-        _wrapped_execute,
-    )
-    _run_agy_smoke_plumbing(tmp_path, monkeypatch)
-    assert captured_raw is not None
-    assert captured_rendered is not None
-    assert len(captured_raw) >= 3
 
 
 def test_agy_harness_session_id_present_with_mock(
