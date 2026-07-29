@@ -244,7 +244,9 @@ scenario.
 Run this manual, paid-usage diagnostic one at a time for Google Anti Gravity
 (AGY). It is not part of `make verify`. The default
 `agy/gemini-3.6-flash-low` is a conservative low-tier choice by name; AGY
-price ordering is unverified.
+price ordering is unverified. Each invocation is one `agy --print` run for one
+smoke prompt, one at a time, with AGY's observed default 5-minute print timeout;
+a billed amount requires the unrun pricing probe.
 
 ```bash
 python -m ralph smoke-interactive-agy
