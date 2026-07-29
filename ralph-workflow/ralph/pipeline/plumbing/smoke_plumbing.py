@@ -314,7 +314,9 @@ def _build_smoke_prompt(
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
         "and put this complete Markdown document in the content argument:\n"
         f"```markdown\n{artifact_document}\n```\n"
-        "- Submit through the tool; do not write an artifact file directly.\n"
+        "- Submit through the tool when it is available. If the submission tool is unavailable, "
+        "write the same complete Markdown document to `.agent/tmp/smoke_test_result.md`; "
+        "Ralph Workflow validates and promotes that fallback. Do not write the canonical artifact directly.\n"
         "- Do not start background work, run verification, or wait for other tasks; "
         "finish this small smoke task in this turn.\n"
         f"{completion_requirement}"

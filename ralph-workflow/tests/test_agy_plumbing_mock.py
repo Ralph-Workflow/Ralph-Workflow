@@ -53,15 +53,15 @@ def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
     assert "Do not start background work" in prompt_text
 
 
-def test_agy_prompt_forbids_direct_artifact_writes() -> None:
-    """The AGY smoke prompt keeps agent writes under ``tmp/``."""
+def test_agy_prompt_allows_validated_fallback_when_submit_tool_is_unavailable() -> None:
+    """AGY can leave the validated fallback without writing a canonical artifact."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
     )
-    assert "Do not touch files outside tmp/" in prompt_text
-    assert "do not write an artifact file directly" in prompt_text
-    assert ".agent/artifacts/" not in prompt_text
+    assert "If the submission tool is unavailable" in prompt_text
+    assert ".agent/tmp/smoke_test_result.md" in prompt_text
+    assert "Do not write the canonical artifact directly" in prompt_text
 
 
 def test_smoke_invariants_hold() -> None:
