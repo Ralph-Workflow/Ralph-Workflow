@@ -96,7 +96,7 @@ def test_activity_line_body_survives_with_tag_and_unit() -> None:
     renderer, buf = _make_plain_renderer()
     _emit(renderer, "text", "hello world")
     out = buf.getvalue()
-    assert "[content][u]" in out, f"[content][u] tag must survive: {out!r}"
+    assert "[output][u]" in out, f"[output][u] tag must survive: {out!r}"
     assert "hello world" in out, f"body must survive: {out!r}"
 
 

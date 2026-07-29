@@ -45,7 +45,7 @@ def test_phase_close_emits_body_line() -> None:
 def test_phase_close_flushes_open_streaming_block() -> None:
     """``emit_phase_close`` closes any active streaming block before its body line.
 
-    S-7 (wt-028-display P1): the close line carries ``[content]`` (NOT
+    S-7 (wt-028-display P1): the close line carries ``[output]`` (NOT
     ``[content-end]``); the lifecycle suffix is part of the retired
     per-fragment vocabulary. The ordering invariant — streaming close
     before phase-close body — still holds.

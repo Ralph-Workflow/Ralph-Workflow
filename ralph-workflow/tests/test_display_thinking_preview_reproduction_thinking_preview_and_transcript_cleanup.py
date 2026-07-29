@@ -164,7 +164,7 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         # Exactly one streaming-block close line carries the think tag.
         thinking_lines = [
-            line for line in _plain_lines(out) if "[think][u1]" in line
+            line for line in _plain_lines(out) if "[reasoning][u1]" in line
         ]
         assert len(thinking_lines) == 1, (
             f"Expected exactly 1 thinking close line, got {len(thinking_lines)}. "
@@ -227,7 +227,7 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         assert joined in out, f"Expected joined text passage in output:\n{out}"
         content_lines = [
-            line for line in _plain_lines(out) if "[content]" in line and "[u1]" in line
+            line for line in _plain_lines(out) if "[output]" in line and "[u1]" in line
         ]
         assert len(content_lines) == 1, (
             f"Expected exactly 1 content close line, got {len(content_lines)}. "

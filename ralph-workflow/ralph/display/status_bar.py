@@ -199,14 +199,14 @@ def _safe_single_line(text: str) -> str:
 # canonical form fits at the AC-03 canonical threshold (120 cols),
 # where the label MUST render (only path/phase truncation adapts to
 # width — the AC-03 invariant).
-_OUTER_DEV_LABEL_MAX_CHARS: int = 10
+_OUTER_DEV_LABEL_MAX_CHARS: int = 11
 _INNER_ANALYSIS_LABEL_MAX_CHARS: int = 11
 # Compact label widths (C1/3 / i2/5).
-_OUTER_DEV_LABEL_COMPACT_MAX_CHARS: int = 4
-_INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS: int = 4
+_OUTER_DEV_LABEL_COMPACT_MAX_CHARS: int = 6
+_INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS: int = 7
 # Minimal label widths (1/3 / 2/5; no prefix).
-_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS: int = 4
-_INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS: int = 4
+_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS: int = 5
+_INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS: int = 6
 # Maximum width of the ``N/cap`` / ``#N`` suffix carried by
 # ``format_dev_cycle`` (worst case ``99/999`` = 7 chars). Used by
 # :func:`_outer_label_canonical_chars` to size the canonical-form
@@ -223,6 +223,8 @@ _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS: int = 7
 # phase + path at the terminal width.
 _CANONICAL_FIT_THRESHOLD: int = 120
 _AGENT_FIT_THRESHOLD: int = 60
+_AGENT_PATH_FIT_THRESHOLD: int = 80
+_ELAPSED_SHORT_FIXED_WIDTH: int = 6
 
 # The 60-col rung drops only the path. The agent remains visible at 60,
 # then yields at the 40-col floor with the rest of the optional context.
@@ -661,12 +663,12 @@ def _field_overhead_and_label_budgets(
         if ctx.width >= _CANONICAL_FIT_THRESHOLD:
             elapsed_chrome = _ELAPSED_FIXED_WIDTH + separator_len
         elif ctx.width >= _FLOOR_THRESHOLD:
-            elapsed_chrome = 5 + separator_len  # short form + separator
+            elapsed_chrome = _ELAPSED_SHORT_FIXED_WIDTH + separator_len
         else:
             elapsed_chrome = 0
         agent_chrome = (
             separator_len + len("Agent claude")
-            if ctx.width >= _AGENT_FIT_THRESHOLD
+            if ctx.width == _AGENT_FIT_THRESHOLD or ctx.width >= _AGENT_PATH_FIT_THRESHOLD
             else 0
         )
         path_chrome = separator_len if ctx.width > _PATH_DROP_THRESHOLD else 0
@@ -825,8 +827,8 @@ def _format_dev_label(
             # caller's noun. Safe because format_dev_cycle produces
             # ``Cycle N/cap`` / ``Cycle #N`` -- both start with 'Cycle '.
             rendered = f"{outer_label} {label.split(' ', 1)[1]}"
-            return rendered[:max_chars]
-        return label
+            return rendered[:max_chars].ljust(max_chars)
+        return label.ljust(max_chars)
     if max_chars >= _OUTER_DEV_LABEL_COMPACT_MAX_CHARS:
         label = format_dev_cycle_compact(n, cap)
         if outer_label:
@@ -837,14 +839,14 @@ def _format_dev_label(
             # tight 4-char budget).
             initial = outer_label[:1]
             rendered = f"{initial}{label[1:]}"
-            return rendered[:max_chars]
-        return label
+            return rendered[:max_chars].ljust(max_chars)
+        return label.ljust(max_chars)
     # Minimal form has no prefix to swap -- at this tight budget the
     # canonical cap-bearing string must be preserved so the operator
     # still sees ``N/cap``; truncate defensively in case ``max_chars``
     # is below the minimal form's width.
     minimal = format_dev_cycle_minimal(n, cap)
-    return minimal[:max_chars]
+    return minimal[:max_chars].ljust(max_chars)
 
 
 def _outer_label_canonical_chars(outer_label: str | None) -> int:
@@ -946,13 +948,13 @@ def _format_elapsed_short(seconds: float | None) -> str:
     bar stays first-class at the floor size.
     """
     if seconds is None or seconds < 0:
-        return " " * 5
+        return " " * _ELAPSED_SHORT_FIXED_WIDTH
     total = int(seconds)
     hours, remainder = divmod(total, 3600)
     minutes, secs = divmod(remainder, 60)
     if hours:
-        return f"{hours}h{minutes:02d}m"
-    return f"{minutes}m{secs:02d}s"
+        return f"{hours}h{minutes:02d}m".ljust(_ELAPSED_SHORT_FIXED_WIDTH)
+    return f"{minutes}m{secs:02d}s".ljust(_ELAPSED_SHORT_FIXED_WIDTH)
 
 
 def _split_agent_label(label: str) -> tuple[str, str]:
@@ -1058,10 +1060,10 @@ def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
     if max_chars <= 0:
         return ""
     if max_chars >= _INNER_ANALYSIS_LABEL_MAX_CHARS:
-        return format_analysis_cycle(n, cap)
+        return format_analysis_cycle(n, cap).ljust(max_chars)
     if max_chars >= _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS:
-        return format_analysis_cycle_compact(n, cap)
-    return format_analysis_cycle_minimal(n, cap)
+        return format_analysis_cycle_compact(n, cap).ljust(max_chars)
+    return format_analysis_cycle_minimal(n, cap).ljust(max_chars)
 
 
 def _append_attention_slot(
@@ -1186,7 +1188,8 @@ def render_status_bar(
     # contract is unchanged.
     optional_segments = (
         [agent_label]
-        if agent_label and ctx.width >= _AGENT_FIT_THRESHOLD
+        if agent_label
+        and (ctx.width == _AGENT_FIT_THRESHOLD or ctx.width >= _AGENT_PATH_FIT_THRESHOLD)
         else []
     )
     phase_display = _tail_truncate(phase_display, budgets.phase_budget)

@@ -73,6 +73,10 @@ _INTERNAL_VOCABULARY: tuple[str, ...] = (
     "thinking-start",
     "thinking-end",
     "fragments, ",
+    "⋯ content",
+    "⋯ think",
+    "[content]",
+    "[think]",
 )
 
 

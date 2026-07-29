@@ -1054,7 +1054,8 @@ class ParallelDisplay:
             # (``META``/``OUT``) never reaches the operator
             # surface.
             chrome_prefix = f"{timestamp} "
-            badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
+            display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
+            badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
             # DA-002 (S-4 / S-12 / AC-07): the canonical
             # ``PresentedEntry`` hierarchy data drives the live log's
             # hanging-indent continuation column. ``indent_level``
@@ -1481,7 +1482,8 @@ class ParallelDisplay:
             duration_str = self._format_duration(end_mono - open_mono)
         else:
             duration_str = "0s"
-        body = f"\u22ef {base_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
+        display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
+        body = f"\u22ef {display_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
         # S-7 (AC-07): quiet mode suppresses the terminal surface;
         # the record append below still runs so the file surface
         # keeps the same close entry.
@@ -1497,7 +1499,7 @@ class ParallelDisplay:
             # Rich re-wrapped the ``close_hang_prefix + wrapped_cont``
             # embedded-newline string and only the first embedded
             # line carried the prefix).
-            close_badge_prefix = f"[{base_tag}][{rendered_unit_id}] "
+            close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
             close_hang_prefix = " " * len(close_badge_prefix)
             body_chunks = body.split("\n")
             wrapped_first = self._wrap_body_with_hanging_indent(

@@ -36,7 +36,10 @@ from rich.console import Console
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.display.status_bar import StatusBarModel, render_status_bar
-from ralph.pipeline.conflict_resolution.status import push_conflict_status_bar
+from ralph.pipeline.conflict_resolution.status import (
+    clear_conflict_status_bar,
+    push_conflict_status_bar,
+)
 from ralph.pipeline.phase_transition import (
     _resolve_analysis_cap,
     build_phase_entry_model_from_state,
@@ -377,6 +380,22 @@ def test_conflict_resolution_push_helper_carries_live_elapsed_anchor() -> None:
     assert capture.last_model is not None
     assert "Time 00:00" in render_status_bar(capture.last_model, _ctx(), now_monotonic=100.0).plain
     assert "Time 10:00" in render_status_bar(capture.last_model, _ctx(), now_monotonic=700.0).plain
+
+
+def test_conflict_resolution_clear_helper_carries_live_elapsed_anchor() -> None:
+    """The neutral footer keeps ticking until the run loop takes ownership."""
+    capture = _CapturingDisplay()
+    clear_conflict_status_bar(
+        capture,
+        Path("/tmp/conflict-clear-anchor"),
+        run_started_monotonic=100.0,
+    )
+    assert capture.last_model is not None
+    before = render_status_bar(capture.last_model, _ctx(), now_monotonic=100.0).plain
+    after = render_status_bar(capture.last_model, _ctx(), now_monotonic=160.0).plain
+    assert "Time 00:00" in before
+    assert "Time 01:00" in after
+    assert before != after
 
 
 def test_truncation_stability_across_widths() -> None:

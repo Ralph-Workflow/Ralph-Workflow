@@ -131,6 +131,22 @@ def test_soft_limit_marker_carries_count_size_and_destination() -> None:
     assert ".agent/raw/u.log" in visible
 
 
+def test_head_only_marker_reports_actual_hidden_line_count() -> None:
+    """Condensation reports the lines omitted from a multi-line payload."""
+    text = "\n".join(f"line {index:02d}" for index in range(60))
+    visible, condensed = condense_content(
+        text,
+        options=CondenseOptions(
+            soft_limit=100,
+            hard_limit=4_000,
+            overflow_ref=".agent/raw/u.log",
+        ),
+    )
+    assert condensed is True
+    assert "45 lines" in visible
+    assert "1 line" not in visible
+
+
 def test_hard_limit_marker_carries_count_size_and_destination() -> None:
     """S-10 (wt-028-display AC-06): the head+tail marker also owes count, size, destination.
 

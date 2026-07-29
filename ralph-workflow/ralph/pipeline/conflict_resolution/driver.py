@@ -237,7 +237,13 @@ def run_conflict_resolution_pipeline(
         # resolution until the run loop's next push -- which, at the
         # startup seam, can be a whole phase away.
         if previous_model is None:
-            clear_conflict_status_bar(display, root)
+            clear_conflict_status_bar(
+                display,
+                root,
+                run_started_monotonic=(
+                    display.run_started_monotonic if isinstance(display, ParallelDisplay) else None
+                ),
+            )
         else:
             restore_status_bar(display, previous_model)
 

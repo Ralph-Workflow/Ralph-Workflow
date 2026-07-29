@@ -72,7 +72,16 @@ def conflict_status_bar_session(display: object, workspace_root: Path) -> Iterat
         yield
     finally:
         if previous is None:
-            clear_conflict_status_bar(display, workspace_root)
+            run_started: object | None = cast(
+                "object | None", getattr(display, "run_started_monotonic", None)
+            )
+            clear_conflict_status_bar(
+                display,
+                workspace_root,
+                run_started_monotonic=(
+                    run_started if isinstance(run_started, float) else None
+                ),
+            )
         else:
             restore_status_bar(display, previous)
 
@@ -196,7 +205,13 @@ def capture_status_bar_model(display: object) -> object | None:
         return None
 
 
-def clear_conflict_status_bar(display: object, workspace_root: Path) -> None:
+def clear_conflict_status_bar(
+    display: object,
+    workspace_root: Path,
+    *,
+    elapsed_seconds: float | None = None,
+    run_started_monotonic: float | None = None,
+) -> None:
     """Push a neutral footer when there is no prior model to restore.
 
     The resolution pipeline is entered from four seams, including the
@@ -214,6 +229,8 @@ def clear_conflict_status_bar(display: object, workspace_root: Path) -> None:
             workspace_root=str(workspace_root),
             phase_label=NEUTRAL_PHASE_LABEL,
             phase_style=phase_style_for_phase(""),
+            elapsed_seconds=elapsed_seconds,
+            run_started_monotonic=run_started_monotonic,
         )
         update = cast(
             "Callable[[object], None] | None",

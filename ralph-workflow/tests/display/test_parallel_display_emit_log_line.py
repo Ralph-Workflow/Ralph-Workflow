@@ -59,7 +59,7 @@ def test_emit_log_line_routes_via_activity_line() -> None:
     pd.stop()
     output = buf.getvalue()
     assert "RAW_PAYLOAD_TOKEN" in output, f"raw payload missing from output: {output!r}"
-    assert "[content]" in output, f"raw kind tag [content] missing from output: {output!r}"
+    assert "[output]" in output, f"raw kind tag [content] missing from output: {output!r}"
     assert "[unit-x]" in output, f"unit_id marker missing: {output!r}"
 
 

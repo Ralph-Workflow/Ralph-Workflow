@@ -136,7 +136,7 @@ def test_emit_log_line_preserves_literal_rich_markup_for_copy_paste() -> None:
     # (INFO) or CAT (OUT) plumbing vocabulary reaches the
     # operator surface.
     assert stream.getvalue().splitlines() == [
-        "12:00:00 [content][worker-1] hello"
+        "12:00:00 [output][worker-1] hello"
     ]
 
 
