@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.agents.completion_signals import (
     _check_completion_sentinel,
     is_artifact_submitted,
@@ -201,19 +202,6 @@ _CRASH_PATTERNS = (
 # AGY's operational log often explains why --print returned no stdout. The
 # smoke detector reads the tail of this file to surface actionable diagnostics.
 _AGY_CLI_LOG_PATH: Path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
-_AGY_QUOTA_PATTERN = re.compile(r"RESOURCE_EXHAUSTED \(code 429\)", re.IGNORECASE)
-_AGY_MODEL_INVALID_PATTERN = re.compile(
-    r"Failed to resolve model flag\s+([^:]+):\s*model\s+(\S+)\s+is not recognized",
-    re.IGNORECASE,
-)
-_AGY_MODEL_NOT_IN_CONFIG_PATTERN = re.compile(
-    r"Model ID\s+(\S+)\s+not in local config",
-    re.IGNORECASE,
-)
-_AGY_QUOTA_RESET_PATTERN = re.compile(
-    r"Resets in\s+([^\s.]+)",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -751,42 +739,13 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
             "(MOCK_AGY_BEHAVIOR=quota_exhausted or invalid_model) "
             "— harness captured this correctly"
         )
-    log_path = _AGY_CLI_LOG_PATH
-    diagnostic = (
+    reason = agy_empty_output_reason(lines, cli_log_path=_AGY_CLI_LOG_PATH)
+    if reason is not None:
+        return reason
+    return (
         "AGY --print returned empty stdout; "
         "check ~/.gemini/antigravity-cli/cli.log for model-resolution or quota errors"
     )
-    if log_path.is_file():
-        try:
-            log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
-        except OSError:
-            log_tail = ""
-        if _AGY_QUOTA_PATTERN.search(log_tail):
-            reset_match = _AGY_QUOTA_RESET_PATTERN.search(log_tail)
-            reset_window = f" (resets in {reset_match.group(1)})" if reset_match else ""
-            diagnostic = (
-                "AGY --print returned empty stdout: individual API quota exhausted "
-                f"(429 RESOURCE_EXHAUSTED){reset_window}. Wait for the quota reset or check "
-                "~/.gemini/antigravity-cli/cli.log."
-            )
-        else:
-            model_invalid_match = _AGY_MODEL_INVALID_PATTERN.search(log_tail)
-            model_not_in_config_match = _AGY_MODEL_NOT_IN_CONFIG_PATTERN.search(log_tail)
-            if model_invalid_match is not None:
-                model_id = model_invalid_match.group(2)
-                diagnostic = (
-                    f"AGY --print returned empty stdout: model ID '{model_id}' "
-                    "is not recognized by AGY. Check `agy models` and use the "
-                    "exact display name; see ~/.gemini/antigravity-cli/cli.log."
-                )
-            elif model_not_in_config_match is not None:
-                model_id = model_not_in_config_match.group(1)
-                diagnostic = (
-                    f"AGY --print returned empty stdout: model ID '{model_id}' "
-                    "is not in AGY's local config. Check `agy models` and use "
-                    "the exact display name; see ~/.gemini/antigravity-cli/cli.log."
-                )
-    return diagnostic
 
 
 def _tool_activity_seen_for_errors(

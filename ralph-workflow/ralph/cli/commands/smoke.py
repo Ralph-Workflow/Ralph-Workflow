@@ -24,7 +24,7 @@ import click
 from loguru import logger
 from rich.table import Table
 
-from ralph.agents.registry import AgentRegistry
+from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
@@ -569,9 +569,9 @@ def smoke_interactive_agy_command(
     agent_config = registry.get(agent_name)
     if agent_config is None:
         logger.error(
-            "Agent '{}' is not available. Use --agent with an agy/<model> alias, "
-            "e.g. --agent agy/gemini-3.6-flash-low.",
+            "Agent '{}' is not available. {}",
             agent_name,
+            agy_alias_help(),
         )
         return 2
     if agent_config.transport is None or agent_config.transport != AgentTransport.AGY:

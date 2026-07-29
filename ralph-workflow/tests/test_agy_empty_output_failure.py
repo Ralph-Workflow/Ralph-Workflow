@@ -29,14 +29,17 @@ def test_agy_empty_output_regression_names_actionable_upstream_cause(
     expected: str,
 ) -> None:
     """Plan S-3: AGY rc=0 without completion evidence names captured root cause."""
+    cli_log = tmp_path / "cli.log"
+    cli_log.write_text(evidence, encoding="utf-8")
     with pytest.raises(AgentInvocationError, match=expected):
         check_process_result(
             types.SimpleNamespace(returncode=0),
             "agy/gemini-3.6-flash-low",
-            [evidence],
+            [],
             CompletionCheckOptions(
                 execution_strategy=strategy_for_transport(AgentTransport.AGY),
                 workspace_path=tmp_path,
+                agy_cli_log_path=cli_log,
             ),
         )
 

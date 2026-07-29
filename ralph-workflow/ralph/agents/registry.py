@@ -82,6 +82,7 @@ from ralph.agents.support import AgentSupport
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.process.monitor import (
     make_agy_subagent_pid_source,
     make_claude_interactive_subagent_pid_source,
@@ -125,6 +126,59 @@ _AGY_MODELS = frozenset(
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+
+
+def _make_default_agy_models_probe() -> Callable[[], str]:
+    """Build the bounded, per-process cached probe for AGY's published models."""
+    cached_output: str | None = None
+
+    def probe() -> str:
+        nonlocal cached_output
+        if cached_output is None:
+            try:
+                result = run_process(
+                    "agy",
+                    ("models",),
+                    options=ProcessRunOptions(
+                        capture_output=True, timeout=5.0, label="agents:agy-models"
+                    ),
+                )
+            except (OSError, ProcessExecutionError):
+                cached_output = ""
+            else:
+                cached_output = result.stdout if result.returncode == 0 else ""
+        return cached_output
+
+    return probe
+
+
+_default_agy_models_probe = _make_default_agy_models_probe()
+
+
+def agy_published_models() -> tuple[str, ...]:
+    """Return currently published AGY IDs, falling back to the measured v1.1.8 pin."""
+    try:
+        observed = tuple(
+            line.strip().lstrip("- ")
+            for line in _default_agy_models_probe().splitlines()
+            if line.strip() and not line.endswith(":")
+        )
+    except (OSError, ProcessExecutionError):
+        observed = ()
+    return tuple(sorted(set(observed) or _AGY_MODELS))
+
+
+def agy_reasoning_efforts() -> tuple[str, ...]:
+    """Return the effort vocabulary published by AGY's v1.1.8 help output."""
+    return ("low", "medium", "high")
+
+
+def agy_alias_help() -> str:
+    """Return the actionable AGY alias vocabulary for operator-facing failures."""
+    return (
+        f"Available AGY models: {', '.join(agy_published_models())}. "
+        f"Accepted effort suffixes: {', '.join(agy_reasoning_efforts())}."
+    )
 
 
 def builtin_agents() -> dict[str, AgentConfig]:
@@ -592,7 +646,7 @@ def _resolve_dynamic_simple_prefixed_agent(
                     model_flag += f" --model {shlex.quote(model)}"
                 return base_config.model_copy(update={"model_flag": model_flag, "can_commit": True})
     elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS:
-        alias = _parse_agy_alias(name.removeprefix("agy/"))
+        alias = _parse_agy_alias(name.removeprefix("agy/"), models=frozenset(agy_published_models()))
         base_config = base_lookup("agy")
         if alias is not None and base_config is not None:
             model_id, effort = alias
@@ -605,13 +659,15 @@ def _resolve_dynamic_simple_prefixed_agent(
     return None
 
 
-def _parse_agy_alias(alias_value: str) -> tuple[str, str | None] | None:
-    """Parse a measured ``agy/<model>[:effort]`` alias without fallback."""
+def _parse_agy_alias(
+    alias_value: str, *, models: frozenset[str] = _AGY_MODELS
+) -> tuple[str, str | None] | None:
+    """Parse an observed ``agy/<model>[:effort]`` alias without fallback."""
     model_id, separator, parsed_effort = alias_value.rpartition(":")
     effort: str | None = parsed_effort if separator else None
     if not separator:
         model_id = alias_value
-    if model_id not in _AGY_MODELS:
+    if model_id not in models:
         return None
     if effort is not None and (effort not in _AGY_REASONING_EFFORTS or model_id.endswith(f"-{effort}")):
         return None
