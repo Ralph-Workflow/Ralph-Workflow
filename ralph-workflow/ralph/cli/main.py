@@ -979,7 +979,12 @@ def main(
         ``declare_complete`` on success. Bounded subprocesses are
         routed through ``ralph.process.manager``.
     """
-    sanitize_process_environment()
+    removed_malloc_debug_vars = sanitize_process_environment()
+    if removed_malloc_debug_vars:
+        logger.debug(
+            "Stripped inherited malloc-debug environment variables: {}",
+            ", ".join(removed_malloc_debug_vars),
+        )
 
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
     counter_overrides = _parse_counter_overrides(list(counter) if counter else [])

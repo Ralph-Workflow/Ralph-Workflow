@@ -122,6 +122,11 @@ _IO_ALLOWLIST: set[str] = {
     # ``FakePopen`` / ``FakeControllableAsyncProcess`` imports as
     # test policy violations; the runtime seam itself does no real I/O.
     "test_agent_spawn_detaches_tty",
+    # Spawn-entry containment test reads the package's script declarations and
+    # guarded production modules. Those files are the subject under test: a
+    # mocked filesystem could not detect a newly added entry point that skips
+    # inherited malloc-debug cleanup.
+    "test_spawn_env_containment",
     # Artifact-submission prompt audits that read the packaged Jinja
     # templates (production source) to enforce that every single-shot
     # template embeds the shared ``_artifact_submission.j2`` macro with
