@@ -153,6 +153,17 @@ def test_hard_limit_marker_carries_count_size_and_destination() -> None:
     assert ".agent/raw/u.log" in visible
 
 
+def test_marker_reports_utf8_bytes_not_display_cells() -> None:
+    """S-5: byte-labelled markers report the original UTF-8 byte size."""
+    text = "é" * 500
+    visible, condensed = condense_content(
+        text,
+        options=CondenseOptions(soft_limit=_SOFT_LIMIT, hard_limit=_HARD_LIMIT),
+    )
+    assert condensed is True
+    assert "1000 B" in visible
+
+
 def test_marker_kib_format_above_one_kib() -> None:
     """S-10 (wt-028-display AC-06): the size token uses KiB above 1 KiB."""
     text = "a" * (1024 * 4)  # 4 KiB

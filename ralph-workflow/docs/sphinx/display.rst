@@ -73,7 +73,11 @@ cadence (4.0 Hz / 250 ms) and is gated on a real-TTY run, so
 non-interactive output stays clean. ``DisplayContext`` resolves the terminal
 background once from its environment; event identities and the footer use the
 matching dark/light identity palette without each renderer probing the terminal.
-They are grouped by surface below.
+When background detection is unavailable, they use the dedicated unknown-background
+palette, which remains legible on both black and white. Simultaneously visible
+identities are deterministically collision-nudged against the active set, including
+under the supported color-vision-deficiency simulations. They are grouped by surface
+below.
 
 Run lifecycle
 ~~~~~~~~~~~~~

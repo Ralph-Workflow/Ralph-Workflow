@@ -114,9 +114,9 @@ trap cleanup EXIT
 GREP_TIMEOUT_SECONDS=2
 # Scan the tracked set with ``git grep -lIE`` (uses the git index --
 # ~0.5-0.9 s cold cache on this tree) and the untracked set with
-# ``git grep --no-index`` on the small untracked file list (~0.05 s
-# in practice because ``git ls-files --others`` returns zero or
-# a handful of paths). Combining the two keeps the budget inside
+# ``git grep --no-index`` on the small untracked file list. The
+# untracked list is completed before it is scanned so a slow walk
+# cannot be mistaken for an empty list. This keeps the budget inside
 # 2 s while still catching synthetic probe files dropped by the
 # drift-check self-tests (e.g. ``ralph/_drift_probe_*.py``).
 # DA-001 / DA-007 (wt-028-display): the previous Python harness
@@ -128,14 +128,6 @@ TRACKED_OUT="$GREP_DIR/scan_tracked.out"
 UNTRACKED_FILES="$GREP_DIR/untracked.list"
 UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
 : >"$GREP_DIR/scan.err"
-# Enumerate untracked files concurrently with the tracked grep -- both
-# sit on the same cold-cache wait, the untracked walk dominates its own
-# ``git ls-files --others`` time without blocking the index scan.
-git ls-files --others --exclude-standard -z -- ralph tests docs \
-    | tr '\0' '\n' \
-    > "$UNTRACKED_FILES" &
-LS_PID="$!"
-LS_PGID="$(ps -o pgid= -p "$LS_PID" | tr -d ' ')"
 (
     # Enumerate tracked files in the working tree. The call lives
     # inside the backgrounded subshell so a git failure (rc != 0)
@@ -149,16 +141,24 @@ LS_PGID="$(ps -o pgid= -p "$LS_PID" | tr -d ' ')"
     git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- ralph tests docs \
         2>>"$GREP_DIR/scan.err" \
         > "$TRACKED_OUT"
+    # Finish untracked enumeration before deciding there are no probes.
+    # A slow walk is bounded by this scan's watchdog rather than silently skipped.
+    git ls-files --others --exclude-standard -z -- ralph tests docs > "$UNTRACKED_FILES"
     if [ -s "$UNTRACKED_FILES" ]; then
         # --no-index tells git grep to ignore the index and search
         # the working tree, so it picks up files the index scan
-        # above did not see. ``--`` terminates the option list so
-        # a path beginning with ``-`` cannot be misinterpreted as
-        # an option.
-        git grep -lIE --no-index --threads 8 "$DRIFT_PATTERNS" \
-            -- $(cat "$UNTRACKED_FILES") \
-            2>>"$GREP_DIR/scan.err" \
-            >> "$TRACKED_OUT"
+        # above did not see. Read NUL-delimited paths directly so
+        # whitespace remains part of the filename on Bash 3 and later.
+        while IFS= read -r -d '' untracked_path; do
+            untracked_rc=0
+            git grep -lIE --no-index --threads 8 "$DRIFT_PATTERNS" \
+                -- "$untracked_path" \
+                2>>"$GREP_DIR/scan.err" \
+                >> "$TRACKED_OUT" || untracked_rc=$?
+            if [ "$untracked_rc" -gt 1 ]; then
+                exit "$untracked_rc"
+            fi
+        done < "$UNTRACKED_FILES"
     fi
     sort -u "$TRACKED_OUT" > "$GREP_DIR/scan.out"
 ) &
@@ -167,7 +167,7 @@ SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" | tr -d ' ')"
 (
     sleep "$GREP_TIMEOUT_SECONDS"
     : >"$GREP_DIR/timed_out"
-    # SIGKILL the scan subshell AND the untracked-file walk so a
+    # SIGKILL the scan subshell so a
     # busy-loop ``git`` child (the DA-001 stall injection in
     # ``tests/display/test_single_mode_anti_drift.py::test_drift_check_times_out_when_search_stalls``)
     # cannot block the watchdog on a non-responsive child. A regular
@@ -177,10 +177,8 @@ SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" | tr -d ' ')"
     # kill status. The child ``git`` processes are reparented to
     # init when bash dies; the kernel reaps them on its own. The
     # trailing ``|| true`` swallows ESRCH when the subshell already
-    # exited. Both background jobs must be killed: the scan subshell
-    # owns the busy-loop ``git ls-files`` and the untracked walk
-    # owns its own ``git ls-files --others``; leaving either running
-    # lets bash wait on it at script exit.
+    # exited. The scan group owns both file walks, so no child can
+    # survive to make bash wait at script exit.
     #
     # We kill the *process group* (``kill -KILL -$PGID``), not the
     # bash subshell PID alone. With ``set -o monitor`` the subshells
@@ -189,14 +187,12 @@ SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" | tr -d ' ')"
     # bash exit promptly instead of waiting on the orphaned busy
     # loops at script teardown.
     kill -KILL -"$SCAN_PGID" 2>/dev/null || true
-    kill -KILL -"$LS_PGID" 2>/dev/null || true
     # The leading PID kill is kept as a belt-and-braces fallback in
     # case the PGID lookup raced and the PGID points at a stale
     # group that has already been reaped. The negative-PID kill
     # always fires first so the trailing ``kill $PID`` is a no-op
     # in the normal case.
     kill -KILL "$SCAN_PID" 2>/dev/null || true
-    kill -KILL "$LS_PID" 2>/dev/null || true
 ) &
 WATCHDOG_PID="$!"
 set +e

@@ -169,9 +169,9 @@ def _return_result(
 def _condense_head_only(text: str, options: CondenseOptions) -> _CondensedResult:
     """Condense using head-only truncation."""
     head = _slice_to_cells(text, options.soft_limit)
-    total_chars = cell_len(text)
+    total_bytes = len(text.encode("utf-8"))
     visible = head + _truncation_suffix(
-        options.overflow_ref, total_chars=total_chars, hidden_lines=1
+        options.overflow_ref, total_chars=total_bytes, hidden_lines=1
     )
     return _return_result(visible, True, options, text)
 
@@ -185,13 +185,13 @@ def _condense_head_and_tail(text: str, total: int, options: CondenseOptions) -> 
     tail = _extract_tail(text, tail_cells)
 
     omitted = total - cell_len(head) - cell_len(tail)
-    total_chars = cell_len(text)
+    total_bytes = len(text.encode("utf-8"))
     visible = (
         head
         + _elision_suffix(
             omitted,
             options.overflow_ref,
-            total_chars=total_chars,
+            total_chars=total_bytes,
             hidden_lines=1,
         )
         + tail
