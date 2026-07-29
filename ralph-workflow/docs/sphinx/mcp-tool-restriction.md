@@ -87,13 +87,12 @@ Reference: https://platform.openai.com/docs/codex
 ### Google Anti Gravity
 
 The latest v1.1.8 live smoke observed AGY create its requested file and show
-parser/tool activity without a permission prompt, but it did not submit
-`smoke_test_result` or write the durable completion sentinel. Ralph Workflow reports the
-missing canonical artifact and completion evidence as a nonzero smoke failure;
-end-to-end AGY artifact submission is not yet proven. When submission succeeds,
-direct MCP submission and markdown fallback promotion both validate to the same
-canonical artifact at `.agent/artifacts/smoke_test_result.md` and receipt in
-`.agent/state.db`.
+parser/tool activity without a permission prompt. It wrote a valid fallback
+`smoke_test_result`; Ralph Workflow promoted it to the canonical artifact at
+`.agent/artifacts/smoke_test_result.md`, recorded its receipt in `.agent/state.db`,
+and wrote host-owned durable completion evidence because AGY missed the MCP
+completion call. Direct MCP submission and fallback promotion use the same
+validation and canonical receipt transaction.
 
 The same fallback-promotion path remains available if an agent cannot call the
 submission tool: write `.agent/tmp/<type>.md`, then

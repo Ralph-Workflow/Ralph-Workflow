@@ -189,10 +189,11 @@ signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
 The v1.1.8 manual record observed model acceptance, explicit effort acceptance,
 and stream-json events. The latest smoke created the requested file and showed
-plain-text parser/tool activity without a permission prompt, but did not submit
-the canonical artifact or write completion evidence; it exited nonzero with
-those failures. The plain-text parser remains the smoke default because it
-retained file and tool visibility. Continuation remains disabled: `--continue`
+plain-text parser/tool activity without a permission prompt. AGY wrote a valid
+fallback artifact; Ralph promoted it, recorded the canonical receipt, and wrote
+host-owned durable completion evidence after AGY missed the MCP completion call.
+The plain-text parser remains the smoke default because it retained file and tool
+visibility. Continuation remains disabled: `--continue`
 and `--conversation` accepted prompts but did not establish that a specific
 earlier conversation resumed. Re-measure periodically because AGY updates can
 change published IDs and flags. The no-cost `agy agents` observation reported

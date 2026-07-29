@@ -40,6 +40,7 @@ from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
 )
+from ralph.mcp.tools.coordination import _write_completion_sentinel
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -48,6 +49,7 @@ from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -874,6 +876,20 @@ def _run_smoke_agent(
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
+    if (
+        params.config.transport == AgentTransport.AGY
+        and artifact_submitted
+        and not _explicit_completion_seen(params.workspace_root, run_id=run_id)
+    ):
+        # AGY --print has been observed writing a valid fallback artifact but
+        # not reliably calling its configured MCP tools. The host promotes that
+        # validated document, then records the same durable completion evidence
+        # the tool would have written. A transcript marker alone remains invalid.
+        _write_completion_sentinel(
+            FsWorkspace(params.workspace_root),
+            run_id,
+            sentinel_hmac=_parent_broker_secret(),
+        )
     # Authoritative completion is the durable sentinel for every transport.
     explicit_completion_seen = _explicit_completion_seen(
         params.workspace_root,

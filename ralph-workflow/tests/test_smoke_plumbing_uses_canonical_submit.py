@@ -187,7 +187,7 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted is True
-    assert result.explicit_completion_seen is False
+    assert result.explicit_completion_seen is True
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -433,6 +433,41 @@ def test_agy_tool_activity_must_not_come_from_artifact(
     assert "no tool activity was observed" in result.errors, (
         f"Expected 'no tool activity was observed' in errors, got: {result.errors}"
     )
+
+
+def test_agy_smoke_regression_promotes_fallback_and_records_trusted_completion(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """AGY fallback artifacts earn host completion after a clean agent exit."""
+    params = _make_params(tmp_path, "agy/test-model", _agy_config())
+    run_id = "interactive-agy-smoke-test-model"
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.extend(
+                (
+                    "I created the requested todo list.",
+                    "[plain] tool: createTodoList",
+                    "The smoke task is complete.",
+                )
+            )
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(_smoke_markdown(), encoding="utf-8")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    assert result.artifact_submitted is True
+    assert result.explicit_completion_seen is True
+    assert "completion sentinel was not observed" not in result.errors
 
 
 def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence(
