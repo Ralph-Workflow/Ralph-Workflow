@@ -1209,10 +1209,7 @@ def _git_diff(workspace_root: Path) -> str:
         return "(no diff available)"
     baseline_sha = read_cycle_baseline(workspace_root)
     if baseline_sha:
-        committed = _git_output(workspace_root, "diff", baseline_sha, "HEAD")
-        uncommitted = _git_output(workspace_root, "diff", "HEAD")
-        parts = [p for p in (committed, uncommitted) if p and p != "(no diff available)"]
-        return "\n".join(parts) if parts else "(no diff available)"
+        return _git_output(workspace_root, "diff", baseline_sha)
     return _git_output(workspace_root, "diff", "HEAD")
 
 

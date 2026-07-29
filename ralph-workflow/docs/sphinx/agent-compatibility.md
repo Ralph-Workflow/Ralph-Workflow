@@ -4,7 +4,59 @@ This reference lists the agent CLI integrations Ralph Workflow supports and the
 important operational constraints for each one. It is a compatibility guide,
 not a guarantee that every third-party CLI works in every environment.
 
+## Model and provider syntax reference
+
+Dynamic aliases select a model where the corresponding CLI integration supports
+one. The emitted flags below are Ralph Workflow behaviour; third-party model
+availability remains the CLI provider's responsibility.
+
+| Alias family | Ralph Workflow emits | Constraint and example |
+| --- | --- | --- |
+| `claude/<model>` and `claude-headless/<model>` | `--model <model>` | A non-empty single model segment is required. |
+| `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
+| `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
+| `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
+| `agy/<published-id>[:<effort>]` | `--model <published-id>` and optional `--effort <low\|medium\|high>` | Examples: `agy/gemini-3.6-flash-low`, `agy/claude-sonnet-4-6:high`. An explicit effort suffix is rejected for IDs already ending in `-low`, `-medium`, or `-high`. These IDs were published by `agy models` on AGY v1.1.8 and are accepted by Ralph Workflow's resolver; AGY `--model` acceptance and the runtime effect of `--effort` remain unverified pending manual probes. |
+| `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
+| `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
+| `ccs/<alias>` | The configured CCS alias command | Define the alias under `[ccs_aliases]`. |
+
 ## Supported agents
+
+### Claude Code
+
+- **CLI**: `claude`
+- **Transport**: `claude-interactive`
+- **Flags**: `--dangerously-skip-permissions`, `--verbose`, and `--resume {}`
+- **Constraint**: Use `claude-headless` when a non-interactive streaming command is required.
+
+### Claude headless
+
+- **CLI**: `claude -p`
+- **Transport**: `claude`
+- **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode auto`, `--verbose`, and `--resume {}`
+- **Constraint**: This is the built-in non-interactive Claude transport.
+
+### Codex (OpenAI)
+
+- **CLI**: `codex exec`
+- **Transport**: `codex`
+- **Flags**: `--json` and `--dangerously-bypass-approvals-and-sandbox`
+- **Constraint**: Codex has no Ralph-managed session-resume flag.
+
+### OpenCode
+
+- **CLI**: `opencode run`
+- **Transport**: `opencode`
+- **Flags**: `--format json` and `--session {}`
+- **Constraint**: Dynamic aliases emit `-m <model>`.
+
+### Nanocoder
+
+- **CLI**: `nanocoder --mode yolo --no-plain run`
+- **Transport**: `nanocoder`
+- **Flags**: `--mode yolo` and `--no-plain`
+- **Constraint**: Dynamic aliases require a provider and may select a model.
 
 ### AGY
 
@@ -30,6 +82,31 @@ yolo_flag = "--dangerously-skip-permissions"
 can_commit = true
 json_parser = "generic"
 ```
+
+<a id="pi-pidev"></a>
+
+### Pi (Pi.dev)
+
+- **CLI**: `pi`
+- **Transport**: `pi`
+- **Flags**: `--mode json`, `--approve`, and `--session {}`
+- **Constraint**: Ralph Workflow adds `--no-builtin-tools --extension <path>` when it configures Pi's MCP extension.
+
+### Cursor (Cursor)
+
+- **CLI**: `agent`
+- **Transport**: `cursor`
+- **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
+- **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.
+
+<a id="ccs_aliases"></a>
+
+### Claude Code Switch (CCS)
+
+- **CLI**: a configured `ccs/<alias>` command
+- **Transport**: `claude`
+- **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode auto`, `--verbose`, and `--resume {}`
+- **Constraint**: CCS aliases are explicitly headless Claude commands configured under `[ccs_aliases]`.
 
 ### Built-in configuration examples
 
