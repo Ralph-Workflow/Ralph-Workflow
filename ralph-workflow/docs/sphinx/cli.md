@@ -252,17 +252,16 @@ a billed amount requires the unrun pricing probe.
 python -m ralph smoke-interactive-agy
 ```
 
-On v1.1.8, manual probes accepted the default model ID, a no-model
-`--effort high` invocation, and stream-json output. The CLI rejected every
-tested combination of `--effort` with an explicit `--model`, so Ralph Workflow model
-aliases use published IDs without an effort suffix. The latest live smoke
-created its requested file and showed parser/tool activity without a permission
-prompt. It wrote a valid fallback `smoke_test_result`; Ralph Workflow promoted
-it, recorded the receipt, and wrote host-owned durable completion evidence after
-AGY missed the MCP completion call. Continuation remains disabled: `--continue`
-and `--conversation` accepted a prompt but did not expose proof that they
-resumed the intended conversation. See `tmp/agy-source-of-truth.txt` for
-verbatim observations before manually running a paid probe.
+On v1.1.8, manual probes accepted the default model ID, explicit
+`gemini-3.6-flash-high --effort high`, and stream-json output. Ralph Workflow
+therefore accepts `agy/<published-id>[:low|medium|high]` aliases. The latest
+live smoke created its requested file and showed parser/tool activity without a
+permission prompt. It wrote a valid fallback `smoke_test_result`; Ralph Workflow
+promoted it, recorded the receipt, and wrote host-owned durable completion
+evidence after AGY missed the MCP completion call. Continuation remains disabled:
+`--continue` and `--conversation` accepted a prompt but did not expose proof
+that they resumed the intended conversation. See `tmp/agy-source-of-truth.txt`
+for verbatim observations before manually running a paid probe.
 
 Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic
 mock at `tests/_support/mock_agy.sh` for CI. The mock tests Ralph Workflow's harness;

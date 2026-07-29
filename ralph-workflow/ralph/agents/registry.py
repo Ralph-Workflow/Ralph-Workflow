@@ -664,13 +664,18 @@ def _parse_agy_alias(
 ) -> tuple[str, str | None] | None:
     """Parse an observed AGY model alias without silently changing its selection.
 
-    AGY v1.1.8 accepts ``--effort`` only without an explicit ``--model``;
-    model IDs already encode their effort tier where applicable. Ralph aliases
-    therefore accept only the exact IDs published by ``agy models``.
+    AGY v1.1.8 accepts the published model IDs and the documented
+    ``low``, ``medium``, and ``high`` effort values together. Ralph preserves
+    both selections exactly and rejects malformed aliases before invocation.
     """
-    if ":" in alias_value or alias_value not in models:
+    model_id, separator, effort = alias_value.partition(":")
+    if model_id not in models:
         return None
-    return alias_value, None
+    if not separator:
+        return model_id, None
+    if ":" in effort or effort not in _AGY_REASONING_EFFORTS:
+        return None
+    return model_id, effort
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:

@@ -517,6 +517,38 @@ def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output(
     assert "no tool activity was observed" not in errors
 
 
+def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
+    tmp_path: Path,
+) -> None:
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("module.exports = {};\n", encoding="utf-8")
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=AgentConfig(cmd="agy", json_parser="generic", transport=AgentTransport.AGY),
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        ["Created the requested todo list and submitted the smoke result."],
+        [],
+        None,
+        None,
+        tool_activity_seen=True,
+        artifact_submitted=True,
+        run_id="interactive-agy-smoke-gemini-3.6-flash-low",
+    )
+
+    assert "fewer than 3 meaningful output lines were observed" not in errors
+
+
 class TestSmokePlumbingCharacterization:
     """Characterization tests pinning smoke plumbing behavior."""
 

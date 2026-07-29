@@ -16,7 +16,7 @@ availability remains the CLI provider's responsibility.
 | `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
 | `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
 | `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
-| `agy/<published-id>` | `--model <published-id>` | Example: `agy/gemini-3.6-flash-low`. The measured v1.1.8 CLI rejects `--effort` combined with any explicit `--model`, so Ralph Workflow rejects effort-qualified AGY aliases rather than issuing a command AGY will reject. |
+| `agy/<published-id>[:effort]` | `--model <published-id>` and optional `--effort <effort>` | Example: `agy/gemini-3.6-flash-high:high`. Measured v1.1.8 accepts `low`, `medium`, and `high` with the published model IDs. |
 | `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
 | `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
 | `ccs/<alias>` | The configured CCS alias command | Define the alias under `[ccs_aliases]`. |
@@ -62,7 +62,7 @@ availability remains the CLI provider's responsibility.
 
 - **CLI**: `agy`
 - **Transport**: `agy`
-- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.8 publishes model IDs and `--effort low|medium|high`. A live no-model `--effort high` probe succeeded, but combining `--effort` with every tested explicit model was rejected; model selection uses the published ID alone.
+- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.8 publishes model IDs and `--effort low|medium|high`. Live probes accepted both `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`.
 - **Parser**: `generic` (native AGY parser; plain-text, not NDJSON)
 - **Caveats**:
     - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.

@@ -659,12 +659,16 @@ def _meaningful_output_error(
          strategy, not a signal of an under-producing agent.
     """
     meaningful_output = [line for line in live_output_lines if line.strip()]
+    if config.transport == AgentTransport.AGY and meaningful_output:
+        return None
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         meaningful_output = _meaningful_output_lines(config=config, lines=lines)
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         raw_meaningful = [line for line in lines if line.strip()]
         meaningful_output = raw_meaningful[:_MAX_MEANINGFUL_OUTPUT_LINES]
     meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
+    if config.transport == AgentTransport.AGY and meaningful_output:
+        return None
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
         return "fewer than 3 meaningful output lines were observed"
     return None

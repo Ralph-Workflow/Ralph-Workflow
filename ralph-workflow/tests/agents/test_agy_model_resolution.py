@@ -13,14 +13,28 @@ from ralph.config.models import UnifiedConfig
     [
         "agy/not-published",
         "agy/gemini-3.6-flash-low:maximum",
-        "agy/gemini-3.6-flash-low:low",
-        "agy/gemini-3.6-flash-high:low",
-        "agy/gpt-oss-120b-medium:high",
-        "agy/claude-sonnet-4-6:high",
+        "agy/gemini-3.6-flash-low:unsupported",
     ],
 )
 def test_agy_model_resolution_rejects_unknown_or_conflicting_alias(alias: str) -> None:
     assert AgentRegistry.from_config(UnifiedConfig()).get(alias) is None
+
+
+@pytest.mark.parametrize(
+    ("alias", "model_flag"),
+    [
+        ("agy/gemini-3.6-flash-low:low", "--model gemini-3.6-flash-low --effort low"),
+        ("agy/gemini-3.6-flash-high:high", "--model gemini-3.6-flash-high --effort high"),
+    ],
+)
+def test_agy_model_resolution_accepts_observed_model_effort_alias(
+    alias: str,
+    model_flag: str,
+) -> None:
+    config = AgentRegistry.from_config(UnifiedConfig()).get(alias)
+
+    assert config is not None
+    assert config.model_flag == model_flag
 
 
 def test_agy_model_resolution_rejection_names_published_models_and_efforts() -> None:
