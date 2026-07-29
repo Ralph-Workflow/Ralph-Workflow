@@ -32,10 +32,7 @@ from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.agent_activity_event import AgentActivityEvent
-from ralph.display.agent_event_renderer import (
-    normalize_event_from_agent_output_line,
-    render_event,
-)
+from ralph.display.agent_event_renderer import normalize_event_from_agent_output_line
 from ralph.display.presented_entry import build_presented_entry
 from ralph.display.record_writer import RenderedRecordWriter
 
@@ -86,21 +83,7 @@ def _drive_through_writer(
     writer = RenderedRecordWriter(tmp_path, unit_id)
     for record in records:
         event = _to_event(record)
-        text = render_event(event, unit_id=unit_id)
-        # The rendered record path uses the entry's plain text + the
-        # structured identity; we build a synthetic PresentedEntry-shaped
-        # line so the writer exercises the same shape it exercises in
-        # production (identity + timestamp + body).
-        from ralph.display.presented_entry import PresentedEntry
-
-        entry = PresentedEntry(
-            kind=event.kind.value,
-            severity="info",
-            identity=unit_id,
-            body=text.plain,
-            timestamp=event.timestamp,
-        )
-        writer.append(entry)
+        writer.append(build_presented_entry(event, unit_id=unit_id, timestamp=event.timestamp))
     writer.flush()
     return writer.path.read_text(encoding="utf-8")
 
@@ -270,8 +253,8 @@ def test_rendered_record_has_stable_field_order(tmp_path: Path) -> None:
     ]
     output = _drive_through_writer(records, tmp_path, unit_id="claude")
     line = output.splitlines()[0]
-    # The identity (`claude`) appears before the body content.
-    assert line.index("claude") < line.index("hello")
+    # Direct event rows omit the hoisted identity but retain stable body/role order.
+    assert line.index("hello") < line.index("role=agent_text")
 
 
 def test_rendered_record_lines_are_greppable_single_line_bodies(tmp_path: Path) -> None:
@@ -291,24 +274,19 @@ def test_rendered_record_lines_are_greppable_single_line_bodies(tmp_path: Path) 
 # --- Coalesced thinking passages (S-41 / AC-23) --------------------------
 
 
-def test_continuous_thinking_event_renders_as_one_passage(tmp_path: Path) -> None:
-    """A sequence of thinking deltas renders as one passage entry, not
-    one-sentence-per-line. The canonical registry produces a single
-    render per event; the coalescing happens at the parser boundary
-    (TextAccumulator) so the registry sees one event, not N."""
-    # One aggregated thinking entry (the coalescing happens at the
-    # parser-side; the registry sees one entry).
-    records = [
-        {
-            "kind": "thinking",
-            "provider": "claude",
-            "content": "First thought. Second thought. Third thought.",
-            "metadata": {},
-        },
-    ]
-    output = _drive_through_writer(records, tmp_path, unit_id="claude")
-    lines = [line for line in output.splitlines() if line.strip()]
-    assert len(lines) == 1, "continuous thinking must collapse to one line"
+def test_continuous_thinking_events_coalesce_to_one_passage(tmp_path: Path) -> None:
+    """DA-006: consecutive production thinking fragments close as one passage."""
+    display, _output, advance = _make_display_with_injected_clock(tmp_path)
+    display.start()
+    for fragment in ("First thought.", "Second thought.", "Third thought."):
+        display.emit_parsed_event("claude", ActivityEventKind.THINKING, fragment, {})
+        advance(1)
+    display.stop()
+    record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
+    passages = [line for line in record.splitlines() if "role=reasoning" in line]
+    assert len(passages) == 1
+    assert "First thought. Second thought. Third thought." in record
+    assert "\u2192" in passages[0]
 
 
 # --- Identity and timestamp at most once per line (AC-21) ----------------
@@ -321,12 +299,8 @@ def test_identity_appears_at_most_once_per_line(tmp_path: Path) -> None:
     ]
     output = _drive_through_writer(records, tmp_path, unit_id="claude")
     line = output.splitlines()[0]
-    # The identity appears once (the registry prefixes the unit_id into
-    # the body so the record writer is identity-prefixed).
-    assert line.count("claude") <= 1 or line.count("claude") == 2
-    # (A count of 2 is permitted when the unit_id is the prefix and the
-    # identity field appears separately. What we forbid is > 2.)
-    assert line.count("claude") <= 2
+    # Identity is either hoisted to a phase header or absent from a direct event row.
+    assert line.count("claude") <= 1
 
 
 # --- Production-path regression corpus (S-8 / AC-02..AC-07) -------------

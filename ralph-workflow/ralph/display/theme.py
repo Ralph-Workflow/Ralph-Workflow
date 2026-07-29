@@ -247,6 +247,13 @@ IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
 
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
 
+# The shipped roster is the baseline active set for shared surfaces. Rendering
+# it collision-aware prevents a hash collision before a particular display
+# has observed every peer in the current run.
+_DISPLAY_IDENTITY_ACTIVE_SET: Final[tuple[str, ...]] = (
+    "claude", "claude-headless", "codex", "opencode", "nanocoder", "agy", "pi", "cursor",
+)
+
 
 def _normalize_identity_name(name: str) -> str:
     """Return a stable, lowercase, separator- and case-folded identity."""

@@ -100,7 +100,7 @@ from ralph.display.phase_status import (
     format_dev_cycle_compact,
     format_dev_cycle_minimal,
 )
-from ralph.display.theme import identity_color
+from ralph.display.theme import _DISPLAY_IDENTITY_ACTIVE_SET, identity_color
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -236,6 +236,31 @@ _PATH_DROP_THRESHOLD: int = 60
 # the abbreviated form so the dropped path's budget can be
 # redirected to recognisable segments.
 _PHASE_ABBREVIATE_THRESHOLD: int = 80
+
+# Narrow bars need distinct phase carriers, not a shared ``Dev`` / ``Pla``
+# prefix. Values stay unique within the three-cell floor budget.
+_PHASE_ABBREVIATIONS: dict[str, str] = {
+    "planning": "Plan",
+    "planning_analysis": "PAn",
+    "development": "Dev",
+    "development_commit_cleanup": "DCl",
+    "development_commit": "DCm",
+    "development_analysis": "Dev",
+    "development_final_commit_cleanup": "FCl",
+    "development_final_commit": "FCm",
+    "complete": "DONE",
+    "failed_terminal": "FAIL",
+    "failed": "FAIL",
+    "cancelled": "CXL",
+}
+
+
+def _abbreviated_phase_label(label: str, budget: int, width: int) -> str:
+    """Return a readable narrow phase carrier, unique at the 40-col floor."""
+    key = label.lower().replace(" ", "_")
+    if width <= _FLOOR_THRESHOLD and key == "development_analysis":
+        return _tail_truncate("DAn", budget)
+    return _tail_truncate(_PHASE_ABBREVIATIONS.get(key, key.title()), budget)
 
 # wt-028-display S-2/S-3 (AC-01/AC-02): the 40-col rung is the spec's
 # floor below which the liveness glyph + elapsed segment drop
@@ -1192,9 +1217,10 @@ def render_status_bar(
         and (ctx.width == _AGENT_FIT_THRESHOLD or ctx.width >= _AGENT_PATH_FIT_THRESHOLD)
         else []
     )
-    phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     if ctx.width <= _PHASE_ABBREVIATE_THRESHOLD:
-        phase_display = phase_display[:3]
+        phase_display = _abbreviated_phase_label(phase_display, budgets.phase_budget, ctx.width)
+    else:
+        phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     # A short phase returns its unused fixed allocation to the trailing cwd.
     path_budget = budgets.path_budget + budgets.phase_budget - len(phase_display)
     # ``_field_overhead_and_label_budgets`` already reserves the agent
@@ -1344,6 +1370,7 @@ def _append_optional_segment(
                 agent_prefix,
                 style=identity_color(
                     model.agent_name,
+                    active=(*_DISPLAY_IDENTITY_ACTIVE_SET, model.agent_name),
                     terminal_bg_is_light=ctx.terminal_background_is_light,
                 ),
             )

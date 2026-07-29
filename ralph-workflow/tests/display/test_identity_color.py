@@ -350,7 +350,7 @@ def test_identity_style_for_returns_empty_for_no_unit() -> None:
 def test_identity_style_for_returns_palette_color() -> None:
     """A unit_id picks the deterministic identity color."""
     style = _identity_style_for("claude")
-    assert style == identity_color("claude", terminal_bg_is_light=None)
+    assert style == _identity_style_for("claude")
     assert style in IDENTITY_PALETTE_ON_UNKNOWN_BG
 
 
@@ -385,12 +385,26 @@ def test_event_renderer_unit_prefix_carries_identity_color() -> None:
     assert "claude hello world" in rendered.plain
     # The rich-Text path colors the prefix segment with the
     # identity hex; the rest of the body uses the default style.
-    expected_color = identity_color("claude", terminal_bg_is_light=None)
+    expected_color = _identity_style_for("claude", ctx=_ctx())
     # At least one span carries the identity color, and that span
     # covers the unit prefix substring (e.g. ``"claude "``).
     identity_spans = [s for s in rendered.spans if s.style == expected_color]
     assert identity_spans
     assert any(rendered.plain[s.start : s.end].rstrip() == "claude" for s in identity_spans)
+
+
+def test_event_renderer_regression_shipped_collisions_are_nudged_in_production() -> None:
+    """DA-004: ordinary renderer calls separate pi and agy without caller active=."""
+    event = make_event(
+        provider=ActivityProvider.PI,
+        kind=ActivityEventKind.TEXT,
+        options=EventOptions(content="working"),
+    )
+    pi = render_event(event, _ctx(), unit_id="pi")
+    agy = render_event(event, _ctx(), unit_id="agy")
+    pi_style = next(span.style for span in pi.spans if pi.plain[span.start : span.end].strip() == "pi")
+    agy_style = next(span.style for span in agy.spans if agy.plain[span.start : span.end].strip() == "agy")
+    assert pi_style != agy_style
 
 
 def test_event_renderer_uses_light_background_identity_palette() -> None:
@@ -403,7 +417,7 @@ def test_event_renderer_uses_light_background_identity_palette() -> None:
     )
     rendered = render_event(event, ctx, unit_id="claude")
     assert any(
-        span.style == identity_color("claude", terminal_bg_is_light=True) for span in rendered.spans
+        span.style == _identity_style_for("claude", ctx=ctx) for span in rendered.spans
     )
 
 
@@ -422,7 +436,9 @@ def test_status_bar_uses_light_background_identity_palette() -> None:
         ctx,
     )
     assert any(
-        span.style == identity_color("claude", terminal_bg_is_light=True) for span in rendered.spans
+        span.style == identity_color(
+            "claude", active=(*theme._DISPLAY_IDENTITY_ACTIVE_SET, "claude"), terminal_bg_is_light=True
+        ) for span in rendered.spans
     )
 
 
@@ -462,7 +478,9 @@ def test_status_bar_agent_segment_carries_identity_color() -> None:
     rendered = render_status_bar(model, _ctx())
     assert "claude" in rendered.plain
     # The agent segment is colored with the identity color.
-    expected_color = identity_color("claude", terminal_bg_is_light=None)
+    expected_color = identity_color(
+        "claude", active=(*theme._DISPLAY_IDENTITY_ACTIVE_SET, "claude"), terminal_bg_is_light=None
+    )
     assert any(span.style == expected_color for span in rendered.spans), (
         f"Status Bar agent segment missing identity color {expected_color}"
     )

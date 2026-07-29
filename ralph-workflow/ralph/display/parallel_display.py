@@ -2536,7 +2536,12 @@ class ParallelDisplay:
             tool_signature = (original_name, tool_path)
             # Subscriber receives the registry-rendered text so the
             # recorded line matches what the operator sees in the log.
-            sub_line = render_event(event, unit_id=unit_id, escape_body=False).plain
+            sub_line = render_event(
+                event,
+                unit_id=unit_id,
+                active_identities=(*self._last_recorded_body, unit_id),
+                escape_body=False,
+            ).plain
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
@@ -2570,7 +2575,14 @@ class ParallelDisplay:
         # picks up the ``[see .agent/raw/unit-N.log]`` ref), and the
         # registry's default 200-cell cap would otherwise pre-truncate
         # short of ``soft_limit`` and silently bypass overflow tracking.
-        text = strip_terminal_control(render_event(event, unit_id=unit_id, escape_body=False).plain)
+        text = strip_terminal_control(
+            render_event(
+                event,
+                unit_id=unit_id,
+                active_identities=(*self._last_recorded_body, unit_id),
+                escape_body=False,
+            ).plain
+        )
         if len(text) > self._ctx.condenser_hard_limit + 256:
             # Defensive cap: even the plain-text path must hand the
             # condenser a bounded payload, otherwise a pathologically

@@ -72,7 +72,7 @@ from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.presented_entry import outcome_is_failure
-from ralph.display.theme import STATUS_STYLES, identity_color
+from ralph.display.theme import _DISPLAY_IDENTITY_ACTIVE_SET, STATUS_STYLES, identity_color
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
@@ -238,9 +238,8 @@ def _identity_style_for(
     if not unit_id:
         return ""
     terminal_bg_is_light = ctx.terminal_background_is_light if ctx is not None else None
-    if active is None:
-        return identity_color(unit_id, terminal_bg_is_light=terminal_bg_is_light)
-    return identity_color(unit_id, active=active, terminal_bg_is_light=terminal_bg_is_light)
+    active_names = active if active is not None else (*_DISPLAY_IDENTITY_ACTIVE_SET, unit_id)
+    return identity_color(unit_id, active=active_names, terminal_bg_is_light=terminal_bg_is_light)
 
 
 def _split_body_with_unit(body: str, unit_id: str | None) -> tuple[str, str]:
@@ -683,6 +682,7 @@ def render_event(
     ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    active_identities: Iterable[str] | None = None,
     escape_body: bool = True,
 ) -> Text:
     """Render ``event`` via the registry into a rich ``Text``.
@@ -712,7 +712,16 @@ def render_event(
         a non-color redundancy (icon + ASCII label) for every kind.
     """
     renderer = EVENT_RENDERERS.get(event.kind, _render_unknown_event)
-    return renderer(event, ctx, unit_id=unit_id, escape_body=escape_body)
+    rendered = renderer(event, ctx, unit_id=unit_id, escape_body=escape_body)
+    if unit_id and active_identities is not None:
+        start = rendered.plain.find(unit_id)
+        if start >= 0:
+            rendered.stylize(
+                _identity_style_for(unit_id, active=active_identities, ctx=ctx),
+                start,
+                start + len(unit_id),
+            )
+    return rendered
 
 
 def render_event_kind_text(

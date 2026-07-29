@@ -528,6 +528,9 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
         "error": "failed",
         "cancelled": "cancelled",
         "completed": "completed",
+        # The final run-loop push uses this phase-neutral outcome; it must
+        # occupy the terminal attention slot even for failed_terminal.
+        "terminated": "terminated",
     }
     if isinstance(run_outcome, str) and run_outcome in outcome_attention:
         return outcome_attention[run_outcome]
@@ -535,7 +538,7 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
     if isinstance(run_phase, str):
         if run_phase.startswith("waiting"):
             return "waiting"
-        if run_phase in ("complete", "failed", "cancelled"):
+        if run_phase in ("complete", "failed", "failed_terminal", "cancelled"):
             return "terminated"
         if run_phase in ("", "starting", "startup"):
             return "starting"

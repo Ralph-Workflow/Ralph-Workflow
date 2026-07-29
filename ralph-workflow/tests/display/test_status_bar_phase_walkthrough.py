@@ -190,6 +190,30 @@ def test_terminal_phase_omits_outer_cycle(phase: str) -> None:
     )
 
 
+def test_status_bar_regression_floor_phase_labels_remain_distinct() -> None:
+    """DA-003: every default working phase has a distinct narrow bar label."""
+    policy = _load_default_policy()
+    phases = tuple(
+        phase for phase, definition in policy.phases.items() if definition.role != "terminal"
+    )
+    rendered = {
+        render_status_bar(
+            StatusBarModel(
+                workspace_root="/tmp/probe",
+                phase_label=build_phase_entry_model_from_state(
+                    phase, PipelineState(phase=phase), policy
+                ).human_label(),
+                phase_style=phase_style_for_phase(phase, policy),
+                outer_dev_iteration=1,
+                outer_dev_cap=5,
+            ),
+            _ctx(40),
+        ).plain
+        for phase in phases
+    }
+    assert len(rendered) == len(phases)
+
+
 def test_status_bar_renders_elapsed_time_and_agent_identity_when_space_allows() -> None:
     """AC-01: optional run context is labeled and survives no-color rendering."""
     model = StatusBarModel(

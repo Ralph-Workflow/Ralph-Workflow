@@ -596,9 +596,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     # renders).
     phase_label = "Development Analysis"
     phase_label_prefixes = (
-        phase_label[:3],  # "Dev" -- first 3 chars of "Development Analysis"
-        phase_label[:4],  # "Deve"
-        phase_label[:2],  # "De"
+        "DAn",  # distinct narrow carrier for Development Analysis
+        phase_label[:3],
+        phase_label[:2],
     )
     phase_visible = any(prefix in plain for prefix in phase_label_prefixes)
     assert phase_visible, (
@@ -866,6 +866,13 @@ def test_attention_state_for_state_returns_failed() -> None:
     from ralph.pipeline.run_loop import _attention_state_for_state
     state = _StubState(phase="development", run_outcome="failed")
     assert _attention_state_for_state(state) == "failed"
+
+
+def test_attention_state_for_state_regression_failed_terminal_is_terminated() -> None:
+    """DA-002: the policy terminal-failure phase occupies the terminal slot."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+
+    assert _attention_state_for_state(_StubState(phase="failed_terminal", run_outcome="terminated")) == "terminated"
 
 
 def test_attention_state_for_state_returns_none_when_healthy() -> None:

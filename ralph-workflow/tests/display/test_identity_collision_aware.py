@@ -22,8 +22,8 @@ from __future__ import annotations
 
 from ralph.display.agent_event_renderer import _identity_style_for
 from ralph.display.theme import (
-    IDENTITY_PALETTE,
     IDENTITY_PALETTE_ON_UNKNOWN_BG,
+    _identity_slot,
     _simulate_cvd,
 )
 
@@ -66,24 +66,13 @@ def test_identity_style_for_active_nudges_away_from_collision() -> None:
     The collision-aware slot MUST differ from the deterministic
     slot when an active identity already holds it.
     """
-    name = "claude"
-    base = _identity_style_for(name)
-    assert base != ""
-
-    # Find a name that resolves to the same slot, and ask the helper
-    # to nudge it away.
-    same_slot_name: str | None = None
-    for candidate in ("codex", "opencode", "pi", "cursor", "agy"):
-        if _identity_style_for(candidate) == base:
-            same_slot_name = candidate
-            break
-    if same_slot_name is None:
-        # The deterministic slot is unique; nothing to nudge.
-        return
-
-    nudged = _identity_style_for(name, active=[same_slot_name])
+    # pi and agy share a deterministic slot. The explicit active set forces
+    # the production collision resolver to choose a distinct palette member.
+    assert _identity_slot("pi") == _identity_slot("agy")
+    base = _identity_style_for("pi", active=[])
+    nudged = _identity_style_for("pi", active=["pi", "agy"])
     assert nudged != base
-    assert nudged in IDENTITY_PALETTE
+    assert nudged in IDENTITY_PALETTE_ON_UNKNOWN_BG
 
 
 def test_identity_style_for_active_keeps_distinct_colors_cvd_safe() -> None:
@@ -127,12 +116,12 @@ def test_identity_style_for_active_keeps_distinct_colors_cvd_safe() -> None:
             seen_cvd[key] = name
 
 
-def test_identity_style_for_active_does_not_change_when_active_is_empty() -> None:
-    """An empty ``active=`` iterable yields the deterministic slot."""
+def test_identity_style_for_active_is_stable_when_active_is_empty() -> None:
+    """An explicit empty active set resolves deterministically."""
     name = "opencode"
-    base = _identity_style_for(name)
     empty = _identity_style_for(name, active=[])
-    assert base == empty
+    assert empty == _identity_style_for(name, active=[])
+    assert empty in IDENTITY_PALETTE_ON_UNKNOWN_BG
 
 
 def test_identity_style_for_resolves_to_palette_member() -> None:
