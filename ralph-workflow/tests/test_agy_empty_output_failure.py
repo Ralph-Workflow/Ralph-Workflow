@@ -46,6 +46,8 @@ def test_agy_empty_output_regression_names_actionable_upstream_cause(
 
 def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -> None:
     """Plan S-3: a clean AGY exit with no evidence never becomes success."""
+    cli_log = tmp_path / "cli.log"
+    cli_log.write_text("", encoding="utf-8")
     with pytest.raises(AgentInvocationError, match="completion evidence"):
         check_process_result(
             types.SimpleNamespace(returncode=0),
@@ -54,6 +56,6 @@ def test_agy_empty_output_regression_without_cause_still_fails(tmp_path: Path) -
             CompletionCheckOptions(
                 execution_strategy=strategy_for_transport(AgentTransport.AGY),
                 workspace_path=tmp_path,
-                agy_cli_log_path=tmp_path / "missing-cli.log",
+                agy_cli_log_path=cli_log,
             ),
         )

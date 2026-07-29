@@ -60,12 +60,13 @@ incidental helper) has two independent mechanisms:
 
 - Public documentation: https://antigravity.google/docs/cli-subagents
   (accessed 2026-06-14).
-- GitHub repository: https://github.com/google-gemini/gemini-cli
+- GitHub repository: https://github.com/google-antigravity/antigravity-cli
   (accessed 2026-06-14).
 
-Antigravity CLI supports asynchronous subagents and background tasks
-managed through an interactive ``/agents`` panel and a ``/tasks``
-command. The official documentation does not describe a stable
+AGY's published documentation describes asynchronous subagents and background
+tasks through an interactive ``/agents`` panel and a ``/tasks`` command. On the
+measured stock v1.1.8 installation, ``agy agents`` reported no available
+sub-agents, so delegation is unverified here. The official documentation does not describe a stable
 command-line token, process-name prefix, or environment variable that
 an external observer can use to identify spawned subagent processes on
 the OS process tree. The command-line role classifier therefore

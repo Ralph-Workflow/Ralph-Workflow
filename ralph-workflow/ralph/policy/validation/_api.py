@@ -43,6 +43,13 @@ from ralph.policy.validation._policy_validation_error import PolicyValidationErr
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 _BLOCK_BASED_POLICY_FORMAT_VERSION = 2
+_AGY_ALIAS_HELP = (
+    "Available AGY models: gemini-3.6-flash-high, gemini-3.6-flash-medium, "
+    "gemini-3.6-flash-low, gemini-3.5-flash-high, gemini-3.5-flash-medium, "
+    "gemini-3.5-flash-low, gemini-3.1-pro-high, gemini-3.1-pro-low, "
+    "claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium. "
+    "Accepted effort suffixes: low, medium, high."
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -58,6 +65,7 @@ if TYPE_CHECKING:
     class _WorkUnitsModule(Protocol):
         WorkUnitsValidationError: type[Exception]
         validate_for_same_workspace: Callable[[object], object]
+
 
 
 def validate_phase_exists_in_policy(
@@ -317,9 +325,13 @@ def validate_agent_chains_satisfiable(
                 continue
 
     if unknown_agents:
+        agy_help = ""
+        if any("'agy/" in agent for agent in unknown_agents):
+            agy_help = f" {_AGY_ALIAS_HELP}"
         raise PolicyValidationError(
             "Agent chains reference unknown agents (check configuration, not PATH): "
             + "; ".join(unknown_agents)
+            + agy_help
         )
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
 from loguru import logger as loguru_logger
 
 from ralph.executor.process import ProcessResult
@@ -42,8 +43,6 @@ from tests._support.typed_accessors import (
 )
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.config.models import UnifiedConfig
 
 
@@ -127,8 +126,10 @@ def _two_disjoint_units() -> list[dict[str, object]]:
     ]
 
 
+@pytest.mark.parametrize("agent_name", ["agy", "agy/gemini-3.6-flash-low"])
 def test_effect_router_regression_agy_agent_subagents_without_available_agents_fails_explicitly(
     tmp_path: Path,
+    agent_name: str,
 ) -> None:
     """Plan S-7: AGY must not silently fall back after its stock v1.1.8 probe found no agents."""
     _write_plan_artifact(tmp_path, _two_disjoint_units())
@@ -145,7 +146,7 @@ def test_effect_router_regression_agy_agent_subagents_without_available_agents_f
     assert isinstance(effect, InvokeAgentEffect)
     agy_state = PipelineState(
         phase="development",
-        phase_chains={"development": {"agents": ["agy/gemini-3.6-flash-low"]}},
+        phase_chains={"development": {"agents": [agent_name]}},
     )
     effect = determine_effect_from_policy(
         agy_state,
@@ -156,7 +157,10 @@ def test_effect_router_regression_agy_agent_subagents_without_available_agents_f
     )
 
     assert isinstance(effect, ExitFailureEffect)
-    assert "`agy agents` reported no sub-agents on this install" in effect.reason
+    assert effect.reason == (
+        "AGY dispatch unavailable: `agy agents` reported no sub-agents on this install; "
+        "configure an AGY sub-agent and retry."
+    )
 
 
 def test_agy_agents_probe_regression_is_bounded_and_cached(monkeypatch: pytest.MonkeyPatch) -> None:

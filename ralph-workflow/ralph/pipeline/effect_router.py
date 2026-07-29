@@ -131,7 +131,7 @@ def _parallel_or_agent_effect(
         phase_para = phase_def.parallelization
         if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
             agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
-            if agent_name is not None and agent_name.startswith("agy/"):
+            if agent_name == "agy" or (agent_name is not None and agent_name.startswith("agy/")):
                 available_agents = _agy_available_agents(agy_agents_probe)
                 if not available_agents:
                     return ExitFailureEffect(
