@@ -95,6 +95,38 @@ def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     assert preview.lexer.name == "Python"
 
 
+def test_read_file_regression_snippet_uses_requested_path_lexer() -> None:
+    """DA-001: relative gutters do not turn an unwindowed Python read into a diff."""
+    preview = build_edit_preview(
+        "read_file",
+        {"path": "a.py", "content": "def render():\n    return 1\n", "is_snippet": True},
+        width=80,
+    )
+    assert isinstance(preview, Group)
+    assert any(
+        isinstance(renderable, Text) and "(snippet)" in renderable.plain
+        for renderable in preview.renderables
+    )
+    syntax = next(renderable for renderable in preview.renderables if isinstance(renderable, Syntax))
+    assert syntax.lexer.name == "Python"
+
+
+def test_read_file_regression_snippet_uses_requested_path_lexer() -> None:
+    """DA-001: relative gutters do not turn an unwindowed Python read into a diff."""
+    preview = build_edit_preview(
+        "read_file",
+        {"path": "a.py", "content": "def render():\n    return 1\n", "is_snippet": True},
+        width=80,
+    )
+    assert isinstance(preview, Group)
+    assert any(
+        isinstance(renderable, Text) and "(snippet)" in renderable.plain
+        for renderable in preview.renderables
+    )
+    syntax = next(renderable for renderable in preview.renderables if isinstance(renderable, Syntax))
+    assert syntax.lexer.name == "Python"
+
+
 def test_build_edit_preview_returns_none_for_empty_payload() -> None:
     """Empty input_dict or empty content returns None."""
     assert build_edit_preview("write_file", {}, width=80) is None
