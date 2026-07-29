@@ -607,7 +607,8 @@ def _parse_agy_alias(alias_value: str) -> tuple[str, str | None] | None:
     """Parse a measured ``agy/<model>[:effort]`` alias without fallback."""
     model_id, separator, effort = alias_value.rpartition(":")
     if not separator:
-        model_id, effort = alias_value, None
+        model_id = alias_value
+        effort = None
     if model_id not in _AGY_MODELS:
         return None
     if effort is not None and (effort not in _AGY_REASONING_EFFORTS or model_id.endswith(f"-{effort}")):
