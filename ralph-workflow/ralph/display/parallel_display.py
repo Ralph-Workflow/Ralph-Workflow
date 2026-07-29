@@ -91,6 +91,7 @@ Migrated from (consolidation map)
 from __future__ import annotations
 
 import contextlib
+import json
 import queue
 import textwrap
 import threading
@@ -573,7 +574,7 @@ class ParallelDisplay:
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._last_emitted_tool_signature: dict[
-            str, tuple[str, str, str]
+            str, tuple[str, str, str, int | None]
         ] = {}  # bounded-accumulator-ok
         # S-13 (wt-028-display P1 / AC-02 / AC-03): cross-kind
         # identical-content dedup at the rendered-record seam. The
@@ -1009,10 +1010,12 @@ class ParallelDisplay:
             input_obj = metadata.get("input", metadata.get("args"))
             input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
             pattern = input_dict.get("pattern", metadata.get("pattern", ""))
+            line_start = input_dict.get("line_start", input_dict.get("offset"))
             self._last_emitted_tool_signature[unit_id] = (
                 tool_name,
                 tool_path,
                 str(pattern or ""),
+                line_start if isinstance(line_start, int) and not isinstance(line_start, bool) else None,
             )
 
         self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
@@ -1777,7 +1780,7 @@ class ParallelDisplay:
         if not is_repeat and snapshot.active_tool and snapshot.active_path:
             tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
-                last_tool, last_path, _last_pattern = tool_sig
+                last_tool, last_path, _last_pattern, _last_line_start = tool_sig
                 if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
                     return []
 
@@ -2007,10 +2010,27 @@ class ParallelDisplay:
     ) -> tuple[str, dict[str, object], bool]:
         """Build a correlated result envelope and report whether it is previewable."""
         tool_name, path = self._result_preview_target(unit_id, metadata)
+        previous = self._last_emitted_tool_signature.get(unit_id)
+        correlated_start = previous[3] if previous is not None else None
+        result_start = metadata.get("line_start", metadata.get("offset"))
+        result_content: object = content
+        if tool_name == "read_file":
+            with contextlib.suppress(ValueError):
+                envelope = cast("object", json.loads(content))
+                if isinstance(envelope, dict):
+                    envelope_content = envelope.get("content")
+                    if isinstance(envelope_content, str):
+                        result_content = envelope_content
+                    else:
+                        return tool_name, {"input": {}}, False
+                else:
+                    return tool_name, {"input": {}}, False
+            if not content.lstrip().startswith("{") and previous is not None:
+                return tool_name, {"input": {}}, False
         payload: dict[str, object] = {
             "path": path,
-            "content": content,
-            "line_start": metadata.get("line_start", metadata.get("offset", 1)),
+            "content": result_content,
+            "line_start": result_start if isinstance(result_start, int) else correlated_start or 1,
         }
         preview_input: dict[str, object] = {"input": payload}
         if tool_name in {"grep_files", "search_files"}:
@@ -2663,8 +2683,18 @@ class ParallelDisplay:
                         or None
                     )
                     if kind is ActivityEventKind.TOOL_USE
-                    else text_content
+                    else (
+                        preview_record_text(
+                            result_preview_tool_name,
+                            result_preview_input,
+                            overflow_ref=overflow_ref,
+                            glyphs_enabled=self._ctx.glyphs_enabled,
+                        )[0]
+                        or text_content
+                    )
                     if previewed_result
+                    else text_content
+                    if kind is ActivityEventKind.TOOL_RESULT
                     else None,
                 ),
                 # DA-003 (wt-028-display): forward the

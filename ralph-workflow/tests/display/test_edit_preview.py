@@ -973,16 +973,25 @@ def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None
     assert shipped == classified
 
 
-def test_diff_preview_uses_hunk_line_numbers_or_marks_snippet_relative() -> None:
-    """DA-004: diff gutters seed from @@ or explicitly identify snippet lines."""
+def test_diff_preview_uses_real_hunk_line_numbers_or_marks_snippet_relative() -> None:
+    """Diff metadata stays unnumbered while each hunk body keeps real file lines."""
     numbered = build_edit_preview(
         "git_show", {"content": "@@ -10,3 +20,3 @@\n context\n-old\n+new\n"}, width=80
     )
+    preamble = build_edit_preview(
+        "git_diff", {"content": "--- a/y.py\n+++ b/y.py\n@@ -5,1 +5,1 @@\n-a\n+b\n@@ -20,1 +30,1 @@\n-c\n+d\n"}, width=80
+    )
     snippet = build_edit_preview("git_diff", {"content": "-old\n+new\n"}, width=80)
-    assert numbered is not None and snippet is not None
+    assert numbered is not None and preamble is not None and snippet is not None
     numbered_text = io.StringIO()
+    preamble_text = io.StringIO()
     snippet_text = io.StringIO()
-    Console(file=numbered_text, force_terminal=False, color_system=None, width=80).print(numbered)
+    console = Console(file=numbered_text, force_terminal=False, color_system=None, width=80)
+    console.print(numbered)
+    Console(file=preamble_text, force_terminal=False, color_system=None, width=80).print(preamble)
     Console(file=snippet_text, force_terminal=False, color_system=None, width=80).print(snippet)
-    assert "20" in numbered_text.getvalue()
+    assert re.search(r"\b20\s+context", numbered_text.getvalue())
+    assert re.search(r"\b5\s+-a", preamble_text.getvalue())
+    assert re.search(r"\b30\s+-c", preamble_text.getvalue())
+    assert not re.search(r"^\s*\d+\s+(?:---|\+\+\+|@@)", preamble_text.getvalue())
     assert "(snippet)" in snippet_text.getvalue()

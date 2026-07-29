@@ -656,6 +656,51 @@ def _build_edit_preview(
     return Group(*blocks)
 
 
+def _build_content_preview(
+    bare: str,
+    canonical: PreviewPayload,
+    content: str,
+    path: str | None,
+    start_line: int,
+    *,
+    width: int,
+    terminal_bg_is_light: bool | None,
+    overflow_ref: str | None,
+    glyphs_enabled: bool,
+) -> RenderableType | None:
+    """Render a content payload, keeping diff metadata outside file gutters."""
+    preview_path = path
+    is_diff = bare in {"git_diff", "git_show"} or canonical.language_hint == "diff"
+    if canonical.language_hint and path is None:
+        preview_path = f"preview.{canonical.language_hint}"
+    elif is_diff:
+        preview_path = "preview.diff"
+    hunks = list(re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", content, re.MULTILINE))
+    if is_diff and hunks:
+        blocks: list[RenderableType] = []
+        for index, hunk in enumerate(hunks):
+            header_start = 0 if index == 0 else hunk.start()
+            header = content[header_start : hunk.end()].rstrip("\n")
+            body_end = hunks[index + 1].start() if index + 1 < len(hunks) else len(content)
+            body = content[hunk.end() : body_end].strip("\n")
+            blocks.append(Text(header, style="theme.text.muted"))
+            preview = _build_write_preview(
+                bare, preview_path, body, width=width, terminal_bg_is_light=terminal_bg_is_light,
+                overflow_ref=overflow_ref, glyphs_enabled=glyphs_enabled, start_line=int(hunk.group(1)),
+            )
+            if preview is not None:
+                blocks.append(preview)
+        return Group(*blocks) if blocks else None
+    preview_start = start_line if isinstance(start_line, int) and start_line > 0 else 1
+    preview = _build_write_preview(
+        bare, preview_path, content, width=width, terminal_bg_is_light=terminal_bg_is_light,
+        overflow_ref=overflow_ref, glyphs_enabled=glyphs_enabled, start_line=preview_start,
+    )
+    if preview is None:
+        return None
+    return Group(Text("  (snippet)", style="theme.text.muted"), preview) if is_diff else preview
+
+
 def build_edit_preview(
     tool_name: str,
     input_dict: dict[str, object] | PreviewPayload,
@@ -757,34 +802,10 @@ def build_edit_preview(
             overflow_ref=overflow_ref,
         )
     if isinstance(content_obj, str) and content_obj:
-        preview_path = path
-        is_diff = bare in {"git_diff", "git_show"} or canonical.language_hint == "diff"
-        if canonical.language_hint and path is None:
-            preview_path = f"preview.{canonical.language_hint}"
-        elif is_diff:
-            preview_path = "preview.diff"
-        hunk = re.search(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", content_obj, re.MULTILINE)
-        resolved_start = int(hunk.group(1)) if is_diff and hunk else start_line
-        preview = _build_write_preview(
-            bare,
-            preview_path,
-            content_obj,
-            width=width,
-            terminal_bg_is_light=terminal_bg_is_light,
-            overflow_ref=overflow_ref,
+        return _build_content_preview(
+            bare, canonical, content_obj, path, start_line, width=width,
+            terminal_bg_is_light=terminal_bg_is_light, overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,
-            start_line=(
-                resolved_start
-                if isinstance(resolved_start, int)
-                and not isinstance(resolved_start, bool)
-                and resolved_start > 0
-                else 1
-            ),
-        )
-        return (
-            Group(Text("  (snippet)", style="theme.text.muted"), preview)
-            if preview is not None and is_diff and hunk is None
-            else preview
         )
     return None
 

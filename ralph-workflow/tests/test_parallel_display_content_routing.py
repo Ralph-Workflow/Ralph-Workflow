@@ -446,3 +446,33 @@ def test_stream_parsed_agent_activity_plain_tool_line_routes_to_tool_use(tmp_pat
     out = buf.getvalue()
     assert "read_file" in out
     assert "[content][activity]" not in out
+
+
+
+def test_live_read_result_preserves_correlated_window_line_numbers() -> None:
+    """A partial MCP read retains the request window in its live preview gutter."""
+    import io
+    import re
+
+    from rich.console import Console
+
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+
+    output = io.StringIO()
+    display = ParallelDisplay(
+        make_display_context(
+            console=Console(file=output, force_terminal=True, color_system="truecolor"), env={}
+        )
+    )
+    display.emit_parsed_event(
+        "u1", ActivityEventKind.TOOL_USE, "mcp__ralph__read_file",
+        {"input": {"path": "x.py", "line_start": 17, "line_end": 18}},
+    )
+    display.emit_parsed_event(
+        "u1", ActivityEventKind.TOOL_RESULT,
+        '{"path":"x.py","content":"def render():\\n    return 1\\n","total_lines":50,"returned_lines":2,"truncated":true}', {},
+    )
+    rendered = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output.getvalue())
+    assert re.search(r"\b17\s+def render\(\):", rendered)
+    assert re.search(r"\b18\s+return 1", rendered)
