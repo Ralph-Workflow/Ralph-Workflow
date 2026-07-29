@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+
 from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast
 from ralph.project_urls import GETTING_STARTED_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
