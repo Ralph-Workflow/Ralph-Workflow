@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from ralph.display._channel_prefix_stripper import (
     strip_parser_channel_prefix,
 )
+from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.tool_args import friendly_tool_name
 
@@ -234,6 +235,9 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
     parts = [tool]
     if target and target not in body:
         parts.append(target)
+    call_id = tool_call_id(metadata)
+    if call_id:
+        parts.append(f"call_id={call_id}")
     parts.extend((outcome, body))
     return " ".join(part for part in parts if part)
 
@@ -250,9 +254,11 @@ def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
         "tool",
     )
     tool = friendly_tool_name(raw_tool)
+    call_id = tool_call_id(metadata)
+    suffix = f" call_id={call_id}" if call_id else ""
     if body.startswith("(") or not body.casefold().startswith(tool.casefold()):
-        return f"{tool} {body}"
-    return body
+        return f"{tool} {body}{suffix}"
+    return body if not suffix or suffix in body else f"{body}{suffix}"
 
 
 def _strip_leading_tokens(body: str, tool: str, outcome: str) -> str:

@@ -196,10 +196,11 @@ class _CodexDispatch:
         if item_type == "mcp_tool_call":
             tool_name = str(item_obj.get("tool", "unknown"))
             arguments: object = item_obj.get("arguments", {})
+            call_id = str(item_obj.get("id", ""))
             metadata = {
                 "tool": tool_name,
                 "input": arguments,
-                "tool_call_id": str(item_obj.get("id", "")),
+                "tool_call_id": call_id,
             }
             if str(obj.get("type", "")) == "item.completed":
                 result = item_obj.get("result", item_obj.get("error", ""))
@@ -241,7 +242,9 @@ class _CodexDispatch:
                         },
                     )
                 else:
-                    yield AgentOutputLine(type="tool_use", content="bash", raw=stripped, metadata=metadata)
+                    yield AgentOutputLine(
+                        type="tool_use", content="bash", raw=stripped, metadata=metadata
+                    )
             else:
                 yield AgentOutputLine(
                     type="item_command_execution",

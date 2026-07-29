@@ -428,6 +428,19 @@ def test_codex_parser_accepts_sse_data_prefix_lines() -> None:
     assert results[0].content == "prefixed text"
 
 
+def test_codex_parser_regression_same_tool_calls_keep_distinct_call_ids() -> None:
+    """S-4: same-input Codex calls retain IDs for distinct rendered records."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"item.started","item":{"id":"call-1","type":"mcp_tool_call","tool":"search_files","arguments":{"path":"ralph"}}}',
+        '{"type":"item.started","item":{"id":"call-2","type":"mcp_tool_call","tool":"search_files","arguments":{"path":"ralph"}}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert [result.metadata["tool_call_id"] for result in results] == ["call-1", "call-2"]
+
+
 def test_codex_parser_item_completed_mcp_tool_result_maps_to_tool_result() -> None:
     """Codex parser should map completed MCP tool result items to tool_result."""
     parser = CodexParser()

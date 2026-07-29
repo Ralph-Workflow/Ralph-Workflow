@@ -5,7 +5,7 @@ from __future__ import annotations
 from itertools import pairwise
 from pathlib import Path
 
-from ralph.agents.parsers import PiParser
+from ralph.agents.parsers import CodexParser, PiParser
 from ralph.display.activity_provider import ActivityProvider
 from tests.display.test_raw_record_regression import _drive_fixture_through_production
 from tests.display.test_universality_replay import _replay
@@ -25,6 +25,25 @@ def test_real_corpus_regression_replays_repaired_shape(tmp_path: Path) -> None:
         assert "⚠ WARN" not in surface
     assert "truncated, 1 line" in rendered
     assert " B, see .agent/raw/pi.log" in rendered
+
+
+def test_codex_tool_call_regression_same_input_records_remain_distinct(tmp_path: Path) -> None:
+    """S-4: rendered records retain each distinct same-input Codex call."""
+    wire = [
+        '{"type":"item.started","item":{"id":"call-1","type":"mcp_tool_call","tool":"search_files","arguments":{"path":"ralph"}}}',
+        '{"type":"item.started","item":{"id":"call-2","type":"mcp_tool_call","tool":"search_files","arguments":{"path":"ralph"}}}',
+    ]
+    rendered, _live, _ = _replay(
+        "codex",
+        ActivityProvider.CODEX,
+        CodexParser,
+        tmp_path,
+        wire_lines=wire,
+    )
+
+    lines = [line for line in rendered.splitlines() if "role=tool_call" in line]
+    assert len(lines) == 2
+    assert {"call_id=call-1", "call_id=call-2"} <= set(" ".join(lines).split())
 
 
 def test_pi_toolcall_triplication_replay_emits_one_call_and_result(tmp_path: Path) -> None:
