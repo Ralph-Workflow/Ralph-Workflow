@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rich.console import Console
 
+from ralph.agents.parsers.cursor import CursorParser
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.preview_payload import payload_from_tool_event
 
@@ -58,6 +59,23 @@ def test_preview_payload_parser_coverage_matrix_uses_parser_emitted_shapes() -> 
     }
     assert shipped == {entry[0] for entry in mapped} | declined
     assert all(payload_from_tool_event("Write", {"event": parser}) is None for parser in declined)
+
+
+def test_cursor_nested_args_envelope_reaches_preview_payload() -> None:
+    """S-1: Cursor's live nested args are flattened before preview normalization."""
+    event = {
+        "type": "tool_call",
+        "subtype": "started",
+        "tool_call": {
+            "edit_file": {
+                "args": {"path": "a.py", "old_string": "x = 1", "new_string": "x = 2"}
+            }
+        },
+    }
+    line = next(iter(CursorParser().parse(iter([json.dumps(event)]))))
+    payload = payload_from_tool_event(line.content, line.metadata)
+    assert payload is not None and payload.path == "a.py" and payload.operation == "replace"
+    assert build_edit_preview(line.content, payload, width=80, terminal_bg_is_light=False) is not None
 
 
 def test_notebook_edit_uses_notebook_path_and_python_fallback() -> None:
