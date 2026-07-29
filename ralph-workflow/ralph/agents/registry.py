@@ -669,7 +669,10 @@ def _parse_agy_alias(
         model_id = alias_value
     if model_id not in models:
         return None
-    if effort is not None and (effort not in _AGY_REASONING_EFFORTS or model_id.endswith(f"-{effort}")):
+    if effort is not None and (
+        effort not in _AGY_REASONING_EFFORTS
+        or any(model_id.endswith(f"-{token}") for token in _AGY_REASONING_EFFORTS)
+    ):
         return None
     return model_id, effort
 
