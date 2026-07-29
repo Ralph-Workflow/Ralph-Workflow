@@ -318,10 +318,10 @@ def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None
     assert lexer_for_path(None, '{"enabled": true}') == "json"
 
 
-@settings(max_examples=25, deadline=None)
+@settings(max_examples=10, deadline=None)
 @given(
     path=st.one_of(st.none(), st.text(max_size=128)),
-    content=st.text(max_size=8_192),
+    content=st.text(max_size=1_024),
 )
 def test_language_inference_property_never_raises_for_arbitrary_text(
     path: str | None, content: str

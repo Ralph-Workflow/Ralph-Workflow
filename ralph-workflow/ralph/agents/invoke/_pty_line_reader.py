@@ -243,6 +243,8 @@ class PtyLineReader:
         self._log_growth_state: dict[str, tuple[int, float]] = {}  # bounded-accumulator-ok: drained
         self._raw_overflow: RawOverflowLog | None = None
         self._input_writer_fd = os.dup(handle.master_fd)
+        # The reader owns this dup so handle.close() cannot invalidate a select in flight.
+        self._read_fd = os.dup(handle.master_fd)
         self._input_writer_lock = threading.Lock()
         self._auto_mode_prompt_seen = False
         self._auto_response_menu_seen = False
@@ -501,9 +503,14 @@ class PtyLineReader:
         ``read_master_chunk`` and is bounded by ``_EIO_DRAIN_MAX``.
         """
         for _ in range(_EIO_DRAIN_MAX):
-            if not wait_for_master_readable(self._handle.master_fd, _EIO_DRAIN_SELECT_SECONDS):
-                break
-            chunk = read_master_chunk(self._handle.master_fd)
+            try:
+                if not wait_for_master_readable(self._read_fd, _EIO_DRAIN_SELECT_SECONDS):
+                    break
+                chunk = read_master_chunk(self._read_fd)
+            except OSError as exc:
+                if exc.errno == errno.EBADF:
+                    break
+                raise
             if not chunk:
                 break
             pending += decoder.decode(chunk)
@@ -516,9 +523,9 @@ class PtyLineReader:
 
     def _read_available_master_chunk(self) -> tuple[bool, bytes | None]:
         try:
-            if not wait_for_master_readable(self._handle.master_fd, 0.05):
+            if not wait_for_master_readable(self._read_fd, 0.05):
                 return (False, None)
-            chunk = read_master_chunk(self._handle.master_fd)
+            chunk = read_master_chunk(self._read_fd)
         except BlockingIOError:
             return (False, None)
         except OSError as exc:
@@ -1027,6 +1034,8 @@ class PtyLineReader:
             reader.join(timeout=timeout)
         with contextlib.suppress(Exception):
             os.close(self._input_writer_fd)
+        with contextlib.suppress(Exception):
+            os.close(self._read_fd)
         if self._stop_sentinel_path is not None:
             with contextlib.suppress(FileNotFoundError):
                 self._stop_sentinel_path.unlink()
