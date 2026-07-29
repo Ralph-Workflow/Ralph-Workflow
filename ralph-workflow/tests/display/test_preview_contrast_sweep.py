@@ -14,6 +14,28 @@ from ralph.display.edit_preview import build_edit_preview, render_markdown_previ
 from ralph.display.theme import contrast_ratio
 
 _RGB_SGR = re.compile(r"38;2;(\d+);(\d+);(\d+)")
+_SGR = re.compile(r"\x1b\[([0-9;]*)m")
+
+
+def _assert_no_operator_palette_sgr(rendered: str, name: str) -> None:
+    """Reject ANSI-slot colours and fills that cannot prove terminal contrast."""
+    for match in _SGR.finditer(rendered):
+        parameters = [int(value) for value in match.group(1).split(";") if value]
+        operator_slots: list[int] = []
+        index = 0
+        while index < len(parameters):
+            parameter = parameters[index]
+            if parameter in {38, 48} and index + 2 < len(parameters) and parameters[index + 1] in {2, 5}:
+                index += 5 if parameters[index + 1] == 2 else 3
+                continue
+            operator_slots.append(parameter)
+            index += 1
+        assert not any(30 <= value <= 37 or 90 <= value <= 97 for value in operator_slots), (
+            f"operator-palette foreground in {name}: {match.group(0)!r}"
+        )
+        assert not any(40 <= value <= 47 or 100 <= value <= 107 for value in operator_slots), (
+            f"underived background fill in {name}: {match.group(0)!r}"
+        )
 
 
 def _render(renderable: object, *, color: bool) -> str:
@@ -43,7 +65,12 @@ def _shapes(background: bool | None) -> dict[str, object]:
         "multi": build_edit_preview("read_multiple_files", {"content": '{"files":[{"path":"a.py","content":"x = 1"}]}'}, **common),
         "grep": build_edit_preview("grep_files", {"content": '{"matches":[{"path":"a.py","line":17,"text":"needle = 1"}]}', "pattern": "needle"}, **common),
         "diff": build_edit_preview("git_diff", {"content": "@@ -1 +1 @@\n-old\n+new\n"}, **common),
-        "markdown": render_markdown_preview("# Heading\n```python\nx = 1\n```", **common),
+        "markdown": render_markdown_preview(
+            "# Heading\n\n## Subheading\n\n*emphasis* and **strong** and `inline code`.\n\n"
+            "> block quote\n\n---\n\n| left | right |\n| --- | --- |\n| one | two |\n\n"
+            "- bullet\n\n[link](https://example.com)\n\n```python\nx = 1\n```",
+            **common,
+        ),
         "tool-result": _tool_result(),
     }
 
@@ -58,6 +85,7 @@ def test_preview_contrast_sweep_regression_no_black_on_black(terminal_bg_is_ligh
         assert renderable is not None, name
         rendered = _render(renderable, color=True)
         assert "48;2;" not in rendered and "48;5;" not in rendered, name
+        _assert_no_operator_palette_sgr(rendered, name)
         colors = _RGB_SGR.findall(rendered)
         assert colors, f"contrast sweep emitted no truecolour tokens for {name}"
         for red, green, blue in colors:

@@ -105,6 +105,7 @@ from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
     SYNTAX_BACKGROUND_TRANSPARENT,
+    markdown_theme_context,
     pick_status_styles,
     syntax_theme_for_background,
 )
@@ -337,6 +338,10 @@ class _BackgroundAwareMarkdown(Markdown):
     def __init__(self, markup: str, *, terminal_bg_is_light: bool | None) -> None:
         super().__init__(markup)
         self.terminal_bg_is_light = terminal_bg_is_light
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        with markdown_theme_context(console, terminal_bg_is_light=self.terminal_bg_is_light):
+            yield from super().__rich_console__(console, options)
 
 
 def render_markdown_preview(
