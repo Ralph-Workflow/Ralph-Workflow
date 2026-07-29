@@ -2360,6 +2360,56 @@ def test_status_bar_regression_agent_name_reflow_at_60_keeps_preceding_columns()
         )
 
 
+def test_status_bar_regression_width_ladder_and_agent_identity_are_stable() -> None:
+    """DA-001/DA-002: the documented width ladder is monotonic and agent-safe."""
+    def render(width: int, agent_name: str = "claude") -> str:
+        return render_status_bar(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/ralph-workflow",
+                phase_label="Development",
+                phase_style="theme.phase.development",
+                outer_dev_iteration=3,
+                outer_dev_cap=4,
+                inner_analysis=2,
+                inner_analysis_cap=4,
+                elapsed_seconds=761,
+                agent_name=agent_name,
+            ),
+            _make_display_context(width=width),
+            home="/Users/alice",
+        ).plain
+
+    at_80 = render(80)
+    at_60 = render(60)
+    assert "Development" in at_80
+    assert "claude" in at_80
+    assert "ralph-workflow" in at_80
+    assert "ralph-workflow" not in at_60
+    assert "Dev" in at_60
+
+    segments_at_width = {
+        width: {
+            segment
+            for segment, token in (("agent", "Agent"), ("path", "ralph-workflow"))
+            if token in render(width)
+        }
+        for width in range(40, 121)
+    }
+    for width in range(40, 120):
+        assert segments_at_width[width] <= segments_at_width[width + 1], (
+            width,
+            segments_at_width,
+        )
+
+    for width in (80, 120):
+        paths = [
+            render(width, agent_name).find("ralph-workflow")
+            for agent_name in ("pi", "claude", "claude-headless", "pi · minimax/MiniMax-3")
+        ]
+        assert all(position >= 0 for position in paths), (width, paths)
+        assert len(set(paths)) == 1, (width, paths)
+
+
 def test_status_bar_drops_path_at_60() -> None:
     """DA-003 (AC-02): at width 60 the workspace path is dropped.
 

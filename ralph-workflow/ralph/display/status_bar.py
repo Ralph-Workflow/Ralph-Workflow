@@ -224,6 +224,8 @@ _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS: int = 7
 _CANONICAL_FIT_THRESHOLD: int = 120
 _AGENT_FIT_THRESHOLD: int = 60
 _AGENT_PATH_FIT_THRESHOLD: int = 80
+_NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH: int = 85
+_AGENT_LABEL_FIXED_WIDTH: int = len("Agent claude")
 _ELAPSED_SHORT_FIXED_WIDTH: int = 6
 
 # The 60-col rung drops only the path. The agent remains visible at 60,
@@ -528,6 +530,7 @@ def _field_overhead_and_label_budgets(
     *,
     has_outer_dev: bool,
     has_inner_analysis: bool,
+    has_agent: bool = False,
     outer_label_canonical_chars: int = _OUTER_DEV_LABEL_MAX_CHARS,
 ) -> _FieldBudgets:
     """Derive width-aware budgets that always fit ``ctx.width``.
@@ -692,8 +695,8 @@ def _field_overhead_and_label_budgets(
         else:
             elapsed_chrome = 0
         agent_chrome = (
-            separator_len + len("Agent claude")
-            if ctx.width == _AGENT_FIT_THRESHOLD or ctx.width >= _AGENT_PATH_FIT_THRESHOLD
+            separator_len + (_AGENT_LABEL_FIXED_WIDTH if ctx.width < _CANONICAL_FIT_THRESHOLD else len("Agent pi · minimax/MiniMax-3"))
+            if has_agent and ctx.width >= _AGENT_FIT_THRESHOLD
             else 0
         )
         path_chrome = separator_len if ctx.width > _PATH_DROP_THRESHOLD else 0
@@ -720,7 +723,7 @@ def _field_overhead_and_label_budgets(
         # cannot afford the default phase cap, phase gets whatever
         # remains after reserving the path minimum so the workspace
         # path stays readable per AC-07.
-        if ctx.width <= _PHASE_ABBREVIATE_THRESHOLD:
+        if ctx.width < _PHASE_ABBREVIATE_THRESHOLD:
             phase_budget = _MIN_PHASE_BUDGET
             path_budget = available - phase_budget
         elif available - _MIN_PATH_BUDGET >= DEFAULT_PHASE_LABEL_BUDGET:
@@ -772,8 +775,8 @@ def _field_overhead_and_label_budgets(
     )
     for include_outer, include_inner in iter_bearing_configs:
         for outer_label, inner_label in label_forms:
-            for with_marker in (True, False):
-                for with_glyph in (True, False):
+            for with_marker in ((False,) if _AGENT_PATH_FIT_THRESHOLD <= ctx.width <= _NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH else (True, False)):
+                for with_glyph in ((False, True) if _AGENT_PATH_FIT_THRESHOLD <= ctx.width <= _NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH else (True, False)):
                     budget = _allocate(
                         outer_label,
                         inner_label,
@@ -1200,6 +1203,7 @@ def render_status_bar(
         ctx,
         has_outer_dev=has_outer_dev,
         has_inner_analysis=has_inner_analysis,
+        has_agent=model.agent_name is not None,
         outer_label_canonical_chars=_outer_label_canonical_chars(model.outer_label),
     )
 
@@ -1214,24 +1218,15 @@ def render_status_bar(
     optional_segments = (
         [agent_label]
         if agent_label
-        and (ctx.width == _AGENT_FIT_THRESHOLD or ctx.width >= _AGENT_PATH_FIT_THRESHOLD)
+        and ctx.width >= _AGENT_FIT_THRESHOLD
         else []
     )
-    if ctx.width <= _PHASE_ABBREVIATE_THRESHOLD:
+    if ctx.width < _PHASE_ABBREVIATE_THRESHOLD:
         phase_display = _abbreviated_phase_label(phase_display, budgets.phase_budget, ctx.width)
     else:
         phase_display = _tail_truncate(phase_display, budgets.phase_budget)
-    # A short phase returns its unused fixed allocation to the trailing cwd.
-    path_budget = budgets.path_budget + budgets.phase_budget - len(phase_display)
-    # ``_field_overhead_and_label_budgets`` already reserves the agent
-    # segment's chrome. Do not emit a partial basename when an agent consumes
-    # that last space: cwd yields to its higher-priority neighbour.
-    last_segment = path_display.rsplit(os.sep, 1)[-1]
-    path_display = (
-        ""
-        if optional_segments and path_budget < len(last_segment) + _ELLIPSIS_LEN + 1
-        else _middle_truncate_path(path_display, path_budget)
-    )
+    # Keep the source path intact until every preceding segment has rendered;
+    # the final room calculation below then left-elides it to the actual budget.
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
@@ -1288,7 +1283,6 @@ def render_status_bar(
         text.append(separator, style="theme.status.path_marker")
         liveness_glyph = _liveness_frame(ctx, now_monotonic)
         text.append(liveness_glyph, style="theme.status.info")
-        text.append(" ", style="theme.status.info")
         if ctx.width >= _CANONICAL_FIT_THRESHOLD:
             text.append(
                 _format_elapsed_fixed(_resolve_elapsed_seconds(model, now_monotonic)),
@@ -1312,7 +1306,7 @@ def render_status_bar(
             )
         )
     if render_inner_analysis:
-        text.append(" · " if render_outer_dev else separator, style="theme.status.path_marker")
+        text.append(separator, style="theme.status.path_marker")
         if budgets.render_iter_glyph:
             text.append(ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis")
         text.append(
@@ -1363,6 +1357,8 @@ def _append_optional_segment(
     grayscale / colourblind operator still reads the bare name.
     """
     text.append(separator, style="theme.status.path_marker")
+    agent_width = _AGENT_LABEL_FIXED_WIDTH if ctx.width < _CANONICAL_FIT_THRESHOLD else len("Agent pi · minimax/MiniMax-3")
+    label = _tail_truncate(label, agent_width).ljust(agent_width)
     if label.startswith("Agent ") and model.agent_name:
         agent_prefix, agent_rest = _split_agent_label(label)
         if agent_prefix:
