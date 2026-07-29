@@ -205,6 +205,21 @@ logical event; these are entry details, never parser-channel rows.
 | `RALPH_LONG_CONTENT_SUMMARY` | Enables the deterministic headline by default. |
 | `RALPH_LONG_CONTENT_AI_SUMMARY` | Opts into an `ai-summary:` detail. |
 
+## Display presentation path
+
+Raw agent output is parsed into ``AgentOutputLine`` values, normalized into
+``AgentActivityEvent`` values, and emitted through
+``ParallelDisplay.emit_parsed_event``. That one path drives the live activity
+feed and the text-only ``.agent/raw/<id>.rendered.log`` record. Parsers may
+omit optional data or retain malformed input as an unknown event; the presenter
+still supplies timestamps, indentation, role markers, and the shared
+size-based condensation rule rather than falling back to an unstructured dump.
+
+The replay matrix in ``tests/display/test_universality_replay.py`` exercises
+parser-native Claude, Claude Headless, Claude Interactive, Codex, OpenCode,
+Pi, Cursor, AGY, Nanocoder, generic, and Gemini captures through this path.
+It keeps fallback behavior and shipped agents on the same presentation contract.
+
 ## Supervising API
 
 The supervising API exposes a stable, read-only view of a running workflow instance for orchestration and monitoring. Use it to inspect the stable instance identity, the optional runtime run identity, the lifecycle status, the current pipeline stage, and recent operational activity.

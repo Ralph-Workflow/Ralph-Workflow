@@ -1,0 +1,3 @@
+{"type":"assistant","message":{"content":[{"type":"text","text":"Claude Headless checks the display."}]}}
+{"type":"content_block_start","content_block":{"type":"tool_use","name":"Read","input":{"path":"ralph/display/parallel_display.py"}}}
+{"type":"assistant","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"display source"}],"name":"Read"}]}}

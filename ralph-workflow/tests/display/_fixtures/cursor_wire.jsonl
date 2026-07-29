@@ -1,0 +1,3 @@
+{"type":"assistant","message":{"content":[{"type":"text","text":"Cursor checks the display."}]}}
+{"type":"tool_call","toolName":"Search","args":{"query":"ParallelDisplay"}}
+{"type":"tool_result","toolName":"Search","result":"one result"}
