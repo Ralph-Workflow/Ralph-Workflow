@@ -187,17 +187,22 @@ default 5-minute print timeout; a billed amount requires the unrun pricing
 probe. It reports file, session, parser-event, tool-activity, and artifact
 signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
-As of the v1.1.8 source record, paid probes for model acceptance, effort,
-continuation, MCP/artifact submission, permission prompts, and stream-json
-progress were not run. Re-measure periodically because AGY updates can change
-published IDs and flags. Do not infer those behaviours from the command, a
-published option, or a mock. The no-cost `agy agents` observation reported no
-agents on the measured installation; that is not a universal delegation claim.
+The v1.1.8 manual record observed model acceptance, explicit effort acceptance,
+stream-json events, and a smoke run that created the file, submitted the
+canonical artifact receipt, and wrote completion evidence without a permission
+prompt. The plain-text parser remains the smoke default because it retained
+file, tool, artifact, and completion visibility. Continuation remains disabled:
+`--continue` and `--conversation` accepted prompts but did not establish that a
+specific earlier conversation resumed. Re-measure periodically because AGY
+updates can change published IDs and flags. The no-cost `agy agents` observation
+reported no agents on the measured installation; that is not a universal
+delegation claim.
 
-The exact free observations and the manual probe ledger are in
-`tmp/agy-source-of-truth.txt`. A valid smoke artifact, when one is submitted,
-is stored at `.agent/artifacts/smoke_test_result.md`. The deterministic mock
-remains a harness test, not evidence for live AGY behaviour.
+The exact free observations and manual probe ledger are in
+`tmp/agy-source-of-truth.txt`. A valid smoke artifact is stored at
+`.agent/artifacts/smoke_test_result.md` and its canonical receipt is stored in
+`.agent/state.db`. The deterministic mock remains a harness test, not evidence
+for live AGY behaviour.
 
 ### Pi.dev transport end-to-end smoke
 

@@ -252,11 +252,13 @@ a billed amount requires the unrun pricing probe.
 python -m ralph smoke-interactive-agy
 ```
 
-The v1.1.8 free discovery record lists published model IDs, but paid probes
-for model acceptance, effort, continuation, MCP/artifact submission,
-permission prompts, and stream-json progress were not run. Do not treat a
-published ID or flag as an end-to-end guarantee. See
-`tmp/agy-source-of-truth.txt` before manually running a paid probe.
+On v1.1.8, manual probes accepted the default model ID, an explicit effort
+flag, and stream-json output. The live smoke created its requested file,
+submitted `smoke_test_result` through the canonical receipt path, and wrote its
+completion sentinel without a permission prompt. Continuation remains disabled:
+`--continue` and `--conversation` accepted a prompt but did not expose proof
+that they resumed the intended conversation. See `tmp/agy-source-of-truth.txt`
+for verbatim observations before manually running a paid probe.
 
 Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic
 mock at `tests/_support/mock_agy.sh` for CI. The mock tests Ralph Workflow's harness;

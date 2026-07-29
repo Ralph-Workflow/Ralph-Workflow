@@ -70,10 +70,10 @@ availability remains the CLI provider's responsibility.
     - Completion contract: the durable `declare_complete` sentinel is always required; required-artifact phases also need the run-scoped artifact receipt, the same contract used by Claude interactive and headless Claude.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
-    - Session continuation remains unavailable in Ralph Workflow: the measured v1.1.8 CLI advertises continuation and conversation-resume flags, but no probe has established that either resumes the intended prior session, so Ralph does not reuse AGY sessions.
+    - Session continuation remains unavailable in Ralph Workflow. The v1.1.8 continuation and conversation-id probes accepted one-word `--print` prompts, but neither exposed the resumed-session identity; the integration therefore does not claim or reuse AGY sessions.
     - `agy agents` reported no available agents on the measured stock v1.1.8 install. This is an install observation, not a universal capability claim; with `agent_subagents` and two or more work units, routing fails explicitly rather than falling back to sequential dispatch.
-    - Live `smoke-interactive-agy` currently fails when AGY does not create the requested file, submit its artifact, or call `declare_complete`; the parity report names those missing signals. Do not select AGY for unattended work until this live integration defect is fixed.
-    - AGY is a supported integration under active verification, not a replacement for Ralph Workflow.
+    - The manual live smoke on v1.1.8 created its requested file, submitted the canonical `smoke_test_result` artifact and receipt, and wrote the completion sentinel without a permission prompt. Its plain-text parser reports the observed output; stream-json is available as a separately observed CLI format.
+    - AGY is a supported integration, not a replacement for Ralph Workflow.
 
 ```toml
 [agents.agy]

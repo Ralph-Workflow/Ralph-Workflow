@@ -40,11 +40,11 @@ phases to:
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
-| `agy`             | `agy`        | Interactive (PTY)    | Manual paid probe pending | Google's Antigravity CLI (v1.1.8 free discovery; re-measure periodically because published IDs and flags can change) |
+| `agy`             | `agy`        | Interactive (PTY)    | Manual paid diagnostic | Google's Antigravity CLI (v1.1.8 live model, effort, stream-json, artifact, and completion observations; re-measure periodically because published IDs and flags can change) |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 
-The registry resolves dynamic aliases. AGY published IDs require a manual paid acceptance probe before they are documented as working. Their syntax differs by agent;
+The registry resolves dynamic aliases. AGY v1.1.8 observations cover the documented default model and an effort-qualified model; re-measure published IDs after AGY updates. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
 rather than assuming one shared provider/model format. It includes every
 built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
@@ -184,10 +184,12 @@ process cleanup through the Nanocoder smoke test.
 
 ### AGY (PTY)
 
-The AGY command builder has a PTY integration path. The current v1.1.8
-paid probes for live output, unattended permissions, and stream-json progress
-were not run, so this manual makes no live parser or autonomy guarantee. See
-`tmp/agy-source-of-truth.txt` before relying on the AGY path.
+The AGY command builder has a PTY integration path. v1.1.8 manual probes
+observed live output, stream-json events, unattended file creation, canonical
+artifact submission, and completion evidence. The plain-text parser is the
+smoke default; stream-json is a separately observed CLI format. Session resume
+remains unavailable because the continuation probes did not expose session
+identity. See `tmp/agy-source-of-truth.txt` for the exact observations.
 
 ### Pi
 
@@ -224,7 +226,7 @@ Each agent has a documented verification path that targets its own contract:
 
 - **Claude Code (interactive)**: `ralph smoke-interactive-claude`
 - **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder --agent '<exact nanocoder alias>'`
-- **AGY (interactive)**: `ralph smoke-interactive-agy` (manual paid diagnostic; live contract pending)
+- **AGY (interactive)**: `ralph smoke-interactive-agy` (manual paid diagnostic)
 - **Cursor (headless)**: `ralph smoke-interactive-cursor` (live binary required)
 - **Codex, OpenCode, Pi**: public-surface black-box pytest suite
   (`uv run pytest tests/agents/<agent>_blackbox.py -q`)
@@ -234,11 +236,11 @@ command-builder surface for each agent, plus the committed wire-format
 fixture where applicable. They do **not** claim live MCP wiring for agents
 that have no documented CLI MCP path.
 
-AGY has no canonical end-to-end verification claim yet. The v1.1.8 source
-record contains free discovery only; probes for model acceptance, effort,
-continuation, MCP/artifact submission, permission prompts, and stream-json
-progress remain manually pending. The deterministic mock verifies the Ralph Workflow
-harness, not the live CLI.
+AGY's v1.1.8 source record includes manual observations for model acceptance,
+effort acceptance, stream-json, and the full smoke artifact/completion path.
+The continuation probes did not establish a resumed-session identity, so the
+integration keeps AGY session reuse disabled. The deterministic mock verifies
+the Ralph Workflow harness; the source record preserves the separate live evidence.
 
 ## Completion and observability
 

@@ -84,20 +84,22 @@ Do not rely on Codex for environments that require strict tool isolation. Ralph 
 
 Reference: https://platform.openai.com/docs/codex
 
-### Google Anti Gravity - Verification Pending
+### Google Anti Gravity
 
-Ralph Workflow has an AGY MCP integration path, but the v1.1.8 paid probe for
-`--print` MCP calls was not run. Therefore this manual does not claim that
-live AGY reaches MCP tools, submits artifacts, declares completion, or
-preserves unattended operation. The deterministic mock exercises Ralph Workflow's harness only; it is not evidence about the AGY CLI.
+The v1.1.8 live smoke observed AGY create its requested file, submit
+`smoke_test_result` through Ralph Workflow's canonical artifact path, and write
+the durable completion sentinel without a permission prompt. The transcript did
+not distinguish a direct MCP tool call from markdown fallback promotion; both
+validate to the same canonical artifact at `.agent/artifacts/smoke_test_result.md`
+and receipt in `.agent/state.db`.
 
-Until that probe is run, AGY artifacts use Ralph Workflow's supported markdown
-fallback-promotion path: write `.agent/tmp/<type>.md`, then
-`promote_fallback_artifact` promotes it to a canonical receipt. See
-[Markdown fallback promotion](../agents/artifact-submission-contract.md#markdown-fallback-promotion).
+The same fallback-promotion path remains available if an agent cannot call the
+submission tool: write `.agent/tmp/<type>.md`, then
+`promote_fallback_artifact` validates and promotes it to the identical canonical
+receipt. See [Markdown fallback promotion](../agents/artifact-submission-contract.md#markdown-fallback-promotion).
 
-Run the manual paid diagnostic deliberately before relying on live MCP paths,
-and record the result in `tmp/agy-source-of-truth.txt`.
+Run the manual paid diagnostic deliberately after an AGY update and record the
+result in `tmp/agy-source-of-truth.txt`.
 
 ## 3. Known Bugs and Limitations
 
