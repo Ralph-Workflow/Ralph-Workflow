@@ -1,35 +1,10 @@
-"""Black-box tests for the edit preview builder and its ParallelDisplay wiring.
-
-The edit preview is an additive block printed AFTER the existing one-line
-TOOL_USE header line so the operator sees a syntax-highlighted preview of
-the file content the agent is editing. The header line stays byte-identical
-(``◐ RUN <ts> <unit> <friendly_tool_name> (<args>) ↳``); the preview is
-purely additive.
-
-Each test must complete in < 0.1 s; the whole file finishes well under 0.5 s
-so the 60-second combined budget in ``make verify`` stays unbroken.
-
-Coverage:
-  1. ``build_edit_preview`` returns ``None`` for non-edit tools.
-  2. ``write_file`` with a ``.py`` path yields a syntax-highlighted renderable
-     carrying a Python lexer (via ``Syntax.lexer``).
-  3. Artifact edit tools (``ralph_stage_md_artifact``, ``ralph_submit_md_artifact``)
-     default to markdown lexer and word-wrap.
-  4. Unknown extension falls back to plain text without raising.
-  5. ``edit_file`` / ``ralph_edit_md_artifact`` partial edits render with
-     ``-`` / ``+`` line markers and line numbers.
-  6. Content containing ANSI escape sequences is sanitized (no raw ESC byte).
-  7. Content longer than the preview cap is truncated with an elision marker.
-  8. Integration: ``ParallelDisplay.emit_parsed_event`` with a TOOL_USE event
-     for ``edit_file`` prints the unchanged header line AND the preview block;
-     with ``is_quiet=True`` nothing is printed.
-  9. No hex color literals in the new ``edit_preview`` module.
-"""
+"""Black-box tests for edit-preview rendering and live display wiring."""
 
 from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 
 from hypothesis import given, settings
@@ -80,16 +55,25 @@ def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     return ParallelDisplay(ctx), buf
 
 
+def _make_truecolor_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
+    """Return a live display whose output retains truecolor escape sequences."""
+    buf = io.StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        color_system="truecolor",
+        width=width,
+        highlight=False,
+    )
+    return ParallelDisplay(make_display_context(console=console, env={})), buf
+
+
 def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx, is_quiet=True), buf
 
-
-# ---------------------------------------------------------------------------
-# 1. Non-edit tools return None
-# ---------------------------------------------------------------------------
 
 
 def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
@@ -224,10 +208,6 @@ def test_partial_read_envelope_uses_real_window_line_number() -> None:
     assert preview.start_line == 17
 
 
-# ---------------------------------------------------------------------------
-# 2. write_file with .py path -> Syntax-highlighted renderable
-# ---------------------------------------------------------------------------
-
 
 def test_build_edit_preview_write_file_python_uses_python_lexer() -> None:
     """A ``write_file`` call against a ``.py`` path returns a ``Syntax`` object
@@ -260,10 +240,6 @@ def test_build_edit_preview_write_file_renders_line_numbers() -> None:
     assert "z = 3" in rendered
 
 
-# ---------------------------------------------------------------------------
-# 3. Artifact edit tools -> markdown lexer + word wrap
-# ---------------------------------------------------------------------------
-
 
 def test_build_edit_preview_artifact_stage_uses_markdown_lexer() -> None:
     """``ralph_stage_md_artifact`` (no path, has content) infers the markdown lexer."""
@@ -286,10 +262,6 @@ def test_build_edit_preview_artifact_submit_uses_markdown_lexer() -> None:
     assert preview is not None
     assert isinstance(preview, Markdown)
 
-
-# ---------------------------------------------------------------------------
-# 4. Unknown extension -> plain text fallback (no raise)
-# ---------------------------------------------------------------------------
 
 
 def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None:
@@ -359,10 +331,6 @@ def test_build_edit_preview_unknown_extension_falls_back_to_plain() -> None:
     rendered = buf.getvalue()
     assert "hello world" in rendered, f"content must survive fallback:\n{rendered}"
 
-
-# ---------------------------------------------------------------------------
-# 5. edit_file partial edits -> - / + diff-style treatment
-# ---------------------------------------------------------------------------
 
 
 def test_build_edit_preview_edit_file_shows_old_and_new_with_markers() -> None:
@@ -483,10 +451,6 @@ def test_build_edit_preview_ralph_edit_md_artifact_shows_diff() -> None:
     assert "New Heading" in rendered
 
 
-# ---------------------------------------------------------------------------
-# 6. Sanitization: ANSI escapes are stripped from agent content
-# ---------------------------------------------------------------------------
-
 
 def test_build_edit_preview_sanitizes_ansi_escape_sequences() -> None:
     """Hostile content carrying raw CSI escape sequences is sanitized so no
@@ -535,10 +499,6 @@ def test_build_edit_preview_sanitizes_ansi_in_edits() -> None:
     assert "\x1b" not in rendered
     assert "y = 2" in rendered
 
-
-# ---------------------------------------------------------------------------
-# 7. Content longer than the preview cap is truncated with an elision marker
-# ---------------------------------------------------------------------------
 
 
 def test_build_edit_preview_truncates_long_content_with_elision() -> None:
@@ -633,8 +593,8 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
 
 
 def test_parallel_display_regression_read_result_is_highlighted_once() -> None:
-    """S-2: a successful read result reaches the live preview seam exactly once."""
-    pd, buf = _make_display()
+    """DA-003: a successful read result reaches the truecolor live preview once."""
+    pd, buf = _make_truecolor_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
         kind=ActivityEventKind.TOOL_RESULT,
@@ -647,14 +607,16 @@ def test_parallel_display_regression_read_result_is_highlighted_once() -> None:
     )
     pd.stop()
     output = buf.getvalue()
-    assert "ralph/display/status_bar.py" in output
-    assert output.count("def render") == 1
-    assert output.count("return 1") == 1
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    assert "ralph/display/status_bar.py" in plain
+    assert plain.count("def render") == 1
+    assert plain.count("return 1") == 1
+    assert "\x1b[38;2;" in output
 
 
 def test_parallel_display_read_multiple_files_result_uses_per_file_preview() -> None:
-    """S-2: a multi-file result prints separately labelled file blocks once."""
-    pd, buf = _make_display()
+    """DA-003: a multi-file result has one truecolor, separately lexed presentation."""
+    pd, buf = _make_truecolor_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
         kind=ActivityEventKind.TOOL_RESULT,
@@ -663,26 +625,43 @@ def test_parallel_display_read_multiple_files_result_uses_per_file_preview() -> 
     )
     pd.stop()
     output = buf.getvalue()
-    assert output.count("a.py") == 1
-    assert output.count("settings.yaml") == 1
-    assert output.count("x = 1") == 1
-    assert output.count("key: value") == 1
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    assert plain.count("a.py") == 1
+    assert plain.count("settings.yaml") == 1
+    assert plain.count("x = 1") == 1
+    assert plain.count("key: value") == 1
+    assert "\x1b[38;2;" in output
 
 
 def test_parallel_display_exec_diff_result_uses_diff_preview() -> None:
-    """S-2: exec output is previewed only when it is a unified diff."""
-    pd, buf = _make_display()
+    """DA-002: a unified-diff exec result reaches the truecolor preview seam."""
+    pd, buf = _make_truecolor_display()
     pd.emit_parsed_event(
         unit_id="dev-1",
         kind=ActivityEventKind.TOOL_RESULT,
-        content="@@ -1 +1 @@\n-old\n+new\n",
+        content="--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n",
         metadata={"tool_name": "exec", "exit_code": 0},
     )
     pd.stop()
     output = buf.getvalue()
+    assert "▸ exec  artifact" in output
     assert output.count("@@ -1 +1 @@") == 1
     assert output.count("-old") == 1
     assert output.count("+new") == 1
+    assert "\x1b[38;2;" in output
+
+
+def test_parallel_display_exec_non_diff_result_has_no_preview() -> None:
+    """DA-002: ordinary command output remains the single inline result row."""
+    pd, buf = _make_truecolor_display()
+    pd.emit_parsed_event(
+        unit_id="dev-1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="plain command output",
+        metadata={"tool_name": "exec", "exit_code": 0},
+    )
+    pd.stop()
+    assert "▷ exec" not in buf.getvalue()
 
 
 def test_parallel_display_records_plain_preview_and_uses_ascii_fallback(tmp_path: Path) -> None:
@@ -932,6 +911,14 @@ def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> 
     assert syntax.lexer.name == "Python"
     assert syntax.start_line == 17
     assert syntax._stylized_ranges  # matched text has a named emphasis carrier
+    assert _render_truecolor(grep) != _render_truecolor(
+        build_edit_preview(
+            "grep_files",
+            {"content": '{"matches":[{"path":"a.py","line":17,"text":"needle = 1"}]}'},
+            width=80,
+        )
+    )
+    assert "\x1b[1;" in _render_truecolor(grep)
     rendered = io.StringIO()
     Console(file=rendered, force_terminal=False, color_system=None, width=80).print(grep)
     assert "a.py" in rendered.getvalue()
@@ -986,6 +973,16 @@ def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None
     assert shipped == classified
 
 
-# ---------------------------------------------------------------------------
-# Toolset sanity check: the bare names match the plan.
-# ---------------------------------------------------------------------------
+def test_diff_preview_uses_hunk_line_numbers_or_marks_snippet_relative() -> None:
+    """DA-004: diff gutters seed from @@ or explicitly identify snippet lines."""
+    numbered = build_edit_preview(
+        "git_show", {"content": "@@ -10,3 +20,3 @@\n context\n-old\n+new\n"}, width=80
+    )
+    snippet = build_edit_preview("git_diff", {"content": "-old\n+new\n"}, width=80)
+    assert numbered is not None and snippet is not None
+    numbered_text = io.StringIO()
+    snippet_text = io.StringIO()
+    Console(file=numbered_text, force_terminal=False, color_system=None, width=80).print(numbered)
+    Console(file=snippet_text, force_terminal=False, color_system=None, width=80).print(snippet)
+    assert "20" in numbered_text.getvalue()
+    assert "(snippet)" in snippet_text.getvalue()

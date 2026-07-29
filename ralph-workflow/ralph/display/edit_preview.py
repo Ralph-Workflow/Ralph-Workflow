@@ -93,6 +93,7 @@ also clear WCAG contrast on a light terminal.
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, ClassVar, Final, cast
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
@@ -541,7 +542,12 @@ def _build_search_result_preview(
             start_line=line,
         )
         if pattern and (start := safe.find(pattern)) >= 0:
-            syntax.stylize_range("theme.text.emphasis", (0, start), (0, start + len(pattern)))
+            syntax.stylize_range(
+                f"bold {_diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)}",
+                (1, start),
+                (1, start + len(pattern)),
+                style_before=False
+            )
         blocks.extend((Text(f"  {path}", style="theme.text.muted"), syntax))
     if omitted:
         blocks.append(
@@ -752,13 +758,14 @@ def build_edit_preview(
         )
     if isinstance(content_obj, str) and content_obj:
         preview_path = path
+        is_diff = bare in {"git_diff", "git_show"} or canonical.language_hint == "diff"
         if canonical.language_hint and path is None:
             preview_path = f"preview.{canonical.language_hint}"
-        elif bare in {"git_diff", "git_show"} or (
-            bare == "exec" and any(marker in content_obj for marker in ("---", "+++", "@@"))
-        ):
+        elif is_diff:
             preview_path = "preview.diff"
-        return _build_write_preview(
+        hunk = re.search(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", content_obj, re.MULTILINE)
+        resolved_start = int(hunk.group(1)) if is_diff and hunk else start_line
+        preview = _build_write_preview(
             bare,
             preview_path,
             content_obj,
@@ -767,12 +774,17 @@ def build_edit_preview(
             overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,
             start_line=(
-                start_line
-                if isinstance(start_line, int)
-                and not isinstance(start_line, bool)
-                and start_line > 0
+                resolved_start
+                if isinstance(resolved_start, int)
+                and not isinstance(resolved_start, bool)
+                and resolved_start > 0
                 else 1
             ),
+        )
+        return (
+            Group(Text("  (snippet)", style="theme.text.muted"), preview)
+            if preview is not None and is_diff and hunk is None
+            else preview
         )
     return None
 
