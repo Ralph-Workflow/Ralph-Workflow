@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, cast
 import psutil
 from loguru import logger
 
+from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, clamp_tail
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import completion_signals_terminal
 from ralph.agents.execution_state import (
@@ -514,6 +515,7 @@ class PtyLineReader:
             if not chunk:
                 break
             pending += decoder.decode(chunk)
+            pending = clamp_tail(pending, max_chars=DEFAULT_MAX_BUFFER_CHARS)
             completed, pending = _split_complete_vt_lines(pending)
             if completed:
                 with self._lines_lock:
@@ -551,6 +553,7 @@ class PtyLineReader:
                 if chunk is None:
                     break
                 pending += decoder.decode(chunk)
+                pending = clamp_tail(pending, max_chars=DEFAULT_MAX_BUFFER_CHARS)
                 completed, pending = _split_complete_vt_lines(pending)
                 if completed:
                     with self._lines_lock:

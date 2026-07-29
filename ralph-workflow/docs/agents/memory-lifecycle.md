@@ -17,6 +17,10 @@ is bounded and where the contract deliberately does NOT optimize.
 | Hotspot | Risk class | Bounded by | Source-of-truth file/line |
 |---|---|---|---|
 | `_transcript_thread` transcript fd | Unbounded fd growth on the hot PTY-read path when readline/parse raises mid-loop | `try/finally` close in `PtyLineReader._transcript_thread` | `ralph/agents/invoke/_pty_line_reader.py` |
+| Claude parser TextAccumulator bypass | Unbounded output/thinking accumulation | `TextAccumulator.append_delta` flushes at the raw-line or character cap | `ralph/agents/parsers/text_accumulator.py` |
+| Transcript parser buffer and PTY pending tail | Unbounded newline-free partial-line accumulation | `BoundedTextBuffer` / `clamp_tail` with `DEFAULT_MAX_BUFFER_CHARS` | `ralph/agents/_bounded_text_buffer.py` |
+| Saturated-dispatch `future.result` | Caller thread blocked forever by a wedged handler | Injected `dispatch_timeout_seconds`, defaulting to `DISPATCH_CAP_MS / 1000 = 300.0s`; releases the caller and cancels queued work | `ralph/mcp/server/_saturated_dispatch.py` |
+| RunStateDB open | Repeated schema script and commit on the artifact-submit path | `PRAGMA user_version` skips schema setup after initialization | `ralph/mcp/artifacts/state_db.py` |
 | Async-termination default-executor borrowing | Unbounded thread growth in teardown when many concurrent async terminates are dispatched | Dedicated bounded `ThreadPoolExecutor` owned by `ProcessManager`, released by `shutdown_all(wait=False)` | `ralph/process/manager/_process_manager.py` |
 | Background threads | Non-daemon threads blocking process exit | `daemon=True` on every `threading.Thread` (enforced by `audit_resource_lifecycle.py`) | `ralph/testing/audit_resource_lifecycle.py` |
 | HTTP client construction | Leaked httpx/requests clients holding connections open | `with`-context-manager usage (enforced by `audit_resource_lifecycle.py`) | `ralph/testing/audit_resource_lifecycle.py` |
@@ -24,13 +28,12 @@ is bounded and where the contract deliberately does NOT optimize.
 
 Why this is the entire closure map:
 
-1. The two genuine unbounded-growth hotspots on the perf-critical paths
-   (the read path and the teardown path) are the ONLY classes of
-   perf-degrading leak the audit detects, and both are fixed in this
-   contract. No separate CPU/latency hot-path performance work remains
-   in scope — every read-path allocation that survives a long session
-   has a bounded registry (terminal records cap 256, listeners cap 64,
-   bounded `BoundedLinesQueue`, FIFO evictions on every collection).
+1. The audit structurally confirms the resource classes it scans: daemon
+   threads, managed HTTP clients, raw fds, mutable accumulators, direct child
+   spawns, and bounded blocking calls. The hotspot fixes above additionally
+   bound the text and dispatch seams those AST shapes do not infer. This is a
+   contract against the covered leak classes, not a claim that every future
+   CPU or latency hotspot is automatically detected.
 
 2. The structural-prevention audit (`audit_resource_lifecycle.py`,
    wired into `make verify`) programmatically re-confirms that no
@@ -102,7 +105,10 @@ FIFO/size cap. The current inventory:
 | ActivityRouter per-unit buffers | bounded | `ActivityRouter` | bounded by policy |
 | `BudgetState.failures` (recovery) | none | `ralph/recovery/budget_state.py` | field DROPPED in wt-024 memory-perf AC-01 (was an unbounded `tuple[ClassifiedFailure, ...]` accumulator never read for any decision; the failures tuple retained heavyweight `ClassifiedFailure` objects across a long run — closed by dropping the field + adding `tests/integration/test_recovery_budget_memory_regression.py`) |
 | `RalphAuditSinkAdapter._records` | 4096 | `ralph/mcp/artifacts/audit_adapter.py` | constructor-injected cap (`__init__(cap=_DEFAULT_AUDIT_RECORD_CAP)`) backed by `collections.deque(maxlen=cap)` FIFO eviction; `flush()` returns `None` per the `AuditSink` Protocol and CLEARS the buffer (no longer a documented no-op); `drain_records()` returns + clears |
-| `_allocated_codex_homes` (Codex runtime) | 64 | `ralph/mcp/transport/codex.py` (`_DEFAULT_CODEX_HOME_CAP`) | `collections.deque(maxlen=64)` FIFO eviction of the in-memory REGISTRY bookkeeping only. **Active-home invariant (wt-024 round-2 fix):** the FIFO eviction NEVER rmtree's the evicted on-disk `CODEX_HOME` directory — it only removes the registry entry. **At-exit orphan reaping (wt-024 round-3 fix):** a separate `set[str]` (`_all_allocated_codex_homes`) tracks every home ever allocated by this process so `cleanup_codex_homes` (the atexit net) can reap FIFO-evicted homes whose owning session crashed before `release_codex_home` was called. `cleanup_codex_homes` iterates the lifetime set (NOT the bounded deque) so orphans are reaped even after the bookkeeping deque has wrapped past them. `release_codex_home` is idempotent and unified: it discards from BOTH collections and rmtree's with `ignore_errors=True` so the production cleanup hook's explicit `shutil.rmtree` is redundant. **Pre-execution cleanup (wt-024 round-3 fix):** `invoke_agent`'s `try/finally` boundary starts immediately after `resolve_invocation_runtime`, so any pre-launch setup failure (e.g. `_build_command` raises) still invokes `runtime.cleanup` and rmtree's the allocated `CODEX_HOME`. The on-disk bound is provided by (1) `release_codex_home` invoked from the per-invocation `ResolvedInvocationRuntime.cleanup` hook (`ralph/agents/invoke/_runtime_resolvers/__init__.py:CodexRuntimeResolver`) in `invoke_agent`'s `finally` block, which pairs `release_codex_home(home)` with an unconditional `shutil.rmtree(home, ignore_errors=True)`, AND (2) `cleanup_codex_homes` (atexit net, iterating `_all_allocated_codex_homes`) for orphans. The round-2 active-home regression is pinned by `tests/integration/test_codex_home_live_sessions.py::test_live_codex_runtimes_active_homes_survive_registry_eviction`; the round-3 FIFO-eviction-orphan regression is pinned by `tests/integration/test_codex_home_cleanup.py::test_cleanup_codex_homes_reaps_fifo_evicted_orphans`; the round-3 pre-execution-setup-failure regression is pinned by `tests/integration/test_codex_home_release_path.py::test_invoke_agent_setup_failure_releases_codex_home`. |
+| `_allocated_codex_homes` (Codex runtime) | 64 | `ralph/mcp/transport/codex.py` (`_DEFAULT_CODEX_HOME_CAP`) | `collections.deque(maxlen=64)` FIFO eviction of in-memory registry bookkeeping only; eviction NEVER rmtree's an active on-disk `CODEX_HOME`. |
+| `_all_allocated_codex_homes` (Codex runtime) | 1024 | `ralph/mcp/transport/codex.py` (`_ALL_CODEX_HOMES_CAP`) | Hard-capped `set[str]` of outstanding homes. Eviction drops only the atexit reap registration and NEVER rmtree's; `release_codex_home` is the healthy-path drain and `cleanup_codex_homes` is the atexit drain for retained entries. For a crashed owner evicted past the cap, the `workspace_path is None` branch relies on OS temp cleanup; workspace-scoped homes under `<workspace>/.agent/tmp/codex-home-*` are cleared by the runtime between attempts. |
+| BoundedTextBuffer / `clamp_tail` | `DEFAULT_MAX_BUFFER_CHARS` (1 MiB) | `ralph/agents/_bounded_text_buffer.py` | Tail-preserving cap for long-lived partial-line text buffers. |
+| TextAccumulator | 4096 raw lines and `_MAX_BUFFER_CHARS` | `ralph/agents/parsers/text_accumulator.py` | `append_delta` flushes on either cap without changing healthy-path paragraph behavior. |
 
 Every blocking I/O call MUST carry a `timeout=` keyword (or a
 justified `# mcp-timeout-ok: <reason>` marker) — see
@@ -136,6 +142,9 @@ The `ralph.testing.audit_mcp_timeout` AST-based audit enforces:
   a timeout)
 - `.wait(...)` with a **non-None** timeout (positional or keyword).
   `.wait()`, `.wait(None)`, and `.wait(timeout=None)` are all flagged.
+- `.result()` with a **non-None** `timeout=` when its name is bound by
+  `.submit(...)` in the same function. Unbounded and explicit-None timeouts
+  are flagged; unrelated `.result()` calls are not.
 - Network calls (`httpx.*`, `requests.*`, `urllib.request.urlopen`,
   `socket.create_connection`) with a **non-None** `timeout=`
 - No `for line in proc.stdout:` style unbounded stream iteration (the
@@ -263,14 +272,24 @@ finally block is a safety net, not a mandatory kill.
 
 ## Known limitations
 
-- **Per-call stdio upstream spawn**: `ralph/mcp/upstream/_stdio_upstream_client.py`
-  spawns a fresh subprocess per `tools/list` / `tools/call` to a stdio
-  upstream MCP server. Each call is bounded (per-call `timeout=`), but
-  the overhead is high — re-spawning the process on every call. A
-  future optimization could reuse the upstream process across calls
-  (and reuse its `ProcessManager` registration), but the current
-  per-call model is a deliberate simplicity trade-off that the team
-  has not yet decided to revisit.
+- **Saturated-dispatch running workers**: the timeout releases the caller
+  thread within `DISPATCH_CAP_MS` (300s) and cancels still-queued callables,
+  but `concurrent.futures` cannot cancel a callable already RUNNING. Its worker
+  is freed only when it returns, so 32 simultaneously wedged handlers can still
+  saturate the pool. Cooperative handler cancellation would require a token in
+  every MCP tool handler; that functionality change is rejected for this pass
+  and tracked as follow-up.
+
+- **Per-call stdio upstream spawn (decided non-goal)**:
+  `ralph/mcp/upstream/_stdio_upstream_client.py` deliberately spawns per call.
+  This is isolation, not merely overhead: each call gets a fresh environment
+  snapshot, no cross-call state in a stateful server, and `server.env`
+  credentials are held for one call only. Pooling is a tracked follow-up, not
+  this bug-fix pass: it needs id-correlated request multiplexing (the client
+  currently parses only the last stdout line and hard-codes request ids 1 and
+  2), a once-only `initialize` / `notifications/initialized` handshake with
+  respawn-on-staleness, an active stderr drain, and a per-server lock for
+  concurrent `ThreadingHTTPServer` handlers.
 
 - **Asyncio gather with no hard ceiling on healthy agents**: the
   `SubprocessAgentExecutor` gather does NOT wrap the healthy agent
@@ -285,7 +304,7 @@ finally block is a safety net, not a mandatory kill.
 ## Resource-lifecycle audit
 
 `ralph/testing/audit_resource_lifecycle.py` is the AST-based audit that
-keeps the contract structurally hard to regress. It enforces four
+keeps the contract structurally hard to regress. It enforces five
 classes of leak in production code:
 
 | Contract | What it flags | Why it matters |
@@ -294,6 +313,7 @@ classes of leak in production code:
 | **With-managed HTTP client** | `httpx.Client(...)`, `httpx.AsyncClient(...)`, `requests.Session(...)` constructed OUTSIDE a `with` statement (bare assignment) | Bare construction leaks the underlying HTTP connection pool and is not closed at interpreter exit |
 | **Centralized raw-fd creation** | `os.open(...)`, `os.openpty(...)`, `os.pipe(...)` OUTSIDE `ralph/process/` | Raw fd creation bypasses the centralized process lifecycle; the zombie reaper / terminal records don't see the fd and it leaks across restarts |
 | **Resource accumulators** (wt-024 memory-perf AC-04) | Mutable collection literals (`[]`, `{}`, `set()`) and constructor calls (`list()` / `dict()` / `set()` / `deque()` / `collections.deque()` WITHOUT `maxlen=` / `OrderedDict()` / `collections.OrderedDict()` / `defaultdict()` / `collections.defaultdict()`) assigned to (a) module-level names OR (b) instance attributes (`self.X`) inside `__init__` bodies | Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) across a long unattended run — the exact leak class that produced `BudgetState.failures` and `RalphAuditSinkAdapter._records`. `OrderedDict` and `defaultdict` are flagged because they have NO `maxlen` kwarg (unlike `deque`); the FIFO escape hatch is a manual `popitem(last=False)` / `len(...) > cap` eviction policy in the code itself, and the `# bounded-accumulator-ok: <cap>` marker is the only audit-recognized escape (it MUST name the cap constant). |
+| **Centralized child spawn** | Direct child-process creation outside `ralph/process/`, including alias and from-import forms | Untracked children bypass the ProcessManager atexit, signal-handler, and zombie-reaper teardown chain. |
 
 The audit has TWO inline escape hatch markers on the line that
 suppresses the violation:
@@ -338,6 +358,7 @@ Default audit roots (the directories scanned by `make verify`):
 | `ralph/pro_support` | Pro heartbeat client (daemon thread + HTTP client) |
 | `ralph/recovery` | Recovery control flow |
 | `ralph/display` | Per-unit display accumulators (`ParallelDisplay._active_block` / `_last_worker_states` / `_overflow_logs` / ...) drained by `ParallelDisplay.drop_unit` / `ActivityRouter.drop_unit` (the parallel coordinator finally block is the active drain). `_last_budget_progress` is phase-bounded (replaced wholesale each snapshot), not per-unit. |
+| `ralph/diagnostics` | Diagnostic child processes, which must route through `ProcessManager` |
 | `ralph/prompts` | Template registry caches (`_cache` / `_templates`) bounded by the immutable packaged-template file set and the workspace `template_dirs` lazily discovered by `_discover_template`. `register_template` has zero production callers so the bound is the file set, not a programmatic registry. |
 
 Intentional exclusions (out of scope, documented to avoid false
@@ -404,7 +425,8 @@ HTTP client, file handle, accumulator):
 
 1. **Processes**: flow through `ProcessManager`. Use the factory
    methods (`pm.spawn`, `pm.spawn_pty`, `pm.spawn_async`); never call
-   `subprocess.Popen` directly. Register in `pm` so the atexit /
+   `subprocess.Popen` directly. Direct child spawn outside `ralph/process/`
+   fails `make verify` on contract 5. Register in `pm` so the atexit /
    signal-handler / label-prefix teardown path can find and reap it.
 2. **File handles**: `with` for one-shot reads, `try/finally` for
    hot-loop / repeated reads. The `_transcript_thread` pattern is the
@@ -434,6 +456,11 @@ HTTP client, file handle, accumulator):
    `_MAX_SUBAGENT_OUTPUT_CAPTURES=128`,
    `_MAX_EVICTED_TOMBSTONES`,
    `_DECISION_LOG_MAX=16`, etc.).
+
+6. **Text buffers**: any `+=` accumulation of stream data into a long-lived
+   buffer MUST go through `clamp_tail` / `BoundedTextBuffer` with an injected
+   cap; a bare `self._buf += chunk` in a read loop is the exact shape of three
+   bugs fixed in wt-024.
 
 If a new resource class is added, extend the
 `audit_resource_lifecycle.py` audit to cover it AND add an inline

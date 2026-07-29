@@ -9,11 +9,14 @@ This check surfaces both so operators apply the documented mitigations
 
 from __future__ import annotations
 
+import functools
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
+
+from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 
 _JOURNAL_WARN_BYTES = 50 * 1024 * 1024
 _VOLUME_PATH_PARTS_FOR_EXTERNAL = 3
@@ -97,16 +100,34 @@ def _run_subprocess_mdutil(
     capture_output: bool,
     text: bool,
     timeout: int,
+    process_manager: ProcessManager | None = None,
 ) -> object:
-    """Default ``run_command`` adapter that delegates to ``subprocess.run``."""
-    proc: subprocess.CompletedProcess[str] = subprocess.run(
+    """Run ``mdutil`` through the centralized child-process lifecycle."""
+    del capture_output, text
+    manager = process_manager if process_manager is not None else get_process_manager()
+    handle = manager.spawn(
         args,
-        capture_output=capture_output,
-        text=text,
-        timeout=timeout,
-        check=False,
+        SpawnOptions(
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            label="diagnostics:mdutil",
+        ),
     )
-    return proc
+    stdout: bytes | None = b""
+    stderr: bytes | None = b""
+    try:
+        stdout, stderr = handle.communicate_and_cleanup(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        handle.terminate(grace_period_s=0)
+        raise
+    finally:
+        manager.cleanup_orphans(handle)
+    return subprocess.CompletedProcess(
+        args,
+        handle.returncode if handle.returncode is not None else -1,
+        (stdout or b"").decode("utf-8", errors="replace"),
+        (stderr or b"").decode("utf-8", errors="replace"),
+    )
 
 
 @dataclass
@@ -136,27 +157,34 @@ class FsHealth:
         cls,
         workspace_root: Path,
         *,
-        run_command: _SubprocessRunner = _run_subprocess_mdutil,
+        run_command: _SubprocessRunner | None = None,
+        process_manager: ProcessManager | None = None,
     ) -> FsHealth:
         """Probe the workspace volume and return a populated ``FsHealth``.
 
         Args:
             workspace_root: Workspace directory whose containing volume
                 is being probed.
-            run_command: Subprocess runner; defaults to
-                ``subprocess.run``. Injectable for tests.
+            run_command: Subprocess runner. Injectable for tests; when supplied,
+                ``process_manager`` is ignored.
+            process_manager: Child-process manager used by the default runner.
 
         Returns:
             ``FsHealth`` populated with the volume root, Spotlight
             status, ``.fseventsd`` journal size, and any operator
             warnings. On non-darwin hosts only ``volume_root`` is set.
         """
+        runner = (
+            run_command
+            if run_command is not None
+            else functools.partial(_run_subprocess_mdutil, process_manager=process_manager)
+        )
         volume = _volume_root(workspace_root)
         journal_dir = Path(volume) / ".fseventsd"
         health = cls(volume_root=str(volume))
 
         if sys.platform == "darwin":
-            health.spotlight_indexing_enabled = _probe_spotlight(volume, run_command)
+            health.spotlight_indexing_enabled = _probe_spotlight(volume, runner)
             health.fsevents_journal_bytes = _probe_journal_size(journal_dir)
         # On non-darwin hosts ``.fseventsd`` is not present and the
         # Spotlight probe is meaningless, so the documented contract

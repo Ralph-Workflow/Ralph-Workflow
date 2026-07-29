@@ -95,12 +95,12 @@ class ClaudeInteractiveParser:
                 if is_lifecycle_kind(event.kind):
                     continue
                 if event.kind == "output":
-                    self._text_accumulator.buffer += event.text + "\n"
-                    self._text_accumulator.raw_lines.append(raw)
+                    yield from self._text_accumulator.append_delta(event.text + "\n", raw, kind="text")
                     continue
                 if event.kind == "thinking":
-                    self._thinking_accumulator.buffer += event.text + " "
-                    self._thinking_accumulator.raw_lines.append(raw)
+                    yield from self._thinking_accumulator.append_delta(
+                        event.text + " ", raw, kind="thinking"
+                    )
                     continue
                 yield from self._flush_accumulators()
                 if event.kind == "session":

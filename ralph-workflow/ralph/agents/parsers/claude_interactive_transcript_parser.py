@@ -7,6 +7,7 @@ import re
 import unicodedata
 from typing import cast
 
+from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, BoundedTextBuffer
 from ralph.display.vt_normalizer import normalize_vt_text
 
 from .interactive_transcript_event import InteractiveTranscriptEvent
@@ -233,26 +234,28 @@ class ClaudeInteractiveTranscriptParser:
     def __init__(self) -> None:
         self.session_id: str | None = None
         self._last_emitted_signature: tuple[str, str, object] | None = None
-        self._buffer = ""
+        self._buffer = BoundedTextBuffer(
+            max_chars=DEFAULT_MAX_BUFFER_CHARS, label="claude_interactive_transcript"
+        )
         self._current_content_mode: str | None = None
 
     def feed(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
         json_events = self._events_from_json(raw_text)
         if json_events is not None:
             return json_events
-        self._buffer += raw_text
-        if "\n" not in self._buffer:
+        self._buffer.append(raw_text)
+        if "\n" not in self._buffer.value:
             return []
-        normalized = normalize_vt_text(self._buffer)
+        normalized = normalize_vt_text(self._buffer.value)
         lines = normalized.split("\n")
         if not lines:
             return []
         if not normalized.endswith("\n"):
-            self._buffer = lines.pop()
+            self._buffer.replace(lines.pop())
             if not lines:
                 return []
         else:
-            self._buffer = ""
+            self._buffer.clear()
         events: list[InteractiveTranscriptEvent] = []
         for line in lines:
             text = line.strip()

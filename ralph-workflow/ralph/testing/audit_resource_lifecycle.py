@@ -26,6 +26,8 @@ Enforces the resource-lifecycle contract documented in
    unbounded. Mutable collection LITERALS (``[]``, ``{}``, ``set()``)
    assigned to a module-level name or ``self.X`` are flagged — they
    have no cap and grow monotonically across a long session.
+5. Direct child-process creation (``subprocess`` / ``os`` / ``asyncio``) is
+   allowed ONLY under ``ralph/process/``, where ProcessManager owns teardown.
 
 The audit resolves ``import x as y`` / ``from x import y [as z]``
 bindings so an aliased call cannot evade detection (``import httpx as
@@ -120,6 +122,15 @@ _RAW_OS_FD_NAMES: frozenset[str] = frozenset({"os.open", "os.openpty", "os.pipe"
 # matched against the relative-to-package-root path of the file under
 # audit.
 _RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = ("process",)
+
+_DIRECT_CHILD_PROCESS_NAMES: frozenset[str] = frozenset(
+    {
+        "subprocess.run", "subprocess.call", "subprocess.check_call",
+        "subprocess.check_output", "subprocess.Popen", "subprocess.getoutput",
+        "subprocess.getstatusoutput", "os.system", "os.posix_spawn", "os.fork",
+        "asyncio.create_subprocess_exec", "asyncio.create_subprocess_shell",
+    }
+)
 
 
 class ResourceLifecycleViolation:
@@ -659,6 +670,17 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
                 "layer (relocate or add # resource-lifecycle-ok: <reason>)",
             )
 
+        if (
+            canonical in _DIRECT_CHILD_PROCESS_NAMES
+            or (canonical is not None and canonical.startswith("os.spawn"))
+        ) and not self._is_in_raw_fd_allowlist():
+            self._add(
+                node,
+                "direct_child_spawn",
+                f"{canonical}() outside ralph/process/ — child creation must flow "
+                "through ProcessManager (relocate or add # resource-lifecycle-ok: <reason>)",
+            )
+
         self.generic_visit(node)
 
     def _is_in_raw_fd_allowlist(self) -> bool:
@@ -718,6 +740,8 @@ _IMPORT_KEYWORDS: tuple[str, ...] = (
     "from urllib3",
     "import urllib3",
     # raw os fd rule
+    "import subprocess",
+    "from subprocess",
     "from os import",
     "import os",
     # alias-only patterns (still useful: catches ``from x import`` /
@@ -758,6 +782,12 @@ _AUDIT_SUBSTRINGS: tuple[str, ...] = (
     "os.open(",
     "os.openpty(",
     "os.pipe(",
+    # direct child-spawn rule (contract 5)
+    "subprocess",
+    "subprocess.run(", "subprocess.call(", "subprocess.check_call(",
+    "subprocess.check_output(", "subprocess.Popen(", "subprocess.getoutput(",
+    "subprocess.getstatusoutput(", "os.system(", "os.spawn", "os.posix_spawn(",
+    "os.fork(", "asyncio.create_subprocess_exec(", "asyncio.create_subprocess_shell(",
     # accumulator constructors (contract 4) — alias-resolved
     # call patterns. The bare ``=[]`` / ``={}`` / ``[]`` / ``{}``
     # literal patterns are also included: a file that lacks every
@@ -863,7 +893,7 @@ def _default_roots() -> list[Path]:
     ``ralph/runtime`` (runtime helper modules),
     ``ralph/pro_support`` (Pro heartbeat client — daemon thread +
     HTTP client), ``ralph/recovery`` (recovery control flow),
-    ``ralph/display`` (per-unit display accumulators drained by
+    ``ralph/diagnostics`` (filesystem probes), ``ralph/display`` (per-unit display accumulators drained by
     ``ParallelDisplay.drop_unit`` / ``ActivityRouter.drop_unit`` from
     the parallel coordinator finally block), and ``ralph/prompts``
     (template registry caches bounded by the packaged-template
@@ -881,6 +911,7 @@ def _default_roots() -> list[Path]:
         package_root / "recovery",
         package_root / "display",
         package_root / "prompts",
+        package_root / "diagnostics",
     ]
 
 

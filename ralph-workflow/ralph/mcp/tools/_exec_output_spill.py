@@ -48,8 +48,12 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
     directory = spill_dir if spill_dir is not None else Path(tempfile.gettempdir())
     directory.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="ralph-exec-", suffix=".txt", dir=str(directory))
-    with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
-        spill_file.write(text)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
+            spill_file.write(text)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
     path = Path(name)
     if spill_dir is not None:
         prune_cache_files(

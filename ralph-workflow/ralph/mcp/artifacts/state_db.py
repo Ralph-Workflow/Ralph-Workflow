@@ -45,6 +45,10 @@ MISSING: Final = _Missing()
 #: HMAC secret is owned by the broker, not the agent.
 CLEARED_SENTINEL_HMAC: Final[str] = "__ralph_internal_cleared__"
 
+# Any change to _SCHEMA MUST bump _SCHEMA_VERSION so existing databases run
+# the new DDL instead of silently treating the old schema as current.
+_SCHEMA_VERSION: Final[int] = 1
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS receipts (
     run_id        TEXT NOT NULL,
@@ -87,8 +91,16 @@ class RunStateDB:
         self._conn = sqlite3.connect(str(db_path), timeout=5.0)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+        version_row: object = self._conn.execute("PRAGMA user_version").fetchone()
+        if not isinstance(version_row, tuple) or not version_row:
+            raise RuntimeError("SQLite PRAGMA user_version returned no version")
+        version_value: object = version_row[0]
+        if not isinstance(version_value, int):
+            raise RuntimeError("SQLite PRAGMA user_version returned a non-integer version")
+        if version_value < _SCHEMA_VERSION:
+            self._conn.executescript(_SCHEMA)
+            self._conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+            self._conn.commit()
         self._closed: bool = False
 
     @classmethod

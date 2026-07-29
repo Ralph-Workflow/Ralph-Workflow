@@ -35,7 +35,9 @@ import contextlib
 import logging
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
+
+from ralph.mcp.server._timing_safety import DISPATCH_CAP_MS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -48,6 +50,10 @@ _log = logging.getLogger(__name__)
 #: this so a runaway agent cannot pile requests up against an unstated
 #: thread limit.
 DEFAULT_MAX_WORKERS: int = 32
+
+# The timing-safety invariant models this as the maximum legitimate tool-call
+# duration (exec is capped at DISPATCH_CAP_MS); this bounds caller release.
+_DEFAULT_DISPATCH_TIMEOUT_SECONDS: Final[float] = DISPATCH_CAP_MS / 1000
 
 #: HTTP status for the saturation response (503 + JSON-RPC -32001 frame).
 SATURATION_STATUS: int = 503
@@ -81,8 +87,13 @@ class _SaturatedDispatch:
     against a fake, not a real worker pool.
     """
 
-    def __init__(self, max_workers: int = DEFAULT_MAX_WORKERS) -> None:
+    def __init__(
+        self,
+        max_workers: int = DEFAULT_MAX_WORKERS,
+        dispatch_timeout_seconds: float | None = _DEFAULT_DISPATCH_TIMEOUT_SECONDS,
+    ) -> None:
         self._max_workers = max_workers
+        self._dispatch_timeout_seconds = dispatch_timeout_seconds
         self._executor: concurrent.futures.ThreadPoolExecutor | None = None
         self._lock = threading.Lock()
 
@@ -120,7 +131,17 @@ class _SaturatedDispatch:
                 return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
             raise
         try:
-            return future.result()
+            if self._dispatch_timeout_seconds is None:
+                return future.result()  # mcp-timeout-ok: explicitly injected None disables the caller deadline
+            return future.result(timeout=self._dispatch_timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            # cancel() frees queued work only. A running thread cannot be
+            # reclaimed and is released when its callable returns.
+            future.cancel()
+            _log.warning(
+                "MCP dispatch timed out after %s seconds", self._dispatch_timeout_seconds
+            )
+            return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
         except concurrent.futures.CancelledError:
             return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
 

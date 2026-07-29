@@ -43,6 +43,10 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Documentation
+
+- **docs(lifecycle): record bounded text, dispatch, file, child-process, Codex-home, and schema-init fixes with Future-result and direct-child-spawn audit contracts** — lifecycle guidance now states the shipped caps, caller-release limitation, and explicit upstream-pooling non-goal. Locked by `tests/test_audit_mcp_timeout.py` and `tests/test_audit_resource_lifecycle.py`.
+
 ## [0.9.6] - 2026-07-29
 
 Patch release. `__version__` moved from `0.9.5` to `0.9.6` in

@@ -21,6 +21,9 @@ Flagged (a contract violation that fails ``make verify``):
     IS the timeout, so ``.wait(5)`` and ``.wait(timeout=5)`` are both fine).
     Both ``.wait()`` (no arg) and explicit ``.wait(None)`` / ``.wait(timeout=None)``
     are flagged.
+  - ``<future>.result(...)`` without a bounded ``timeout=`` when ``future``
+    was bound by ``.submit(...)`` in the same function scope. This deliberately
+    excludes other ``.result()`` receivers such as ``asyncio.Task``.
   - network calls (``httpx.*`` / ``requests.*`` request methods + clients,
     ``urllib.request.urlopen``, ``socket.create_connection``) without
     ``timeout=`` (also resolved through import aliases). An explicit
@@ -212,6 +215,7 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         self.violations: list[McpTimeoutViolation] = []
         self._module_aliases = module_aliases or {}
         self._from_imports = from_imports or {}
+        self._function_scopes: list[set[str]] = []
 
     def _canonical_name(self, name: str | None) -> str | None:
         """Resolve a dotted call name through the module's import aliases so
@@ -242,6 +246,31 @@ class McpTimeoutAuditor(ast.NodeVisitor):
                 detail=detail,
             )
         )
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self._function_scopes.append(set())
+        try:
+            self.generic_visit(node)
+        finally:
+            self._function_scopes.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if (
+            self._function_scopes
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "submit"
+        ):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self._function_scopes[-1].add(target.id)
+        self.generic_visit(node)
 
     def visit_For(self, node: ast.For) -> None:
         # A ``for line in <proc>.stdout:`` (or .stderr) is a blocking, unbounded
@@ -274,6 +303,14 @@ class McpTimeoutAuditor(ast.NodeVisitor):
                 ) or _has_bounded_timeout_keyword(node)
                 if not bounded:
                     self._add(node, "wait", ".wait() without a bounded timeout")
+            elif (
+                attr == "result"
+                and isinstance(node.func.value, ast.Name)
+                and self._function_scopes
+                and node.func.value.id in self._function_scopes[-1]
+                and not _has_bounded_timeout_keyword(node)
+            ):
+                self._add(node, "future_result", ".result() on submit-bound Future without bounded timeout=")
 
         name = self._canonical_name(_dotted_name(node))
         if name in _ALWAYS_UNBOUNDED:

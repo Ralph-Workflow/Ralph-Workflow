@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 _MAX_RAW_LINES: int = 4096
+_MAX_BUFFER_CHARS: int = 1 << 20
 
 
 @dataclass(slots=True)
@@ -55,6 +56,17 @@ class TextAccumulator:
                 yield AgentOutputLine(type=kind, content=flushed, raw=flushed_raw)
             self.buffer = remaining
             self.raw_lines = [raw] if (remaining or keep_current_when_empty) else []
+
+    def append_delta(
+        self, text: str, raw: str, *, kind: str = "text"
+    ) -> Iterator[AgentOutputLine]:
+        """Append a delta and flush only when either accumulation cap is exceeded."""
+        self.buffer += text
+        self.raw_lines.append(raw)
+        if len(self.raw_lines) > _MAX_RAW_LINES or len(self.buffer) > _MAX_BUFFER_CHARS:
+            yield AgentOutputLine(type=kind, content=self.buffer, raw="\n".join(self.raw_lines))
+            self.buffer = ""
+            self.raw_lines = []
 
     def flush(
         self, *, kind: str = "text", require_strip: bool = False

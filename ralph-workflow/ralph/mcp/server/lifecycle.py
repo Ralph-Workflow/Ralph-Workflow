@@ -671,29 +671,35 @@ def _spawn_mcp_process(
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation."""
     endpoint = f"http://127.0.0.1:{port}/mcp"
-    session_file = deps.create_session_file(root, session)
-    env = deps.subprocess_env(session_file)
-    if _extra_env:
-        # Merge extra_env so the subprocess inherits worker-specific env vars
-        # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
-        env.update(_extra_env)
-    process = deps.spawn_process(
-        [
-            sys.executable,
-            "-m",
-            "ralph.mcp.server",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--workspace",
-            str(root),
-        ],
-        root,
-        env,
-        phase=phase,
-    )
-    bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
+    session_file: Path | None = None
+    try:
+        session_file = deps.create_session_file(root, session)
+        env = deps.subprocess_env(session_file)
+        if _extra_env:
+            # Merge extra_env so the subprocess inherits worker-specific env vars
+            # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
+            env.update(_extra_env)
+        process = deps.spawn_process(
+            [
+                sys.executable,
+                "-m",
+                "ralph.mcp.server",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--workspace",
+                str(root),
+            ],
+            root,
+            env,
+            phase=phase,
+        )
+        bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
+    except BaseException:
+        if session_file is not None:
+            session_file.unlink(missing_ok=True)
+        raise
 
     try:
         deps.preflight(endpoint, _visible_tools, deps.preflight_timeout())

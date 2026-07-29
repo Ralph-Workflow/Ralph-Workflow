@@ -30,10 +30,8 @@ ALLOWLIST: list[tuple[str, str]] = [
         "references subprocess.run/Popen as detection-pattern strings; does not call subprocess",
     ),
     (
-        "diagnostics/fs_health.py",
-        "RFC-013 P4: read-only ``mdutil -s`` probe for Spotlight status "
-        "via injected ``run_command`` (default subprocess.run with timeout=10, "
-        "DI seam for tests). No state-changing subprocess calls.",
+        "testing/audit_resource_lifecycle.py",
+        "references subprocess/asyncio spawn names as detection-pattern strings; does not call subprocess",
     ),
 ]
 
@@ -54,6 +52,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_skills_package_sync_script.py",  # node packaging sync coverage uses a subprocess
     "test_audit_test_policy.py",  # contains subprocess.run literals as test-fixture code strings
     "test_audit_mcp_timeout.py",  # subprocess.run/Popen literals as audit-fixture code strings
+    "test_audit_resource_lifecycle.py",  # subprocess/asyncio spawn literals as audit-fixture code strings
     "test_audit_parallelization_dormant.py",
     # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
     "test_audit_activity_aware_watchdog.py",

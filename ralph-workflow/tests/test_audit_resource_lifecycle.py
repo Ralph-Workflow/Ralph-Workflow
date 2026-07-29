@@ -26,7 +26,7 @@ hatch, and assert the production tree is clean (zero violations) so
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -37,9 +37,6 @@ from ralph.testing.audit_resource_lifecycle import (
     audit_resource_lifecycle_file,
     main,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _audit(
@@ -269,6 +266,7 @@ def test_default_roots_cover_required_packages() -> None:
     # future leak in either fails make verify before it ships.
     assert any(str(r).endswith("ralph/display") for r in roots)
     assert any(str(r).endswith("ralph/prompts") for r in roots)
+    assert any(str(r).endswith("ralph/diagnostics") for r in roots)
 
 
 @pytest.mark.timeout_seconds(10)
@@ -826,3 +824,37 @@ def test_main_audits_three_explicit_roots(tmp_path: Path) -> None:
 def _category(violation: ResourceLifecycleViolation) -> str:
     """Return the violation category; helper for assertions across tests."""
     return violation.category
+
+
+# ---------------------------------------------------------------------------
+# Direct child-spawn contract
+# ---------------------------------------------------------------------------
+
+def test_direct_subprocess_spawn_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import subprocess\nsubprocess.run(['x'])\n")
+    assert any(_category(item) == "direct_child_spawn" for item in v)
+
+
+def test_aliased_and_from_import_direct_subprocess_spawns_are_flagged(tmp_path: Path) -> None:
+    aliased = _audit(tmp_path, "import subprocess as sp\nsp.run(['x'])\n")
+    imported = _audit(tmp_path, "from subprocess import run\nrun(['x'])\n")
+    assert any(_category(item) == "direct_child_spawn" for item in aliased)
+    assert any(_category(item) == "direct_child_spawn" for item in imported)
+
+
+def test_direct_subprocess_spawn_under_process_is_clean(tmp_path: Path) -> None:
+    del tmp_path
+    process_manager = __file__.replace("tests/test_audit_resource_lifecycle.py", "ralph/process/manager/__init__.py")
+    violations = audit_resource_lifecycle_file(Path(process_manager))
+    assert not any(_category(item) == "direct_child_spawn" for item in violations)
+
+
+def test_direct_subprocess_spawn_marker_suppresses(tmp_path: Path) -> None:
+    assert not _audit(
+        tmp_path,
+        "import subprocess\nsubprocess.run(['x'])  # resource-lifecycle-ok: bounded fixture\n",
+    )
+
+
+def test_process_manager_spawn_is_clean(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "get_process_manager().spawn(['x'])\n")
