@@ -65,13 +65,13 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, Final
 
-from pygments.style import Style as PygmentsStyle
-from pygments.token import Comment, Keyword, Name, Number, Operator, String
 from rich.console import Console
 from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
+
+from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -697,54 +697,12 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
     return terminal_background_is_light(env, measured_bg_hex=query_terminal_background_hex())
 
 
-class _SyntaxThemeOnDarkBackground(PygmentsStyle):
-    """Fixed token palette that clears contrast and CVD checks on dark terminals."""
-
-    default_style: ClassVar[str] = ""
-    styles: ClassVar[dict[object, str]] = {
-        Comment: "#0CB9F2",
-        Keyword: "#B543BF",
-        Name.Function: "#6DDCF2",
-        String: "#77D9B0",
-        Number: "#C9D921",
-        Operator: "#94D90B",
-    }
-
-
-class _SyntaxThemeOnLightBackground(PygmentsStyle):
-    """Fixed token palette that clears contrast and CVD checks on light terminals."""
-
-    default_style: ClassVar[str] = ""
-    styles: ClassVar[dict[object, str]] = {
-        Comment: "#854985",
-        Keyword: "#251947",
-        Name.Function: "#3C7F85",
-        String: "#3E4712",
-        Number: "#70703E",
-        Operator: "#330B03",
-    }
-
-
-class _SyntaxThemeOnUnknownBackground(PygmentsStyle):
-    """Mid-luminance tokens readable on both black and white terminals."""
-
-    default_style: ClassVar[str] = ""
-    styles: ClassVar[dict[object, str]] = {
-        Comment: "#2070F0",
-        Keyword: "#2080A0",
-        Name.Function: "#408070",
-        String: "#5070D0",
-        Number: "#608020",
-        Operator: "#7070A0",
-    }
-
-
 #: Syntax-highlight palettes selected for dark and light terminal backgrounds.
 #: They use fixed RGB because stock ANSI slots are operator-configurable and
 #: therefore cannot satisfy the enforced contrast and CVD contract.
-SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnDarkBackground)
-SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnLightBackground)
-SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(_SyntaxThemeOnUnknownBackground)
+SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.dark())
+SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.light())
+SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.unknown())
 
 #: Rich's ``Syntax(background_color=...)`` sentinel meaning "do not
 #: paint a background; let the terminal's own background show through".

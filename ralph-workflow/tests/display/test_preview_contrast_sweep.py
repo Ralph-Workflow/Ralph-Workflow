@@ -13,7 +13,7 @@ from ralph.display._tool_result_syntax import append_tool_result_syntax
 from ralph.display.edit_preview import build_edit_preview, render_markdown_preview
 from ralph.display.theme import contrast_ratio
 
-_RGB_SGR = re.compile(r"\x1b\[38;2;(\d+);(\d+);(\d+)m")
+_RGB_SGR = re.compile(r"38;2;(\d+);(\d+);(\d+)")
 
 
 def _render(renderable: object, *, color: bool) -> str:
@@ -58,7 +58,9 @@ def test_preview_contrast_sweep_regression_no_black_on_black(terminal_bg_is_ligh
         assert renderable is not None, name
         rendered = _render(renderable, color=True)
         assert "48;2;" not in rendered and "48;5;" not in rendered, name
-        for red, green, blue in _RGB_SGR.findall(rendered):
+        colors = _RGB_SGR.findall(rendered)
+        assert colors, f"contrast sweep emitted no truecolour tokens for {name}"
+        for red, green, blue in colors:
             colour = f"#{int(red):02X}{int(green):02X}{int(blue):02X}"
             assert all(contrast_ratio(colour, background) >= 4.5 for background in backgrounds), (
                 f"black-on-black regression in {name}: {colour} on {backgrounds}"

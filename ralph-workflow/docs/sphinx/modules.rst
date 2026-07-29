@@ -36,6 +36,13 @@ ralph.logging
    :members:
    :show-inheritance:
 
+ralph.syntax_theme
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.syntax_theme
+   :members:
+   :show-inheritance:
+
 ralph.onboarding
 ~~~~~~~~~~~~~~~~
 

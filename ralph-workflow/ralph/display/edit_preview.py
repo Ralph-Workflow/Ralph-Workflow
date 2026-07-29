@@ -20,14 +20,10 @@ Design:
   and suppresses exceptions so a malformed renderable cannot break the
   live display path (R-3).
 
-* Language inference: explicit suffix map first (``py`` -> Python,
-  ``md`` -> Markdown, ``toml`` -> TOML, ``yaml``/``yml`` -> YAML,
-  ``json`` -> JSON, ``js``/``ts`` -> JavaScript/TypeScript, ``sh`` ->
-  Bash, ``rs`` -> Rust, ``go`` -> Go); fallback to
-  ``pygments.lexers.get_lexer_for_filename`` for everything else;
-  ``ClassNotFound`` and any other pygments exception degrade to
-  ``"text"`` (plain text) rather than raising. Artifact tools that
-  carry no ``path`` key (``ralph_edit_md_artifact``,
+* Language inference is delegated to
+  :func:`ralph.display.language_inference.lexer_for_path`; inference
+  failures degrade to ``"text"`` (plain text) rather than raising.
+  Artifact tools that carry no ``path`` key (``ralph_edit_md_artifact``,
   ``ralph_stage_md_artifact``, ``ralph_submit_md_artifact``) default
   to ``"markdown"`` because their content is always a markdown
   artifact document.
@@ -677,8 +673,9 @@ def build_edit_preview(
         input_dict: The tool-call input payload.
         width: Effective console width.
         terminal_bg_is_light: ``True`` when the terminal background is
-            light, ``False`` when dark, ``None`` when undetermined
-            (treated as dark). Selects the ANSI syntax theme and the
+            light, ``False`` when dark, ``None`` when undetermined.
+            ``None`` selects the fixed-RGB palette proven safe on both
+            black and white backgrounds; the value also selects the
             diff-marker styles.
 
     Returns:

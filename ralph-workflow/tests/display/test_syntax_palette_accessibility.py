@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import pytest
-from pygments.token import Comment, Keyword, Name, Number, Operator, String
+from pygments.token import (
+    Comment,
+    Keyword,
+    Name,
+    Number,
+    Operator,
+    String,
+)
+from pygments.token import Text as PygmentsText
 from rich.syntax import PygmentsSyntaxTheme, Syntax
 from rich.text import Text
 
@@ -22,6 +30,7 @@ from ralph.display.theme import (
 )
 
 _TOKEN_ROLES = (Comment, Keyword, Name.Function, String, Number, Operator)
+_FALLBACK_TOKEN_ROLES = (PygmentsText, Name, PygmentsText.Whitespace)
 _CVD_MATRICES = (
     theme._DEUTERANOPIA_MATRIX,
     theme._PROTANOPIA_MATRIX,
@@ -95,6 +104,27 @@ def test_syntax_palette_is_contrast_safe_and_cvd_distinct_from_semantic_roles(
         assert not set(simulated.values()) & {
             theme._simulate_cvd(color, matrix) for color in semantic_colors
         }
+
+
+@pytest.mark.parametrize("terminal_bg_is_light", [False, True, None])
+def test_syntax_palette_fallback_tokens_are_contrast_safe(
+    terminal_bg_is_light: bool | None,
+) -> None:
+    """DA-003: unmapped tokens never inherit Rich's black fallback."""
+    syntax = Syntax(
+        "plain text",
+        "text",
+        theme=syntax_theme_for_background(terminal_bg_is_light),
+        background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+    )
+    backgrounds = ("#FFFFFF",) if terminal_bg_is_light is True else (
+        ("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF")
+    )
+    for token in _FALLBACK_TOKEN_ROLES:
+        color = syntax._theme.get_style_for_token(tuple(str(token).split(".")[1:])).color
+        assert color is not None
+        hex_color = f"#{color.get_truecolor().red:02X}{color.get_truecolor().green:02X}{color.get_truecolor().blue:02X}"
+        assert all(contrast_ratio(hex_color, background) >= 4.5 for background in backgrounds), token
 
 
 def test_tool_result_syntax_uses_the_same_transparent_palette_contract() -> None:
