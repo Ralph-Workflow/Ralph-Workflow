@@ -381,6 +381,17 @@ unchanged direct renders remain byte-stable. ``NO_COLOR`` and
 The single layout keeps phase, cycle/iter (or round), elapsed time, and identity
 vocabulary consistent with the live activity feed and rendered record.
 
+Rendered record hierarchy
+-------------------------
+
+The text-first ``.agent/raw/<id>.rendered.log`` record groups event rows under
+a readable phase header. The header carries the phase label, cycle/iteration
+position, and agent identity once. Indented event rows carry a timestamp,
+body, and ``role=...`` marker; healthy ``info`` severity is omitted while
+warnings and errors remain explicit. This keeps the record greppable without
+repeating chrome on every event. The verbatim ``.log`` capture remains the
+unabridged target for condensation markers.
+
 Iteration context labels
 ------------------------
 

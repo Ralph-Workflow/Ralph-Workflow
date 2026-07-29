@@ -2225,10 +2225,9 @@ class ParallelDisplay:
         token, never a new field.
         """
         timestamp = self._format_timestamp(self._clock())
-        body = f"{transition} phase={phase}"
-        # The record writer already carries the per-unit identity in its
-        # structured ``agent=`` field.  The lifecycle body stays canonical
-        # rather than repeating that identity as live chrome.
+        # The header fields carry the phase context; a lifecycle token has no
+        # reader value once that context is present.
+        body = transition
         del agent_name
         # wt-028-display S-5 (AC-04): every unit's last-known phase
         # state is cached here so subsequent ``_append_recorded_entry``

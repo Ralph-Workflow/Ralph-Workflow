@@ -120,16 +120,12 @@ def test_writer_appends_one_line_per_entry(tmp_path: Path) -> None:
 
 
 def test_writer_records_have_stable_field_order(tmp_path: Path) -> None:
-    """The rendered line starts with ``[hh:mm:ss] phase cycle=...`` etc."""
+    """Ordinary event rows omit header context and retain their role."""
     writer = RenderedRecordWriter(tmp_path, "claude", model="minimax-M3")
     writer.append(_entry(body="hello"))
     writer.flush()
     text = writer.path.read_text(encoding="utf-8").strip()
-    # Stable field order: timestamp -> phase -> cycle -> iter -> agent -> severity -> body
-    assert text.startswith("[12:34:56] development cycle=3 iter=2/4")
-    assert "agent=claude" in text
-    assert "severity=info" in text
-    assert text.endswith("hello")
+    assert text == "[12:34:56] hello role=agent_text"
 
 
 def test_writer_records_have_no_color_codes(tmp_path: Path) -> None:
@@ -158,7 +154,7 @@ def test_writer_record_structure_is_ansi_free_for_every_field(tmp_path: Path) ->
     writer.flush()
     text = writer.path.read_text(encoding="utf-8")
     assert "\x1b" not in text
-    assert text.startswith("[12:34:56] dev cycle=3 iter=1/2 agent=claude severity=info body")
+    assert text == "[12:34:56] body role=agent_text\n"
 
 
 def test_writer_records_are_single_line(tmp_path: Path) -> None:
@@ -186,7 +182,7 @@ def test_writer_handles_missing_optional_fields(tmp_path: Path) -> None:
     writer.append(entry)
     writer.flush()
     text = writer.path.read_text(encoding="utf-8").strip()
-    assert text == "[12:34:56] hello"
+    assert text == "[12:34:56] hello role=agent_text"
 
 
 def test_writer_appends_multiple_entries(tmp_path: Path) -> None:
@@ -198,9 +194,9 @@ def test_writer_appends_multiple_entries(tmp_path: Path) -> None:
     writer.flush()
     lines = writer.path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 3
-    assert lines[0].endswith("first")
-    assert lines[1].endswith("second")
-    assert lines[2].endswith("third")
+    assert lines[0].endswith("first role=agent_text")
+    assert lines[1].endswith("second role=agent_text")
+    assert lines[2].endswith("third role=agent_text")
 
 
 def test_writer_re_flush_appends_to_existing_file(tmp_path: Path) -> None:
@@ -212,8 +208,8 @@ def test_writer_re_flush_appends_to_existing_file(tmp_path: Path) -> None:
     writer.flush()
     lines = writer.path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
-    assert lines[0].endswith("first")
-    assert lines[1].endswith("second")
+    assert lines[0].endswith("first role=agent_text")
+    assert lines[1].endswith("second role=agent_text")
 
 
 def test_writer_buffer_is_bounded(tmp_path: Path) -> None:
@@ -329,8 +325,7 @@ def test_writer_accepts_dict_entries(tmp_path: Path) -> None:
     )
     writer.flush()
     text = writer.path.read_text(encoding="utf-8").strip()
-    assert text.startswith("[08:00:00] planning")
-    assert text.endswith("dict entry")
+    assert text == "[08:00:00] dict entry role=agent_text"
 
 
 def test_writer_handles_missing_timestamp(tmp_path: Path) -> None:

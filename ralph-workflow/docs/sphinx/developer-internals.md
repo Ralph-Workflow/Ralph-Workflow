@@ -155,10 +155,11 @@ understand an entry.
 
 Providers first write every original line to verbatim `.agent/raw/<id>.log`.
 They then normalize each logical event once before the live display and the
-ANSI-free `.agent/raw/<id>.rendered.log` record consume it. A rendered entry
-uses a stable order: timestamp, phase/position context, identity, event kind,
-and outcome or content. It never exposes parser channel names or repeats
-identity, time, or severity.
+ANSI-free `.agent/raw/<id>.rendered.log` record consume it. A phase header
+carries readable phase words, cycle/iteration position, and identity once;
+its indented event rows carry their timestamp, role, body, and only a
+non-default severity. It never exposes parser channel names or repeats phase,
+identity, time, or healthy severity on every event.
 
 Tool calls and terminal results correlate by provider call ID, so a partial
 update cannot look like a completed result and two identical-looking calls stay

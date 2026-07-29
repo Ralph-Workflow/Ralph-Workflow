@@ -57,10 +57,10 @@ def test_emit_parsed_event_writes_one_line_to_rendered_record(tmp_path: Path) ->
     expected_path = tmp_path / ".agent" / "raw" / f"{safe_id_for('claude')}.rendered.log"
     assert expected_path.exists(), f"rendered record missing at {expected_path}"
     body = expected_path.read_text(encoding="utf-8")
-    # Stable field order: timestamp, agent, severity, body. The body
-    # contains the unit's text content exactly once (no duplication).
+    # Event rows carry timestamp, body, and role; phase context belongs to headers.
     assert body.count("Locating where the elapsed time is recomputed.") == 1
-    assert "agent=claude" in body
+    assert "role=agent_text" in body
+    assert "agent=claude" not in body
     # No ANSI escape codes: the rendered record is text-first, not
     # the live colored surface.
     assert "\x1b[" not in body
@@ -182,7 +182,8 @@ def test_rendered_record_regression_strips_progress_badge_and_channel_chrome(tmp
     assert "◐ RUN" not in record
     assert "tool_use:" not in record
     assert record.count("[") == 1
-    assert record.count("agent=pi/model") == 1
+    assert "agent=pi/model" not in record
+    assert "role=tool_call" in record
 
 
 def test_rendered_record_regression_condenses_oversized_body_to_verbatim_log(tmp_path: Path) -> None:

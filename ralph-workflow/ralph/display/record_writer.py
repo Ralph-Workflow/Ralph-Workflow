@@ -183,30 +183,28 @@ def _format_entry_line(entry: object) -> str:
     severity = _strip_ansi(_extract_field(entry, "severity"))
     body = _extract_field(entry, "body")
     indent_level = _extract_indent_level(entry)
-    grouping_role = _strip_ansi(_extract_field(entry, "grouping_role"))
+    grouping_role = _strip_ansi(_extract_field(entry, "grouping_role")) or "agent_text"
 
     hh_mm_ss = _to_hh_mm_ss(timestamp)
     indent_prefix = " " * (_INDENT_WIDTH * max(0, indent_level))
-    parts: list[str] = []
-    parts.append(f"[{hh_mm_ss}]")
-    if phase:
-        parts.append(str(phase))
-    if cycle != "":
-        parts.append(f"cycle={cycle}")
-    if iter_:
-        parts.append(f"iter={iter_}")
-    if agent:
-        parts.append(f"agent={agent}")
-    if severity:
-        parts.append(f"severity={severity}")
-    body_str = _flatten_body(body)
-    if body_str:
-        parts.append(body_str)
-    if grouping_role and grouping_role != "agent_text":
-        # Append a structural marker so a grep for ``role=tool_call``
-        # still finds the entry after hierarchy is data, not glyphs.
-        # This is a contract addition, kept narrow.
-        parts.append(f"role={grouping_role}")
+    parts = [f"[{hh_mm_ss}]"]
+    if grouping_role == "phase_header":
+        if phase:
+            parts.append(phase.replace("_", " "))
+        if cycle:
+            parts.append(f"cycle={cycle}")
+        if iter_:
+            parts.append(f"iter={iter_}")
+        if agent:
+            parts.append(f"agent={agent}")
+    else:
+        # Phase context belongs to its header; event rows carry only what changed.
+        if severity and severity != "info":
+            parts.append(f"severity={severity}")
+        body_str = _flatten_body(body)
+        if body_str:
+            parts.append(body_str)
+    parts.append(f"role={grouping_role}")
     return indent_prefix + " ".join(parts)
 
 

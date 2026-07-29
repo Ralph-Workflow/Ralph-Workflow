@@ -477,21 +477,17 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
         f"identical-body dedup failed; body appears {body.count(dup_body)} times:\n{body}"
     )
 
-    # AC-04: severity reflects outcome. Successful tool result is
-    # ``info``; failed one is ``error``. No empty warn lines.
+    # AC-04: healthy severity is omitted; failed results retain error.
     assert "severity=warn" not in body, (
         f"empty warn line or severity=warn leakage:\n{body}"
     )
-    assert "severity=info" in body
+    assert "severity=info" not in body
     assert "severity=error" in body
 
     # AC-05: phase headers appear; the close header appears.
-    assert body.count("phase_start phase=development") == 1, (
-        f"phase_start header missing or duplicated:\n{body}"
-    )
-    assert body.count("phase_close phase=development") == 1, (
-        f"phase_close header missing or duplicated:\n{body}"
-    )
+    headers = [line for line in body.splitlines() if "role=phase_header" in line]
+    assert len(headers) == 2, f"phase headers missing or duplicated:\n{body}"
+    assert all("phase=" not in line for line in headers)
 
     # AC-06: oversized body is condensed with the marker on the
     # record surface; the verbatim capture lives in the overflow
@@ -607,8 +603,8 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert all(any(name in line for name in tool_names) for line in tool_call_lines), (
         f"OpenCode tool-call target missing from line:\n{rendered}"
     )
-    assert all("severity=" in line for line in tool_result_lines), (
-        f"OpenCode tool-result outcome missing from line:\n{rendered}"
+    assert all("severity=info" not in line for line in tool_result_lines), (
+        f"healthy tool-result severity must stay omitted:\n{rendered}"
     )
     for forbidden in _FORBIDDEN_TOKENS:
         assert forbidden not in rendered

@@ -12,8 +12,6 @@ log and the rendered record stay consistent.
 
 from __future__ import annotations
 
-import re
-
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.agent_activity_event import AgentActivityEvent
@@ -214,8 +212,8 @@ def test_presented_entry_renders_without_internal_channel_vocabulary(tmp_path) -
         )
 
 
-def test_presented_entry_identity_does_not_appear_twice(tmp_path) -> None:
-    """Identity is single-sourced: appears at most once in the rendered line.
+def test_presented_entry_event_row_omits_header_identity(tmp_path) -> None:
+    """Identity belongs to the phase header, not an ordinary event row.
 
     AC-08: within an entry, identity, timestamp, and severity each
     appear at most once. The record writer's plain-text output is
@@ -240,10 +238,8 @@ def test_presented_entry_identity_does_not_appear_twice(tmp_path) -> None:
     from pathlib import Path
 
     contents = Path(writer.path).read_text(encoding="utf-8")
-    # The line should mention ``claude`` once. We count the
-    # ``agent=claude`` token specifically (not the bare word).
-    agent_token_count = len(re.findall(r"agent=claude\b", contents))
-    assert agent_token_count == 1, f"agent=claude appears {agent_token_count} times in: {contents!r}"
+    assert "agent=claude" not in contents
+    assert "role=agent_text" in contents
 
 
 def test_presented_entry_timestamp_does_not_appear_twice(tmp_path) -> None:

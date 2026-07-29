@@ -11,7 +11,7 @@ from tests.display.test_raw_record_regression import _make_display_with_injected
 
 
 def test_phase_header_record_uses_canonical_body_not_live_chrome(tmp_path: Path) -> None:
-    """S-1: phase headers retain canonical lifecycle text exactly once."""
+    """S-2: phase headers own readable phase context exactly once."""
     pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
     pd.emit_parsed_event(
@@ -26,7 +26,9 @@ def test_phase_header_record_uses_canonical_body_not_live_chrome(tmp_path: Path)
     record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
     headers = [line for line in record.splitlines() if "role=phase_header" in line]
     assert len(headers) == 1
-    assert "phase_start phase=development" in headers[0]
+    assert "development" in headers[0]
+    assert "phase_start" not in headers[0]
+    assert "phase=" not in headers[0]
     assert chr(0x2139) + " INFO" not in headers[0]
     assert headers[0].count("agent=pi") == 1
 

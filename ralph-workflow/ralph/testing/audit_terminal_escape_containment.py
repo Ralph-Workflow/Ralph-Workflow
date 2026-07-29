@@ -155,6 +155,7 @@ Exit 0 = clean, 1 = at least one invariant violated.
 from __future__ import annotations
 
 import ast
+import os
 import sys
 from collections import OrderedDict
 from pathlib import Path
@@ -447,7 +448,10 @@ class PackageWideCallSiteInvariant:
         """Return the package-relative path of every ``*.py`` file (cached)."""
         if cls._PACKAGE_FILE_LIST_CACHE is None:
             cls._PACKAGE_FILE_LIST_CACHE = sorted(
-                str(p.relative_to(_PACKAGE_ROOT).as_posix()) for p in _PACKAGE_ROOT.rglob("*.py")
+                str((Path(root) / name).relative_to(_PACKAGE_ROOT).as_posix())
+                for root, _dirs, files in os.walk(_PACKAGE_ROOT)
+                for name in files
+                if name.endswith(".py")
             )
         return cls._PACKAGE_FILE_LIST_CACHE
 
