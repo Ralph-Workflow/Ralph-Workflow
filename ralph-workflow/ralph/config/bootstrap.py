@@ -23,7 +23,6 @@ Bootstrap creates the standard first-run config set:
 from __future__ import annotations
 
 import importlib.util
-import os
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -34,6 +33,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
+from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
 from ralph.config.loader import load_toml
 from ralph.git.operations import _atomic_append_text, append_to_gitignore
 
@@ -54,6 +54,13 @@ _GLOBAL_POLICY_FILENAME_MAP = {
 }
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
+
+
+def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Resolve the user-global config directory."""
+    return _resolve_global_config_dir(env)
+
+
 _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
     # Ralph Workflow local artifacts (existing — DO NOT REORDER).
     # The first entry ``.agent/`` already covers the
@@ -291,24 +298,6 @@ class BootstrapResult:
     path: Path
     action: Literal["created", "skipped", "regenerated"]
     backup: Path | None = None
-
-
-def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
-    """Resolve the user-global config directory.
-
-    Honors XDG_CONFIG_HOME when set; falls back to ~/.config.
-
-    Args:
-        env: Environment mapping to read from. Uses os.environ when None.
-
-    Returns:
-        Path to the config directory.
-    """
-    env_map: Mapping[str, str] = os.environ if env is None else env
-    xdg = env_map.get("XDG_CONFIG_HOME", "")
-    if xdg:
-        return Path(xdg)
-    return Path.home() / ".config"
 
 
 def ensure_global_config(global_dir: Path | None = None, *, force: bool = False) -> BootstrapResult:

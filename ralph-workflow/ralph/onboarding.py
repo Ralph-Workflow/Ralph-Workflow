@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Final, Protocol, cast
+from typing import TYPE_CHECKING, Final
 
+from ralph.config._paths import resolve_global_config_dir
 from ralph.project_urls import GETTING_STARTED_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
 
@@ -78,16 +78,9 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
     )
 
 
-class _GlobalConfigDirResolver(Protocol):
-    def __call__(self) -> Path: ...
-
-
 def _global_main_config_path() -> Path:
-    """Resolve the user-global main config without bootstrap's import cycle."""
-    bootstrap = import_module("ralph.config.bootstrap")
-    namespace = cast("dict[str, object]", bootstrap.__dict__)
-    resolver = cast("_GlobalConfigDirResolver", namespace["resolve_global_config_dir"])
-    return resolver() / "ralph-workflow.toml"
+    """Return the user-global main config path."""
+    return resolve_global_config_dir() / "ralph-workflow.toml"
 
 
 def welcome_panel_next_steps() -> tuple[str, ...]:
