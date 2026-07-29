@@ -298,7 +298,7 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         out = buf.getvalue()
         thinking_lines = [
-            line for line in _plain_lines(out) if "[think][u1]" in line
+            line for line in _plain_lines(out) if "[reasoning][u1]" in line
         ]
         assert len(thinking_lines) == 1, (
             f"Long thinking must still emit exactly one close line, "

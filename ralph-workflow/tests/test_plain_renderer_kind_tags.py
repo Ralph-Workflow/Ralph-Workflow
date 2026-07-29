@@ -91,21 +91,21 @@ def test_raw_kind_maps_to_content_tag() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "raw", "some raw line")
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[output][u]" in out
 
 
 def test_unknown_kind_defaults_to_content_tag() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "totally_unknown_kind", "data")
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[output][u]" in out
 
 
 def test_emit_log_line_delegates_to_emit_activity_line() -> None:
     pd, buf = _make_display()
     pd.emit_log_line("u", "legacy line")
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[output][u]" in out
     assert "legacy line" in out
 
 
@@ -170,7 +170,7 @@ def test_text_kind_emits_content_tag_on_close() -> None:
     pd.emit_activity_line("u", "text", "hello")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[output][u]" in out
     assert "[u]" in out
     assert "hello" in out
     assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
@@ -189,7 +189,7 @@ def test_thinking_kind_emits_think_tag_on_close() -> None:
     pd.emit_activity_line("u", "thinking", "I think therefore I am")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[think][u]" in out
+    assert "[reasoning][u]" in out
     assert "[u]" in out
     assert "I think therefore I am" in out
     for forbidden in (
@@ -215,7 +215,7 @@ def test_rich_markup_in_content_is_reduced() -> None:
     pd.emit_activity_line("u", "text", "[bold]x[/bold]")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[output][u]" in out
     assert "x" in out
     assert "[bold]" not in out
 
@@ -291,7 +291,7 @@ def test_close_line_uses_middle_dot_separators() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     # Sketch-J header: \u22ef <tag> \u00b7 HH:MM:SS \u2192 HH:MM:SS \u00b7 <duration>.
-    assert "\u22ef content" in out, f"close line missing \u22ef marker: {out!r}"
+    assert "\u22ef output" in out, f"close line missing \u22ef marker: {out!r}"
     assert "\u00b7" in out, f"close line missing \u00b7 separator: {out!r}"
     assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
     # Joined passage survives exactly once.
@@ -318,7 +318,7 @@ def test_flush_blocks_emits_one_close_line_per_active_block() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     # Exactly one close line, not multiple per-fragment emissions.
-    content_lines = [ln for ln in _plain_lines(out) if "[content][u]" in ln]
+    content_lines = [ln for ln in _plain_lines(out) if "[output][u]" in ln]
     assert len(content_lines) == 1, (
         f"expected exactly 1 close line, got {len(content_lines)}: {out!r}"
     )
@@ -331,11 +331,11 @@ def test_streaming_block_closed_by_non_streaming_event() -> None:
     pd.emit_activity_line("u", "tool_use", "bash")
     out = buf.getvalue()
     # The text block closed before tool_use surfaced.
-    assert "[content][u]" in out
+    assert "[output][u]" in out
     assert "[call][u]" in out
     assert "bash" in out
     # The text close line appears before the tool_use line.
-    assert out.index("[content][u]") < out.index("[call][u]")
+    assert out.index("[output][u]") < out.index("[call][u]")
 
 
 def test_different_unit_id_closes_previous_block() -> None:
@@ -352,11 +352,11 @@ def test_different_unit_id_closes_previous_block() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     # unit-a's block closed (single close line, [content] tag).
-    assert "[content][unit-a]" in out
+    assert "[output][unit-a]" in out
     # unit-b's block closed on flush (single close line, [content] tag).
-    assert "[content][unit-b]" in out
+    assert "[output][unit-b]" in out
     # unit-a's close line precedes unit-b's.
-    assert out.index("[content][unit-a]") < out.index("[content][unit-b]")
+    assert out.index("[output][unit-a]") < out.index("[output][unit-b]")
 
 
 def test_non_streaming_kind_closes_other_unit_block() -> None:
@@ -365,9 +365,9 @@ def test_non_streaming_kind_closes_other_unit_block() -> None:
     pd.emit_activity_line("unit-b", "tool_use", "bash")
     out = buf.getvalue()
     # unit-a's block closed before unit-b's tool_use surfaced.
-    assert "[content][unit-a]" in out
+    assert "[output][unit-a]" in out
     assert "[call][unit-b]" in out
-    assert out.index("[content][unit-a]") < out.index("[call][unit-b]")
+    assert out.index("[output][unit-a]") < out.index("[call][unit-b]")
 
 
 # --- Phase level tests -------------------------------------------------
@@ -424,7 +424,7 @@ def test_whitespace_text_fragment_still_emits_on_close() -> None:
     pd.emit_activity_line("u", "text", "   ")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[output][u]" in out
 
 
 # --- Internal vocabulary must not surface -----------------------------
