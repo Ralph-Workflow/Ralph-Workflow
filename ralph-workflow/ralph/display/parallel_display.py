@@ -321,6 +321,20 @@ def _phase_label(phase: str) -> str:
     return phase.replace("_", " ").title()
 
 
+def _tool_call_id(metadata: dict[str, object]) -> str | None:
+    """Return the cross-parser identifier for one logical tool call."""
+    for key in ("tool_call_id", "toolCallId"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            return value
+    tool_call = metadata.get("toolCall")
+    if isinstance(tool_call, dict):
+        value = tool_call.get("id")
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 # Public aliases for tests and other callers that previously imported
 # ``phase_style`` / ``phase_label`` from ``ralph.display.phase_banner``.
 phase_style = _phase_style
@@ -444,6 +458,7 @@ class ParallelDisplay:
         "_last_plan_signature",
         "_last_recorded_body",
         "_last_text_thinking_block_close",
+        "_last_tool_result_content",
         "_last_waiting_signature",
         "_last_worker_states",
         "_monotonic",
@@ -452,6 +467,7 @@ class ParallelDisplay:
         "_pending_phase_headers",
         "_phase_close_emitted",
         "_phase_counters",
+        "_recorded_tool_call_ids",
         "_rendered_writers",
         "_run_counters",
         "_run_start_time",
@@ -567,6 +583,15 @@ class ParallelDisplay:
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._last_recorded_body: dict[
             str, tuple[ActivityEventKind, str]
+        ] = {}  # bounded-accumulator-ok: drop_unit
+        # Recent parser aliases for one tool invocation. Pi can announce a
+        # call through multiple wire events; retaining a small per-unit window
+        # keeps that transport duplication off both presentation surfaces.
+        self._recorded_tool_call_ids: dict[
+            str, tuple[str, ...]
+        ] = {}  # bounded-accumulator-ok: capped at 64 per unit
+        self._last_tool_result_content: dict[
+            str, tuple[str, str]
         ] = {}  # bounded-accumulator-ok: drop_unit
         # DA-002 (wt-028-display S-2 / S-3): the streaming-block
         # live-log dedup. When a ``TEXT`` streaming block closes and
@@ -2104,8 +2129,9 @@ class ParallelDisplay:
         Suppresses on any writer error so a transient disk failure
         cannot break the display path.
         """
-        if not body.strip():
-            # S-14 (AC-04): never record an empty-body entry.
+        if not body.strip() or (event_kind is ActivityEventKind.LIFECYCLE and phase is None):
+            # Agent lifecycle boundaries are transport noise; only explicit pipeline
+            # phase headers carry phase context into the rendered record.
             return
         writer = self._get_rendered_writer(unit_id)
         if writer is None:
@@ -2768,6 +2794,17 @@ class ParallelDisplay:
         # here.
         if timestamp is None:
             timestamp = self._clock().isoformat()
+        call_id = _tool_call_id(metadata)
+        if kind is ActivityEventKind.TOOL_USE and call_id:
+            recent = self._recorded_tool_call_ids.get(unit_id, ())
+            if call_id in recent:
+                return
+            self._recorded_tool_call_ids[unit_id] = (*recent, call_id)[-64:]
+        elif kind is ActivityEventKind.TOOL_RESULT and call_id and content is not None:
+            self._last_tool_result_content[unit_id] = (call_id, content)
+        elif kind is ActivityEventKind.TEXT and call_id and content is not None:
+            if self._last_tool_result_content.get(unit_id) == (call_id, content):
+                return
         self._emit_activity_event(unit_id, kind, content, None, metadata, timestamp)
 
     def _on_activity_router_event(
@@ -4684,6 +4721,8 @@ class ParallelDisplay:
         self._active_block_chars.pop(unit_id, None)
         self._last_checkpoint_chars.pop(unit_id, None)
         self._last_recorded_body.pop(unit_id, None)
+        self._recorded_tool_call_ids.pop(unit_id, None)
+        self._last_tool_result_content.pop(unit_id, None)
         self._last_text_thinking_block_close.pop(unit_id, None)
         # wt-028-display S-5 (AC-04): clear the per-unit last-phase
         # cache so a re-spawned worker does not carry a stale

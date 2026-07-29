@@ -118,3 +118,53 @@ def test_record_body_never_embeds_live_chrome(
         for chrome in (chr(0x2139) + " INFO", "◐ RUN", "✓ PASS", "⚠ WARN"):
             assert chrome not in line
         assert line.count("[") == 1
+
+
+def test_agent_lifecycle_boundary_does_not_emit_empty_phase_header(tmp_path: Path) -> None:
+    """DA-003: agent turn boundaries are not pipeline phase headers."""
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi", kind=ActivityEventKind.LIFECYCLE, content="turn_end", metadata={}
+    )
+    pd.stop()
+
+    record_path = tmp_path / ".agent" / "raw" / "pi.rendered.log"
+    assert not record_path.exists() or "role=phase_header" not in record_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_tool_call_replays_with_one_call_id_emit_once(tmp_path: Path) -> None:
+    """DA-001: parser variants for one tool call share one record entry."""
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for metadata in (
+        {"tool_call_id": "call-1"},
+        {"toolCall": {"id": "call-1"}},
+        {"toolCallId": "call-1", "input": {"command": "pytest -q"}},
+    ):
+        pd.emit_parsed_event(
+            unit_id="pi", kind=ActivityEventKind.TOOL_USE, content="exec", metadata=metadata
+        )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    assert len([line for line in record.splitlines() if "role=tool_call" in line]) == 1
+
+
+def test_result_text_companion_with_same_call_id_emits_once(tmp_path: Path) -> None:
+    """DA-002: a tool output and its text echo have one condensation decision."""
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for kind in (ActivityEventKind.TOOL_RESULT, ActivityEventKind.TEXT):
+        pd.emit_parsed_event(
+            unit_id="pi",
+            kind=kind,
+            content="payload from tool",
+            metadata={"tool_call_id": "call-1", "tool_name": "read_file"},
+        )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    assert record.count("payload from tool") == 1
