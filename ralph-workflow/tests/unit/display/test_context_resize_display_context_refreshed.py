@@ -43,17 +43,19 @@ class TestDisplayContextRefreshed:
     NARROW_WIDTH = 40
     WIDE_WIDTH = 120
 
-    def test_refreshed_preserves_width_through_resize(self) -> None:
-        """refreshed() preserves the resolved width across a wide→narrow resize."""
+    def test_refreshed_recovers_after_below_floor_resize(self) -> None:
+        """P0: a temporary below-floor resize recovers the supported layout width."""
         console = Console(width=self.WIDE_WIDTH, force_terminal=True)
         ctx = make_display_context(console=console, env={})
 
         with patch.object(
-            type(console), "width", new_callable=PropertyMock, return_value=self.NARROW_WIDTH
+            type(console), "width", new_callable=PropertyMock, side_effect=(20, 40, self.WIDE_WIDTH)
         ):
-            refreshed = ctx.refreshed()
+            below_floor = ctx.refreshed()
+            at_floor = below_floor.refreshed()
+            recovered = at_floor.refreshed()
 
-        assert refreshed.width == self.NARROW_WIDTH
+        assert (below_floor.width, at_floor.width, recovered.width) == (20, 40, self.WIDE_WIDTH)
 
     def test_refreshed_preserves_color_enabled(self) -> None:
         """refreshed() must preserve color_enabled from the original context."""

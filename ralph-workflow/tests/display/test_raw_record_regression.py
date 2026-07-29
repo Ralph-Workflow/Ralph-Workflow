@@ -121,7 +121,7 @@ def test_tool_result_companion_dedup_expires_after_the_next_text_event(tmp_path:
 
 def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Path) -> None:
     """S-4 / DA-005: 120 results and progress companions stay distinguishable."""
-    display, _output, advance = _make_display_with_injected_clock(tmp_path)
+    display, live, advance = _make_display_with_injected_clock(tmp_path)
     display.start()
     for index in range(120):
         target = f"path=src/file_{index}.py"
@@ -154,6 +154,15 @@ def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Pa
         assert rendered.count(f"path=src/file_{index}.py") == 1
         assert "read_file" in next(line for line in lines if f"file_{index}.py" in line)
     assert all("severity=error" in line or "ok" in line.lower() for line in lines)
+
+    # S-2: the live surface is the same single canonical presentation.
+    live_lines = [line for line in live.getvalue().splitlines() if "[result]" in line]
+    assert len(live_lines) == 120
+    live_output = live.getvalue()
+    for index in range(120):
+        assert live_output.count(f"path=src/file_{index}.py") == 1
+    for forbidden in ("[tool-result]", "(running...)"):
+        assert forbidden not in live_output
 
 
 def test_pi_ndjson_re_renders_one_entry_per_event(tmp_path: Path) -> None:

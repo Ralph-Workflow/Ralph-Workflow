@@ -21,10 +21,12 @@ tritanopia). Asserts from each render:
 from __future__ import annotations
 
 from io import StringIO
+from pathlib import Path
 
 from rich.console import Console
 
 from ralph.display import theme
+from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import (
@@ -358,20 +360,26 @@ def test_status_bar_renders_with_glyphs_unavailable() -> None:
 # --- Three operator jobs are answerable -----------------------------------
 
 
-def test_status_bar_and_live_log_answer_operator_jobs_at_40x12() -> None:
-    """AC-07 acceptance: at 40x12, run, attention, and recent activity are readable."""
+def test_all_surfaces_answer_operator_jobs_at_40x12_without_color(tmp_path: Path) -> None:
+    """AC-07: color-free floor output answers every operator job on every surface."""
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None, width=40, height=12)
-    ctx = make_display_context(console=console, env={"RALPH_ENABLE_GLYPHS": "1"})
+    ctx = make_display_context(console=console, env={"NO_COLOR": "1", "RALPH_ENABLE_GLYPHS": "1"})
     bar = render_status_bar(_model(attention="waiting"), ctx, now_monotonic=100.0).plain
-    display = ParallelDisplay(ctx)
-    display.emit_activity_line("u1", "tool_result", "completed operator action")
+    display = ParallelDisplay(ctx, workspace_root=tmp_path)
+    display.start()
+    display.emit_parsed_event(
+        "u1", ActivityEventKind.TOOL_RESULT, "completed_operator_action", {"exit_code": 0}
+    )
+    display.stop()
+
     assert "WAIT" in bar
     assert "1/4" in bar or "1/" in bar
     assert "dev" in bar.lower() or "de" in bar.lower()
     live_log = buffer.getvalue()
-    assert "completed operator" in live_log
-    assert "action" in live_log
+    record = (tmp_path / ".agent" / "raw" / "u1.rendered.log").read_text(encoding="utf-8")
+    assert "completed_operat" in live_log
+    assert "completed_operator_action" in record
 
 
 def test_status_bar_and_live_log_keep_hierarchy_at_40x8() -> None:
