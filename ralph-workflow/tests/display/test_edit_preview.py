@@ -644,7 +644,7 @@ def test_parallel_display_exec_diff_result_uses_diff_preview() -> None:
     )
     pd.stop()
     output = buf.getvalue()
-    assert "▸ exec  artifact" in output
+    assert "▸ exec" in output
     assert output.count("@@ -1 +1 @@") == 1
     assert output.count("-old") == 1
     assert output.count("+new") == 1

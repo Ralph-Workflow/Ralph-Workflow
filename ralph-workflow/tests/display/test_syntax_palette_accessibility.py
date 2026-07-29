@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pygments.token import (
     Comment,
+    Generic,
     Keyword,
     Name,
     Number,
@@ -141,6 +142,35 @@ def test_syntax_palette_fallback_tokens_are_contrast_safe(
         assert all(contrast_ratio(hex_color, background) >= 4.5 for background in backgrounds), (
             token
         )
+
+
+@pytest.mark.parametrize("terminal_bg_is_light", [False, True, None])
+def test_diff_tokens_are_distinct_and_accessibly_colored(
+    terminal_bg_is_light: bool | None,
+) -> None:
+    """DA-004: diff carriers remain distinct and legible on every background."""
+    syntax = Syntax(
+        "@@ -1 +1 @@\n-old\n+new\n",
+        "diff",
+        theme=syntax_theme_for_background(terminal_bg_is_light),
+        background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+    )
+    colors = {
+        token: f"#{color.get_truecolor().red:02X}{color.get_truecolor().green:02X}{color.get_truecolor().blue:02X}"
+        for token in (Generic.Deleted, Generic.Inserted, Generic.Subheading, PygmentsText)
+        if (color := syntax._theme.get_style_for_token(tuple(str(token).split(".")[1:])).color)
+        is not None
+    }
+    assert len(colors) == 4
+    assert len(set(colors.values())) == 4
+    backgrounds = (
+        ("#FFFFFF",)
+        if terminal_bg_is_light is True
+        else (("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF"))
+    )
+    assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values() for background in backgrounds)
+    for matrix in _CVD_MATRICES:
+        assert len({theme._simulate_cvd(color, matrix) for color in colors.values()}) == 4
 
 
 def test_result_preview_uses_the_same_transparent_palette_contract() -> None:

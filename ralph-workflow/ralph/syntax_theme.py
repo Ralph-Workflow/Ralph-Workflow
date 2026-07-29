@@ -21,19 +21,36 @@ class SyntaxThemes:
 
     @staticmethod
     def dark() -> type[PygmentsStyle]:
-        return _style("#D0D0D0", ("#0CB9F2", "#B543BF", "#6DDCF2", "#77D9B0", "#C9D921", "#94D90B"))
+        return _style(
+            "#D0D0D0",
+            ("#0CB9F2", "#B543BF", "#6DDCF2", "#77D9B0", "#C9D921", "#94D90B"),
+            ("#94D90B", "#0CB9F2", "#77D9B0"),
+        )
 
     @staticmethod
     def light() -> type[PygmentsStyle]:
-        return _style("#202020", ("#854985", "#251947", "#3C7F85", "#3E4712", "#70703E", "#330B03"))
+        return _style(
+            "#202020",
+            ("#854985", "#251947", "#3C7F85", "#3E4712", "#70703E", "#330B03"),
+            ("#330B03", "#3E4712", "#3C7F85"),
+        )
 
     @staticmethod
     def unknown() -> type[PygmentsStyle]:
-        return _style("#757575", ("#2070F0", "#2080A0", "#408070", "#5070D0", "#608020", "#7070A0"))
+        return _style(
+            "#757575",
+            ("#2070F0", "#2080A0", "#408070", "#5070D0", "#608020", "#7070A0"),
+            ("#2070F0", "#408070", "#7070A0"),
+        )
 
 
-def _style(default: str, colors: tuple[str, str, str, str, str, str]) -> type[PygmentsStyle]:
+def _style(
+    default: str,
+    colors: tuple[str, str, str, str, str, str],
+    diff_colors: tuple[str, str, str],
+) -> type[PygmentsStyle]:
     comment, keyword, function, string, number, operator = colors
+    deleted, inserted, subheading = diff_colors
     namespace: dict[str, object] = {
         "default_style": default,
         "styles": {
@@ -47,9 +64,9 @@ def _style(default: str, colors: tuple[str, str, str, str, str, str]) -> type[Py
             Name: default,
             Punctuation: default,
             Text.Whitespace: default,
-            Generic.Subheading: default,
-            Generic.Deleted: default,
-            Generic.Inserted: default,
+            Generic.Subheading: subheading,
+            Generic.Deleted: deleted,
+            Generic.Inserted: inserted,
         },
     }
     return type("RalphSyntaxTheme", (PygmentsStyle,), namespace)

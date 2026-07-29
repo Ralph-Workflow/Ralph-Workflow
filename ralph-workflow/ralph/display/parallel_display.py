@@ -506,7 +506,8 @@ class ParallelDisplay:
         # asks the terminal for its actual background colour (OSC 11)
         # and falls back to env hints, so syntax-highlight colours are
         # chosen against the operator's real background rather than an
-        # assumed one. Any failure degrades to ``None`` (dark default);
+        # assumed one. Any failure degrades to ``None``, selecting the
+        # both-backgrounds-safe unknown palette rather than assuming dark;
         # the probe must never be able to break display construction.
         self._terminal_bg_is_light: bool | None = None
         with contextlib.suppress(Exception):
@@ -1004,10 +1005,14 @@ class ParallelDisplay:
 
         if kind == "tool_use" and opts.tool_signature is not None:
             tool_name, tool_path = opts.tool_signature
+            metadata = opts.activity_metadata or {}
+            input_obj = metadata.get("input", metadata.get("args"))
+            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            pattern = input_dict.get("pattern", metadata.get("pattern", ""))
             self._last_emitted_tool_signature[unit_id] = (
                 tool_name,
                 tool_path,
-                str((opts.activity_metadata or {}).get("pattern", "") or ""),
+                str(pattern or ""),
             )
 
         self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
@@ -2039,13 +2044,12 @@ class ParallelDisplay:
         """Project a file preview to the record and, unless quiet, terminal."""
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
-        record_preview, full_source = preview_record_text(
+        _record_preview, full_source = preview_record_text(
             tool_name,
             preview_input,
             overflow_ref=overflow_ref,
             glyphs_enabled=self._ctx.glyphs_enabled,
         )
-        record_body = record_preview or None
         if full_source is not None and full_source.count("\n") + 1 > _PREVIEW_MAX_LINES:
             overflow.append(full_source)
             self._check_overflow_size(unit_id, overflow)
@@ -2075,7 +2079,7 @@ class ParallelDisplay:
                     preview,
                 )
             )
-        del record_body, kind, timestamp
+        del kind, timestamp
 
     def _get_rendered_writer(self, unit_id: str) -> RenderedRecordWriter | None:
         """Return the per-unit rendered-record writer, lazy-created.
@@ -2571,9 +2575,17 @@ class ParallelDisplay:
             metadata
         )
         if previewed_result:
-            result_preview_tool_name, result_preview_input, previewed_result = (
+            result_preview_tool_name, result_preview_input, _is_previewable_result = (
                 self._result_preview_input(unit_id, metadata, text_content)
             )
+            previewed_result = _is_previewable_result and build_edit_preview(
+                result_preview_tool_name,
+                result_preview_input,
+                width=self._ctx.width,
+                terminal_bg_is_light=self._terminal_bg_is_light,
+                overflow_ref=overflow_ref,
+                glyphs_enabled=self._ctx.glyphs_enabled,
+            ) is not None
             if previewed_result:
                 content_for_emit = f"↳ {result_preview_tool_name}"
 
