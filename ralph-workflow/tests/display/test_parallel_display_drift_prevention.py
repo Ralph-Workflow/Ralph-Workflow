@@ -74,6 +74,14 @@ _CLEANUP_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "cleanup.py"
 _STAR_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "star.py"
 _CONTRIBUTE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "contribute.py"
 _SMOKE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "smoke.py"
+_CHECK_POLICY_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "check_policy.py"
+_COMMIT_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "commit.py"
+_DIAGNOSE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "diagnose.py"
+_EXPLAIN_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "explain.py"
+_INIT_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "init.py"
+_PROMPT_HELPER_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "prompt_helper.py"
+_RUN_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "run.py"
+_CONFLICT_STATUS_PATH = _REPO_ROOT / "ralph" / "pipeline" / "conflict_resolution" / "status.py"
 _CLI_ENTRY_PATHS = (
     _REPO_ROOT / "ralph" / "cli" / "main.py",
     _REPO_ROOT / "ralph" / "cli" / "_prompt_helper_entry.py",
@@ -352,6 +360,14 @@ _FOLD_TARGETS: tuple[tuple[Path, tuple[str, ...], str], ...] = (
         ("emit_renderable",),
         "smoke",
     ),
+    (_CHECK_POLICY_PATH, ("emit_status", "emit_warning"), "check-policy"),
+    (_COMMIT_PATH, ("emit_status", "emit_warning"), "commit"),
+    (_DIAGNOSE_PATH, ("emit_status", "emit_renderable"), "diagnose"),
+    (_EXPLAIN_PATH, ("emit_status", "emit_warning"), "explain"),
+    (_INIT_PATH, ("emit_status", "emit_warning"), "init"),
+    (_PROMPT_HELPER_PATH, ("emit_status", "emit_warning"), "prompt-helper"),
+    (_RUN_PATH, ("emit_warning", "emit_info_panel"), "run"),
+    (_CONFLICT_STATUS_PATH, ("emit_warn_line",), "conflict resolution"),
 )
 
 
@@ -412,10 +428,10 @@ def test_command_fold_routes_through_display(
     """
     source = path.read_text(encoding="utf-8")
     for emit in expected_emits:
-        assert f"display.{emit}" in source, (
-            f"{label} ({path.relative_to(_REPO_ROOT)}) must use "
-            f"display.{emit}(...) to route output through the shared "
-            "display surface (S-14)."
+        routes_through_display = f"display.{emit}" in source or f'getattr(display, "{emit}"' in source
+        assert routes_through_display, (
+            f"{label} ({path.relative_to(_REPO_ROOT)}) must route through "
+            f"display.{emit}(...) to use the shared display surface (S-14)."
         )
 
 

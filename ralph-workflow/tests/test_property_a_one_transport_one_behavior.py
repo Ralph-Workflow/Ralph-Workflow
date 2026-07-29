@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from functools import cache
 from pathlib import Path
 
@@ -39,13 +40,18 @@ INCLUDED_SUFFIXES = (".py", ".md")
 
 @cache
 def _source_bytes(root: Path) -> tuple[tuple[Path, bytes], ...]:
-    return tuple(
-        (path, path.read_bytes())
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix in INCLUDED_SUFFIXES
-        and "__pycache__" not in path.parts
-    )
+    sources: list[tuple[Path, bytes]] = []
+    for directory, directories, files in os.walk(root):
+        directories[:] = [
+            name for name in directories if name not in {"__pycache__", ".venv", "node_modules"}
+        ]
+        base = Path(directory)
+        sources.extend(
+            (base / name, (base / name).read_bytes())
+            for name in files
+            if (base / name).suffix in INCLUDED_SUFFIXES
+        )
+    return tuple(sources)
 
 
 def test_runtime_module_contains_no_fastmcp_symbols() -> None:

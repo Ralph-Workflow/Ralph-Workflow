@@ -257,5 +257,17 @@ if [ -n "$FILTERED" ]; then
     exit 1
 fi
 
-echo "PASS: drift check clean (no NARROW_THRESHOLD / MEDIUM_THRESHOLD / ctx.mode [==|!=] compact|medium|wide / RALPH_FORCE_NARROW / force_mode= / DISPLAY_MODE outside the historical allowlist)"
+# Command output must use the shared display. Match executable-looking lines only;
+# comments and docstrings may explain the retired direct-output paths. The smoke
+# EXIT_CODE line is a documented machine contract and the sole allowed exception.
+COMMAND_OUTPUT_HITS="$(git grep -nE '^[[:space:]]*(print\(|typer\.echo\(|sys\.stdout\.write\(|[[:alnum:]_\.]+\.console\.print\()' -- ralph/cli/commands ralph/pipeline/conflict_resolution \
+    | grep -v '^ralph/cli/commands/smoke.py:513:' || true)"
+if [ -n "$COMMAND_OUTPUT_HITS" ]; then
+    echo "FAIL: private command display path detected" >&2
+    echo "$COMMAND_OUTPUT_HITS" >&2
+    echo "Route operator-facing output through display.emit_*; smoke EXIT_CODE= is the only machine-contract exception." >&2
+    exit 1
+fi
+
+echo "PASS: drift check clean (no retired display modes or private command output paths)"
 exit 0

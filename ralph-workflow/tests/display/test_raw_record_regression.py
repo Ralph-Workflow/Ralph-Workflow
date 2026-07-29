@@ -22,6 +22,7 @@ import io
 import json
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -104,24 +105,39 @@ def _drive_through_writer(
     return writer.path.read_text(encoding="utf-8")
 
 
-def test_tool_result_regression_flood_entries_keep_tool_target_and_outcome(tmp_path: Path) -> None:
-    """S-3: distinct same-kind results remain distinguishable in the record."""
-    records = [
-        {
-            "kind": "tool_result",
-            "content": "12 lines",
-            "metadata": {"tool": "read_file", "target": f"path=src/file_{index}.py"},
-        }
-        for index in range(20)
-    ]
-    output = _drive_through_writer(records, tmp_path)
-    lines = [line for line in output.splitlines() if line.strip()]
-    assert len(lines) == 20
-    assert len(set(lines)) == 20
-    for index, line in enumerate(lines):
-        assert "PASS" in line
-        assert "read_file" in line
-        assert f"path=src/file_{index}.py" in line
+def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Path) -> None:
+    """S-4 / DA-005: 120 results and progress companions stay distinguishable."""
+    display, _output, advance = _make_display_with_injected_clock(tmp_path)
+    display.start()
+    for index in range(120):
+        target = f"path=src/file_{index}.py"
+        display.emit_parsed_event(
+            unit_id="pi",
+            kind=ActivityEventKind.TOOL_RESULT,
+            content=target,
+            metadata={"tool_name": "read_file", "exit_code": 0},
+        )
+        display.emit_parsed_event(
+            unit_id="pi",
+            kind=ActivityEventKind.SUBAGENT_PROGRESS,
+            content=target,
+            metadata={"tool_name": "read_file"},
+        )
+        if index % 40 == 39:
+            advance(1)
+    display.stop()
+
+    rendered = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
+        encoding="utf-8"
+    )
+    lines = [line for line in rendered.splitlines() if line.strip()]
+    assert len(lines) == 120
+    assert all("role=tool_result" in line for line in lines)
+    assert all(first != second for first, second in pairwise(lines))
+    assert "role=progress" not in rendered
+    assert "(running...)" not in rendered
+    for index in range(120):
+        assert rendered.count(f"path=src/file_{index}.py") == 1
 
 
 def test_pi_ndjson_re_renders_one_entry_per_event(tmp_path: Path) -> None:
@@ -591,10 +607,9 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert rendered.count("Inspecting the display.") == 1
     assert rendered.count("renderer source") == 1
     assert rendered.count("upstream disconnected") == 1
-    # S-6 / DA-002: the production record keeps each OpenCode tool event
-    # structurally greppable and informative. The role markers are emitted by
-    # the shared record writer, while the parser-normalized tool name/outcome
-    # remains in the same line for a reader skimming the record.
+    # S-5 / DA-003: the OpenCode wire fixture reaches the production record
+    # once per visible parser event, preserving role markers, timestamps, and
+    # tool hierarchy rather than relying on renderer-only parity coverage.
     tool_call_lines = [line for line in lines if "role=tool_call" in line]
     tool_result_lines = [line for line in lines if "role=tool_result" in line]
     assert tool_call_lines, f"OpenCode calls lost their role marker:\n{rendered}"
@@ -606,6 +621,8 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert all("severity=info" not in line for line in tool_result_lines), (
         f"healthy tool-result severity must stay omitted:\n{rendered}"
     )
+    assert all("role=" in line and "[??:??:??]" not in line for line in lines)
+    assert any(line.startswith("  ") for line in lines if "role=tool_" in line)
     for forbidden in _FORBIDDEN_TOKENS:
         assert forbidden not in rendered
 

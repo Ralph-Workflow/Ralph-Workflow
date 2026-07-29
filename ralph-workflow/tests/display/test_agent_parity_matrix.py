@@ -20,10 +20,14 @@ APIs and ``rich.text.Text.plain`` so it does not peek at implementations.
 
 from __future__ import annotations
 
+import io
 import json
 from collections.abc import Iterable
+from datetime import datetime
 from itertools import combinations
 from pathlib import Path
+
+import pytest
 
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.display.activity_event_kind import ActivityEventKind
@@ -398,6 +402,88 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
     assert entries[9].body == "bash"
     assert entries[10].body == "exit status 1"
     assert entries[11].body == "upstream disconnected"
+
+
+def _replay_fixture_through_parallel_display(
+    fixture_name: str, tmp_path: Path, *, unit_id: str
+) -> tuple[str, str]:
+    """Replay one corpus fixture through the public display event seam."""
+    from rich.console import Console
+
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+
+    output = io.StringIO()
+    display = ParallelDisplay(
+        make_display_context(
+            console=Console(file=output, force_terminal=False, width=200, color_system=None),
+            env={"CI": "1"},
+        ),
+        workspace_root=tmp_path,
+        clock=lambda: datetime(2026, 7, 25, 9, 30, 0),
+        monotonic=lambda: 0.0,
+    )
+    display.start()
+    records = _load_ndjson_fixture(fixture_name)
+    for record in records:
+        event = _event_from_fixture(record)
+        display.emit_parsed_event(
+            unit_id=unit_id,
+            kind=event.kind,
+            content=event.content,
+            metadata=event.metadata,
+        )
+    display.stop()
+    return (
+        (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(
+            encoding="utf-8"
+        ),
+        output.getvalue(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "unit_id"),
+    (
+        ("claude_ndjson.jsonl", "claude"),
+        ("claude_ndjson.jsonl", "claude-headless"),
+        ("codex_ndjson.jsonl", "codex"),
+        ("cursor_ndjson.jsonl", "cursor"),
+        ("agy_ndjson.jsonl", "agy"),
+        ("nanocoder_ndjson.jsonl", "nanocoder"),
+        ("generic_ndjson.jsonl", "generic"),
+        ("malformed_ndjson.jsonl", "generic"),
+        ("gemini_ndjson.jsonl", "gemini"),
+        ("pi_ndjson.jsonl", "pi"),
+    ),
+)
+def test_ndjson_corpus_renders_identically_on_live_and_record_surfaces(
+    fixture_name: str, unit_id: str, tmp_path: Path
+) -> None:
+    """DA-005: every parser corpus reaches both production display surfaces.
+
+    The malformed fixture carries invalid JSON in an unknown-event payload;
+    normalization has already preserved the event, and this seam proves the
+    shared presenter degrades it to a structured record rather than crashing.
+    """
+    records = _load_ndjson_fixture(fixture_name)
+    rendered, live = _replay_fixture_through_parallel_display(
+        fixture_name, tmp_path, unit_id=unit_id
+    )
+    lines = [line for line in rendered.splitlines() if line.strip()]
+    assert len(lines) == len(records), f"{fixture_name}: expected one record row per event"
+    assert live
+    assert all("role=" in line and "[??:??:??]" not in line for line in lines)
+    if any(str(record.get("kind")) in {"tool_use", "tool_result"} for record in records):
+        assert any(line.startswith("  ") for line in lines), (
+            f"{fixture_name}: tool hierarchy lost from rendered record"
+        )
+    for surface in (rendered, live):
+        for forbidden in _INTERNAL_VOCABULARY:
+            assert forbidden not in surface
+    if fixture_name == "malformed_ndjson.jsonl":
+        assert "Unparsed line retained." in rendered
+        assert "role=unrecognized" in rendered
 
 
 def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:

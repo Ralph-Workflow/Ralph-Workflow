@@ -47,6 +47,10 @@ tag exists yet — a link to one would be a dead link.
 
 - **fix(display): group rendered-record entries beneath readable phase headers** — event rows now omit repeated phase, cycle, identity, and healthy severity while retaining timestamps, hierarchy, role markers, and explicit failures. Locked by `tests/display/test_record_writer.py`, `tests/display/test_record_surface_residuals.py`, and `tests/display/test_raw_record_regression.py`.
 
+- **fix(display): lock production-path tool-result flood handling and per-agent rendered-record parity** — 120 distinct tool results with progress companions remain distinguishable without progress echoes or contradictory running text; codex, cursor, agy, nanocoder, generic, malformed, claude, and pi fixture streams now exercise both display surfaces. Locked by `tests/display/test_raw_record_regression.py` and `tests/display/test_agent_parity_matrix.py`.
+
+- **refactor(display): guard command output through the shared display surface** — check-policy, commit, diagnose, explain, init, prompt-helper, run, and conflict resolution join the existing cleanup, star, contribute, and smoke folds; smoke `EXIT_CODE=N` remains the sole machine-readable exception. Locked by `tests/display/test_parallel_display_drift_prevention.py` and `scripts/wt028-drift-check.sh`.
+
 ### Documentation
 
 - **docs(mcp): align the plan-spec contract with PLAN001-only blocking** — the public module docstring now says parsed consumer anchors are best-effort advisory diagnostics, matching the implemented severity policy. Locked by `tests/mcp/test_md_plan_advisory.py` and `tests/mcp/test_md_plan_not_a_plan.py`.

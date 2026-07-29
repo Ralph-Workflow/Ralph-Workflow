@@ -390,7 +390,19 @@ position, and agent identity once. Indented event rows carry a timestamp,
 body, and ``role=...`` marker; healthy ``info`` severity is omitted while
 warnings and errors remain explicit. This keeps the record greppable without
 repeating chrome on every event. The verbatim ``.log`` capture remains the
-unabridged target for condensation markers.
+unabridged target for condensation markers. Every supported agent and the
+generic fallback use this same production path; malformed input becomes an
+``unknown`` entry with the same hierarchy rather than raw output.
+
+Command-path guard
+------------------
+
+The main run, commit plumbing, policy check, diagnose, explain, init,
+prompt-helper, cleanup, star, contribute, smoke, and conflict resolution use
+``ParallelDisplay.emit_*`` methods for operator-facing output. The smoke
+command's literal ``EXIT_CODE=N`` line is the single machine-readable
+exception. ``tests/display/test_parallel_display_drift_prevention.py`` and
+``scripts/wt028-drift-check.sh`` reject new private command output paths.
 
 Iteration context labels
 ------------------------
