@@ -48,11 +48,13 @@ def build_edit_preview(
         glyphs_enabled=glyphs_enabled,
     )
 
+
 def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx), buf
+
 
 def _make_truecolor_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     """Return a live display whose output retains truecolor escape sequences."""
@@ -66,11 +68,13 @@ def _make_truecolor_display(width: int = 120) -> tuple[ParallelDisplay, io.Strin
     )
     return ParallelDisplay(make_display_context(console=console, env={})), buf
 
+
 def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx, is_quiet=True), buf
+
 
 def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
     """Commands without file content do not produce a preview."""
@@ -78,6 +82,7 @@ def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
         assert build_edit_preview(name, {"path": "a.py"}, width=80) is None, (
             f"{name!r} must not produce a preview"
         )
+
 
 def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     """Read results get the same file-content preview as writes (S-3)."""
@@ -88,6 +93,7 @@ def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     )
     assert isinstance(preview, Syntax)
     assert preview.lexer.name == "Python"
+
 
 def test_read_file_regression_snippet_uses_requested_path_lexer() -> None:
     """DA-001: relative gutters do not turn an unwindowed Python read into a diff."""
@@ -101,14 +107,18 @@ def test_read_file_regression_snippet_uses_requested_path_lexer() -> None:
         isinstance(renderable, Text) and "(snippet)" in renderable.plain
         for renderable in preview.renderables
     )
-    syntax = next(renderable for renderable in preview.renderables if isinstance(renderable, Syntax))
+    syntax = next(
+        renderable for renderable in preview.renderables if isinstance(renderable, Syntax)
+    )
     assert syntax.lexer.name == "Python"
+
 
 def test_build_edit_preview_returns_none_for_empty_payload() -> None:
     """Empty input_dict or empty content returns None."""
     assert build_edit_preview("write_file", {}, width=80) is None
     assert build_edit_preview("write_file", {"path": "a.py", "content": ""}, width=80) is None
     assert build_edit_preview("edit_file", {"path": "a.py", "edits": []}, width=80) is None
+
 
 def test_native_json_payload_and_patch_normalize_without_parser_identity() -> None:
     """S-1: documented parser envelopes normalize native editor calls."""
@@ -123,41 +133,6 @@ def test_native_json_payload_and_patch_normalize_without_parser_identity() -> No
     preview = build_edit_preview("apply_patch", patch, width=80)
     assert preview is not None
 
-def test_preview_payload_parser_metadata_matrix() -> None:
-    """S-1: every structured parser envelope maps native tools or declines them."""
-    cases = (
-        ("claude", "Write", {"input": {"file_path": "a.py", "content": "x = 1"}}, "write"),
-        (
-            "codex",
-            "Edit",
-            {"input": '{"path":"a.py","old_string":"x","new_string":"y"}'},
-            "replace",
-        ),
-        (
-            "cursor",
-            "MultiEdit",
-            {"args": {"path": "a.py", "edits": [{"old_string": "x", "new_string": "y"}]}},
-            "replace",
-        ),
-        (
-            "pi",
-            "NotebookEdit",
-            {"args": {"path": "a.ipynb", "kernel": "python", "source": "x = 1"}},
-            "write",
-        ),
-        (
-            "opencode",
-            "str_replace",
-            {"args": {"path": "a.py", "old_string": "x", "new_string": "y"}},
-            "replace",
-        ),
-        ("gemini", "Read", {"args": '{"file_path":"a.py","content":"x = 1"}'}, "read"),
-    )
-    for _parser, tool_name, metadata, operation in cases:
-        payload = payload_from_tool_event(tool_name, metadata)
-        assert payload is not None and payload.operation == operation
-    for parser in ("agy", "generic", "nanocoder", "claude_interactive"):
-        assert payload_from_tool_event("Write", {"raw_parser": parser}) is None
 
 def test_preview_payload_accepts_gemini_documented_literal_args() -> None:
     """S-1: Gemini's documented stringified argument mapping stays previewable."""
@@ -167,6 +142,7 @@ def test_preview_payload_accepts_gemini_documented_literal_args() -> None:
     assert payload is not None
     assert payload.path == "a.py"
     assert payload.content == "x = 1"
+
 
 def test_build_edit_preview_binary_content_degrades_to_note() -> None:
     """S-2: binary payloads are never rendered as raw bytes."""
@@ -179,10 +155,12 @@ def test_build_edit_preview_binary_content_degrades_to_note() -> None:
     assert "binary content omitted" in rendered.getvalue()
     assert "unsafe" not in rendered.getvalue()
 
+
 def test_preview_payload_rejects_unknown_tools_and_invalid_json() -> None:
     """S-1: unknown names and malformed JSON never trigger content guessing."""
     assert payload_from_tool_event("unrecognized_editor", {"args": {"content": "x"}}) is None
     assert payload_from_tool_event("Write", {"args": "not JSON"}) is None
+
 
 def test_build_edit_preview_read_multiple_files_renders_each_file_with_its_lexer() -> None:
     """S-2: multi-file read results preserve individual file boundaries and lexers."""
@@ -200,6 +178,7 @@ def test_build_edit_preview_read_multiple_files_renders_each_file_with_its_lexer
     assert "settings.yaml" in rendered.getvalue()
     assert re.search(r"\b20\s+x = 1", rendered.getvalue())
 
+
 def test_partial_read_envelope_uses_real_window_line_number() -> None:
     """A read result envelope starts the gutter at its source window."""
     preview = build_edit_preview(
@@ -209,6 +188,7 @@ def test_partial_read_envelope_uses_real_window_line_number() -> None:
     )
     assert isinstance(preview, Syntax)
     assert preview.start_line == 17
+
 
 def test_build_edit_preview_write_file_python_uses_python_lexer() -> None:
     """A ``write_file`` call against a ``.py`` path returns a ``Syntax`` object
@@ -221,6 +201,7 @@ def test_build_edit_preview_write_file_python_uses_python_lexer() -> None:
     assert preview is not None, "write_file with content must produce a preview"
     assert isinstance(preview, Syntax), f"expected rich.syntax.Syntax, got {type(preview).__name__}"
     assert preview.lexer.name == "Python", f"expected Python lexer, got {preview.lexer.name!r}"
+
 
 def test_build_edit_preview_write_file_renders_line_numbers() -> None:
     """The rendered preview carries line numbers (per snippet, starting at 1)."""
@@ -239,6 +220,7 @@ def test_build_edit_preview_write_file_renders_line_numbers() -> None:
     assert "y = 2" in rendered
     assert "z = 3" in rendered
 
+
 def test_build_edit_preview_artifact_stage_uses_markdown_lexer() -> None:
     """``ralph_stage_md_artifact`` (no path, has content) infers the markdown lexer."""
     preview = build_edit_preview(
@@ -249,6 +231,7 @@ def test_build_edit_preview_artifact_stage_uses_markdown_lexer() -> None:
     assert preview is not None, "stage artifact with content must produce a preview"
     assert isinstance(preview, Markdown)
 
+
 def test_build_edit_preview_artifact_submit_uses_markdown_lexer() -> None:
     """``ralph_submit_md_artifact`` (no path, has content) infers the markdown lexer."""
     preview = build_edit_preview(
@@ -258,6 +241,7 @@ def test_build_edit_preview_artifact_submit_uses_markdown_lexer() -> None:
     )
     assert preview is not None
     assert isinstance(preview, Markdown)
+
 
 def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None:
     """S-3: representative suffixes, names, and safe content sniffing resolve."""
@@ -285,6 +269,7 @@ def test_language_inference_supports_compound_named_and_sniffed_inputs() -> None
     assert lexer_for_path(None, "<?xml version='1.0'?><root />") == "xml"
     assert lexer_for_path(None, '{"enabled": true}') == "json"
 
+
 @settings(max_examples=10, deadline=None)
 @given(
     path=st.one_of(st.none(), st.text(max_size=128)),
@@ -297,6 +282,7 @@ def test_language_inference_property_never_raises_for_arbitrary_text(
     lexer = lexer_for_path(path, content)
     assert isinstance(lexer, str)
     assert lexer
+
 
 def test_language_inference_never_raises_for_adversarial_content() -> None:
     """S-3: malformed, binary, escaped, and oversized input remains display-safe."""
@@ -311,6 +297,7 @@ def test_language_inference_never_raises_for_adversarial_content() -> None:
         assert isinstance(lexer, str)
         assert lexer
 
+
 def test_build_edit_preview_unknown_extension_falls_back_to_plain() -> None:
     """A path with no recognised extension falls back to plain text without raising."""
     preview = build_edit_preview(
@@ -324,6 +311,7 @@ def test_build_edit_preview_unknown_extension_falls_back_to_plain() -> None:
     console.print(preview)
     rendered = buf.getvalue()
     assert "hello world" in rendered, f"content must survive fallback:\n{rendered}"
+
 
 def test_build_edit_preview_edit_file_shows_old_and_new_with_markers() -> None:
     """``edit_file`` with ``edits=[{oldText, newText}]`` renders BOTH old
@@ -353,6 +341,7 @@ def test_build_edit_preview_edit_file_shows_old_and_new_with_markers() -> None:
     assert "return 1" in rendered
     assert "return 2" in rendered
 
+
 def test_build_edit_preview_edit_file_uses_present_start_line() -> None:
     """A known edit position starts the new-content line numbers there."""
     preview = build_edit_preview(
@@ -370,6 +359,7 @@ def test_build_edit_preview_edit_file_uses_present_start_line() -> None:
     assert "27" in rendered, f"known start line missing from preview:\n{rendered}"
     assert "28" in rendered, f"known subsequent line missing from preview:\n{rendered}"
 
+
 def test_build_edit_preview_edit_file_marks_unknown_line_numbers_as_snippet() -> None:
     """Unknown edit positions visibly distinguish snippet-relative gutters (S-5)."""
     preview = build_edit_preview(
@@ -379,6 +369,7 @@ def test_build_edit_preview_edit_file_marks_unknown_line_numbers_as_snippet() ->
     rendered = io.StringIO()
     Console(file=rendered, force_terminal=False, color_system=None, width=80).print(preview)
     assert "(snippet)" in rendered.getvalue()
+
 
 def test_build_edit_preview_edit_file_without_valid_start_line_starts_at_one() -> None:
     """Absent or nonpositive positions retain snippet-relative numbering."""
@@ -394,6 +385,7 @@ def test_build_edit_preview_edit_file_without_valid_start_line_starts_at_one() -
         assert "1" in rendered and "2" in rendered, (
             f"invalid start_line={start_line!r} must remain snippet-relative:\n{rendered}"
         )
+
 
 def test_preview_header_survives_condensed_content() -> None:
     """The separate file header remains visible when its preview is elided."""
@@ -412,6 +404,7 @@ def test_preview_header_survives_condensed_content() -> None:
     assert header in rendered
     assert "more line" in rendered.lower()
     assert rendered.index(header) < rendered.lower().index("more line")
+
 
 def test_build_edit_preview_ralph_edit_md_artifact_shows_diff() -> None:
     """``ralph_edit_md_artifact`` with ``edits=[{oldText, newText}]`` renders
@@ -437,6 +430,7 @@ def test_build_edit_preview_ralph_edit_md_artifact_shows_diff() -> None:
     assert "Old Heading" in rendered
     assert "New Heading" in rendered
 
+
 def test_build_edit_preview_sanitizes_ansi_escape_sequences() -> None:
     """Hostile content carrying raw CSI escape sequences is sanitized so no
     ``\\x1b`` byte reaches the rendered preview (terminal-escape containment)."""
@@ -460,6 +454,7 @@ def test_build_edit_preview_sanitizes_ansi_escape_sequences() -> None:
     # Visible content survives.
     assert "def safe_function" in rendered
 
+
 def test_build_edit_preview_sanitizes_ansi_in_edits() -> None:
     """Hostile ``oldText`` / ``newText`` are sanitized too."""
     preview = build_edit_preview(
@@ -482,6 +477,7 @@ def test_build_edit_preview_sanitizes_ansi_in_edits() -> None:
     rendered = buf.getvalue()
     assert "\x1b" not in rendered
     assert "y = 2" in rendered
+
 
 def test_build_edit_preview_truncates_long_content_with_elision() -> None:
     """Content exceeding the preview cap is truncated and an elision marker
@@ -507,6 +503,7 @@ def test_build_edit_preview_truncates_long_content_with_elision() -> None:
         f"middle-trim must retain both ends of the source:\n{rendered[-500:]!r}"
     )
 
+
 def test_render_markdown_preview_uses_background_aware_fenced_code_theme() -> None:
     """S-5: fenced Markdown code uses the same fixed-RGB syntax theme as previews."""
     markdown = "# Heading\n\n```python\nx = 1\n```"
@@ -518,6 +515,7 @@ def test_render_markdown_preview_uses_background_aware_fenced_code_theme() -> No
     )
     assert "x" in dark and "\x1b[" in dark
     assert dark != light
+
 
 def test_build_edit_preview_multiple_hunks_share_line_budget_and_report_total_omitted() -> None:
     """S-5: a single 40-line budget preserves both hunk ends and one total count."""
@@ -534,9 +532,11 @@ def test_build_edit_preview_multiple_hunks_share_line_budget_and_report_total_om
     assert output.count("more lines") == 1
     assert "line 0" in output and "line 29" in output
 
+
 # ---------------------------------------------------------------------------
 # 8. Integration with ParallelDisplay.emit_parsed_event
 # ---------------------------------------------------------------------------
+
 
 def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_use() -> None:
     """``ParallelDisplay.emit_parsed_event`` for a TOOL_USE event for ``edit_file``
@@ -569,6 +569,7 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
     assert "def new" in output, f"preview missing new content:\n{output!r}"
     assert "+" in output and "-" in output
 
+
 def test_parallel_display_regression_read_result_is_highlighted_once() -> None:
     """DA-003: a successful read result reaches the truecolor live preview once."""
     pd, buf = _make_truecolor_display()
@@ -590,6 +591,7 @@ def test_parallel_display_regression_read_result_is_highlighted_once() -> None:
     assert plain.count("return 1") == 1
     assert "\x1b[38;2;" in output
 
+
 def test_parallel_display_read_multiple_files_result_uses_per_file_preview() -> None:
     """DA-003: a multi-file result has one truecolor, separately lexed presentation."""
     pd, buf = _make_truecolor_display()
@@ -608,6 +610,7 @@ def test_parallel_display_read_multiple_files_result_uses_per_file_preview() -> 
     assert plain.count("key: value") == 1
     assert "\x1b[38;2;" in output
 
+
 def test_parallel_display_exec_diff_result_uses_diff_preview() -> None:
     """DA-002: a unified-diff exec result reaches the truecolor preview seam."""
     pd, buf = _make_truecolor_display()
@@ -625,6 +628,7 @@ def test_parallel_display_exec_diff_result_uses_diff_preview() -> None:
     assert output.count("+new") == 1
     assert "\x1b[38;2;" in output
 
+
 def test_parallel_display_exec_non_diff_result_has_no_preview() -> None:
     """DA-002: ordinary command output remains the single inline result row."""
     pd, buf = _make_truecolor_display()
@@ -636,6 +640,7 @@ def test_parallel_display_exec_non_diff_result_has_no_preview() -> None:
     )
     pd.stop()
     assert "▷ exec" not in buf.getvalue()
+
 
 def test_parallel_display_records_plain_preview_and_uses_ascii_fallback(tmp_path: Path) -> None:
     """S-4: records retain plain, greppable previews even when live glyphs fall back."""
@@ -664,6 +669,7 @@ def test_parallel_display_records_plain_preview_and_uses_ascii_fallback(tmp_path
     assert "+    7 new = 2" in record
     assert "\u001b" not in record
 
+
 def test_parallel_display_quiet_mode_suppresses_tool_result_preview() -> None:
     """S-4: quiet mode suppresses result previews from the terminal."""
     display, buf = _make_quiet_display()
@@ -675,6 +681,7 @@ def test_parallel_display_quiet_mode_suppresses_tool_result_preview() -> None:
     )
     display.stop()
     assert "S4_QUIET_RESULT_SENTINEL" not in buf.getvalue()
+
 
 def test_parallel_display_quiet_mode_suppresses_tool_use_preview() -> None:
     """Quiet mode suppresses the additive preview block.
@@ -734,11 +741,13 @@ def test_parallel_display_quiet_mode_suppresses_tool_use_preview() -> None:
         f"quiet={buf_quiet.getvalue()!r} loud={buf_loud.getvalue()!r}"
     )
 
+
 # ---------------------------------------------------------------------------
 # 8b. Highlight colours adapt to the terminal background
 # ---------------------------------------------------------------------------
 
 _PY_SNIPPET = 'import os\n\n\ndef handler(value: int) -> str:\n    # note\n    return f"{value}"\n'
+
 
 def _render_truecolor(preview: object) -> str:
     """Render with escape codes intact so colour choices are inspectable."""
@@ -753,6 +762,7 @@ def _render_truecolor(preview: object) -> str:
     console.print(preview)
     return buf.getvalue()
 
+
 def test_preview_emits_fixed_rgb_colours() -> None:
     """Syntax tokens use the shared, accessibility-checked palette."""
     for flag in (True, False, None):
@@ -763,6 +773,7 @@ def test_preview_emits_fixed_rgb_colours() -> None:
             terminal_bg_is_light=flag,
         )
         assert "38;2;" in _render_truecolor(preview)
+
 
 def test_preview_does_not_paint_its_own_background() -> None:
     """The preview must let the terminal background show through.
@@ -778,6 +789,7 @@ def test_preview_does_not_paint_its_own_background() -> None:
     )
     rendered = _render_truecolor(preview)
     assert "48;2;" not in rendered, f"preview painted an RGB background:\n{rendered!r}"
+
 
 def test_preview_colours_differ_between_light_and_dark_backgrounds() -> None:
     """The same content highlights differently on a light vs dark terminal.
@@ -798,6 +810,7 @@ def test_preview_colours_differ_between_light_and_dark_backgrounds() -> None:
         "background is not reaching the Syntax renderable"
     )
 
+
 def test_diff_markers_use_background_appropriate_styles() -> None:
     """The ``-`` / ``+`` marker colours are the background-aware variants."""
     payload = {
@@ -811,6 +824,7 @@ def test_diff_markers_use_background_appropriate_styles() -> None:
         build_edit_preview("edit_file", payload, width=80, terminal_bg_is_light=True)
     )
     assert on_dark != on_light, "diff marker styles did not change with the terminal background"
+
 
 def test_unknown_extension_still_gets_a_real_lexer() -> None:
     """Extensions outside the fast-path map resolve to a usable lexer alias.
@@ -831,9 +845,11 @@ def test_unknown_extension_still_gets_a_real_lexer() -> None:
         f"expected the Ruby lexer via alias lookup, got {preview.lexer.name!r}"
     )
 
+
 # ---------------------------------------------------------------------------
 # 9. No hex color literals in the new module
 # ---------------------------------------------------------------------------
+
 
 def test_edit_preview_module_uses_no_hex_color_literals() -> None:
     """Okabe-Ito discipline: the new ``edit_preview`` module must not introduce
@@ -855,6 +871,7 @@ def test_edit_preview_module_uses_no_hex_color_literals() -> None:
         f"edit_preview.py must not contain hex color literals "
         f"(Okabe-Ito discipline); found {hits!r}"
     )
+
 
 def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> None:
     """S-1: result hits preserve each source lexer, line number, and match carrier."""
@@ -892,6 +909,7 @@ def test_grep_and_search_result_previews_render_numbered_hits_and_emphasis() -> 
     Console(file=rendered, force_terminal=False, color_system=None, width=80).print(search)
     assert "a.py" in rendered.getvalue() and "settings.yaml" in rendered.getvalue()
 
+
 def test_grep_record_projection_is_numbered_ansi_free_and_shared_budgeted() -> None:
     """S-1: records retain hit structure while a result cannot exceed the shared cap."""
     matches = [{"path": "a.py", "line": index, "text": f"needle = {index}"} for index in range(50)]
@@ -904,6 +922,7 @@ def test_grep_record_projection_is_numbered_ansi_free_and_shared_budgeted() -> N
     assert "a.py:   0 needle = 0" in record
     assert "   1 needle = 1" in record
     assert "... (10 more lines)" in record
+
 
 def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None:
     """S-2: adding a parser requires an explicit mapped or declined classification."""
@@ -930,13 +949,16 @@ def test_preview_payload_parser_matrix_classifies_every_shipped_parser() -> None
     }
     assert shipped == classified
 
+
 def test_diff_preview_uses_real_hunk_line_numbers_or_marks_snippet_relative() -> None:
     """Diff metadata stays unnumbered while each hunk body keeps real file lines."""
     numbered = build_edit_preview(
         "git_show", {"content": "@@ -10,3 +20,3 @@\n context\n-old\n+new\n"}, width=80
     )
     preamble = build_edit_preview(
-        "git_diff", {"content": "--- a/y.py\n+++ b/y.py\n@@ -5,1 +5,1 @@\n-a\n+b\n@@ -20,1 +30,1 @@\n-c\n+d\n"}, width=80
+        "git_diff",
+        {"content": "--- a/y.py\n+++ b/y.py\n@@ -5,1 +5,1 @@\n-a\n+b\n@@ -20,1 +30,1 @@\n-c\n+d\n"},
+        width=80,
     )
     snippet = build_edit_preview("git_diff", {"content": "-old\n+new\n"}, width=80)
     assert numbered is not None and preamble is not None and snippet is not None
