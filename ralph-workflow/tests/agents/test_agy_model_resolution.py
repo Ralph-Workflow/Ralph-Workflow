@@ -8,16 +8,6 @@ from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.config.models import UnifiedConfig
 
 
-@pytest.mark.parametrize("effort", ["medium", "high"])
-def test_agy_model_resolution_accepts_published_id_and_effort(effort: str) -> None:
-    config = AgentRegistry.from_config(UnifiedConfig()).get(f"agy/claude-sonnet-4-6:{effort}")
-
-    assert config is not None
-    assert config.model == "claude-sonnet-4-6"
-    assert config.model_flag == f"--model claude-sonnet-4-6 --effort {effort}"
-    assert config.can_commit is True
-
-
 @pytest.mark.parametrize(
     "alias",
     [
@@ -26,6 +16,7 @@ def test_agy_model_resolution_accepts_published_id_and_effort(effort: str) -> No
         "agy/gemini-3.6-flash-low:low",
         "agy/gemini-3.6-flash-high:low",
         "agy/gpt-oss-120b-medium:high",
+        "agy/claude-sonnet-4-6:high",
     ],
 )
 def test_agy_model_resolution_rejects_unknown_or_conflicting_alias(alias: str) -> None:

@@ -44,7 +44,7 @@ phases to:
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 
-The registry resolves dynamic aliases. AGY v1.1.8 observations cover the documented default model and an effort-qualified model; re-measure published IDs after AGY updates. Their syntax differs by agent;
+The registry resolves dynamic aliases. AGY v1.1.8 observations cover the documented default model; AGY rejects tested explicit-model plus effort combinations, so AGY aliases use the published model ID alone. Re-measure published IDs after AGY updates. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
 rather than assuming one shared provider/model format. It includes every
 built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
@@ -186,7 +186,9 @@ process cleanup through the Nanocoder smoke test.
 
 The AGY command builder has a PTY integration path. v1.1.8 manual probes
 observed live output, stream-json events, unattended file creation, canonical
-artifact submission, and completion evidence. The plain-text parser is the
+artifact submission, and completion evidence. A no-model effort probe succeeded,
+but AGY rejected every tested explicit-model plus effort combination, so model
+aliases do not combine those flags. The plain-text parser is the
 smoke default; stream-json is a separately observed CLI format. Session resume
 remains unavailable because the continuation probes did not expose session
 identity. See `tmp/agy-source-of-truth.txt` for the exact observations.
@@ -237,7 +239,7 @@ fixture where applicable. They do **not** claim live MCP wiring for agents
 that have no documented CLI MCP path.
 
 AGY's v1.1.8 source record includes manual observations for model acceptance,
-effort acceptance, stream-json, and the full smoke artifact/completion path.
+a no-model effort invocation, stream-json, and the full smoke artifact/completion path. It records that effort plus an explicit model is rejected.
 The continuation probes did not establish a resumed-session identity, so the
 integration keeps AGY session reuse disabled. The deterministic mock verifies
 the Ralph Workflow harness; the source record preserves the separate live evidence.

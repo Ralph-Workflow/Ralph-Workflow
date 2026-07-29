@@ -187,10 +187,12 @@ default 5-minute print timeout; a billed amount requires the unrun pricing
 probe. It reports file, session, parser-event, tool-activity, and artifact
 signals. Treat any missing signal as a failed diagnostic, not a successful run.
 
-The v1.1.8 manual record observed model acceptance, explicit effort acceptance,
-and stream-json events. The latest smoke created the requested file and showed
-plain-text parser/tool activity without a permission prompt. AGY wrote a valid
-fallback artifact; Ralph promoted it, recorded the canonical receipt, and wrote
+The v1.1.8 manual record observed model acceptance, a no-model effort
+invocation, and stream-json events. It also observed that AGY rejects every
+tested `--effort` plus explicit `--model` combination, so Ralph aliases do not
+combine them. The latest smoke created the requested file and showed plain-text
+parser/tool activity without a permission prompt. AGY wrote a valid fallback
+artifact; Ralph promoted it, recorded the canonical receipt, and wrote
 host-owned durable completion evidence after AGY missed the MCP completion call.
 The plain-text parser remains the smoke default because it retained file and tool
 visibility. Continuation remains disabled: `--continue`

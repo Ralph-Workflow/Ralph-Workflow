@@ -662,19 +662,15 @@ def _resolve_dynamic_simple_prefixed_agent(
 def _parse_agy_alias(
     alias_value: str, *, models: frozenset[str] = _AGY_MODELS
 ) -> tuple[str, str | None] | None:
-    """Parse an observed ``agy/<model>[:effort]`` alias without fallback."""
-    model_id, separator, parsed_effort = alias_value.rpartition(":")
-    effort: str | None = parsed_effort if separator else None
-    if not separator:
-        model_id = alias_value
-    if model_id not in models:
+    """Parse an observed AGY model alias without silently changing its selection.
+
+    AGY v1.1.8 accepts ``--effort`` only without an explicit ``--model``;
+    model IDs already encode their effort tier where applicable. Ralph aliases
+    therefore accept only the exact IDs published by ``agy models``.
+    """
+    if ":" in alias_value or alias_value not in models:
         return None
-    if effort is not None and (
-        effort not in _AGY_REASONING_EFFORTS
-        or any(model_id.endswith(f"-{token}") for token in _AGY_REASONING_EFFORTS)
-    ):
-        return None
-    return model_id, effort
+    return alias_value, None
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:
