@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
-
-from ralph.config._paths import resolve_global_config_dir
+from importlib import import_module
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from ralph.project_urls import GETTING_STARTED_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
 
@@ -78,9 +77,19 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
     )
 
 
+@runtime_checkable
+class _GlobalConfigDirResolver(Protocol):
+    def __call__(self) -> Path: ...
+
+
 def _global_main_config_path() -> Path:
-    """Return the user-global main config path."""
-    return resolve_global_config_dir() / "ralph-workflow.toml"
+    """Resolve the user-global main config without bootstrap's import cycle."""
+    bootstrap = import_module("ralph.config.bootstrap")
+    namespace = cast("dict[str, object]", bootstrap.__dict__)
+    resolver = namespace.get("resolve_global_config_dir")
+    if not isinstance(resolver, _GlobalConfigDirResolver):
+        raise RuntimeError("ralph.config.bootstrap has no global config directory resolver")
+    return resolver() / "ralph-workflow.toml"
 
 
 def welcome_panel_next_steps() -> tuple[str, ...]:
