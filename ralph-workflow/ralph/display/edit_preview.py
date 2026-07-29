@@ -43,18 +43,16 @@ Design:
 * Write-style tools (``write_file`` / ``append_file`` /
   ``ralph_stage_md_artifact`` / ``ralph_submit_md_artifact``): the
   content is wrapped in a ``rich.syntax.Syntax`` with
-  ``line_numbers=True``; if the lexer is markdown, ``word_wrap=True``.
+  ``line_numbers=True``; markdown uses :func:`render_markdown_preview` instead.
 
 * Edit-style tools (``edit_file`` / ``ralph_edit_md_artifact``):
   every entry in ``edits`` is rendered as a ``- old / + new`` diff
-  with the new content syntax-highlighted under ``line_numbers=True``.
+  with both hunks syntax-highlighted under ``line_numbers=True`` using the same lexer.
   A positive integer ``start_line`` on an edit starts its new-content
   line numbers at that known file position; absent or invalid values
-  remain snippet-relative at 1. The old lines use the ``theme.status.error``
-  carrier (vermillion) and the new lines use the
-  ``theme.status.success`` carrier (bluish-green) so the diff
-  remains readable when color is disabled: the literal ``-`` and
-  ``+`` markers carry the meaning.
+  remain snippet-relative at 1. Only the literal ``-`` and ``+`` markers
+  use the ``theme.status.error`` / ``theme.status.success`` carriers, so
+  the diff remains readable when color is disabled.
 
 * A bounded preview cap (``_MAX_PREVIEW_LINES = 40``) trims long
   content and appends a muted ``\u2026 (N more lines)`` elision line
@@ -311,7 +309,6 @@ class _BackgroundAwareCodeBlock(CodeBlock):
             self.lexer_name,
             theme=syntax_theme_for_background(self.terminal_bg_is_light),
             background_color=SYNTAX_BACKGROUND_TRANSPARENT,
-            word_wrap=True,
             padding=1,
         )
 
@@ -468,7 +465,9 @@ def _build_multiple_read_preview(
         )
         remaining -= shown
         if preview is not None:
-            blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), preview))
+            blocks.extend(
+                (Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), preview)
+            )
     if omitted_total:
         blocks.append(
             _elision_text(
@@ -496,7 +495,9 @@ def _search_record_lines(content: str) -> list[str] | None:
         elif isinstance(match, dict):
             path, line, text = match.get("path"), match.get("line"), match.get("text")
             if isinstance(path, str) and isinstance(line, int) and isinstance(text, str):
-                lines.append(f"  {strip_terminal_control(path)}:{line:>4} {strip_terminal_control(text)}")
+                lines.append(
+                    f"  {strip_terminal_control(path)}:{line:>4} {strip_terminal_control(text)}"
+                )
     return lines
 
 
@@ -535,7 +536,9 @@ def _build_search_result_preview(
         safe = strip_terminal_control(text)
         binary = _binary_note(safe)
         if binary is not None:
-            blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), binary))
+            blocks.extend(
+                (Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), binary)
+            )
             continue
         syntax = _make_syntax(
             safe,
@@ -549,7 +552,7 @@ def _build_search_result_preview(
                 f"bold {_diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)}",
                 (1, start),
                 (1, start + len(pattern)),
-                style_before=False
+                style_before=False,
             )
         blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), syntax))
     if omitted:
@@ -639,8 +642,11 @@ def _build_edit_preview(
                 Group(
                     Text(marker, style=style),
                     _make_syntax(
-                        "\n".join(head), lexer_name, is_markdown=is_markdown,
-                        terminal_bg_is_light=terminal_bg_is_light, start_line=start_line,
+                        "\n".join(head),
+                        lexer_name,
+                        is_markdown=is_markdown,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=start_line,
                     ),
                 )
             )
@@ -648,8 +654,11 @@ def _build_edit_preview(
                 tail_start = start_line + len(head) + (omitted or 0)
                 blocks.append(
                     _make_syntax(
-                        "\n".join(tail), lexer_name, is_markdown=is_markdown,
-                        terminal_bg_is_light=terminal_bg_is_light, start_line=tail_start,
+                        "\n".join(tail),
+                        lexer_name,
+                        is_markdown=is_markdown,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=tail_start,
                     )
                 )
     if total_omitted:
@@ -709,14 +718,19 @@ def _build_content_preview(
             if head:
                 blocks.append(
                     _make_syntax(
-                        "\n".join(head), lexer_for_path(preview_path, body), is_markdown=False,
-                        terminal_bg_is_light=terminal_bg_is_light, start_line=int(hunk.group(1)),
+                        "\n".join(head),
+                        lexer_for_path(preview_path, body),
+                        is_markdown=False,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=int(hunk.group(1)),
                     )
                 )
             if tail:
                 blocks.append(
                     _make_syntax(
-                        "\n".join(tail), lexer_for_path(preview_path, body), is_markdown=False,
+                        "\n".join(tail),
+                        lexer_for_path(preview_path, body),
+                        is_markdown=False,
                         terminal_bg_is_light=terminal_bg_is_light,
                         start_line=int(hunk.group(1)) + len(head) + (omitted or 0),
                     )
@@ -731,8 +745,14 @@ def _build_content_preview(
         return Group(*blocks) if blocks else None
     preview_start = start_line if isinstance(start_line, int) and start_line > 0 else 1
     preview = _build_write_preview(
-        bare, preview_path, content, width=width, terminal_bg_is_light=terminal_bg_is_light,
-        overflow_ref=overflow_ref, glyphs_enabled=glyphs_enabled, start_line=preview_start,
+        bare,
+        preview_path,
+        content,
+        width=width,
+        terminal_bg_is_light=terminal_bg_is_light,
+        overflow_ref=overflow_ref,
+        glyphs_enabled=glyphs_enabled,
+        start_line=preview_start,
     )
     if preview is None:
         return None
@@ -845,8 +865,14 @@ def build_edit_preview(
         )
     if isinstance(content_obj, str) and content_obj:
         return _build_content_preview(
-            bare, canonical, content_obj, path, start_line, width=width,
-            terminal_bg_is_light=terminal_bg_is_light, overflow_ref=overflow_ref,
+            bare,
+            canonical,
+            content_obj,
+            path,
+            start_line,
+            width=width,
+            terminal_bg_is_light=terminal_bg_is_light,
+            overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,
         )
     return None

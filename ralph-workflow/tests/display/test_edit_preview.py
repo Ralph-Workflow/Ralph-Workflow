@@ -48,13 +48,11 @@ def build_edit_preview(
         glyphs_enabled=glyphs_enabled,
     )
 
-
 def _make_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx), buf
-
 
 def _make_truecolor_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     """Return a live display whose output retains truecolor escape sequences."""
@@ -68,13 +66,11 @@ def _make_truecolor_display(width: int = 120) -> tuple[ParallelDisplay, io.Strin
     )
     return ParallelDisplay(make_display_context(console=console, env={})), buf
 
-
 def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, io.StringIO]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
     return ParallelDisplay(ctx, is_quiet=True), buf
-
 
 def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
     """Commands without file content do not produce a preview."""
@@ -82,7 +78,6 @@ def test_build_edit_preview_returns_none_for_non_content_tools() -> None:
         assert build_edit_preview(name, {"path": "a.py"}, width=80) is None, (
             f"{name!r} must not produce a preview"
         )
-
 
 def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     """Read results get the same file-content preview as writes (S-3)."""
@@ -93,7 +88,6 @@ def test_build_edit_preview_read_file_uses_path_lexer() -> None:
     )
     assert isinstance(preview, Syntax)
     assert preview.lexer.name == "Python"
-
 
 def test_read_file_regression_snippet_uses_requested_path_lexer() -> None:
     """DA-001: relative gutters do not turn an unwindowed Python read into a diff."""
@@ -504,6 +498,18 @@ def test_build_edit_preview_truncates_long_content_with_elision() -> None:
     )
 
 
+def test_markdown_preview_regression_wraps_prose_without_wrapping_fenced_code() -> None:
+    """S-1: Markdown prose wraps; fenced source does not."""
+    output = _render_truecolor(
+        render_markdown_preview(
+            f"{'prose ' * 20}\n\n```python\n{'identifier_' * 10}\n```",
+            width=80,
+            terminal_bg_is_light=False,
+        )
+    )
+    assert output.count("prose") > 2 and output.count("identifier_") < 10
+
+
 def test_render_markdown_preview_uses_background_aware_fenced_code_theme() -> None:
     """S-5: fenced Markdown code uses the same fixed-RGB syntax theme as previews."""
     markdown = "# Heading\n\n```python\nx = 1\n```"
@@ -773,6 +779,24 @@ def test_preview_emits_fixed_rgb_colours() -> None:
             terminal_bg_is_light=flag,
         )
         assert "38;2;" in _render_truecolor(preview)
+
+
+def test_diff_preview_regression_remains_transparent_on_all_backgrounds() -> None:
+    """S-2: diff previews use structural markers, never contrast-breaking fills."""
+    payloads = (
+        ("edit_file", {"path": "a.py", "edits": [{"oldText": "old = 1", "newText": "new = 2"}]}),
+        ("git_diff", {"content": "@@ -1 +1 @@\n-old\n+new\n"}),
+    )
+    for background in (False, True, None):
+        for tool_name, payload in payloads:
+            preview = build_edit_preview(
+                tool_name, payload, width=80, terminal_bg_is_light=background
+            )
+            assert preview is not None
+            rendered = _render_truecolor(preview)
+            assert "48;2;" not in rendered and "48;5;" not in rendered
+            plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
+            assert "-" in plain and "+" in plain and "1" in plain
 
 
 def test_preview_does_not_paint_its_own_background() -> None:
