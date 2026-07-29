@@ -203,10 +203,10 @@ def _binary_note(content: str) -> Text | None:
 
 def preview_header(tool_name: str, path: str | None, *, glyphs_enabled: bool = True) -> Text:
     """Return the structural file-content header shown before a preview body."""
-    target = path or "artifact"
     marker = "▸" if glyphs_enabled else ">"
     bare = _normalize_tool_name(tool_name)
-    return Text(f"  {marker} {bare.removesuffix('_file')}  {target}", style="theme.text.emphasis")
+    target = f"  {path}" if path else ""
+    return Text(f"  {marker} {bare.removesuffix('_file')}{target}", style="theme.text.emphasis")
 
 
 def preview_record_text(
@@ -236,7 +236,8 @@ def preview_record_text(
         return "", None
     marker = ">" if not glyphs_enabled else "▸"
     bare = _normalize_tool_name(tool_name)
-    lines = [f"  {marker} {bare.removesuffix('_file')}  {canonical.path or 'artifact'}"]
+    target = f"  {canonical.path}" if canonical.path else ""
+    lines = [f"  {marker} {bare.removesuffix('_file')}{target}"]
     source_parts: list[str] = []
     for hunk in canonical.hunks:
         if hunk.label:

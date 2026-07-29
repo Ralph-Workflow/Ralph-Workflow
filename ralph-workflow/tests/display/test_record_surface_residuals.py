@@ -39,18 +39,14 @@ def test_phase_change_closes_streamed_text_under_its_original_header(tmp_path: P
     pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
     pd.emit_phase_start("development", agent_name="pi")
-    pd.emit_parsed_event(
-        unit_id="pi", kind=ActivityEventKind.TEXT, content="ALPHA", metadata={}
-    )
+    pd.emit_parsed_event(unit_id="pi", kind=ActivityEventKind.TEXT, content="ALPHA", metadata={})
     pd.emit_phase_start("development_analysis", agent_name="pi")
-    pd.emit_parsed_event(
-        unit_id="pi", kind=ActivityEventKind.TEXT, content="BRAVO", metadata={}
-    )
+    pd.emit_parsed_event(unit_id="pi", kind=ActivityEventKind.TEXT, content="BRAVO", metadata={})
     pd.stop()
 
-    lines = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
-        encoding="utf-8"
-    ).splitlines()
+    lines = (
+        (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8").splitlines()
+    )
     alpha = next(index for index, line in enumerate(lines) if "ALPHA" in line)
     analysis_header = next(
         index for index, line in enumerate(lines) if "Development Analysis" in line
@@ -83,14 +79,12 @@ def test_event_rows_indent_beneath_phase_headers(tmp_path: Path) -> None:
     pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
     pd.emit_phase_start("development", agent_name="pi")
-    pd.emit_parsed_event(
-        unit_id="pi", kind=ActivityEventKind.TOOL_USE, content="read", metadata={}
-    )
+    pd.emit_parsed_event(unit_id="pi", kind=ActivityEventKind.TOOL_USE, content="read", metadata={})
     pd.stop()
 
-    lines = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
-        encoding="utf-8"
-    ).splitlines()
+    lines = (
+        (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8").splitlines()
+    )
     header = next(index for index, line in enumerate(lines) if "role=phase_header" in line)
     assert lines[header + 1].startswith("  [")
 
@@ -151,6 +145,33 @@ def test_tool_call_replays_with_one_call_id_emit_once(tmp_path: Path) -> None:
 
     record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
     assert len([line for line in record.splitlines() if "role=tool_call" in line]) == 1
+
+
+def test_record_regression_status_and_unknown_omit_phase_identity_from_bodies(
+    tmp_path: Path,
+) -> None:
+    """DA-002: status and fallback bodies never repeat their header identity."""
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_phase_start("development", agent_name="claude")
+    pd.emit_parsed_event(
+        unit_id="claude",
+        kind=ActivityEventKind.STATUS,
+        content="claude Waiting for input.",
+        metadata={},
+    )
+    pd.emit_parsed_event(
+        unit_id="claude",
+        kind=ActivityEventKind.UNKNOWN,
+        content="claude Unparsed line retained.",
+        metadata={},
+    )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
+    assert record.count("claude") == 1
+    assert "  [09:30:00] Waiting for input. role=status_line" in record
+    assert "  [09:30:00] Unparsed line retained. role=unrecognized" in record
 
 
 def test_result_text_companion_with_same_call_id_emits_once(tmp_path: Path) -> None:

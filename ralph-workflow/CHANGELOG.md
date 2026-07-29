@@ -45,6 +45,10 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(display): collapse duplicate pi tool-call aliases into one presentation entry** — parser aliases sharing a tool-call id now emit one shared call entry. Commit `3c7d9ef79`. Locked by `tests/display/test_record_surface_residuals.py` and `tests/display/test_real_corpus_regression.py`.
+
+- **fix(display): route successful tool results through the shared preview seam** — successful result previews use the same accessible syntax and contrast path as tool calls; obsolete result-only syntax code was removed. Commit `854eec941`. Locked by `tests/display/test_edit_preview.py`, `tests/display/test_preview_contrast_sweep.py`, and `tests/display/test_syntax_palette_accessibility.py`.
+
 - **fix(display): group rendered-record entries beneath readable phase headers** — event rows now omit repeated phase, cycle, identity, and healthy severity while retaining timestamps, hierarchy, role markers, and explicit failures. Locked by `tests/display/test_record_writer.py`, `tests/display/test_record_surface_residuals.py`, and `tests/display/test_raw_record_regression.py`.
 
 - **fix(display): lock production-path tool-result flood handling and per-agent rendered-record parity** — 120 distinct tool results with progress companions remain distinguishable without progress echoes or contradictory running text; codex, cursor, agy, nanocoder, generic, malformed, claude, and pi fixture streams now exercise both display surfaces. Locked by `tests/display/test_raw_record_regression.py` and `tests/display/test_agent_parity_matrix.py`.

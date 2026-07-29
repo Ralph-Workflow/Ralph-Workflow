@@ -141,21 +141,24 @@ def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Pa
         assert "read_file" in next(line for line in lines if f"file_{index}.py" in line)
     assert all("severity=error" in line or "ok" in line.lower() for line in lines)
 
+
 def test_pi_ndjson_re_renders_one_entry_per_event(tmp_path: Path) -> None:
     """The pi PTY NDJSON fixture produces exactly one line per event."""
     path = _fixture("pi_ndjson.jsonl")
-    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     output = _drive_through_writer(records, tmp_path, unit_id="pi")
     lines = [line for line in output.splitlines() if line.strip()]
-    assert len(lines) == len(records), (
-        f"expected {len(records)} lines, got {len(lines)}"
-    )
+    assert len(lines) == len(records), f"expected {len(records)} lines, got {len(lines)}"
 
 
 def test_claude_ndjson_re_renders_one_entry_per_event(tmp_path: Path) -> None:
     """The claude NDJSON fixture produces exactly one line per event."""
     path = _fixture("claude_ndjson.jsonl")
-    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     output = _drive_through_writer(records, tmp_path, unit_id="claude")
     lines = [line for line in output.splitlines() if line.strip()]
     assert len(lines) == len(records)
@@ -473,15 +476,11 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
     pd.stop()
 
     record_path = tmp_path / ".agent" / "raw" / "pi.rendered.log"
-    assert record_path.exists(), (
-        f"Production-path rendered record missing at {record_path}"
-    )
+    assert record_path.exists(), f"Production-path rendered record missing at {record_path}"
     body = record_path.read_text(encoding="utf-8")
 
     # AC-03: every line carries a real timestamp; no ``[??:??:??]``.
-    assert "[??:??:??]" not in body, (
-        f"placeholder timestamp leaked into record:\n{body}"
-    )
+    assert "[??:??:??]" not in body, f"placeholder timestamp leaked into record:\n{body}"
     assert body.count("09:30:0") > 0 or body.count("09:3") > 0, (
         f"no real timestamp from injected clock:\n{body}"
     )
@@ -495,9 +494,7 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
     )
 
     # AC-04: healthy severity is omitted; failed results retain error.
-    assert "severity=warn" not in body, (
-        f"empty warn line or severity=warn leakage:\n{body}"
-    )
+    assert "severity=warn" not in body, f"empty warn line or severity=warn leakage:\n{body}"
     assert "severity=info" not in body
     assert "severity=error" in body
 
@@ -511,9 +508,7 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
     # log. The record carries the marker; the verbatim log holds
     # the unabridged body.
     overflow_path = tmp_path / ".agent" / "raw" / "pi.log"
-    assert overflow_path.exists(), (
-        f"verbatim overflow log missing at {overflow_path}"
-    )
+    assert overflow_path.exists(), f"verbatim overflow log missing at {overflow_path}"
     overflow_body = overflow_path.read_text(encoding="utf-8")
     assert "oversized " in overflow_body, (
         f"verbatim capture missing the oversized body:\n{overflow_body[:200]}"
@@ -539,11 +534,8 @@ def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
         "[thinking-end]",
         "fragments, ",
     ):
-        assert forbidden not in body, (
-            f"forbidden token {forbidden!r} in record:\n{body}"
-        )
+        assert forbidden not in body, f"forbidden token {forbidden!r} in record:\n{body}"
     assert "\x1b[" not in body, f"ANSI escape leaked into record:\n{body}"
-
 
 
 def _drive_fixture_through_production(
@@ -578,12 +570,12 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     wire_path = _fixture("opencode_ndjson.jsonl")
     parsed = list(
         OpenCodeParser().parse(
-            iter(line for line in wire_path.read_text(encoding="utf-8").splitlines() if line.strip())
+            iter(
+                line for line in wire_path.read_text(encoding="utf-8").splitlines() if line.strip()
+            )
         )
     )
-    visible = [
-        line for line in parsed if line.type in {"text", "tool_use", "tool_result", "error"}
-    ]
+    visible = [line for line in parsed if line.type in {"text", "tool_use", "tool_result", "error"}]
     pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
     for line in visible:
@@ -599,9 +591,7 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
         )
     pd.stop()
 
-    rendered = (tmp_path / ".agent" / "raw" / "opencode.rendered.log").read_text(
-        encoding="utf-8"
-    )
+    rendered = (tmp_path / ".agent" / "raw" / "opencode.rendered.log").read_text(encoding="utf-8")
     lines = [line for line in rendered.splitlines() if line.strip()]
     assert 0 < len(lines) <= len(visible)
     assert all("[??:??:??]" not in line and "09:30:" in line for line in lines)
@@ -623,6 +613,34 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     assert any(line.startswith("  ") for line in lines if "role=tool_" in line)
     for forbidden in _FORBIDDEN_TOKENS:
         assert forbidden not in rendered
+
+
+def test_record_regression_tool_result_omits_preceding_preview_and_placeholder_target(
+    tmp_path: Path,
+) -> None:
+    """DA-001: tool results keep their outcome without repeating the call preview."""
+    pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="claude",
+        kind=ActivityEventKind.TOOL_USE,
+        content="read_file",
+        metadata={"tool_name": "read_file", "input": {"path": "src/file.py"}},
+    )
+    pd.emit_parsed_event(
+        unit_id="claude",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="contents read",
+        metadata={"tool_name": "read_file", "path": "src/file.py", "exit_code": 0},
+    )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
+    result = next(line for line in record.splitlines() if "role=tool_result" in line)
+    assert "contents read" in result
+    assert "▸" not in result
+    assert "artifact" not in result
+    assert result.count("read_file") == 1
 
 
 def test_tool_result_is_one_live_row_with_consistent_failure_severity(tmp_path: Path) -> None:
@@ -664,9 +682,7 @@ def test_production_path_pi_fixture_one_entry_per_event_with_real_timestamps(
     n_records = sum(
         1 for line in fixture_path.read_text(encoding="utf-8").splitlines() if line.strip()
     )
-    rendered, _live = _drive_fixture_through_production(
-        "pi_ndjson.jsonl", tmp_path, unit_id="pi"
-    )
+    rendered, _live = _drive_fixture_through_production("pi_ndjson.jsonl", tmp_path, unit_id="pi")
     lines = [line for line in rendered.splitlines() if line.strip()]
     assert len(lines) == n_records, (
         f"expected {n_records} lines (one per event) for pi fixture, got {len(lines)}:\n{rendered}"
@@ -721,9 +737,7 @@ def test_production_path_pi_fixture_no_internal_channel_tokens(
     surface; the severity word, tool name, and outcome carry the
     information instead.
     """
-    rendered, live = _drive_fixture_through_production(
-        "pi_ndjson.jsonl", tmp_path, unit_id="pi"
-    )
+    rendered, live = _drive_fixture_through_production("pi_ndjson.jsonl", tmp_path, unit_id="pi")
     for surface_name, surface in (("record", rendered), ("live_log", live)):
         for forbidden in ("text:", "thinking:", "tool_use:", "tool_result:"):
             assert forbidden not in surface, (
@@ -758,12 +772,8 @@ def test_production_path_pi_fixture_no_role_progress_duplicate(
     contract is exactly one record entry per logical event, so the
     echo must not appear on the record surface.
     """
-    rendered, _live = _drive_fixture_through_production(
-        "pi_ndjson.jsonl", tmp_path, unit_id="pi"
-    )
-    assert "role=progress" not in rendered, (
-        f"role=progress echo leaked into record:\n{rendered}"
-    )
+    rendered, _live = _drive_fixture_through_production("pi_ndjson.jsonl", tmp_path, unit_id="pi")
+    assert "role=progress" not in rendered, f"role=progress echo leaked into record:\n{rendered}"
 
 
 # --- wt-028-display S-2 / DA-001: SUBAGENT_PROGRESS companion is
@@ -812,9 +822,7 @@ def test_subagent_progress_companion_does_not_duplicate_record_entry(
     pd.stop()
 
     record_path = tmp_path / ".agent" / "raw" / "pi.rendered.log"
-    assert record_path.exists(), (
-        f"Production-path rendered record missing at {record_path}"
-    )
+    assert record_path.exists(), f"Production-path rendered record missing at {record_path}"
     record_body = record_path.read_text(encoding="utf-8")
     assert "role=progress" not in record_body, (
         f"role=progress echo leaked into record (DA-001):\n{record_body}"
@@ -900,13 +908,10 @@ def test_production_path_no_internal_channel_tokens_with_subagent_companion(
     )
     pd.stop()
 
-    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
-        encoding="utf-8"
-    )
+    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
     for forbidden in ("text:", "thinking:", "tool_use:", "tool_result:"):
         assert forbidden not in record_body, (
-            f"internal channel token {forbidden!r} leaked into record:\n"
-            f"{record_body}"
+            f"internal channel token {forbidden!r} leaked into record:\n{record_body}"
         )
 
 
@@ -941,9 +946,7 @@ def test_production_path_two_distinct_identical_tool_use_events_both_recorded(
         )
     pd.stop()
 
-    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
-        encoding="utf-8"
-    )
+    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
     assert record_body.count(tool_body) == 2, (
         f"two distinct identical tool_use events should produce two record "
         f"entries; got {record_body.count(tool_body)}:\n{record_body}"
@@ -983,9 +986,7 @@ def test_production_path_text_thinking_companion_deduped_on_live_and_record(
     )
     pd.stop()
 
-    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(
-        encoding="utf-8"
-    )
+    record_body = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
     assert record_body.count(dup_body) == 1, (
         f"DA-002: record body appears {record_body.count(dup_body)} times; "
         f"expected exactly 1:\n{record_body}"
@@ -996,4 +997,3 @@ def test_production_path_text_thinking_companion_deduped_on_live_and_record(
         f"DA-002: live log body appears {live_log.count(dup_body)} times; "
         f"expected exactly 1:\n{live_log}"
     )
-

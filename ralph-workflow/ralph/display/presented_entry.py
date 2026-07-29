@@ -161,15 +161,15 @@ def build_presented_entry(
     # consolidated the stripper into a single leaf module
     # (:mod:`ralph.display._channel_prefix_stripper`) so the live
     # log and the rendered record cannot drift.
-    body = _strip_live_chrome(strip_parser_channel_prefix(body))
+    body = _strip_live_chrome(strip_parser_channel_prefix(body), identity)
     if event.metadata:
         metadata.update(event.metadata)
     severity = _derive_severity(event.kind, metadata)
     if event.kind is ActivityEventKind.TOOL_RESULT:
         body = _tool_result_record_body(body, metadata, severity)
-    grouping_role, indent_level = _KIND_TO_GROUPING.get(
-        event.kind, ("agent_text", 0)
-    )
+    if identity and event.kind in {ActivityEventKind.STATUS, ActivityEventKind.UNKNOWN}:
+        body = body.removeprefix(f"{identity} ")
+    grouping_role, indent_level = _KIND_TO_GROUPING.get(event.kind, ("agent_text", 0))
     # S-2 (wt-028-display P1 / AC-01 / DA-002): the canonical entry
     # carries the source event's real timestamp unless the caller
     # supplies an explicit authoritative override. The pre-fix
@@ -236,13 +236,14 @@ _LIVE_BADGE_ONLY = re.compile(r"^(?:\d{2}:\d{2}:\d{2}\s+)?\S+$")
 _LIVE_BADGE_IDENTITY_ONLY = re.compile(r"^\d{2}:\d{2}:\d{2}\s+[^\s]+$")
 
 
-def _strip_live_chrome(body: str) -> str:
+def _strip_live_chrome(body: str, identity: str) -> str:
     """Remove a live-rendered badge/identity prefix from a record body.
 
     The canonical entry is text-first; status, time, and identity belong to
     its structured fields, not copied from a previously-rendered live line.
     """
     match = _LIVE_BADGE_PREFIX.match(body)
+    identity_prefix = f"{identity} "
     if match is None:
         return body
     remainder = body[match.end() :].strip()
@@ -250,12 +251,10 @@ def _strip_live_chrome(body: str) -> str:
         return remainder.split("↳", 1)[1].strip()
     if _LIVE_BADGE_ONLY.fullmatch(remainder) or _LIVE_BADGE_IDENTITY_ONLY.fullmatch(remainder):
         return ""
-    return remainder
+    return remainder.removeprefix(identity_prefix) if identity else remainder
 
 
-def _derive_severity(
-    kind: ActivityEventKind, metadata: dict[str, object]
-) -> str:
+def _derive_severity(kind: ActivityEventKind, metadata: dict[str, object]) -> str:
     """Return ``info`` / ``warn`` / ``error`` for ``kind`` + outcome metadata.
 
     S-14 (wt-028-display P1 / AC-04): the bug was that every

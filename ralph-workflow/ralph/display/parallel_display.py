@@ -1990,9 +1990,10 @@ class ParallelDisplay:
         """Return a correlated result tool name/path, with display-local fallback."""
         tool_name = str(metadata.get("tool_name", "") or "")
         path = str(metadata.get("tool_path", "") or "")
-        if not path and (previous := self._last_emitted_tool_signature.get(unit_id)) is not None:
+        previous = self._last_emitted_tool_signature.get(unit_id)
+        if previous is not None:
             tool_name = tool_name or previous[0]
-            path = previous[1]
+            path = path or previous[1]
         return tool_name.removeprefix("mcp__ralph__").removeprefix("ralph."), path
 
     def _result_preview_input(
@@ -2649,7 +2650,9 @@ class ParallelDisplay:
                         )[0]
                         or None
                     )
-                    if kind in {ActivityEventKind.TOOL_USE, ActivityEventKind.TOOL_RESULT}
+                    if kind is ActivityEventKind.TOOL_USE
+                    else text_content
+                    if previewed_result
                     else None,
                 ),
                 # DA-003 (wt-028-display): forward the
