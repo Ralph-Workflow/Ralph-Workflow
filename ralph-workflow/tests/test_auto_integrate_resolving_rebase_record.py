@@ -90,9 +90,7 @@ def test_set_resolving_rebase_reports_failure_when_a_present_record_is_unreadabl
     ``false`` while the caller believes it says ``true``.
     """
     write_record(tmp_path, _integrating_record())
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_record.read_record", lambda _root: None
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
 
     assert set_resolving_rebase(tmp_path, True) is False
 
@@ -106,9 +104,7 @@ def test_set_resolving_rebase_reports_failure_when_the_write_fails(
     def _boom(_root: Path, _record: IntegrationRecord) -> None:
         raise OSError("read-only filesystem")
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_record.write_record", _boom
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_record.write_record", _boom)
 
     assert set_resolving_rebase(tmp_path, True) is False
 
@@ -117,10 +113,13 @@ def test_set_resolving_rebase_reports_failure_when_the_write_fails(
     assert persisted.resolving_rebase is False
 
 
-def _install_fallback_seams(
-    monkeypatch: pytest.MonkeyPatch, resolver_calls: list[str]
-) -> None:
+def _install_fallback_seams(monkeypatch: pytest.MonkeyPatch, resolver_calls: list[str]) -> None:
     """Fake every git seam ``run_rebase_or_merge`` reaches after a conflict."""
+    monkeypatch.setattr(
+        merge_module,
+        "_range_routing_reason",
+        lambda _root, _target: None,
+    )
     monkeypatch.setattr(
         merge_module,
         "rebase_onto",
@@ -152,9 +151,7 @@ def test_an_unrecordable_resolution_is_never_started(
     """
     resolver_calls: list[str] = []
     _install_fallback_seams(monkeypatch, resolver_calls)
-    monkeypatch.setattr(
-        merge_module, "set_resolving_rebase", lambda _root, _resolving: False
-    )
+    monkeypatch.setattr(merge_module, "set_resolving_rebase", lambda _root, _resolving: False)
     # The paused rebase is real until the fallback aborts it, so the
     # abort must be OBSERVED rather than assumed: "handed to the
     # fallback" is only safe because the fallback tears the rebase down
@@ -164,9 +161,7 @@ def test_an_unrecordable_resolution_is_never_started(
     def _abort(repo_root: Path) -> None:
         aborted.append(repo_root)
 
-    monkeypatch.setattr(
-        merge_module, "rebase_in_progress", lambda _root: not aborted
-    )
+    monkeypatch.setattr(merge_module, "rebase_in_progress", lambda _root: not aborted)
     monkeypatch.setattr(merge_module, "abort_rebase", _abort)
 
     def _stop_resolver(_root: Path, _target: str, _stop: RebaseStop) -> bool:

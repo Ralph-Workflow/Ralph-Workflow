@@ -238,6 +238,7 @@ def test_render_event_line_survives_malformed_markup(line: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.timeout_seconds(5)
 def test_markup_parse_invariant_is_clean_on_the_real_tree() -> None:
     """No unguarded ``from_markup`` call exists under ``ralph/`` today."""
     invariant = audit_module.MarkupParseInvariant()

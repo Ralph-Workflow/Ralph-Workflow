@@ -187,15 +187,18 @@ def _safe_lines(content: str, *, max_lines: int) -> tuple[list[str], list[str], 
     return raw_lines[:head_count], raw_lines[-tail_count:], len(raw_lines) - max_lines
 
 
-def _elision_text(
-    omitted: int, glyph: str = _ELISION_GLYPH, overflow_ref: str | None = None
-) -> Text:
-    """Build a muted elision Text for the truncation marker."""
+def _elision_line(omitted: int, glyph: str, overflow_ref: str | None, source: str) -> str:
+    """Return the shared count, size, and destination elision contract."""
     noun = "line" if omitted == 1 else "lines"
     citation = f" [see {overflow_ref}]" if overflow_ref else ""
-    text = Text()
-    text.append(f"{glyph} ({omitted} more {noun}){citation}", style=_ELISION_STYLE)
-    return text
+    return f"{glyph} ({omitted} more {noun} · {len(source.encode('utf-8'))} B){citation}"
+
+
+def _elision_text(
+    omitted: int, glyph: str = _ELISION_GLYPH, overflow_ref: str | None = None, source: str = ""
+) -> Text:
+    """Build a muted elision Text for the truncation marker."""
+    return Text(_elision_line(omitted, glyph, overflow_ref, source), style=_ELISION_STYLE)
 
 
 def _binary_note(content: str) -> Text | None:
@@ -263,9 +266,13 @@ def preview_record_text(
             lines.extend(search_lines[:_MAX_PREVIEW_LINES])
             omitted = len(search_lines) - _MAX_PREVIEW_LINES
             if omitted > 0:
-                citation = f" [see {overflow_ref}]" if overflow_ref else ""
                 lines.append(
-                    f"{'...' if not glyphs_enabled else _ELISION_GLYPH} ({omitted} more lines){citation}"
+                    _elision_line(
+                        omitted,
+                        "..." if not glyphs_enabled else _ELISION_GLYPH,
+                        overflow_ref,
+                        "\n".join(search_lines),
+                    )
                 )
     elif isinstance(content, str) and content:
         safe = strip_terminal_control(content)
@@ -280,10 +287,14 @@ def preview_record_text(
         "search_files",
     }:
         omitted = visible_source_lines - _MAX_PREVIEW_LINES
-        citation = f" [see {overflow_ref}]" if overflow_ref else ""
         lines = lines[: _MAX_PREVIEW_LINES + 1]
         lines.append(
-            f"{'...' if not glyphs_enabled else _ELISION_GLYPH} ({omitted} more lines){citation}"
+            _elision_line(
+                omitted,
+                "..." if not glyphs_enabled else _ELISION_GLYPH,
+                overflow_ref,
+                full_source or "",
+            )
         )
     return "\n".join(lines), full_source
 
@@ -413,7 +424,9 @@ def _build_write_preview(
         return preview
     return Group(
         preview,
-        _elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref),
+        _elision_text(
+            omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref, content
+        ),
         render(tail, start_line + len(head) + omitted),
     )
 
@@ -471,7 +484,10 @@ def _build_multiple_read_preview(
     if omitted_total:
         blocks.append(
             _elision_text(
-                omitted_total, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref
+                omitted_total,
+                "..." if not glyphs_enabled else _ELISION_GLYPH,
+                overflow_ref,
+                content,
             )
         )
     return Group(*blocks) if blocks else None
@@ -557,7 +573,9 @@ def _build_search_result_preview(
         blocks.extend((Text(f"  {strip_terminal_control(path)}", style="theme.text.muted"), syntax))
     if omitted:
         blocks.append(
-            _elision_text(omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref)
+            _elision_text(
+                omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref, content
+            )
         )
     return Group(*blocks) if blocks else None
 
@@ -600,6 +618,7 @@ def _build_edit_preview(
         for edit in edits
     ]
     source_blocks = sum(bool(old) + bool(new) for _, old, new in safe_edits)
+    full_source = "\n".join(part for _, old, new in safe_edits for part in (old, new) if part)
     if not source_blocks:
         return None
     blocks: list[RenderableType] = []
@@ -665,7 +684,10 @@ def _build_edit_preview(
     if total_omitted:
         blocks.append(
             _elision_text(
-                total_omitted, "..." if not glyphs_enabled else _ELISION_GLYPH, overflow_ref
+                total_omitted,
+                "..." if not glyphs_enabled else _ELISION_GLYPH,
+                overflow_ref,
+                full_source,
             )
         )
     return Group(*blocks)

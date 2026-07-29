@@ -150,8 +150,9 @@ def test_bounded_previews_use_ascii_elision_and_one_multi_file_budget() -> None:
     )
     output = io.StringIO()
     Console(file=output, force_terminal=False, color_system=None, width=80).print(preview)
-    assert "... (1 more line)" in output.getvalue()
-    assert "…" not in output.getvalue()
+    rendered = output.getvalue()
+    assert "... (1 more line · 112 B)" in rendered
+    assert "…" not in rendered
 
     body = "\n".join(f"line {index}" for index in range(40))
     payload = json.dumps(

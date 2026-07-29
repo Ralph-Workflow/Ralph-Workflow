@@ -208,9 +208,7 @@ def test_indexed_vs_live_grep_match_set_parity(tmp_path: Path) -> None:
         handle = build_sqlite_index_handle(store)
         # Plain literal
         for pattern in ("helper", "os.path", "json", "join_path"):
-            indexed = _run_grep(
-                _FakeSession(handle), workspace, pattern, use_index="always"
-            )
+            indexed = _run_grep(_FakeSession(handle), workspace, pattern, use_index="always")
             live = _run_grep(
                 _FakeSession(explore_index=None), workspace, pattern, use_index="never"
             )
@@ -222,8 +220,7 @@ def test_indexed_vs_live_grep_match_set_parity(tmp_path: Path) -> None:
             # regex; the handler's whole_word / post-filter path
             # narrows that for case-sensitive searches).
             assert live_paths <= indexed_paths, (
-                f"indexed missed files for {pattern!r}: "
-                f"live={live_paths - indexed_paths}"
+                f"indexed missed files for {pattern!r}: live={live_paths - indexed_paths}"
             )
             assert indexed["index_used"] is True
             assert live["index_used"] is False
@@ -258,9 +255,7 @@ def test_indexed_grep_case_sensitive_parity(tmp_path: Path) -> None:
             )
             indexed_set = {(m["path"], m["line"]) for m in indexed["matches"]}
             live_set = {(m["path"], m["line"]) for m in live["matches"]}
-            assert indexed_set == live_set, (
-                f"case-sensitive parity failed for {pattern!r}"
-            )
+            assert indexed_set == live_set, f"case-sensitive parity failed for {pattern!r}"
     finally:
         store.close()
 
@@ -316,9 +311,7 @@ def test_dotted_literal_uses_index_with_phrase_equality(tmp_path: Path) -> None:
     try:
         _populate(workspace, store)
         handle = build_sqlite_index_handle(store)
-        result = _run_grep(
-            _FakeSession(handle), workspace, "os.path", use_index="always"
-        )
+        result = _run_grep(_FakeSession(handle), workspace, "os.path", use_index="always")
         assert result["index_used"] is True
         # Every match must contain the exact ``os.path`` phrase
         # (the FTS5 phrase query rejects ``os.environ`` etc).
@@ -386,21 +379,13 @@ def test_ralph_reindex_changed_picks_up_edits(tmp_path: Path) -> None:
         # Add a brand new file.
         new_path = workspace / "src" / "pkg" / "fresh.py"
         new_path.write_text("def fresh_helper(): return 'NEW_VALUE'\n")
-        handle.store.mark_dirty(
-            "src/pkg/fresh.py", source_tool="test", reason="mutated"
-        )
-        result = handle_ralph_reindex(
-            _FakeSession(handle), workspace, {"mode": "changed"}
-        )
+        handle.store.mark_dirty("src/pkg/fresh.py", source_tool="test", reason="mutated")
+        result = handle_ralph_reindex(_FakeSession(handle), workspace, {"mode": "changed"})
         payload = json.loads(result.content[0].text)
         assert payload["job_status"] == "ok", payload
         # Now grep should find the new content.
-        result2 = _run_grep(
-            _FakeSession(handle), workspace, "NEW_VALUE", use_index="always"
-        )
-        assert any(
-            "fresh.py" in m.get("path", "") for m in result2["matches"]
-        ), result2
+        result2 = _run_grep(_FakeSession(handle), workspace, "NEW_VALUE", use_index="always")
+        assert any("fresh.py" in m.get("path", "") for m in result2["matches"]), result2
     finally:
         store.close()
 
@@ -453,6 +438,7 @@ def test_directory_tree_indexed_view(tmp_path: Path) -> None:
         store.close()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_indexed_search_completes_under_5s(tmp_path: Path) -> None:
     """Whole fixture index + search completes well under 5 seconds."""
     import time
@@ -467,9 +453,7 @@ def test_indexed_search_completes_under_5s(tmp_path: Path) -> None:
         handle = build_sqlite_index_handle(store)
         # Run several queries to exercise the indexed path.
         for pattern in ("helper", "os.path", "join_path", "json"):
-            _run_grep(
-                _FakeSession(handle), workspace, pattern, use_index="always"
-            )
+            _run_grep(_FakeSession(handle), workspace, pattern, use_index="always")
         elapsed = time.monotonic() - start
         assert elapsed < 5.0, f"indexed search took {elapsed:.2f}s (>5s budget)"
     finally:
@@ -552,8 +536,7 @@ def test_real_transport_indexes_real_codebase_through_file_backed_session(
         list_data = parse_sse_data(body)
         tools_result = must_mapping(list_data.get("result", {}))
         tool_names = sorted(
-            entry.get("name")
-            for entry in must_mapping(tools_result, field="result")["tools"]
+            entry.get("name") for entry in must_mapping(tools_result, field="result")["tools"]
         )
         # AC-02 / S-4 requires the explore surface — including
         # ``grep_files`` (the indexed search the bridge advertises) —
@@ -581,9 +564,7 @@ def test_real_transport_indexes_real_codebase_through_file_backed_session(
         _status, _headers, body = drive_request(mcp_server, status_payload)
         status_data = parse_sse_data(body)
         status_result = must_mapping(status_data.get("result", {}))
-        status_content = must_mapping(
-            next(iter(status_result["content"])), field="content[0]"
-        )
+        status_content = must_mapping(next(iter(status_result["content"])), field="content[0]")
         status_payload_dict = json.loads(status_content["text"])
         assert status_payload_dict["enabled"] is True, status_payload_dict
         assert status_payload_dict["files_indexed"] >= 50, status_payload_dict
@@ -616,18 +597,14 @@ def test_real_transport_indexes_real_codebase_through_file_backed_session(
         _status, _headers, body = drive_request(mcp_server, grep_payload)
         grep_data = parse_sse_data(body)
         grep_result = must_mapping(grep_data.get("result", {}))
-        grep_content = must_mapping(
-            next(iter(grep_result["content"])), field="content[0]"
-        )
+        grep_content = must_mapping(next(iter(grep_result["content"])), field="content[0]")
         grep_payload_dict = json.loads(grep_content["text"])
         assert grep_payload_dict["index_used"] is True, grep_payload_dict
         # ``fallback_reason`` may be present in the response as a
         # ``None`` placeholder; only fail when it carries a real
         # fallback reason string. ``index_used=True`` already proves
         # the indexed branch ran.
-        assert grep_payload_dict.get("fallback_reason") in (None, "", "null"), (
-            grep_payload_dict
-        )
+        assert grep_payload_dict.get("fallback_reason") in (None, "", "null"), grep_payload_dict
         matched_paths = {m["path"] for m in grep_payload_dict["matches"]}
         assert any("src/pkg/" in p for p in matched_paths), grep_payload_dict
     finally:
@@ -698,9 +675,7 @@ def test_worker_session_attaches_explore_index_handle(tmp_path: Path) -> None:
         # surface so ralph_reindex / ralph_index_status / grep_files
         # are advertised and callable through the production bridge.
         worker_caps = {c.value for c in Capability}
-        handle = McpServerHandle(
-            endpoint="http://localhost:9999", pid=1234, shutdown=lambda: None
-        )
+        handle = McpServerHandle(endpoint="http://localhost:9999", pid=1234, shutdown=lambda: None)
 
         class _FakeFactory:
             def build(self, _session: object) -> McpServerHandle:
@@ -741,9 +716,7 @@ def test_worker_session_attaches_explore_index_handle(tmp_path: Path) -> None:
         _status, _headers, body = drive_request(mcp_server, reindex_payload)
         reindex_data = parse_sse_data(body)
         reindex_result = must_mapping(reindex_data.get("result", {}))
-        reindex_content = must_mapping(
-            next(iter(reindex_result["content"])), field="content[0]"
-        )
+        reindex_content = must_mapping(next(iter(reindex_result["content"])), field="content[0]")
         reindex_payload_dict = json.loads(reindex_content["text"])
         assert reindex_payload_dict.get("job_status") == "ok", reindex_payload_dict
         # The reindex payload reports parse_count (parsed files),
@@ -775,9 +748,7 @@ def test_worker_session_attaches_explore_index_handle(tmp_path: Path) -> None:
         _status, _headers, body = drive_request(mcp_server, grep_payload)
         grep_data = parse_sse_data(body)
         grep_result = must_mapping(grep_data.get("result", {}))
-        grep_content = must_mapping(
-            next(iter(grep_result["content"])), field="content[0]"
-        )
+        grep_content = must_mapping(next(iter(grep_result["content"])), field="content[0]")
         grep_payload_dict = json.loads(grep_content["text"])
         assert grep_payload_dict["index_used"] is True, grep_payload_dict
         assert grep_payload_dict.get("fallback_reason") in (None, "", "null"), (
@@ -900,9 +871,7 @@ def test_real_codebase_subtree_indexed_search_through_bridge(
         _status, _headers, body = drive_request(mcp_server, reindex_payload)
         reindex_data = parse_sse_data(body)
         reindex_result = must_mapping(reindex_data.get("result", {}))
-        reindex_content = must_mapping(
-            next(iter(reindex_result["content"])), field="content[0]"
-        )
+        reindex_content = must_mapping(next(iter(reindex_result["content"])), field="content[0]")
         reindex_payload_dict = json.loads(reindex_content["text"])
         assert reindex_payload_dict.get("job_status") == "ok", reindex_payload_dict
         # parse_count is the canonical key returned by the
@@ -941,9 +910,7 @@ def test_real_codebase_subtree_indexed_search_through_bridge(
         _status, _headers, body = drive_request(mcp_server, grep_payload)
         grep_data = parse_sse_data(body)
         grep_result = must_mapping(grep_data.get("result", {}))
-        grep_content = must_mapping(
-            next(iter(grep_result["content"])), field="content[0]"
-        )
+        grep_content = must_mapping(next(iter(grep_result["content"])), field="content[0]")
         grep_payload_dict = json.loads(grep_content["text"])
         assert grep_payload_dict["index_used"] is True, grep_payload_dict
         assert grep_payload_dict.get("fallback_reason") in (
@@ -983,9 +950,7 @@ def test_real_codebase_subtree_indexed_search_through_bridge(
         _status, _headers, body = drive_request(mcp_server, live_payload)
         live_data = parse_sse_data(body)
         live_result = must_mapping(live_data.get("result", {}))
-        live_content = must_mapping(
-            next(iter(live_result["content"])), field="content[0]"
-        )
+        live_content = must_mapping(next(iter(live_result["content"])), field="content[0]")
         live_payload_dict = json.loads(live_content["text"])
         live_paths = sorted({m["path"] for m in live_payload_dict["matches"]})
         # The indexed path must cover every file the live path

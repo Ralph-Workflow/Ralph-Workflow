@@ -931,6 +931,7 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.timeout_seconds(10)
 def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
     tmp_git_repo: Path,
 ) -> None:
