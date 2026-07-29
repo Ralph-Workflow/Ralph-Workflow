@@ -99,7 +99,7 @@ def test_emit_run_end_flushes_open_streaming_block() -> None:
     """Calling emit_run_end with an open streaming block closes it before emitting [run-end].
 
     S-7 (wt-028-display P1): the close line for a streaming block carries
-    ``[content]`` (not ``[content-end]``); the lifecycle suffix is part of
+    ``[output]`` (not ``[content-end]``); the lifecycle suffix is part of
     the retired per-fragment vocabulary.
     """
     pd, buf = _make_display()
@@ -110,17 +110,17 @@ def test_emit_run_end_flushes_open_streaming_block() -> None:
     # emit_run_end should close the block first
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
-    # The streaming-block close line ([content] · 1 fragments) must
+    # The streaming-block close line ([output] · 1 fragments) must
     # appear before the [run-end] header. wt-028-display S-4: the
     # header no longer carries the MILESTONE META badge; the
     # match anchors on the [run-end] tag and the body text.
-    assert "[content][u]" in out
+    assert "[output][u]" in out
     run_end_line = next(
         (ln for ln in out.splitlines() if "[run-end]" in ln and "Ralph Workflow run end" in ln),
         None,
     )
     assert run_end_line is not None
-    assert out.index("[content][u]") < out.index(run_end_line)
+    assert out.index("[output][u]") < out.index(run_end_line)
 
 
 def test_emit_run_end_includes_all_counter_lines() -> None:

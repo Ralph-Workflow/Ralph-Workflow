@@ -46,13 +46,13 @@ def test_push_text_line_emits_content_tag(tmp_path: Path) -> None:
     # the open block so the single coalesced entry surfaces.
     pd.stop()
     out = buf.getvalue()
-    # S-7 single-entry shape: one [content] line carrying the joined passage.
-    assert "[content" in out
+    # S-7 single-entry shape: one [output] line carrying the joined passage.
+    assert "[output" in out
     assert "[u]" in out
     assert "hello world" in out
-    content_lines = [line for line in out.splitlines() if "[content][u]" in line]
+    content_lines = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [content] entry on close, got {len(content_lines)}:\\n{out}"
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
     )
 
 
@@ -76,12 +76,12 @@ def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
     # S-7: stop() flushes the still-open thinking block as one coalesced entry.
     pd.stop()
     out = buf.getvalue()
-    assert "[think" in out
+    assert "[reasoning" in out
     assert "[u]" in out
     assert "deep thought" in out
-    thinking_lines = [line for line in out.splitlines() if "[think][u]" in line]
+    thinking_lines = [line for line in out.splitlines() if "[reasoning][u]" in line]
     assert len(thinking_lines) == 1, (
-        f"Expected exactly 1 [think] entry on close, got {len(thinking_lines)}:\\n{out}"
+        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\\n{out}"
     )
 
 
@@ -112,14 +112,14 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     pd.stop()
 
     out = buf.getvalue()
-    # S-7 single-entry shape: one [content] line carrying the condensed passage.
-    assert "[content" in out
+    # S-7 single-entry shape: one [output] line carrying the condensed passage.
+    assert "[output" in out
     # Content should be condensed (not all characters present)
     assert len(out) < _LONG_TEXT_LEN
     assert "…" in out or "truncated" in out or "raw unavailable" in out
-    content_lines = [line for line in out.splitlines() if "[content][u]" in line]
+    content_lines = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [content] entry on close, got {len(content_lines)}:\\n{out}"
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
     )
 
 
@@ -203,11 +203,11 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
     pd.stop()
 
     out = buf.getvalue()
-    assert "[content" in out
+    assert "[output" in out
     assert ".agent/raw/u.log" in out
-    content_lines = [line for line in out.splitlines() if "[content][u]" in line]
+    content_lines = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [content] entry on close, got {len(content_lines)}:\\n{out}"
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
     )
 
 
@@ -267,7 +267,7 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
 
 
 def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> None:
-    """Lifecycle prefix 'claude/sonnet: thinking' must not produce [content] output."""
+    """Lifecycle prefix 'claude/sonnet: thinking' must not produce [output] output."""
     pd, buf = _make_display(tmp_path)
     pd.activity_router.push_raw_line(
         "main",
@@ -276,8 +276,8 @@ def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> N
     )
     pd.stop()
     out = buf.getvalue()
-    assert "[content][main]" not in out
-    assert "[think][main]" not in out
+    assert "[output][main]" not in out
+    assert "[reasoning][main]" not in out
 
 
 def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Path) -> None:
@@ -305,7 +305,7 @@ def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) 
 
 
 def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
-    """_stream_parsed_agent_activity must not emit [content][activity] for thinking events."""
+    """_stream_parsed_agent_activity must not emit [output][activity] for thinking events."""
 
     pd, buf = _make_display(tmp_path)
 
@@ -335,12 +335,12 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     pd.stop()
 
     out = buf.getvalue()
-    assert "[content][activity]" not in out
+    assert "[output][activity]" not in out
     assert "deep reasoning here" in out
-    assert "[think" in out
-    thinking_lines = [line for line in out.splitlines() if "[think]" in line]
+    assert "[reasoning" in out
+    thinking_lines = [line for line in out.splitlines() if "[reasoning]" in line]
     assert len(thinking_lines) == 1, (
-        f"Expected exactly 1 [think] entry on close, got {len(thinking_lines)}:\\n{out}"
+        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\\n{out}"
     )
 
 
@@ -402,7 +402,7 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
     )
 
     out = buf.getvalue()
-    assert "[content][activity]" not in out
+    assert "[output][activity]" not in out
     assert "ralph.read_file" in out
     assert out.count("ralph.read_file") == 1
     # wt-028-display S-3 (DA-001): the public tool_use tag is ``call``,
@@ -445,7 +445,7 @@ def test_stream_parsed_agent_activity_plain_tool_line_routes_to_tool_use(tmp_pat
 
     out = buf.getvalue()
     assert "read_file" in out
-    assert "[content][activity]" not in out
+    assert "[output][activity]" not in out
 
 
 

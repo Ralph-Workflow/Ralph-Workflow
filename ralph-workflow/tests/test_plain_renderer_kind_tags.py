@@ -160,10 +160,10 @@ def test_progress_kind_does_not_leak_category_chrome() -> None:
 
 
 def test_text_kind_emits_content_tag_on_close() -> None:
-    """Text streams are silent until close; the close line carries [content].
+    """Text streams are silent until close; the close line carries [output].
 
     S-7: streaming layer is silent during open / continue. ``flush_blocks``
-    emits one ``[content]`` close line carrying the joined passage.
+    emits one ``[output]`` close line carrying the joined passage.
     The chrome prefix no longer carries the INFO LEVEL text.
     """
     pd, buf = _make_display()
@@ -341,7 +341,7 @@ def test_streaming_block_closed_by_non_streaming_event() -> None:
 def test_different_unit_id_closes_previous_block() -> None:
     """Global single-block invariant: switching units closes the previous block first.
 
-    After S-7, the close line carries ``[content]`` (not ``[content-end]``),
+    After S-7, the close line carries ``[output]`` (not ``[content-end]``),
     but the ordering invariant — block-A closes before block-B opens — still
     holds. ``flush_blocks`` emits the close line for the still-open unit-b
     block.
@@ -351,9 +351,9 @@ def test_different_unit_id_closes_previous_block() -> None:
     pd.emit_activity_line("unit-b", "text", "b first")
     pd.flush_blocks()
     out = buf.getvalue()
-    # unit-a's block closed (single close line, [content] tag).
+    # unit-a's block closed (single close line, [output] tag).
     assert "[output][unit-a]" in out
-    # unit-b's block closed on flush (single close line, [content] tag).
+    # unit-b's block closed on flush (single close line, [output] tag).
     assert "[output][unit-b]" in out
     # unit-a's close line precedes unit-b's.
     assert out.index("[output][unit-a]") < out.index("[output][unit-b]")

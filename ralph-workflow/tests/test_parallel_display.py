@@ -262,16 +262,16 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
     pd.stop()
 
     rendered = buf.getvalue()
-    # Close line carries [content] tag and the joined passage is condensed.
-    assert "[content][unit-1]" in rendered
+    # Close line carries [output] tag and the joined passage is condensed.
+    assert "[output][unit-1]" in rendered
     # S-7 / AC-06: condensation marker carries the destination.
     assert "see .agent/raw/unit-1.log" in rendered
     # The full 500 chars do NOT appear (condenser truncated head-only).
     assert soft_limit_content not in rendered
     # Exactly one close entry per block.
-    content_lines = [line for line in rendered.splitlines() if "[content][unit-1]" in line]
+    content_lines = [line for line in rendered.splitlines() if "[output][unit-1]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [content] entry, got {len(content_lines)}:\n{rendered}"
+        f"Expected exactly 1 [output] entry, got {len(content_lines)}:\n{rendered}"
     )
 
 
@@ -313,7 +313,7 @@ def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
 def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     """S-7 (wt-028-display P1): ``stop()`` flushes open streaming blocks with one close line.
 
-    The close line carries ``[content]`` (not ``[content-end]``); the
+    The close line carries ``[output]`` (not ``[content-end]``); the
     ``-end`` suffix is part of the retired per-fragment vocabulary.
     """
     console, buf = _make_wide_console()
@@ -323,13 +323,13 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     pd.stop()
 
     rendered = buf.getvalue()
-    assert "[content][unit-1]" in rendered
+    assert "[output][unit-1]" in rendered
 
 
 def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
     """S-7 (wt-028-display P1): phase close flushes the open streaming block.
 
-    The flush emits one ``[content]`` close line (not ``[content-end]``);
+    The flush emits one ``[output]`` close line (not ``[content-end]``);
     the ``-end`` suffix is part of the retired per-fragment vocabulary.
     """
     console, buf = _make_wide_console()
@@ -345,7 +345,7 @@ def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
     pd.emit_phase_close_from_exit(exit_model)
 
     rendered = buf.getvalue()
-    assert "[content][unit-1]" in rendered
+    assert "[output][unit-1]" in rendered
 
 
 # --- Drop reporting tests ---

@@ -55,7 +55,7 @@ def _make_renderer_with_env(env: dict[str, str]) -> tuple[ParallelDisplay, Strin
 
 
 def test_identical_consecutive_text_fragments_emit_one_close_line() -> None:
-    """Three identical text fragments produce ONE [content] close line on flush.
+    """Three identical text fragments produce ONE [output] close line on flush.
 
     Pre-S-7, this test pinned the visible dedup machinery by counting
     ``[content-start]`` and ``[content-continue#]`` lines. The new shape
@@ -69,9 +69,9 @@ def test_identical_consecutive_text_fragments_emit_one_close_line() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
-    content_lines = [ln for ln in lines if "[content][u]" in ln]
+    content_lines = [ln for ln in lines if "[output][u]" in ln]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [content] close line, got {len(content_lines)}: {out!r}"
+        f"Expected exactly 1 [output] close line, got {len(content_lines)}: {out!r}"
     )
     # The joined passage appears exactly once.
     assert out.count("same content") == 1, (
@@ -80,15 +80,15 @@ def test_identical_consecutive_text_fragments_emit_one_close_line() -> None:
 
 
 def test_differing_text_fragments_emit_one_close_line_with_joined_passage() -> None:
-    """Differing text fragments produce ONE [content] close line on flush."""
+    """Differing text fragments produce ONE [output] close line on flush."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "first content")
     pd.emit_activity_line("u", "text", "second content")
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[content][u]" in ln]
+    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [content] close line, got {len(content_lines)}: {out!r}"
+        f"Expected exactly 1 [output] close line, got {len(content_lines)}: {out!r}"
     )
     # Both fragments visible in the joined passage.
     assert "first content" in out
@@ -114,7 +114,7 @@ def test_dedup_disabled_by_env_still_emits_one_close_line() -> None:
     pd.emit_activity_line("u", "text", "same content")
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[content][u]" in ln]
+    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
     assert len(content_lines) == 1, (
         f"Expected 1 close line, got {len(content_lines)}: {out!r}"
     )
@@ -140,11 +140,11 @@ def test_dedup_operates_independently_per_unit_id() -> None:
     pd.emit_activity_line("unit-b", "text", "same")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[content][unit-a]" in out
-    assert "[content][unit-b]" in out
+    assert "[output][unit-a]" in out
+    assert "[output][unit-b]" in out
     # Both close lines appear.
-    a_idx = out.index("[content][unit-a]")
-    b_idx = out.index("[content][unit-b]")
+    a_idx = out.index("[output][unit-a]")
+    b_idx = out.index("[output][unit-b]")
     assert a_idx < b_idx, "unit-a's close line should precede unit-b's"
 
 
@@ -156,7 +156,7 @@ def test_dedup_does_not_suppress_first_fragment_of_new_block() -> None:
     pd.emit_activity_line("u", "text", "hello")
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[content][u]" in ln]
+    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
     assert len(content_lines) == 1
     # The buffered fragment list kept only the first occurrence.
     accumulated = pd._active_block.pop("u", None)  # already drained by flush
@@ -175,7 +175,7 @@ def test_dedup_with_three_different_then_identical() -> None:
     pd.emit_activity_line("u", "text", "second")  # identical to previous
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[content][u]" in ln]
+    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
     assert len(content_lines) == 1
     # With dedup on, the buffer holds 2 entries; joined is "first second".
     assert "first second" in out
@@ -204,7 +204,7 @@ def test_dedup_works_for_thinking_kind() -> None:
     pd.emit_activity_line("u", "thinking", "same thought")
     pd.flush_blocks()
     out = buf.getvalue()
-    thinking_lines = [ln for ln in out.splitlines() if "[think][u]" in ln]
+    thinking_lines = [ln for ln in out.splitlines() if "[reasoning][u]" in ln]
     assert len(thinking_lines) == 1, (
         f"Expected 1 thinking close line, got {len(thinking_lines)}: {out!r}"
     )
@@ -218,12 +218,12 @@ def test_different_kind_resets_block() -> None:
     pd.emit_activity_line("u", "thinking", "reasoning")
     pd.flush_blocks()
     out = buf.getvalue()
-    # The text block closed (single [content] line) before the
-    # thinking block closed (single [think] line on flush).
-    assert "[content][u]" in out
-    assert "[think][u]" in out
-    content_idx = out.index("[content][u]")
-    thinking_idx = out.index("[think][u]")
+    # The text block closed (single [output] line) before the
+    # thinking block closed (single [reasoning] line on flush).
+    assert "[output][u]" in out
+    assert "[reasoning][u]" in out
+    content_idx = out.index("[output][u]")
+    thinking_idx = out.index("[reasoning][u]")
     assert content_idx < thinking_idx
 
 

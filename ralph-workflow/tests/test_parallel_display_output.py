@@ -25,7 +25,7 @@ def test_default_mode_emit_reduces_rich_markup() -> None:
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
-    assert "[content][unit-1] hello\n" in text
+    assert "[output][unit-1] hello\n" in text
     assert "[green]hello[/green]" not in text
 
 
@@ -124,7 +124,7 @@ def test_long_unit_id_does_not_hide_payload_content() -> None:
 
     out = buf.getvalue()
     assert "Invoking agent:" in out
-    assert "[content][opencode/minimax/Mini..." in out
+    assert "[output][opencode/minimax/Mini..." in out
 
 
 def test_emit_refreshes_visible_activity_when_line_changes_but_unit_is_same() -> None:

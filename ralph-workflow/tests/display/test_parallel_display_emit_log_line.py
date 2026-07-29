@@ -59,7 +59,7 @@ def test_emit_log_line_routes_via_activity_line() -> None:
     pd.stop()
     output = buf.getvalue()
     assert "RAW_PAYLOAD_TOKEN" in output, f"raw payload missing from output: {output!r}"
-    assert "[output]" in output, f"raw kind tag [content] missing from output: {output!r}"
+    assert "[output]" in output, f"raw kind tag [output] missing from output: {output!r}"
     assert "[unit-x]" in output, f"unit_id marker missing: {output!r}"
 
 
@@ -125,4 +125,4 @@ def test_emit_log_line_quiet_mode_still_emits_nothing_for_raw_payload() -> None:
     assert "RAW_PAYLOAD_TOKEN" not in output, (
         f"quiet mode must suppress raw payload; got: {output!r}"
     )
-    assert "[content]" not in output, f"quiet mode must suppress the [content] tag; got: {output!r}"
+    assert "[output]" not in output, f"quiet mode must suppress the [output] tag; got: {output!r}"

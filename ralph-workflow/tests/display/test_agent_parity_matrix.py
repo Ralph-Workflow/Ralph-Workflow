@@ -75,8 +75,6 @@ _INTERNAL_VOCABULARY: tuple[str, ...] = (
     "fragments, ",
     "⋯ content",
     "⋯ think",
-    "[content]",
-    "[think]",
 )
 
 

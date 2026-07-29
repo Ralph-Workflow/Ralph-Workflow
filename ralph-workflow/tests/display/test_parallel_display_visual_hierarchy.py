@@ -144,7 +144,7 @@ def test_blank_line_before_and_after_section_rule() -> None:
                 f"full plain text:\n{plain!r}"
             )
     # The blank line after the run-end block is followed by the
-    # [content][unit-1] emit. Verify that a `\n\n` (blank line) appears
+    # [output][unit-1] emit. Verify that a `\n\n` (blank line) appears
     # between the last run-end section rule block and the next emit.
     last_run_end_rule = plain.rfind("─── [run-end]")
     assert last_run_end_rule > 0, f"last run-end section rule not found in:\n{plain!r}"

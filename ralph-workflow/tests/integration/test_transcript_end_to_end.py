@@ -222,11 +222,11 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
 
     # --- Assert streaming content block structure ---
     # S-7 (wt-028-display P1): one entry per block close, with the
-    # joined passage. The close-line tag is ``[content]`` (NOT
+    # joined passage. The close-line tag is ``[output]`` (NOT
     # ``[content-start]`` / ``[content-end]``); there are no per-fragment
     # ``[content-continue#N]`` markers because the streaming layer is
     # silent during open / continue.
-    assert "[content]" in out, "Transcript should contain a [content] close line"
+    assert "[output]" in out, "Transcript should contain a [output] close line"
     # S-2 (wt-028-display P1): close-line shape carries span + duration
     # via the sketch-J shape ``⋯ <tag> · <start> → <end> · <duration>``
     # followed by the joined passage. The retirement of the S-9

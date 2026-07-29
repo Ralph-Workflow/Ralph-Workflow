@@ -55,17 +55,17 @@ def test_phase_close_flushes_open_streaming_block() -> None:
     pd.emit_activity_line("u", "text", "streaming content")
     pd.emit_phase_close("development", "development: result artifact present")
     out = buf.getvalue()
-    # The streaming-block close line ([content] tag) must appear before
-    # the [phase-close] body line. wt-028-display S-4: chrome prefix
-    # no longer carries the INFO META badge, so the phase-close line
-    # is matched on the body content alone.
+    # The streaming-block close line uses the public ``[output]`` tag and
+    # must appear before the [phase-close] body line. The retired ``content``
+    # tag is internal vocabulary and must not return.
     body_phase_close_idx = out.index("[phase-close] phase=development")
-    content_close_idx = out.index("[content][u]")
-    assert "[content][u]" in out
+    content_close_idx = out.index("[output][u]")
+    assert "[output][u]" in out
+    assert "[content][u]" not in out
     # Pre-S-7 retired token must NOT appear.
     assert "[content-end]" not in out
     assert content_close_idx < body_phase_close_idx, (
-        f"[content][u] (at {content_close_idx}) must appear before "
+        f"[output][u] (at {content_close_idx}) must appear before "
         f"the [phase-close] body line (at {body_phase_close_idx}); got:\n{out}"
     )
 

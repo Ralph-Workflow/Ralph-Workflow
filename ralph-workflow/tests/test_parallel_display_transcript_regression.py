@@ -5,14 +5,14 @@ S-7 (wt-028-display P1): one entry per event in the live log.
 The pre-S-7 transcript duplicated streaming content up to four times
 (per-fragment lines + open preview + close summary + ai-summary), and
 the per-fragment lines carried internal vocabulary
-(``[content][activity]``, ``message_delta`` / ``status=requesting``
+(``[output][activity]``, ``message_delta`` / ``status=requesting``
 lifecycle tokens, etc.). The defect shape looked like:
 
-  INFO CONT [content][activity] claude/sonnet tool: mcp__ralph__read_file ...
+  INFO CONT [output][activity] claude/sonnet tool: mcp__ralph__read_file ...
   INFO META [activity] agent=claude/sonnet tool=mcp__ralph__read_file
   INFO META [activity-line] claude/sonnet tool: mcp__ralph__read_file ...
-  INFO CONT [content][activity] claude/sonnet: message_delta
-  INFO CONT [content][activity] claude/sonnet: thinking
+  INFO CONT [output][activity] claude/sonnet: message_delta
+  INFO CONT [output][activity] claude/sonnet: thinking
 
 Post-S-7, these patterns cannot surface because:
 
@@ -44,8 +44,8 @@ if TYPE_CHECKING:
 
 
 _FORBIDDEN_INTERNAL_TOKENS: tuple[str, ...] = (
-    "[content][activity]",
-    "[content][main]",
+    "[output][activity]",
+    "[output][main]",
     "[thinking-start]",
     "[thinking-end]",
     "[thinking-continue#",
@@ -223,7 +223,7 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
 
     # Exactly one thinking close entry — no per-fragment or preview lines.
     thinking_lines = [
-        line for line in out.splitlines() if "[think][main]" in line
+        line for line in out.splitlines() if "[reasoning][main]" in line
     ]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking close line, got {len(thinking_lines)}:\n{out}"
@@ -232,10 +232,10 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
 
 
 def test_whitespace_only_thinking_delta_produces_no_thinking_output(tmp_path: Path) -> None:
-    """Whitespace-only thinking delta must not produce [think] output.
+    """Whitespace-only thinking delta must not produce [reasoning] output.
 
     A whitespace-only block has zero accumulated fragments after close
-    and the close path returns early, so no [think] entry surfaces.
+    and the close path returns early, so no [reasoning] entry surfaces.
     """
     pd, buf = _make_display(tmp_path)
 
@@ -290,7 +290,7 @@ def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -
 
     # Exactly one thinking close entry.
     thinking_lines = [
-        line for line in out.splitlines() if "[think][main]" in line
+        line for line in out.splitlines() if "[reasoning][main]" in line
     ]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking close line, got {len(thinking_lines)}:\n{out}"
