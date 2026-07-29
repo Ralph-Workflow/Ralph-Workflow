@@ -399,7 +399,7 @@ def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int)
     display) chrome consumes enough budget at widths 40/50/60 that the
     full canonical ``Cycle 1/3`` + ``iter 2/5`` labels cannot fit
     alongside the workspace path and phase. The implementation falls
-    back to compact (``C1/3`` / ``A2/5``) at these widths so the bar
+    back to compact (``C1/3`` / ``i2/5``) at these widths so the bar
     stays single-line and within the terminal width.
 
     wt-028-display S-3: at the 40-col floor, inner_analysis drops

@@ -201,7 +201,7 @@ def _safe_single_line(text: str) -> str:
 # width — the AC-03 invariant).
 _OUTER_DEV_LABEL_MAX_CHARS: int = 10
 _INNER_ANALYSIS_LABEL_MAX_CHARS: int = 11
-# Compact label widths (D1/3 / A2/5).
+# Compact label widths (C1/3 / i2/5).
 _OUTER_DEV_LABEL_COMPACT_MAX_CHARS: int = 4
 _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS: int = 4
 # Minimal label widths (1/3 / 2/5; no prefix).
@@ -472,12 +472,12 @@ class _FieldBudgets:
 
     AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40
     cols) the iteration label form is ALWAYS the canonical
-    (``Cycle 1/3`` / ``Analysis 2/5``) form regardless of how much
+    (``Cycle 1/3`` / ``iter 2/5``) form regardless of how much
     phase/path truncation is needed. Only path middle-truncation and
     phase tail-truncation budgets adapt to width at those widths.
 
     Below ``_CANONICAL_FIT_THRESHOLD`` the implementation may degrade
-    to compact (``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``)
+    to compact (``C1/3`` / ``i2/5``) or minimal (``1/3`` / ``2/5``)
     forms when canonical labels cannot fit alongside phase + path at
     the terminal width.
 
@@ -491,7 +491,7 @@ class _FieldBudgets:
     and the per-iteration glyphs (``render_marker=False``,
     ``render_iter_glyph=False``) to keep both iteration labels
     visible: a 14-col bar may render as ``1/3 2/5`` instead of the
-    canonical ``■ Cycle 1/3 ◆ ◎ Analysis 2/5`` at 100+ cols.
+    canonical ``■ Cycle 1/3 ◆ ◎ iter 2/5`` at 100+ cols.
     """
 
     phase_budget: int
@@ -513,9 +513,9 @@ def _field_overhead_and_label_budgets(
 
     AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40 cols)
     the iteration label form is ALWAYS canonical (``Cycle N/cap`` /
-    ``Analysis N/cap``); only path middle-truncation and phase
+    ``iter N/cap``); only path middle-truncation and phase
     tail-truncation budgets adapt to width. Below the threshold the
-    implementation may degrade to compact (``D1/3`` / ``A2/5``) or
+    implementation may degrade to compact (``C1/3`` / ``i2/5``) or
     minimal (``1/3`` / ``2/5``) forms to fit the bar at very narrow
     widths.
 
@@ -534,11 +534,11 @@ def _field_overhead_and_label_budgets(
     layout that fits ``ctx.width``:
 
     1. At widths ``>= _CANONICAL_FIT_THRESHOLD`` the canonical
-       ``Cycle N/cap`` / ``Analysis N/cap`` labels ALWAYS render in full
+       ``Cycle N/cap`` / ``iter N/cap`` labels ALWAYS render in full
        with the marker and per-iteration glyphs (phase/path truncate
        to absorb any remaining width pressure).
     2. Below the canonical-fit threshold, the compact form
-       (``D1/3`` / ``A2/5``) is used when it fits.
+       (``C1/3`` / ``i2/5``) is used when it fits.
     3. Below the compact threshold, the minimal form (``1/3`` / ``2/5``)
        is used when it fits.
     4. Below the minimal-with-marker threshold, the phase_marker is

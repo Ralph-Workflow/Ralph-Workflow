@@ -2,24 +2,11 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: `auto` — resolved by ralph/test_suites.py to
-# `min(max(cpu_count, 8), 16)`, i.e. never below the measured floor of 8 and
-# never above the host's core count. A pinned 8 left four cores idle on a
-# 12-core host and ran past the 60 s parent deadline when the checkout lives
-# on an external volume; 12 shards finished the same suite in ~36 s with zero
-# per-test SIGALRM failures.
-#
-# Floor rationale — the 1.0 s SIGALRM budget charges wall clock, so the worker
-# count has a floor (too few workers and the suite runs past the immutable
-# 60 s combined budget) and a ceiling (too many workers and a trivial test
-# is starved past its own 1 s cap). The suite has grown to 12,137 collected
-# tests, and four workers no longer clear the floor: a measured `make test`
-# reached only ~50 % of the suite when the 60 s cap fired, and six workers
-# reached ~96 %. Eight workers on this 12-core host completed the whole
-# budget-tracked suite — 12111 passed, 26 skipped — in 38.09 s with zero
-# per-test SIGALRM failures, leaving ~22 s of headroom under the 60 s
-# budget. The earlier note that eight workers cost 44.61 s in contention
-# predates that growth and no longer describes this suite.
+# Default: `auto` uses one worker per core, capped at twelve shards. The 1.0 s
+# per-test SIGALRM budget charges wall clock; the prior 24-process profile
+# starved otherwise-fast tests and contended on temporary SQLite stores. The
+# capped profile keeps the maintained suite below the immutable 60 s budget.
+# Operators may override after measuring their own host.
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``

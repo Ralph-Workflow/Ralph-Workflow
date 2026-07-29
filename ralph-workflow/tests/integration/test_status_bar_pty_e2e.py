@@ -465,11 +465,11 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     ralph_workflow_root: Path,
     python_executable: Path,
 ) -> None:
-    """AC-03: when the model has outer_dev_iteration set, ``Dev N/cap`` is visible.
+    """AC-03: when the model has outer_dev_iteration set, ``Cycle N/cap`` is visible.
 
     Drives a probe that pushes a StatusBarModel with outer_dev_iteration=1
     and outer_dev_cap=3 into the production entry point and asserts the
-    canonical ``Dev 1/3`` (or compact ``D1/3``) form appears in the
+    canonical ``Cycle 1/3`` (or compact ``C1/3``) form appears in the
     captured stream.
     """
     probe_body = _render_probe(

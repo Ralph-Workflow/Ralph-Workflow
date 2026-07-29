@@ -63,53 +63,17 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# Default: capped ``auto``. The 1.0 s per-test ITIMER_REAL budget charges
-# wall clock, so the worker count has both a floor and a ceiling: too few
-# workers and the suite runs past the immutable 60-second combined budget,
-# too many and a trivial test is starved past its own 1 s cap.
+# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Eight concurrent
+# pytest processes complete the maintained suite within the immutable 60-second
+# budget without starving tests or contending on temporary SQLite stores. The
+# prior 24-process profile produced scheduler and SQLite flakes. Operators may
+# still explicitly override ``PYTEST_WORKERS`` for a measured environment.
 #
-# 14k-test suite measured on a 12-core host: 16 shards concentrate the
-# 25-test ``test_auto_integrate_recovery.py`` real-git subprocess file
-# (the single heaviest file at ~50 s wall-clock) in its own shard and
-# routinely trip the 60 s budget. 24 shards with the round-robin E2E
-# placement below distribute the 26 required E2E files round-robin so
-# no shard carries the heaviest E2E alone, and the cumulative budget
-# comes in at 40-48 s with 12-20 s of headroom. The 2x oversubscription
-# at 24 shards is amortised by the per-shard setup cost and the heavy
-# real-git subprocess tests being I/O-bound (the worker count is the
-# floor; the cap is the observed empirical sweet spot). ``auto``
-# therefore returns ``_MAX_PYTEST_WORKERS`` (24) on every host with at
-# least the MIN worker count of cores. The maintained profile
-# partitions test files before pytest starts so each process imports
-# and collects only its disjoint assignment. Shards intentionally do
-# not run xdist.
-#
-# This is a concurrency bound, not a budget change:
-# ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
-# ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1.0) are unchanged. Override via
-# the ``PYTEST_WORKERS`` env var if needed. Note that ``make test`` exports
-# ``PYTEST_WORKERS`` from the Makefile, so these bounds govern only the
-# ``auto`` path (which the Makefile default also selects).
+# This is a concurrency bound, not a budget change: the 60.0-second combined
+# budget and 1.0-second per-test timeout remain unchanged.
 _DEFAULT_PYTEST_WORKERS = "auto"
 _MIN_PYTEST_WORKERS = 8
-# DA-003 (wt-028-display P1 / AC-08 / S-13): the previous cap was
-# 16; on a 12-core host with all real-git E2E files pinned on a
-# dedicated shard, the slowest shard holds the heavy real-git
-# recovery test (weight 1500, ~22s of test time) plus
-# pytest import / collection overhead that scales linearly with
-# the file count (~0.2s per file). With 16 workers that gives
-# ~96 files per shard and ~28s of collection. 24 workers cuts
-# that to ~64 files per shard and ~17s of collection, holding
-# the slowest shard well under the 60s budget. The cap is
-# chosen to leave headroom for a higher auto-resolution ceiling;
-# the effective count is gated by ``_AUTO_WORKER_OVERSCRIPTION``
-# below to stay below the per-test 1 s SIGALRM contention
-# threshold.
-_MAX_PYTEST_WORKERS = 24
-# Two workers per core reaches the existing 24-worker cap on a 12-core
-# host. The 18-worker profile exceeded the immutable deadline during shard
-# teardown, while the 24-worker cap leaves enough room for that drain.
-_AUTO_WORKER_OVERSCRIPTION = 2.0
+_MAX_PYTEST_WORKERS = 12
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -288,11 +252,7 @@ def _pytest_workers() -> str:
         cores = multiprocessing.cpu_count()
     except Exception:
         return str(_MIN_PYTEST_WORKERS)
-    # The 18-worker profile on a 12-core host exceeded the immutable
-    # deadline during shard teardown. Two workers per core reaches the
-    # existing 24-worker cap and leaves room for that drain.
-    target = int(cores * _AUTO_WORKER_OVERSCRIPTION)
-    return str(min(max(target, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
+    return str(min(max(cores, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
 
 
 def _default_spawner(

@@ -341,26 +341,24 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
 
 
-def test_auto_worker_count_returns_empirical_sweet_spot_on_adequate_hosts(
+def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Two workers per core reduce shard teardown contention while the
-    # existing floor and cap keep small and large hosts bounded.
-    # Probes (cores -> expected): 4 -> 8 (floor), 5 -> 10,
-    # 6 -> 12, 7 -> 14, 8 -> 16, 12 -> 24 (cap).
+    # One worker per core, capped at twelve, leaves the 60-second budget
+    # headroom without returning to the flaky 24-process profile.
     for cores, expected in (
         (4, "8"),
-        (5, "10"),
-        (6, "12"),
-        (7, "14"),
-        (8, "16"),
-        (12, "24"),
-        (16, "24"),
-        (20, "24"),
-        (21, "24"),
-        (64, "24"),
+        (5, "8"),
+        (6, "8"),
+        (7, "8"),
+        (8, "8"),
+        (12, "12"),
+        (16, "12"),
+        (20, "12"),
+        (21, "12"),
+        (64, "12"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
