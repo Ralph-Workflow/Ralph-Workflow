@@ -212,7 +212,7 @@ def build_presented_entry(
 
 
 def _tool_result_record_body(body: str, metadata: dict[str, object], severity: str) -> str:
-    """Include a result's tool, target, and terminal outcome in its record body."""
+    """Render a result as its terminal outcome plus content, not a repeated call header."""
     raw_tool = next(
         (
             value
@@ -222,24 +222,13 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
         "tool",
     )
     tool = friendly_tool_name(raw_tool)
-    target = next(
-        (
-            f"{key}={value}"
-            for key in ("target", "path", "command", "workdir")
-            if isinstance(value := metadata.get(key), str) and value
-        ),
-        "",
-    )
     outcome = "failed" if severity == "error" else "ok"
     body = _strip_leading_tokens(body, tool, outcome)
-    parts = [tool]
-    if target and target not in body:
-        parts.append(target)
-    call_id = tool_call_id(metadata)
-    if call_id:
-        parts.append(f"call_id={call_id}")
-    parts.extend((outcome, body))
-    return " ".join(part for part in parts if part)
+    # A correlated result hangs below its already-rendered call header; an
+    # orphan result names its tool so flood entries remain distinguishable.
+    if tool_call_id(metadata):
+        return " ".join(part for part in (outcome, body) if part)
+    return " ".join(part for part in (tool, outcome, body) if part)
 
 
 def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:

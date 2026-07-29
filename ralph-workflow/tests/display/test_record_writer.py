@@ -157,14 +157,16 @@ def test_writer_record_structure_is_ansi_free_for_every_field(tmp_path: Path) ->
     assert text == "[12:34:56] body role=agent_text\n"
 
 
-def test_writer_records_are_single_line(tmp_path: Path) -> None:
-    """Body newlines are flattened so a grep never matches a partial line."""
+def test_writer_regression_preserves_multiline_body_with_hanging_indent(tmp_path: Path) -> None:
+    """DA-001: record bodies retain file-like line structure, not a space-joined dump."""
     writer = RenderedRecordWriter(tmp_path, "claude")
-    writer.append(_entry(body="line one\nline two\r\nline three"))
+    writer.append(_entry(body="line one\nline two\r\nline three\nline four"))
     writer.flush()
     lines = writer.path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    assert "line one line two line three" in lines[0]
+    assert len(lines) == 4
+    assert lines[0].endswith("line one role=agent_text")
+    assert all(line.startswith("  line ") for line in lines[1:])
+    assert "line one line two" not in "\n".join(lines)
 
 
 def test_writer_handles_missing_optional_fields(tmp_path: Path) -> None:
@@ -335,6 +337,15 @@ def test_writer_handles_missing_timestamp(tmp_path: Path) -> None:
     writer.flush()
     text = writer.path.read_text(encoding="utf-8").strip()
     assert text.startswith("[??:??:??]")
+
+
+def test_writer_declared_field_order_includes_every_emitted_key(tmp_path: Path) -> None:
+    """DA-006: the record contract declares the sanctioned role field it emits."""
+    writer = RenderedRecordWriter(tmp_path, "claude")
+    writer.append(_entry(body="hello"))
+    writer.flush()
+    line = writer.path.read_text(encoding="utf-8").strip()
+    assert "role=agent_text" in line
 
 
 def test_writer_eager_flush_before_deque_eviction(tmp_path: Path) -> None:

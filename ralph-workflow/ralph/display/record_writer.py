@@ -70,6 +70,7 @@ _RECORD_FIELD_ORDER: Final[tuple[str, ...]] = (
     "iter",
     "agent",
     "severity",
+    "role",
     "body",
 )
 
@@ -149,15 +150,15 @@ def rendered_record_path(workspace_root: Path, agent: str, model: str | None = N
 
 
 def _format_entry_line(entry: object) -> str:
-    """Render one :class:`PresentedEntry` as a single plain line.
+    """Render one :class:`PresentedEntry` as a plain-text entry with hanging continuations.
 
     The formatter reads only the public-ish attributes of the entry
     (``timestamp``, ``phase``, ``cycle``, ``iter``, ``agent``,
     ``severity``, ``body``) and assembles a fixed-order
     ``[hh:mm:ss] phase cycle=N iter=N/M agent=foo severity=info
-    body`` line. The body is a single-line rendering of the entry's
-    body, with newlines flattened to spaces and tabs converted to
-    spaces so a grep for the body text never matches a partial line.
+    body`` entry. The first body line shares the header; subsequent
+    body lines hang beneath it with tabs normalized to spaces so file
+    excerpts retain their structure in the greppable record.
 
     P1 (wt-028-display S-12 / AC-07): the line opens with
     ``indent_level`` copies of :data:`_INDENT_WIDTH` so a tool
@@ -207,7 +208,10 @@ def _format_entry_line(entry: object) -> str:
         if body_str:
             parts.append(body_str)
     parts.append(f"role={grouping_role}")
-    return indent_prefix + " ".join(parts)
+    first_line = indent_prefix + " ".join(parts)
+    continuation_prefix = " " * (_INDENT_WIDTH * (max(0, indent_level) + 1))
+    body_lines = _body_lines(body)
+    return "\n".join((first_line, *(continuation_prefix + line for line in body_lines[1:])))
 
 
 def _strip_ansi(value: object) -> str:
@@ -282,19 +286,21 @@ def _to_hh_mm_ss(timestamp: object) -> str:
     return "??:??:??"
 
 
-def _flatten_body(body: object) -> str:
-    """Return ``body`` rendered as a single greppable line."""
+def _body_lines(body: object) -> tuple[str, ...]:
+    """Return normalized body lines for a text-first hanging-indent record."""
     if body is None:
-        return ""
-    if isinstance(body, str):
-        text = body
-    elif isinstance(body, Iterable):
-        text = " ".join(str(x) for x in body)
-    else:
-        text = str(body)
-    text = text.replace("\r\n", " ").replace("\n", " ").replace("\t", " ")
-    text = _ANSI_ESCAPE_RE.sub("", text)
-    return text.strip()
+        return ()
+    text = body if isinstance(body, str) else " ".join(str(item) for item in body) if isinstance(body, Iterable) else str(body)
+    lines = tuple(
+        _ANSI_ESCAPE_RE.sub("", line.replace("\t", " ")).strip()
+        for line in text.replace("\r\n", "\n").split("\n")
+    )
+    return tuple(line for line in lines if line)
+
+
+def _flatten_body(body: object) -> str:
+    """Return the first normalized body line for the entry header."""
+    return " ".join(_body_lines(body)[:1])
 
 
 class RenderedRecordWriter:

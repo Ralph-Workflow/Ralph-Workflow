@@ -471,8 +471,8 @@ def test_ndjson_corpus_renders_identically_on_live_and_record_surfaces(
     rendered, live = _replay_fixture_through_parallel_display(
         fixture_name, tmp_path, unit_id=unit_id
     )
-    lines = [line for line in rendered.splitlines() if line.strip()]
-    assert len(lines) == len(records), f"{fixture_name}: expected one record row per event"
+    lines = [line for line in rendered.splitlines() if line.strip() and "[" in line]
+    assert len(lines) == len(records), f"{fixture_name}: expected one record entry per event"
     assert live
     assert all("role=" in line and "[??:??:??]" not in line for line in lines)
     if any(str(record.get("kind")) in {"tool_use", "tool_result"} for record in records):

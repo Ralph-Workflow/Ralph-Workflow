@@ -99,12 +99,9 @@ def test_streaming_kinds_coalesce_to_single_record_entry(tmp_path: Path) -> None
     The rendered record appends from the shared presentation seam
     (the ``_close_block`` single close entry), so streaming
     fragments share the same coalesced passage that the live log
-    shows. Five ``TEXT`` events for the same unit produce exactly
-    one record line carrying the joined passage; the per-fragment
-    record entries are gone. The close-line span/duration header
-    is a live-log surface concern, not a record concern: the
-    record line carries the joined body, not the visual close
-    header.
+    shows. Five ``TEXT`` events for the same unit produce one coalesced
+    entry with a span/duration heading and one hanging passage; the
+    per-fragment record entries are gone.
     """
     pd, _buf = _make_display(tmp_path)
     for index in range(5):
@@ -118,15 +115,12 @@ def test_streaming_kinds_coalesce_to_single_record_entry(tmp_path: Path) -> None
     expected_path = tmp_path / ".agent" / "raw" / f"{safe_id_for('pi')}.rendered.log"
     body = expected_path.read_text(encoding="utf-8")
     lines = [line for line in body.splitlines() if line.strip()]
-    assert len(lines) == 1, f"expected 1 coalesced line, got {len(lines)}: {lines!r}"
+    assert len(lines) == 2, f"expected a heading and coalesced passage, got {lines!r}"
+    assert "→" in lines[0] and "0s" in lines[0]
+    assert lines[1].startswith("  ")
     # Joined passage carries all five fragments.
     for index in range(5):
         assert f"event {index} body" in body
-    # The record line is text-first: no glyphs like \u22ef or
-    # \u2192 from the visual close header leak into the record
-    # body. Span / duration are live-log surface concerns.
-    assert "\u22ef" not in body
-    assert "\u2192" not in body
 
 
 def test_quiet_mode_writes_rendered_writer(tmp_path: Path) -> None:

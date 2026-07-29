@@ -98,7 +98,7 @@ def _replay(
 def test_parser_native_replay_keeps_each_agent_on_the_shared_presentation_path(name: str, provider: ActivityProvider, parser_factory: _ParserFactory, tmp_path: Path) -> None:
     """S-5: wire capture -> parser -> normalizer -> display never becomes a raw dump."""
     record, live, expected_bodies = _replay(name, provider, parser_factory, tmp_path)
-    lines = [line for line in record.splitlines() if line.strip()]
+    lines = [line for line in record.splitlines() if line.strip() and "[" in line]
     assert expected_bodies
     assert len(lines) == len(expected_bodies) + 1
     assert "role=phase_header" in lines[0]

@@ -1543,7 +1543,7 @@ class ParallelDisplay:
         self._append_recorded_entry(
             unit_id,
             event_kind=record_kind,
-            body=visible,
+            body=body,
             timestamp=timestamp,
         )
         # DA-002 (wt-028-display S-2 / S-3): record the close on
@@ -2412,6 +2412,19 @@ class ParallelDisplay:
             f"dropped {delta} lines since last flush",
         )
 
+    def _preview_header_metadata(
+        self, tool_name: str, input_dict: dict[str, object], metadata: dict[str, object]
+    ) -> dict[str, object] | None:
+        """Remove file-preview content from the generic tool-call header."""
+        if payload_from_tool_event(tool_name, {"input": input_dict}) is None:
+            return None
+        preview_keys = {"content", "patch", "oldText", "newText", "old_string", "new_string", "edits"}
+        header_metadata = dict(metadata)
+        header_metadata["input"] = {
+            key: value for key, value in input_dict.items() if key not in preview_keys
+        }
+        return header_metadata
+
     def _emit_activity_event(
         self,
         unit_id: str,
@@ -2510,6 +2523,17 @@ class ParallelDisplay:
                     workdir=tool_workdir or None,
                     command=tool_command or None,
                     pattern=tool_pattern or None,
+                )
+            # DA-004: structured file previews own their content; retaining
+            # edit/patch text in the generic header says the same thing twice.
+            header_metadata = self._preview_header_metadata(original_name, input_dict, metadata)
+            if header_metadata is not None:
+                event = make_event_for_emit(
+                    kind,
+                    text_content,
+                    timestamp=timestamp,
+                    metadata=header_metadata,
+                    source=unit_id,
                 )
 
         # ALL formatting goes through the registry -- the friendly name,
