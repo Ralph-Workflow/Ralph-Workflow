@@ -675,11 +675,8 @@ def _build_content_preview(
 ) -> RenderableType | None:
     """Render a content payload, keeping diff metadata outside file gutters."""
     preview_path = path
-    is_diff = (
-        bare in {"git_diff", "git_show"}
-        or canonical.language_hint == "diff"
-        or canonical.is_snippet
-    )
+    is_diff = bare in {"git_diff", "git_show"} or canonical.language_hint == "diff"
+    is_relative_snippet = canonical.is_snippet
     if is_diff:
         preview_path = "preview.diff"
     elif canonical.language_hint:
@@ -735,7 +732,11 @@ def _build_content_preview(
     )
     if preview is None:
         return None
-    return Group(Text("  (snippet)", style="theme.text.muted"), preview) if is_diff else preview
+    return (
+        Group(Text("  (snippet)", style="theme.text.muted"), preview)
+        if is_diff or is_relative_snippet
+        else preview
+    )
 
 
 def build_edit_preview(
