@@ -51,7 +51,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
 # Capture the real HOME at import time, BEFORE the conftest
 # ``_isolate_process_home`` autouse fixture remaps it to a per-test sandbox.
-# AGY v1.0.9 needs the real HOME to find its keyring credentials; the
+# AGY v1.1.8 needs the real HOME to find its keyring credentials; the
 # sandbox HOME has no .gemini/antigravity-cli state and no OAuth tokens, so
 # AGY falls back to the OAuth browser flow and times out.
 _REAL_HOME = Path(os.environ.get("HOME") or Path.home()).resolve()
@@ -97,7 +97,7 @@ def _write_smoke_prompt(prompt_file: Path) -> None:
 def _build_live_env() -> dict[str, str]:
     """Build the env dict for a live AGY smoke run.
 
-    AGY v1.0.9 stores its keyring credentials in the OS keychain but the
+    AGY v1.1.8 stores its keyring credentials in the OS keychain but the
     Go runtime also keeps a session cache under ``$HOME/.gemini/antigravity-cli``.
     The conftest ``_isolate_process_home`` autouse fixture remaps HOME to a
     per-test sandbox, which makes AGY fall back to the OAuth browser flow

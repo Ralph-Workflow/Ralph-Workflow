@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.git.operations import has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -164,13 +165,41 @@ def _parallel_or_agent_effect(
     )
 
 
+def _make_default_agy_agents_probe() -> Callable[[], str]:
+    """Build the per-process cached, bounded AGY sub-agent probe."""
+    cached_output: str | None = None
+
+    def probe() -> str:
+        """Read AGY's configured sub-agents, failing closed on process failure."""
+        nonlocal cached_output
+        if cached_output is None:
+            try:
+                result = run_process(
+                    "agy",
+                    ("agents",),
+                    options=ProcessRunOptions(
+                        capture_output=True,
+                        timeout=5.0,
+                        label="pipeline:agy-agents",
+                    ),
+                )
+            except OSError:
+                cached_output = ""
+            else:
+                cached_output = result.stdout if result.returncode == 0 else ""
+        return cached_output
+
+    return probe
+
+
+_default_agy_agents_probe = _make_default_agy_agents_probe()
+
+
 def _agy_available_agents(probe: Callable[[], str] | None) -> tuple[str, ...]:
     """Return AGY's current configured sub-agent names, failing closed on probe failure."""
-    if probe is None:
-        return ()
     try:
-        output = probe()
-    except OSError:
+        output = (probe or _default_agy_agents_probe)()
+    except (OSError, ProcessExecutionError):
         return ()
     return tuple(line.strip().lstrip("- ") for line in output.splitlines() if line.strip() and ":" not in line)
 

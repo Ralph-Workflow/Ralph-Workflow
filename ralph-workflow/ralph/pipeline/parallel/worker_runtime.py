@@ -353,7 +353,19 @@ def run_parallel_worker_from_manifest(
     )
     policy_bundle = load_policy_for_workspace_scope(workspace_scope, config=config)
     state = _state_for_worker_manifest(manifest, config=config, policy_bundle=policy_bundle)
-    effect = determine_effect_from_policy(state, policy_bundle, workspace_scope, config=config)
+    effective_pipeline_deps = pipeline_deps or DefaultPipelineFactory().build(
+        config,
+        display_context,
+        model_identity=model_identity,
+        pro_hooks=pro_hooks,
+    )
+    effect = determine_effect_from_policy(
+        state,
+        policy_bundle,
+        workspace_scope,
+        config=config,
+        agy_agents_probe=effective_pipeline_deps.agy_agents_probe,
+    )
     if not isinstance(effect, InvokeAgentEffect):
         logger.error(
             "Parallel worker manifest resolved unsupported effect for phase={} effect={}",
@@ -369,12 +381,6 @@ def run_parallel_worker_from_manifest(
     workspace = FsWorkspace(workspace_root)
     registry = AgentRegistry.from_config(config)
     agent = registry.get(effect.agent_name)
-    effective_pipeline_deps = pipeline_deps or DefaultPipelineFactory().build(
-        config,
-        display_context,
-        model_identity=model_identity,
-        pro_hooks=pro_hooks,
-    )
     # Startup seam: reconcile any interrupted integration and catch up
     # with whatever the sibling agents landed while this worker was being
     # scheduled, BEFORE the prompt is materialized -- otherwise the

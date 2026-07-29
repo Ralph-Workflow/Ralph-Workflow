@@ -47,7 +47,7 @@ Side effects:
 Invariants:
 
 - The registry's keys are the agent names policy references (e.g.
-  ``claude-headless``, ``agy/Gemini 3.5 Flash (Medium)``). The registry
+  ``claude-headless``, ``agy/gemini-3.6-flash-low``). The registry
   does not silently rename or normalize these strings.
 - The registry does not silently drop unknown agent names; resolution
   raises :class:`ralph.agents.unknown_agent_error.UnknownAgentError`.

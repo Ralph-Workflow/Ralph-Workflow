@@ -16,8 +16,12 @@ from unittest.mock import MagicMock
 
 from loguru import logger as loguru_logger
 
+from ralph.executor.process import ProcessResult
+from ralph.pipeline import effect_router as effect_router_module
+from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -38,6 +42,8 @@ from tests._support.typed_accessors import (
 )
 
 if TYPE_CHECKING:
+    import pytest
+
     from ralph.config.models import UnifiedConfig
 
 
@@ -151,6 +157,71 @@ def test_effect_router_regression_agy_agent_subagents_without_available_agents_f
 
     assert isinstance(effect, ExitFailureEffect)
     assert "`agy agents` reported no sub-agents on this install" in effect.reason
+
+
+def test_agy_agents_probe_regression_is_bounded_and_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DA-002: default AGY discovery must be bounded and reuse the first result."""
+    calls: list[tuple[str, tuple[str, ...], effect_router_module.ProcessRunOptions]] = []
+
+    def _run_process(
+        command: str,
+        args: tuple[str, ...],
+        *,
+        options: effect_router_module.ProcessRunOptions,
+    ) -> ProcessResult:
+        calls.append((command, args, options))
+        return ProcessResult((command, *args), 0, "Available agents:\n- reviewer", "")
+
+    monkeypatch.setattr(effect_router_module, "run_process", _run_process)
+    probe = effect_router_module._make_default_agy_agents_probe()
+
+    assert probe() == "Available agents:\n- reviewer"
+    assert probe() == "Available agents:\n- reviewer"
+    assert calls == [("agy", ("agents",), calls[0][2])]
+    options = calls[0][2]
+    assert options.timeout == 5.0
+
+
+def test_runner_regression_forwards_agy_agents_probe_to_effect_router(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-002: the production runner must preserve the per-install AGY probe seam."""
+    def expected_probe() -> str:
+        return "Available agents:\n- reviewer"
+
+    observed: dict[str, object] = {}
+
+    def _router(
+        state: PipelineState,
+        policy_bundle: PolicyBundle,
+        workspace_scope: WorkspaceScope,
+        *,
+        config: UnifiedConfig,
+        agy_agents_probe: object | None = None,
+    ) -> InvokeAgentEffect:
+        del state, policy_bundle, workspace_scope, config
+        observed["probe"] = agy_agents_probe
+        return InvokeAgentEffect(
+            agent_name="agy/gemini-3.6-flash-low",
+            phase="development",
+            prompt_file="PROMPT.md",
+        )
+
+    monkeypatch.setattr(runner_module, "determine_effect_from_policy", _router)
+    effect = runner_module.call_determine_effect_from_policy(
+        PipelineState(phase="development"),
+        _default_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        _config_with_development_agent(),
+        pipeline_deps=PipelineDeps(
+            display_context=MagicMock(),
+            agy_agents_probe=expected_probe,
+        ),
+    )
+
+    assert isinstance(effect, InvokeAgentEffect)
+    assert observed["probe"] is expected_probe
 
 
 def test_dormant_default_falls_through_to_invoke_agent_effect(tmp_path: Path) -> None:

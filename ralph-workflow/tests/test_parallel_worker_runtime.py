@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -233,17 +234,19 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         lambda *args, **kwargs: PipelineState(phase="development"),
         raising=False,
     )
-    monkeypatch.setattr(
-        module,
-        "determine_effect_from_policy",
-        lambda *args, **kwargs: InvokeAgentEffect(
+    def expected_agy_agents_probe() -> str:
+        return "Available agents:\n- reviewer"
+
+    def _router(*_args: object, **kwargs: object) -> InvokeAgentEffect:
+        captured["agy_agents_probe"] = kwargs.get("agy_agents_probe")
+        return InvokeAgentEffect(
             agent_name="developer",
             phase="development",
             prompt_file="ignored.md",
             drain="development",
-        ),
-        raising=False,
-    )
+        )
+
+    monkeypatch.setattr(module, "determine_effect_from_policy", _router, raising=False)
     monkeypatch.setattr(
         module,
         "DefaultPipelineFactory",
@@ -297,12 +300,21 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         raising=False,
     )
 
+    pipeline_deps = dataclasses.replace(
+        _FakePipelineFactory(phase_prompt_materializer=_fake_materialize_prompt_for_phase).build(
+            object(),
+            object(),
+        ),
+        agy_agents_probe=expected_agy_agents_probe,
+    )
     exit_code = module.run_parallel_worker_from_manifest(
         manifest_path=manifest_path,
         display_context=object(),
+        pipeline_deps=pipeline_deps,
     )
 
     assert exit_code == 0
+    assert captured["agy_agents_probe"] is expected_agy_agents_probe
     assert captured["read_path"] == shared_prompt
     assert manifest.config_path is not None
     assert captured["config_path"] == Path(manifest.config_path)

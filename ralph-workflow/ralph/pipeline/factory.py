@@ -272,6 +272,7 @@ class PipelineDeps:
     ) = None
     commit_effect_executor: Callable[[object, Path], object] | None = None
     has_uncommitted_changes: Callable[[Path], bool] | None = None
+    agy_agents_probe: Callable[[], str] | None = None
 
     def __init__(
         self,
@@ -309,6 +310,7 @@ class PipelineDeps:
         ) = None,
         commit_effect_executor: Callable[[object, Path], object] | None = None,
         has_uncommitted_changes: Callable[[Path], bool] | None = None,
+        agy_agents_probe: Callable[[], str] | None = None,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -424,6 +426,7 @@ class PipelineDeps:
         object.__setattr__(self, "auto_integrate_resolver", auto_integrate_resolver)
         object.__setattr__(self, "commit_effect_executor", commit_effect_executor)
         object.__setattr__(self, "has_uncommitted_changes", has_uncommitted_changes)
+        object.__setattr__(self, "agy_agents_probe", agy_agents_probe)
 
     @property
     def display_context(self) -> DisplayContext:

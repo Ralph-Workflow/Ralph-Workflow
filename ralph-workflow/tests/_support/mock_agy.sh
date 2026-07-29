@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Shell wrapper for the deterministic AGY v1.0.8 simulator.
+# Shell wrapper for the deterministic AGY v1.1.8 simulator.
 # RALPH_AGY_BINARY can point directly at this file.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHONPATH="$SCRIPT_DIR/../..:${PYTHONPATH:-}"

@@ -510,6 +510,51 @@ def test_fallback_promotion_stamps_receipt_and_removes_tmp_markdown(
     assert not backend.exists(fallback)
 
 
+def test_fallback_promotion_regression_commit_message_stamps_receipt_and_removes_tmp_markdown(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    """DA-003: commit artifacts must receive the same fallback promotion as every stage."""
+    fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
+    backend.write_text(fallback, COMMIT_MESSAGE)
+
+    result = canonical_submit_module.promote_fallback_artifact(
+        tmp_path,
+        "commit_message",
+        deps=deps,
+        run_id="run-1",
+    )
+
+    assert result is not None
+    assert backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.md")
+    assert not backend.exists(fallback)
+    assert artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
+    assert is_artifact_submitted(tmp_path, "run-1", "commit_message", deps=deps)
+
+
+def test_fallback_promotion_regression_malformed_commit_message_stamps_no_receipt(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    """DA-003: malformed commit fallback documents must not pass commit-stage validation."""
+    fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
+    backend.write_text(fallback, "not a markdown artifact")
+
+    assert (
+        canonical_submit_module.promote_fallback_artifact(
+            tmp_path,
+            "commit_message",
+            deps=deps,
+            run_id="run-2",
+        )
+        is None
+    )
+    assert backend.exists(fallback)
+    assert not artifact_receipt_present(tmp_path, "run-2", "commit_message", backend=backend)
+
+
 def test_fallback_promotion_rejects_malformed_markdown(
     tmp_path: Path,
     backend: MemoryBackend,
