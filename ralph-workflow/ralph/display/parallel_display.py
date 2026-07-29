@@ -93,6 +93,7 @@ from __future__ import annotations
 import contextlib
 import json
 import queue
+import re
 import textwrap
 import threading
 import time
@@ -193,6 +194,21 @@ _PREVIEW_MAX_LINES: int = 40
 # starting from the second consecutive identical call.
 _MIN_COALESCE_REPEAT = 2
 _MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
+_TOOL_RESULT_CHANNEL_RE = re.compile(r"\[tool-result\]\s*")
+_TOOL_RESULT_RUNNING_RE = re.compile(r"\s*\(running\.\.\.\)")
+_TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE = re.compile(
+    r"\b(severity=\S+)\s+\1\s+(\S+)\s+\2\b"
+)
+
+
+def _clean_tool_result_content(content: str, unit_id: str) -> str:
+    """Remove transport residue from a tool result before shared rendering."""
+    clean = _TOOL_RESULT_CHANNEL_RE.sub("", content)
+    clean = _TOOL_RESULT_RUNNING_RE.sub("", clean)
+    clean = _TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE.sub(r"\1 \2", clean)
+    if unit_id:
+        clean = re.sub(rf"\b{re.escape(unit_id)}(?:\s+{re.escape(unit_id)})+\b", unit_id, clean)
+    return " ".join(clean.split())
 
 
 def _strip_control_chars_for_render(text: str) -> str:
@@ -2896,11 +2912,7 @@ class ParallelDisplay:
         timestamp: str | None = None,
     ) -> None:
         """Buffer consecutive terminal results so transport floods collapse."""
-        if (
-            kind is ActivityEventKind.TOOL_RESULT
-            and content is not None
-            and content.startswith("[tool-result]")
-        ):
+        if kind is ActivityEventKind.TOOL_RESULT and content is not None and timestamp is not None:
             pending = self._pending_tool_results.get(unit_id)
             signature = (content, str(metadata.get("tool", metadata.get("tool_name", ""))))
             if (
@@ -2944,12 +2956,7 @@ class ParallelDisplay:
         if pending is None:
             return
         content, metadata, timestamp, _last_timestamp, count = pending
-        clean_content = (
-            content.removeprefix("[tool-result] ")
-            .replace(" (running...)", "")
-            .replace(" severity=info severity=info", "")
-            .replace(" pi pi", " pi")
-        )
+        clean_content = _clean_tool_result_content(content, unit_id)
         self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, clean_content, metadata, timestamp)
         if count >= _MIN_TOOL_RESULT_COLLAPSE_COUNT:
             args = metadata.get("args")
@@ -3022,19 +3029,16 @@ class ParallelDisplay:
             self._last_tool_result_content.pop(unit_id, None)
         record_metadata = dict(metadata)
         emitted_content = content
-        if kind is ActivityEventKind.TOOL_USE:
-            if call_id:
-                record_metadata["target"] = f"call_id={call_id}"
-            else:
-                input_obj = record_metadata.get("input", record_metadata.get("args"))
-                input_dict = (
-                    cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
-                )
-                if not any(input_dict.get(key) for key in ("path", "command", "pattern")):
-                    # ponytail: a global call ordinal is enough to make unknown-target calls skimmable.
-                    target = f"call {self._run_counters.tool_calls + 1}"
-                    record_metadata["target"] = target
-                    emitted_content = f"{content or record_metadata.get('tool_name', 'call')} {target}"
+        if kind is ActivityEventKind.TOOL_USE and not call_id:
+            input_obj = record_metadata.get("input", record_metadata.get("args"))
+            input_dict = (
+                cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            )
+            if not any(input_dict.get(key) for key in ("path", "command", "pattern")):
+                # ponytail: a global call ordinal is enough to make unknown-target calls skimmable.
+                target = f"call {self._run_counters.tool_calls + 1}"
+                record_metadata["target"] = target
+                emitted_content = f"{content or record_metadata.get('tool_name', 'call')} {target}"
         self._emit_activity_event(unit_id, kind, emitted_content, None, record_metadata, timestamp)
 
     def _on_activity_router_event(

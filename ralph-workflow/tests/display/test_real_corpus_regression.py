@@ -73,6 +73,38 @@ def test_pi_tool_result_flood_replay_collapses_identical_burst_on_both_surfaces(
         assert "severity=info severity=info" not in surface
 
 
+def test_pi_tool_result_flood_without_channel_prefix_or_pi_identity_still_collapses(
+    tmp_path: Path,
+) -> None:
+    """DA-001: collapse and cleanup are content-agnostic across agent identities."""
+    body = "✓ PASS read_file src/flood.py (running...) severity=warn severity=warn codex codex"
+    wire = [
+        "{" + f'"type":"tool_execution_end","timestamp":"2026-07-25T09:30:00.{index}00Z","toolCallId":"flood-1","toolName":"read_file","args":{{"path":"src/flood.py"}},"result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false' + "}"
+        for index in range(4)
+    ]
+    rendered, live, _ = _replay(
+        "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire
+    )
+    assert rendered.count("role=tool_result") == 2
+    for surface in (rendered, live):
+        collapsed = " ".join(surface.split())
+        assert "4 identical results" in collapsed
+        assert "destination src/flood.py" in collapsed
+        assert "(running...)" not in surface
+        assert "severity=warn severity=warn" not in surface
+        assert "codex codex" not in surface
+
+
+def test_tool_call_record_emits_call_id_once(tmp_path: Path) -> None:
+    """DA-002: a parser correlation id is a single record suffix."""
+    wire = [
+        '{"type":"tool_execution_start","timestamp":"2026-07-25T09:30:00.000Z","toolCallId":"call_ABC123","toolName":"read_file","args":{"path":"src/one.py"}}'
+    ]
+    rendered, _live, _ = _replay("pi_call_id", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire)
+    line = next(line for line in rendered.splitlines() if "role=tool_call" in line)
+    assert line.count("call_id=call_ABC123") == 1
+
+
 def test_pi_toolcall_alias_and_idless_echo_replay_deduplicates_both_surfaces(
     tmp_path: Path,
 ) -> None:
