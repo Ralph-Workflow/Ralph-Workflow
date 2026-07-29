@@ -55,6 +55,24 @@ def test_pi_toolcall_triplication_replay_emits_one_call_and_result(tmp_path: Pat
     assert rendered.count("payload from tool") == live.count("payload from tool") == 1
 
 
+def test_pi_tool_result_flood_replay_collapses_identical_burst_on_both_surfaces(
+    tmp_path: Path,
+) -> None:
+    """S-2: repeated Pi terminal results become one accounted-for presentation."""
+    rendered, live, _ = _replay(
+        "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path
+    )
+    assert rendered.count("role=tool_result") == 2
+    for surface in (rendered, live):
+        collapsed = " ".join(surface.split())
+        assert collapsed.count("4 identical results") == 1
+        assert "92 B" in surface
+        assert "destination src/flood.py" in surface
+        assert "[tool-result]" not in surface
+        assert "(running...)" not in surface
+        assert "severity=info severity=info" not in surface
+
+
 def test_pi_toolcall_alias_and_idless_echo_replay_deduplicates_both_surfaces(
     tmp_path: Path,
 ) -> None:

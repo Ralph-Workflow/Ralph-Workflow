@@ -192,6 +192,7 @@ _PREVIEW_MAX_LINES: int = 40
 # A tool activity is "repeated" (coalesced with a "xN" count in the live status)
 # starting from the second consecutive identical call.
 _MIN_COALESCE_REPEAT = 2
+_MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
 
 
 def _strip_control_chars_for_render(text: str) -> str:
@@ -456,6 +457,7 @@ class ParallelDisplay:
         "_overflow_logs",
         "_overflow_warned",
         "_pending_phase_headers",
+        "_pending_tool_results",
         "_phase_close_emitted",
         "_phase_counters",
         "_recorded_tool_call_ids",
@@ -587,6 +589,11 @@ class ParallelDisplay:
         self._last_tool_result_content: dict[
             str, tuple[str | None, str]
         ] = {}  # bounded-accumulator-ok: drop_unit
+        # A terminal transport occasionally repeats one result record in a
+        # tight burst. Hold one per unit until its run boundary is known.
+        self._pending_tool_results: dict[
+            str, tuple[str, dict[str, object], str | None, str | None, int]
+        ] = {}  # bounded-accumulator-ok: one pending result per unit
         # DA-002 (wt-028-display S-2 / S-3): the streaming-block
         # live-log dedup. When a ``TEXT`` streaming block closes and
         # the next event opens a ``THINKING`` streaming block with
@@ -2813,6 +2820,7 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._status_bar.stop()
         self.flush_blocks()
+        self._flush_pending_tool_results()
         # P0 (wt-028-display S-11 / AC-07): flush any per-unit
         # rendered-record writer that was not already collected by
         # ``drop_unit`` (e.g. a single-wave run whose drop_unit is
@@ -2880,6 +2888,76 @@ class ParallelDisplay:
         self.emit_log_line(unit_id or "run", sanitized_line)
 
     def emit_parsed_event(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        metadata: dict[str, object],
+        timestamp: str | None = None,
+    ) -> None:
+        """Buffer consecutive terminal results so transport floods collapse."""
+        if (
+            kind is ActivityEventKind.TOOL_RESULT
+            and content is not None
+            and content.startswith("[tool-result]")
+        ):
+            pending = self._pending_tool_results.get(unit_id)
+            signature = (content, str(metadata.get("tool", metadata.get("tool_name", ""))))
+            if (
+                pending is not None
+                and signature
+                == (pending[0], str(pending[1].get("tool", pending[1].get("tool_name", ""))))
+                and self._within_tool_result_burst(pending[3], timestamp)
+            ):
+                self._pending_tool_results[unit_id] = (
+                    pending[0],
+                    pending[1],
+                    pending[2],
+                    timestamp,
+                    pending[4] + 1,
+                )
+                return
+            self._flush_pending_tool_result(unit_id)
+            self._pending_tool_results[unit_id] = (content, dict(metadata), timestamp, timestamp, 1)
+            return
+        self._flush_pending_tool_result(unit_id)
+        self._emit_parsed_event_now(unit_id, kind, content, metadata, timestamp)
+
+    @staticmethod
+    def _within_tool_result_burst(previous: str | None, current: str | None) -> bool:
+        """Return whether adjacent source timestamps are within one second."""
+        if previous is None or current is None:
+            return False
+        with contextlib.suppress(ValueError):
+            return abs(
+                (datetime.fromisoformat(current.replace("Z", "+00:00"))
+                - datetime.fromisoformat(previous.replace("Z", "+00:00"))).total_seconds()
+            ) <= 1.0
+        return False
+
+    def _flush_pending_tool_results(self) -> None:
+        for unit_id in tuple(self._pending_tool_results):
+            self._flush_pending_tool_result(unit_id)
+
+    def _flush_pending_tool_result(self, unit_id: str) -> None:
+        pending = self._pending_tool_results.pop(unit_id, None)
+        if pending is None:
+            return
+        content, metadata, timestamp, _last_timestamp, count = pending
+        clean_content = (
+            content.removeprefix("[tool-result] ")
+            .replace(" (running...)", "")
+            .replace(" severity=info severity=info", "")
+            .replace(" pi pi", " pi")
+        )
+        self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, clean_content, metadata, timestamp)
+        if count >= _MIN_TOOL_RESULT_COLLAPSE_COUNT:
+            args = metadata.get("args")
+            target = args.get("path", "unknown") if isinstance(args, dict) else "unknown"
+            marker = f"… {count} identical results ({len(content.encode())} B, destination {target})"
+            self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, marker, metadata, timestamp)
+
+    def _emit_parsed_event_now(
         self,
         unit_id: str,
         kind: ActivityEventKind,
@@ -4895,6 +4973,7 @@ class ParallelDisplay:
         self._last_recorded_body.pop(unit_id, None)
         self._recorded_tool_call_ids.pop(unit_id, None)
         self._last_tool_result_content.pop(unit_id, None)
+        self._flush_pending_tool_result(unit_id)
         self._last_text_thinking_block_close.pop(unit_id, None)
         # wt-028-display S-5 (AC-04): clear the per-unit last-phase
         # cache so a re-spawned worker does not carry a stale
