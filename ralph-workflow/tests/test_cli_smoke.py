@@ -481,7 +481,7 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
             return cls()
 
         def get(self, name: str) -> AgentConfig | None:
-            if name == "agy/Gemini 3.5 Flash (Medium)":
+            if name == "agy/gemini-3.5-flash-medium":
                 return AgentConfig(
                     cmd="agy",
                     transport=AgentTransport.AGY,
@@ -495,7 +495,7 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
         captured["agent_name"] = kwargs["agent_name"]
         return smoke_module.SmokeRunResult(
-            agent_name="agy/Gemini 3.5 Flash (Medium)",
+            agent_name="agy/gemini-3.5-flash-medium",
             transport="agy",
             output_file=tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js",
             file_created=True,
@@ -512,16 +512,16 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
 
     exit_code = smoke_module.smoke_interactive_agy_command(
-        agent_name="agy/Gemini 3.5 Flash (Medium)",
+        agent_name="agy/gemini-3.5-flash-medium",
         display_context=None,
     )
 
     assert exit_code == 0
-    assert captured["agent_name"] == "agy/Gemini 3.5 Flash (Medium)"
+    assert captured["agent_name"] == "agy/gemini-3.5-flash-medium"
     output = stream.getvalue()
-    assert "agy/Gemini 3.5 Flash (Medium)" in output
-    assert "agy/Gemini 3.5 Flash (Medium) parity smoke test" in output
-    assert "agy/Gemini 3.5 Flash (Medium) parity smoke report" in output
+    assert "agy/gemini-3.5-flash-medium" in output
+    assert "agy/gemini-3.5-flash-medium parity smoke test" in output
+    assert "agy/gemini-3.5-flash-medium parity smoke report" in output
 
 
 def test_smoke_interactive_nanocoder_command_runs_nanocoder_harness_when_binary_present(
@@ -726,13 +726,13 @@ def test_smoke_interactive_agy_with_mock_binary(
     monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
 
     exit_code = smoke_module.smoke_interactive_agy_command(
-        agent_name="agy/Gemini 3.5 Flash (Medium)",
+        agent_name="agy/gemini-3.5-flash-medium",
         display_context=None,
     )
 
     assert exit_code == 0
     output = stream.getvalue()
-    assert "agy/Gemini 3.5 Flash (Medium)" in output
+    assert "agy/gemini-3.5-flash-medium" in output
     # The parity table row must show file=yes for the mock-backed run.
     # The table may wrap the long agent name, so match the transport/file cells.
     assert re.search(r"│\s*agy\s*│\s*yes\s*│", output) is not None
@@ -821,7 +821,7 @@ def test_smoke_interactive_agy_with_relative_mock_binary_path(
     monkeypatch.chdir(tmp_path)
 
     exit_code = smoke_module.smoke_interactive_agy_command(
-        agent_name="agy/Gemini 3.5 Flash (Medium)",
+        agent_name="agy/gemini-3.5-flash-medium",
         display_context=None,
     )
 
@@ -866,13 +866,13 @@ def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
     """``_apply_agy_binary_override_to_config`` ignores a non-executable override."""
     config = UnifiedConfig(
         agents={
-            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
+            "agy/gemini-3.5-flash-medium": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
             "claude/haiku": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
     result = smoke_module._apply_agy_binary_override_to_config(config)
-    assert result.agents["agy/Gemini 3.5 Flash (Medium)"].cmd == "agy"
+    assert result.agents["agy/gemini-3.5-flash-medium"].cmd == "agy"
     assert result.agents["claude/haiku"].cmd == "claude"
 
 
@@ -883,12 +883,12 @@ def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
     mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
     config = UnifiedConfig(
         agents={
-            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
+            "agy/gemini-3.5-flash-medium": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
     result = smoke_module._apply_agy_binary_override_to_config(config)
-    agy_cmd = result.agents["agy/Gemini 3.5 Flash (Medium)"].cmd
+    agy_cmd = result.agents["agy/gemini-3.5-flash-medium"].cmd
     assert agy_cmd != "agy"
     assert str(mock_path) in agy_cmd
 
@@ -957,13 +957,13 @@ def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
 
     config = UnifiedConfig(
         agents={
-            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
+            "agy/gemini-3.5-flash-medium": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
             "claude/haiku": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", str(stub_path))
     result = smoke_module._apply_agy_binary_override_to_config(config)
-    agy_cmd = result.agents["agy/Gemini 3.5 Flash (Medium)"].cmd
+    agy_cmd = result.agents["agy/gemini-3.5-flash-medium"].cmd
     # The override is applied: cmd is no longer ``agy`` and contains the stub.
     assert agy_cmd != "agy"
     assert str(stub_path) in agy_cmd

@@ -174,65 +174,27 @@ the canonical recipe in [adding-a-new-agent.md](adding-a-new-agent.md).
 
 ### AGY transport end-to-end smoke
 
-To verify that the AGY transport is wired correctly from Ralph Workflow
-through the live `agy` binary, run the canonical AGY smoke test on
-Linux or macOS:
+AGY live smoke is a manual paid diagnostic, not a routine verification step:
 
 ```bash
 python -m ralph smoke-interactive-agy
 ```
 
-The parity table reports five acceptance signals:
+The command defaults to `agy/gemini-3.6-flash-low`, a conservative low-tier
+choice by model name; AGY price ordering is unverified. It reports file,
+session, parser-event, tool-activity, and artifact signals. Treat any missing
+signal as a failed diagnostic, not a successful run.
 
-| Column | Green means |
-|--------|-------------|
-| File | `tmp/interactive-agy-smoke/todo-list.js` was created |
-| Session | A session ID was observed in the transcript |
-| Parser events | The transcript produced parseable events (Claude parity only) |
-| Tool activity | Tool-use/tool-result signals or the artifact's `headless_guide_checks` were observed |
-| Artifact | The `smoke_test_result` artifact was submitted |
+As of the v1.1.8 source record, paid probes for model acceptance, effort,
+continuation, MCP/artifact submission, permission prompts, and stream-json
+progress were not run. Do not infer those behaviours from the command, a
+published option, or a mock. The no-cost `agy agents` observation reported no
+agents on the measured installation; that is not a universal delegation claim.
 
-A red column in File, Tool activity, or Artifact indicates a Ralph
-Workflow regression. The Session and Parser events columns may show
-`missing`/`0` on AGY headless `--print` runs: AGY does not emit a
-session ID or parser-friendly stdout stream in `--print` mode. Because
-AGY's headless `--print` mode does not reliably call Ralph Workflow's
-streamable-HTTP MCP tools, the smoke prompt instructs AGY to write the
-`smoke_test_result` artifact directly to `.agent/artifacts/smoke_test_result.md`;
-tool activity is then inferred from that artifact.
-
-If AGY exits 0 but the parity table reports no file, no artifact, and
-the `Breaks` column contains `AGY --print returned empty stdout: ...`,
-the upstream `agy` binary itself produced no stdout. The smoke
-detector reads `~/.gemini/antigravity-cli/cli.log` and reports the
-measured root cause in the `Breaks` column. The most common upstream
-conditions are an individual API quota exhausted error
-(`429 RESOURCE_EXHAUSTED`), whose diagnostic names the reset window,
-or an unrecognized model ID. Lowercased or slashed slugs such as
-`agy/gemini-3.5-flash-low` are not accepted by AGY v1.0.8; use the
-exact display names from `agy models` (the eight canonical names include
-`Gemini 3.5 Flash (Medium/High/Low)`, `Gemini 3.1 Pro (Low/High)`,
-`Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and
-`GPT-OSS 120B (Medium)`). These are upstream AGY conditions, not
-Ralph Workflow regressions; wait for the quota reset or pin a recognized
-alias via `--agent agy/<model>`.
-
-#### Distinguishing live-quota failure from mock-quota output
-
-The live `agy` v1.0.8 binary is re-measured periodically; the
-re-measurement notes (upstream source URLs re-fetched, local binary
-probed, full AGY smoke parity table) live in `tmp/agy-source-of-truth.txt`
-and `tmp/agy-smoke-run.log` to keep the troubleshooting index lean.
-
-When running with `RALPH_AGY_BINARY` set (for example to the
-deterministic mock at `tests/_support/mock_agy.sh` for CI), an empty
-stdout with `MOCK_AGY_BEHAVIOR=quota_exhausted` is expected and
-reported as an informational break, not as the live upstream quota
-diagnostic. The mock entrypoint is `tests/_support/mock_agy.py` (run
-as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin
-wrapper suitable for `RALPH_AGY_BINARY`. To verify the harness itself,
-re-run the canonical AGY smoke above with `RALPH_AGY_BINARY=tests/_support/mock_agy.sh`
-set. It should report file=yes, artifact=yes, and no upstream-quota break.
+The exact free observations and the manual probe ledger are in
+`tmp/agy-source-of-truth.txt`. A valid smoke artifact, when one is submitted,
+is stored at `.agent/artifacts/smoke_test_result.md`. The deterministic mock
+remains a harness test, not evidence for live AGY behaviour.
 
 ### Pi.dev transport end-to-end smoke
 

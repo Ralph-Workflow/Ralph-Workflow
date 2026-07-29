@@ -129,7 +129,7 @@ def cached_default_smoke(
     todo-list.js files see the SAME files written by the one shared
     smoke run.
     """
-    key = ("normal", "agy/Claude Sonnet 4.6 (Thinking)")
+    key = ("normal", "agy/claude-sonnet-4-6")
     cached = _smoke_result_cache.get(key)
     if cached is not None:
         return cached[0], cached[1]
@@ -141,7 +141,7 @@ def cached_default_smoke(
             workspace,
             monkeypatch,
             behavior="normal",
-            agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+            agent_name="agy/claude-sonnet-4-6",
         )
         deps = None  # placeholder for future seam
         _smoke_result_cache[key] = (result, workspace, deps)
@@ -287,8 +287,8 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
        ``tmp_path / 'tmp' / 'interactive-agy-smoke' / 'todo-list.js'``.
 
     The expected ``run_id`` is computed from
-    ``resolve_smoke_harness_spec('agy/Gemini 3.5 Flash (Medium)').run_id``
-    (= ``interactive-agy-smoke-Gemini-3.5-Flash-Medium``) so the assertion
+    ``resolve_smoke_harness_spec('agy/gemini-3.5-flash-medium').run_id``
+    (= ``interactive-agy-smoke-gemini-3.5-flash-medium``) so the assertion
     stays in sync with the harness's sanitization rule.
 
     This test is the always-green mock-binary regression-proof that AGY
@@ -300,7 +300,7 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     result = _run_agy_smoke_plumbing(
         tmp_path,
         monkeypatch,
-        agent_name="agy/Gemini 3.5 Flash (Medium)",
+        agent_name="agy/gemini-3.5-flash-medium",
     )
     assert result.artifact_submitted is True
     assert result.explicit_completion_seen is True
@@ -312,7 +312,7 @@ def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     todo_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     assert todo_path.is_file(), f"Expected the mock-written todo file at {todo_path}"
 
-    expected_run_id = resolve_smoke_harness_spec("agy/Gemini 3.5 Flash (Medium)").run_id
+    expected_run_id = resolve_smoke_harness_spec("agy/gemini-3.5-flash-medium").run_id
     # RFC-013 P3: the canonical receipt store is the per-workspace
     # .agent/state.db. The legacy .agent/receipts/<run_id>/<type>.json
     # path is a migration read fallback and the durable write fallback

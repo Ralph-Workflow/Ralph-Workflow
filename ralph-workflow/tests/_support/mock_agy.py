@@ -40,15 +40,6 @@ CANONICAL_MODELS: frozenset[str] = frozenset(
         "claude-sonnet-4-6",
         "claude-opus-4-6-thinking",
         "gpt-oss-120b-medium",
-        # Legacy fixtures remain accepted by the deterministic simulator only.
-        "Gemini 3.5 Flash (Medium)",
-        "Gemini 3.5 Flash (High)",
-        "Gemini 3.5 Flash (Low)",
-        "Gemini 3.1 Pro (Low)",
-        "Gemini 3.1 Pro (High)",
-        "Claude Sonnet 4.6 (Thinking)",
-        "Claude Opus 4.6 (Thinking)",
-        "GPT-OSS 120B (Medium)",
     }
 )
 

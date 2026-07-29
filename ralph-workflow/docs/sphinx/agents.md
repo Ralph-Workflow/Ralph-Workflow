@@ -1,6 +1,6 @@
 # Agent CLI lifecycle
 
-This page covers the full lifecycle of an agent CLI in Ralph Workflow:
+This page covers the full lifecycle of an agent CLI in Ralph Workflow, including bounded output summaries:
 **selection**, **detection**, **authentication**, and **invocation**.
 It complements [Configuration](configuration.md) (which configures each
 phase to use an agent) and
@@ -40,12 +40,11 @@ phases to:
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
-| `agy`             | `agy`        | Interactive (PTY)    | Yes (mock-backed) | Google's Antigravity CLI (measured v1.1.8)      |
+| `agy`             | `agy`        | Interactive (PTY)    | Manual paid probe pending | Google's Antigravity CLI (v1.1.8 free discovery) |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 
-The registry resolves dynamic aliases such as
-`agy/gemini-3.6-flash-low` at runtime. Their syntax differs by agent;
+The registry resolves dynamic aliases. AGY published IDs require a manual paid acceptance probe before they are documented as working. Their syntax differs by agent;
 use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
 rather than assuming one shared provider/model format. It includes every
 built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
@@ -185,12 +184,10 @@ process cleanup through the Nanocoder smoke test.
 
 ### AGY (PTY)
 
-The AGY command builder runs `agy` inside a PTY with a bounded drain so
-buffered stdout is captured end-to-end. The AGY parser classifies live
-output into `text:` / `thinking:` / `tool_use:` events for the smoke
-report. For the exact flag values (including which autonomy flag AGY
-emits) see the [AGY section in Agent
-Compatibility](agent-compatibility.md#google-anti-gravity-agy).
+The AGY command builder has a PTY integration path. The current v1.1.8
+paid probes for live output, unattended permissions, and stream-json progress
+were not run, so this manual makes no live parser or autonomy guarantee. See
+`tmp/agy-source-of-truth.txt` before relying on the AGY path.
 
 ### Pi
 
@@ -227,7 +224,7 @@ Each agent has a documented verification path that targets its own contract:
 
 - **Claude Code (interactive)**: `ralph smoke-interactive-claude`
 - **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder --agent '<exact nanocoder alias>'`
-- **AGY (interactive)**: `ralph smoke-interactive-agy` (mock-backed by default)
+- **AGY (interactive)**: `ralph smoke-interactive-agy` (manual paid diagnostic; live contract pending)
 - **Cursor (headless)**: `ralph smoke-interactive-cursor` (live binary required)
 - **Codex, OpenCode, Pi**: public-surface black-box pytest suite
   (`uv run pytest tests/agents/<agent>_blackbox.py -q`)
@@ -237,20 +234,11 @@ command-builder surface for each agent, plus the committed wire-format
 fixture where applicable. They do **not** claim live MCP wiring for agents
 that have no documented CLI MCP path.
 
-The canonical end-to-end AGY verification (mock-backed, always green) is:
-
-```bash
-cd ralph-workflow && \
-  RALPH_AGY_BINARY="$(pwd)/tests/_support/mock_agy.sh" \
-  uv run python -m ralph smoke-interactive-agy --agent agy/gemini-3.6-flash-low
-```
-
-Expected green parity table excerpt:
-
-```text
-| Agent                         | Transport | File | Session                                       | Parser events | Tool activity | Artifact | Breaks |
-| agy/gemini-3.6-flash-low | agy       | yes  | interactive-agy-smoke-gemini-3.6-flash-low | 1 | yes | yes | none |
-```
+AGY has no canonical end-to-end verification claim yet. The v1.1.8 source
+record contains free discovery only; probes for model acceptance, effort,
+continuation, MCP/artifact submission, permission prompts, and stream-json
+progress remain manually pending. The deterministic mock verifies the Ralph Workflow
+harness, not the live CLI.
 
 ## Completion and observability
 

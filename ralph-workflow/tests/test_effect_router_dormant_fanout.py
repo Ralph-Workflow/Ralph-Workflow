@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 from loguru import logger as loguru_logger
 
 from ralph.pipeline.effect_router import determine_effect_from_policy
-from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -119,6 +119,38 @@ def _two_disjoint_units() -> list[dict[str, object]]:
         {"unit_id": "unit-a", "description": "A", "allowed_directories": ["src/a"]},
         {"unit_id": "unit-b", "description": "B", "allowed_directories": ["src/b"]},
     ]
+
+
+def test_effect_router_regression_agy_agent_subagents_without_available_agents_fails_explicitly(
+    tmp_path: Path,
+) -> None:
+    """Plan S-7: AGY must not silently fall back after its stock v1.1.8 probe found no agents."""
+    _write_plan_artifact(tmp_path, _two_disjoint_units())
+    state = PipelineState(phase="development")
+
+    effect = determine_effect_from_policy(
+        state,
+        _default_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    # Establish the existing non-AGY default before selecting AGY below.
+    assert isinstance(effect, InvokeAgentEffect)
+    agy_state = PipelineState(
+        phase="development",
+        phase_chains={"development": {"agents": ["agy/gemini-3.6-flash-low"]}},
+    )
+    effect = determine_effect_from_policy(
+        agy_state,
+        _default_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+        agy_agents_probe=lambda: "Available agents:\n",
+    )
+
+    assert isinstance(effect, ExitFailureEffect)
+    assert "`agy agents` reported no sub-agents on this install" in effect.reason
 
 
 def test_dormant_default_falls_through_to_invoke_agent_effect(tmp_path: Path) -> None:

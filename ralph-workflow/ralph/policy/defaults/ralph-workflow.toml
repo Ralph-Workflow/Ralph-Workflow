@@ -43,7 +43,7 @@
 #   claude/opus                          codex/gpt-5.4[effort=high]
 #   claude-headless/sonnet               opencode/openai/gpt-5.4
 #   cursor/claude-opus-4-8[effort=high]  nanocoder/ollama/llama3.1
-#   pi/anthropic/claude-sonnet-4:high    agy/"Claude Sonnet 4.6 (Thinking)"
+#   pi/anthropic/claude-sonnet-4:high    agy/<published-id> (manual paid verification pending)
 # Full per-agent syntax: docs/sphinx/agent-compatibility.md
 
 [agent_chains]

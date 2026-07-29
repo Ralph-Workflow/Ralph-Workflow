@@ -1,20 +1,12 @@
 """Unit tests for the AgyParser.
 
-Every wire-format claim in this file is grounded in
-``ralph-workflow/tmp/agy-source-of-truth.txt`` (AGY v1.0.8 --print mode):
+The v1.1.8 source record retains the earlier plain-text ``--print`` wire
+observations as historical parser evidence. Its current paid stream-json probe
+is explicitly not run, so these tests preserve Ralph's existing plain-text
+parser contract without claiming it describes unmeasured v1.1.8 stream output.
 
-  * AGY --print emits plain-text model responses on stdout, one line at a time.
-  * There is no native --print completion marker emitted by AGY itself; the
-    prompt instructs the model to write a file and emit the
-    ``Task declared complete:`` marker so the smoke detector can see it.
-  * The documented failure mode on quota exhaustion is exit code 0 with empty
-    stdout (issue #76).
-
-The AgyParser must classify plain-text --print output as ``type='text'`` (NOT
-``type='raw'``) so the smoke report's "Observed output:" section renders model
-content via ``_render_text_line`` instead of the literal ``raw`` type label
-via ``_render_metadata_event_line`` (see
-``ralph-workflow/ralph/pipeline/activity_stream.py``).
+The AgyParser classifies plain-text output as ``type='text'`` (not ``'raw'``)
+so the smoke report renders model content as text.
 """
 
 from __future__ import annotations

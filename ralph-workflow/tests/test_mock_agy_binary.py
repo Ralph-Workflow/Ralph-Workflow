@@ -180,7 +180,7 @@ def test_mock_writes_todo_list_file(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )

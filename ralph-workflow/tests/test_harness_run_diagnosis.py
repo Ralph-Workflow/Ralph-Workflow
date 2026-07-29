@@ -317,10 +317,10 @@ def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scena
 
 
 def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
-    spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/Claude Sonnet 4.6 (Thinking)")
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/claude-sonnet-4-6")
     assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
     assert spec.output_file == Path("tmp/interactive-agy-smoke/todo-list.js")
-    assert spec.run_id == "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
+    assert spec.run_id == "interactive-agy-smoke-claude-sonnet-4-6"
 
 
 def test_resolve_smoke_harness_spec_nanocoder_uses_nanocoder_layout() -> None:
@@ -395,7 +395,7 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     monkeypatch.setattr(
         smoke_plumbing_module,
         "AgentRegistry",
-        _make_fake_registry(agent_name="agy/Claude Sonnet 4.6 (Thinking)"),
+        _make_fake_registry(agent_name="agy/claude-sonnet-4-6"),
     )
     monkeypatch.setattr(
         smoke_plumbing_module,
@@ -415,7 +415,7 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=_fake_config(),
         workspace_root=tmp_path,
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         prompt_file=tmp_path / "PROMPT.md",
         output_file=output_path,
         display_context=make_display_context(),
@@ -425,10 +425,10 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
         ),
     )
 
-    assert result.agent_name == "agy/Claude Sonnet 4.6 (Thinking)"
-    assert cleared_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
-    assert captured_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
-    assert captured_bridge_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
+    assert result.agent_name == "agy/claude-sonnet-4-6"
+    assert cleared_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
+    assert captured_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
+    assert captured_bridge_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
 
 
 def _fake_bridge_factory(**_kwargs: object) -> object:
@@ -643,7 +643,7 @@ def _fake_config() -> UnifiedConfig:
 
 
 def _fake_execute_agent_effect_for_config(
-    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+    agent_name: str = "agy/claude-sonnet-4-6",
     *,
     raw_lines: tuple[str, ...] = (),
 ) -> Callable[..., PipelineEvent]:
@@ -851,13 +851,13 @@ def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
     monkeypatch.setattr(
         smoke_plumbing_module,
         "AgentRegistry",
-        _make_fake_registry(agent_name="agy/Claude Sonnet 4.6 (Thinking)"),
+        _make_fake_registry(agent_name="agy/claude-sonnet-4-6"),
     )
 
     smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),
         workspace_root=tmp_path,
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         prompt_file=tmp_path / "PROMPT.md",
         display_context=make_display_context(),
         pipeline_deps=PipelineDeps(
@@ -965,7 +965,7 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
         transport=AgentTransport.AGY,
     )
     params = SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -1053,7 +1053,7 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
         transport=AgentTransport.AGY,
     )
     params = SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -1095,7 +1095,7 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
         transport=AgentTransport.AGY,
     )
     params = SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -1263,7 +1263,7 @@ def _make_agy_params(tmp_path: Path) -> SmokeRunParams:
         transport=AgentTransport.AGY,
     )
     return SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,

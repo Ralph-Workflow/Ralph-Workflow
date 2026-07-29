@@ -73,7 +73,7 @@ def _run_fresh_agy_smoke(
             "ralph",
             "smoke-interactive-agy",
             "--agent",
-            "agy/Gemini 3.5 Flash (Medium)",
+            "agy/gemini-3.5-flash-medium",
         ],
         cwd=tmp_path,
         env=env,
@@ -164,14 +164,14 @@ def test_mock_smoke_invoking_line_uses_single_model_argv_token(tmp_path: Path) -
     invoking_line = " ".join(log_text[invoking_idx : invoking_idx + 2000].split())
 
     canonical_models = (
-        "Gemini 3.5 Flash (Medium)",
-        "Gemini 3.5 Flash (High)",
-        "Gemini 3.5 Flash (Low)",
-        "Gemini 3.1 Pro (Low)",
-        "Gemini 3.1 Pro (High)",
-        "Claude Sonnet 4.6 (Thinking)",
-        "Claude Opus 4.6 (Thinking)",
-        "GPT-OSS 120B (Medium)",
+        "gemini-3.5-flash-medium",
+        "gemini-3.5-flash-high",
+        "gemini-3.5-flash-low",
+        "gemini-3.1-pro-low",
+        "gemini-3.1-pro-high",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
     )
     matched_model = next(
         (m for m in canonical_models if f"--model {m} --print" in invoking_line),

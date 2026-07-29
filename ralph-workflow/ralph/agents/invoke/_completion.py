@@ -51,6 +51,9 @@ _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 #: produced NO content, so nothing else in the stream names the cause.
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
 _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
+_AGY_QUOTA_PATTERN = re.compile(r"(?:RESOURCE_EXHAUSTED|\b429\b|quota exhausted)", re.IGNORECASE)
+_AGY_AUTH_PATTERN = re.compile(r"(?:not logged in|authentication failed|failed to get OAuth token)", re.IGNORECASE)
+_AGY_MODEL_PATTERN = re.compile(r"(?:model .*?(?:not recognized|not in local config)|failed to resolve model)", re.IGNORECASE)
 
 
 def _truncation_marker(capped_bytes: int) -> str:
@@ -239,6 +242,20 @@ def _line_provider_failure_reason(line: str) -> str | None:
         return None
     obj = cast("dict[str, object]", parsed)
     return _exhausted_retry_ladder_reason(obj) or _messages_provider_failure_reason(obj)
+
+
+def _agy_empty_output_reason(agent_name: str, output: list[str]) -> str | None:
+    """Return an actionable AGY empty-output cause from captured agent output."""
+    if agent_name != "agy" and not agent_name.startswith("agy/"):
+        return None
+    evidence = "\n".join(output)
+    if _AGY_QUOTA_PATTERN.search(evidence):
+        return "AGY exited without output because its API quota is exhausted; wait for quota reset and retry"
+    if _AGY_AUTH_PATTERN.search(evidence):
+        return "AGY exited without output because authentication failed; authenticate with AGY and retry"
+    if _AGY_MODEL_PATTERN.search(evidence):
+        return "AGY exited without output because the requested model is unavailable; run `agy models` and select a listed ID"
+    return None
 
 
 def _pi_provider_failure_reason(agent_name: str, output: list[str]) -> str | None:
@@ -654,10 +671,12 @@ def _check_process_result(
         )
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             _teardown_subtree_if_pid_available(handle)
+            diagnostic = _agy_empty_output_reason(agent_name, bounded_output)
             raise AgentInvocationError(
                 agent_name,
                 0,
-                (
+                diagnostic
+                or (
                     "agent exited without required completion evidence "
                     "(completion sentinel missing, or required artifact receipt missing)"
                 ),

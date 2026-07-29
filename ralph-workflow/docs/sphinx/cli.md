@@ -241,16 +241,24 @@ scenario.
 
 ### `ralph smoke-interactive-agy`
 
-Run this manual, paid-usage diagnostic one at a time for Google Anti Gravity (AGY). It drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports file creation, session capture, parser events, tool activity, and artifact submission. It is never part of `make verify`. The default `agy/gemini-3.6-flash-low` is a low-tier ID published by measured AGY v1.1.8; its price ordering remains unverified.
+Run this manual, paid-usage diagnostic one at a time for Google Anti Gravity
+(AGY). It is not part of `make verify`. The default
+`agy/gemini-3.6-flash-low` is a conservative low-tier choice by name; AGY
+price ordering is unverified.
 
 ```bash
 python -m ralph smoke-interactive-agy
-python -m ralph smoke-interactive-agy --agent agy/claude-sonnet-4-6:medium
 ```
 
-Published model IDs are validated before launch. An unknown model or effort fails immediately instead of silently falling back. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream binary returned no stdout; the diagnostic names an actionable quota, authentication, or model cause when its log provides one.
+The v1.1.8 free discovery record lists published model IDs, but paid probes
+for model acceptance, effort, continuation, MCP/artifact submission,
+permission prompts, and stream-json progress were not run. Do not treat a
+published ID or flag as an end-to-end guarantee. See
+`tmp/agy-source-of-truth.txt` before manually running a paid probe.
 
-Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
+Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic
+mock at `tests/_support/mock_agy.sh` for CI. The mock tests Ralph Workflow's harness;
+it is not live-AGY evidence.
 
 ### `ralph smoke-interactive-nanocoder`
 
@@ -293,15 +301,6 @@ Set `RALPH_CURSOR_BINARY` to use a custom `agent` executable (a real
 wrapper, alternate live binary, or an operator-wired test stub). There
 is no bundled mock for Cursor (unlike AGY); non-executable paths are
 ignored with a WARNING.
-
-The measured v1.1.8 `agy models` IDs accepted by `--agent` are:
-
-- `gemini-3.6-flash-high`, `gemini-3.6-flash-medium`, `gemini-3.6-flash-low`
-- `gemini-3.5-flash-high`, `gemini-3.5-flash-medium`, `gemini-3.5-flash-low`
-- `gemini-3.1-pro-high`, `gemini-3.1-pro-low`
-- `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`
-
-Append `:low`, `:medium`, or `:high` to request AGY's published effort flag. Its end-to-end effect has not yet been manually observed.
 
 ## Related pages
 

@@ -605,10 +605,10 @@ def _resolve_dynamic_simple_prefixed_agent(
 
 def _parse_agy_alias(alias_value: str) -> tuple[str, str | None] | None:
     """Parse a measured ``agy/<model>[:effort]`` alias without fallback."""
-    head, separator, tail = alias_value.rpartition(":")
-    model_id: str
-    effort: str | None
-    model_id, effort = (head, tail) if separator else (alias_value, None)
+    model_id, separator, parsed_effort = alias_value.rpartition(":")
+    effort: str | None = parsed_effort if separator else None
+    if not separator:
+        model_id = alias_value
     if model_id not in _AGY_MODELS:
         return None
     if effort is not None and (effort not in _AGY_REASONING_EFFORTS or model_id.endswith(f"-{effort}")):

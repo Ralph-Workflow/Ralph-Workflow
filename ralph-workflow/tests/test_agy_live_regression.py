@@ -56,12 +56,12 @@ from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 # AGY falls back to the OAuth browser flow and times out.
 _REAL_HOME = Path(os.environ.get("HOME") or Path.home()).resolve()
 
-# The model alias to drive for live tests. The default ``agy/Claude Sonnet 4.6
-# (Thinking)`` alias sometimes hits the 24h individual quota (RESOURCE_EXHAUSTED
-# 429) in the test environment; ``agy/Gemini 3.5 Flash (Medium)`` is a
-# deterministic fallback that ships with a generous per-account quota and is
-# one of the 8 canonical aliases returned by ``agy models``.
-_LIVE_AGY_AGENT = "agy/Gemini 3.5 Flash (Medium)"
+# The model alias to drive for live tests. The default
+# ``agy/claude-sonnet-4-6`` alias sometimes hits the 24h individual quota
+# (RESOURCE_EXHAUSTED 429) in the test environment; the low-tier
+# ``agy/gemini-3.5-flash-medium`` fallback is a published alias returned by
+# ``agy models``.
+_LIVE_AGY_AGENT = "agy/gemini-3.5-flash-medium"
 # The expected canonical-receipt run_id mirrors the smoke harness spec for
 # ``_LIVE_AGY_AGENT``. Computing it from the spec keeps the receipt test
 # aligned when the fallback model changes.
@@ -268,7 +268,7 @@ def test_live_agy_produces_green_parity_table(
     output = live_smoke_session.output
     cli_log_tail = live_smoke_session.cli_log_tail
 
-    assert "agy/Gemini 3.5 Flash (Medium)" in output, (
+    assert "agy/gemini-3.5-flash-medium" in output, (
         f"Expected AGY parity row in output. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
@@ -400,7 +400,7 @@ def test_live_agy_pty_read_thread_sees_output(
         shutil.which("agy") or "agy",
         "--dangerously-skip-permissions",
         "--model",
-        "Gemini 3.5 Flash (Medium)",
+        "gemini-3.5-flash-medium",
         "--print",
         "Reply with exactly the word: hello",
     ]
