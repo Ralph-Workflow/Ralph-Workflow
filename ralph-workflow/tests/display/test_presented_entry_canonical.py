@@ -169,10 +169,11 @@ def test_presented_entry_can_be_record_writer_input(tmp_path) -> None:
         model="claude-sonnet-4.5",
     )
     writer.append(entry)
-    # The writer accepts a PresentedEntry without crashing -- the
-    # contract is "same shape works for both consumers".
-    assert writer.pending_lines == 1
+    writer.flush()
     assert writer.path.name == f"{safe_id}.rendered.log"
+    contents = writer.path.read_text(encoding="utf-8")
+    assert contents == "[14:29:03] hello world role=agent_text\n"
+    assert all(token not in contents for token in ("phase=", "cycle=", "iter=", "claude"))
 
 
 def test_presented_entry_renders_without_internal_channel_vocabulary(tmp_path) -> None:
@@ -206,6 +207,7 @@ def test_presented_entry_renders_without_internal_channel_vocabulary(tmp_path) -
     record_path = writer.path
     assert record_path is not None
     contents = Path(record_path).read_text(encoding="utf-8")
+    assert "a normal thought passage" in contents
     for forbidden in ("CONT", "META", "fragments, ", "[thinking-start]", "[thinking-end]"):
         assert forbidden not in contents, (
             f"Rendered record must not contain {forbidden!r}; got: {contents!r}"

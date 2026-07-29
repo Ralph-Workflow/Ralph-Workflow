@@ -11,6 +11,7 @@ import pytest
 from rich.console import Console
 
 from ralph.agents.parsers import (
+    AgentOutputLine,
     AgyParser,
     ClaudeInteractiveParser,
     ClaudeParser,
@@ -49,7 +50,14 @@ def _wire(name: str) -> list[str]:
     return (_FIXTURES / f"{name}_wire.jsonl").read_text(encoding="utf-8").splitlines()
 
 
-def _replay(name: str, provider: ActivityProvider, parser_factory: _ParserFactory, tmp_path: Path) -> tuple[str, str, list[str]]:
+def _replay(
+    name: str,
+    provider: ActivityProvider,
+    parser_factory: _ParserFactory,
+    tmp_path: Path,
+    *,
+    include_condensation: bool = False,
+) -> tuple[str, str, list[str]]:
     parser = parser_factory()
     parsed = list(parser.parse(iter(_wire(name))))
     visible = [line for line in parsed if line.type not in {"stop", "status", "session"}]
@@ -65,6 +73,18 @@ def _replay(name: str, provider: ActivityProvider, parser_factory: _ParserFactor
     for line in visible:
         event = normalize_event_from_agent_output_line(line, provider=provider, unit_id=name)
         display.emit_parsed_event(unit_id=name, kind=event.kind, content=event.content, metadata=event.metadata, timestamp=line.timestamp)
+    if include_condensation:
+        condensation_body = f"CONDENSE-{name} " + "x" * 450
+        display.emit_parsed_event(
+            unit_id=name,
+            kind=normalize_event_from_agent_output_line(
+                AgentOutputLine(type="text", content=condensation_body, metadata={}),
+                provider=provider,
+                unit_id=name,
+            ).kind,
+            content=condensation_body,
+            metadata={},
+        )
     display.stop()
     return (
         (tmp_path / ".agent" / "raw" / f"{name}.rendered.log").read_text(encoding="utf-8"),
@@ -87,6 +107,23 @@ def test_parser_native_replay_keeps_each_agent_on_the_shared_presentation_path(n
     assert not tool_lines or any(line.startswith("  ") for line in tool_lines)
     assert all(body.splitlines()[0] in record and body.splitlines()[0] in live for body in expected_bodies)
     assert all(token not in record and token not in live for token in ("CONT", "META", "thinking-start", "thinking-end"))
+
+
+@pytest.mark.parametrize(("name", "provider", "parser_factory"), _CASES)
+def test_parser_native_replay_condenses_every_agent_payload(
+    name: str,
+    provider: ActivityProvider,
+    parser_factory: _ParserFactory,
+    tmp_path: Path,
+) -> None:
+    """DA-005: every provider's shared path accounts for oversized content."""
+    record, live, _ = _replay(
+        name, provider, parser_factory, tmp_path, include_condensation=True
+    )
+    for surface in (record, live):
+        assert f"CONDENSE-{name}" in surface
+        assert "truncated" in surface
+        assert " B, see .agent/raw/" in surface
 
 
 def test_parser_native_generic_malformed_payload_still_has_hierarchy(tmp_path: Path) -> None:

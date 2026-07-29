@@ -14,6 +14,7 @@ from rich.text import Text
 from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.config.enums import AgentTransport
+from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -189,11 +190,7 @@ def stream_parsed_agent_activity(
 
 def _tool_correlation_key(metadata: dict[str, object], tool_name: str) -> str:
     """Return the documented cross-parser call identifier, falling back to tool name."""
-    for field in ("tool_call_id", "toolCallId", "tool_use_id", "id"):
-        value = metadata.get(field)
-        if isinstance(value, str) and value:
-            return value
-    return tool_name
+    return tool_call_id(metadata) or tool_name
 
 
 def _retain_tool_result_target(

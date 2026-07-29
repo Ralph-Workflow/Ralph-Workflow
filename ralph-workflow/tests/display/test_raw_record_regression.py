@@ -105,6 +105,20 @@ def _drive_through_writer(
     return writer.path.read_text(encoding="utf-8")
 
 
+def test_tool_result_companion_dedup_expires_after_the_next_text_event(tmp_path: Path) -> None:
+    """DA-002: an old result cannot suppress later identical agent prose."""
+    display, _output, _advance = _make_display_with_injected_clock(tmp_path)
+    display.start()
+    display.emit_parsed_event(
+        "pi", ActivityEventKind.TOOL_RESULT, "Done", {"tool_call_id": "call-1"}
+    )
+    display.emit_parsed_event("pi", ActivityEventKind.TEXT, "unrelated progress", {})
+    display.emit_parsed_event("pi", ActivityEventKind.TEXT, "Done", {})
+    display.stop()
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    assert record.count("Done") == 2
+
+
 def test_production_display_tool_result_flood_preserves_each_target(tmp_path: Path) -> None:
     """S-4 / DA-005: 120 results and progress companions stay distinguishable."""
     display, _output, advance = _make_display_with_injected_clock(tmp_path)

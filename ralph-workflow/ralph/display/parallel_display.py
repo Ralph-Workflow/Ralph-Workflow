@@ -127,6 +127,7 @@ from ralph.display._plain_constants import (
     _sanitize,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
+from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.agent_event_renderer import _format_timestamp as _format_iso_timestamp_hh_mm_ss
@@ -322,20 +323,6 @@ def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> s
 def _phase_label(phase: str) -> str:
     """Pure helper: return a human-readable label for a phase name."""
     return phase.replace("_", " ").title()
-
-
-def _tool_call_id(metadata: dict[str, object]) -> str | None:
-    """Return the cross-parser identifier for one logical tool call."""
-    for key in ("tool_call_id", "toolCallId"):
-        value = metadata.get(key)
-        if isinstance(value, str) and value:
-            return value
-    tool_call = metadata.get("toolCall")
-    if isinstance(tool_call, dict):
-        value = tool_call.get("id")
-        if isinstance(value, str) and value:
-            return value
-    return None
 
 
 # Public aliases for tests and other callers that previously imported
@@ -597,7 +584,7 @@ class ParallelDisplay:
             str, tuple[str, ...]
         ] = {}  # bounded-accumulator-ok: capped at 64 per unit
         self._last_tool_result_content: dict[
-            str, tuple[str, str]
+            str, tuple[str | None, str]
         ] = {}  # bounded-accumulator-ok: drop_unit
         # DA-002 (wt-028-display S-2 / S-3): the streaming-block
         # live-log dedup. When a ``TEXT`` streaming block closes and
@@ -2870,17 +2857,28 @@ class ParallelDisplay:
         # here.
         if timestamp is None:
             timestamp = self._clock().isoformat()
-        call_id = _tool_call_id(metadata)
+        call_id = tool_call_id(metadata)
         if kind is ActivityEventKind.TOOL_USE and call_id:
             recent = self._recorded_tool_call_ids.get(unit_id, ())
             if call_id in recent:
                 return
             self._recorded_tool_call_ids[unit_id] = (*recent, call_id)[-64:]
-        elif kind is ActivityEventKind.TOOL_RESULT and call_id and content is not None:
+        elif kind in (ActivityEventKind.TOOL_RESULT, ActivityEventKind.ERROR) and content is not None:
             self._last_tool_result_content[unit_id] = (call_id, content)
-        elif kind is ActivityEventKind.TEXT and call_id and content is not None:
-            if self._last_tool_result_content.get(unit_id) == (call_id, content):
-                return
+        elif kind is ActivityEventKind.TEXT and content is not None:
+            previous = self._last_tool_result_content.pop(unit_id, None)
+            if previous is not None:
+                previous_id, previous_content = previous
+                same_call = call_id is not None and call_id == previous_id
+                idless_companion = call_id is None and bool(previous_content) and (
+                    content == previous_content
+                    or content in previous_content
+                    or previous_content in content
+                )
+                if (same_call and content == previous_content) or idless_companion:
+                    return
+        else:
+            self._last_tool_result_content.pop(unit_id, None)
         self._emit_activity_event(unit_id, kind, content, None, metadata, timestamp)
 
     def _on_activity_router_event(
