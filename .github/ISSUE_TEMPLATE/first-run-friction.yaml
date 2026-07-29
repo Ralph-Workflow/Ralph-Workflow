@@ -1,5 +1,5 @@
 name: First-run friction report
-about: Report what blocked, confused, or slowed down your first real Ralph Workflow run.
+description: Report what blocked, confused, or slowed down your first real Ralph Workflow run.
 title: "[First run]: "
 body:
   - type: markdown
@@ -11,7 +11,7 @@ body:
 
         Before submitting, please skim:
         - START_HERE.md
-        - docs/example-review-bundle.md
+        - examples/first-review-bundle/
   - type: input
     id: task
     attributes:

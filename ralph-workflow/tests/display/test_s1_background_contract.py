@@ -18,7 +18,9 @@ from ralph.display.theme import (
 
 def _render(renderable: object) -> str:
     output = io.StringIO()
-    Console(file=output, force_terminal=True, color_system="truecolor", width=80).print(renderable)
+    Console(
+        file=output, force_terminal=True, color_system="truecolor", no_color=False, width=80
+    ).print(renderable)
     return output.getvalue()
 
 

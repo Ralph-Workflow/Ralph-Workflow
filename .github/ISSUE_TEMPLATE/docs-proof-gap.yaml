@@ -1,5 +1,5 @@
 name: Docs / proof gap
-about: Report missing proof, unclear docs, or a trust gap that made you hesitate to try Ralph Workflow.
+description: Report missing proof, unclear docs, or a trust gap that made you hesitate to try Ralph Workflow.
 title: "[Docs gap]: "
 body:
   - type: markdown

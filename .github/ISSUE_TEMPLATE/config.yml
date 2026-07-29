@@ -1,14 +1,14 @@
 blank_issues_enabled: true
 contact_links:
-  - name: After your first run
-    url: https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/after-your-first-run.md
-    about: Two-minute scorecard for turning a private first run into the right GitHub action.
+  - name: Documentation map
+    url: https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/README.md
+    about: Find the right guide for your first run or follow-up task.
   - name: Start here first
     url: https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/START_HERE.md
     about: Fastest honest first run and task-picking guide.
   - name: Example review bundle
-    url: https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/example-review-bundle.md
-    about: See what a good morning-after handoff should look like before opening an issue.
+    url: https://github.com/Ralph-Workflow/Ralph-Workflow/tree/main/examples/first-review-bundle
+    about: See an example handoff bundle before opening an issue.
   - name: Codeberg mirror
     url: https://codeberg.org/RalphWorkflow/Ralph-Workflow
     about: The mirror is retained for the time being.
