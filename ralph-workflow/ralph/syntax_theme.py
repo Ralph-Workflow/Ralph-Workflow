@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from pygments.style import Style as PygmentsStyle
 from pygments.token import (
     Comment,
@@ -54,4 +52,4 @@ def _style(default: str, colors: tuple[str, str, str, str, str, str]) -> type[Py
             Generic.Inserted: default,
         },
     }
-    return cast("type[PygmentsStyle]", type("RalphSyntaxTheme", (PygmentsStyle,), namespace))
+    return type("RalphSyntaxTheme", (PygmentsStyle,), namespace)

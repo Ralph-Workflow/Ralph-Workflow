@@ -259,6 +259,7 @@ def test_markup_parse_allowlist_contents_are_pinned() -> None:
     }
 
 
+@pytest.mark.timeout_seconds(2)
 def test_audit_blocks_a_new_unguarded_from_markup_call_site(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
