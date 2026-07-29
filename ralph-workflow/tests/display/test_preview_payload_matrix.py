@@ -22,6 +22,11 @@ def test_preview_payload_parser_coverage_matrix_uses_parser_emitted_shapes() -> 
             "edit_file",
             {"args": {"path": "a.py", "old_string": "x = 1", "new_string": "x = 2"}},
         ),
+        (
+            "cursor",
+            "edit_file",
+            {"input": {"path": "a.py", "old_string": "x = 1", "new_string": "x = 2"}},
+        ),
         ("gemini", "Write", {"args": "{'file_path': 'a.py', 'content': 'x = 1'}"}),
         ("opencode", "read", {"input": {"path": "a.py", "content": "x = 1"}}),
         (
