@@ -573,11 +573,12 @@ def _build_edit_preview(
 ) -> RenderableType | None:
     """Build a diff-style preview for ``edit_file`` / ``ralph_edit_md_artifact``.
 
-    Each edit renders both old (prefixed ``-``, ``theme.status.error``
-    style) and new (prefixed ``+``, ``theme.status.success`` style)
-    content with snippet-relative line numbers starting at 1. The
-    new content is additionally syntax-highlighted via a nested
-    ``Syntax`` renderable so partial edits show real lexer coloring.
+    Both the old (``-``) and new (``+``) hunks are syntax-highlighted
+    through :func:`_make_syntax` with the same path-derived lexer. Only
+    the literal marker glyphs use the ``theme.status.error`` /
+    ``theme.status.success`` styles, preserving the diff when colour is
+    stripped. A positive ``start_line`` uses the real file gutter;
+    otherwise a visible ``(snippet)`` marker identifies relative lines.
 
     Edit tools without a ``path`` (``ralph_edit_md_artifact``) default
     the lexer to ``"markdown"`` because the artifact content is
