@@ -2666,11 +2666,7 @@ class ParallelDisplay:
                     summary_line=effective_summary_line,
                     ai_summary_line=ai_summary_line,
                     tool_signature=tool_signature,
-                    activity_metadata=(
-                        {**metadata, "tool": text_content}
-                        if kind is ActivityEventKind.TOOL_USE
-                        else metadata
-                    ),
+                    activity_metadata=metadata,
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
                     record_body=(
