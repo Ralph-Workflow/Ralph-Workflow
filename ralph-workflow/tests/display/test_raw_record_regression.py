@@ -629,10 +629,10 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
         assert forbidden not in rendered
 
 
-def test_record_regression_tool_result_omits_preceding_preview_and_placeholder_target(
+def test_record_regression_read_result_keeps_a_structured_preview(
     tmp_path: Path,
 ) -> None:
-    """DA-001: tool results keep their outcome without repeating the call preview."""
+    """Read results retain their outcome in the structured preview record."""
     pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
     pd.emit_parsed_event(
@@ -652,7 +652,7 @@ def test_record_regression_tool_result_omits_preceding_preview_and_placeholder_t
     record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
     result = next(line for line in record.splitlines() if "role=tool_result" in line)
     assert "contents read" in result
-    assert "▸" not in result
+    assert "▸ read  src/file.py" in result
     assert "artifact" not in result
     assert result.count("read_file") == 1
 

@@ -2012,8 +2012,6 @@ class ParallelDisplay:
                         return tool_name, {"input": {}}, False
                 else:
                     return tool_name, {"input": {}}, False
-            if not content.lstrip().startswith("{") and previous is not None:
-                return tool_name, {"input": {}}, False
         payload: dict[str, object] = {
             "path": path,
             "content": result_content,

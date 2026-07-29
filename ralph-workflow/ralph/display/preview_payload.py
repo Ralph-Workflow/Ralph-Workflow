@@ -16,6 +16,7 @@ from typing import Final, Literal, cast
 _PATCH_HUNK_RE: Final[re.Pattern[str]] = re.compile(
     r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", re.MULTILINE
 )
+_MAX_LITERAL_PARSE_CHARS: Final[int] = 8_192
 PreviewOperation = Literal["read", "write", "append", "replace", "patch"]
 
 
@@ -57,12 +58,14 @@ def _mapping(value: object) -> dict[str, object] | None:
     """Return a string-keyed mapping from a mapping, JSON, or Python literal."""
     parsed: object = value
     if isinstance(value, str):
+        if len(value) > _MAX_LITERAL_PARSE_CHARS:
+            return None
         try:
             parsed = _json_value(value)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, MemoryError, RecursionError):
             try:
                 parsed = _python_literal(value)
-            except (SyntaxError, ValueError):
+            except (SyntaxError, ValueError, MemoryError, RecursionError):
                 return None
     if not isinstance(parsed, dict):
         return None
