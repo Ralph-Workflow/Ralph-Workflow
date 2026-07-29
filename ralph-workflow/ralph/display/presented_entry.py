@@ -256,14 +256,25 @@ def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
             for key in ("tool_name", "name", "tool")
             if isinstance(value := metadata.get(key), str) and value
         ),
-        "tool",
+        "",
     )
-    tool = friendly_tool_name(raw_tool)
+    tool = friendly_tool_name(raw_tool) if raw_tool else ""
     call_id = tool_call_id(metadata)
-    suffix = f" call_id={call_id}" if call_id else ""
+    target = metadata.get("target")
+    suffixes = [f"call_id={call_id}" if call_id else ""]
+    if isinstance(target, str) and target:
+        suffixes.append(target)
+    suffix = " ".join(part for part in suffixes if part)
+    # Preview headers already name the operator-facing tool; never prepend
+    # the parser identifier or a synthetic ``tool`` fallback.
+    for marker in ("▸", ">"):
+        if marker in body:
+            return f"{body[body.index(marker):]} {suffix}".rstrip()
+    if not tool:
+        return f"{body} {suffix}".rstrip()
     if body.startswith("(") or not body.casefold().startswith(tool.casefold()):
-        return f"{tool} {body}{suffix}"
-    return body if not suffix or suffix in body else f"{body}{suffix}"
+        return f"{tool} {body} {suffix}".rstrip()
+    return body if not suffix or suffix in body else f"{body} {suffix}"
 
 
 def _strip_leading_tokens(body: str, tool: str, outcome: str) -> str:

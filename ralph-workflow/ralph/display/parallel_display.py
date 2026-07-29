@@ -2019,6 +2019,9 @@ class ParallelDisplay:
             with contextlib.suppress(ValueError):
                 envelope = cast("object", json.loads(content))
                 if isinstance(envelope, dict):
+                    envelope_path = envelope.get("path")
+                    if isinstance(envelope_path, str) and envelope_path:
+                        path = envelope_path
                     envelope_content = envelope.get("content")
                     if isinstance(envelope_content, str):
                         result_content = envelope_content
@@ -2627,16 +2630,17 @@ class ParallelDisplay:
         content_for_emit = text_content if kind.value in _STREAMING_KINDS else visible
         result_preview_tool_name = ""
         result_preview_input: dict[str, object] = {}
+        result_previewable = False
         previewed_result = kind is ActivityEventKind.TOOL_RESULT and not outcome_is_failure(
             metadata
         )
         if previewed_result:
-            result_preview_tool_name, result_preview_input, _is_previewable_result = (
+            result_preview_tool_name, result_preview_input, result_previewable = (
                 self._result_preview_input(unit_id, metadata, text_content)
             )
             previewed_result = (
                 unit_id in self._last_emitted_tool_signature
-                and _is_previewable_result
+                and result_previewable
                 and build_edit_preview(
                 result_preview_tool_name,
                 result_preview_input,
@@ -2718,6 +2722,22 @@ class ParallelDisplay:
                         or None
                     )
                     if kind is ActivityEventKind.TOOL_USE
+                    else "\n".join(
+                        part
+                        for part in (
+                            preview_record_text(
+                                result_preview_tool_name,
+                                result_preview_input,
+                                overflow_ref=overflow_ref,
+                                glyphs_enabled=self._ctx.glyphs_enabled,
+                            )[0],
+                            text_content,
+                        )
+                        if part
+                    )
+                    if result_previewable
+                    and result_preview_tool_name == "read_file"
+                    and text_content.lstrip().startswith("{")
                     else text_content
                     if kind is ActivityEventKind.TOOL_RESULT
                     else None,
@@ -2923,9 +2943,21 @@ class ParallelDisplay:
         else:
             self._last_tool_result_content.pop(unit_id, None)
         record_metadata = dict(metadata)
-        if kind is ActivityEventKind.TOOL_USE and call_id:
-            record_metadata["target"] = f"call_id={call_id}"
-        self._emit_activity_event(unit_id, kind, content, None, record_metadata, timestamp)
+        emitted_content = content
+        if kind is ActivityEventKind.TOOL_USE:
+            if call_id:
+                record_metadata["target"] = f"call_id={call_id}"
+            else:
+                input_obj = record_metadata.get("input", record_metadata.get("args"))
+                input_dict = (
+                    cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+                )
+                if not any(input_dict.get(key) for key in ("path", "command", "pattern")):
+                    # ponytail: a global call ordinal is enough to make unknown-target calls skimmable.
+                    target = f"call {self._run_counters.tool_calls + 1}"
+                    record_metadata["target"] = target
+                    emitted_content = f"{content or record_metadata.get('tool_name', 'call')} {target}"
+        self._emit_activity_event(unit_id, kind, emitted_content, None, record_metadata, timestamp)
 
     def _on_activity_router_event(
         self,

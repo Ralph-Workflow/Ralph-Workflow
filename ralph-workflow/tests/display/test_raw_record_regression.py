@@ -883,3 +883,62 @@ def test_codex_wire_regression_completed_calls_become_correlated_results(tmp_pat
     assert any("ok" in line and "resources" in line for line in results)
     assert any("failed" in line and "severity=error" in line for line in results)
     assert "RUN" not in "\n".join(line for line in live.getvalue().splitlines() if "[result]" in line)
+
+
+def test_record_regression_json_read_result_uses_numbered_file_preview(tmp_path: Path) -> None:
+    """DA-001: JSON read envelopes retain the same file hierarchy as the live surface."""
+    pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        "claude",
+        ActivityEventKind.TOOL_USE,
+        "read_file",
+        {"tool_name": "read_file", "input": {"path": "src/file.py"}},
+    )
+    pd.emit_parsed_event(
+        "claude",
+        ActivityEventKind.TOOL_RESULT,
+        json.dumps({"path": "src/file.py", "content": "a\nb\nc"}),
+        {"tool_name": "read_file", "exit_code": 0},
+    )
+    pd.stop()
+    record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
+    result = next(line for line in record.splitlines() if "role=tool_result" in line)
+    assert "{\"content\"" not in result
+    assert "\\n" not in result
+    assert all(f"{number:>4} {line}" in record for number, line in enumerate("a\nb\nc".splitlines(), 1))
+
+
+def test_targetless_tool_calls_receive_distinct_ordinals(tmp_path: Path) -> None:
+    """DA-003: unknown-target calls never form a byte-identical flood."""
+    pd, live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    for _ in range(3):
+        pd.emit_parsed_event(
+            "pi", ActivityEventKind.TOOL_USE, "read_file", {"tool_name": "read_file", "input": {}}
+        )
+    pd.stop()
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    record_lines = [line for line in record.splitlines() if "role=tool_call" in line]
+    live_lines = [line for line in live.getvalue().splitlines() if "[call]" in line]
+    assert len(set(record_lines)) == len(record_lines) == 3
+    assert len(set(live_lines)) == len(live_lines) == 3
+    assert all("call " in line for line in record_lines)
+
+
+def test_record_regression_tool_call_uses_one_friendly_name_without_fallback(tmp_path: Path) -> None:
+    """DA-002: preview-backed calls name their tool once and never expose ``tool`` fallback."""
+    pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        "claude",
+        ActivityEventKind.TOOL_USE,
+        "read_file",
+        {"tool_name": "read_file", "input": {"path": "src/file.py"}},
+    )
+    pd.emit_parsed_event("claude", ActivityEventKind.TOOL_USE, "read_file", {"input": {}})
+    pd.stop()
+    record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
+    calls = [line for line in record.splitlines() if "role=tool_call" in line]
+    assert calls[0].count("read") == 1
+    assert "tool ▸" not in record
