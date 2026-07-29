@@ -16,7 +16,7 @@ availability remains the CLI provider's responsibility.
 | `codex/<model>[effort=<level>]` | `--model <model>` and, when selected, `-c 'model_reasoning_effort = "<level>"'` | Effort is `low`, `medium`, `high`, or `xhigh`. |
 | `opencode/<model>` | `-m <model>` | All model path segments must be non-empty. |
 | `nanocoder/<provider>[/<model>]` | `--provider <provider>` and optional `--model <model>` | The provider is required. |
-| `agy/<published-id>[:<effort>]` | `--model <published-id>` and optional `--effort <low\|medium\|high>` | Examples: `agy/gemini-3.6-flash-low`, `agy/claude-sonnet-4-6:high`. An explicit effort suffix is rejected for IDs already ending in `-low`, `-medium`, or `-high`. These IDs were published by `agy models` on AGY v1.1.8 and are accepted by Ralph Workflow's resolver; AGY `--model` acceptance and the runtime effect of `--effort` remain unverified pending manual probes. |
+| `agy/<published-id>[:<effort>]` | `--model <published-id>` and optional `--effort <low\|medium\|high>` | Examples: `agy/gemini-3.6-flash-low`, `agy/gemini-3.6-flash-high:high`. An explicit effort suffix is rejected for IDs already ending in `-low`, `-medium`, or `-high`. On the measured AGY v1.1.8 install, both example forms were accepted by manual `--print` probes; the observable reasoning-quality effect of `--effort` is not established. |
 | `pi/<model>[:<thinking>]` | `--model <model>[:<thinking>]` | A bare model ID or slash-delimited provider/model path is accepted; empty path segments and ambiguous thinking suffixes are rejected. |
 | `cursor/<model>` | `--model <model>` | `cursor/auto` selects Cursor's explicit Auto alias. |
 | `ccs/<alias>` | The configured CCS alias command | Define the alias under `[ccs_aliases]`. |
@@ -62,7 +62,7 @@ availability remains the CLI provider's responsibility.
 
 - **CLI**: `agy`
 - **Transport**: `agy`
-- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.8 publishes `--model` IDs and `--effort low|medium|high`. End-to-end model acceptance and effort effect are unverified pending manual probes.
+- **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.8 publishes `--model` IDs and `--effort low|medium|high`. Manual probes accepted `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`; the effort's reasoning-quality effect is not observable from those probes.
 - **Parser**: `generic` (native AGY parser; plain-text, not NDJSON)
 - **Caveats**:
     - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
@@ -70,9 +70,10 @@ availability remains the CLI provider's responsibility.
     - Completion contract: the durable `declare_complete` sentinel is always required; required-artifact phases also need the run-scoped artifact receipt, the same contract used by Claude interactive and headless Claude.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
-    - Session continuation is unproven: the measured v1.1.8 CLI advertises continuation and conversation-resume flags, but a resume probe has not been run, so Ralph Workflow does not reuse AGY sessions.
+    - Session continuation remains unavailable in Ralph Workflow: the measured v1.1.8 CLI advertises continuation and conversation-resume flags, but no probe has established that either resumes the intended prior session, so Ralph does not reuse AGY sessions.
     - `agy agents` reported no available agents on the measured stock v1.1.8 install. This is an install observation, not a universal capability claim; with `agent_subagents` and two or more work units, routing fails explicitly rather than falling back to sequential dispatch.
-    - AGY is a supported orchestration path, not a replacement for Ralph Workflow.
+    - Live `smoke-interactive-agy` currently fails when AGY does not create the requested file, submit its artifact, or call `declare_complete`; the parity report names those missing signals. Do not select AGY for unattended work until this live integration defect is fixed.
+    - AGY is a supported integration under active verification, not a replacement for Ralph Workflow.
 
 ```toml
 [agents.agy]
