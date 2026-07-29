@@ -836,7 +836,14 @@ def test_codex_wire_regression_completed_calls_become_correlated_results(tmp_pat
     wire_path = _fixture("codex_wire.jsonl")
     parsed = list(CodexParser().parse(iter(wire_path.read_text(encoding="utf-8").splitlines())))
     visible = [line for line in parsed if line.type in {"tool_use", "tool_result"}]
-    assert [line.type for line in visible] == ["tool_use", "tool_result", "tool_use", "tool_result"]
+    assert [line.type for line in visible] == [
+        "tool_use",
+        "tool_result",
+        "tool_use",
+        "tool_result",
+        "tool_use",
+        "tool_result",
+    ]
 
     pd, live, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()
@@ -854,9 +861,11 @@ def test_codex_wire_regression_completed_calls_become_correlated_results(tmp_pat
 
     rendered = (tmp_path / ".agent" / "raw" / "codex.rendered.log").read_text(encoding="utf-8")
     lines = [line for line in rendered.splitlines() if line.strip()]
-    assert sum("role=tool_call" in line for line in lines) == 2
-    assert sum("role=tool_result" in line for line in lines) == 2
+    calls = [line for line in lines if "role=tool_call" in line]
+    assert len(calls) == 3
+    assert sum("role=tool_result" in line for line in lines) == 3
     assert all(first != second for first, second in pairwise(lines))
+    assert {"call_id=mcp-1", "call_id=mcp-2"} <= set().union(*(set(call.split()) for call in calls))
     results = [line for line in lines if "role=tool_result" in line]
     assert any("ok" in line and "resources" in line for line in results)
     assert any("bash" in line and "failed" in line and "severity=error" in line for line in results)

@@ -64,6 +64,7 @@ from ralph.display._channel_prefix_stripper import (
     _PARSER_CHANNEL_PREFIXES_SPACELESS,
     strip_parser_channel_prefix,
 )
+from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
@@ -439,6 +440,9 @@ def _render_tool_use_event(
     body_segments: list[str] = [tool_name]
     if args_str:
         body_segments.append(args_str)
+    call_id = tool_call_id(event.metadata)
+    if call_id:
+        body_segments.append(f"call_id={call_id}")
     body = " ".join(body_segments)
     text = Text()
     text.append(f"{icon} {label} ", style=style)

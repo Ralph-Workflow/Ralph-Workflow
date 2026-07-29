@@ -47,7 +47,10 @@ def test_pi_toolcall_alias_and_idless_echo_replay_deduplicates_both_surfaces(
         tmp_path,
     )
     record_lines = [line for line in rendered.splitlines() if line.strip()]
-    assert sum("role=tool_call" in line for line in record_lines) == 1
+    tool_call_lines = [line for line in record_lines if "role=tool_call" in line]
+    assert len(tool_call_lines) == 2
+    assert all(any(path in line for line in tool_call_lines) for path in ("target.py", "other.py"))
+    assert len(set(tool_call_lines)) == len(tool_call_lines)
     assert "severity=error" in rendered
     for surface in (rendered, live):
         lines = [line for line in surface.splitlines() if line.strip()]

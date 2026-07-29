@@ -2882,7 +2882,10 @@ class ParallelDisplay:
                     return
         else:
             self._last_tool_result_content.pop(unit_id, None)
-        self._emit_activity_event(unit_id, kind, content, None, metadata, timestamp)
+        record_metadata = dict(metadata)
+        if kind is ActivityEventKind.TOOL_USE and call_id:
+            record_metadata["target"] = f"call_id={call_id}"
+        self._emit_activity_event(unit_id, kind, content, None, record_metadata, timestamp)
 
     def _on_activity_router_event(
         self,
