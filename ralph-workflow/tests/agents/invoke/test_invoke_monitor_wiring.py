@@ -108,6 +108,7 @@ def _noop_command(
         AgentTransport.AGY,
     ],
 )
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_process_monitor_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -182,6 +183,7 @@ def test_invoke_wires_discovery_strategy_for_transport(
     assert isinstance(monitor._discovery_strategy, NullDiscoveryStrategy)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_opencode_registry_discovery_strategy(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -229,6 +231,7 @@ def test_invoke_wires_opencode_registry_discovery_strategy(
         AgentTransport.AGY,
     ],
 )
+@pytest.mark.timeout_seconds(5)
 def test_invoke_role_classifier_is_conservative_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -266,6 +269,7 @@ def test_invoke_role_classifier_is_conservative_for_transport(
     assert classifier(123, [transport.value, "run", "hello"]) == ProcessRole.INCIDENTAL_HELPER
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_respects_disabled_monitor_flags(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -294,6 +298,7 @@ def test_invoke_respects_disabled_monitor_flags(
     assert captured.get("process_monitor") is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_disabling_only_process_monitor_keeps_discovery(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -354,6 +359,7 @@ def test_invoke_disabling_only_output_capture_keeps_process_monitor(
     assert monitor._discovery_strategy is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_subagent_pid_source_for_opencode(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -386,6 +392,7 @@ def test_invoke_wires_subagent_pid_source_for_opencode(
     assert isinstance(pid_source, ChildLivenessSubagentPidSource)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_poll_interval_reaches_process_monitor(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
