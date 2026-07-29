@@ -50,6 +50,7 @@ def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
     assert "```markdown" in prompt_text
     assert "mandatory final action" in prompt_text
     assert "receipt is not phase completion" in prompt_text
+    assert "Do not start background work" in prompt_text
 
 
 def test_agy_prompt_forbids_direct_artifact_writes() -> None:

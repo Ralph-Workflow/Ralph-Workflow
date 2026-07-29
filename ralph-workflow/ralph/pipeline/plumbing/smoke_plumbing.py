@@ -313,6 +313,8 @@ def _build_smoke_prompt(
         "and put this complete Markdown document in the content argument:\n"
         f"```markdown\n{artifact_document}\n```\n"
         "- Submit through the tool; do not write an artifact file directly.\n"
+        "- Do not start background work, run verification, or wait for other tasks; "
+        "finish this small smoke task in this turn.\n"
         f"{completion_requirement}"
     )
 
