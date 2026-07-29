@@ -58,16 +58,16 @@ def test_pi_toolcall_triplication_replay_emits_one_call_and_result(tmp_path: Pat
 def test_pi_tool_result_flood_replay_collapses_identical_burst_on_both_surfaces(
     tmp_path: Path,
 ) -> None:
-    """S-2: repeated Pi terminal results become one accounted-for presentation."""
+    """S-2: timestamp-less Pi terminal results become one accounted-for presentation."""
     rendered, live, _ = _replay(
         "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path
     )
     assert rendered.count("role=tool_result") == 2
     for surface in (rendered, live):
         collapsed = " ".join(surface.split())
-        assert collapsed.count("4 identical results") == 1
-        assert "92 B" in surface
-        assert "destination src/flood.py" in surface
+        assert collapsed.count("3 more identical results") == 1
+        assert "144 B" in surface
+        assert "see .agent/raw/pi_tool_result_flood.log" in collapsed
         assert "[tool-result]" not in surface
         assert "(running...)" not in surface
         assert "severity=info severity=info" not in surface
@@ -79,8 +79,8 @@ def test_pi_tool_result_flood_without_channel_prefix_or_pi_identity_still_collap
     """DA-001: collapse and cleanup are content-agnostic across agent identities."""
     body = "✓ PASS read_file src/flood.py (running...) severity=warn severity=warn codex codex"
     wire = [
-        "{" + f'"type":"tool_execution_end","timestamp":"2026-07-25T09:30:00.{index}00Z","toolCallId":"flood-1","toolName":"read_file","args":{{"path":"src/flood.py"}},"result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false' + "}"
-        for index in range(4)
+        "{" + f'"type":"tool_execution_end","toolCallId":"flood-1","toolName":"read_file","args":{{"path":"src/flood.py"}},"result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false' + "}"
+        for _ in range(4)
     ]
     rendered, live, _ = _replay(
         "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire
@@ -88,11 +88,48 @@ def test_pi_tool_result_flood_without_channel_prefix_or_pi_identity_still_collap
     assert rendered.count("role=tool_result") == 2
     for surface in (rendered, live):
         collapsed = " ".join(surface.split())
-        assert "4 identical results" in collapsed
-        assert "destination src/flood.py" in collapsed
+        assert "3 more identical results" in collapsed
+        assert "see .agent/raw/pi_tool_result_flood.log" in collapsed
         assert "(running...)" not in surface
         assert "severity=warn severity=warn" not in surface
         assert "codex codex" not in surface
+
+
+def test_codex_tool_result_flood_without_timestamp_collapses(tmp_path: Path) -> None:
+    """DA-001: real-shape Codex completions need no source timestamp to collapse."""
+    body = "[tool-result] ✓ PASS read_file src/flood.py (running...) severity=info severity=info codex codex"
+    wire = [
+        "{" + f'"type":"item.completed","item":{{"id":"flood-1","type":"mcp_tool_call","tool":"read_file","arguments":{{"path":"src/flood.py"}},"result":"{body}"}}' + "}"
+        for _ in range(4)
+    ]
+    rendered, live, _ = _replay(
+        "codex_tool_result_flood", ActivityProvider.CODEX, CodexParser, tmp_path, wire_lines=wire
+    )
+    assert rendered.count("role=tool_result") == 2
+    for surface in (rendered, live):
+        collapsed = " ".join(surface.split())
+        assert "3 more identical results" in collapsed
+        assert "see .agent/raw/codex_tool_result_flood.log" in collapsed
+        assert "[tool-result]" not in surface
+        assert "(running...)" not in surface
+        assert "severity=info severity=info" not in surface
+        assert "codex codex" not in surface
+
+
+def test_pi_tool_result_flood_without_target_uses_overflow_destination(tmp_path: Path) -> None:
+    """DA-002: collapsed shell results cite their verbatim capture, never unknown."""
+    body = "[tool-result] ✓ PASS bash (running...) severity=info severity=info pi pi"
+    wire = [
+        "{" + f'"type":"tool_execution_end","toolCallId":"flood-1","toolName":"bash","result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false' + "}"
+        for _ in range(5)
+    ]
+    rendered, live, _ = _replay(
+        "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire
+    )
+    for surface in (rendered, live):
+        assert "4 more identical results" in " ".join(surface.split())
+        assert "see .agent/raw/pi_tool_result_flood.log" in " ".join(surface.split())
+        assert "unknown" not in surface
 
 
 def test_tool_call_record_emits_call_id_once(tmp_path: Path) -> None:

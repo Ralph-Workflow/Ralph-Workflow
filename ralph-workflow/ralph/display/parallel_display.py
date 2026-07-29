@@ -608,7 +608,7 @@ class ParallelDisplay:
         # A terminal transport occasionally repeats one result record in a
         # tight burst. Hold one per unit until its run boundary is known.
         self._pending_tool_results: dict[
-            str, tuple[str, dict[str, object], str | None, str | None, int]
+            str, tuple[str, dict[str, object], str | None, str | None, float, int]
         ] = {}  # bounded-accumulator-ok: one pending result per unit
         # DA-002 (wt-028-display S-2 / S-3): the streaming-block
         # live-log dedup. When a ``TEXT`` streaming block closes and
@@ -2912,40 +2912,61 @@ class ParallelDisplay:
         timestamp: str | None = None,
     ) -> None:
         """Buffer consecutive terminal results so transport floods collapse."""
-        if kind is ActivityEventKind.TOOL_RESULT and content is not None and timestamp is not None:
+        if kind is ActivityEventKind.TOOL_RESULT and content is not None:
+            clean_content = _clean_tool_result_content(content, unit_id)
+            # Only transport-shaped results wait for a possible burst. Ordinary
+            # results remain synchronous so a completed tool call is visible at
+            # once instead of being held until a later event or run shutdown.
+            if clean_content == " ".join(content.split()):
+                self._flush_pending_tool_result(unit_id)
+                self._emit_parsed_event_now(unit_id, kind, clean_content, metadata, timestamp)
+                return
+            arrived_at = self._monotonic()
             pending = self._pending_tool_results.get(unit_id)
-            signature = (content, str(metadata.get("tool", metadata.get("tool_name", ""))))
+            signature = (clean_content, str(metadata.get("tool", metadata.get("tool_name", ""))))
             if (
                 pending is not None
                 and signature
                 == (pending[0], str(pending[1].get("tool", pending[1].get("tool_name", ""))))
-                and self._within_tool_result_burst(pending[3], timestamp)
+                and self._within_tool_result_burst(pending[3], timestamp, pending[4], arrived_at)
             ):
                 self._pending_tool_results[unit_id] = (
                     pending[0],
                     pending[1],
                     pending[2],
                     timestamp,
-                    pending[4] + 1,
+                    arrived_at,
+                    pending[5] + 1,
                 )
                 return
             self._flush_pending_tool_result(unit_id)
-            self._pending_tool_results[unit_id] = (content, dict(metadata), timestamp, timestamp, 1)
+            self._pending_tool_results[unit_id] = (
+                clean_content,
+                dict(metadata),
+                timestamp,
+                timestamp,
+                arrived_at,
+                1,
+            )
             return
         self._flush_pending_tool_result(unit_id)
         self._emit_parsed_event_now(unit_id, kind, content, metadata, timestamp)
 
     @staticmethod
-    def _within_tool_result_burst(previous: str | None, current: str | None) -> bool:
-        """Return whether adjacent source timestamps are within one second."""
-        if previous is None or current is None:
-            return False
-        with contextlib.suppress(ValueError):
-            return abs(
-                (datetime.fromisoformat(current.replace("Z", "+00:00"))
-                - datetime.fromisoformat(previous.replace("Z", "+00:00"))).total_seconds()
-            ) <= 1.0
-        return False
+    def _within_tool_result_burst(
+        previous: str | None,
+        current: str | None,
+        previous_arrival: float,
+        current_arrival: float,
+    ) -> bool:
+        """Return whether adjacent results arrived within one second."""
+        if previous is not None and current is not None:
+            with contextlib.suppress(ValueError):
+                return abs(
+                    (datetime.fromisoformat(current.replace("Z", "+00:00"))
+                    - datetime.fromisoformat(previous.replace("Z", "+00:00"))).total_seconds()
+                ) <= 1.0
+        return current_arrival - previous_arrival <= 1.0
 
     def _flush_pending_tool_results(self) -> None:
         for unit_id in tuple(self._pending_tool_results):
@@ -2955,13 +2976,18 @@ class ParallelDisplay:
         pending = self._pending_tool_results.pop(unit_id, None)
         if pending is None:
             return
-        content, metadata, timestamp, _last_timestamp, count = pending
-        clean_content = _clean_tool_result_content(content, unit_id)
-        self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, clean_content, metadata, timestamp)
+        content, metadata, timestamp, _last_timestamp, _last_arrival, count = pending
+        self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, content, metadata, timestamp)
         if count >= _MIN_TOOL_RESULT_COLLAPSE_COUNT:
-            args = metadata.get("args")
-            target = args.get("path", "unknown") if isinstance(args, dict) else "unknown"
-            marker = f"… {count} identical results ({len(content.encode())} B, destination {target})"
+            hidden_count = count - 1
+            hidden_bytes = hidden_count * len(content.encode())
+            overflow = self._get_overflow_log(unit_id)
+            overflow.append("\n".join([content] * hidden_count))
+            self._check_overflow_size(unit_id, overflow)
+            marker = (
+                f"… {hidden_count} more identical results ({hidden_bytes} B) "
+                f"[see {overflow.relative_reference(self._workspace_root)}]"
+            )
             self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, marker, metadata, timestamp)
 
     def _emit_parsed_event_now(
