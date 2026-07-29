@@ -2635,11 +2635,6 @@ class ParallelDisplay:
                 unit_id=unit_id,
                 timestamp=entry_timestamp,
             )
-            record_preview_tool_name = text_content
-            record_preview_input: dict[str, object] = metadata
-            if previewed_result:
-                record_preview_tool_name = result_preview_tool_name
-                record_preview_input = result_preview_input
             self.emit_activity_line(
                 unit_id,
                 kind.value,
@@ -2655,8 +2650,8 @@ class ParallelDisplay:
                     grouping_role=_entry.grouping_role,
                     record_body=(
                         preview_record_text(
-                            record_preview_tool_name,
-                            record_preview_input,
+                            text_content,
+                            metadata,
                             overflow_ref=overflow_ref,
                             glyphs_enabled=self._ctx.glyphs_enabled,
                         )[0]
