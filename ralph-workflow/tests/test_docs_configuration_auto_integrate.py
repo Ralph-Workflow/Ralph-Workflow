@@ -5,6 +5,7 @@ from __future__ import annotations
 from tests.doc_roots import PACKAGE_DOCS_SPHINX_DIR
 
 _PATH = PACKAGE_DOCS_SPHINX_DIR / "configuration.md"
+_CONTENT = _PATH.read_text()
 _LIVE_KEYS = (
     "auto_integrate_enabled",
     "auto_integrate_target",
@@ -32,13 +33,13 @@ def _general_rows(content: str) -> list[str]:
 
 def test_configuration_md_documents_exactly_the_four_live_auto_integrate_keys_in_order() -> None:
     """S-8: the operator reference matches the four-key configuration surface."""
-    rows = _general_rows(_PATH.read_text())
+    rows = _general_rows(_CONTENT)
     assert [row.split("`")[1] for row in rows] == list(_LIVE_KEYS)
 
 
 def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
     """S-8: operators can discover defaults and the local/remote safety split."""
-    content = _PATH.read_text()
+    content = _CONTENT
     rows = _general_rows(content)
     assert "`true`" in rows[0]
     assert '`"main"`' in rows[1]
@@ -55,5 +56,5 @@ def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
 
 def test_configuration_md_omits_retired_auto_integrate_keys() -> None:
     """S-8: removed configuration names do not remain discoverable in docs."""
-    content = _PATH.read_text()
+    content = _CONTENT
     assert not any(key in content for key in _RETIRED_KEYS)
