@@ -43,6 +43,14 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-07-29
+
+Patch release. `__version__` moved from `0.9.6` to `0.9.7` in
+`ralph/__init__.py` (the canonical version source `pyproject.toml`
+reads via `[tool.hatch.version]`), with `skills-package/package.json`
+kept in parity by `tests/test_skills_package_version_parity.py`.
+Carries the resource-lifecycle, retention, and display fixes below.
+
 ### Fixed
 
 - **fix(display): keep watchdog stall attention live during conflict resolution and policy remediation** — pushed footer models leave `attention` to operator state so Live ticks mirror the watchdog assessment. Locked by `tests/pipeline/test_conflict_status_bar_stall_source.py` and `tests/project_policy/test_remediation_status_bar_stall_source.py`.
