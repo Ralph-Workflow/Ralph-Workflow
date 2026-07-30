@@ -70,7 +70,14 @@ surface: it is composed via the ``ralph.display.status_bar`` module
 and pushed to via ``ParallelDisplay.update_status_bar(model)``. The
 persistent footer renders on the ``_STATUS_BAR_REFRESH_PER_SECOND``
 cadence (4.0 Hz / 250 ms) and is gated on a real-TTY run, so
-non-interactive output stays clean. They are grouped by surface below.
+non-interactive output stays clean. ``DisplayContext`` resolves the terminal
+background once from its environment; event identities and the footer use the
+matching dark/light identity palette without each renderer probing the terminal.
+When background detection is unavailable, they use the dedicated unknown-background
+palette, which remains legible on both black and white. Simultaneously visible
+identities are deterministically collision-nudged against the active set, including
+under the supported color-vision-deficiency simulations. They are grouped by surface
+below.
 
 Run lifecycle
 ~~~~~~~~~~~~~
@@ -163,22 +170,22 @@ through ``pd.status_bar``. The lifecycle has exactly one owner:
 
 - **One constructor.** :class:`~ralph.display.status_bar.StatusBar` is
   instantiated in exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.__init__`` at line 521
+  ``ralph.display.parallel_display.ParallelDisplay.__init__``
   (``self._status_bar: StatusBar = StatusBar(self)``). No other module under
   ``ralph/display/``, ``ralph/pipeline/``, or ``ralph/cli/`` constructs a
   ``StatusBar``.
 
 - **One start site.** :meth:`~ralph.display.status_bar.StatusBar.start` is
   called from exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.start`` at line 1382.
+  ``ralph.display.parallel_display.ParallelDisplay.start``.
   The pipeline reaches the bar through the production context manager
-  ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py`` at
-  line 873, which invokes ``ParallelDisplay.start`` (and therefore
+  ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py``,
+  which invokes ``ParallelDisplay.start`` (and therefore
   ``self._status_bar.start()``) exactly once per run.
 
 - **One stop site.** :meth:`~ralph.display.status_bar.StatusBar.stop` is
   called from exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.stop`` at line 1390.
+  ``ralph.display.parallel_display.ParallelDisplay.stop``.
   ``ParallelDisplay.__exit__`` invokes ``ParallelDisplay.stop``, so the
   Live region is torn down exactly once per run.
 
@@ -351,62 +358,57 @@ environment after that.
      - Set to ``0``/``false``/``no``/``off`` to disable AI-based headline
        generation for long content blocks.
 
-Display mode (single default)
------------------------------
+Responsive Status Bar
+---------------------
 
-Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
-width-based dispatch and no per-mode limits table. The persistent bottom
-Status Bar renders all applicable fields (working directory, active phase,
-applicable outer development iteration, applicable inner analysis
-iteration) at every terminal width where they fit. At widths >= 40 cols
-the canonical ``Dev N/cap`` / ``Analysis N/cap`` labels render in full and
-only path middle-truncation and phase tail-truncation budgets adapt to
-width. Below 40 cols the implementation may degrade to compact
-(``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below
-14 cols the iteration segments drop one at a time (outer_dev first, then
-inner_analysis, then both) so the bar never overflows the working area;
-phase and path remain visible at every applicable width.
+Ralph Workflow exposes one display mode. The persistent one-row Status Bar
+uses a single responsive layout rather than separate narrow and wide modes.
+Its segment priority is attention, phase, liveness, elapsed time, run
+position, agent identity, then working directory. Attention reserves its slot
+while healthy, so a waiting, stalled, retrying, completed, failed, or cancelled
+state does not shift neighbouring fields.
 
-.. note::
+At 120 columns every segment is shown. At 80 columns the directory is
+left-elided; at 60 it drops, the phase abbreviates, and the agent remains; at
+the supported 40-column floor attention, phase, liveness, elapsed time, and
+position remain.
+The footer never wraps. Below that floor it uses a plain minimal form until the
+terminal recovers. Resizing reflows the footer immediately in both width and
+height; it remains one row on a 12-row viewport.
 
-   What changed and why it belongs here
+The liveness cell advances from the injected monotonic clock during quiet work,
+while the watchdog remains the sole authority for the ``STALLED`` state. The
+live footer refreshes at a bounded cadence so elapsed time can advance;
+unchanged direct renders remain byte-stable. ``NO_COLOR`` and
+``RALPH_FORCE_ASCII`` preserve the same labels and hierarchy.
 
-   The historical three-tier mode split (narrow / medium / wide), the
-   legacy env-var override, and the three-tier mode limits table were
-   collapsed into a single ``default`` mode. The persistent bottom
-   Status Bar renders all applicable fields at every terminal width
-   where they fit. At widths >= 40 cols the canonical ``Dev N/cap`` /
-   ``Analysis N/cap`` labels render in full and only path
-   middle-truncation and phase tail-truncation adapt to width. Below
-   40 cols the implementation may degrade to compact (``D1/3`` /
-   ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below 14
-   cols the iteration segments drop one at a time (outer_dev first,
-   then inner_analysis, then both) so the bar never overflows the
-   working area; phase and path remain visible at every applicable
-   width. This belongs on the operator-facing reference page because
-   operators who relied on the legacy override need to know the
-   public API has changed; the consolidated single mode is one clear
-   surface to learn instead of three. The persistent bottom Status Bar
-   renders one consistent layout at every supported terminal width.
+The single layout keeps phase, cycle/iter (or round), elapsed time, and identity
+vocabulary consistent with the live activity feed and rendered record.
 
-The single default-mode layout:
+Rendered record hierarchy
+-------------------------
 
-- Renders ``[phase]`` / ``[run-start]`` / ``[run-end]`` / ``[run-completion]``
-  section rules unconditionally.
-- Renders the full Status Bar fields (phase + dir + outer_dev +
-  inner_analysis) at every terminal width where they fit. At widths
-  >= 40 cols the canonical ``Dev N/cap`` / ``Analysis N/cap`` iteration
-  labels always render in full and only path middle-truncation and
-  phase tail-truncation adapt to width. Below 40 cols the
-  implementation may degrade to compact / minimal forms to fit. Below
-  14 cols the iteration segments drop one at a time so the bar never
-  overflows the working area; phase and path remain visible at every
-  applicable width.
-- Always emits section rules around phase-close banners and completion
-  panels.
+The text-first ``.agent/raw/<id>.rendered.log`` record groups event rows under
+a readable phase header. The header carries the phase label, cycle/iteration
+position, and agent identity once. Indented event rows carry a timestamp,
+body, and ``role=...`` marker; healthy ``info`` severity is omitted while
+warnings and errors remain explicit. Tool results name their tool, target, and
+terminal outcome once; identity remains on the enclosing phase header and
+previews remain with the corresponding tool call. This keeps the record greppable without
+repeating chrome on every event. The verbatim ``.log`` capture remains the
+unabridged target for condensation markers. Every supported agent and the
+generic fallback use this same production path; malformed input becomes an
+``unknown`` entry with the same hierarchy rather than raw output.
 
-The historical env-var override that selected a narrower mode is silently
-ignored.
+Command-path guard
+------------------
+
+The main run, commit plumbing, policy check, diagnose, explain, init,
+prompt-helper, cleanup, star, contribute, smoke, and conflict resolution use
+``ParallelDisplay.emit_*`` methods for operator-facing output. The smoke
+command's literal ``EXIT_CODE=N`` line is the single machine-readable
+exception. ``tests/display/test_parallel_display_drift_prevention.py`` and
+``scripts/wt028-drift-check.sh`` reject new private command output paths.
 
 Iteration context labels
 ------------------------
@@ -422,11 +424,11 @@ consistently across all three display surfaces.
    * - Label format
      - Style
      - Meaning
-   * - ``Dev N/cap`` or ``Dev #N``
+   * - ``Cycle N/cap`` or ``Cycle #N``
      - Bold sky-blue (``theme.outer_dev``)
      - Outer development cycle number (1-indexed).  Shows ``N/cap`` when the
        total budget is known, ``#N`` otherwise.
-   * - ``Analysis N/cap`` or ``Analysis #N``
+   * - ``iter N/cap`` or ``iter #N``
      - Purple (``theme.inner_analysis``)
      - Inner analysis loop iteration.  Shows ``N/cap`` when the loop cap is
        known, ``#N`` otherwise.
@@ -469,12 +471,12 @@ Phase-close line format
 After each phase ends, a structured ``[phase-close]`` line is written to the
 transcript::
 
-    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev N/cap] [Analysis N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Cycle N/cap] [iter N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
 
 - The ``<glyph>`` prefix (``◆`` Unicode, ``*`` ASCII) appears only for
   milestone-role phases (execution, review, fix).
-- Canonical iteration labels (``[Dev N/cap]`` or ``[Dev #N]``,
-  ``[Analysis N/cap]`` or ``[Analysis #N]``, etc.) appear between the phase
+- Canonical iteration labels (``[Cycle N/cap]`` or ``[Cycle #N]``,
+  ``[iter N/cap]`` or ``[iter #N]``, etc.) appear between the phase
   name and the produced-artifact summary when a
   :class:`~ralph.display.phase_status.PhaseIterationContext` is provided.
 - ``exit=<trigger>`` (e.g. ``exit=produced``) appears after the artifact

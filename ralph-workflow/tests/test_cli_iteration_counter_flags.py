@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner as TyperCliRunner
 
@@ -13,6 +13,7 @@ from ralph.cli.main import (
     build_cli_overrides,
 )
 from ralph.display.context import DisplayContext, make_display_context
+from tests._support.typed_accessors import must_mapping
 
 if TYPE_CHECKING:
     import pytest
@@ -32,11 +33,8 @@ def _make_display_context_for_console(console: Console) -> DisplayContext:
 
 class TestIterationCounterFlags:
     def test_developer_iters_flag_sets_config_override(self) -> None:
-        overrides = cast(
-            "dict[str, object]",
-            build_cli_overrides(CLIOverrideInput(developer_iters=3)),
-        )
-        general = cast("dict[str, object]", overrides["general"])
+        overrides = must_mapping(build_cli_overrides(CLIOverrideInput(developer_iters=3)),)
+        general = must_mapping(overrides["general"])
         assert general["developer_iters"] == 3
 
     def test_counter_flag_passes_overrides_to_run_pipeline(
@@ -50,7 +48,7 @@ class TestIterationCounterFlags:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()

@@ -68,6 +68,21 @@ def test_validate_agent_chains_satisfiable_fails_with_unknown_agent() -> None:
         validate_agent_chains_satisfiable(bundle, registry)
 
 
+def test_validate_agent_chains_satisfiable_regression_names_available_agy_models() -> None:
+    """DA-002: invalid AGY aliases explain the published model and effort vocabulary."""
+    bundle = _FakeBundle(
+        chains={"development": _FakeChainConfig(agents=["agy/gemini-3.7-flash-low"])},
+        drains={},
+        phases={},
+    )
+
+    with pytest.raises(PolicyValidationError) as exc_info:
+        validate_agent_chains_satisfiable(bundle, _FakeAgentRegistry(known_agents={"agy"}))
+
+    assert "gemini-3.6-flash-low" in str(exc_info.value)
+    assert "low, medium, high" in str(exc_info.value)
+
+
 def test_validate_agent_chains_satisfiable_accepts_pi_transport() -> None:
     """Pi can run Ralph-managed workflow phases through the non-MCP fallback path."""
     bundle = _FakeBundle(

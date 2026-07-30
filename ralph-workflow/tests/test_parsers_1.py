@@ -258,8 +258,15 @@ def test_opencode_parser_text_event_with_part_payload() -> None:
     assert results[0].content == "Nested OpenCode text"
 
 
-def test_opencode_parser_tool_use_completed_state_emits_result() -> None:
-    """OpenCode completed tool state should emit tool_result."""
+def test_opencode_parser_tool_use_completed_state_emits_dispatch_then_result() -> None:
+    """OpenCode completed tool state emits the dispatch AND the result.
+
+    OpenCode collapses the call and its result into ONE terminal event. Emitting
+    only the ``tool_result`` erased the dispatch, so consumers that count
+    dispatches by ``type == "tool_use"`` (``_subagent_smoke_evidence``) saw zero
+    and a real ``task`` subagent run was reported as "subagent dispatch was not
+    observed".
+    """
     parser = OpenCodeParser()
     lines = [
         (
@@ -270,10 +277,10 @@ def test_opencode_parser_tool_use_completed_state_emits_result() -> None:
 
     results = list(parser.parse(_make_lines(lines)))
 
-    assert len(results) == 1
-    assert results[0].type == "tool_result"
-    assert results[0].content == "file content"
-    assert results[0].metadata["tool"] == "read"
+    assert [r.type for r in results] == ["tool_use", "tool_result"]
+    assert results[0].content == "read"
+    assert results[1].content == "file content"
+    assert results[1].metadata["tool"] == "read"
 
 
 def test_opencode_parser_tool_result_preserves_tool_context_and_structured_metadata() -> None:
@@ -419,6 +426,19 @@ def test_codex_parser_accepts_sse_data_prefix_lines() -> None:
     assert len(results) == 1
     assert results[0].type == "text"
     assert results[0].content == "prefixed text"
+
+
+def test_codex_parser_regression_same_tool_calls_keep_distinct_call_ids() -> None:
+    """S-4: same-input Codex calls retain IDs for distinct rendered records."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"item.started","item":{"id":"call-1","type":"mcp_tool_call","tool":"search_files","arguments":{"path":"ralph"}}}',
+        '{"type":"item.started","item":{"id":"call-2","type":"mcp_tool_call","tool":"search_files","arguments":{"path":"ralph"}}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert [result.metadata["tool_call_id"] for result in results] == ["call-1", "call-2"]
 
 
 def test_codex_parser_item_completed_mcp_tool_result_maps_to_tool_result() -> None:

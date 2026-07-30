@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import threading as _threading
+import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, replace
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -36,6 +38,7 @@ from ralph.display.parallel_display import (
     subscriber_for_display,
 )
 from ralph.git.operations import stage_files
+from ralph.mcp.artifacts.canonical_submit import _clear_worker_artifacts
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
@@ -45,6 +48,7 @@ from ralph.pipeline._retry_progress_guard import (
     RetryProgressGuard,
     retry_failure_signature,
 )
+from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.agent_execution_deps import build_agent_execution_deps
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
@@ -68,7 +72,7 @@ from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -79,9 +83,9 @@ if TYPE_CHECKING:
         _ShowPhaseStartFn,
     )
     from ralph.pipeline.effects import InvokeAgentEffect
-    from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.factory import MaterializeMasterPromptFn, PipelineDeps
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PolicyBundle
+    from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
 _VERBOSE_LOG_LEVEL = 2
@@ -90,6 +94,41 @@ _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _RECOVERY_CONTEXT_LINES = 12
 _RECOVERY_CONTEXT_MAX_CHARS = 240
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+_DEFAULT_PHASE_NAMES = frozenset(
+    {
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_commit_cleanup",
+        "development_commit",
+        "development_analysis",
+        "development_final_commit_cleanup",
+        "development_final_commit",
+        "complete",
+        "failed_terminal",
+    }
+)
+
+
+def _record_successful_attempt_session(
+    ctx: _AgentInvocationCtx,
+    raw_output: tuple[str, ...],
+    session_id: str | None,
+) -> None:
+    """Publish the successful attempt's session id and clear the retry intent.
+
+    Recording the session matters because failures are also raised AFTER the
+    agent exits successfully — artifact validation is the common case. The
+    reducer resumes ``state.last_agent_session_id`` so the agent repairs its
+    own artifact in place; without this the id is never captured, the resume
+    branch cannot fire, and every such retry restarts the whole phase from a
+    blank prompt.
+    """
+    final_session_id = extract_transport_session_id(raw_output) or session_id
+    if ctx.deps.set_session_id_cb is not None:
+        ctx.deps.set_session_id_cb(final_session_id)
+    set_last_captured_session_id(final_session_id)
+    _set_last_captured_retry_intent(cleared_agent_retry_intent())
 
 
 @dataclass(frozen=True)
@@ -105,6 +144,11 @@ def execute_agent_effect(
     pipeline_deps: PipelineDeps,
     workspace_scope: WorkspaceScope,
     *,
+    display_context: DisplayContext | None,
+    display: ParallelDisplay | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
     bridge: RestartAwareMcpBridge | None = None,
     raw_output_sink: deque[str] | None = None,
     rendered_output_sink: deque[str] | None = None,
@@ -116,15 +160,17 @@ def execute_agent_effect(
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     **opts: object,
 ) -> PipelineEvent:
-    """Execute an agent-invocation effect end-to-end, including MCP server lifecycle."""
-    display = cast("ParallelDisplay | None", opts.get("display"))
-    display_context = cast("DisplayContext | None", opts.get("display_context"))
-    verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
-    state = cast("PipelineState | None", opts.get("state"))
-    policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
+    """Execute an agent-invocation effect end-to-end, including MCP server lifecycle.
+
+    ``display_context`` is a required keyword so a call site cannot silently
+    omit the display dependency: at least one of ``display_context`` /
+    ``display`` must be non-None or :func:`get_display_context` raises.
+    """
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
-    agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))
+    agent_config = cast(
+        "AgentConfig | None", registry.get(effect.agent_name)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
@@ -180,24 +226,108 @@ def execute_agent_effect(
         waiting_listener=waiting_listener,
         agent_config=agent_config,
         display=display,
-        worker_namespace=cast("Path | None", opts.get("worker_namespace")),
-        worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
-        parallel_worker=cast("bool", opts.get("parallel_worker", False)),
+        worker_namespace=cast(
+            "Path | None", opts.get("worker_namespace")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        worker_artifact_dir=cast(
+            "Path | None", opts.get("worker_artifact_dir")
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        parallel_worker=cast(
+            "bool", opts.get("parallel_worker", False)
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
-    return _invoke_agent_with_recovery(
-        ctx,
-        pipeline_deps,
-        bridge=bridge,
-        raw_output_sink=raw_output_sink,
-        rendered_output_sink=rendered_output_sink,
-        run_id=run_id,
-        required_artifact=required_artifact,
-        session_id=session_id,
-        extra_env=extra_env,
-        on_retry_failure=cast("Callable[[list[str]], object] | None", opts.get("on_retry_failure")),
-        raise_resumable_exit=raise_resumable_exit,
-        agent_invocation_error_sink=agent_invocation_error_sink,
-    )
+    invocation_started = time.monotonic()
+    invocation_outcome = "crashed"
+    try:
+        result = _invoke_agent_with_recovery(
+            ctx,
+            pipeline_deps,
+            bridge=bridge,
+            raw_output_sink=raw_output_sink,
+            rendered_output_sink=rendered_output_sink,
+            run_id=run_id,
+            required_artifact=required_artifact,
+            session_id=session_id,
+            extra_env=extra_env,
+            on_retry_failure=cast(
+                "Callable[[list[str]], object] | None", opts.get("on_retry_failure")
+            ),
+            raise_resumable_exit=raise_resumable_exit,
+            agent_invocation_error_sink=agent_invocation_error_sink,
+        )
+        invocation_outcome = "success" if result == PipelineEvent.AGENT_SUCCESS else "failure"
+        return result
+    except KeyboardInterrupt:
+        invocation_outcome = "interrupted"
+        raise
+    except BaseException as exc:
+        # Report before re-raising: an agent-invocation failure is frequently
+        # caught and converted to a retry further up, so without an explicit
+        # capture here it never reaches Sentry through the excepthook.
+        invocation_outcome = "crashed"
+        _report_agent_invocation_exception(exc)
+        raise
+    finally:
+        _record_agent_invocation_telemetry(
+            effect=effect,
+            agent_transport=agent_config.transport,
+            policy_bundle=policy_bundle,
+            agents_policy=effective_agents_policy,
+            duration_s=max(0.0, time.monotonic() - invocation_started),
+            outcome=invocation_outcome,
+        )
+
+
+def _report_agent_invocation_exception(exc: BaseException) -> None:
+    """Forward a crashed agent invocation to Sentry without affecting execution.
+
+    Mirrors ``_record_agent_invocation_telemetry``'s lazy import and
+    swallow-everything contract so telemetry can never change control flow.
+    """
+    try:
+        from ralph.telemetry._sentry import report_handled_exception
+
+        report_handled_exception(exc, origin="agent_invocation")
+    except Exception:
+        return
+
+
+def _record_agent_invocation_telemetry(
+    *,
+    effect: InvokeAgentEffect,
+    agent_transport: AgentTransport | None,
+    policy_bundle: PolicyBundle | None,
+    agents_policy: AgentsPolicy,
+    duration_s: float,
+    outcome: str,
+) -> None:
+    """Forward safe logical-invocation dimensions without affecting execution."""
+    try:
+        from ralph.telemetry._sentry import record_agent_invocation
+
+        phase_def = policy_bundle.pipeline.phases.get(str(effect.phase)) if policy_bundle else None
+        drain_config = agents_policy.agent_drains.get(effect.drain or "")
+        record_agent_invocation(
+            transport=agent_transport or AgentTransport.GENERIC,
+            phase_role=(phase_def.role or "execution") if phase_def is not None else "execution",
+            drain=effect.drain,
+            drain_class=drain_config.drain_class if drain_config is not None else None,
+            pipeline_profile=_pipeline_profile(policy_bundle),
+            duration_s=duration_s,
+            outcome=outcome,
+        )
+    except Exception:
+        return
+
+
+def _pipeline_profile(policy_bundle: PolicyBundle | None) -> str:
+    if policy_bundle is None:
+        return "custom"
+    raw_phase_names: object = getattr(policy_bundle.pipeline, "phases", {})
+    if not isinstance(raw_phase_names, dict):
+        return "custom"
+    phase_names = cast("Mapping[object, object]", raw_phase_names)
+    return "default" if all(name in _DEFAULT_PHASE_NAMES for name in phase_names) else "custom"
 
 
 class _RegistryLike(Protocol):
@@ -209,21 +339,29 @@ def _registry_from_pipeline_deps(
     config: UnifiedConfig,
 ) -> _RegistryLike:
     if pipeline_deps.registry_factory is not None:
-        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
-    return cast("_RegistryLike", AgentRegistry.from_config(config))
+        return cast(
+            "_RegistryLike", pipeline_deps.registry_factory(config)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    return cast(
+        "_RegistryLike", AgentRegistry.from_config(config)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _invoke_agent_from_registry_or_opts(
     opts: dict[str, object],
 ) -> _InvokeAgentFn:
-    invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
+    invoke = cast(
+        "_InvokeAgentFn | None", opts.get("invoke_agent")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if invoke is not None:
         return invoke
     return invoke_agent
 
 
 def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception]:
-    error = cast("type[Exception] | None", opts.get("agent_invocation_error"))
+    error = cast(
+        "type[Exception] | None", opts.get("agent_invocation_error")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if error is not None:
         return error
     return AgentInvocationError
@@ -267,14 +405,26 @@ def _invoke_agent_with_recovery(
 ) -> PipelineEvent:
     own_bridge = bridge is None
     effective_run_id = run_id or str(uuid.uuid4())
+    resolved_required_artifact = _resolve_required_artifact(
+        ctx,
+        pipeline_deps,
+        required_artifact,
+    )
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:
-        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
+        effective_run_id = cast(
+            "str", getattr(bridge, "run_id", effective_run_id)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
-        system_prompt_file = _materialize_system_prompt(ctx, pipeline_deps)
+        master_prompt_file = _materialize_master_prompt(
+            ctx,
+            pipeline_deps,
+            required_artifact=resolved_required_artifact,
+            required_artifact_resolved=True,
+        )
         bridge_ctx = _AgentBridgeCtx(
-            bridge=bridge, session=cast("object", None), system_prompt_file=system_prompt_file
+            bridge=bridge, session=cast("object", None), master_prompt_file=master_prompt_file
         )
         raw_output: deque[str] = (
             raw_output_sink
@@ -304,7 +454,8 @@ def _invoke_agent_with_recovery(
                 pipeline_deps,
                 session_id,
                 effective_run_id,
-                required_artifact,
+                resolved_required_artifact,
+                required_artifact_resolved=True,
                 extra_env=extra_env,
             )
             try:
@@ -321,10 +472,7 @@ def _invoke_agent_with_recovery(
                     capture_session_id,
                     pipeline_deps,
                 )
-                final_session_id = extract_transport_session_id(tuple(raw_output)) or session_id
-                if ctx.deps.set_session_id_cb is not None:
-                    ctx.deps.set_session_id_cb(final_session_id)
-                _set_last_captured_retry_intent(cleared_agent_retry_intent())
+                _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
                 recovery_plan = build_agent_recovery_plan(
@@ -422,6 +570,16 @@ def _start_bridge(
             drain=ctx.effect.drain,
             policy_bundle=ctx.policy_bundle,
         )
+    else:
+        worker_namespace = ctx.worker_namespace
+        if worker_namespace is None and ctx.worker_artifact_dir is not None:
+            worker_namespace = ctx.worker_artifact_dir.parent
+        if worker_namespace is not None:
+            _clear_worker_artifacts(
+                ctx.workspace_scope.root,
+                run_id,
+                worker_namespace=worker_namespace,
+            )
     return cast(
         "RestartAwareMcpBridge",
         pipeline_deps.bridge_factory(
@@ -440,22 +598,94 @@ def _start_bridge(
     )
 
 
-def _materialize_system_prompt(
+def _materialize_master_prompt(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
+    *,
+    required_artifact: RequiredArtifact | None = None,
+    required_artifact_resolved: bool = False,
 ) -> str:
-    _materialize = pipeline_deps.system_prompt_materializer
-    try:
-        return _materialize(
-            workspace_root=ctx.workspace_scope.root,
-            name=str(ctx.effect.phase),
+    materialize = pipeline_deps.master_prompt_materializer
+    planning_style = _planning_style_for_master_prompt(
+        ctx,
+        pipeline_deps,
+        required_artifact=required_artifact,
+        required_artifact_resolved=required_artifact_resolved,
+    )
+    workspace_root = ctx.workspace_scope.root
+    phase_name = str(ctx.effect.phase)
+    accepts_worker_namespace = _accepts_keyword(materialize, "worker_namespace")
+    if planning_style is not None and _accepts_keyword(materialize, "planning_style"):
+        if accepts_worker_namespace:
+            return materialize(
+                workspace_root=workspace_root,
+                name=phase_name,
+                worker_namespace=ctx.worker_namespace,
+                planning_style=planning_style,
+            )
+        return materialize(
+            workspace_root=workspace_root,
+            name=phase_name,
+            planning_style=planning_style,
+        )
+    if accepts_worker_namespace:
+        return materialize(
+            workspace_root=workspace_root,
+            name=phase_name,
             worker_namespace=ctx.worker_namespace,
         )
-    except TypeError:
-        return _materialize(
-            workspace_root=ctx.workspace_scope.root,
-            name=str(ctx.effect.phase),
+    return materialize(workspace_root=workspace_root, name=phase_name)
+
+
+def _accepts_keyword(
+    materialize: MaterializeMasterPromptFn,
+    keyword: str,
+) -> bool:
+    """Return whether an injected materializer accepts one keyword argument."""
+    try:
+        parameters = signature(materialize).parameters
+    except (TypeError, ValueError):
+        return True
+    return keyword in parameters or any(
+        str(parameter).startswith("**") for parameter in parameters.values()
+    )
+
+
+def _planning_style_for_master_prompt(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    *,
+    required_artifact: RequiredArtifact | None,
+    required_artifact_resolved: bool = False,
+) -> bool | None:
+    artifact = required_artifact
+    if artifact is None and not required_artifact_resolved:
+        policy_bundle = ctx.policy_bundle
+        if policy_bundle is None:
+            return None
+        artifact = pipeline_deps.artifact_requirements_resolver(
+            policy_bundle.pipeline,
+            policy_bundle.artifacts,
+            phase=ctx.effect.phase,
+            drain=ctx.effect.drain or ctx.effect.phase,
         )
+    return artifact is not None and artifact.artifact_type == "plan"
+
+
+def _resolve_required_artifact(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    required_artifact: RequiredArtifact | None,
+) -> RequiredArtifact | None:
+    """Resolve one invocation's artifact contract exactly once."""
+    if required_artifact is not None or ctx.policy_bundle is None:
+        return required_artifact
+    return pipeline_deps.artifact_requirements_resolver(
+        ctx.policy_bundle.pipeline,
+        ctx.policy_bundle.artifacts,
+        phase=ctx.effect.phase,
+        drain=ctx.effect.drain or ctx.effect.phase,
+    )
 
 
 def _initial_resume_session_id(ctx: _AgentInvocationCtx) -> str | None:
@@ -524,16 +754,25 @@ def _build_attempt_invoke_options(
     resume_session_id: str | None,
     run_id: str,
     required_artifact_override: RequiredArtifact | None = None,
+    required_artifact_resolved: bool = False,
     extra_env: dict[str, str] | None = None,
 ) -> InvokeOptions:
     required_artifact = required_artifact_override
-    if required_artifact is None and ctx.policy_bundle is not None:
+    if (
+        required_artifact is None
+        and not required_artifact_resolved
+        and ctx.policy_bundle is not None
+    ):
         required_artifact = pipeline_deps.artifact_requirements_resolver(
             ctx.policy_bundle.pipeline,
             ctx.policy_bundle.artifacts,
             phase=ctx.effect.phase,
             drain=ctx.effect.drain or ctx.effect.phase,
         )
+    required_artifact = required_artifact_for_invocation(
+        required_artifact,
+        ctx.worker_artifact_dir,
+    )
 
     def _emit_pre_output_progress() -> None:
         if ctx.display is not None:
@@ -560,15 +799,35 @@ def _build_attempt_invoke_options(
             workspace_path=ctx.workspace_scope.root,
             extra_env=env,
             session_id=resume_session_id,
-            system_prompt_file=bridge_ctx.system_prompt_file,
+            master_prompt_file=bridge_ctx.master_prompt_file,
             waiting_listener=ctx.waiting_listener,
             pre_output_listener=_emit_pre_output_progress,
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
+            requires_completion_evidence=ctx.effect.requires_completion_evidence,
             pure=ctx.agent_config.transport == AgentTransport.OPENCODE,
             connectivity_state_provider=pipeline_deps.connectivity_state_provider,
             is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,
         ),
+    )
+
+
+def required_artifact_for_invocation(
+    required_artifact: RequiredArtifact | None,
+    worker_artifact_dir: Path | None,
+) -> RequiredArtifact | None:
+    """Route a worker's artifact and fallback completion check to its namespace."""
+    if required_artifact is None or worker_artifact_dir is None:
+        return required_artifact
+    markdown_path = (
+        str(worker_artifact_dir.parent / "handoffs" / Path(required_artifact.markdown_path).name)
+        if required_artifact.markdown_path is not None
+        else None
+    )
+    return replace(
+        required_artifact,
+        artifact_path=str(worker_artifact_dir / f"{required_artifact.artifact_type}.md"),
+        markdown_path=markdown_path,
     )
 
 
@@ -608,8 +867,8 @@ def _consume_attempt_output(
         _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
     )
     _agent_registry = AgentRegistry()
-    _subagent_pid_registry, _subagent_pid_source = (
-        _agent_registry.build_subagent_pid_registry(_agent_config_transport)
+    _subagent_pid_registry, _subagent_pid_source = _agent_registry.build_subagent_pid_registry(
+        _agent_config_transport
     )
     _subagent_source_label = _agent_config_transport.value
     # Thread the shared registry + per-transport source through
@@ -732,9 +991,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     # Stale-session prompt metadata: only forward when the failure was
     # actually a stale-session failure. See module docstring note on
     # AC-03. ``untruncated`` already encodes the canonical predicate.
-    prompt_stale_session_id = (
-        recovery_input.stale_session_id if untruncated else None
-    )
+    prompt_stale_session_id = recovery_input.stale_session_id if untruncated else None
     prompt_transport = recovery_input.transport if untruncated else None
     prompt_model = recovery_input.model if untruncated else None
     prompt_file = _retry_prompt_file_for_context(
@@ -866,14 +1123,10 @@ def _build_recovery_input_for_attempt(
         workspace_root=ctx.workspace_scope.root,
         raw_output=list(raw_output),
         rendered_output=list(rendered_output),
-        extracted_session_id=(
-            extract_transport_session_id(tuple(raw_output)) or session_id
-        ),
+        extracted_session_id=(extract_transport_session_id(tuple(raw_output)) or session_id),
         inactivity_error_type=AgentInactivityTimeoutError,
         stale_session_id=(
-            state.last_agent_session_id
-            or state.resume_session_id
-            or session_id
+            state.last_agent_session_id or state.resume_session_id or session_id
             if is_stale_session_failure
             else None
         ),

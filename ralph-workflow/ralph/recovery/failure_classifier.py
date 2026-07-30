@@ -52,6 +52,12 @@ _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
         "Connection timed out",
         "Name or service not known",
         "nodename nor servname provided",
+        # The literal string pi reports in ``message.errorMessage`` /
+        # ``auto_retry_end.finalError`` when its configured provider is
+        # unreachable. Deliberately narrower than a bare "connection":
+        # this matches pi's exact phrasing so an offline provider routes
+        # to connectivity backoff instead of burning the retry budget.
+        "connection error",
     }
 )
 
@@ -696,9 +702,7 @@ class FailureClassifier:
             typed_cause = self._find_typed_watchdog_cause(exc_obj)
             if isinstance(typed_cause, IdleWatchdogKilledError):
                 child_alive = typed_cause.child_alive
-                cause_session_id: str | None = getattr(
-                    typed_cause, "resumable_session_id", None
-                )
+                cause_session_id: str | None = getattr(typed_cause, "resumable_session_id", None)
                 if isinstance(cause_session_id, str) and cause_session_id:
                     resumable_session_id = cause_session_id
         # Also read the wrapped ``AgentInactivityTimeoutError.resumable_session_id``
@@ -771,9 +775,7 @@ class FailureClassifier:
                     # collapse the typed Rule 1 path back to the
                     # text-based Rule 2 path the gate refinement was
                     # designed to avoid.
-                    and not (
-                        watchdog_reason == "no_progress_quiet" and child_alive is True
-                    )
+                    and not (watchdog_reason == "no_progress_quiet" and child_alive is True)
                     and (
                         _is_unavailable_agent_message(raw_message)
                         or contains_casefolded_marker(
@@ -893,7 +895,7 @@ class FailureClassifier:
             return FailureCategory.AGENT, True, False
         # OpenCodeResumableExitError is a subclass of AgentInvocationError
         # raised when an agent session exits without completion evidence
-        # (no artifact, no declare_complete). It MUST be classified as
+        # (no durable sentinel, or no required artifact receipt). It MUST be classified as
         # AGENT so the recovery controller's resume path is engaged and
         # the next attempt continues the prior session instead of
         # starting fresh. The mapping is checked BEFORE
@@ -930,16 +932,22 @@ class FailureClassifier:
             "BaseException | None", getattr(exc, "__cause__", None)
         )
         if current is None:
-            current = cast("BaseException | None", getattr(exc, "__context__", None))
+            current = cast(
+                "BaseException | None", getattr(exc, "__context__", None)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         while current is not None and id(current) not in visited:
             visited.add(id(current))
             if isinstance(current, IdleWatchdogKilledError):
                 return current
-            next_cause = cast("BaseException | None", getattr(current, "__cause__", None))
+            next_cause = cast(
+                "BaseException | None", getattr(current, "__cause__", None)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             if next_cause is not None:
                 current = next_cause
             else:
-                current = cast("BaseException | None", getattr(current, "__context__", None))
+                current = cast(
+                    "BaseException | None", getattr(current, "__context__", None)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return None
 
     def _classify_agent_invocation_error(

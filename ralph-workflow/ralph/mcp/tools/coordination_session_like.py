@@ -30,3 +30,10 @@ class CoordinationSessionLike(Protocol):
 
     def check_capability(self, capability: str) -> object:
         """Return a policy outcome for the requested capability."""
+
+    #: Optional :class:`ralph.mcp.explore.handlers.ExploreIndex`
+    #: handle attached by the production session bridge. The
+    #: protocol stays permissive (``object | None``) so legacy
+    #: sessions that never opted into indexed exploration remain
+    #: compatible without an explicit cast.
+    explore_index: object | None

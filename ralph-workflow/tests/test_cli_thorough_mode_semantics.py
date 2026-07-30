@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+import pytest
 from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.main import (
@@ -12,9 +13,9 @@ from ralph.cli.main import (
     app,
 )
 from ralph.display.context import DisplayContext, make_display_context
+from tests._support.typed_accessors import must_mapping
 
 if TYPE_CHECKING:
-    import pytest
     from rich.console import Console
 
 CliRunner = TyperCliRunner
@@ -31,6 +32,9 @@ def _make_display_context_for_console(console: Console) -> DisplayContext:
     return make_display_context(console=console, env={})
 
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
+
 class TestThoroughModeSemantics:
     """Tests for --thorough/-T flag behavior."""
 
@@ -43,14 +47,14 @@ class TestThoroughModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
-        general = cast("dict[str, object]", cli_overrides["general"])
+        cli_overrides = must_mapping(captured.get("request").cli_overrides)
+        general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == THOROUGH_DEVELOPER_ITERS
 
     def test_thorough_overrides_developer_iters_when_both_supplied(
@@ -64,14 +68,14 @@ class TestThoroughModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "-D", "3", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
-        general = cast("dict[str, object]", cli_overrides["general"])
+        cli_overrides = must_mapping(captured.get("request").cli_overrides)
+        general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == THOROUGH_DEVELOPER_ITERS
 
     def test_quick_and_thorough_together_raise_usage_error(

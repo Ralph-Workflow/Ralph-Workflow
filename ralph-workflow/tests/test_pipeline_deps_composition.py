@@ -16,12 +16,14 @@ from unittest.mock import MagicMock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
 from ralph.pipeline.work_unit import WorkUnit
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import PipelineStateSnapshot, SnapshotRegistry
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.memory import MemoryWorkspace
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from ralph.agents.executor import WorkerResult
@@ -45,7 +47,7 @@ def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
     assert deps.display_context is display_context
     assert deps.model_identity is None
     assert deps.registry_factory is None
-    assert callable(deps.system_prompt_materializer)
+    assert callable(deps.master_prompt_materializer)
     assert callable(deps.phase_prompt_materializer)
     assert callable(deps.artifact_requirements_resolver)
     assert callable(deps.bridge_factory)
@@ -59,6 +61,22 @@ def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
     assert deps.marker_watcher_factory is None
     assert deps.snapshot_registry is None
     assert deps.recovery_sleep is None
+
+
+def test_test_pipeline_deps_fakes_external_runtime_boundaries() -> None:
+    """The shared test bundle never starts network or process-tree I/O."""
+    deps = make_test_pipeline_deps(_fake_display_context())
+
+    assert deps.connectivity_monitor.current_state.value == "online"
+    assert deps.catchup_worker_factory(UnifiedConfig(), Path("/workspace")) is None
+    assert deps.startup_rebase_resolver(UnifiedConfig(), MagicMock()) is None
+    assert deps.auto_integrate_resolver(UnifiedConfig(), MagicMock(), MagicMock()) is None
+    assert (
+        deps.commit_effect_executor(MagicMock(), Path("/workspace"))
+        is PipelineEvent.COMMIT_SKIPPED
+    )
+    assert deps.process_teardown is not None
+    assert deps.process_teardown() is None
 
 
 def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
@@ -95,20 +113,20 @@ def test_pipeline_deps_replace_overrides_individual_fields() -> None:
 
     new_display_context = _fake_display_context()
     new_registry_factory = MagicMock()
-    new_system_prompt_materializer = MagicMock(return_value="/fake/system_prompt.md")
+    new_master_prompt_materializer = MagicMock(return_value="/fake/master_prompt.md")
     new_bridge_factory = MagicMock()
 
     overridden = dataclasses.replace(
         deps,
         display_context=new_display_context,
         registry_factory=new_registry_factory,
-        system_prompt_materializer=new_system_prompt_materializer,
+        master_prompt_materializer=new_master_prompt_materializer,
         bridge_factory=new_bridge_factory,
     )
 
     assert overridden.display_context is new_display_context
     assert overridden.registry_factory is new_registry_factory
-    assert overridden.system_prompt_materializer is new_system_prompt_materializer
+    assert overridden.master_prompt_materializer is new_master_prompt_materializer
     assert overridden.bridge_factory is new_bridge_factory
     # Unchanged fields retain production defaults.
     assert overridden.model_identity is None
@@ -234,22 +252,22 @@ def test_pipeline_deps_accepts_fake_collaborators() -> None:
     workspace = MemoryWorkspace()
     display_context = _fake_display_context()
 
-    def fake_system_prompt_materializer(
+    def fake_master_prompt_materializer(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, default_current_prompt, worker_namespace
-        path = f".agent/tmp/system_prompt_{name}.md"
-        workspace.write(path, "fake system prompt")
+        del workspace_root, default_product_criteria, worker_namespace
+        path = f".agent/tmp/master_prompt_{name}.md"
+        workspace.write(path, "fake master prompt")
         return path
 
     deps = PipelineDeps(
         display_context=display_context,
         model_identity=None,
         registry_factory=lambda _config: MagicMock(),
-        system_prompt_materializer=fake_system_prompt_materializer,
+        master_prompt_materializer=fake_master_prompt_materializer,
         phase_prompt_materializer=MagicMock(return_value=".agent/tmp/phase_prompt.md"),
         artifact_requirements_resolver=MagicMock(return_value=None),
         bridge_factory=MagicMock(),
@@ -266,9 +284,9 @@ def test_pipeline_deps_accepts_fake_collaborators() -> None:
     )
 
     assert deps.display_context is display_context
-    prompt_path = deps.system_prompt_materializer(Path("/workspace"), "commit")
-    assert prompt_path == ".agent/tmp/system_prompt_commit.md"
-    assert workspace.read(".agent/tmp/system_prompt_commit.md") == "fake system prompt"
+    prompt_path = deps.master_prompt_materializer(Path("/workspace"), "commit")
+    assert prompt_path == ".agent/tmp/master_prompt_commit.md"
+    assert workspace.read(".agent/tmp/master_prompt_commit.md") == "fake master prompt"
     assert deps.bridge_factory is not None
 
 
@@ -319,7 +337,7 @@ def test_pipeline_deps_fake_agent_executor_seam() -> None:
     deps = PipelineDeps(
         display_context=_fake_display_context(),
         registry_factory=lambda _config: FakeRegistry(),
-        system_prompt_materializer=MagicMock(return_value=".agent/system.md"),
+        master_prompt_materializer=MagicMock(return_value=".agent/system.md"),
         phase_prompt_materializer=MagicMock(return_value=".agent/phase.md"),
         bridge_factory=MagicMock(),
     )

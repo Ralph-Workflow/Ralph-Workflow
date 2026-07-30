@@ -82,10 +82,38 @@ def is_external(url: str) -> bool:
     return urlparse(url).scheme in {"http", "https"}
 
 
+def _split_fragment(url: str) -> tuple[str, str]:
+    """Split a URL into (path, fragment).
+
+    Internal link URLs may carry a Markdown anchor fragment
+    (e.g. ``README.md#first-run``); the fragment is NOT part of the
+    filesystem path and MUST be stripped before path resolution, or
+    ``Path.exists()`` will treat the fragment as a literal filename
+    and report every anchored internal link as broken.
+
+    Returns the path part and the fragment (with leading ``#``) or
+    empty string when no fragment is present.
+    """
+    if url.startswith(("/", "#")):
+        return url, ""
+    hash_idx = url.find("#")
+    if hash_idx == -1:
+        return url, ""
+    return url[:hash_idx], url[hash_idx:]
+
+
 def check_internal(link_file: Path, url: str) -> str | None:
     if url.startswith(("/", "#")):
         return None
-    target = (link_file.parent / url).resolve()
+    # Strip the fragment: README.md#first-run is a path to README.md
+    # with a Markdown anchor; Path.exists() must see the path only,
+    # never the fragment. The fragment is preserved in the original
+    # URL for the error message so the agent sees exactly what the
+    # doc said.
+    path_part, _fragment = _split_fragment(url)
+    if not path_part:
+        return None
+    target = (link_file.parent / path_part).resolve()
     if not target.exists():
         return f"broken internal link: {url} (resolves to {target})"
     return None

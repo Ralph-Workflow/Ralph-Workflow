@@ -79,10 +79,12 @@ class _Server(_FallbackHttpServer):
         """No-op: the in-memory harness never activates a real listener."""
 
 
-def _post(server: _Server, body: dict[str, object]) -> str:
+def _post(
+    server: _Server, body: dict[str, object], *, declared_length: int | None = None
+) -> str:
     payload = json.dumps(body).encode("utf-8")
     headers = Message()
-    headers["Content-Length"] = str(len(payload))
+    headers["Content-Length"] = str(declared_length if declared_length is not None else len(payload))
     wfile = io.BytesIO()
 
     handler = object.__new__(_FallbackHttpHandler)
@@ -109,6 +111,17 @@ def test_initialize_with_corrupt_session_file_still_writes_response() -> None:
 
     assert raw, "initialize response was destroyed by a session-id read failure"
     assert "init-1" in raw
+
+
+def test_short_request_body_reports_truncation() -> None:
+    raw = _post(
+        _Server(_Mcp(_StreamingProbeSession())),
+        {"jsonrpc": "2.0", "method": "initialize", "id": "short", "params": {}},
+        declared_length=10_000,
+    )
+
+    assert "truncated request body" in raw
+    assert "JSONDecodeError" not in raw
 
 
 def test_exec_alias_tools_call_streams_output() -> None:

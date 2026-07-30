@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 import ralph.display.parallel_display as pd_module
@@ -20,12 +21,29 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+# ``test_runner_quiet_mode.py`` runs the full pipeline
+# (``runner_module.run``) end-to-end with stubbed effects so it
+# exercises the entire state-machine + display path. Under parallel
+# xdist CPU contention the per-test wall time can exceed the 1s
+# default cap. 5s is the documented minimum for non-trivial tests
+# (see ``ralph/verify_timeout.py``) and is well under the 60s
+# combined ``make verify`` budget. The 1s default policy is
+# preserved globally; this module-level marker only relaxes the
+# cap for the pipeline-runner regression tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+
+
+@pytest.fixture(scope="module")
+def policy_bundle() -> object:
+    return load_policy(DEFAULT_POLICY_DIR)
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch, console: Console) -> None:
@@ -67,6 +85,11 @@ def _install_runner_stubs(
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
@@ -75,12 +98,10 @@ def _install_runner_stubs(
 
 
 def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
-    monkeypatch: MonkeyPatch, tmp_path: Path
+    monkeypatch: MonkeyPatch, tmp_path: Path, policy_bundle: object
 ) -> None:
     """In quiet mode no dashboard header or phase-transition banner appears."""
     monkeypatch.setenv("CI", "1")
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
-
     captured_console = Console(record=True, force_terminal=False, width=120, color_system=None)
     _install_runner_display_context(monkeypatch, captured_console)
 
@@ -100,7 +121,14 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
         budget_caps={"iteration": 1, "reviewer_pass": 0},
     )
 
-    exit_code = runner_module.run(_config(), initial_state=state, verbosity=Verbosity.QUIET)
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=make_test_pipeline_deps(
+            make_display_context(console=captured_console, force_width=120)
+        ),
+    )
     assert exit_code == 0
 
     # ParallelDisplay is the only display; in quiet mode it is constructed
@@ -119,7 +147,7 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
 
 
 def test_quiet_mode_renders_completion_summary_on_failure(
-    monkeypatch: MonkeyPatch, tmp_path: Path
+    monkeypatch: MonkeyPatch, tmp_path: Path, policy_bundle: object
 ) -> None:
     """When the pipeline ends in 'failed' phase, quiet mode still renders a Failed panel."""
     monkeypatch.setenv("CI", "1")
@@ -130,7 +158,16 @@ def test_quiet_mode_renders_completion_summary_on_failure(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(
+        runner_module.ckpt,
+        "save",
+        lambda _state, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
 
     failed_state = PipelineState(
         phase="failed",
@@ -160,7 +197,14 @@ def test_quiet_mode_renders_completion_summary_on_failure(
         lambda *args, **kwargs: args[1],
     )
 
-    exit_code = runner_module.run(_config(), initial_state=failed_state, verbosity=Verbosity.QUIET)
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=failed_state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=make_test_pipeline_deps(
+            make_display_context(console=captured_console, force_width=120)
+        ),
+    )
     assert exit_code == 0
 
     out = captured_console.export_text()

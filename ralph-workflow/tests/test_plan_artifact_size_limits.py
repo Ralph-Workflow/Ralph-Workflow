@@ -266,6 +266,8 @@ def test_evidence_ref_list_max_500() -> None:
         PlanStep.model_validate(step)
 
 
+# ponytail: largest valid plan normalization can exceed 1s under xdist; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_most_detailed_plan_round_trip() -> None:
     """A 4-5 kB plan that exercises the largest of every field normalizes cleanly."""
     big_context = "x" * 7500
@@ -293,7 +295,12 @@ def test_most_detailed_plan_round_trip() -> None:
     assert result.get("steps") is not None
 
 
+# The dash-O check spawns a real interpreter, which can exceed the default 1 s
+# per-test budget under parallel load. ``timeout_seconds(5)`` sizes the budget
+# for that subprocess, matching the convention in
+# tests/test_audit_artifact_submission_canonical_path.py.
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_size_limits_invariants_survive_python_dash_o() -> None:
     """The import-time RuntimeError checks survive ``python -O``."""
     project_root = Path(__file__).resolve().parents[1]

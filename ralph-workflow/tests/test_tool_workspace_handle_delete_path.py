@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_DELETE_CAPABILITY,
@@ -34,7 +32,7 @@ class TestHandleDeletePath:
             {"path": "file.txt"},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["path"] == "file.txt"
         assert payload["deleted"] is True
 

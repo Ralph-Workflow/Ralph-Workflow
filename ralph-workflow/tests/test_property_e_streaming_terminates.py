@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 from email.message import Message
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never
 
 import ralph.mcp.server._metrics as _metrics_mod
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
@@ -101,7 +101,7 @@ def test_normal_exec_call_terminates_with_terminal_frame() -> None:
                 state,
             )
 
-    raw = _run_exec_post(_RecordingServer(cast("McpServer", _OkMcp())))
+    raw = _run_exec_post(_RecordingServer(_OkMcp()))
     assert raw, "no body written"
     assert "event: message" in raw
     assert "exec-prop-e" in raw
@@ -118,7 +118,7 @@ def test_handler_exception_writes_error_terminal_frame() -> None:
         def handle_request(self, request: JsonRpcRequest, state: ServerState) -> Never:
             raise RuntimeError("dispatch exploded")
 
-    raw = _run_exec_post(_RecordingServer(cast("McpServer", _RaisingMcp())))
+    raw = _run_exec_post(_RecordingServer(_RaisingMcp()))
     assert "exec-prop-e" in raw
     assert "-32603" in raw
     assert "dispatch exploded" in raw
@@ -146,7 +146,7 @@ def test_session_without_streaming_surface_still_terminates() -> None:
                 state,
             )
 
-    raw = _run_exec_post(_RecordingServer(cast("McpServer", _OkMcp())))
+    raw = _run_exec_post(_RecordingServer(_OkMcp()))
     assert raw, "no body written for streamless session"
     assert "exec-prop-e" in raw
     assert "result" in raw or "-32603" in raw
@@ -185,7 +185,7 @@ def test_writer_close_mid_stream_still_terminal_or_silent() -> None:
                 state,
             )
 
-    server = _RecordingServer(cast("McpServer", _WritesTwoFrames()))
+    server = _RecordingServer(_WritesTwoFrames())
     raw = _run_exec_post(server)
     # The result is the only frame for the Ok path; the test passes if
     # _run_exec_post returns a body with "exec-prop-e" present.
@@ -217,7 +217,7 @@ def test_terminal_frame_counter_increments_for_normal_exec() -> None:
                 state,
             )
 
-    _run_exec_post(_RecordingServer(cast("McpServer", _OkMcp())))
+    _run_exec_post(_RecordingServer(_OkMcp()))
     # The streaming path increments terminal_frame_emissions exactly once
     # for a successful dispatch.
     assert metrics.snapshot()["terminal_frame_emissions"] >= 1
@@ -236,6 +236,6 @@ def test_error_terminal_frame_counter_increments_for_raising_handler() -> None:
         def handle_request(self, request: JsonRpcRequest, state: ServerState) -> Never:
             raise RuntimeError("dispatch exploded")
 
-    _run_exec_post(_RecordingServer(cast("McpServer", _RaisingMcp())))
+    _run_exec_post(_RecordingServer(_RaisingMcp()))
     assert metrics.snapshot()["terminal_frame_emissions"] >= 1
     _metrics_mod._default_metrics = None

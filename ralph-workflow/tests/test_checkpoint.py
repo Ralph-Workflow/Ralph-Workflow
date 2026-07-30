@@ -241,7 +241,7 @@ def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
     """Checkpoints with valid last_error should be preserved."""
     path = tmp_path / "checkpoint.json"
 
-    valid_error = "development: Missing planning artifact at .agent/artifacts/plan.json"
+    valid_error = "development: Missing planning artifact at .agent/artifacts/plan.md"
     state_with_valid = PipelineState(
         phase="development",
         last_error=valid_error,

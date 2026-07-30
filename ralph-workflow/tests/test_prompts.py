@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import cast
 
 import pytest
 
-from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import (
     Capability,
     CapabilitySet,
@@ -25,6 +25,33 @@ def test_render_template_replaces_variables() -> None:
     )
 
     assert rendered == "Hello, Ada!"
+
+
+def test_render_template_collapses_static_blank_runs_without_mutating_payload() -> None:
+    payload = "first\n\n\n\n\nsecond"
+
+    rendered = render_template(
+        "Before\n\n\n\n\n{{ PAYLOAD }}\n\n\n\n\nAfter",
+        {"PAYLOAD": payload},
+        {},
+    )
+
+    assert rendered == f"Before\n\n{payload}\n\nAfter"
+    assert payload in rendered
+
+
+def test_render_template_preserves_overlapping_payload_values() -> None:
+    rendered = render_template(
+        "{{ LONG }} | {{ SHORT }}",
+        {"LONG": "RALPH PAYLOAD", "SHORT": "RALPH"},
+        {},
+    )
+
+    assert rendered == "RALPH PAYLOAD | RALPH"
+
+
+def test_render_template_normalizes_when_supplied_variable_is_unused() -> None:
+    assert render_template("Hello\n\n\nworld", {"UNUSED": "x"}, {}) == "Hello\n\nworld"
 
 
 def test_render_template_renders_partials_with_variables() -> None:
@@ -69,17 +96,17 @@ def test_render_template_rejects_legacy_default_shorthand() -> None:
 
 def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     capabilities = CapabilitySet()
-    capabilities.insert(cast("Capability", Capability.WORKSPACE_READ))
-    capabilities.insert(cast("Capability", Capability.WORKSPACE_WRITE_TRACKED))
-    capabilities.insert(cast("Capability", Capability.GIT_STATUS_READ))
-    capabilities.insert(cast("Capability", Capability.GIT_DIFF_READ))
-    capabilities.insert(cast("Capability", Capability.PROCESS_EXEC_BOUNDED))
-    capabilities.insert(cast("Capability", Capability.ARTIFACT_SUBMIT))
-    capabilities.insert(cast("Capability", Capability.ARTIFACT_PLAN_WRITE))
-    capabilities.insert(cast("Capability", Capability.RUN_REPORT_PROGRESS))
+    capabilities.insert(Capability.WORKSPACE_READ)
+    capabilities.insert(Capability.WORKSPACE_WRITE_TRACKED)
+    capabilities.insert(Capability.GIT_STATUS_READ)
+    capabilities.insert(Capability.GIT_DIFF_READ)
+    capabilities.insert(Capability.PROCESS_EXEC_BOUNDED)
+    capabilities.insert(Capability.ARTIFACT_SUBMIT)
+    capabilities.insert(Capability.ARTIFACT_PLAN_WRITE)
+    capabilities.insert(Capability.RUN_REPORT_PROGRESS)
 
     policy_flags = PolicyFlagSet()
-    policy_flags.insert(cast("PolicyFlag", PolicyFlag.ALLOW_SHELL))
+    policy_flags.insert(PolicyFlag.ALLOW_SHELL)
 
     variables = capability_template_variables(capabilities, policy_flags)
 
@@ -92,10 +119,7 @@ def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     assert variables["EXEC_TOOL_NAME"] == "exec"
     assert variables["DECLARE_COMPLETE_TOOL_NAME"] == "declare_complete"
     assert variables["GIT_DIFF_TOOL_NAME"] == "git_diff"
-    assert variables["INSERT_PLAN_STEP_TOOL_NAME"] == "ralph_insert_plan_step"
-    assert variables["REPLACE_PLAN_STEP_TOOL_NAME"] == "ralph_replace_plan_step"
-    assert variables["REMOVE_PLAN_STEP_TOOL_NAME"] == "ralph_remove_plan_step"
-    assert variables["MOVE_PLAN_STEP_TOOL_NAME"] == "ralph_move_plan_step"
+    assert "EDIT_MD_PLAN_STEP_TOOL_NAME" not in variables
     assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(
         visible_mcp_tool_names(capabilities)
     )

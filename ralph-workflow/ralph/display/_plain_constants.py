@@ -14,10 +14,9 @@ kept out of scope.
 
 from __future__ import annotations
 
-import re
 from typing import Final
 
-from rich.text import Text
+from ralph.display.line_sanitizer import strip_markup_safe
 
 LEVELS: Final[dict[str, str]] = {
     "execution": "MILESTONE",
@@ -30,6 +29,16 @@ LEVELS: Final[dict[str, str]] = {
     "fanout_join": "INFO",
 }
 
+# wt-028-display S-4 (DA-001): retired machine-vocabulary tags
+# (``content-start``/``content-continue``/``content-end``/
+# ``content-checkpoint``/``thinking-start``/``thinking-continue``/
+# ``thinking-end``/``thinking-checkpoint``/``tool-result``) deleted --
+# no emission path reads them after the close-only coalescing landed in
+# S-7. The public-facing tags that survive are the ones still emitted
+# (``phase``, ``phase-close``, ``plan``, ``plan-scope``, ``plan-steps``,
+# ``activity``, ``analysis``, ``worker``, ``result``, ``pr``, ``failure``,
+# ``artifact``, ``content``, ``thinking``, ``tool``, ``error``,
+# ``progress``, ``run-start``, ``run-end``, ``waiting``, ``status-content``).
 TAGS: Final[tuple[str, ...]] = (
     "phase",
     "phase-close",
@@ -46,28 +55,19 @@ TAGS: Final[tuple[str, ...]] = (
     "content",
     "thinking",
     "tool",
-    "tool-result",
     "error",
     "progress",
     "run-start",
     "run-end",
     "waiting",
     "status-content",
-    "content-start",
-    "content-continue",
-    "content-end",
-    "content-checkpoint",
-    "thinking-start",
-    "thinking-continue",
-    "thinking-end",
-    "thinking-checkpoint",
 )
 
 _KIND_TO_TAG: Final[dict[str, str]] = {
     "text": "content",
-    "thinking": "thinking",
-    "tool_use": "tool",
-    "tool_result": "tool-result",
+    "thinking": "think",
+    "tool_use": "call",
+    "tool_result": "result",
     "error": "error",
     "progress": "progress",
     "subagent_progress": "progress",
@@ -96,7 +96,6 @@ TAG_CATEGORY: Final[dict[str, str]] = {
     "activity": "META",
     "worker": "META",
     "analysis": "META",
-    "result": "META",
     "pr": "META",
     "failure": "META",
     "artifact": "META",
@@ -104,20 +103,27 @@ TAG_CATEGORY: Final[dict[str, str]] = {
     "run-start": "META",
     "run-end": "META",
     "waiting": "META",
-    "content": "CONT",
-    "thinking": "CONT",
-    "tool": "CONT",
-    "tool-result": "CONT",
-    "error": "CONT",
-    "status-content": "CONT",
-    "content-start": "CONT",
-    "content-continue": "CONT",
-    "content-end": "CONT",
-    "content-checkpoint": "CONT",
-    "thinking-start": "CONT",
-    "thinking-continue": "CONT",
-    "thinking-end": "CONT",
-    "thinking-checkpoint": "CONT",
+    # wt-028-display S-3 (DA-001): the public base tag for tool_result
+    # is ``result`` (not the parser-kind identifier ``tool_result``);
+    # the result tag is the human-facing category for tool outcomes and
+    # inherits the OUT (content) category the retired ``tool-result``
+    # tag carried -- the category badge on a successful tool result
+    # still reads OUT, not META.
+    "content": "OUT",
+    "think": "OUT",
+    "call": "OUT",
+    "result": "OUT",
+    "error": "OUT",
+    "status-content": "OUT",
+    # wt-028-display S-4 (DA-001): the retired machine-vocabulary
+    # entries that previously lived here (``content-start`` /
+    # ``content-continue`` / ``content-end`` / ``content-checkpoint`` /
+    # ``thinking-start`` / ``thinking-continue`` / ``thinking-end`` /
+    # ``thinking-checkpoint``) are removed -- nothing reads them
+    # after the close-only coalescing landed, and any tag the
+    # ``_build_line`` chrome consults now falls through to the
+    # default ``META`` (the chrome no longer renders the badge so
+    # the look-up result is computed-but-discarded in any case).
 }
 
 _LEVEL_THEME_KEYS: Final[dict[str, str]] = {
@@ -130,7 +136,7 @@ _LEVEL_THEME_KEYS: Final[dict[str, str]] = {
 
 _CAT_THEME_KEYS: Final[dict[str, str]] = {
     "META": "theme.cat.meta",
-    "CONT": "theme.cat.cont",
+    "OUT": "theme.cat.out",
 }
 
 _COMPACT_LEVEL_BADGES: Final[dict[str, str]] = {
@@ -143,28 +149,37 @@ _COMPACT_LEVEL_BADGES: Final[dict[str, str]] = {
 
 _COMPACT_CAT_BADGES: Final[dict[str, str]] = {
     "META": "M",
-    "CONT": "C",
+    "OUT": "O",
 }
 
 _STREAMING_KINDS: Final[frozenset[str]] = frozenset({"text", "thinking"})
 
-_STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str, str]]] = {
-    "content": ("content-start", "content-continue", "content-end"),
-    "thinking": ("thinking-start", "thinking-continue", "thinking-end"),
+# wt-028-display S-4 (DA-001): the third tuple element (the retired
+# ``end_tag``) is dropped -- S-7's close-only coalescing emits one
+# coalesced entry on close and never uses the start/continue/end
+# triple as a per-line emission trio. The remaining pair carries the
+# start and continue tags the streaming-block dispatch still needs.
+_STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str]]] = {
+    "content": ("content-start", "content-continue"),
+    # wt-028-display S-3 (DA-001): the public base tag is ``think`` (not
+    # the parser-kind identifier ``thinking``); the streaming plumbing
+    # must follow the same key so ``_route_streaming`` and
+    # ``_close_block`` look up the (start, continue) pair
+    # against the live base_tag, not the retired internal kind name.
+    "think": ("thinking-start", "thinking-continue"),
 }
-
-_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
 
-def _strip_markup(text: str) -> str:
-    try:
-        return Text.from_markup(text).plain
-    except Exception:
-        return text
-
-
 def _sanitize(text: str) -> str:
-    """Strip both Rich markup and ANSI escapes for copy-paste safety."""
-    return _ANSI_ESCAPE.sub("", _strip_markup(text))
+    """Strip terminal controls while preserving literal bracketed agent output.
+
+    Literal bracket markup stays copy-pasteable; Rich rendering is disabled at
+    every transcript sink. Terminal CSI / OSC / C0 sequences are always removed,
+    preventing terminal control in scrollback.
+
+    Delegates to :func:`strip_markup_safe` -- the single choke point that owns
+    the markup-parse guard, so malformed agent markup cannot raise here.
+    """
+    return strip_markup_safe(text)

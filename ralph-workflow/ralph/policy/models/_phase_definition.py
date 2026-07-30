@@ -70,6 +70,13 @@ class PhaseDefinition(_FrozenPolicyModel):
         default_factory=dict,
         description="Named bypass routes (outcome -> target phase)",
     )
+    result_status_post_commit: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Execution artifact status routes applied after the next commit outcome. "
+            "Statuses absent from this map follow the phase's normal analyzer flow."
+        ),
+    )
     clean_outcome: str | None = Field(
         default=None,
         description=(
@@ -136,7 +143,7 @@ class PhaseDefinition(_FrozenPolicyModel):
         description=(
             "Drain names to clear on every genuine fresh phase entry. "
             "On fresh entry (program start, cross-phase transition, or last-commit re-entry), "
-            "Ralph Workflow deletes the primary artifact JSON and Markdown handoff for each "
+            "Ralph Workflow deletes the canonical Markdown artifact and its handoff for each "
             "listed drain. Empty list means no drain-based clearing on entry. "
             "Contrast with artifact_history.clear_on_fresh_entry which clears only the history."
         ),

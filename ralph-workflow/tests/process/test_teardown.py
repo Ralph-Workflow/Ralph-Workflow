@@ -9,7 +9,7 @@ import time
 import psutil
 import pytest
 
-from ralph.process.teardown import DefaultProcessTeardown
+from ralph.process.teardown import DefaultProcessTeardown, verified_child_session_pgid
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
@@ -80,6 +80,12 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     also the process group ID. After the host is killed, the child ignores
     SIGHUP and would normally be orphaned; ``teardown_subtree`` must still reap
     it by signaling the process group.
+
+    The PGID is captured via ``verified_child_session_pgid`` while the host is
+    ALIVE. That capture is what makes the signal safe — a dead PID on its own
+    is just a number the kernel may have handed to an unrelated process, and
+    signalling it blind is what took a developer's machine down (see
+    ``test_teardown_ownership_guard.py``).
     """
     child_script = (
         "import signal, time; signal.signal(signal.SIGHUP, signal.SIG_IGN); time.sleep(600)"
@@ -104,6 +110,11 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     assert len(children) >= 1, f"expected at least one descendant, got {len(children)}"
     child_pid = children[0].pid
 
+    # Capture the group while the leader is still alive — this is the
+    # ownership proof teardown requires before it may signal a group.
+    host_pgid = verified_child_session_pgid(host.pid)
+    assert host_pgid == host.pid
+
     # Kill the host directly. The child ignores SIGHUP, so it survives.
     host.kill()
     host.wait(timeout=2)
@@ -113,7 +124,7 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     # Now teardown_subtree cannot enumerate via psutil, but it should fall
     # back to signaling the host's process group and reap the child.
     teardown = DefaultProcessTeardown(kill_escalation_ms=500.0)
-    teardown.teardown_subtree(host.pid)
+    teardown.teardown_subtree(host.pid, pgid=host_pgid)
 
     for _ in range(40):
         try:

@@ -1,0 +1,417 @@
+"""Unit tests for the project-policy preflight CLI helpers.
+
+Covers the seams that the run-integration tests mock away:
+
+* ``_resolve_remediation_agent_name`` resolves through the
+  ``policy_remediation`` drain binding (so a development-drain alias works).
+* ``_resolve_max_attempts`` uses the remediation driver's own small budget,
+  never the global recovery ``cycle_cap``.
+* The production invocation closure forwards ``display_context`` to
+  ``execute_agent_effect`` and converts launch crashes into
+  ``RemediationInvocationError`` so the driver aborts instead of spinning.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from ralph.cli.commands._load_result import _LoadResult
+from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.pipeline import effect_executor as effect_executor_module
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import default_dir, load_policy
+from ralph.policy.models._agent_chain_config import AgentChainConfig
+from ralph.policy.models._agent_drain_config import AgentDrainConfig
+from ralph.project_policy import cli_integration, remediation
+from ralph.project_policy.pipeline_graph import DEFAULT_ANALYSIS_CAP, PHASE_REMEDIATION
+from ralph.workspace.scope import WorkspaceScope
+from tests._support.typed_accessors import (
+    must_str,
+)
+
+if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
+
+
+def _bundle_with_development_bound_remediation() -> PolicyBundle:
+    """Default bundle rewired: no policy_remediation chain; the drain binds
+    to a development chain, mirroring the loader's development-drain backfill."""
+    bundle = load_policy(default_dir())
+    chains = dict(bundle.agents.agent_chains)
+    del chains["policy_remediation"]
+    chains["development"] = AgentChainConfig(
+        agents=["dev-agent", "codex"], max_retries=2, retry_delay_ms=1000
+    )
+    drains = dict(bundle.agents.agent_drains)
+    drains["policy_remediation"] = AgentDrainConfig(
+        chain="development", drain_class="development"
+    )
+    agents = bundle.agents.model_copy(
+        update={"agent_chains": chains, "agent_drains": drains}
+    )
+    return bundle.model_copy(update={"agents": agents})
+
+
+def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
+    return _LoadResult(
+        config=UnifiedConfig(),
+        workspace_scope=WorkspaceScope(
+            root="/test/project", allowed_roots=["/test/project"]
+        ),
+        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
+        policy_bundle=bundle,
+        run_id="test-run-id",
+    )
+
+
+def test_chain_agents_resolve_through_drain_binding() -> None:
+    """Resolution reuses the pipeline's strict drain->chain lookup and
+    returns the FULL fallback chain, not just the first agent."""
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+    assert cli_integration._resolve_chain_agents(load_result, PHASE_REMEDIATION) == [
+        "dev-agent",
+        "codex",
+    ]
+
+
+def test_chain_agents_empty_when_bundle_missing() -> None:
+    assert cli_integration._resolve_chain_agents(_load_result(None), PHASE_REMEDIATION) == []
+
+
+def test_analysis_cap_ignores_global_recovery_cycle_cap() -> None:
+    """The policy loop uses its own small budget. The global recovery cycle_cap
+    (200) governs pipeline recovery cycles and must NOT leak in here: 200
+    synchronous agent rounds at startup is a display flood, not a strategy."""
+    bundle = load_policy(default_dir())
+    assert bundle.pipeline.recovery.cycle_cap == 200
+    assert DEFAULT_ANALYSIS_CAP == 3
+
+
+def test_production_closure_forwards_display_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = load_policy(default_dir())
+    load_result = _load_result(bundle)
+    display_context = make_display_context()
+    observed_opts: list[dict[str, object]] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        observed_opts.append(dict(opts))
+        from ralph.pipeline.events import PipelineEvent
+
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        object(),  # non-None pipeline deps sentinel
+        load_result.workspace_scope,
+        None,
+        display_context,
+    )
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    assert observed_opts, "execute_agent_effect must be invoked"
+    assert observed_opts[0].get("display_context") is display_context
+
+
+def test_production_closure_falls_back_across_chain_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing first agent falls back to the next agent in the chain,
+    mirroring drain fallback semantics in the pipeline proper."""
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+    invoked_agents: list[str] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        from ralph.pipeline.events import PipelineEvent
+
+        agent_name = must_str(getattr(effect, "agent_name", ""))
+        invoked_agents.append(agent_name)
+        if agent_name == "dev-agent":
+            return PipelineEvent.AGENT_FAILURE
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        object(),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    assert invoked_agents == ["dev-agent", "codex"]
+
+
+def test_ready_preflight_triggers_policy_auto_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A READY preflight auto-commits the policy surfaces (wt-025 mirror)."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_agents_md,
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+
+    committed_roots: list[object] = []
+
+    def fake_commit(
+        repo_root: object,
+        _create_commit_fn: object,
+        *,
+        pre_run_dirty: frozenset[str] | None = None,
+        authored_paths: frozenset[str] | None = None,
+    ) -> None:
+        del pre_run_dirty, authored_paths
+        committed_roots.append(repo_root)
+
+    monkeypatch.setattr(
+        policy_auto_commit_module, "commit_policy_updates", fake_commit
+    )
+
+    load_result = _load_result(load_policy(default_dir()))
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=load_result,
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+    )
+
+    assert rc == 0
+    assert committed_roots == [load_result.workspace_scope.root]
+
+
+def test_ready_preflight_condenses_placeholder_agents_md_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After READY, an untouched bootstrap placeholder block in AGENTS.md is
+    condensed to the short pointer form (the placeholder is temporary)."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+    from ralph.project_policy import agents_md, markers
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)  # writes the long placeholder block
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+    assert "The remediation agent MUST" in ws.read(markers.AGENTS_MD)
+
+    monkeypatch.setattr(
+        policy_auto_commit_module,
+        "commit_policy_updates",
+        lambda _repo_root, _create_commit_fn: None,
+    )
+
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=_load_result(load_policy(default_dir())),
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+    )
+
+    assert rc == 0
+    content = ws.read(markers.AGENTS_MD)
+    assert "The remediation agent MUST" not in content
+    assert markers.CANONICAL_DIR in content
+
+
+class _FakeDisplay:
+    """Records the lifecycle the remediation loop must drive."""
+
+    def __init__(self) -> None:
+        self.entered = 0
+        self.exited = 0
+        self.status_models: list[object] = []
+
+    def __enter__(self) -> _FakeDisplay:
+        self.entered += 1
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.exited += 1
+
+    def update_status_bar(self, model: object) -> None:
+        self.status_models.append(model)
+
+
+def test_remediation_runs_inside_started_display_with_status_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The remediation loop drives the SAME display lifecycle as the pipeline
+    proper: display started (status bar live), a status-bar model pushed for
+    the remediation phase, and the display forwarded to execute_agent_effect
+    so agent activity renders consistently."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_agents_md,
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()  # unseeded -> remediation required
+    fake_display = _FakeDisplay()
+    monkeypatch.setattr(
+        cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display
+    )
+
+    observed_opts: list[dict[str, object]] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        observed_opts.append(dict(opts))
+        _seed_agents_md(ws)
+        _seed_claude_md(ws)
+        _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+
+    monkeypatch.setattr(
+        policy_auto_commit_module,
+        "commit_policy_updates",
+        lambda _root, _fn: None,
+    )
+
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=_load_result(load_policy(default_dir())),
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+    )
+
+    assert rc == 0
+    assert fake_display.entered == 1
+    assert fake_display.exited == 1
+    assert fake_display.status_models, "a status-bar model must be pushed"
+    assert observed_opts and observed_opts[0].get("display") is fake_display
+
+
+def test_production_closure_raises_on_launch_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = load_policy(default_dir())
+    load_result = _load_result(bundle)
+
+    def crashing_execute_agent_effect(*args: object, **opts: object) -> object:
+        raise TypeError("display_context is required when display is None")
+
+    monkeypatch.setattr(
+        effect_executor_module,
+        "execute_agent_effect",
+        crashing_execute_agent_effect,
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        object(),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+    with pytest.raises(remediation.RemediationInvocationError):
+        invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+
+
+def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REGRESSION (found by review). An exception from the FIRST agent raised
+    straight out of the loop, so agents 2..N were never tried -- contradicting the
+    documented "invoke each agent until one succeeds" fallback semantics. Only a
+    False return fell through. A crash must fall through too."""
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+    invoked: list[str] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        from ralph.pipeline.events import PipelineEvent
+
+        agent_name = must_str(getattr(effect, "agent_name", ""))
+        invoked.append(agent_name)
+        if agent_name == "dev-agent":
+            raise RuntimeError("this agent's binary is missing")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        object(),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    assert invoked == ["dev-agent", "codex"], "the crash must not abort the chain"
+
+
+def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only when the WHOLE chain has crashed is this real infrastructure breakage."""
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+
+    def always_crash(*_args: object, **_opts: object) -> object:
+        raise RuntimeError("no agent binaries at all")
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", always_crash
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        object(),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+
+    with pytest.raises(remediation.RemediationInvocationError):
+        invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")

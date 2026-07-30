@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import suppress
 
+import pytest
+
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.invoke._direct_mcp_recovery import (
     iter_with_direct_mcp_recovery,
@@ -54,6 +56,17 @@ def test_transport_session_extractor_ignores_top_level_tool_payload_session_id()
     assert extract_transport_session_id((line,)) is None
 
 
+# ``test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output``
+# generates 500 fake log lines on the first attempt, then runs a recovery
+# attempt. Under parallel xdist load the import path, the 500-line list
+# materialization, and the second attempt together can exceed the 1s
+# default test timeout enforced by ``tests/conftest.py`` even though the
+# test itself is correct. The 5s cap is the documented minimum for
+# non-trivial tests (see ``ralph/verify_timeout.py``) and is well under
+# the 60s combined ``make verify`` budget. The 1s default policy is
+# preserved globally; this marker only relaxes the cap for the specific
+# test that needs extra wall-clock headroom.
+@pytest.mark.timeout_seconds(5)
 def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output() -> None:
     calls: list[str | None] = []
 

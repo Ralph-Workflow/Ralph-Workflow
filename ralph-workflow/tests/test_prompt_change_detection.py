@@ -3,7 +3,7 @@
 The wt-024 P4 fix introduces a shared helper
 ``_prompt_files_differ(source, current, *, stat_fn, read_source,
 read_current) -> tuple[bool, str | None]`` that both
-``system_prompt._sync_current_prompt_file`` and
+``master_prompt._sync_product_criteria_file`` and
 ``pipeline.prompt_prep._prompt_changed_since_last_materialization``
 call instead of doing TWO full file reads just to string-compare.
 
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.prompt_prep import _prompt_changed_since_last_materialization
-from ralph.prompts import system_prompt
+from ralph.prompts import master_prompt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -76,7 +76,7 @@ def test_equal_size_and_mtime_is_unchanged_with_zero_reads() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -115,7 +115,7 @@ def test_different_size_is_changed_no_current_read() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -150,7 +150,7 @@ def test_same_size_different_mtime_same_content_is_unchanged() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -185,7 +185,7 @@ def test_same_size_different_mtime_different_content_is_changed() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -220,7 +220,7 @@ def test_missing_source_is_not_changed() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -250,7 +250,7 @@ def test_missing_current_is_changed() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -281,7 +281,7 @@ def test_sizes_differ_no_read_source_returns_none_text() -> None:
 
     stat_fn = _make_stat_fn(source, source_meta, current, current_meta)
 
-    changed, source_text = system_prompt._prompt_files_differ(
+    changed, source_text = master_prompt._prompt_files_differ(
         source,
         current,
         stat_fn=stat_fn,
@@ -301,14 +301,14 @@ def test_prompt_prep_uses_helper_when_stats_match(tmp_path: Path) -> None:
     file (the fast-path perf claim)."""
 
     prompt_path = tmp_path / "PROMPT.md"
-    current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
-    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    product_criteria_path = tmp_path / ".agent" / "PRODUCT_CRITERIA.md"
+    product_criteria_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("BODY-CONTENT", encoding="utf-8")
-    current_prompt_path.write_text("BODY-CONTENT", encoding="utf-8")
+    product_criteria_path.write_text("BODY-CONTENT", encoding="utf-8")
 
     # Force mtime equality by setting both to the same mtime_ns.
     target_mtime_ns = 1_700_000_000_000_000_000
-    for path in (prompt_path, current_prompt_path):
+    for path in (prompt_path, product_criteria_path):
         # Use os.utime to set both atime and mtime to identical values.
         os.utime(path, ns=(target_mtime_ns, target_mtime_ns))
 
@@ -320,10 +320,10 @@ def test_prompt_prep_uses_helper_when_size_differs(tmp_path: Path) -> None:
     """prompt_prep returns True on different sizes (no need to read content)."""
 
     prompt_path = tmp_path / "PROMPT.md"
-    current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
-    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    product_criteria_path = tmp_path / ".agent" / "PRODUCT_CRITERIA.md"
+    product_criteria_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("NEW-CONTENT-X", encoding="utf-8")
-    current_prompt_path.write_text("OLD", encoding="utf-8")
+    product_criteria_path.write_text("OLD", encoding="utf-8")
 
     result = _prompt_changed_since_last_materialization(tmp_path)
     assert result is True

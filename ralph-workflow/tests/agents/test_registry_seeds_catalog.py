@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -35,7 +35,7 @@ def _reset_catalog() -> object:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
     yield
     cat._entries.clear()
     cat._by_command.clear()
@@ -44,7 +44,7 @@ def _reset_catalog() -> object:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
 
 
 def test_registry_seeds_catalog() -> None:

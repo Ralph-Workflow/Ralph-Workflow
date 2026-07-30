@@ -6,7 +6,6 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,7 +33,7 @@ class TestRalphPromptEntry:
         """main() calls run_prompt_helper with config and workspace_root."""
         mock_run = MagicMock()
         fake_module = ModuleType("ralph.cli.commands.prompt_helper")
-        cast("Any", fake_module).run_prompt_helper = mock_run
+        fake_module.run_prompt_helper = mock_run
         monkeypatch.setitem(sys.modules, "ralph.cli.commands.prompt_helper", fake_module)
         mock_scope = MagicMock()
         mock_scope.root = Path("/tmp/fake-workspace")

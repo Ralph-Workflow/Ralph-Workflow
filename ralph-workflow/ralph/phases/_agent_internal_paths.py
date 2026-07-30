@@ -43,11 +43,12 @@ from pathlib import Path
 # Top-level basenames under ``.agent/``. Derived from
 # ``_GENERATED_AGENT_STATE_FILES`` (12 entries) + ``HANDOFF_PATHS``
 # (``PLANNING_ANALYSIS_DECISION.md`` is the PA-001 gap) + bootstrap's
-# ``_LOCAL_MCP_FILENAME`` (``mcp.toml``). Case-sensitive -- matches the
-# canonical renderer usage.
+# ``_LOCAL_MCP_FILENAME`` (``mcp.toml``), plus the auto-integrate
+# step's durable crash record (``auto_integrate_in_progress.json``).
+# Case-sensitive -- matches the canonical renderer usage.
 AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
     {
-        "CURRENT_PROMPT.md",
+        "PRODUCT_CRITERIA.md",
         "PLAN.md",
         "ISSUES.md",
         "DEVELOPMENT_RESULT.md",
@@ -58,6 +59,14 @@ AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
         "checkpoint.json",
         "rebase_checkpoint.json",
         "rebase_checkpoint.json.bak",
+        # Durable crash record for the post-commit auto-integrate step
+        # (ralph.pipeline.auto_integrate_record.AUTO_INTEGRATE_RECORD_FILENAME).
+        # Engine-owned: written before any git mutation and RETAINED on a
+        # failed recovery for retry, so it must be git-excluded or the
+        # commit phase's `git add -A` would land it on the operator's
+        # mainline and its untracked presence would fail
+        # check_rebase_preconditions on every subsequent commit phase.
+        "auto_integrate_in_progress.json",
         "rebase.lock",
         "start_commit",
         "mcp.toml",
@@ -123,18 +132,18 @@ _AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB: str = "completion_seen_*.json"
 #   any other extension is user-authored content (e.g. ``script.py``).
 # * ``tmp`` -- MCP server logs (``*.log``), prompt payloads (``*.md``),
 #   and small JSON scratch (``*.json``); no source code lives here.
-# * ``artifacts`` -- artifact submissions are always ``*.json``.
+# * ``artifacts`` -- artifact submissions are always ``*.md``.
 # * ``receipts`` -- completion receipts are always ``*.json``.
 # * ``prompt_history`` -- prompt-payload snapshots are always ``*.json``.
 # * ``artifact-formats`` -- materialized format docs are always ``*.md``.
 # * ``workers`` -- per-worker engine-managed tree: prompt payloads
-#   (``*.md``), agent logs (``*.log``), and per-worker artifacts
-#   (``*.json``). Source files under ``workers/`` are user-authored and
+#   (``*.md``), agent logs (``*.log``), per-worker artifacts
+#   (``*.md``), and bounded internal state (``*.json``). Source files under ``workers/`` are user-authored and
 #   MUST be rejected.
 _AGENT_INTERNAL_DIR_FILE_EXTENSIONS: dict[str, frozenset[str]] = {
     "raw": frozenset({".log"}),
     "tmp": frozenset({".log", ".md", ".json"}),
-    "artifacts": frozenset({".json"}),
+    "artifacts": frozenset({".md"}),
     "receipts": frozenset({".json"}),
     "prompt_history": frozenset({".json"}),
     "artifact-formats": frozenset({".md"}),

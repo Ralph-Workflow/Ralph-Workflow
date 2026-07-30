@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     InvalidParamsError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_WRITE_EPHEMERAL_CAPABILITY,
@@ -34,7 +32,7 @@ class TestHandleWriteFile:
             {"path": "new.txt", "content": "hello"},
         )
         assert result.is_error is False
-        assert "new.txt" in cast("ToolContent", result.content[0]).text
+        assert "new.txt" in result.content[0].text
         ws.write.assert_called_once()
 
     def test_writes_git_tracked_file_with_tracked_capability(self) -> None:

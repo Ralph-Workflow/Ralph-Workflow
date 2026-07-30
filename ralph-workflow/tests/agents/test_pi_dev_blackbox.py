@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -80,7 +80,7 @@ def _restore_golden_catalog() -> None:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
 
 
 @pytest.fixture(autouse=True)

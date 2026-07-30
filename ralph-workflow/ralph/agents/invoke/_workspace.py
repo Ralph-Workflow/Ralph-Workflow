@@ -16,11 +16,7 @@ from ralph.agents.invoke._has_src_path import _HasSrcPath
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.agents.invoke._workspace_change_classifier import (
-        WorkspaceChangeClassifier,
-    )
-
-if TYPE_CHECKING:
+    from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 
     class _HasStop(Protocol):
         """Protocol for watchdog Observer-like objects that have a stop method."""
@@ -53,6 +49,20 @@ _TWO_ARG_ARITY: int = 2
 #: real classifications. The ``__post_init__`` arity check rejects
 #: any other arity at construction time.
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
+
+
+class _HandlerWithDispatch(Protocol):
+    """Structural type of the per-monitor watchdog handler.
+
+    ``_make_change_tracker`` returns a class with a public
+    ``dispatch(event)`` method; ``WorkspaceMonitor.dispatch_event``
+    routes test-supplied events through that method. Defined as a
+    Protocol so the ``cast`` in ``dispatch_event`` does not need an
+    ``attr-defined`` suppression (test files must have zero
+    suppressions).
+    """
+
+    def dispatch(self, event: object) -> None: ...
 
 
 def _make_change_tracker(monitor: WorkspaceMonitor) -> object:
@@ -198,7 +208,7 @@ class WorkspaceMonitor:
                 when the callback accepts 2 args.
         """
         self._workspace = workspace_path
-        self._observer: _HasStop | None = None
+        self._observer: _ObserverProtocol | None = None
         self._event_count = 0
         self._seen_files: dict[str, None] = {}  # bounded-accumulator-ok: bounded
         self._now: Callable[[], float] = now if now is not None else time.monotonic
@@ -214,16 +224,32 @@ class WorkspaceMonitor:
                 raise ValueError(msg)
         self._on_event: WorkspaceEventCallback | None = on_event
         self._classifier: WorkspaceChangeClassifier | None = classifier
+        self._handler: object | None = None
 
     def start(self) -> None:
-        """Start monitoring the workspace for file changes."""
+        """Start monitoring the workspace for file changes.
+
+        Schedules exactly ONE recursive watchdog watch on the workspace
+        root. A single recursive root watch is the minimal-stream option
+        for macOS fseventsd: watchdog's fsevents backend is OS-recursive
+        (see watchdog/observers/fsevents.py lines 85-87 -- ``"fsevents
+        defaults to be recursive, so if the watch was meant to be
+        non-recursive then we need to drop all the events here"``), so
+        non-recursive subscriptions cannot reduce fseventsd delivery
+        and only multiply overlapping streams. Activity-counting
+        correctness is preserved by ``record_event``'s ``weight == 0.0``
+        classify-drop backstop, which is independent of how many
+        watchdog watches are scheduled.
+        """
         observer = _create_watchdog_observer()
         if observer is None:
             return
 
         handler = _make_change_tracker(self)
+        workspace_str = str(self._workspace)
         self._observer = observer
-        self._observer.schedule(handler, str(self._workspace), recursive=True)
+        self._handler = handler
+        self._observer.schedule(handler, workspace_str, recursive=True)
         self._observer.start()
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
@@ -304,6 +330,31 @@ class WorkspaceMonitor:
                 self._workspace,
                 self._event_count,
             )
+        self._handler = None
+
+    def dispatch_event(self, event: object) -> None:
+        """Dispatch a watchdog-style event through the per-monitor handler.
+
+        Exposed for black-box tests that drive the handler directly
+        with a synthetic event (FakeEvent). Production callers do not
+        need this -- the watchdog backend dispatches events into the
+        handler returned by ``_make_change_tracker(self)`` itself.
+
+        The handler routes every event through ``record_event`` (if it
+        has ``src_path``), mirroring the production watchdog dispatch
+        path.
+
+        Args:
+            event: A watchdog-style event object. The handler
+                duck-types via the ``_HasSrcPath`` protocol so any
+                object with the expected attribute is accepted.
+        """
+        if self._handler is None:
+            return
+        handler = cast(
+            "_HandlerWithDispatch", self._handler
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        handler.dispatch(event)
 
     @property
     def event_count(self) -> int:

@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import contextlib
-import re
 import threading
 import time
 from typing import TYPE_CHECKING, BinaryIO, cast
+
+from ralph.display.record_writer import safe_id_for
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-_SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 DEFAULT_MAX_OVERFLOW_FILE_BYTES = 50 * 1024 * 1024
 #: Userspace buffer for the persistent handle. Amortizes write syscalls
 #: (and the fsevents they generate) across many appended lines.
@@ -21,10 +21,6 @@ _BUFFER_BYTES = 64 * 1024
 #: ralph.timeout_defaults.LOG_GROWTH_SECONDS (30.0): operators tail this
 #: file and the on-disk copy must never look wedged while the unit is live.
 DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
-
-
-def _sanitize_unit_id(unit_id: str) -> str:
-    return _SAFE_CHARS.sub("_", unit_id)
 
 
 class RawOverflowLog:
@@ -42,11 +38,18 @@ class RawOverflowLog:
         workspace_root: Path,
         unit_id: str,
         *,
+        model: str | None = None,
         max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
         flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
         now: Callable[[], float] = time.monotonic,
     ) -> None:
-        safe_id = _sanitize_unit_id(unit_id)
+        # S-23 (wt-028-display): pair the verbatim capture with the
+        # rendered record by deriving the file id from the same
+        # ``safe_id_for(agent, model)`` helper. Without the model
+        # suffix a mismatched pair (e.g. ``pi.log`` here, ``pi_X.log``
+        # there) would orphan the rendered record's condensation
+        # markers from the verbatim capture they point at.
+        safe_id = safe_id_for(unit_id, model)
         self.path = workspace_root / ".agent" / "raw" / f"{safe_id}.log"
         self._lock = threading.Lock()
         self._first_write = True
@@ -84,7 +87,9 @@ class RawOverflowLog:
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     mode = "wb" if self._first_write else "ab"
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
-                    self._fh = cast("BinaryIO", handle_obj)
+                    self._fh = cast(
+                        "BinaryIO", handle_obj
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     self._first_write = False
                 fh: BinaryIO | None = self._fh
                 if fh is None:

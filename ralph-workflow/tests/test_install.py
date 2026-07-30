@@ -11,7 +11,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -208,7 +208,7 @@ def test_install_module_imports_without_process_manager_dependency(
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    loaded_module = cast("Any", module)
+    loaded_module = module
 
     assert callable(loaded_module.install_dev_checkout)
     assert callable(loaded_module.install_stable_release)

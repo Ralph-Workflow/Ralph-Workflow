@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from ralph.pipeline.events import (
@@ -36,7 +36,7 @@ def _reduce(
     event: object,
     policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    return reducer_reduce(state, cast("Any", event), policy)
+    return reducer_reduce(state, event, policy)
 
 
 def _with_loop_cap(policy: PipelinePolicy, field: str, cap: int) -> PipelinePolicy:

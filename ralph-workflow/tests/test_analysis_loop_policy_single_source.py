@@ -18,7 +18,7 @@ from ralph.policy.validation import PolicyValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS_DIR = ROOT / "ralph" / "policy" / "defaults"
-PLANNING_ANALYSIS_DEFAULT_MAX = 1
+PLANNING_ANALYSIS_DEFAULT_MAX = 0
 DEVELOPMENT_ANALYSIS_DEFAULT_MAX = 10
 
 

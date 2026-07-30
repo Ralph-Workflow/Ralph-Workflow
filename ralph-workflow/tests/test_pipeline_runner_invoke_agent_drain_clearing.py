@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -41,11 +40,11 @@ _ = _load_default_policy_bundle()
 def _write_artifact_files(
     workspace: FsWorkspace,
     artifact_type: str,
-    json_path: str,
+    artifact_path: str,
     md_path: str | None,
 ) -> None:
-    workspace.mkdirs(Path(json_path).parent.as_posix())
-    workspace.write(json_path, json.dumps({"type": artifact_type, "content": "test"}))
+    workspace.mkdirs(Path(artifact_path).parent.as_posix())
+    workspace.write(artifact_path, f"---\ntype: {artifact_type}\n---\n\n# Test\n")
     if md_path is not None:
         workspace.write(md_path, f"# {artifact_type}\n\ntest content")
 
@@ -133,7 +132,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -153,7 +152,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_analysis_loopback_does_not_clear_drains(
@@ -166,7 +165,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -186,7 +185,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_same_phase_retry_does_not_clear_drains(
@@ -199,7 +198,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -219,7 +218,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_resume_guard_does_not_clear_drains(
@@ -232,7 +231,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -256,7 +255,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_fresh_planning_entry_via_invoke_agent_clears_drains_safely(
@@ -271,17 +270,17 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
             ".agent/tmp/planning_prompt.md",
             "You are in PLANNING MODE. Create a detailed, structured execution plan.",
         )
-        _write_artifact_files(workspace, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(workspace, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
         _write_artifact_files(
             workspace,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -301,11 +300,11 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert not workspace.exists(".agent/artifacts/plan.json")
+        assert not workspace.exists(".agent/artifacts/plan.md")
         assert not workspace.exists(".agent/PLAN.md")
-        assert not workspace.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_fresh_planning_entry_from_dev_final_commit_clears_dev_analysis(
@@ -320,17 +319,17 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
             ".agent/tmp/planning_prompt.md",
             "You are in PLANNING MODE. Create a detailed, structured execution plan.",
         )
-        _write_artifact_files(workspace, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(workspace, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
         _write_artifact_files(
             workspace,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -350,11 +349,11 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert not workspace.exists(".agent/artifacts/plan.json")
+        assert not workspace.exists(".agent/artifacts/plan.md")
         assert not workspace.exists(".agent/PLAN.md")
-        assert not workspace.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_fresh_development_commit_entry_clears_development_drains(
@@ -367,13 +366,13 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         _write_artifact_files(
             workspace,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -396,9 +395,9 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert not workspace.exists(".agent/artifacts/development_result.json")
+        assert not workspace.exists(".agent/artifacts/development_result.md")
         assert not workspace.exists(".agent/DEVELOPMENT_RESULT.md")
-        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_fresh_development_final_commit_entry_clears_development_drains(
@@ -411,13 +410,13 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         _write_artifact_files(
             workspace,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
             workspace,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         effect = InvokeAgentEffect(
@@ -440,9 +439,9 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
 
         assert isinstance(result, PipelineState)
-        assert not workspace.exists(".agent/artifacts/development_result.json")
+        assert not workspace.exists(".agent/artifacts/development_result.md")
         assert not workspace.exists(".agent/DEVELOPMENT_RESULT.md")
-        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.md")
         assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_invoke_agent_effect_recovers_missing_plan_handoff(

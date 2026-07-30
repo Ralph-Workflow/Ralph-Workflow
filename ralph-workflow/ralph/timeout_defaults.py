@@ -154,6 +154,14 @@ SSE_DRAIN_CEILING_MS: int = 5_000
 #: shutdown.
 KILL_ESCALATION_CEILING_MS: int = 5_000
 
+#: Caller deadline for saturated MCP dispatch. ``EXEC_MAX_TIMEOUT_MS`` is the
+#: hard ceiling for legitimate tool calls; adding the kill grace prevents a
+#: healthy clamped call from racing the dispatcher while preserving room for
+#: dispatch, drain, and kill below the 330-second client request timeout.
+MCP_DISPATCH_TIMEOUT_SECONDS: float = (
+    EXEC_MAX_TIMEOUT_MS + KILL_ESCALATION_CEILING_MS
+) / 1000.0
+
 #: Default per-call HTTP timeout for built-in websearch backends (Brave, SearXNG).
 #: Sourced by ralph.mcp.websearch.backends.brave and ralph.mcp.websearch.backends.searxng
 #: to replace the previously hard-coded _TIMEOUT_SECONDS = 10.0 literals. One source of
@@ -224,7 +232,7 @@ MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 #: before the 600s no-progress ceiling. The previous 120s default produced the
 #: 'dumb-kill' regression documented in wt-012 where the watchdog fired at
 #: cumulative=159s, idle_elapsed=120s while the agent was reading
-#: ``.agent/CURRENT_PROMPT.md`` (a legitimate sub-step well below 120s of work).
+#: ``.agent/PRODUCT_CRITERIA.md`` (a legitimate sub-step well below 120s of work).
 #: The smart-verdict gate in the watchdog (StuckClassifier) further protects against
 #: premature fires by deferring the verdict while any first-party channel is fresh
 #: or while the agent is in a waiting state. Set to ``None`` to disable the override
@@ -374,4 +382,9 @@ if not WEBSEARCH_SDK_TIMEOUT_SECONDS >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS:
     raise RuntimeError(
         "WEBSEARCH_SDK_TIMEOUT_SECONDS must be >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS; "
         f"got SDK={WEBSEARCH_SDK_TIMEOUT_SECONDS!r} < HTTP={WEBSEARCH_BACKEND_TIMEOUT_SECONDS!r}"
+    )
+if not MCP_DISPATCH_TIMEOUT_SECONDS > EXEC_MAX_TIMEOUT_MS / 1000.0:
+    raise RuntimeError(
+        "MCP_DISPATCH_TIMEOUT_SECONDS must exceed the exec timeout ceiling; "
+        f"got MCP_DISPATCH_TIMEOUT_SECONDS={MCP_DISPATCH_TIMEOUT_SECONDS!r}"
     )

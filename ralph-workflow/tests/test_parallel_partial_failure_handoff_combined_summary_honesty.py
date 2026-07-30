@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.effects import FanOutEffect
@@ -33,24 +32,16 @@ def _make_effect(*unit_specs: tuple[str, list[str]]) -> FanOutEffect:
 def _write_fake_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "result.json").write_text(
-        json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": f"done by {unit_id}"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "development_result.md").write_text(
+        f"---\ntype: development_result\nstatus: complete\n---\n\n# Result\n\nDone by {unit_id}.\n",
+        encoding="utf-8",
     )
 
 
-def _read_summary(tmp_path: Path) -> dict[str, object]:
-    summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+def _read_summary(tmp_path: Path) -> str:
+    summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
     assert summary_path.exists(), f"Summary not written: {summary_path}"
-    return json.loads(summary_path.read_text())
+    return summary_path.read_text(encoding="utf-8")
 
 
 class TestCombinedSummaryHonesty:
@@ -80,11 +71,10 @@ class TestCombinedSummaryHonesty:
         )
 
         summary = _read_summary(tmp_path)
-        assert summary["any_failed"] is True
-        assert summary["all_succeeded"] is False
-        workers = {w["unit_id"]: w for w in summary["workers"]}
-        assert workers["unit-a"]["status"] == "succeeded"
-        assert workers["unit-b"]["status"] == "failed"
+        assert "- any_failed: true" in summary
+        assert "- all_succeeded: false" in summary
+        assert "- **unit-a**: succeeded (1 artifact(s))" in summary
+        assert "- **unit-b**: failed (0 artifact(s))" in summary
 
     def test_failed_worker_does_not_inherit_success_from_sibling(self, tmp_path: Path) -> None:
         """Worker B with no artifact must be reported as failed even when Worker A succeeded."""
@@ -114,10 +104,8 @@ class TestCombinedSummaryHonesty:
         )
 
         summary = _read_summary(tmp_path)
-        workers = {w["unit_id"]: w for w in summary["workers"]}
-        assert workers["unit-b"]["status"] == "failed"
-        assert workers["unit-b"]["artifact_count"] == 0
-        assert summary["all_succeeded"] is False
+        assert "- **unit-b**: failed (0 artifact(s))" in summary
+        assert "- all_succeeded: false" in summary
 
     def test_blocked_dependency_reported_in_summary(self, tmp_path: Path) -> None:
         """unit-b blocked because unit-a failed must appear with status='blocked'."""
@@ -146,14 +134,13 @@ class TestCombinedSummaryHonesty:
         )
 
         summary = _read_summary(tmp_path)
-        workers = {w["unit_id"]: w for w in summary["workers"]}
-        assert workers["unit-b"]["status"] == "blocked", (
+        assert "- **unit-b**: blocked (0 artifact(s))" in summary, (
             "unit-b whose dependency failed must be reported as 'blocked'"
         )
-        assert "unit-a" in (workers["unit-b"]["final_message"] or ""), (
+        assert "Blocked by failed dependencies: unit-a" in summary, (
             "blocked unit must name the failing dependency in final_message"
         )
-        assert summary["any_failed"] is True
+        assert "- any_failed: true" in summary
 
     def test_repo_wide_git_status_never_used_for_worker_success(self, tmp_path: Path) -> None:
         """Untracked files in repo must not make failed workers appear as succeeded."""
@@ -185,11 +172,10 @@ class TestCombinedSummaryHonesty:
         )
 
         summary = _read_summary(tmp_path)
-        workers = {w["unit_id"]: w for w in summary["workers"]}
-        assert workers["unit-b"]["status"] == "failed", (
+        assert "- **unit-b**: failed (0 artifact(s))" in summary, (
             "unit-b must remain failed regardless of untracked files in repo"
         )
-        assert summary["any_failed"] is True
+        assert "- any_failed: true" in summary
 
     def test_all_succeeded_true_when_all_workers_succeed(self, tmp_path: Path) -> None:
         effect = _make_effect(("unit-a", ["src/a"]), ("unit-b", ["src/b"]))
@@ -211,8 +197,8 @@ class TestCombinedSummaryHonesty:
         )
 
         summary = _read_summary(tmp_path)
-        assert summary["all_succeeded"] is True
-        assert summary["any_failed"] is False
+        assert "- all_succeeded: true" in summary
+        assert "- any_failed: false" in summary
 
     def test_verification_failure_adds_verify_entry(self, tmp_path: Path) -> None:
         """When verification ran and failed, summary must include __verify__ entry."""
@@ -234,11 +220,7 @@ class TestCombinedSummaryHonesty:
         )
 
         summary = _read_summary(tmp_path)
-        assert summary["any_failed"] is True
-        assert summary["all_succeeded"] is False
-        workers = {w["unit_id"]: w for w in summary["workers"]}
-        assert "__verify__" in workers
-        assert workers["__verify__"]["status"] == "failed"
-        assert summary["verification"]["ran"] is True
-        assert summary["verification"]["passed"] is False
-        assert summary["verification"]["exit_code"] == _EXIT_CODE_VERIFY_FAIL
+        assert "- any_failed: true" in summary
+        assert "- all_succeeded: false" in summary
+        assert "- **__verify__**: failed (0 artifact(s))" in summary
+        assert "Ran: yes — failed (exit code 2)" in summary

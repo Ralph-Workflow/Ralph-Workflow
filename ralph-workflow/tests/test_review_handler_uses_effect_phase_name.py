@@ -19,6 +19,9 @@ from ralph.pipeline.events import PhaseFailureEvent
 
 @dataclass(slots=True)
 class _FakeWorkspace:
+    def exists(self, rel: str) -> bool:
+        return rel == ".agent/artifacts/issues.md"
+
     def absolute_path(self, rel: str) -> None:
         del rel
 

@@ -37,18 +37,13 @@ class RalphToolName(StrEnum):
     EXEC = "exec"
     UNSAFE_EXEC = "unsafe_exec"
     RAW_EXEC = "raw_exec"
-    SUBMIT_ARTIFACT = "ralph_submit_artifact"
-    SUBMIT_PLAN_SECTION = "ralph_submit_plan_section"
-    SUBMIT_PLAN_SECTIONS = "ralph_submit_plan_sections"
-    INSERT_PLAN_STEP = "ralph_insert_plan_step"
-    REPLACE_PLAN_STEP = "ralph_replace_plan_step"
-    REMOVE_PLAN_STEP = "ralph_remove_plan_step"
-    MOVE_PLAN_STEP = "ralph_move_plan_step"
-    PATCH_PLAN_STEP = "ralph_patch_step"
-    FINALIZE_PLAN = "ralph_finalize_plan"
-    GET_PLAN_DRAFT = "ralph_get_plan_draft"
-    DISCARD_PLAN_DRAFT = "ralph_discard_plan_draft"
-    VALIDATE_PLAN_DRAFT = "ralph_validate_draft"
+    SUBMIT_MD_ARTIFACT = "ralph_submit_md_artifact"
+    VERIFY_MD_ARTIFACT = "ralph_verify_md_artifact"
+    STAGE_MD_ARTIFACT = "ralph_stage_md_artifact"
+    EDIT_MD_ARTIFACT = "ralph_edit_md_artifact"
+    GET_MD_DRAFT = "ralph_get_md_draft"
+    DISCARD_MD_DRAFT = "ralph_discard_md_draft"
+    FINALIZE_MD_ARTIFACT = "ralph_finalize_md_artifact"
     REPORT_PROGRESS = "report_progress"
     DECLARE_COMPLETE = "declare_complete"
     COORDINATE = "coordinate"
@@ -58,6 +53,9 @@ class RalphToolName(StrEnum):
     DOWNLOAD_URL = "download_url"
     READ_IMAGE = "read_image"
     READ_MEDIA = "read_media"
+    RALPH_INDEX_STATUS = "ralph_index_status"
+    RALPH_REINDEX = "ralph_reindex"
+    RALPH_GRAPH = "ralph_graph"
 
     def with_prefix(self, *, tool_name_prefix: str = "") -> str:
         """Return the tool name with an optional prefix applied."""
@@ -68,18 +66,12 @@ class RalphToolName(StrEnum):
         return f"mcp__{server_name}__{self}"
 
     def prompt_aliases(self, *, tool_name_prefix: str = "") -> tuple[str, ...]:
-        """Return the full set of prompt-facing alias names for this tool."""
-        primary = self.with_prefix(tool_name_prefix=tool_name_prefix)
-        if primary == self.value:
-            return (self.value,)
-        return (primary, self.value)
+        """Return only the provider-visible prompt name for this tool."""
+        return (self.with_prefix(tool_name_prefix=tool_name_prefix),)
 
     def prompt_reference(self, *, tool_name_prefix: str = "") -> str:
-        """Return a human-readable reference string for prompts."""
-        aliases = self.prompt_aliases(tool_name_prefix=tool_name_prefix)
-        if len(aliases) == 1:
-            return f"`{aliases[0]}`"
-        return f"`{aliases[0]}` or bare `{aliases[1]}`"
+        """Return an exact provider-visible reference for prompts."""
+        return f"`{self.prompt_aliases(tool_name_prefix=tool_name_prefix)[0]}`"
 
 
 READ_FILE_TOOL = RalphToolName.READ_FILE
@@ -105,18 +97,13 @@ GIT_SHOW_TOOL = RalphToolName.GIT_SHOW
 EXEC_TOOL = RalphToolName.EXEC
 UNSAFE_EXEC_TOOL = RalphToolName.UNSAFE_EXEC
 RAW_EXEC_TOOL = RalphToolName.RAW_EXEC
-SUBMIT_ARTIFACT_TOOL = RalphToolName.SUBMIT_ARTIFACT
-SUBMIT_PLAN_SECTION_TOOL = RalphToolName.SUBMIT_PLAN_SECTION
-SUBMIT_PLAN_SECTIONS_TOOL = RalphToolName.SUBMIT_PLAN_SECTIONS
-INSERT_PLAN_STEP_TOOL = RalphToolName.INSERT_PLAN_STEP
-REPLACE_PLAN_STEP_TOOL = RalphToolName.REPLACE_PLAN_STEP
-REMOVE_PLAN_STEP_TOOL = RalphToolName.REMOVE_PLAN_STEP
-MOVE_PLAN_STEP_TOOL = RalphToolName.MOVE_PLAN_STEP
-PATCH_PLAN_STEP_TOOL = RalphToolName.PATCH_PLAN_STEP
-FINALIZE_PLAN_TOOL = RalphToolName.FINALIZE_PLAN
-GET_PLAN_DRAFT_TOOL = RalphToolName.GET_PLAN_DRAFT
-DISCARD_PLAN_DRAFT_TOOL = RalphToolName.DISCARD_PLAN_DRAFT
-VALIDATE_PLAN_DRAFT_TOOL = RalphToolName.VALIDATE_PLAN_DRAFT
+SUBMIT_MD_ARTIFACT_TOOL = RalphToolName.SUBMIT_MD_ARTIFACT
+VERIFY_MD_ARTIFACT_TOOL = RalphToolName.VERIFY_MD_ARTIFACT
+STAGE_MD_ARTIFACT_TOOL = RalphToolName.STAGE_MD_ARTIFACT
+EDIT_MD_ARTIFACT_TOOL = RalphToolName.EDIT_MD_ARTIFACT
+GET_MD_DRAFT_TOOL = RalphToolName.GET_MD_DRAFT
+DISCARD_MD_DRAFT_TOOL = RalphToolName.DISCARD_MD_DRAFT
+FINALIZE_MD_ARTIFACT_TOOL = RalphToolName.FINALIZE_MD_ARTIFACT
 REPORT_PROGRESS_TOOL = RalphToolName.REPORT_PROGRESS
 DECLARE_COMPLETE_TOOL = RalphToolName.DECLARE_COMPLETE
 COORDINATE_TOOL = RalphToolName.COORDINATE
@@ -126,6 +113,9 @@ VISIT_URL_TOOL = RalphToolName.VISIT_URL
 DOWNLOAD_URL_TOOL = RalphToolName.DOWNLOAD_URL
 READ_IMAGE_TOOL = RalphToolName.READ_IMAGE
 READ_MEDIA_TOOL = RalphToolName.READ_MEDIA
+RALPH_INDEX_STATUS_TOOL = RalphToolName.RALPH_INDEX_STATUS
+RALPH_REINDEX_TOOL = RalphToolName.RALPH_REINDEX
+RALPH_GRAPH_TOOL = RalphToolName.RALPH_GRAPH
 
 WORKSPACE_READ_TOOLS: tuple[str, ...] = (
     READ_FILE_TOOL,
@@ -151,29 +141,27 @@ GIT_DIFF_READ_TOOLS: tuple[str, ...] = (GIT_DIFF_TOOL,)
 TRACKED_WRITE_TOOLS: tuple[str, ...] = (WRITE_FILE_TOOL,)
 PROCESS_EXEC_TOOLS: tuple[str, ...] = (EXEC_TOOL,)
 PROCESS_EXEC_UNBOUNDED_TOOLS: tuple[str, ...] = (UNSAFE_EXEC_TOOL, RAW_EXEC_TOOL)
-ARTIFACT_SUBMIT_TOOLS: tuple[str, ...] = (SUBMIT_ARTIFACT_TOOL, DECLARE_COMPLETE_TOOL)
+ARTIFACT_SUBMIT_TOOLS: tuple[str, ...] = (
+    SUBMIT_MD_ARTIFACT_TOOL,
+    STAGE_MD_ARTIFACT_TOOL,
+    EDIT_MD_ARTIFACT_TOOL,
+    FINALIZE_MD_ARTIFACT_TOOL,
+    DISCARD_MD_DRAFT_TOOL,
+    DECLARE_COMPLETE_TOOL,
+)
 ARTIFACT_COORDINATE_TOOLS: tuple[str, ...] = (COORDINATE_TOOL,)
 ARTIFACT_TOOLS: tuple[str, ...] = (*ARTIFACT_SUBMIT_TOOLS, *ARTIFACT_COORDINATE_TOOLS)
-PLAN_DRAFT_READ_TOOLS: tuple[str, ...] = (GET_PLAN_DRAFT_TOOL, VALIDATE_PLAN_DRAFT_TOOL)
-PLAN_DRAFT_WRITE_TOOLS: tuple[str, ...] = (
-    COORDINATE_TOOL,
-    SUBMIT_PLAN_SECTION_TOOL,
-    SUBMIT_PLAN_SECTIONS_TOOL,
-    INSERT_PLAN_STEP_TOOL,
-    REPLACE_PLAN_STEP_TOOL,
-    REMOVE_PLAN_STEP_TOOL,
-    MOVE_PLAN_STEP_TOOL,
-    PATCH_PLAN_STEP_TOOL,
-    FINALIZE_PLAN_TOOL,
-    DISCARD_PLAN_DRAFT_TOOL,
+PLANNING_DRAFT_TOOLS: tuple[str, ...] = (
+    VERIFY_MD_ARTIFACT_TOOL,
+    GET_MD_DRAFT_TOOL,
 )
-PLANNING_DRAFT_TOOLS: tuple[str, ...] = (*PLAN_DRAFT_READ_TOOLS, *PLAN_DRAFT_WRITE_TOOLS)
 PROGRESS_TOOLS: tuple[str, ...] = (REPORT_PROGRESS_TOOL,)
 ENV_READ_TOOLS: tuple[str, ...] = (READ_ENV_TOOL,)
 WEB_SEARCH_TOOLS: tuple[str, ...] = (WEB_SEARCH_TOOL,)
 WEB_VISIT_TOOLS: tuple[str, ...] = (VISIT_URL_TOOL,)
 WEB_DOWNLOAD_TOOLS: tuple[str, ...] = (DOWNLOAD_URL_TOOL,)
 MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL, READ_MEDIA_TOOL)
+EXPLORE_TOOLS: tuple[str, ...] = (RALPH_INDEX_STATUS_TOOL, RALPH_REINDEX_TOOL, RALPH_GRAPH_TOOL)
 
 ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName)
 

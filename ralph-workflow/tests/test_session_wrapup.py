@@ -20,7 +20,7 @@ import json
 import socket
 import threading
 import urllib.request
-from typing import IO, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.mcp.protocol.session import AgentSession
@@ -352,7 +352,7 @@ def _http_post_jsonrpc(endpoint: str, payload: dict[str, object]) -> dict[str, o
         },
         method="POST",
     )
-    response = cast("IO[bytes]", urllib.request.urlopen(request, timeout=2.0))
+    response = urllib.request.urlopen(request, timeout=2.0)
     try:
         body_bytes: bytes = response.read()
     finally:

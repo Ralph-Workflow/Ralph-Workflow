@@ -11,7 +11,6 @@ Tests cover:
 from __future__ import annotations
 
 import importlib
-from typing import cast
 
 import pytest
 
@@ -46,10 +45,7 @@ class TestValidatePolicyCompletenessNewRules:
 
     def _minimal_agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
-        agent_drains = cast(
-            "dict[DrainName, AgentDrainConfig]",
-            {d: AgentDrainConfig(chain=d) for d in drains},
-        )
+        agent_drains = {d: AgentDrainConfig(chain=d) for d in drains}
         return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
 
     def _minimal_analysis_phase(

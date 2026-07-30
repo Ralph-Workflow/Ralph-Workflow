@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 
@@ -35,13 +35,26 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
 
 
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
+
+
+class _RecordingProcessTeardown:
+    """Record requested process-subtree teardowns without touching the OS."""
+
+    def __init__(self) -> None:
+        self.calls: tuple[int, ...] = ()
+
+    def teardown_subtree(self, host_pid: int) -> None:
+        self.calls = (*self.calls, host_pid)
 
 
 @pytest.fixture(autouse=True)
@@ -50,21 +63,21 @@ def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _json_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(raw))
+    return must_mapping(json.loads(raw))
 
 
 def _toml_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", tomllib.loads(raw))
+    return must_mapping(tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(cast("Iterable[str]", args[0]))
+    return list(args[0])
 
 
 def test_invoke_agent_times_out_when_agent_goes_idle(
@@ -116,6 +129,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             return self.returncode
 
     fake_process = FakeProcess()
+    process_teardown = _RecordingProcessTeardown()
 
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
@@ -130,10 +144,15 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             invoke_agent(
                 config,
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=5,
+                    process_teardown=process_teardown,
+                ),
                 _clock=FakeClock(),
             )
         )
+    assert process_teardown.calls == (fake_process.pid,)
 
 
 def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
@@ -187,6 +206,7 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             return self.returncode
 
     fake_process = FakeProcess()
+    process_teardown = _RecordingProcessTeardown()
     descendant_states = iter([True, False])
     descendant_checks = {"count": 0}
 
@@ -214,10 +234,15 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             invoke_agent(
                 config,
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=5,
+                    process_teardown=process_teardown,
+                ),
                 _clock=FakeClock(),
             )
         )
+    assert process_teardown.calls == (fake_process.pid,)
 
 
 def test_invoke_agent_runs_subprocess_in_workspace_path(
@@ -263,7 +288,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
         del args
-        seen_cwds.append(cast("str | None", kwargs.get("cwd")))
+        seen_cwds.append(kwargs.get("cwd"))
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
@@ -272,7 +297,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
-            claude_tool_name("ralph_submit_artifact"),
+            claude_tool_name("ralph_submit_md_artifact"),
         ),
     )
 
@@ -349,7 +374,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
-            claude_tool_name("ralph_submit_artifact"),
+            claude_tool_name("ralph_submit_md_artifact"),
         ),
     )
 
@@ -382,8 +407,8 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "--mcp-config",
     ]
     mcp_payload = _json_object(cmd[9])
-    servers = cast("dict[str, object]", mcp_payload["mcpServers"])
-    assert cast("dict[str, object]", servers["ralph"]) == {
+    servers = must_mapping(mcp_payload["mcpServers"])
+    assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
     }
@@ -395,7 +420,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         ",".join(
             [
                 claude_tool_name("read_file"),
-                claude_tool_name("ralph_submit_artifact"),
+                claude_tool_name("ralph_submit_md_artifact"),
                 *CLAUDE_NATIVE_TOOLS_TO_KEEP,
             ]
         ),
@@ -418,14 +443,14 @@ def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_alia
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
-        lambda endpoint: ["read_file", "ralph_submit_artifact"],
+        lambda endpoint: ["read_file", "ralph_submit_md_artifact"],
     )
 
     allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
 
     assert allowed == (
         claude_tool_name("read_file"),
-        claude_tool_name("ralph_submit_artifact"),
+        claude_tool_name("ralph_submit_md_artifact"),
     )
 
 
@@ -452,8 +477,8 @@ def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
     mixed = [
         "read_file",
         "mcp__ralph__read_file",
-        "ralph_submit_artifact",
-        "mcp__ralph__ralph_submit_artifact",
+        "ralph_submit_md_artifact",
+        "mcp__ralph__ralph_submit_md_artifact",
     ]
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
@@ -464,7 +489,7 @@ def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
 
     assert allowed == (
         claude_tool_name("read_file"),
-        claude_tool_name("ralph_submit_artifact"),
+        claude_tool_name("ralph_submit_md_artifact"),
     )
     assert len(allowed) == len(set(allowed))
 
@@ -485,7 +510,10 @@ def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
-        lambda endpoint: ["mcp__ralph__read_file", "mcp__ralph__ralph_submit_artifact"],
+        lambda endpoint: [
+            "mcp__ralph__read_file",
+            "mcp__ralph__ralph_submit_md_artifact",
+        ],
     )
 
     allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
@@ -496,7 +524,7 @@ def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
         )
     assert allowed == (
         claude_tool_name("read_file"),
-        claude_tool_name("ralph_submit_artifact"),
+        claude_tool_name("ralph_submit_md_artifact"),
     )
 
 
@@ -703,6 +731,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
@@ -713,7 +742,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     assert servers == {
         "ralph": {
             "type": "http",
@@ -811,6 +840,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
@@ -821,7 +851,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     assert servers == {
         "ralph": {
             "type": "http",
@@ -922,6 +952,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
@@ -932,7 +963,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     assert servers == {
         "ralph": {
             "type": "http",

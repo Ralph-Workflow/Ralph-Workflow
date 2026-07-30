@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from ralph.config.bootstrap import resolve_global_config_dir
 from ralph.onboarding import (
     PROJECT_CANONICAL_SKILLS_PATH,
     PROJECT_SIBLING_SKILL_PATHS,
@@ -55,4 +58,43 @@ def test_welcome_panel_next_steps_lists_opencode_skills_exactly_once() -> None:
     assert output.count(PROJECT_CANONICAL_SKILLS_PATH) == 1, (
         f"Expected exactly one occurrence of {PROJECT_CANONICAL_SKILLS_PATH!r}, "
         f"got {output.count(PROJECT_CANONICAL_SKILLS_PATH)}"
+    )
+
+
+def test_next_steps_name_global_agent_chains_config() -> None:
+    """S-1: model guidance names the exact global config and section to edit."""
+    expected_path = resolve_global_config_dir() / "ralph-workflow.toml"
+    for steps in (welcome_panel_next_steps(), fallback_next_steps()):
+        output = "\n".join(steps)
+        assert "[agent_chains]" in output
+        assert str(expected_path) in output
+
+
+def test_welcome_panel_next_steps_rejects_invalid_config_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DA-001: dynamic bootstrap attributes are checked before invocation."""
+    monkeypatch.setattr("ralph.config.bootstrap.resolve_global_config_dir", object())
+
+    with pytest.raises(RuntimeError, match="resolve_global_config_dir"):
+        welcome_panel_next_steps()
+
+
+def test_welcome_panel_next_steps_lead_with_first_run_path() -> None:
+    """S-3 regression: first-run guidance precedes optional setup detail."""
+    steps = welcome_panel_next_steps()
+    assert steps[:3] == (
+        "Edit PROMPT.md with your implementation task",
+        "Run `ralph --diagnose` to check your setup",
+        "Run `ralph` to start the pipeline",
+    )
+    assert "skills/ and symlinked" in "\n".join(steps)
+
+
+def test_fallback_next_steps_lead_with_first_run_path() -> None:
+    """S-3 regression: a re-run keeps the actionable path ahead of optional notes."""
+    assert fallback_next_steps()[:3] == (
+        "Edit PROMPT.md with your implementation task",
+        "Run `ralph --diagnose` to check your setup",
+        "Run `ralph` to start the pipeline",
     )

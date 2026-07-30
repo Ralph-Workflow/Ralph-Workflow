@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands.diagnose import build_next_steps, check_agents
 from ralph.cli.main import app
 from ralph.config import bootstrap as bootstrap_module
@@ -249,6 +250,62 @@ def test_diagnose_alias_path_status_rendered_in_cli(
         )
 
 
+def test_diagnose_preflight_keeps_literal_config_sections() -> None:
+    """Missing-agent preflight guidance must preserve its TOML section names."""
+    output = StringIO()
+    ctx = make_display_context(
+        console=Console(file=output, force_terminal=False, theme=RALPH_THEME, width=200), env={}
+    )
+    display = diagnose_module.resolve_active_display(None, ctx)
+    diagnose_module._emit_simple_table(
+        display,
+        "Pre-flight Validation",
+        [
+            (
+                "Policy validation",
+                diagnose_module._status_text(
+                    "Failed",
+                    "FIX: install a CLI or edit [agent_chains] in ralph-workflow.toml and "
+                    "[agents.<name>] in ralph-workflow-agents.toml.",
+                    "theme.status.error",
+                ),
+            )
+        ],
+    )
+    rendered = output.getvalue()
+    assert "[agent_chains]" in rendered
+    assert "[agents.<name>]" in rendered
+
+
+def test_diagnose_missing_agent_shows_install_link_and_config_section(
+    clean_env: dict[str, str],
+) -> None:
+    """Each missing agent row must name its install page and TOML section."""
+    del clean_env
+    agent = AgentConfig(cmd="codex")
+    registry = AgentRegistry.from_config(UnifiedConfig())
+    registry.register("codex", agent)
+    output = StringIO()
+    ctx = make_display_context(
+        console=Console(file=output, force_terminal=False, theme=RALPH_THEME, width=200), env={}
+    )
+
+    with (
+        patch("ralph.cli.commands.diagnose.load_config", return_value=UnifiedConfig()),
+        patch("ralph.cli.commands.diagnose.AgentRegistry.from_config", return_value=registry),
+        patch(
+            "ralph.cli.commands.diagnose.check_agent_availability",
+            return_value=[("codex", "missing")],
+        ),
+    ):
+        assert check_agents(None, display_context=ctx) is True
+
+    rendered = output.getvalue()
+    assert "https://codex.openai.com" in rendered
+    assert "edit [agents.codex]" in rendered
+    assert "ralph-workflow-agents.toml" in rendered
+
+
 def test_build_next_steps_no_prompt_recommends_init() -> None:
     """_build_next_steps must recommend ralph --init when PROMPT.md is absent."""
     steps = build_next_steps(
@@ -340,6 +397,108 @@ def test_build_next_steps_all_ok_recommends_run() -> None:
     combined = " ".join(steps)
     assert "ralph" in combined, (
         f"Expected 'ralph' run recommendation in next-steps when all ok, got: {steps}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_diagnose_flags_unknown_config_field(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``ralph --diagnose`` must surface typo'd config keys as a warning row.
+
+    Without the unknown-field surfacing, the Configuration table reports
+    ``Config loaded: Success`` while silently dropping the typo — the
+    exact pre-first-run footgun AC-01 names.
+    """
+    del clean_env
+    _stub_init_bootstrap(monkeypatch)
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Bootstrap a project-local config with a typo'd nested-subtable
+    # (`general.wrokflow`). The typo is close to canonical so the
+    # suggestion path also fires.
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "[general]\nverbosity = 2\nwrokflow = { checkpoint_enabled = true }\n",
+        encoding="utf-8",
+    )
+    # Mirror the patched local path into the loader's expectations.
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
+
+    output = result.output
+    # The Configuration table must still report "Config loaded: Success" so
+    # the gate keeps its normal shape; the unknown-field row is an
+    # additional warning row, not a flipped config_ok.
+    assert "Config loaded" in output, (
+        f"Expected 'Config loaded' status row in --diagnose output, got: {output}"
+    )
+    # The flat string-list of unknown-field rows exposes the field name in
+    # column 1 of the row.
+    assert "general.wrokflow" in output, (
+        f"Expected the typo'd 'general.wrokflow' field to be surfaced in "
+        f"--diagnose output, got: {output}"
+    )
+    # The fix-it suggestion must include the canonical field name so the
+    # operator can correct the typo without grep'ing the docs.
+    assert "workflow" in output, (
+        f"Expected the canonical 'workflow' suggestion in --diagnose output, "
+        f"got: {output}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_diagnose_flags_unknown_field_in_propagated_config(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``ralph --diagnose`` must surface a typo in an inherited/propagated ancestor config.
+
+    AC-01 follow-up: ``load_config`` merges every
+    ``workspace_scope.propagated_config_paths`` file into the effective
+    configuration and ``_collect_unknown_field_rows`` must read every
+    propagated path so a typo in an effective ancestor config surfaces
+    in the diagnose Configuration table (not just the local config).
+    """
+    del clean_env
+    _stub_init_bootstrap(monkeypatch)
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Stage a propagated ancestor config with a typo, and a clean local config.
+    propagated_path = tmp_path / "parent" / ".agent" / "ralph-workflow.toml"
+    propagated_path.parent.mkdir(parents=True)
+    propagated_path.write_text(
+        "[general]\nwrokflow = { checkpoint_enabled = true }\n",
+        encoding="utf-8",
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text("", encoding="utf-8")
+    # Patch the workspace scope resolver to inject the propagated path.
+    from ralph.workspace.scope import WorkspaceScope
+
+    monkeypatch.setattr(
+        "ralph.cli.commands.diagnose.resolve_workspace_scope",
+        lambda: WorkspaceScope(
+            root=tmp_path,
+            local_config_path=local_path,
+            propagated_config_paths=(propagated_path,),
+        ),
+    )
+
+    result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
+
+    output = result.output
+    assert "general.wrokflow" in output, (
+        f"Expected the propagated-ancestor typo 'general.wrokflow' to be "
+        f"surfaced in --diagnose output, got: {output}"
     )
 
 

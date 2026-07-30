@@ -40,16 +40,16 @@ def test_apply_pro_hooks_to_core_propagates_model_identity() -> None:
     assert result.model_identity is new_model_identity
 
 
-def test_apply_pro_hooks_to_core_propagates_system_prompt_materializer() -> None:
-    """A non-None ``system_prompt_materializer`` override is propagated."""
+def test_apply_pro_hooks_to_core_propagates_master_prompt_materializer() -> None:
+    """A non-None ``master_prompt_materializer`` override is propagated."""
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_materializer = MagicMock()
 
     result = apply_pro_hooks_to_core(
-        core, ProPipelineHooks(system_prompt_materializer=new_materializer)
+        core, ProPipelineHooks(master_prompt_materializer=new_materializer)
     )
 
-    assert result.system_prompt_materializer is new_materializer
+    assert result.master_prompt_materializer is new_materializer
 
 
 def test_apply_pro_hooks_to_core_propagates_phase_prompt_materializer() -> None:

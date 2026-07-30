@@ -1,0 +1,3 @@
+{"kind":"text","provider":"agy","content":"AGY is inspecting the event stream.","metadata":{}}
+{"kind":"thinking","provider":"agy","content":"The record needs one line per event.","metadata":{}}
+{"kind":"tool_result","provider":"agy","content":"checks passed","metadata":{"tool":"bash"}}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,7 +17,6 @@ from ralph.agents.invoke import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedPtyProcess
 
 
 class _FakeInteractiveHandle:
@@ -49,7 +48,7 @@ def test_claude_interactive_resumable_exit_keeps_transcript_session_id(
 
     with pytest.raises(OpenCodeResumableExitError) as excinfo:
         check_process_result(
-            cast("ManagedPtyProcess", handle),
+            handle,
             "claude",
             output,
             CompletionCheckOptions(

@@ -177,7 +177,7 @@ class ProHeartbeatClient:
                 self._sleep_for(next_tick_at - now)
                 continue
             self._post_once()
-            next_tick_at = self._clock() + self._interval
+            next_tick_at += self._interval
 
     def _sleep_for(self, seconds: float) -> None:
         """Sleep until the stop event fires or ``seconds`` elapses.

@@ -33,7 +33,7 @@ subprocess. Total wall-clock for the file is well under 1s.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from ralph.mcp.server._activity_sink import (
     get_active_sink,
@@ -99,11 +99,11 @@ def _build_server_with_tool(
             ),
             required_capability="workspace.read",
         ),
-        cast("Any", handler),
+        handler,
     )
     return McpServer(
-        session=cast("Any", object()),
-        workspace=cast("Any", object()),
+        session=object(),
+        workspace=object(),
         registry=bridge,
         mcp_activity_sink=sink,
     )
@@ -396,7 +396,7 @@ def _build_server_with_upstream_tool(
     """Build a McpServer whose registry contains one upstream-proxied tool."""
     bridge = ToolBridge()
     upstream = _FakeUpstreamRegistry(result=upstream_result, exc=upstream_exc)
-    handler = UpstreamProxyHandler(alias=alias, upstream_registry=cast("Any", upstream))
+    handler = UpstreamProxyHandler(alias=alias, upstream_registry=upstream)
     bridge.register(
         ToolMetadata(
             definition=ToolDefinition(
@@ -406,11 +406,11 @@ def _build_server_with_upstream_tool(
             ),
             required_capability="upstream.tool_use",
         ),
-        cast("Any", handler),
+        handler,
     )
     server = McpServer(
-        session=cast("Any", object()),
-        workspace=cast("Any", object()),
+        session=object(),
+        workspace=object(),
         registry=bridge,
         mcp_activity_sink=sink,
     )
@@ -433,7 +433,7 @@ def test_upstream_proxy_does_not_invoke_sink_when_called_directly() -> None:
         sinks_called.append(name)
 
     handler = UpstreamProxyHandler(
-        alias="mcp__upstream__search", upstream_registry=cast("Any", upstream)
+        alias="mcp__upstream__search", upstream_registry=upstream
     )
     token = set_active_sink(sink)
     try:
@@ -466,7 +466,7 @@ def test_upstream_proxy_failure_does_not_invoke_sink_when_called_directly() -> N
         sinks_called.append(name)
 
     handler = UpstreamProxyHandler(
-        alias="mcp__upstream__fetch", upstream_registry=cast("Any", upstream)
+        alias="mcp__upstream__fetch", upstream_registry=upstream
     )
     token = set_active_sink(sink)
     try:
@@ -502,7 +502,7 @@ def test_upstream_proxy_ignores_registered_sink() -> None:
         raise RuntimeError("buggy sink")
 
     handler = UpstreamProxyHandler(
-        alias="mcp__upstream__search", upstream_registry=cast("Any", upstream)
+        alias="mcp__upstream__search", upstream_registry=upstream
     )
     token = set_active_sink(bad_sink)
     try:
@@ -528,7 +528,7 @@ def test_upstream_proxy_without_sink_does_not_raise() -> None:
     assert get_active_sink() is None
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
     handler = UpstreamProxyHandler(
-        alias="mcp__upstream__search", upstream_registry=cast("Any", upstream)
+        alias="mcp__upstream__search", upstream_registry=upstream
     )
     result = handler(host_session=None, workspace=None, params={"k": "v"})
     assert result == {"content": [{"type": "text", "text": "ok"}]}

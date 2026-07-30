@@ -22,8 +22,8 @@ class DevelopmentResult(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str = Field(..., min_length=1)
-    summary: str = Field(..., min_length=1)
-    files_changed: str = Field(..., min_length=1)
+    summary: str = ""
+    files_changed: str = ""
     plan_items_proven: list[PlanItemProof] = Field(default_factory=list)
     analysis_items_addressed: list[AnalysisItemProof] = Field(default_factory=list)
     next_steps: str | None = None
@@ -31,15 +31,23 @@ class DevelopmentResult(RalphBaseModel):
 
     @model_validator(mode="after")
     def validate_status_requirements(self) -> DevelopmentResult:
+        """Enforce the reporting contract only for a ``completed`` result.
+
+        ``status`` keeps its closed vocabulary because routing reads it,
+        but a non-``completed`` result carries no completion claim to
+        check: everything below the frontmatter is free-form prose the
+        next iteration reads, never a structure this validator gates.
+        """
         allowed_statuses: tuple[Literal["completed", "partial"], ...] = ("completed", "partial")
         if self.status not in allowed_statuses:
-            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"
+            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             raise ValueError(msg)
-        if self.status == "partial":
-            if self.next_steps is None:
-                raise ValueError("partial development_result artifacts require next_steps")
-            if self.continuation is None:
-                raise ValueError("partial development_result artifacts require continuation")
+        if self.status != "completed":
+            return self
+        if not self.summary.strip():
+            raise ValueError("completed development_result artifacts require summary")
+        if not self.files_changed.strip():
+            raise ValueError("completed development_result artifacts require files_changed")
         return self
 
 

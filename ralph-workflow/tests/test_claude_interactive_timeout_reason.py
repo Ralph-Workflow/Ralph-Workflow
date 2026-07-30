@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ralph.agents.activity import AgentActivityKind
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
@@ -56,8 +56,11 @@ class _RaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        if False:
-            yield ""
+        # Stub generator: yields a placeholder, then raises on the next iteration
+        # so the caller observes the watchdog timeout immediately. The placeholder
+        # yield exists only to mark this function as a generator; the raise is
+        # what the caller actually observes.
+        yield ""  # placeholder: never observed as a real line by callers
         raise _IdleStreamTimeoutError(
             300.0,
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
@@ -118,9 +121,9 @@ class _StopAfterOneCompletionPoll(threading.Event):
 class _FakeStrategy:
     def classify_activity_line(self, line: str) -> object:
         if line == "tool\n":
-            return SimpleNamespace(kind=AgentActivityKind.TOOL_RESULT, raw="claude result: ok")
+            return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw="claude result: ok")
         if line == "lifecycle\n":
-            return SimpleNamespace(kind=AgentActivityKind.LIFECYCLE, raw="claude/session")
+            return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw="claude/session")
         return None
 
     def observe_line(self, line: str) -> None:
@@ -177,7 +180,7 @@ def test_pty_line_reader_exits_when_completion_evidence_appears(tmp_path: Path) 
 
         def fake_evaluate_completion(*_args: object, **_kwargs: object) -> CompletionSignals:
             return CompletionSignals(
-                explicit_complete=False,
+                explicit_complete=True,
                 required_artifact_present=False,
                 artifact_types=(),
                 completion_sentinel_present=True,
@@ -196,6 +199,47 @@ def test_pty_line_reader_exits_when_completion_evidence_appears(tmp_path: Path) 
             required_artifact=None,
         )
         reader = PtyLineReader(handle, "nanocoder", ctx, clock, extras=None)
+        reader._monitor_stop = _StopAfterOneCompletionPoll()
+
+        reader._completion_evidence_thread()
+
+        assert reader._completion_exit_sent is True
+        assert handle.terminate_calls == [0.5]
+        os.close(reader._input_writer_fd)
+    finally:
+        os.close(master_fd)
+
+
+def test_pty_line_reader_exits_on_durable_receipt_and_sentinel_without_echo(
+    tmp_path: Path,
+) -> None:
+    master_fd = os.open("/dev/null", os.O_WRONLY)
+    try:
+        handle = _FakeHandle(master_fd)
+        clock = FakeClock(start=25.0)
+
+        def fake_evaluate_completion(*_args: object, **_kwargs: object) -> CompletionSignals:
+            return CompletionSignals(
+                explicit_complete=False,
+                required_artifact_present=True,
+                artifact_types=("smoke_test_result",),
+                completion_sentinel_present=True,
+                artifact_required=True,
+            )
+
+        ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            policy=TimeoutPolicy(idle_timeout_seconds=300.0),
+            monitor=None,
+            execution_strategy=None,
+            liveness_probe=None,
+            waiting_listener=None,
+            workspace_path=tmp_path,
+            extra_env={str(MCP_RUN_ID_ENV): "run-1"},
+            evaluate_completion_fn=fake_evaluate_completion,
+            required_artifact=None,
+        )
+        reader = PtyLineReader(handle, "claude", ctx, clock, extras=None)
         reader._monitor_stop = _StopAfterOneCompletionPoll()
 
         reader._completion_evidence_thread()
@@ -474,8 +518,11 @@ class _NoOutputAtStartRaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        if False:
-            yield ""
+        # Stub generator: yields a placeholder, then raises on the next iteration
+        # so the caller observes the watchdog timeout immediately. The placeholder
+        # yield exists only to mark this function as a generator; the raise is
+        # what the caller actually observes.
+        yield ""  # placeholder: never observed as a real line by callers
         raise _IdleStreamTimeoutError(
             30.0,
             WatchdogFireReason.NO_OUTPUT_AT_START,

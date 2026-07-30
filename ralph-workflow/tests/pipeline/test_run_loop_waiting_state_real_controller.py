@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 from loguru import logger
@@ -268,7 +268,7 @@ def test_real_controller_wait_state_emits_waiting_logs(
 
     emitted: list[str] = []
 
-    def mock_emit_activity_line(display: object, phase_arg: str | None, text: str) -> None:
+    def mock_emit_activity_line(display: object, _phase_arg: str | None, text: str) -> None:
         emitted.append(text)
 
     monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
@@ -381,7 +381,7 @@ def test_controller_accepts_protocol_typed_unavailability_store() -> None:
         options=RecoveryControllerOptions(
             cycle_cap=10,
             policy_bundle=_minimal_policy_bundle(),
-            unavailability_store=cast("UnavailabilityStore", fake_store),
+            unavailability_store=fake_store,
         ),
     )
 

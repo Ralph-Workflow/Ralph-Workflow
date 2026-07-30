@@ -38,6 +38,7 @@ _EXCLUDED: dict[str, str] = {
     "display.worker_snapshot": "internal display type, not public API",
     "exit_pause.exit_outcome": "internal exit type, not public API",
     "exit_pause.pause_on_exit_mode": "internal exit type, not public API",
+    "git.hardening": "internal git hardening, not public API",
     "git.git_run_result": "internal git type, not public API",
     "git.rebase.process_result": "internal git type, not public API",
     "git.rebase.rebase_conflicts": "internal git type, not public API",
@@ -57,6 +58,10 @@ _EXCLUDED: dict[str, str] = {
     "phases.phase_context": "internal phases type, not public API",
     "phases.phase_timing_record": "internal phases type, not public API",
     "pipeline.agent_chain_state": "internal pipeline state, not public API",
+    "pipeline.auto_integrate_catalog_rationales": "internal catalog rationale registry, not public API",
+    "pipeline.auto_integrate_recovery_lock": "internal lock-liveness helper, not public API",
+    "pipeline.auto_integrate_remote_reconcile": "internal remote reconciliation helper, not public API",
+    "pipeline.auto_integrate_worktree_state": "internal worktree-state probe, not public API",
     "pipeline.agent_execution_deps": "internal pipeline type, not public API",
     "pipeline.agent_recovery_input": "internal pipeline type, not public API",
     "pipeline.agent_recovery_plan": "internal pipeline type, not public API",
@@ -87,6 +92,7 @@ _EXCLUDED: dict[str, str] = {
     "recovery.unavailability_reason": "internal recovery type, not public API",
     "testing.fake_run": "test infrastructure, not public API",
     "testing.audit_test_policy": "test infrastructure, not public API",
+    "testing.audit_repo_structure": "test infrastructure, not public API",
     "testing.audit_lint_bypass": "test infrastructure, not public API",
     "testing.audit_typecheck_bypass": "test infrastructure, not public API",
     "testing.audit_mcp_timeout": "test infrastructure, not public API",
@@ -96,6 +102,8 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_agent_internal_paths": "test infrastructure, not public API",
     "testing.audit_skill_auto_commit": "test infrastructure, not public API",
     "testing.audit_public_docstrings": "test infrastructure, not public API",
+    "testing.audit_fsevents_watch_consolidation": "test infrastructure, not public API",
+    "testing.audit_log_sink_buffering": "test infrastructure, not public API",
 }
 
 _TOP_LEVEL_SECTION_HEADERS = frozenset(

@@ -30,10 +30,10 @@ class TestArchiveArtifactBeforeOverwrite:
 
         assert created == []
 
-    def test_archives_json_when_canonical_exists(self, tmp_path: Path) -> None:
+    def test_archives_markdown_when_canonical_exists(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
+        (artifact_dir / "plan.md").write_text("# Plan", encoding="utf-8")
 
         created = archive_artifact_before_overwrite(
             artifact_dir, tmp_path, "plan", now_iso=_now_iso
@@ -41,13 +41,13 @@ class TestArchiveArtifactBeforeOverwrite:
 
         assert len(created) >= 1
         hist_dir = history_dir_for_artifact(artifact_dir, "plan")
-        assert any(p.suffix == ".json" for p in created)
+        assert any(p.suffix == ".md" for p in created)
         assert all(p.parent == hist_dir for p in created)
 
     def test_archives_markdown_handoff_when_present(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
+        (artifact_dir / "plan.md").write_text("# Plan", encoding="utf-8")
         # Write a handoff file at the known handoff path for 'plan'
 
         handoff_rel = handoff_path_for_artifact("plan")
@@ -66,7 +66,7 @@ class TestArchiveArtifactBeforeOverwrite:
     def test_builds_index_after_archive(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
+        (artifact_dir / "plan.md").write_text("# Plan", encoding="utf-8")
 
         archive_artifact_before_overwrite(artifact_dir, tmp_path, "plan", now_iso=_now_iso)
 
@@ -78,12 +78,12 @@ class TestArchiveArtifactBeforeOverwrite:
     def test_timestamped_filename_uses_iso_format(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
+        (artifact_dir / "plan.md").write_text("# Plan", encoding="utf-8")
 
         created = archive_artifact_before_overwrite(
             artifact_dir, tmp_path, "plan", now_iso=_now_iso
         )
 
-        json_archives = [p for p in created if p.suffix == ".json"]
-        assert len(json_archives) == 1
-        assert json_archives[0].name.startswith("20260506T120000_plan")
+        markdown_archives = [p for p in created if p.suffix == ".md"]
+        assert len(markdown_archives) == 1
+        assert markdown_archives[0].name.startswith("20260506T120000_plan")

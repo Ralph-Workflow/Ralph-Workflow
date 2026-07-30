@@ -1,0 +1,231 @@
+<!-- ralph-policy-schema: v2 -->
+<!-- ralph-policy-id: typechecking-policy.md -->
+
+# Type-Checking Policy
+
+## Purpose and scope
+
+This policy governs every project language for which static type checking
+applies. It defines the selected type checker, the exact commands, the
+source categories included, the strictness level, and the rules around
+suppressions, ignores, casts, generated code, and untyped dependencies.
+
+The maintained runtime is `ralph-workflow/ralph/` (Python, mypy --strict).
+The bundled `ralph-workflow/skills-package/` is plain CommonJS Node.js
+with no TypeScript or Flow types; the `ralph-workflow/Formula/` Homebrew
+formula is plain Ruby; the `docs/legacy-rust/` directory is the quarantined
+pointer to the retired Rust implementation. Each detected language is
+evaluated below and recorded as either active (with a real checker gate)
+or inapplicable (with a reason and the stack change that would re-open it).
+
+## Default requirements
+
+* The agent MUST declare a `RALPH-LANG:` block for EVERY language
+  detected in the project stack, followed by a `RALPH-COMMAND:` or an
+  explicit `RALPH-INAPPLICABLE:` line with a reason.
+* The selected type checker MUST match the language ecosystem best
+  practice (mypy for Python, tsc for TypeScript, cargo check for Rust,
+  go build for Go, etc.). A non-standard checker is permitted only
+  with a documented rationale.
+* Suppressions (`# type: ignore`, `@ts-ignore`, `#[allow(...)]`) MUST
+  carry a specific error code AND a documented rationale per
+  `ralph-workflow/docs/agents/type-ignore-policy.md`. Blanket
+  suppressions are forbidden. Bare `# type: ignore` without a specific
+  mypy error code is rejected by `ralph/testing/audit_typecheck_bypass.py`.
+* Generated code, vendored code, and migration code MUST be excluded
+  from type checking via configuration (not by inline suppression). The
+  exclusion pattern MUST be listed in this policy.
+* Untyped third-party dependencies MUST be stubbed at the project's
+  type boundary, NOT silenced globally. A blanket `ignore_missing_imports`
+  is forbidden and is detected by `ralph/testing/audit_typecheck_bypass.py`.
+* `# type: ignore` is forbidden in test files; tests MUST be fully
+  typed. This is enforced by `ralph/testing/audit_typecheck_bypass.py`.
+
+### Type assertions and casts
+
+A type assertion (`typing.cast`, `as T`, an unchecked downcast) is a proof
+obligation, not a conversion: it tells the checker "I have proved this, you
+cannot". It is legitimate ONLY when no runtime check could discharge the same
+obligation. Where a runtime check would work, the assertion is a defect.
+
+An assertion is permitted only in one of three positions:
+
+* SOUND BY CONSTRUCTION — permitted freely, no annotation required. The
+  assertion widens to the language's universal type, or it refines only the
+  type PARAMETERS that an immediately preceding runtime guard already proved
+  and the checker structurally cannot narrow. The asserted value type MUST be
+  the universal type; asserting a value type narrower than the guard proved is
+  NOT this position.
+* CONFINED TO A TYPED BOUNDARY — permitted for unavoidable dynamic-typing
+  leaks out of the standard library or a framework: dynamic namespaces, regex
+  match groups, database rows, deserialization entry points. The assertion
+  MUST live inside a named helper with a documented contract, ONE per leak
+  kind, and MUST NOT be repeated at call sites.
+* STRUCTURAL SEAM — permitted with a documented rationale where the proof
+  lives in another module and cannot be checked locally, such as protocol
+  conformance or a lazy/plugin module boundary. These carry the same rationale
+  requirement as a suppression and count against the same ratcheted baseline
+  (`suppression_rationale_policy`). Where the language offers a runtime-
+  checkable protocol or interface, it MUST be used instead, demoting the seam
+  to the first position.
+
+Every other assertion is forbidden. In particular, asserting the SHAPE OF
+EXTERNAL DATA is forbidden without exception: narrowing a value read from
+deserialized input, a configuration file, a subprocess, a network response, or
+any untyped mapping directly to a scalar or domain type is a prohibited
+assertion, however obvious the shape appears. Such a value is untyped
+precisely because its shape is unknown, and the assertion is an unverified
+claim about data the project does not control. It MUST be replaced by one of:
+
+* a checked accessor that validates the value and raises on mismatch;
+* a checked accessor that returns an explicit absent value, where the
+  surrounding boundary is deliberately lenient (for example a parser of
+  third-party output that MUST skip a malformed record and continue).
+  Introducing validation MUST NOT convert a documented lenient boundary into a
+  raising one;
+* a checker-recognised narrowing predicate (`TypeIs`/`TypeGuard`, a
+  user-defined type guard) or a validating parser that returns a typed model.
+
+Assertions MUST NOT be used to silence a diagnostic the author does not
+understand, and MUST NOT appear in tests: a test that needs one is evidence
+that the production API is under-typed, and the API MUST be fixed instead.
+
+## Project facts to resolve
+
+The `RALPH-FACT:` lines below record verified project facts. Agents
+rely on them when enforcing this policy and MUST keep them current as
+the project evolves.
+
+RALPH-FACT: typechecker_per_language: Python → mypy (via `make typecheck` → `uv run python -m mypy ralph/`); other detected languages are listed in the Verification section below with explicit inapplicability.
+RALPH-FACT: strictness_level: mypy --strict (per ralph-workflow/mypy.ini) plus `disallow_untyped_defs = True`, `disallow_incomplete_defs = True`, `check_untyped_defs = True`, `no_implicit_optional = True`, `warn_unused_ignores = True`, `warn_unused_configs = True`, `warn_return_any = True`, `warn_unreachable = True`, `strict_equality = True`, `enable_error_code = ignore-without-code`. Disallow-Any family is fully on (`disallow_any_explicit`, `disallow_any_decorated`, `disallow_any_unimported`, `disallow_any_expr`); any of these flags being weakened is detected by `ralph/testing/audit_typecheck_bypass.py`.
+RALPH-FACT: excluded_paths: `ralph-workflow/stubs/` is on mypy_path (first-party type stubs); `ralph-workflow/tests/` is NOT type-checked (`mypy ralph/` excludes it by target). Legacy Rust in `docs/legacy-rust/`, the bundled Homebrew formula (`ralph-workflow/Formula/`), and `ralph-workflow/skills-package/` are outside the mypy target by directory selection, not by inline suppression.
+RALPH-FACT: stubbed_dependencies: first-party stubs live under `ralph-workflow/stubs/` and are registered via `mypy_path` in `ralph-workflow/mypy.ini`. Runtime dev dependencies ship typing support in their own wheels (httpx, pydantic, typer, rich, mcp, loguru, tqdm, gitpython, sentry-sdk, watchdog, jinja2, readability-lxml, selectolax); `types-psutil>=5.9` is declared under `[project.optional-dependencies].dev` because `psutil` does not ship types.
+RALPH-FACT: suppression_rationale_policy: suppressions are governed by `ralph-workflow/docs/agents/type-ignore-policy.md`. Every `# type: ignore[<code>]` comment MUST end with exactly one of two reason markers: `# reason: external library has no type support` or `# reason: autogenerated code has no type support`. Any other text is rejected by `ralph/testing/audit_typecheck_bypass.py`. Blanket `# type: ignore` without `[<code>]` is also rejected. Tests files have zero tolerance for `# type: ignore`.
+RALPH-FACT: ci_gate_integration: `make verify` runs the typechecker via the `python -m mypy ralph/` verify step (`ralph/verify.py:_VERIFY_STEPS`). `.github/workflows/verify.yml` invokes `cd ralph-workflow && make verify` on every push and pull_request event on the GitHub primary repository and fails the build when mypy exits non-zero. `.woodpecker.yml` continues the same gate on the Codeberg mirror while it is maintained; the CLA and publish workflows remain specialized. `make typecheck` is a thin shortcut.
+RALPH-FACT: suppression_inventory_and_baseline: ratchet-style — the baseline is the count of in-tree `# type: ignore[<code>]` comments on `git log -1 HEAD -- ralph/` of the canonical commit, recorded as 0 in the repository history. The audit (`ralph/testing/audit_typecheck_bypass.py`) flags any new line that adds a suppress without a `# reason: external library has no type support` or `# reason: autogenerated code has no type support` marker. New suppressions in ralph-workflow/tests/ are rejected unconditionally by the same audit. A non-zero baseline requires a documented exception in this policy and a ratchet down to 0.
+RALPH-FACT: maintenance_evidence: mypy (Dormanzke + Coghlan et al., MIT, https://github.com/python/mypy) — actively maintained, latest stable >= 1.11; mypy --strict selected for ralph-workflow/; first-party coverage of ralph-workflow/ralph/ is 100% by ralph-workflow/mypy.ini target. Recheck trigger: a major mypy version bump, the project moving off Python 3.12, or any new dependency that ships without inline types.
+RALPH-FACT: first_party_languages: Python (primary), JavaScript (CommonJS in ralph-workflow/skills-package/, no .ts or .jsx files present), Ruby (a single Homebrew formula at ralph-workflow/Formula/ralph-workflow.rb). JSON and YAML are non-code (config) and have no per-language checking. The skills-package's only JavaScript file is ralph-workflow/skills-package/bin/skills.js plus two helper scripts — checked only by `make formula-check` for the Ruby side.
+RALPH-FACT: excluded_language_evidence: TypeScript / .ts and .tsx are absent from the repo (file extension scan from ralph-workflow/language_detector returns zero); Go source is absent (no go.mod); Rust source is quarantined under docs/legacy-rust/ and is outside any build target. Each exclusion names the deterministic detector signal that triggered the inapplicability record.
+RALPH-FACT: type_modeling_conventions: project defaults documented in ralph-workflow/ralph/pydantic_validation_errors.py and ralph-workflow/ralph/logging_models.py — pydantic-validated typed models at trust boundaries, structured loguru records for cross-module log payloads, frozen dataclasses for recovery-classifier outputs. Plain strings and dict[str, Any] are reserved for serialization and parsing layers; once data crosses a trust boundary it MUST land in a typed model.
+RALPH-FACT: sanctioned_dynamic_boundaries: enumerated at the trust boundaries only — `subprocess_e2e` subprocess NDJSON stream parsers under ralph-workflow/ralph/parsers/ (raw dict input narrowed via ralph-workflow/ralph/parsers/*.py with pydantic models), the MCP JSON envelope parser at ralph-workflow/ralph/mcp/server/_fallback_http_handler.py, and the Claude/OpenCode stream parsers under ralph-workflow/ralph/agents/invoke.py. Each boundary is annotated with a typed adapter that narrows the raw payload to a pydantic model BEFORE first-party code consumes it. New dynamic boundaries require a documented addition to this fact plus a typed adapter, and the resource-lifecycle audit (`ralph/testing/audit_resource_lifecycle.py`) flags new `# type: ignore` usage outside these locations.
+
+## AI execution instructions
+
+To follow this policy, an agent making any change MUST:
+
+* DECLARE one `RALPH-LANG:` block per language with the exact checker
+  command. Do not invent languages; do not omit detected languages.
+* PREFER existing tooling and configuration. Adding a new type checker
+  requires a documented rationale and a benchmarked benefit.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the type checker, strictness level, or
+  exclusion patterns.
+
+An agent MUST NOT:
+
+* Add `ignore_missing_imports`, `follow_imports = silent`, or similar
+  global silencers without a per-dependency rationale.
+* Use `# type: ignore` without a specific error code.
+* Add a `# type: ignore` to a test file.
+* Weaken the strictness level to obtain a passing result.
+* Assert a type where a runtime check would discharge the same obligation.
+* Assert the type of a value read from external, deserialized, or otherwise
+  untyped data instead of validating it through a checked accessor or a
+  narrowing predicate.
+* Repeat a boundary assertion at call sites instead of confining it to one
+  named helper per leak kind.
+* Use a type assertion in a test.
+* Disable `enable_error_code = ignore-without-code` (it is the
+  load-bearing safeguard against blanket ignores).
+
+## Verification
+
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-LANG: Python
+RALPH-COMMAND: make -C ralph-workflow typecheck
+
+RALPH-LANG: TypeScript
+RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no TypeScript source exists in this project (the project uses plain CommonJS Node.js for the ralph-workflow/skills-package/ distribution artefact, with no `tsconfig.json` and no `.ts` files); reopens when the first `.ts` file lands - at which point `RALPH-COMMAND: npx tsc --noEmit` becomes the gate.; evidence: ralph-workflow/language_detector returns zero `.ts` / `.tsx` files under the workspace root; the only JavaScript source is plain CommonJS (no type annotations, no JSDoc types); owner: project-policy owner; expiry: 2027-07-12; warning: TypeScript checking is genuinely inapplicable until a `.ts` file lands; review trigger: when a `.ts` file is added under the workspace root.
+
+RALPH-LANG: Rust
+RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no Rust source is built, tested, or distributed in this project (docs/legacy-rust/ is the quarantined pointer to the retired Rust implementation and is outside any build target); reopens when active Rust code is reintroduced - at which point `RALPH-COMMAND: cargo check` (or the project's chosen tool, with a documented rationale) becomes the gate.; evidence: no Cargo.toml / Cargo.lock at repo root; docs/legacy-rust/ is marked retired in its README and excluded from any build target; owner: project-policy owner; expiry: 2027-07-12; warning: Rust type checking is genuinely inapplicable while the legacy pointer stays retired; review trigger: when a new Cargo.toml lands at the workspace root or a Rust module is reintroduced outside docs/legacy-rust/.
+
+RALPH-LANG: Go
+RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no Go source exists in this project (no `go.mod`; `language_detector/models.py` only references Go in stack-classification helpers); reopens when the first Go file lands - at which point `RALPH-COMMAND: go build ./...` becomes the gate.; evidence: no go.mod / go.sum at repo root; ralph-workflow/language_detector scan reports zero `.go` files; owner: project-policy owner; expiry: 2027-07-12; warning: Go type checking is genuinely inapplicable until a Go file lands; review trigger: when a go.mod lands at the workspace root.
+
+RALPH-LANG: JavaScript
+RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - no static type system is wired up for the ralph-workflow/skills-package/ Node.js artefact (plain CommonJS, no `tsconfig.json`, no `// @ts-check`, no JSDoc type coverage); reopens when JS source gains a typed dialect or a JSDoc-typed baseline - at which point `RALPH-COMMAND: npx tsc --noEmit -p .` or `RALPH-COMMAND: npx jsdoc --check` becomes the gate.; evidence: ralph-workflow/skills-package/ contains three plain CommonJS files with zero `// @ts-check` and zero JSDoc types; no `tsconfig.json`; the package manifest exposes no type-check script; owner: project-policy owner; expiry: 2027-07-12; warning: JavaScript type checking is genuinely inapplicable until JSDoc/TypeScript is wired; review trigger: when a tsconfig.json, jsconfig.json, or `// @ts-check` line is added to ralph-workflow/skills-package/.
+
+RALPH-LANG: Ruby
+RALPH-INAPPLICABLE: exceptional case: no suitable maintained checker exists; reason - the only Ruby file in the project is the Homebrew formula (ralph-workflow/Formula/ralph-workflow.rb), which is a build-distribution artefact and is syntax-checked via `make formula-check` (see linting-policy.md); no Ruby type checker (Sorbet / RBS) is wired up. Reopens if a real Ruby source tree is added - at which point `RALPH-COMMAND: bundle exec srb tc` or `RALPH-COMMAND: rbs -I . validate` becomes the gate.; evidence: ralph-workflow/Formula/ contains exactly one file (the Homebrew formula); Sorbet / RBS are not installed; `make formula-check` already runs `ruby -c` for syntax-level coverage; owner: project-policy owner; expiry: 2027-07-12; warning: Ruby type checking is genuinely inapplicable while the formula stays the only Ruby artefact; review trigger: when a Gemfile / .gemspec lands under the workspace root or a second Ruby file is added outside ralph-workflow/Formula/.
+
+The expected successful result is a clean type check (exit 0) on the
+current code base. Never mask type errors with silencers.
+
+## Exceptions
+
+A project that genuinely does not apply type checking to a detected
+language MUST mark that language with `RALPH-INAPPLICABLE:` and a
+documented reason above. The reason is reviewed at the next policy
+update. Each inapplicability must name the stack fact that
+would re-open the gate, so a future agent reconsiders the question
+when the stack changes.
+
+## Maintenance triggers
+
+This policy MUST be reviewed in the same workflow as any of:
+
+* A new language is added to the project.
+* The type checker, version, or strictness level changes.
+* A new dependency is added that ships without types.
+* The suppression policy changes.
+* The type-assertion rules, or the set of named boundary helpers that hold
+  the sanctioned assertions, change.
+
+## Research basis
+
+* publisher: Python Software Foundation
+  title: "typing — Support for type hints (PEP 484)"
+  http: https://docs.python.org/3/library/typing.html
+  review date: 2026-07-12
+
+* publisher: Microsoft TypeScript
+  title: "TypeScript: Handbook - Type Checking .js Files"
+  http: https://www.typescriptlang.org/docs/handbook/type-checking-javascript-files.html
+  review date: 2026-07-12
+
+* publisher: The Rust Project
+  title: "The Rust Reference: Types"
+  http: https://doc.rust-lang.org/reference/types.html
+  review date: 2026-07-12
+
+* publisher: mypy (Python typing project)
+  title: "Using mypy with an existing codebase"
+  http: https://mypy.readthedocs.io/en/stable/existing_code.html
+  review date: 2026-07-12
+
+## Living document contract
+
+This policy is a living document. It MUST evolve as the project grows:
+update the resolved facts, commands, and requirements whenever verified
+project reality changes (new frameworks, new commands, new structure).
+Two guardrails bound every amendment:
+
+* Conflicts between this policy's generic defaults and the project's
+  established practice are resolved in
+  favor of the existing project policy — adapt this file to verified
+  project reality, never the reverse. A looser project practice is
+  NOT such a conflict: keep the stronger requirement unless a
+  documented exception narrows it.
+* An amendment MUST NOT subvert the INTENT of this policy. Weakening,
+  disabling, or deleting a requirement so that a failing change passes is
+  forbidden; evolution clarifies and extends, it does not water down.
+
+## Ralph markers
+
+* Policy id: `<!-- ralph-policy-id: typechecking-policy.md -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

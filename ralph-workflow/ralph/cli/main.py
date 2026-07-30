@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path as RuntimePath
@@ -17,7 +18,6 @@ import rich_click as click
 import typer
 import typer.testing
 from loguru import logger
-from rich.text import Text
 
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
@@ -37,9 +37,11 @@ from ralph.cli.commands.smoke import (
     smoke_interactive_claude_command,
     smoke_interactive_cursor_command,
     smoke_interactive_nanocoder_command,
+    smoke_interactive_opencode_command,
 )
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
+    ensure_global_agents_config,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_global_policy_configs,
@@ -47,13 +49,18 @@ from ralph.config.bootstrap import (
     regenerate_all,
 )
 from ralph.config.enums import Verbosity
-from ralph.config.loader import load_config
+from ralph.config.loader import ConfigTomlError, load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
+from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sink
 from ralph.display.parallel_display import resolve_active_display
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
+from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
+from ralph.policy.validation import validate_agent_chains_satisfiable, validate_chain_agents_on_path
+from ralph.process._spawn_env import sanitize_process_environment
+from ralph.project_policy.policy_mode import PolicyMode
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -109,7 +116,9 @@ _typer_get_command = typer.main.get_command
 
 def _as_click_command(command: object) -> click.Command:
     """Bridge across typer versions that expose different Command types."""
-    return cast("click.Command", command)
+    return cast(
+        "click.Command", command
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _get_cli_context() -> DisplayContext:
@@ -119,6 +128,7 @@ def _get_cli_context() -> DisplayContext:
 
 _KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup", "star", "contribute"})
 _QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
+_LONG_DEVELOPER_ITERS = 5
 _THOROUGH_DEVELOPER_ITERS = 10
 
 
@@ -253,14 +263,13 @@ _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
 def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
-    """Print version information."""
+    """Route ``--version`` through the shared display welcome banner."""
     if version:
-        c = ctx.console if ctx is not None else _get_cli_context().console
-        version_text = Text()
-        version_text.append("Ralph Workflow", style="theme.banner.title")
-        version_text.append(" version ")
-        version_text.append(__version__, style="theme.banner.version")
-        c.print(version_text)
+        from ralph.display.parallel_display import resolve_active_display
+
+        resolved_ctx = ctx if ctx is not None else _get_cli_context()
+        display = resolve_active_display(None, resolved_ctx)
+        display.emit_welcome_banner(version=__version__)
         raise typer.Exit()
 
 
@@ -304,21 +313,66 @@ def _try_load_registry() -> AgentRegistry | None:
         return None
 
 
-def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
-    """Create user-global config files from bundled templates if they don't exist."""
+def _bootstrap_global_configs(
+    *, display_context: DisplayContext, emit_welcome: bool = True
+) -> None:
+    """Create user-global configs, optionally leaving onboarding to the caller."""
     results = [
         ensure_global_config(),
+        ensure_global_agents_config(),
         ensure_global_mcp_config(),
         *ensure_global_policy_configs(),
     ]
     registry = None
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()
-    emit_first_run_welcome(
-        results,
-        agent_registry=registry,
-        display_context=display_context,
-    )
+    if emit_welcome:
+        emit_first_run_welcome(
+            results,
+            agent_registry=registry,
+            display_context=display_context,
+        )
+
+
+def _bootstrap_global_configs_or_exit(
+    display_context: DisplayContext, *, emit_welcome: bool = True
+) -> None:
+    """Run ``bootstrap_global_configs`` and render the envelope on config error.
+
+    ``load_toml`` raises ``ConfigTomlError`` when a pre-existing
+    user-global TOML is malformed (the migration path in
+    ``ensure_global_config`` reads the existing file). Render the
+    existing what/why/fix envelope and exit 1 instead of letting the
+    raw ``ValueError`` propagate as a traceback.
+    """
+    try:
+        if emit_welcome:
+            bootstrap_global_configs(display_context=display_context)
+        else:
+            _bootstrap_global_configs(display_context=display_context, emit_welcome=False)
+    except ConfigTomlError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(code=1) from None
+
+
+def _bootstrap_for_command(
+    *, init_requested: bool, regenerate_config: bool, display_context: DisplayContext
+) -> None:
+    """Bootstrap commands that need global config before their dedicated handler."""
+    if not init_requested:
+        _bootstrap_global_configs_or_exit(
+            display_context,
+            emit_welcome=not regenerate_config,
+        )
+
+
+def _handle_init(*, template: str | None, config: str | None, display_context: DisplayContext) -> None:
+    """Run init and preserve the setup-time TOML error envelope."""
+    try:
+        init_command(template, _config_path(config), display_context=display_context)
+    except ConfigTomlError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(code=1) from None
 
 
 def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
@@ -476,6 +530,7 @@ Args:
     developer_iters: ``--developer-iters/-D`` maximum developer agent
         iterations per run.
     quick: ``--quick/-Q`` single-developer-iteration shortcut.
+    long_run: ``--long/-L`` five-iteration preset.
     thorough: ``--thorough/-T`` ten-iteration preset.
     counter: ``--counter NAME=VALUE`` repeatable policy-counter override.
     developer_agent: ``--developer-agent/-a`` developer agent name.
@@ -533,6 +588,8 @@ Side effects:
     roots. ``--diagnose`` prints but does not mutate. ``--version``
     and ``--help`` are read-only.
 """
+
+
 def main(
     ctx: typer.Context,
     prompt: Annotated[
@@ -566,6 +623,17 @@ def main(
             "--quick",
             "-Q",
             help="Quick mode: run a single developer iteration (equivalent to -D 1).",
+        ),
+    ] = False,
+    long_run: Annotated[
+        bool,
+        typer.Option(
+            "--long",
+            "-L",
+            help=(
+                "Long mode: run five developer iterations "
+                f"(equivalent to -D {_LONG_DEVELOPER_ITERS})."
+            ),
         ),
     ] = False,
     thorough: Annotated[
@@ -763,6 +831,37 @@ def main(
             help="Validate the active policy and print a summary, then exit",
         ),
     ] = False,
+    redo_policy: Annotated[
+        bool,
+        typer.Option(
+            "--redo-policy",
+            help=(
+                "Delete the project's quality-policy documents and regenerate "
+                "them from scratch. Combine with --policy-only to exit afterwards"
+            ),
+        ),
+    ] = False,
+    run_policy_agents: Annotated[
+        bool,
+        typer.Option(
+            "--run-policy-agents",
+            help=(
+                "Audit the EXISTING policy with the policy agents; nothing is "
+                "overwritten unless the review rejects it. Combine with "
+                "--policy-only to exit afterwards"
+            ),
+        ),
+    ] = False,
+    policy_only: Annotated[
+        bool,
+        typer.Option(
+            "--policy-only",
+            help=(
+                "Exit once the policy work is done instead of continuing into "
+                "the development run. Modifies --redo-policy / --run-policy-agents"
+            ),
+        ),
+    ] = False,
     prompt_helper: Annotated[
         bool,
         typer.Option(
@@ -795,8 +894,9 @@ def main(
       commit artifact from the latest development_result; ``--generate-commit``
       applies the commit. Always dogfood this for the AGENTS.md commit
       rule rather than hand-rolling ``git commit``.
-    - ``--quick`` / ``-Q`` and ``--thorough`` / ``-T`` — depth presets
-      that map to developer-iteration counts (1 and 10 respectively).
+    - ``--quick`` / ``-Q``, ``--long`` / ``-L``, and ``--thorough`` /
+      ``-T`` — mutually exclusive depth presets that map to
+      developer-iteration counts (1, 5, and 10 respectively).
     - ``--developer-iters`` / ``-D``, ``--reviewer-reviews`` / ``-R`` —
       explicit iteration caps (overridden by the depth presets).
     - ``--resume`` / ``-r`` and ``--no-resume`` — checkpoint handling.
@@ -821,6 +921,7 @@ def main(
         developer_iters: ``--developer-iters`` / ``-D`` developer-agent
             iteration cap.
         quick: ``--quick`` / ``-Q`` single-iteration preset.
+        long_run: ``--long`` / ``-L`` five-iteration preset.
         thorough: ``--thorough`` / ``-T`` ten-iteration preset.
         counter: ``--counter`` repeatable ``NAME=VALUE`` overrides.
         developer_agent: ``--developer-agent`` / ``-a`` agent name.
@@ -878,6 +979,13 @@ def main(
         ``declare_complete`` on success. Bounded subprocesses are
         routed through ``ralph.process.manager``.
     """
+    removed_malloc_debug_vars = sanitize_process_environment()
+    if removed_malloc_debug_vars:
+        logger.debug(
+            "Stripped inherited malloc-debug environment variables: {}",
+            ", ".join(removed_malloc_debug_vars),
+        )
+
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
     counter_overrides = _parse_counter_overrides(list(counter) if counter else [])
 
@@ -889,24 +997,39 @@ def main(
         counter_overrides=counter_overrides,
     )
 
-    _validate_mode_flags(quick=quick, thorough=thorough, resume=resume, no_resume=no_resume)
+    _validate_mode_flags(
+        quick=quick,
+        long_run=long_run,
+        thorough=thorough,
+        resume=resume,
+        no_resume=no_resume,
+    )
+    policy_mode = _resolve_policy_mode(
+        redo_policy=redo_policy,
+        run_policy_agents=run_policy_agents,
+        policy_only=policy_only,
+    )
 
     verbosity = resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
     _cli_ctx = _get_cli_context()
 
-    bootstrap_global_configs(display_context=_cli_ctx)
+    # Configure logging before bootstrap/init so setup never leaks loader DEBUG lines.
+    configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))
+    _bootstrap_for_command(
+        init_requested=init is not None or "--init" in sys.argv[1:],
+        regenerate_config=regenerate_config,
+        display_context=_cli_ctx,
+    )
     _init_telemetry()
     _record_cli_command(ctx)
-
-    # Set up logging based on verbosity
-    configure_logging(verbosity)
 
     _validate_prompt_flags(prompt, quick)
 
     # Mode presets imply developer iteration counts and override explicit -D when supplied.
     effective_developer_iters = _resolve_effective_developer_iters(
         quick=quick,
+        long_run=long_run,
         thorough=thorough,
         developer_iters=developer_iters,
     )
@@ -945,7 +1068,7 @@ def main(
         raise typer.Exit(code=exit_code)
 
     if init is not None:
-        init_command(init, _config_path(config), display_context=_cli_ctx)
+        _handle_init(template=init, config=config, display_context=_cli_ctx)
         raise typer.Exit()
 
     if regenerate_config:
@@ -990,6 +1113,11 @@ def main(
     if ctx.invoked_subcommand:
         return
 
+    # Best-effort nag if a newer release is available; never blocks the run.
+    from ralph.update_check import maybe_render_update_nag
+
+    maybe_render_update_nag(_cli_ctx)
+
     # Run the main pipeline
     exit_code = invoke_pipeline(
         config,
@@ -1002,6 +1130,7 @@ def main(
             counter_overrides=counter_overrides,
             inline_prompt=prompt,
             parallel_worker_manifest=_config_path(parallel_worker_manifest),
+            policy_mode=policy_mode,
         ),
         display_context=_cli_ctx,
     )
@@ -1013,9 +1142,31 @@ app.command()(cleanup)
 app.command(name="contribute")(contribute)
 
 
-def smoke_interactive_claude() -> None:
+def smoke_interactive_claude(
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
     """Run the manual PTY/TUI smoke test for interactive Claude using claude/haiku."""
-    raise typer.Exit(code=smoke_interactive_claude_command(display_context=_get_cli_context()))
+    raise typer.Exit(
+        code=smoke_interactive_claude_command(
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+        )
+    )
 
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
@@ -1023,15 +1174,32 @@ app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
 def smoke_interactive_agy(
     agent: str = typer.Option(
-        "agy/Gemini 3.5 Flash (Medium)",
-        help="AGY model alias to smoke (e.g. agy/Gemini 3.5 Flash (Medium)).",
+        "agy/gemini-3.6-flash-low",
+        help="AGY model alias to smoke (e.g. agy/gemini-3.6-flash-low).",
     ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ) -> None:
     """Run the manual PTY smoke test for Google Anti Gravity."""
     raise typer.Exit(
         code=smoke_interactive_agy_command(
             agent_name=agent,
             display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
         )
     )
 
@@ -1044,12 +1212,29 @@ def smoke_interactive_nanocoder(
         "nanocoder",
         help="Nanocoder alias to smoke (e.g. nanocoder/MiniMax Coding/MiniMax-M3).",
     ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ) -> None:
     """Run the manual PTY smoke test for Nanocoder interactive mode."""
     raise typer.Exit(
         code=smoke_interactive_nanocoder_command(
             agent_name=agent,
             display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
         )
     )
 
@@ -1062,27 +1247,150 @@ def smoke_interactive_cursor(
         "cursor/auto",
         help="Cursor model alias to smoke (e.g. cursor/auto, cursor/gpt-5.3-codex-high).",
     ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ) -> None:
     """Run the manual end-to-end smoke test for the Cursor Agent CLI."""
     raise typer.Exit(
         code=smoke_interactive_cursor_command(
             agent_name=agent,
             display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
         )
     )
 
 
 app.command(name="smoke-interactive-cursor")(smoke_interactive_cursor)
+
+
+def smoke_interactive_opencode(
+    agent: str = typer.Option(
+        "opencode/minimax-coding-plan/MiniMax-M3",
+        help=(
+            "OpenCode alias to smoke, as opencode/<provider>/<model> "
+            "(e.g. opencode/minimax-coding-plan/MiniMax-M3). Run `opencode models` "
+            "to list reachable provider/model pairs."
+        ),
+    ),
+    provider: str | None = typer.Option(
+        None,
+        help=(
+            "OpenCode provider (e.g. minimax-coding-plan). Requires --model; "
+            "together they override --agent."
+        ),
+    ),
+    model: str | None = typer.Option(
+        None,
+        help="OpenCode model (e.g. MiniMax-M3). Requires --provider.",
+    ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual smoke test for OpenCode against a live provider/model."""
+    if (provider is None) != (model is None):
+        raise click.UsageError("--provider and --model must be given together")
+    agent_name = f"opencode/{provider}/{model}" if provider is not None else agent
+    raise typer.Exit(
+        code=smoke_interactive_opencode_command(
+            agent_name=agent_name,
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+        )
+    )
+
+
+app.command(name="smoke-interactive-opencode")(smoke_interactive_opencode)
 app.command()(star)
 
 
-def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume: bool) -> None:
+#: Depth presets are mutually exclusive: each pins ``developer_iters`` to a
+#: different value, so any two of them are a contradiction.
+_DEPTH_PRESET_FLAGS: tuple[tuple[str, str], ...] = (
+    ("quick", "--quick/-Q"),
+    ("long_run", "--long/-L"),
+    ("thorough", "--thorough/-T"),
+)
+
+
+def _validate_mode_flags(
+    *, quick: bool, long_run: bool, thorough: bool, resume: bool, no_resume: bool
+) -> None:
     if resume and no_resume:
         raise click.UsageError(
             "Conflicting flags: --resume and --no-resume cannot be used together"
         )
-    if quick and thorough:
-        raise click.UsageError("--quick/-Q and --thorough/-T cannot be used together")
+    selected = {"quick": quick, "long_run": long_run, "thorough": thorough}
+    names = [label for key, label in _DEPTH_PRESET_FLAGS if selected[key]]
+    if len(names) > 1:
+        raise click.UsageError(f"{' and '.join(names)} cannot be used together")
+
+
+#: (redo_policy, run_policy_agents, policy_only) -> the selected policy mode.
+#: ``--policy-only`` is a MODIFIER, not a mode: it says "exit after the policy
+#: work" and composes with either action flag.
+_POLICY_MODES: dict[tuple[bool, bool], PolicyMode] = {
+    (True, False): PolicyMode.REDO,
+    (True, True): PolicyMode.REDO_ONLY,
+    (False, False): PolicyMode.RUN_AGENTS,
+    (False, True): PolicyMode.RUN_AGENTS_ONLY,
+}
+
+
+def _resolve_policy_mode(
+    *,
+    redo_policy: bool,
+    run_policy_agents: bool,
+    policy_only: bool,
+) -> PolicyMode:
+    """Map the policy flags onto a single :class:`PolicyMode`.
+
+    ``--redo-policy`` (wipe and regenerate) and ``--run-policy-agents`` (audit in
+    place) are mutually exclusive ACTIONS -- one destroys the existing policy and
+    the other preserves it, so asking for both is a contradiction.
+    ``--policy-only`` is a MODIFIER that composes with either.
+    """
+    if redo_policy and run_policy_agents:
+        raise click.UsageError(
+            "Conflicting flags: --redo-policy and --run-policy-agents cannot be "
+            "used together (--redo-policy wipes the policy, --run-policy-agents "
+            "audits it in place)"
+        )
+    if not redo_policy and not run_policy_agents:
+        if policy_only:
+            raise click.UsageError(
+                "--policy-only modifies --redo-policy or --run-policy-agents; "
+                "it does nothing on its own"
+            )
+        return PolicyMode.NORMAL
+    return _POLICY_MODES[(redo_policy, policy_only)]
 
 
 def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
@@ -1093,10 +1401,12 @@ def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
 
 
 def _resolve_effective_developer_iters(
-    *, quick: bool, thorough: bool, developer_iters: int | None
+    *, quick: bool, long_run: bool, thorough: bool, developer_iters: int | None
 ) -> int | None:
     if quick:
         return 1
+    if long_run:
+        return _LONG_DEVELOPER_ITERS
     if thorough:
         return _THOROUGH_DEVELOPER_ITERS
     return developer_iters
@@ -1157,7 +1467,16 @@ def _handle_check_config(
     try:
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        registry = _load_agent_registry_factory().from_config(config_value)
+        if config_path is not None:
+            bundle = load_policy(config_path.parent, config=config_value)
+        else:
+            if workspace_scope is None:
+                raise RuntimeError("workspace scope is required for the active configuration")
+            bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
+        validate_agent_chains_satisfiable(bundle, registry)
+        validate_chain_agents_on_path(bundle.agents)
         display.emit_status("Configuration is valid")
         return 0
     except Exception as e:
@@ -1208,6 +1527,7 @@ class _RunPipelineOpts:
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
     parallel_worker_manifest: RuntimePath | None = None
+    policy_mode: PolicyMode = PolicyMode.NORMAL
 
 
 def _run_pipeline(
@@ -1247,6 +1567,7 @@ def _run_pipeline(
             counter_overrides=opts.counter_overrides or {},
             inline_prompt=opts.inline_prompt,
             parallel_worker_manifest=opts.parallel_worker_manifest,
+            policy_mode=opts.policy_mode,
         )
         exit_code = run_pipeline(request, display_context=display_context)
         _set_outcome("success" if exit_code == 0 else "failure")
@@ -1261,6 +1582,13 @@ def _run_pipeline(
             logger.warning("Interrupt dispatcher failed during outer CLI catch", exc_info=True)
         _set_outcome("interrupted")
         return 130
+    except ConfigTomlError as e:
+        # A malformed TOML raised during the run path: surface the
+        # existing what/why/fix envelope via the display, NOT via
+        # ``logger.exception`` (which would print a raw traceback).
+        display.emit_warning(str(e))
+        _set_outcome("failure")
+        return 1
     except Exception as e:
         logger.exception("Pipeline failed: {}")
         display.emit_warning(f"Error: {e}")
@@ -1268,22 +1596,37 @@ def _run_pipeline(
         return 1
 
 
-def _configure_logging(verbosity: Verbosity) -> None:
-    """Configure logging based on verbosity level."""
+def _configure_logging(
+    verbosity: Verbosity, *, console_sink: Callable[[str], None] | None = None
+) -> None:
+    """Configure logging based on verbosity level.
+
+    Args:
+        verbosity: CLI verbosity branch. Each branch maps to a
+            loguru level / format pair.
+        console_sink: Optional callable that replaces the raw
+            terminal sink. When ``None`` (default) the
+            library/worker fallback ``make_stderr_log_sink`` is used,
+            which strips terminal-control constructs before writing
+            to the process error stream. The CLI's ``main()`` call
+            site passes ``make_sanitizing_log_sink(_cli_ctx)`` so
+            the rich Live status bar is the single painter of the
+            terminal.
+    """
     # Remove default handler
     logger.remove()
 
+    sink = console_sink if console_sink is not None else make_stderr_log_sink()
+
     if verbosity == Verbosity.QUIET:
-        logger.add(sys.stderr, level="ERROR")
-    elif verbosity == Verbosity.NORMAL:
-        logger.add(sys.stderr, level="INFO")
-    elif verbosity == Verbosity.VERBOSE:
-        logger.add(sys.stderr, level="DEBUG")
+        logger.add(sink, level="ERROR")
+    elif verbosity in {Verbosity.NORMAL, Verbosity.VERBOSE}:
+        logger.add(sink, level="INFO")
     elif verbosity == Verbosity.FULL:
-        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} {level} {message}")
+        logger.add(sink, level="DEBUG", format="{time:HH:mm:ss} {level} {message}")
     else:  # DEBUG
         logger.add(
-            sys.stderr,
+            sink,
             level="TRACE",
             format="{time:HH:mm:ss} {level} {name}:{function}:{line} {message}",
         )
@@ -1359,6 +1702,7 @@ prepare_init_args = _prepare_init_args
 build_cli_overrides = _build_cli_overrides
 RunPipelineOpts = _RunPipelineOpts
 invoke_pipeline = _run_pipeline
+LONG_DEVELOPER_ITERS = _LONG_DEVELOPER_ITERS
 THOROUGH_DEVELOPER_ITERS = _THOROUGH_DEVELOPER_ITERS
 
 
@@ -1420,7 +1764,16 @@ def handle_check_config(
     try:
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        registry = _load_agent_registry_factory().from_config(config_value)
+        if config_path is not None:
+            bundle = load_policy(config_path.parent, config=config_value)
+        else:
+            if workspace_scope is None:
+                raise RuntimeError("workspace scope is required for the active configuration")
+            bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
+        validate_agent_chains_satisfiable(bundle, registry)
+        validate_chain_agents_on_path(bundle.agents)
         display.emit_status("Configuration is valid")
         return 0
     except Exception as e:

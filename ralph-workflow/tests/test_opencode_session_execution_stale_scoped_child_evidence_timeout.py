@@ -7,7 +7,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 from __future__ import annotations
 
 import json
-from typing import cast
 
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
@@ -81,7 +80,7 @@ class TestStaleScopedChildEvidenceTimeout:
             def any_agent_active(self, label_prefix: str) -> bool:
                 return False  # No active agents in old-style check
 
-        probe = cast("FakeLivenessProbe", _OldStyleProbe())
+        probe = _OldStyleProbe()
         # Raw descendants exist (the stuck child process is still running)
         handle = _FakeHandle(has_descendants=True)
 
@@ -218,7 +217,7 @@ class TestStaleScopedChildEvidenceTimeout:
             def any_agent_active(self, label_prefix: str) -> bool:
                 return False
 
-        probe = cast("FakeLivenessProbe", _OldStyleProbe())
+        probe = _OldStyleProbe()
         handle = _FakeHandle(has_descendants=True)
         signals = CompletionSignals(
             explicit_complete=False,
@@ -323,7 +322,7 @@ class TestStaleScopedChildEvidenceTimeout:
             def any_agent_active(self, label_prefix: str) -> bool:
                 return False
 
-        probe = cast("FakeLivenessProbe", _OldStyleProbe())
+        probe = _OldStyleProbe()
         handle = _FakeHandle(has_descendants=True)
 
         state = strategy.classify_quiet(handle, probe)

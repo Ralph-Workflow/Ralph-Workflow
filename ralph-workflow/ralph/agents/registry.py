@@ -47,7 +47,7 @@ Side effects:
 Invariants:
 
 - The registry's keys are the agent names policy references (e.g.
-  ``claude-headless``, ``agy/Gemini 3.5 Flash (Medium)``). The registry
+  ``claude-headless``, ``agy/gemini-3.6-flash-low``). The registry
   does not silently rename or normalize these strings.
 - The registry does not silently drop unknown agent names; resolution
   raises :class:`ralph.agents.unknown_agent_error.UnknownAgentError`.
@@ -82,6 +82,7 @@ from ralph.agents.support import AgentSupport
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.process.monitor import (
     make_agy_subagent_pid_source,
     make_claude_interactive_subagent_pid_source,
@@ -104,9 +105,80 @@ _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
 _MIN_AGY_SEGMENTS = 2
 _MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
+_CODEX_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
+_AGY_REASONING_EFFORTS = frozenset({"low", "medium", "high"})
+# Measured from `agy models` v1.1.8; refresh only from a new AGY measurement.
+_AGY_MODELS = frozenset(
+    {
+        "gemini-3.6-flash-high",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.5-flash-high",
+        "gemini-3.5-flash-medium",
+        "gemini-3.5-flash-low",
+        "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
+    }
+)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+
+
+def _make_default_agy_models_probe() -> Callable[[], str]:
+    """Build the bounded, per-process cached probe for AGY's published models."""
+    cached_output: str | None = None
+
+    def probe() -> str:
+        nonlocal cached_output
+        if cached_output is None:
+            try:
+                result = run_process(
+                    "agy",
+                    ("models",),
+                    options=ProcessRunOptions(
+                        capture_output=True, timeout=5.0, label="agents:agy-models"
+                    ),
+                )
+            except (OSError, ProcessExecutionError):
+                cached_output = ""
+            else:
+                cached_output = result.stdout if result.returncode == 0 else ""
+        return cached_output
+
+    return probe
+
+
+_default_agy_models_probe = _make_default_agy_models_probe()
+
+
+def agy_published_models() -> tuple[str, ...]:
+    """Return currently published AGY IDs, falling back to the measured v1.1.8 pin."""
+    try:
+        observed = tuple(
+            line.strip().lstrip("- ")
+            for line in _default_agy_models_probe().splitlines()
+            if line.strip() and not line.endswith(":")
+        )
+    except (OSError, ProcessExecutionError):
+        observed = ()
+    return tuple(sorted(set(observed) or _AGY_MODELS))
+
+
+def agy_reasoning_efforts() -> tuple[str, ...]:
+    """Return the effort vocabulary published by AGY's v1.1.8 help output."""
+    return ("low", "medium", "high")
+
+
+def agy_alias_help() -> str:
+    """Return the actionable AGY alias vocabulary for operator-facing failures."""
+    return (
+        f"Available AGY models: {', '.join(agy_published_models())}. "
+        f"Accepted effort suffixes: {', '.join(agy_reasoning_efforts())}."
+    )
 
 
 def builtin_agents() -> dict[str, AgentConfig]:
@@ -320,7 +392,10 @@ class AgentRegistry:
         builtin = _find_builtin_support(name)
         if builtin is not None and self._catalog is not None:
             override_support = _synthesize_override_support(name, config, builtin)
-            self._catalog.replace_builtin(name, override_support)
+            if self._catalog.get(name) is None:
+                self._catalog.add(override_support)
+            else:
+                self._catalog.replace_builtin(name, override_support)
             object.__setattr__(config, "_support", override_support)
 
     def unregister(self, name: str) -> None:
@@ -443,7 +518,7 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
     )
 
 
-def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per-prefix branches each return early on validation failure
+def _resolve_dynamic_agent(
     name: str,
     ccs_defaults: CcsConfig,
     *,
@@ -486,46 +561,8 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
         builtin = builtin_agents().get(agent_name)
         return deepcopy(builtin) if builtin is not None else None
 
-    if name.startswith("opencode/"):
-        if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
-            return None
-
-        base_config = _base("opencode")
-        if base_config is None:
-            return None
-        dynamic_overrides: dict[str, object] = {
-            "model_flag": f"-m {_normalize_opencode_model_id(name)}",
-            "can_commit": True,
-        }
-        resolved = base_config.model_copy(update=dynamic_overrides)
-    elif name.startswith("nanocoder/"):
-        if len(segments) < _MIN_NANOCODER_PROVIDER_SEGMENTS or not all(segments[1:]):
-            return None
-
-        base_config = _base("nanocoder")
-        if base_config is None:
-            return None
-        provider, model = _normalize_nanocoder_provider_and_model(name)
-        model_flag = f"--provider {shlex.quote(provider)}"
-        if model is not None:
-            model_flag += f" --model {shlex.quote(model)}"
-        nanocoder_overrides: dict[str, object] = {"model_flag": model_flag, "can_commit": True}
-        resolved = base_config.model_copy(update=nanocoder_overrides)
-    elif name.startswith("agy/"):
-        if len(segments) < _MIN_AGY_SEGMENTS or not segments[1]:
-            return None
-
-        base_config = _base("agy")
-        if base_config is None:
-            return None
-        # AGY model IDs from `agy models` are display names and may contain
-        # spaces/parentheses (e.g. "Claude Sonnet 4.6 (Thinking)"). Quote the
-        # value so shlex.split in the command builder keeps it as one argument.
-        agy_overrides: dict[str, object] = {
-            "model_flag": f"--model {shlex.quote(segments[1])}",
-            "can_commit": True,
-        }
-        resolved = base_config.model_copy(update=agy_overrides)
+    if name.startswith("codex/"):
+        resolved = _resolve_dynamic_codex_agent(name, _base("codex"))
     elif name.startswith("pi/"):
         model_id = name.removeprefix("pi/")
         if len(segments) < _MIN_PI_SEGMENTS or not _is_valid_pi_model_id(model_id):
@@ -575,23 +612,70 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=cursor_overrides)
+    elif name.startswith(("opencode/", "nanocoder/", "agy/")):
+        resolved = _resolve_dynamic_simple_prefixed_agent(name, segments, _base)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
-        if name.startswith("ccs/"):
-            resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
-        elif name.startswith("claude-headless/"):
-            base_config = _base("claude-headless")
-            if base_config is None:
-                return None
-            claude_headless_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
-            resolved = base_config.model_copy(update=claude_headless_overrides)
-        elif name.startswith("claude/"):
-            base_config = _base("claude")
-            if base_config is None:
-                return None
-            claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
-            resolved = base_config.model_copy(update=claude_overrides)
+        resolved = _resolve_dynamic_claude_family(name, ccs_defaults, _base)
 
     return resolved
+
+
+def _resolve_dynamic_simple_prefixed_agent(
+    name: str,
+    segments: list[str],
+    base_lookup: Callable[[str], AgentConfig | None],
+) -> AgentConfig | None:
+    """Resolve dynamic aliases whose model suffixes need only basic validation."""
+    if name.startswith("opencode/"):
+        if len(segments) >= _MIN_OPENCODE_SEGMENTS and all(segments[1:]):
+            base_config = base_lookup("opencode")
+            if base_config is not None:
+                return base_config.model_copy(
+                    update={
+                        "model_flag": f"-m {_normalize_opencode_model_id(name)}",
+                        "can_commit": True,
+                    }
+                )
+    elif name.startswith("nanocoder/"):
+        if len(segments) >= _MIN_NANOCODER_PROVIDER_SEGMENTS and all(segments[1:]):
+            base_config = base_lookup("nanocoder")
+            if base_config is not None:
+                provider, model = _normalize_nanocoder_provider_and_model(name)
+                model_flag = f"--provider {shlex.quote(provider)}"
+                if model is not None:
+                    model_flag += f" --model {shlex.quote(model)}"
+                return base_config.model_copy(update={"model_flag": model_flag, "can_commit": True})
+    elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS:
+        alias = _parse_agy_alias(name.removeprefix("agy/"), models=frozenset(agy_published_models()))
+        base_config = base_lookup("agy")
+        if alias is not None and base_config is not None:
+            model_id, effort = alias
+            model_flag = f"--model {shlex.quote(model_id)}"
+            if effort is not None:
+                model_flag += f" --effort {effort}"
+            return base_config.model_copy(
+                update={"model": model_id, "model_flag": model_flag, "can_commit": True}
+            )
+    return None
+
+
+def _parse_agy_alias(
+    alias_value: str, *, models: frozenset[str] = _AGY_MODELS
+) -> tuple[str, str | None] | None:
+    """Parse an observed AGY model alias without silently changing its selection.
+
+    AGY v1.1.8 accepts the published model IDs and the documented
+    ``low``, ``medium``, and ``high`` effort values together. Ralph preserves
+    both selections exactly and rejects malformed aliases before invocation.
+    """
+    model_id, separator, effort = alias_value.partition(":")
+    if model_id not in models:
+        return None
+    if not separator:
+        return model_id, None
+    if ":" in effort or effort not in _AGY_REASONING_EFFORTS:
+        return None
+    return model_id, effort
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:
@@ -601,8 +685,67 @@ def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfi
     return _resolve_ccs_alias(f"ccs {segments[1]}", ccs_defaults)
 
 
+def _resolve_dynamic_claude_family(
+    name: str,
+    ccs_defaults: CcsConfig,
+    base_lookup: Callable[[str], AgentConfig | None],
+) -> AgentConfig | None:
+    """Resolve the compact Claude and CCS dynamic-alias family."""
+    segments = name.split("/")
+    if name.startswith("ccs/"):
+        return _resolve_dynamic_ccs_agent(name, ccs_defaults)
+    if name.startswith("claude-headless/"):
+        base_config = base_lookup("claude-headless")
+    elif name.startswith("claude/"):
+        base_config = base_lookup("claude")
+    else:
+        return None
+    if base_config is None:
+        return None
+    return base_config.model_copy(update={"model_flag": f"--model {segments[1]}"})
+
+
 def _normalize_opencode_model_id(name: str) -> str:
     return name.removeprefix("opencode/")
+
+
+def _resolve_dynamic_codex_agent(name: str, base_config: AgentConfig | None) -> AgentConfig | None:
+    """Resolve a validated Codex model alias against its effective base config."""
+    codex_alias = _parse_codex_alias(name.removeprefix("codex/"))
+    if codex_alias is None or base_config is None:
+        return None
+    model_id, effort = codex_alias
+    model_flag = f"--model {shlex.quote(model_id)}"
+    if effort is not None:
+        effort_override = f'model_reasoning_effort = "{effort}"'
+        model_flag += f" -c {shlex.quote(effort_override)}"
+    return base_config.model_copy(
+        update={"model": model_id, "model_flag": model_flag, "can_commit": True}
+    )
+
+
+def _parse_codex_alias(alias_value: str) -> tuple[str, str | None] | None:
+    """Parse a safe ``codex/<model>[effort=<level>]`` dynamic alias."""
+    model_id, separator, suffix = alias_value.partition("[")
+    if (
+        not model_id
+        or any(char.isspace() for char in model_id)
+        or not all(segment for segment in model_id.split("/"))
+    ):
+        return None
+    if not separator:
+        return model_id, None
+    effort_prefix = "effort="
+    effort = suffix.removesuffix("]")
+    if (
+        not suffix.endswith("]")
+        or suffix.count("[")
+        or suffix.count("]") != 1
+        or not effort.startswith(effort_prefix)
+        or effort.removeprefix(effort_prefix) not in _CODEX_REASONING_EFFORTS
+    ):
+        return None
+    return model_id, effort.removeprefix(effort_prefix)
 
 
 def _normalize_nanocoder_provider_and_model(name: str) -> tuple[str, str | None]:

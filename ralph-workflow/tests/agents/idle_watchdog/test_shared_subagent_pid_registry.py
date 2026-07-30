@@ -38,11 +38,10 @@ works.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import cast
 
 import pytest
 
-from ralph.agents.idle_watchdog import SubagentIdentity, SubagentPidRegistry
+from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.invoke._invoke_options import InvokeOptions
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
@@ -237,7 +236,7 @@ def test_shared_registry_supported_for_every_transport(transport: AgentTransport
     # ``SubagentIdentity.__init__`` for the same narrowing reason.
     registry.register(
         pid,
-        source=cast("SubagentIdentity.__init__", source_label),
+        source=source_label,
         now=0.0,
     )
     # The per-transport source sees the PID (shared-registry contract).

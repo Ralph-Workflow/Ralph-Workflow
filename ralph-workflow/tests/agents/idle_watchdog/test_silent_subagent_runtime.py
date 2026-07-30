@@ -13,15 +13,12 @@ The analysis-feedback contract (AC-05 + how_to_fix item #2):
 * ``IdleWatchdog._classify_stuck_now`` MUST pass
   ``silent_subagent_seconds=self._config.silent_subagent_seconds`` into
   ``classify_stuck`` (production runtime path).
-* ``IdleWatchdog.last_deferred_kind`` MUST equal ``StuckKind.SILENT_SUBAGENT``
-  when the classifier returned SILENT_SUBAGENT (distinct diagnostic
-  label).
-* ``IdleWatchdog.last_fire_reason`` MUST equal
-  ``WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER`` (the canonical
-  non-FIRE label).
-* ``IdleWatchdog.evaluate`` MUST return ``WatchdogVerdict.CONTINUE``
-  for SILENT_SUBAGENT (the diagnostic is post-mortem; it does NOT
-  block recovery).
+* ``classify_stuck`` still LABELS the stall ``StuckKind.SILENT_SUBAGENT``
+  (the diagnostic survives).
+* The gate FIRES on that label -- it is not a veto. The branch requires
+  ``alive_by is None``, so no live child exists to protect; deferring it
+  wedged runs forever. See ``test_silent_subagent_fires.py`` for the
+  liveness invariant and ``_gate.py`` for the rationale.
 
 Without this layer the SILENT_SUBAGENT diagnostic is invisible to
 operators even when the underlying classifier branch fires.
@@ -131,17 +128,14 @@ def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none() -> None
     )
 
 
-def test_gate_surfaces_silent_subagent_via_last_deferred_kind() -> None:
-    """When the gate defers a fire because the classifier returned
-    SILENT_SUBAGENT, the watchdog MUST surface the diagnostic via
-    ``last_deferred_kind == StuckKind.SILENT_SUBAGENT``.
+def test_gate_fires_on_silent_subagent_and_does_not_record_a_deferral() -> None:
+    """The gate MUST FIRE when the classifier returns SILENT_SUBAGENT.
 
-    Drives the production ``_gate_fire`` path so the new distinct
-    surface is exercised end-to-end.  We trigger the gate by
-    forcing NO_OUTPUT_DEADLINE as the candidate fire reason; the
-    gate consults ``_classify_stuck_now`` which returns
-    SILENT_SUBAGENT, so the gate defers with the distinct
-    diagnostic label.
+    Drives the production ``_gate_fire`` path. The classifier still LABELS
+    the stall SILENT_SUBAGENT, but the label is not a veto: the branch
+    requires ``alive_by is None`` (no live child), so there is nothing to
+    protect. Deferring here shadowed the STUCK branch and wedged the run
+    forever -- see ``test_silent_subagent_fires.py``.
     """
     watchdog, clock = _make_watchdog(
         silent_subagent_seconds=180.0,
@@ -164,15 +158,13 @@ def test_gate_surfaces_silent_subagent_via_last_deferred_kind() -> None:
         now=now,
         idle_elapsed=clock.monotonic(),
     )
-    assert gate_verdict == WatchdogVerdict.CONTINUE, (
-        f"Gate MUST defer SILENT_SUBAGENT (CONTINUE, not FIRE); got {gate_verdict}"
+    assert gate_verdict == WatchdogVerdict.FIRE, (
+        f"Gate MUST FIRE on SILENT_SUBAGENT (no live child); got {gate_verdict}"
     )
-    assert watchdog.last_deferred_kind == StuckKind.SILENT_SUBAGENT, (
-        f"Expected last_deferred_kind=SILENT_SUBAGENT; got {watchdog.last_deferred_kind}"
+    assert watchdog.last_deferred_kind is None, (
+        f"A FIRE is not a deferral; got last_deferred_kind={watchdog.last_deferred_kind}"
     )
-    assert watchdog.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER, (
-        f"Expected last_fire_reason=DEFERRED_BY_STUCK_CLASSIFIER; got {watchdog.last_fire_reason}"
-    )
+    assert watchdog.last_fire_reason != WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
 
 
 def test_last_deferred_kind_is_none_when_no_fire_deferred() -> None:
@@ -200,13 +192,15 @@ def test_last_deferred_kind_resets_on_invocation_start() -> None:
     clock.advance(180.0 + 1.0)
     now = clock.monotonic()
 
-    # Force one deferral.
+    # Force one deferral. SILENT_SUBAGENT now FIRES, so drive a kind that
+    # still defers: is_waiting_state=True -> DUPLICATE_KILL (branch 1).
+    watchdog.set_is_waiting_state(True)
     watchdog._gate_fire(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=now,
         idle_elapsed=clock.monotonic(),
     )
-    assert watchdog.last_deferred_kind == StuckKind.SILENT_SUBAGENT
+    assert watchdog.last_deferred_kind == StuckKind.DUPLICATE_KILL
 
     # A new invocation MUST reset the deferred kind so prior
     # deferrals don't leak.

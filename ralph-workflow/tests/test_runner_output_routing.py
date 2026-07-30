@@ -91,7 +91,7 @@ def _patch_common_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
         runner_module, "materialize_prompt_for_phase", lambda **_kwargs: "PROMPT.md"
     )
     monkeypatch.setattr(
-        runner_module, "materialize_system_prompt", lambda **_kwargs: "SYSTEM_PROMPT.md"
+        runner_module, "materialize_master_prompt", lambda **_kwargs: "MASTER_PROMPT.md"
     )
     monkeypatch.setattr(
         runner_module, "handle_phase", lambda *_args, **_kwargs: [PipelineEvent.AGENT_SUCCESS]
@@ -109,7 +109,7 @@ def _fast_materializers(
         return str(prompt_path)
 
     def _fast_system_materializer(*_args: object, **_kwargs: object) -> str:
-        sys_path = workspace_scope.root / ".agent" / "tmp" / "system_prompt.md"
+        sys_path = workspace_scope.root / ".agent" / "tmp" / "master_prompt.md"
         sys_path.parent.mkdir(parents=True, exist_ok=True)
         sys_path.write_text("system", encoding="utf-8")
         return str(sys_path)
@@ -166,10 +166,10 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         del kwargs
         assert isinstance(effect, InvokeAgentEffect)
         if effect.phase == "planning":
-            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.md"
             plan_path.parent.mkdir(parents=True, exist_ok=True)
             plan_path.write_text(
-                '{"type":"plan","content":{"noop":true}}',
+                "---\ntype: plan\n---\n## Summary\nNoop plan\n",
                 encoding="utf-8",
             )
         phase_mat, sys_mat = _fast_materializers(workspace_scope, effect)
@@ -179,7 +179,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
             bridge=FakeBridge(),
             registry_factory=registry.from_config,
             phase_prompt_materializer=phase_mat,
-            system_prompt_materializer=sys_mat,
+            master_prompt_materializer=sys_mat,
         )
         return effect_executor_module.execute_agent_effect(
             effect,
@@ -198,7 +198,12 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
 
-    result = runner_module.run(_config(), initial_state=state, display=display)
+    result = runner_module.run(
+        _config(),
+        initial_state=state,
+        display=display,
+        pipeline_deps=make_test_pipeline_deps(display._ctx),
+    )
 
     output = rendered.getvalue()
     assert result == 0
@@ -261,10 +266,10 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         del kwargs
         assert isinstance(effect, InvokeAgentEffect)
         if effect.phase == "planning":
-            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.md"
             plan_path.parent.mkdir(parents=True, exist_ok=True)
             plan_path.write_text(
-                '{"type":"plan","content":{"noop":true}}',
+                "---\ntype: plan\n---\n## Summary\nNoop plan\n",
                 encoding="utf-8",
             )
             handoff_path = workspace_scope.root / ".agent" / "PLAN.md"
@@ -276,7 +281,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
             bridge=FakeBridge(),
             registry_factory=registry.from_config,
             phase_prompt_materializer=phase_mat,
-            system_prompt_materializer=sys_mat,
+            master_prompt_materializer=sys_mat,
         )
         return effect_executor_module.execute_agent_effect(
             effect,
@@ -295,7 +300,12 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
 
-    result = runner_module.run(_config(), initial_state=state, display=display)
+    result = runner_module.run(
+        _config(),
+        initial_state=state,
+        display=display,
+        pipeline_deps=make_test_pipeline_deps(display._ctx),
+    )
 
     output = rendered.getvalue()
     assert result == 0
@@ -367,6 +377,7 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         initial_state=state,
         display=display,
         dashboard_subscriber=_Subscriber(),
+        pipeline_deps=make_test_pipeline_deps(display._ctx),
     )
 
     assert result == 0

@@ -1,4 +1,12 @@
-"""Cleanup command — remove stale parallel worker namespaces after a hard-kill."""
+"""Cleanup command — remove stale parallel worker namespaces after a hard-kill.
+
+P2 (wt-028-display S-14): all visible output routes through the shared
+``ParallelDisplay`` surface (``emit_status`` / ``emit_warning`` /
+``emit_blank_line``) so the drift-prevention suite can verify no
+command reaches the terminal through its own path. The interactive
+confirmation prompt (``typer.confirm``) is the only side-channel that
+remains — the prompt is operator input, not display output.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +15,8 @@ from typing import Annotated
 
 import typer
 
+from ralph.display.context import make_display_context
+from ralph.display.parallel_display import resolve_active_display
 from ralph.git.operations import find_repo_root
 
 
@@ -26,10 +36,12 @@ def cleanup(
     These directories are normally cleaned up automatically, but a hard-kill may
     leave them behind.
     """
+    ctx = make_display_context()
+    display = resolve_active_display(None, ctx)
     try:
         repo_root = find_repo_root()
     except Exception as exc:
-        typer.echo(f"Error: not in a git repository: {exc}", err=True)
+        display.emit_warning(f"Error: not in a git repository: {exc}")
         raise typer.Exit(1) from exc
 
     workers_dir = repo_root / ".agent" / "workers"
@@ -38,19 +50,24 @@ def cleanup(
     )
 
     if not stale:
-        typer.echo("No stale worker namespaces found")
+        display.emit_status("No stale worker namespaces found")
         raise typer.Exit(0)
 
     if dry_run:
-        typer.echo(f"Found {len(stale)} stale worker namespace(s) (dry-run, not removing):")
+        display.emit_status(
+            f"Found {len(stale)} stale worker namespace(s) (dry-run, not removing):"
+        )
         for unit_id in stale:
-            typer.echo(f"  .agent/workers/{unit_id}")
+            display.emit_status(f"  .agent/workers/{unit_id}")
         raise typer.Exit(0)
 
     if not force:
+        # ``typer.confirm`` is operator input (interactive prompt), not
+        # display output. Per S-14 the only allowed side-channel is the
+        # interactive confirmation, so we keep this verbatim.
         confirmed = typer.confirm(f"Remove {len(stale)} stale worker namespace(s)?")
         if not confirmed:
-            typer.echo("Aborted")
+            display.emit_status("Aborted")
             raise typer.Exit(0)
 
     removed = 0
@@ -60,4 +77,4 @@ def cleanup(
         removed += 1
 
     if removed > 0:
-        typer.echo(f"Removed {removed} stale worker namespace(s)")
+        display.emit_status(f"Removed {removed} stale worker namespace(s)")

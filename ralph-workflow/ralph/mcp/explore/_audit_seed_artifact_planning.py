@@ -1,0 +1,58 @@
+"""Audit seed entries for the markdown-only artifact tool family."""
+
+from __future__ import annotations
+
+from ralph.mcp.explore._audit_types import AuditEntry, AuditFamily, AuditOutcome, _counters
+from ralph.mcp.tools.names import RalphToolName
+
+_SEED_ARTIFACT_PLANNING: tuple[AuditEntry, ...] = (
+    AuditEntry(
+        tool=RalphToolName.SUBMIT_MD_ARTIFACT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="Markdown submission uses the shared line-anchored validator.",
+        counters=_counters(transcript_tokens=128, returned_bytes=256, tool_calls=1),
+    ),
+    AuditEntry(
+        tool=RalphToolName.VERIFY_MD_ARTIFACT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="Check-only validation calls the same markdown validator as submit.",
+        counters=_counters(transcript_tokens=96, returned_bytes=192, tool_calls=1),
+    ),
+    AuditEntry(
+        tool=RalphToolName.STAGE_MD_ARTIFACT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="Incremental markdown staging persists resumable drafts.",
+        counters=_counters(transcript_tokens=96, returned_bytes=192, tool_calls=1),
+    ),
+    AuditEntry(
+        tool=RalphToolName.EDIT_MD_ARTIFACT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="In-place draft edits repair a rejected document without re-transcribing it.",
+        counters=_counters(transcript_tokens=96, returned_bytes=256, tool_calls=1),
+    ),
+    AuditEntry(
+        tool=RalphToolName.GET_MD_DRAFT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="Draft retrieval supports resumable markdown authoring.",
+        counters=_counters(transcript_tokens=64, returned_bytes=256, tool_calls=1),
+    ),
+    AuditEntry(
+        tool=RalphToolName.DISCARD_MD_DRAFT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="Explicit draft discard removes abandoned staged content.",
+        counters=_counters(transcript_tokens=64, returned_bytes=128, tool_calls=1),
+    ),
+    AuditEntry(
+        tool=RalphToolName.FINALIZE_MD_ARTIFACT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="Finalization validates staged markdown before canonical submission.",
+        counters=_counters(transcript_tokens=96, returned_bytes=192, tool_calls=1),
+    ),
+)

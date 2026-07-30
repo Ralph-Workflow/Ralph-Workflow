@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,10 +22,22 @@ class PathFileBackend:
         return path.read_text(encoding=encoding)
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-        path.write_text(content, encoding=encoding)
+        with path.open("w", encoding=encoding) as stream:
+            stream.write(content)
+            stream.flush()
+            descriptor = stream.fileno()
+            if isinstance(descriptor, int):
+                os.fsync(descriptor)
 
     def replace(self, source: Path, destination: Path) -> None:
         source.replace(destination)
+
+    def sync_directory(self, path: Path) -> None:
+        descriptor = os.open(path, os.O_RDONLY)  # resource-lifecycle-ok: closed in finally after bounded directory sync
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         path.unlink(missing_ok=missing_ok)

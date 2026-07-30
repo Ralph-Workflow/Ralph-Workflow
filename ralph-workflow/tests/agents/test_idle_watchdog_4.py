@@ -8,7 +8,7 @@ subprocess, no real wall-clock waits, no real I/O.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -29,7 +29,6 @@ from ralph.process.teardown import teardown_subtree
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 IDLE_TIMEOUT = 0.1
@@ -122,7 +121,7 @@ def test_check_process_result_nonzero_exit_calls_teardown_subtree(tmp_path: Path
         pytest.raises(AgentInvocationError),
     ):
         check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "test-agent",
             parsed_output=[],
             check_options=None,
@@ -152,7 +151,7 @@ def test_check_process_result_missing_completion_evidence_calls_teardown_subtree
         pytest.raises(AgentInvocationError),
     ):
         check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "test-agent",
             parsed_output=[],
             check_options=options,
@@ -175,7 +174,7 @@ def test_check_process_result_error_path_does_not_mutate_clock() -> None:
         pytest.raises(AgentInvocationError),
     ):
         check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "test-agent",
             parsed_output=[],
             check_options=None,

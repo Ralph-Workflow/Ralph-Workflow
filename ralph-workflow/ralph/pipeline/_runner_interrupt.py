@@ -25,8 +25,12 @@ if TYPE_CHECKING:
     from ralph.process.manager import ProcessManager
 
 
-_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
-_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+_DEFAULT_SIGNAL_GETTER = cast(
+    "SignalGetter", signal.getsignal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+_DEFAULT_SIGNAL_SETTER = cast(
+    "SignalSetter", signal.signal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def handle_keyboard_interrupt(

@@ -5,14 +5,12 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
-from ralph.policy.models import PhaseParallelization
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -162,15 +160,26 @@ class TestRunnerBoundaryPreflightRejection:
 
     def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
         """FanOutEffect must use max_workers from the phase's parallelization."""
-
-        bundle = MagicMock()
-        # Set up a development phase with parallelization, max_workers=1
-        para = PhaseParallelization(max_parallel_workers=1, post_fanout_verification=False)
-        dev_phase = MagicMock()
-        dev_phase.parallelization = para
-        dev_phase.requires_commit = False
-        bundle.pipeline.phases.get.return_value = dev_phase
-        bundle.pipeline.terminal_phase = "complete"
+        # ponytail: use a real policy stub instead of MagicMock so the test
+        # stays well under the 1.0 s per-test budget regardless of Python
+        # version. The bundle below is the canonical legacy-fan-out policy
+        # with max_parallel_workers overridden to 1, so the
+        # _terminal_phase_effect recovery-route lookup resolves against a
+        # real RecoveryPolicy.failed_route rather than a deep MagicMock
+        # attribute that triggers recursive _Call mocking on slow
+        # interpreters.
+        bundle = _legacy_fan_out_policy_bundle()
+        dev_phase = bundle.pipeline.phases["development"]
+        assert dev_phase.parallelization is not None
+        narrow_parallelization = dev_phase.parallelization.model_copy(
+            update={"max_parallel_workers": 1, "post_fanout_verification": False}
+        )
+        narrow_dev_phase = dev_phase.model_copy(update={"parallelization": narrow_parallelization})
+        narrow_phases = dict(bundle.pipeline.phases)
+        narrow_phases["development"] = narrow_dev_phase
+        bundle = bundle.model_copy(
+            update={"pipeline": bundle.pipeline.model_copy(update={"phases": narrow_phases})}
+        )
 
         state = PipelineState(
             phase="development",
@@ -185,14 +194,22 @@ class TestRunnerBoundaryPreflightRejection:
 
     def test_runner_post_fanout_verification_reads_phase_scoped_value(self) -> None:
         """FanOutEffect.run_post_fanout_verification reads from phase parallelization."""
-
-        bundle = MagicMock()
-        para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=True)
-        dev_phase = MagicMock()
-        dev_phase.parallelization = para
-        dev_phase.requires_commit = False
-        bundle.pipeline.phases.get.return_value = dev_phase
-        bundle.pipeline.terminal_phase = "complete"
+        # ponytail: same real-policy-stub pattern as above; keeps the test
+        # under 1.0 s on every supported Python version because the
+        # _terminal_phase_effect recovery-route lookup resolves against a
+        # real RecoveryPolicy, not a deep MagicMock graph.
+        bundle = _legacy_fan_out_policy_bundle()
+        dev_phase = bundle.pipeline.phases["development"]
+        assert dev_phase.parallelization is not None
+        verify_parallelization = dev_phase.parallelization.model_copy(
+            update={"max_parallel_workers": 8, "post_fanout_verification": True}
+        )
+        verify_dev_phase = dev_phase.model_copy(update={"parallelization": verify_parallelization})
+        verify_phases = dict(bundle.pipeline.phases)
+        verify_phases["development"] = verify_dev_phase
+        bundle = bundle.model_copy(
+            update={"pipeline": bundle.pipeline.model_copy(update={"phases": verify_phases})}
+        )
 
         state = PipelineState(
             phase="development",

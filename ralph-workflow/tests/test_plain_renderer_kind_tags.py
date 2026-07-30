@@ -1,91 +1,242 @@
-"""Tests for PlainLogRenderer.emit_activity_line kind-tagged output."""
+"""Tests for ParallelDisplay.emit_activity_line kind-tagged output (post-S-7 shape).
+
+S-7 (wt-028-display P1) retired the per-fragment/preview/checkpoint emission
+machinery. Streaming kinds (``text`` / ``thinking``) are now silent during
+open / continue and emit exactly ONE entry on block close carrying the
+joined passage plus fragment and char counts (sketch J shape).
+
+Tests in this file pin the new shape:
+
+* per-event, non-streaming kinds emit a single ``[<tag>][<unit>] <body>``
+  line directly (``tool_use``, ``tool_result``, ``error``, ``progress``,
+  ``lifecycle``, ``raw``);
+* streaming kinds (``text`` / ``thinking``) buffer fragments silently and
+  emit ONE line on close: ``[<tag>][<unit>] \u22ef <tag> \u00b7 <n> fragments \u00b7
+  <chars> chars`` followed by the joined passage on the next line;
+* no ``[content-start]``, ``[content-continue#N]``, ``[thinking-start]``,
+  ``[thinking-continue#N]``, ``[content-end]``, ``[thinking-end]``,
+  ``[content-checkpoint#N]``, ``[thinking-checkpoint#N]`` tags surface;
+* no ``\u21b3 preview:`` / ``\u21b3 summary:`` / ``\u21b3 ai-summary:``
+  supplement lines surface;
+* a non-streaming event closes any active streaming blocks first;
+* ``flush_blocks()`` emits a close line for every active block;
+* whitespace-only ``thinking`` emits nothing (no open block, no close line);
+* Rich markup and ANSI escapes in content are stripped before emission;
+* condensed content appends ``[see <ref>]`` to the visible body.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
 from ralph.display._plain_constants import LEVELS
-from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import make_display_context
-from ralph.display.long_content_summary import set_ai_summary_hook
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
 
 
 def _make_display() -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
-    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
+    console = Console(
+        file=buf, force_terminal=False, highlight=False, color_system=None, width=200
+    )
     return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
-def test_text_kind_emits_content_tag() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "hello")
-    out = buf.getvalue()
-    assert "[content" in out
-    assert "[u]" in out
-    assert "hello" in out
-    assert "INFO" in out
+def _plain_lines(output: str) -> list[str]:
+    return [line for line in output.splitlines() if line.strip()]
 
 
-def test_thinking_kind_emits_thinking_tag() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "I think therefore I am")
-    out = buf.getvalue()
-    assert "[thinking" in out
-    assert "[u]" in out
-    assert "I think therefore I am" in out
+# --- Per-event (non-streaming) kinds: single line on emit --------------
 
 
-def test_tool_use_kind_emits_tool_tag() -> None:
+def test_tool_use_kind_emits_call_tag() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_use", "bash")
     out = buf.getvalue()
-    assert "[tool][u]" in out
+    assert "[call][u]" in out
     assert "bash" in out
 
 
-def test_tool_result_kind_emits_tool_result_tag_and_success_level() -> None:
+def test_tool_result_kind_emits_result_tag() -> None:
+    """A tool_result event emits a [result] line; the SUCCESS LEVEL text is retired (S-4).
+
+    The chrome prefix no longer carries the level/category badges.
+    Severity is communicated by the renderer's own icon+label
+    carrier (e.g. ``\u2713 PASS``); the activity line itself is
+    text-only, with the [result][u] bracket and the body.
+    """
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_result", "output")
     out = buf.getvalue()
-    assert "[tool-result][u]" in out
-    assert "SUCCESS" in out
+    assert "[result][u]" in out
+    assert "SUCCESS" not in out
 
 
-def test_error_kind_emits_error_tag_and_error_level() -> None:
+def test_error_kind_emits_error_tag() -> None:
+    """An error event emits a [error] line; the ERROR LEVEL text is retired (S-4)."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "error", "something went wrong")
     out = buf.getvalue()
     assert "[error][u]" in out
-    assert "ERROR" in out
+    assert "ERROR" not in out
     assert "something went wrong" in out
+
+
+def test_raw_kind_maps_to_content_tag() -> None:
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "raw", "some raw line")
+    out = buf.getvalue()
+    assert "[output][u]" in out
+
+
+def test_unknown_kind_defaults_to_content_tag() -> None:
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "totally_unknown_kind", "data")
+    out = buf.getvalue()
+    assert "[output][u]" in out
+
+
+def test_emit_log_line_delegates_to_emit_activity_line() -> None:
+    pd, buf = _make_display()
+    pd.emit_log_line("u", "legacy line")
+    out = buf.getvalue()
+    assert "[output][u]" in out
+    assert "legacy line" in out
+
+
+# --- Level badge tests --------------------------------------------------
+
+
+def test_lifecycle_kind_emits_lifecycle_line() -> None:
+    """A lifecycle event emits a line carrying the lifecycle carrier; no MILESTONE chrome.
+
+    wt-028-display S-4: the chrome prefix no longer carries the
+    MILESTONE LEVEL text. Lifecycle events are still routed to the
+    same [status-content] (lifecycle) tag and the line carries the
+    body. The surviving carrier (a milestone glyph) is rendered by
+    the panel-level surface, not by the activity line.
+    """
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "lifecycle", "agent started")
+    out = buf.getvalue()
+    assert "MILESTONE" not in out, f"retired MILESTONE chrome leaked: {out!r}"
+
+
+def test_tool_use_kind_emits_tool_use_line() -> None:
+    """A tool_use event emits a [call] line; the INFO LEVEL text is retired (S-4)."""
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "tool_use", "bash")
+    out = buf.getvalue()
+    assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
+    assert "[call][u]" in out
+    assert "bash" in out
+
+
+# --- Category prefix tests (non-streaming kinds surface CONT/META) ------
+
+
+def test_tool_result_tag_does_not_leak_category_chrome() -> None:
+    """A tool_result line never carries OUT category chrome (S-4 retirement)."""
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "tool_result", "ok")
+    out = buf.getvalue()
+    assert "OUT" not in out, f"retired OUT category chrome leaked: {out!r}"
+
+
+def test_progress_kind_does_not_leak_category_chrome() -> None:
+    """A progress line never carries META category chrome (S-4 retirement)."""
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "progress", "50%")
+    out = buf.getvalue()
+    assert "META" not in out, f"retired META category chrome leaked: {out!r}"
+
+
+# --- Streaming kinds: silent during open/continue, single close line ---
+
+
+def test_text_kind_emits_content_tag_on_close() -> None:
+    """Text streams are silent until close; the close line carries [output].
+
+    S-7: streaming layer is silent during open / continue. ``flush_blocks``
+    emits one ``[output]`` close line carrying the joined passage.
+    The chrome prefix no longer carries the INFO LEVEL text.
+    """
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "hello")
+    pd.flush_blocks()
+    out = buf.getvalue()
+    assert "[output][u]" in out
+    assert "[u]" in out
+    assert "hello" in out
+    assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
+    # No per-fragment/preview tokens surface.
+    for forbidden in (
+        "[content-start]",
+        "[content-continue#",
+        "[content-end]",
+        "[content-checkpoint#",
+    ):
+        assert forbidden not in out, f"forbidden token {forbidden!r} leaked: {out!r}"
+
+
+def test_thinking_kind_emits_think_tag_on_close() -> None:
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "thinking", "I think therefore I am")
+    pd.flush_blocks()
+    out = buf.getvalue()
+    assert "[reasoning][u]" in out
+    assert "[u]" in out
+    assert "I think therefore I am" in out
+    for forbidden in (
+        "[thinking-start]",
+        "[thinking-continue#",
+        "[thinking-end]",
+        "[thinking-checkpoint#",
+    ):
+        assert forbidden not in out, f"forbidden token {forbidden!r} leaked: {out!r}"
 
 
 def test_ansi_escapes_in_content_are_stripped() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "\x1b[31mred text\x1b[0m")
+    pd.flush_blocks()
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "red text" in out
 
 
-def test_rich_markup_in_content_is_stripped() -> None:
+def test_rich_markup_in_content_is_reduced() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "[bold]x[/bold]")
+    pd.flush_blocks()
     out = buf.getvalue()
-    assert "[bold]" not in out
-    assert "[/bold]" not in out
+    assert "[output][u]" in out
     assert "x" in out
+    assert "[bold]" not in out
 
 
 def test_condensed_ref_appended_only_when_condensed_flag() -> None:
+    """``[see <ref>]`` appears on non-streaming emissions when condensed.
+
+    Streaming kinds buffer fragments and emit ONE close line on
+    flush; the close-line body carries the joined passage plus
+    fragment/char counts but NOT the ref (the ref belongs to the
+    overflow path, surfaced separately via ``_emit_activity_event``).
+    Non-streaming kinds emit a single line immediately, so the ref
+    is appended to that line.
+    """
     pd, buf = _make_display()
     pd.emit_activity_line(
-        "u", "text", "hello", condensed_ref=".agent/raw/u.log", condensed_flag=True
+        "u",
+        "tool_result",
+        "hello",
+        condensed_ref=".agent/raw/u.log",
+        condensed_flag=True,
     )
     out = buf.getvalue()
     assert "[see .agent/raw/u.log]" in out
@@ -94,156 +245,65 @@ def test_condensed_ref_appended_only_when_condensed_flag() -> None:
 def test_condensed_ref_not_appended_when_not_condensed() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line(
-        "u", "text", "short", condensed_ref=".agent/raw/u.log", condensed_flag=False
+        "u",
+        "text",
+        "short",
+        condensed_ref=".agent/raw/u.log",
+        condensed_flag=False,
     )
+    pd.flush_blocks()
     out = buf.getvalue()
     assert "[see .agent/raw/u.log]" not in out
 
 
-def test_raw_kind_maps_to_content_tag() -> None:
+# --- Streaming close line shape ---------------------------------------
+
+
+def test_close_line_carries_joined_passage_and_span_duration() -> None:
+    """S-13 close line carries joined passage + sketch-J span and duration.
+
+    Format: ``INFO [<tag>][<unit>] \u22ef <tag> \u00b7 <start HH:MM:SS> \u2192 <end
+    HH:MM:SS> \u00b7 <duration>`` followed by the joined passage on the next
+    line. The ``fragments`` / ``chars`` plumbing is retired; the operator
+    sees the human-vocabulary span and duration instead.
+    """
     pd, buf = _make_display()
-    pd.emit_activity_line("u", "raw", "some raw line")
-    out = buf.getvalue()
-    assert "[content][u]" in out
-
-
-def test_unknown_kind_defaults_to_content_tag() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "totally_unknown_kind", "data")
-    out = buf.getvalue()
-    assert "[content][u]" in out
-
-
-def test_emit_log_line_delegates_to_emit_activity_line() -> None:
-    pd, buf = _make_display()
-    pd.emit_log_line("u", "legacy line")
-    out = buf.getvalue()
-    assert "[content][u]" in out
-    assert "legacy line" in out
-
-
-# --- Level badge tests ---
-
-
-def test_lifecycle_kind_emits_milestone_level() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "lifecycle", "agent started")
-    out = buf.getvalue()
-    assert "MILESTONE" in out
-
-
-def test_tool_use_kind_emits_info_level() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "tool_use", "bash")
-    out = buf.getvalue()
-    assert "INFO" in out
-
-
-# --- Category prefix tests ---
-
-
-def test_content_tag_gets_cont_category() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "raw", "data")
-    out = buf.getvalue()
-    assert "CONT" in out
-
-
-def test_tool_result_tag_gets_cont_category() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "tool_result", "ok")
-    out = buf.getvalue()
-    assert "CONT" in out
-
-
-def test_progress_kind_gets_meta_category() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "progress", "50%")
-    out = buf.getvalue()
-    assert "META" in out
-
-
-# --- Streaming block tests ---
-
-
-def test_streaming_text_emits_content_start_on_first() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "first line")
-    out = buf.getvalue()
-    assert "[content-start]" in out
-
-
-def test_streaming_text_emits_content_continue_on_second() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "first")
-    buf.truncate(0)
-    buf.seek(0)
-    pd.emit_activity_line("u", "text", "second")
-    out = buf.getvalue()
-    assert "[content-continue#" in out
-
-
-def test_streaming_block_flushes_on_different_kind() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "text line")
-    buf.truncate(0)
-    buf.seek(0)
-    pd.emit_activity_line("u", "tool_use", "bash")
-    out = buf.getvalue()
-    assert "[content-end]" in out
-
-
-def test_flush_blocks_emits_content_end() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "partial content")
-    buf.truncate(0)
-    buf.seek(0)
+    pd.emit_activity_line("u", "text", "hello")  # 5 chars
+    pd.emit_activity_line("u", "text", "world")  # 5 chars
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[content-end]" in out
+    # Joined passage survives exactly once.
+    assert "hello world" in out
+    # Sketch-J span and duration markers are present.
+    assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
+    assert "s\n" in out or out.endswith("s"), (
+        f"close line missing duration suffix 's': {out!r}"
+    )
+    # No retired plumbing leaks.
+    assert "fragments" not in out
+    assert "chars" not in out
 
 
-def test_thinking_kind_emits_thinking_start_on_first() -> None:
+def test_close_line_uses_middle_dot_separators() -> None:
+    """The close line uses ``\u00b7`` (middle dot) between header fields, never a comma."""
     pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "reasoning starts")
+    pd.emit_activity_line("u", "text", "abc")
+    pd.flush_blocks()
     out = buf.getvalue()
-    assert "[thinking-start]" in out
+    # Sketch-J header: \u22ef <tag> \u00b7 HH:MM:SS \u2192 HH:MM:SS \u00b7 <duration>.
+    assert "\u22ef output" in out, f"close line missing \u22ef marker: {out!r}"
+    assert "\u00b7" in out, f"close line missing \u00b7 separator: {out!r}"
+    assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
+    # Joined passage survives exactly once.
+    assert out.count("abc") == 1
+    # No retired plumbing leaks.
+    assert "fragments" not in out
+    assert "chars" not in out
+    # No comma-separated (n, m) parenthesis format.
+    assert "(1 fragments, 3 chars)" not in out
 
 
-def test_thinking_kind_emits_thinking_continue_on_subsequent() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "first thought")
-    buf.truncate(0)
-    buf.seek(0)
-    pd.emit_activity_line("u", "thinking", "second thought")
-    out = buf.getvalue()
-    assert "[thinking-continue#" in out
-
-
-def test_different_unit_id_closes_previous_block() -> None:
-    """Global single-block invariant: switching units closes the previous block first."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("unit-a", "text", "a first")
-    pd.emit_activity_line("unit-b", "text", "b first")
-    out = buf.getvalue()
-    # unit-a starts a block
-    assert "[content-start][unit-a]" in out
-    # unit-b's emission closes unit-a's block before opening its own
-    assert "[content-end][unit-a]" in out
-    assert "[content-start][unit-b]" in out
-    # unit-a's end must come before unit-b's start
-    assert out.index("[content-end][unit-a]") < out.index("[content-start][unit-b]")
-
-
-def test_switching_from_text_to_thinking_closes_text_block() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "text content")
-    buf.truncate(0)
-    buf.seek(0)
-    pd.emit_activity_line("u", "thinking", "thinking content")
-    out = buf.getvalue()
-    assert "[content-end]" in out
-    assert "[thinking-start]" in out
+# --- Multi-block / unit / kind switching invariants -------------------
 
 
 def test_flush_blocks_no_op_when_no_active_block() -> None:
@@ -252,18 +312,65 @@ def test_flush_blocks_no_op_when_no_active_block() -> None:
     assert buf.getvalue() == ""
 
 
+def test_flush_blocks_emits_one_close_line_per_active_block() -> None:
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "partial content")
+    pd.flush_blocks()
+    out = buf.getvalue()
+    # Exactly one close line, not multiple per-fragment emissions.
+    content_lines = [ln for ln in _plain_lines(out) if "[output][u]" in ln]
+    assert len(content_lines) == 1, (
+        f"expected exactly 1 close line, got {len(content_lines)}: {out!r}"
+    )
+
+
+def test_streaming_block_closed_by_non_streaming_event() -> None:
+    """A non-streaming event closes the active streaming block first."""
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "text content")
+    pd.emit_activity_line("u", "tool_use", "bash")
+    out = buf.getvalue()
+    # The text block closed before tool_use surfaced.
+    assert "[output][u]" in out
+    assert "[call][u]" in out
+    assert "bash" in out
+    # The text close line appears before the tool_use line.
+    assert out.index("[output][u]") < out.index("[call][u]")
+
+
+def test_different_unit_id_closes_previous_block() -> None:
+    """Global single-block invariant: switching units closes the previous block first.
+
+    After S-7, the close line carries ``[output]`` (not ``[content-end]``),
+    but the ordering invariant — block-A closes before block-B opens — still
+    holds. ``flush_blocks`` emits the close line for the still-open unit-b
+    block.
+    """
+    pd, buf = _make_display()
+    pd.emit_activity_line("unit-a", "text", "a first")
+    pd.emit_activity_line("unit-b", "text", "b first")
+    pd.flush_blocks()
+    out = buf.getvalue()
+    # unit-a's block closed (single close line, [output] tag).
+    assert "[output][unit-a]" in out
+    # unit-b's block closed on flush (single close line, [output] tag).
+    assert "[output][unit-b]" in out
+    # unit-a's close line precedes unit-b's.
+    assert out.index("[output][unit-a]") < out.index("[output][unit-b]")
+
+
 def test_non_streaming_kind_closes_other_unit_block() -> None:
-    """Non-streaming events close all open blocks, even for different units."""
     pd, buf = _make_display()
     pd.emit_activity_line("unit-a", "text", "streaming content")
-    buf.truncate(0)
-    buf.seek(0)
     pd.emit_activity_line("unit-b", "tool_use", "bash")
     out = buf.getvalue()
-    assert "[content-end][unit-a]" in out
+    # unit-a's block closed before unit-b's tool_use surfaced.
+    assert "[output][unit-a]" in out
+    assert "[call][unit-b]" in out
+    assert out.index("[output][unit-a]") < out.index("[call][unit-b]")
 
 
-# --- Phase level tests ---
+# --- Phase level tests -------------------------------------------------
 
 
 def test_phase_lines_use_milestone_for_execution_role() -> None:
@@ -282,316 +389,71 @@ def test_phase_lines_use_info_for_analysis_role() -> None:
     assert LEVELS["analysis"] == "INFO"
 
 
-# --- Streaming sequence number tests (Step 10) ---
+# --- Whitespace-only thinking suppression ------------------------------
 
 
-def test_streaming_continue_second_emits_sequence_2() -> None:
+def test_whitespace_only_thinking_emits_nothing() -> None:
     pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "first")
-    pd.emit_activity_line("u", "text", "second")
-    out = buf.getvalue()
-    assert "[content-continue#2]" in out
+    pd.emit_activity_line("u", "thinking", "   ")
+    assert buf.getvalue() == "", f"Expected empty output, got: {buf.getvalue()!r}"
 
 
-def test_streaming_continue_third_emits_sequence_3() -> None:
+@pytest.mark.timeout_seconds(5)
+def test_tab_only_thinking_emits_nothing() -> None:
     pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "first")
-    pd.emit_activity_line("u", "text", "second")
-    pd.emit_activity_line("u", "text", "third")
-    out = buf.getvalue()
-    assert "[content-continue#3]" in out
+    pd.emit_activity_line("u", "thinking", "\t\n  ")
+    assert buf.getvalue() == "", f"Expected empty output, got: {buf.getvalue()!r}"
 
 
-def test_thinking_continue_has_sequence_number() -> None:
+def test_whitespace_thinking_does_not_open_block() -> None:
+    """A whitespace-only thinking fragment must not create an active block."""
     pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "first thought")
-    pd.emit_activity_line("u", "thinking", "second thought")
-    out = buf.getvalue()
-    assert "[thinking-continue#2]" in out
+    pd.emit_activity_line("u", "thinking", "   ")
+    pd.flush_blocks()
+    # No close line because the block was never opened.
+    assert buf.getvalue() == ""
 
 
-def test_end_line_reports_fragment_and_char_counts() -> None:
+def test_whitespace_text_fragment_still_emits_on_close() -> None:
+    """Whitespace suppression applies only to 'thinking' kind, not 'text'.
+
+    A whitespace-only text fragment still opens a streaming block and
+    emits one close line on flush.
+    """
     pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "hello")  # 5 chars
-    pd.emit_activity_line("u", "text", "world")  # 5 chars
-    buf.truncate(0)
-    buf.seek(0)
+    pd.emit_activity_line("u", "text", "   ")
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "(2 fragments, 10 chars)" in out
+    assert "[output][u]" in out
 
 
-# --- AI summary hook tests ---
+# --- Internal vocabulary must not surface -----------------------------
 
 
-def test_content_start_emits_ai_summary_line_when_provided() -> None:
+def test_no_retired_supplements_surface_in_close_path() -> None:
+    """Close path emits no ``\u21b3 preview:`` / ``\u21b3 summary:`` /
+    ``\u21b3 ai-summary:`` supplement lines (S-7 retirement).
+    """
     pd, buf = _make_display()
     pd.emit_activity_line(
         "u",
         "text",
         "some content",
         condensed_flag=True,
-        summary_line="First sentence.",
-        ai_summary_line="AI generated summary",
+        summary_line="headline",
+        ai_summary_line="ai summary",
     )
-    out = buf.getvalue()
-    assert "↳ ai-summary: AI generated summary" in out
-    assert "↳ summary: First sentence." in out
-    assert out.index("↳ summary:") < out.index("↳ ai-summary:")
-
-
-def test_ai_summary_line_not_emitted_when_none() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "text",
-        "some content",
-        condensed_flag=True,
-        summary_line="First sentence.",
-        ai_summary_line=None,
-    )
-    out = buf.getvalue()
-    assert "↳ ai-summary:" not in out
-    assert "↳ summary: First sentence." in out
-
-
-def test_ai_summary_line_not_emitted_when_empty_string() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "text",
-        "some content",
-        condensed_flag=True,
-        summary_line="First sentence.",
-        ai_summary_line="",
-    )
-    out = buf.getvalue()
-    assert "↳ ai-summary:" not in out
-
-
-# --- Streaming checkpoint tests ---
-
-
-def test_streaming_checkpoint_every_20_fragments() -> None:
-    pd, buf = _make_display()
-    for i in range(25):
-        pd.emit_activity_line("u", "text", f"frag{i:02d}")
-    out = buf.getvalue()
-    assert "[content-checkpoint#20]" in out
-
-
-def test_streaming_checkpoint_every_4000_chars() -> None:
-    pd, buf = _make_display()
-    # 3 distinct fragments of ~1500 chars: total 4500 chars, crosses 4000
-    for i in range(3):
-        pd.emit_activity_line("u", "text", "a" * 1499 + str(i))
-    out = buf.getvalue()
-    assert "[content-checkpoint#" in out
-
-
-def test_streaming_checkpoint_disabled_by_env() -> None:
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    renderer = ParallelDisplay(
-        make_display_context(console=console, env={"RALPH_STREAMING_CHECKPOINTS": "0"})
-    )
-    assert renderer._ctx.streaming_checkpoints_enabled is False
-    for i in range(25):
-        renderer.emit_activity_line("u", "text", f"frag{i:02d}")
-    out = buf.getvalue()
-    assert "[content-checkpoint#" not in out
-
-
-def test_streaming_checkpoint_clears_on_block_close() -> None:
-    """After a block closes and re-opens, checkpoints reset."""
-    pd, buf = _make_display()
-    # Open a block, accumulate 20 fragments (triggers checkpoint), close it
-    for i in range(21):
-        pd.emit_activity_line("u", "text", f"frag{i:02d}")
-    pd.flush_blocks()
-    buf.truncate(0)
-    buf.seek(0)
-    # Re-open with a non-streaming event that doesn't trigger reset, then text
-    pd.emit_activity_line("u", "text", "new block start")
-    out = buf.getvalue()
-    assert "[content-start]" in out
-    assert "[content-checkpoint#" not in out
-
-
-# --- Empty headline placeholder tests ---
-
-
-def test_empty_headline_emits_placeholder_when_condensed() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "text",
-        "some content",
-        condensed_flag=True,
-        summary_line="",
-    )
-    out = buf.getvalue()
-    assert "↳ summary: (no headline available)" in out
-
-
-def test_empty_headline_emits_placeholder_line_not_dropped() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "text",
-        "some long condensed content",
-        condensed_flag=True,
-        summary_line="",
-    )
-    out = buf.getvalue()
-    placeholder_count = out.count("↳ summary: (no headline available)")
-    assert placeholder_count == 1
-
-
-def test_none_summary_with_condensed_flag_emits_nothing() -> None:
-    """summary_line=None means 'not applicable' — no placeholder even if condensed."""
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "text",
-        "content",
-        condensed_flag=True,
-        summary_line=None,
-    )
-    out = buf.getvalue()
-    assert "↳ summary:" not in out
-
-
-def test_none_summary_without_condensed_emits_nothing() -> None:
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "text",
-        "content",
-        condensed_flag=False,
-        summary_line=None,
-    )
-    out = buf.getvalue()
-    assert "↳ summary:" not in out
-
-
-def test_hook_cleanup_between_tests() -> None:
-    """Ensure global hook state doesn't leak between tests."""
-    set_ai_summary_hook(None)
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "x" * 5000, ai_summary_line=None)
-    out = buf.getvalue()
-    assert "↳ ai-summary:" not in out
-
-
-# --- Summary suppression / gating tests ---
-
-
-def test_summary_disabled_env_suppresses_summary_line() -> None:
-    """RALPH_LONG_CONTENT_SUMMARY=0 must yield no ↳ summary: line."""
-    pd, buf = _make_display()
-    long_text = "First sentence. " * 300  # well above 4000 chars
-    visible, condensed, summary_line, _ai = condense_content(
-        long_text, options=CondenseOptions(summary=True, env={"RALPH_LONG_CONTENT_SUMMARY": "0"})
-    )
-    assert condensed is True
-    assert summary_line is None
-    pd.emit_activity_line("u", "text", visible, condensed_flag=condensed, summary_line=summary_line)
-    out = buf.getvalue()
-    assert "↳ summary:" not in out
-
-
-def test_sub_threshold_condensed_content_yields_no_summary() -> None:
-    """Content between 400 and 4000 cells: condensed but no summary applicable."""
-    pd, buf = _make_display()
-    text = "a" * 500  # above soft_limit(400) but below summary_threshold(4000)
-    visible, condensed, summary_line, _ai = condense_content(
-        text, options=CondenseOptions(summary=True)
-    )
-    assert condensed is True
-    assert summary_line is None
-    pd.emit_activity_line("u", "text", visible, condensed_flag=condensed, summary_line=summary_line)
-    out = buf.getvalue()
-    assert "↳ summary:" not in out
-
-
-def test_above_threshold_empty_headline_yields_placeholder() -> None:
-    """Content above 4000-cell threshold with no extractable headline emits placeholder."""
-    pd, buf = _make_display()
-    text = " " * 4100  # all spaces: no extractable headline, but cell_len > 4000
-    visible, condensed, summary_line, _ai = condense_content(
-        text, options=CondenseOptions(summary=True)
-    )
-    assert condensed is True
-    assert summary_line == "(no headline available)"
-    pd.emit_activity_line("u", "text", visible, condensed_flag=condensed, summary_line=summary_line)
-    out = buf.getvalue()
-    assert "↳ summary: (no headline available)" in out
-
-
-# --- Streaming end-of-block AI summary tests ---
-
-
-def test_content_end_emits_ai_summary_when_hook_set() -> None:
-    """Block close emits ↳ ai-summary: line after the [content-end] line."""
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    renderer = ParallelDisplay(
-        make_display_context(console=console, env={"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
-    )
-    set_ai_summary_hook(lambda text: "Block AI summary")
-    try:
-        # Accumulate > 4000 chars so should_summarize returns True
-        for i in range(3):
-            renderer.emit_activity_line("u", "text", "x" * 1499 + str(i))
-        buf.truncate(0)
-        buf.seek(0)
-        renderer.flush_blocks()
-    finally:
-        set_ai_summary_hook(None)
-    out = buf.getvalue()
-    assert "[content-end][u]" in out
-    assert "↳ ai-summary: Block AI summary" in out
-    assert out.index("[content-end]") < out.index("↳ ai-summary:")
-
-
-def test_content_end_no_ai_summary_when_hook_not_set() -> None:
-    """Block close emits no ↳ ai-summary: line when hook is not registered."""
-    pd, buf = _make_display()
-    set_ai_summary_hook(None)
-    for _ in range(3):
-        pd.emit_activity_line("u", "text", "x" * 1500)
-    buf.truncate(0)
-    buf.seek(0)
     pd.flush_blocks()
     out = buf.getvalue()
-    assert "[content-end][u]" in out
-    assert "↳ ai-summary:" not in out
+    for forbidden in ("\u21b3 preview:", "\u21b3 summary:", "\u21b3 ai-summary:"):
+        assert forbidden not in out, f"forbidden supplement {forbidden!r} leaked: {out!r}"
 
 
-def test_content_end_no_ai_summary_when_env_not_set() -> None:
-    """Block close emits no ↳ ai-summary: line when env var is not set."""
-    pd, buf = _make_display()
-    set_ai_summary_hook(lambda text: "should not appear")
-    try:
-        for _ in range(3):
-            pd.emit_activity_line("u", "text", "x" * 1500)
-        buf.truncate(0)
-        buf.seek(0)
-        pd.flush_blocks()
-    finally:
-        set_ai_summary_hook(None)
-    out = buf.getvalue()
-    assert "[content-end][u]" in out
-    assert "↳ ai-summary:" not in out
-
-
-# --- Activity line dedup and path-suffix tests ---
+# --- Activity line dedup and path-suffix tests -------------------------
 
 
 def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
     """Snapshot A emits [activity]; snapshot B emits exactly one [activity] line."""
-
     pd, buf = _make_display()
 
     base_kwargs = {
@@ -613,7 +475,6 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
         "created_at": datetime.now(UTC),
     }
 
-    # Snapshot A: no last_activity_line — expect [activity] with agent= field
     snapshot_a = PipelineSnapshot(
         active_agent="claude/sonnet",
         last_activity_line=None,
@@ -628,7 +489,6 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
     buf.truncate(0)
     buf.seek(0)
 
-    # Snapshot B: last_activity_line set — expect exactly one [activity] line
     snapshot_b = PipelineSnapshot(
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",
@@ -645,7 +505,6 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
 
 def test_activity_appends_path_when_missing() -> None:
     """[activity] appends (path=...) when active_path is not in last_activity_line."""
-
     pd, buf = _make_display()
     snapshot = PipelineSnapshot(
         phase="development",
@@ -674,7 +533,6 @@ def test_activity_appends_path_when_missing() -> None:
 
 def test_activity_does_not_double_append_path_when_already_present() -> None:
     """[activity] must NOT append (path=...) when active_path is already in the line."""
-
     pd, buf = _make_display()
     snapshot = PipelineSnapshot(
         phase="development",
@@ -700,101 +558,4 @@ def test_activity_does_not_double_append_path_when_already_present() -> None:
     )
     pd.emit_snapshot(snapshot)
     out = buf.getvalue()
-    # Path should appear exactly once, not duplicated
     assert out.count("ralph-workflow/ralph/x.py") == 1
-
-
-# --- Whitespace-only thinking suppression tests ---
-
-
-def test_whitespace_only_thinking_emits_nothing() -> None:
-    """emit_activity_line with kind='thinking' and whitespace-only content emits nothing."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "   ")
-    out = buf.getvalue()
-    assert out == "", f"Expected empty output, got: {out!r}"
-
-
-def test_tab_only_thinking_emits_nothing() -> None:
-    """emit_activity_line with kind='thinking' and tab-only content emits nothing."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "\t\n  ")
-    out = buf.getvalue()
-    assert out == "", f"Expected empty output, got: {out!r}"
-
-
-def test_non_empty_thinking_still_emits_thinking_start() -> None:
-    """Non-whitespace thinking content still opens a [thinking-start] block."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "deep thought")
-    out = buf.getvalue()
-    assert "[thinking-start]" in out
-    assert "deep thought" in out
-
-
-def test_whitespace_thinking_does_not_open_block() -> None:
-    """A whitespace-only thinking fragment must not create an active block."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "   ")
-    buf.truncate(0)
-    buf.seek(0)
-    pd.flush_blocks()
-    # flush_blocks on an empty block set should produce nothing
-    assert buf.getvalue() == ""
-
-
-def test_whitespace_text_fragment_still_emits() -> None:
-    """Whitespace suppression applies only to 'thinking' kind, not 'text'."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "text", "   ")
-    out = buf.getvalue()
-    assert "[content-start]" in out
-
-
-# --- Thinking preview headline tests ---
-
-
-def test_thinking_start_shows_preview_headline() -> None:
-    """[thinking-start] line must contain a preview headline from the first fragment."""
-    pd, buf = _make_display()
-    pd.emit_activity_line(
-        "u",
-        "thinking",
-        "I need to check whether the parser handles X correctly before Y",
-    )
-    out = buf.getvalue()
-    assert "[thinking-start]" in out
-    assert "↓ preview: I need to check whether the parser handles X correctly" in out or (
-        "preview: I need to check whether the parser handles X correctly" in out
-    )
-
-
-def test_thinking_start_preview_uses_arrow_prefix() -> None:
-    """[thinking-start] must use the ↓ preview: prefix for the headline."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "First checking the file contents")
-    out = buf.getvalue()
-    assert "preview:" in out
-    assert "[thinking-start]" in out
-
-
-def test_thinking_continue_does_not_have_preview_prefix() -> None:
-    """[thinking-continue] fragments must NOT have the preview prefix."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "first thought")
-    buf.truncate(0)
-    buf.seek(0)
-    pd.emit_activity_line("u", "thinking", "second thought")
-    out = buf.getvalue()
-    assert "[thinking-continue#" in out
-    assert "preview:" not in out
-
-
-def test_thinking_start_with_short_content_still_shows_preview() -> None:
-    """Even short thinking fragments must show preview on [thinking-start]."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "thinking", "short thought")
-    out = buf.getvalue()
-    assert "[thinking-start]" in out
-    assert "preview:" in out
-    assert "short thought" in out

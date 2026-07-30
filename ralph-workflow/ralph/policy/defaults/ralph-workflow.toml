@@ -1,54 +1,161 @@
-# User-global Ralph Workflow configuration.
+# =============================================================================
+#  Ralph Workflow -- main configuration
+#  ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
+# =============================================================================
 #
-# Ralph Workflow manages a standard eight-file first-run config set:
-#   1. ~/.config/ralph-workflow.toml          (user-global main config, this file)
-#   2. ~/.config/ralph-workflow-mcp.toml      (user-global MCP config)
-#   3. ~/.config/ralph-workflow-pipeline.toml (user-global pipeline defaults)
-#   4. ~/.config/ralph-workflow-artifacts.toml (user-global artifact defaults)
-#   5. .agent/ralph-workflow.toml             (project-local override)
-#   6. .agent/mcp.toml                        (project-local MCP override)
-#   7. .agent/pipeline.toml                   (project-local pipeline phases)
-#   8. .agent/artifacts.toml                  (project-local artifact contracts)
+#  NOTHING TO DO IF YOU USE CLAUDE. This file ships ready to run: if `claude`
+#  is on your PATH, change nothing and run `ralph`.
 #
-# OVERRIDE PRECEDENCE (highest to lowest):
-#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled defaults
+#  The ONE thing most operators ever edit is section 1 below -- which model
+#  does which job. That is why it is the first thing in the file.
 #
-# REGENERATION: Run `ralph --regenerate-config` to refresh all configs from
-# bundled defaults. Existing files are backed up to <name>.bak before overwrite.
+#     1. [agent_chains] -- which agent/model does which job   <- EDIT THIS
+#     2. [agent_drains] -- which chain runs which phase       <- rarely changed
 #
-# Location: ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
+#  Everything past the OPTIONAL banner is machinery with a working default.
+#  You can stop reading there.
 #
-# Project-local overrides live in .agent/ralph-workflow.toml — values there
-# take precedence over this file.
+#  NOT IN THIS FILE: how to invoke each agent CLI (binary, flags, parser).
+#  That plumbing lives in ralph-workflow-agents.toml, and you only open it to
+#  switch which CLI is active.
 #
-# Every non-secret field is listed below with its default value, commented out.
-# Uncomment and edit only the fields you want to change; everything else keeps
-# its documented default automatically.
+#  ralph --diagnose           which agent CLIs are installed and usable
+#  ralph --regenerate-config  rewrite the config set from the bundled defaults
+#                             (each current file is saved to <name>.bak first)
 #
-# For MCP servers and web search, edit ~/.config/ralph-workflow-mcp.toml
-# (or .agent/mcp.toml for project-local overrides).
+# =============================================================================
 
-# ---------------------------------------------------------------------------
-# [general] — Core workflow settings
-# ---------------------------------------------------------------------------
+
+# =============================================================================
+# 1. CHAINS (REQUIRED — EDIT THIS) -- which agent/model does which job.
+# =============================================================================
+# A chain is an ORDERED FALLBACK LIST. The first entry is what actually runs;
+# the rest are tried, in order, only if it fails or exhausts its retries.
+#
+# What belongs where:
+#   planning, analysis  ->  your most capable model -- these phases review
+#                           work and catch mistakes.
+#   development         ->  a strong coder model -- this phase edits your files.
+#   commit              ->  something small, fast and cheap -- it only writes
+#                           commit messages.
+#
+# Each entry is `agent/model`. One example per supported agent:
+#   claude/opus                          codex/gpt-5.4[effort=high]
+#   claude-headless/sonnet               opencode/openai/gpt-5.4
+#   cursor/claude-opus-4-8[effort=high]  nanocoder/ollama/llama3.1
+#   pi/anthropic/claude-sonnet-4:high    agy/gemini-3.6-flash-low
+# Full per-agent syntax: docs/sphinx/agent-compatibility.md (AGY paid acceptance unverified)
+
+[agent_chains]
+planning = ["claude/opus"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
+commit = ["claude/haiku"]
+
+# Fallbacks are opt-in. The defaults above name only `claude`, so a one-agent
+# install works out of the box. To add one: install the CLI, confirm it is on
+# PATH, uncomment its block in the AGENT CLI DEFINITIONS section below, then
+# extend the list:
+#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
+#   planning = ["ccs/work"]   # CCS -- see docs/sphinx/agent-compatibility.md#ccs_aliases
+
+
+# =============================================================================
+# 2. DRAINS (REQUIRED) -- which chain runs which pipeline phase.
+# =============================================================================
+# A drain is a routing label: `phase = "chain name from section 1"`.
+# The bundled pipeline uses exactly this set. Change a value only to point a
+# phase at a different chain.
+
+[agent_drains]
+planning = "planning"
+planning_analysis = "analysis"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+analysis = "analysis"
+commit = "commit"
+
+
+
+# =============================================================================
+# OPTIONAL -- everything below this line has a working default.
+# Skip it unless you know you need something here.
+# =============================================================================
+
+
+
+# -----------------------------------------------------------------------------
+# PROMPT HELPER -- which agent refines PROMPT.md. Rarely changed.
+# -----------------------------------------------------------------------------
+# Default: the first agent in ralph-workflow-agents.toml's [agents.*], or the built-in "opencode" agent if
+# none is configured. Uncomment both lines to force a specific one.
+# [prompt_helper]
+# agent = "claude"
+
+# -----------------------------------------------------------------------------
+# REFERENCE -- how the config files fit together. Nothing to edit here.
+# -----------------------------------------------------------------------------
+# Nine files: five user-global, four project-local.
+#   ~/.config/ralph-workflow.toml            .agent/ralph-workflow.toml
+#   ~/.config/ralph-workflow-agents.toml     (agent CLI definitions)
+#   ~/.config/ralph-workflow-mcp.toml        .agent/mcp.toml
+#   ~/.config/ralph-workflow-pipeline.toml   .agent/pipeline.toml
+#   ~/.config/ralph-workflow-artifacts.toml  .agent/artifacts.toml
+#
+# Precedence, highest first:
+#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled
+#
+# MCP servers and web search live in ralph-workflow-mcp.toml (or .agent/mcp.toml),
+# not in this file.
+#
+# From here down every key is shown commented out at its default value.
+# Uncomment only the ones you want to change; the rest keep their defaults.
+
+# Edit this only if you need to change Ralph Workflow's normal workflow settings.
+# -----------------------------------------------------------------------------
+# [general] -- Core workflow settings
+# -----------------------------------------------------------------------------
 [general]
-# verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
-# telemetry_enabled = true              # anonymous metadata-only telemetry is on by default. Set false to opt out. Ralph Workflow uses this data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising.
-# Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
-# Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
-# developer_context = 1                 # developer context level (>=1)
-# prompt_path = "/path/to/PROMPT.md"    # override default PROMPT.md path (comment out to use default)
-# templates_dir = "/path/to/templates"  # user templates directory (comment out to use bundled)
-# git_user_name = "Your Name"           # git author name for commits (comment out to use git config)
-# git_user_email = "you@example.com"    # git author email for commits (comment out to use git config)
-# max_same_agent_retries = 10           # max consecutive retries on the same agent (>=0)
-# max_commit_residual_retries = 10      # max extra residual commit retries (>=0)
-# max_retries = 3                       # max retries per agent attempt (>=0)
-# retry_delay_ms = 1000                 # base delay between retries in ms (>=0)
-# backoff_multiplier = 2.0              # exponential backoff multiplier (>=1.0)
-# max_backoff_ms = 60000                # maximum retry backoff delay in ms (>=0)
-# max_cycles = 3                        # max full fallback cycles through a drain (>=1)
-# execution_history_limit = 1000        # max execution history entries in memory (>=1)
+# =============================================================================
+# AUTO-INTEGRATION (auto-rebase) — keep the feature branch and the mainline
+# in lockstep.
+# -----------------------------------------------------------------------------
+# What the feature does: rebases feature work onto the configured local target,
+# resolves conflicts through the normal endpoint-merge fallback, then
+# fast-forwards that target when the result is safe to land.
+#
+# When it runs (the seams): startup, commit, phase boundary, parallel worker
+# startup/boundary, and the Ralph-managed parallel fan-out join.
+#
+# What it never does: force-move a ref, force-push, push a feature branch,
+# leave a rebase or merge in progress, or fail the run because remote sync
+# failed. The on-by-default local tier is safe; the opt-in remote tier syncs.
+# Set auto_integrate_enabled = false for byte-identical manual git behavior:
+# no rebase, merge, ref movement, fetch, or push from this feature.
+# =============================================================================
+# auto_integrate_enabled = true     # local integration at every seam; set false for manual git control.
+# auto_integrate_target = "main"    # required local mainline branch; a missing branch records a skip.
+# auto_integrate_remote_enabled = false  # opt-in remote tier: fetch, reconcile, and push after a local landing.
+# auto_integrate_remote = "origin"  # configured remote used only when remote integration is enabled.
+
+# verbosity = 2                         # Leave this alone for normal runs; change only when output is too noisy or too sparse.
+# telemetry_enabled = true              # Leave on unless you want to opt out of anonymous reliability telemetry.
+# Loop iteration caps live in pipeline.toml [loop_counters.*]; leave them alone until a run needs more or fewer review loops.
+# Override a budget only for one run with `ralph --counter <name>=<value>`.
+# developer_context = 1                 # Leave this alone unless your agent needs more task context.
+# prompt_path = "/path/to/PROMPT.md"    # Set only when this project keeps its task file somewhere other than PROMPT.md.
+# templates_dir = "/path/to/templates"  # Set only when you maintain your own starter templates.
+# git_user_name = "Your Name"           # Set only when this project's commit author differs from your git config.
+# git_user_email = "you@example.com"    # Set only when this project's commit email differs from your git config.
+# max_same_agent_retries = 10           # Lower only when repeated same-agent retries waste time; default is usually right.
+# max_commit_residual_retries = 10      # Change only when commit cleanup needs a stricter or longer retry limit.
+# max_retries = 3                       # Change only when an agent needs more chances after transient failures.
+# retry_delay_ms = 1000                 # Increase only when a provider asks you to slow down after failures.
+# backoff_multiplier = 2.0              # Leave this alone unless you deliberately tune provider retry pacing.
+# max_backoff_ms = 60000                # Change only when your provider needs a different maximum retry wait.
+# max_cycles = 3                        # Raise only for work that legitimately needs more agent fallback cycles.
+# execution_history_limit = 1000        # Leave this alone unless a long run needs more retained history.
 # agent_idle_timeout_seconds = 300.0    # max idle seconds before killing a stalled agent process (>0)
 # agent_idle_max_waiting_on_child_seconds = 1800.0  # hard ceiling on cumulative WAITING_ON_CHILD deferral (>0)
 # agent_waiting_status_interval_seconds = 30.0      # periodic status emission cadence while WAITING_ON_CHILD (>0)
@@ -65,22 +172,22 @@
 # agent_subagent_output_capture_enabled = true      # enable polling of observable subagent output streams as first-party evidence
 # agent_subagent_output_poll_interval_seconds = 1.0 # poll interval for subagent output streams (>0)
 
-# [general.provider_fallback] — Provider/model fallbacks keyed by agent name
-# Uncomment and list agents as keys; each value is an ordered list of fallback models/providers
-# Example: { claude = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"] }
-# provider_fallback = {}
+# Edit this only if you need to change workflow automation behavior.
+# -----------------------------------------------------------------------------
+# [general.workflow] -- Workflow automation flags
+# -----------------------------------------------------------------------------
 
-# [general.workflow] — Workflow automation flags
 [general.workflow]
-# checkpoint_enabled = true     # enable checkpoint/resume functionality
-# unsafe_mode = false          # merge Ralph Workflow MCP into agent MCP config instead of overwriting it
+# checkpoint_enabled = true     # Leave enabled unless you explicitly do not want interrupted runs to resume.
+# unsafe_mode = false          # Change only when you intentionally want Ralph Workflow to preserve and merge existing agent MCP settings.
 
-# ---------------------------------------------------------------------------
-# [ccs] — Claude Code Switch (CCS) headless-Claude defaults.
+# Edit this only if you use Claude Code Switch (CCS).
+# -----------------------------------------------------------------------------
+# [ccs] -- Claude Code Switch (CCS) headless-Claude defaults.
+# -----------------------------------------------------------------------------
 # CCS is the explicitly-headless Claude path. Configure [ccs_aliases] to run
 # Claude non-interactively (--print --output-format=stream-json). For unattended
 # interactive Claude use the built-in "claude" or "claude/MODEL" agents instead.
-# ---------------------------------------------------------------------------
 [ccs]
 # output_flag = "--output-format=stream-json"
 # yolo_flag = "--permission-mode auto"
@@ -91,9 +198,10 @@
 # session_flag = "--resume {}"
 # can_commit = true
 
-# ---------------------------------------------------------------------------
-# [ccs_aliases] — CCS alias mappings (string or table form)
-# ---------------------------------------------------------------------------
+# Edit this only if you need a named CCS model alias.
+# -----------------------------------------------------------------------------
+# [ccs_aliases.*] -- CCS alias mappings (string or table form)
+# -----------------------------------------------------------------------------
 # Simple string form (uses built-in defaults for the named alias):
 # ccs_aliases = { claude = "claude", opencode = "opencode" }
 #
@@ -107,128 +215,3 @@
 # cmd = "opencode"
 # model_flag = "--model opencode-o3"
 # can_commit = false
-
-# ---------------------------------------------------------------------------
-# [agents.*] — Agent definitions
-# Uncomment and adjust to add or override agents.
-# ---------------------------------------------------------------------------
-
-# [agents.claude]
-# cmd = "claude"
-# transport = "claude_interactive"
-# Use skip-permissions here because Ralph Workflow confines interactive Claude
-# through the Ralph Workflow MCP/tool allowlist; MCP remains the real
-# permission boundary.
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = true
-# display_name = "Claude"
-
-[agents.claude]
-cmd = "claude"
-transport = "claude_interactive"
-# Use skip-permissions here because Ralph Workflow confines interactive Claude
-# through the Ralph Workflow MCP/tool allowlist; MCP remains the real
-# permission boundary.
-yolo_flag = "--dangerously-skip-permissions"
-verbose_flag = "--verbose"
-json_parser = "claude"
-session_flag = "--resume {}"
-can_commit = true
-display_name = "Claude"
-# Claude Code's native sub-agent / task tooling is enabled by default in
-# this build. Plans that declare work_units / parallel_plan are
-# dispatched to the executing agent's sub-agents; Ralph-managed fan-out
-# stays dormant. Set to false to force sequential execution.
-subagent_capability = true
-
-# [agents.opencode]
-# cmd = "opencode"
-# output_flag = "--output-format=stream-json"
-# yolo_flag = "-y"
-# json_parser = "opencode"
-# can_commit = false
-# display_name = "OpenCode"
-
-# [agents.nanocoder]
-# cmd = "nanocoder"
-# transport = "nanocoder"
-# json_parser = "generic"
-# can_commit = false
-# display_name = "Nanocoder"
-
-# [agents.agy]
-# cmd = "agy"
-# transport = "agy"
-# yolo_flag = "--dangerously-skip-permissions"
-# print_flag = "--print"
-# json_parser = "generic"
-# can_commit = false
-# display_name = "Google Anti Gravity"
-
-# [agents.prompt-helper-agent]
-# cmd = "claude"
-# transport = "claude_interactive"
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = false
-
-# [agents.pi]
-# Pi.dev minimal coding-agent harness (https://pi.dev/). Install via either:
-#   npm install -g @earendil-works/pi-coding-agent     # https://www.npmjs.com/package/@earendil-works/pi-coding-agent
-#   curl -fsSL https://pi.dev/install.sh | sh           # https://pi.dev/ (official install script)
-# Pi streams NDJSON events on stdout per https://pi.dev/docs/latest/json
-# and has no native MCP config file; Ralph Workflow wires MCP through a
-# generated Pi extension and retries clean exits without completion evidence
-# against the captured Pi session.
-# cmd = "pi"
-# output_flag = "--mode json"
-# yolo_flag = "--approve"
-# json_parser = "pi"
-# session_flag = "--session {}"
-# can_commit = true
-# display_name = "Pi"
-
-# ---------------------------------------------------------------------------
-# [agent_chains.*] — Named reusable chain definitions (list of agent names)
-# The active defaults below are the recommended starting point. They showcase
-# explicit model families and ordered fallback across Claude, OpenCode, Codex, Nanocoder, and Google Anti Gravity (agy).
-# ---------------------------------------------------------------------------
-
-[agent_chains]
-planning = ["claude/opus"]
-development = [
-  "opencode/minimax/MiniMax-M2.7-highspeed",
-  "codex",
-  "claude/sonnet",
-]
-analysis = ["opencode/openai/gpt-5.4"]
-commit = ["claude/haiku"]
-
-# CCS alternative example: planning = ["ccs/work"]
-# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
-
-# ---------------------------------------------------------------------------
-# [agent_drains.*] — Drain-to-chain bindings for pipeline drains
-# Maps each pipeline drain name to a chain name defined in [agent_chains].
-# IMPORTANT: the bundled pipeline uses the drain set below.
-# ---------------------------------------------------------------------------
-
-[agent_drains]
-planning = "planning"
-planning_analysis = "analysis"
-development = "development"
-development_analysis = "analysis"
-development_commit = "commit"
-analysis = "analysis"
-commit = "commit"
-
-# [prompt_helper]
-# Omit agent = to use the first configured agent in [agents.*]; if no agents are
-# configured, Ralph Workflow falls back to the built-in "opencode" agent.
-# Uncomment and set agent = to force a specific agent instead:
-# agent = "claude"

@@ -1,3 +1,5 @@
+You are the review-analysis judge. Grade the submitted review, not the implementation itself.
+
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
@@ -19,6 +21,20 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 {{ render_payload_path('PLAN', PLAN_PATH) }}
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
+
+## YOUR TASK
+
+You are the review-analysis judge. Decide whether the SUBMITTED REVIEW was
+thorough and correct. Independently inspect enough code, diff, and command
+output to grade the review's coverage and findings; do not produce a replacement
+code review or directly fix the implementation. Your decision is one of three
+statuses — `completed` (the review is thorough and correct), `request_changes`
+(you proved coverage or quality gaps the next review pass must close), or
+`failed` (the review is unusable and stronger remediation is needed). Your ONLY deliverable is one markdown
+`review_analysis_decision` artifact submitted with
+{{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using
+`artifact_type="review_analysis_decision"` and sealed with
+{{DECLARE_COMPLETE_TOOL_REFERENCE}}. Not submitting the artifact is a FAILURE.
 
 ---
 
@@ -53,43 +69,56 @@ passes, validate a build, inspect runtime state, or anything else — run it you
 the result yourself. Do not assume a command was run, do not assume it was not run, do not ask
 the developer to run it — run it yourself and confirm the output.
 
-This applies to: tests, lint, type checks, builds, runtime behavior, anything that requires
-observing actual command output to evaluate.
-
 ## ONLY JUDGE WHAT YOU CAN EVALUATE
 
-Your decision must be grounded in evidence you can personally inspect in this session.
-Evaluation evidence may come ONLY from: (1) code and diff, and (2) command output you ran yourself.
+Evaluation evidence may come ONLY from: (1) the submitted review artifact, (2) code and diff you
+inspect, and (3) command output you obtain yourself. The submitted review artifact is direct
+evidence of what the review covered, reported, and classified. Developer- or reviewer-produced
+summaries, narratives, and other handoff artifacts are locators and context — never evidence;
+verify their claims against the submitted review, code, diff, or command output before using them.
+The PLAN defines the implementation target against which you grade the review; it is not evidence
+that the review itself was thorough or correct.
 
-The review artifact plus any developer-produced or reviewer-produced summaries, narratives, and
-other handoff artifacts may be used ONLY to help you locate files, understand claimed scope, or
-choose what to inspect next. They are context only, never evaluation evidence or corroboration.
+- You MAY conclude that a review missed a concrete issue if the submitted review omits or misstates
+  it and you can point to the issue in the code or verification output.
+- You MAY conclude that the review mishandled verification ONLY when a runnable check exists in
+  this session, you ran it yourself, and the result shows that the submitted review omitted or
+  misstated the verification state.
+- You MUST NOT infer what any agent did from process history — logs, transcripts, and timing are
+  never evidence; judge review coverage only from the submitted review's content, the code, the
+  diff, and commands you run yourself.
 
-If an artifact makes a claim, verify that claim against the code, diff, or command output before you
-use it in any evaluation.
+Some items are simply **not evaluatable** from the submitted review, code, diff, and commands you
+can run in this session. That is a disclosed judgment about your evidence, never an artifact field:
+do not treat the item as proven satisfied or unsatisfied, and skip it as a scored judgment. If the
+limit is material, disclose it inside the single `## Summary` item — never add sections,
+frontmatter keys, or extra summary items for it. See HARD RULE: NO UNPROVABLE GAPS for how
+not-evaluatable items affect the decision.
 
-The PLAN defines the goal you are evaluating against; it is not evidence by itself. Evaluate the
-available empirical evidence — code, diff, and commands you run in this session — against the
-PLAN's requirements and expected outcomes.
+## HARD RULE: NO UNPROVABLE GAPS
 
-If a plan item cannot be evaluated from code, diff, or commands you can run in this session, you
-MUST NOT treat that item as proven satisfied or unsatisfied. Treat it as not evaluatable from the
-available observable evidence and skip it as a scored judgment. You do not need to enumerate every
-skipped item in the artifact.
+**You CANNOT request changes for anything you cannot yourself prove in this session.**
 
-- You MAY conclude that a review missed a concrete issue if you can point to the missed issue in the
-  code or verification output.
-- You MAY conclude that verification is still incomplete if you ran the relevant command and it did
-  not establish the required behavior, or if no runnable verification command exists for that claim.
-- You MUST NOT judge what the agent, developer, or reviewer did or did not do.
-- You MUST NOT rely on agent logs, transcripts, or inferred process history as evaluation evidence.
-- When verification matters, run the relevant command yourself and describe the observed result.
-  If no runnable verification command exists for the claim, say that explicitly instead of guessing
-  about anyone's behavior.
-- If you need command-based evidence, run the command yourself and report what you observed.
+Every entry you put in `## What Came Up Short` must pass BOTH tests:
 
-If a claim depends on behavior you cannot observe in the work product itself, do not make that claim.
-Gather direct evidence yourself or mark the gap strictly in terms of missing observable evidence.
+1. **Provable**: you personally observed the review-quality defect in this session — in the
+   submitted review, code, diff, or output of a command you ran — and the entry cites that
+   observation.
+2. **Actionable**: the next review pass can close the gap by re-examining this repository and
+   correcting or adding findings, provable with evidence available in a session like this one.
+
+If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
+an external device, a third-party signoff, or any deploy-time-only behavior — it is not evaluatable.
+Not evaluatable is NOT a gap: it never appears in `## What Came Up Short` and it NEVER justifies
+`request_changes` or `failed`. Disclose material limits in the summary and move on.
+
+If an unprovable requirement is genuinely important, the strongest action you may take is to note
+it in the summary as an external follow-up owned by humans — for example, an item for manual-testing
+or deployment-verification documentation. Never assume it was done, never assume it was not done,
+and never turn it into a gap. This outlet is the exception, not the rule: most not-evaluatable
+items deserve no mention at all — reserve follow-up notes for the few that genuinely matter.
+
+When every gap you can prove is closed, choose `completed` — even if not-evaluatable items remain.
 
 ---
 
@@ -112,19 +141,13 @@ If you cannot make a decision from the diff alone, explore until you can.
 
 ---
 
-You MUST submit a structured review analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
-using `artifact_type="review_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
-Not submitting the analysis artifact is a FAILURE.
-
----
-
 ## REVIEW CHECKLIST
 
 You are evaluating the quality and completeness of the review that was performed. A thorough review
 catches real problems. A shallow one misses them. For each dimension below that is evaluatable from
-code, diff, or commands you can run in this session, determine whether the review adequately covered
-it. If it did not, that belongs in `what_came_up_short`. If a dimension is not evaluatable from
-observable evidence, skip it rather than scoring it.
+the submitted review, code, diff, or commands you can run in this session, determine whether the
+review adequately covered it. If it did not, that belongs in `## What Came Up Short`. If a
+dimension is not evaluatable from observable evidence, skip it rather than scoring it.
 
 ### 1. PLAN COMPLIANCE CHECK
 
@@ -188,8 +211,9 @@ If the implementation added new functions without tests, the review should have 
 
 Evaluate the review output itself, not just the implementation:
 
-- **Severity classification**: Are findings categorized correctly (CRITICAL/HIGH/MEDIUM/LOW)?
-  A CRITICAL security finding classified as MEDIUM is a review quality problem.
+- **Severity classification**: Are findings categorized correctly? The issues grammar's
+  severity set is `high`, `medium`, `low` — critical-impact findings belong at `high`.
+  A critical-impact security finding classified as `medium` is a review quality problem.
 - **Evidence quality**: Does each finding cite exact file paths, function names, and the nature
   of the problem? "There are issues" without specifics is insufficient.
 - **Actionable fixes**: Does each finding include a concrete remediation step, or just a
@@ -201,82 +225,61 @@ Evaluate the review output itself, not just the implementation:
 
 ### 8. VERIFICATION EVIDENCE
 
-If the plan or workflow required verification commands (tests, lint, type checks, build):
-Run the relevant commands yourself now. If the review's verification claims are not established by
-reproducible command output you can observe in this session, that is a gap.
+Run any plan- or workflow-required verification commands (tests, lint, type checks, build)
+yourself now. A review-quality gap exists only when you prove that the submitted review omitted
+or misstated a verification result or claimed behavior: cite a self-run command that contradicts
+it, or show a concrete code issue the review left unsurfaced. Everything else is governed by
+HARD RULE: NO UNPROVABLE GAPS.
 
 ---
 
 ## DECISION ARTIFACT
 
-Return a JSON object.
+The decision is a markdown document (grammar: `.agent/artifact-formats/review_analysis_decision.md`):
+`---` frontmatter with `type: review_analysis_decision` and `status: completed|request_changes|failed`,
+then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
+and `## How To Fix`, one `- [RA-###] ...` item per gap with matching IDs across the two sections.
+A completed decision must omit both remediation sections; any known gap requires
+a non-completed status. The two remediation ID sets must match exactly: no
+missing, extra, or mismatched gap/fix IDs.
 
-- If the review is clean and thorough across ALL dimensions above:
-  `{"status":"completed","summary":"..."}`
+- Choose `status: completed` when the submitted review is thorough and correct across every applicable, evaluatable dimension.
+- Choose `status: request_changes` when the review has coverage or quality gaps that you proved yourself.
+- Choose `status: failed` only when the submitted review itself is observably unusable or substantially incomplete; stronger remediation may be needed, including redoing the review.
 
-- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
-  and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
-
-- Use `content` for a freshly generated native JSON object or JSON-serialized string.
-- Valid submit example:
-  `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
-
-- The review has gaps in coverage or quality:
-  `{"status":"request_changes","summary":"The review missed a high-severity validation issue.","what_came_up_short":["The review did not check the new error path"],"how_to_fix":["Re-review src/foo.py and tests/test_foo.py, then submit issues if the error path is still uncovered"]}`
-
-- The review found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
-  `{"status":"failed","summary":"The review artifact is unusable because it lacks issue details.","what_came_up_short":["issues_found was submitted without issue objects"],"how_to_fix":["Redo the review and submit each issue with path, severity, summary, and concrete fix guidance"]}`
-
-{{ render_artifact_submission('review_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Review looks good."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
-
-{{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
+Author the document, submit it per the procedure below, and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 
 ---
 
-## `what_came_up_short` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
-1. **List every gap found** across all dimensions. Do not stop after the first problem.
+1. **List every gap found** across all applicable, evaluatable dimensions. Do not stop after the first problem.
 
 2. **For each gap, include:**
+   - A stable item ID (`- [RA-###] ...`) reused verbatim by the matching `How To Fix` entry
    - The dimension it belongs to (Plan Compliance / Security / Correctness / Performance /
      Maintainability / Testing / Review Structure / Verification Evidence)
    - What the review was supposed to check but did not, or checked but did incorrectly
    - What the review should have found or said instead
 
-3. **Cite concrete evidence.** File paths, function names, test names, command output,
-   observed behavior, exact mismatches. "The review has gaps" is not evidence.
-   "The review did not examine `api/auth.py` for hardcoded credentials, and
-   `api/auth.py:23` contains a hardcoded API key" is evidence.
+3. **Cite concrete evidence and be precise.** File paths, function names, test names, command
+   output, observed behavior, exact mismatches. "The review has gaps" or "the review missed some
+   issues" is not a gap statement. "The review did not examine `api/auth.py` for hardcoded
+   credentials, and `api/auth.py:23` contains a hardcoded API key" is.
 
-4. **Be precise about what was missed.** "The review missed some issues" is not a gap statement.
-   "The review did not examine `api/auth.py` for hardcoded credentials, and
-   `api/auth.py:23` contains a hardcoded API key at line 23" is a gap statement.
-
-5. **Evaluate the review's findings honestly.** If the review found issues but missed deeper
+4. **Evaluate the review's findings honestly.** If the review found issues but missed deeper
    or related ones, say so. A polished-looking review that missed the real problems is not
    a passing review.
 
-Example `what_came_up_short`:
-
-```
-- [Security] `api/auth.py:23` contains a hardcoded fallback API key — this is a
-  CRITICAL severity finding in the code that the review should have surfaced.
-- [Review Structure] The SQL injection finding in `db/queries.py` is classified as MEDIUM
-  but should be CRITICAL — the query at line 15 concatenates user input directly, enabling
-  arbitrary SQL execution. Misclassifying CRITICAL findings as MEDIUM is a review quality failure.
-- [Testing] Running the relevant test suite does not establish a passing result tied to the
-  new code, and no concrete test file or passing command result is surfaced for that risk area.
-- [Plan Compliance] `.github/workflows/release-binaries.yml` lacks a Windows matrix leg,
-  which is a concrete mismatch with the plan requirement and should have been surfaced by the review.
-- [Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows
-  exceptions — a concrete code issue the review should have surfaced.
-```
+5. **Every entry must be provable and actionable** — see HARD RULE: NO UNPROVABLE GAPS. If you did
+   not personally observe the missed issue or coverage failure in this session, it is not a gap —
+   at most it is a not-evaluatable limit to disclose in the single `## Summary` item.
 
 ---
 
-## `how_to_fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## How To Fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
-For every item in `what_came_up_short`, provide a corresponding fix entry:
+For every item in `## What Came Up Short`, provide a corresponding fix entry:
 
 1. **What the review needs to re-examine or add.** Be specific — not "fix the review" but
    "re-examine `api/auth.py` for hardcoded credentials."
@@ -285,47 +288,47 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
    the implementation?
 4. **How to verify the fix.** What command or check confirms the review finding is valid?
 
-Example `how_to_fix`:
+---
 
-```
-- Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL severity finding for
-  the hardcoded fallback API key at line 23. Remediation: remove the key and load from
-  `os.environ.get("API_TOKEN")` instead.
-- Reclassify the SQL injection finding in `db/queries.py` as CRITICAL. The query at
-  line 15 concatenates user input directly, enabling arbitrary SQL execution. Update
-  the severity in the review findings table and update the summary to reflect CRITICAL status.
-- Run the relevant test suite yourself and record the observed output. If tests for new code do
-  not run or do not pass, add a Testing gap finding to the review with the specific failing command
-  and result.
-- Re-examine `.github/workflows/release-binaries.yml` against the PLAN. Confirm whether
-  the Windows matrix leg is present. If absent, add a Plan Compliance gap finding with
-  the specific gap and remediation.
-- Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare
-  `except` at line 87 that silently swallows exceptions. Remediation: catch specific
-  exception types and preserve error context.
+## EXAMPLE `request_changes` ARTIFACT (note matching RA IDs across the two sections)
+
+```markdown
+---
+type: review_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] The review is structurally present but missed several critical findings and misclassified at least one severity level.
+
+## What Came Up Short
+- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — `high` severity, and the review should have surfaced it.
+- [RA-002] [Review Structure] SQL injection in db/queries.py:15 is classified as `medium` but should be `high` — user input concatenated directly into SQL.
+- [RA-003] [Testing] No test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.
+
+## How To Fix
+- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a `high` severity finding for the hardcoded key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
+- [RA-002] Reclassify the SQL injection in db/queries.py:15 as `high` and update the review summary and severity table accordingly.
+- [RA-003] Run the relevant test suite and record whether tests for new code run and pass; if not, add a Testing gap finding with the specific command output.
 ```
 
 ---
 
-## EXAMPLE FAILING REVIEW ANALYSIS ARTIFACT
+{% set review_decision_example %}
+---
+type: review_analysis_decision
+status: request_changes
+---
 
-```json
-{
-  "status": "request_changes",
-  "summary": "The review is structurally present but missed several critical findings and misclassified at least one severity level.",
-  "what_came_up_short": [
-    "[Security] `api/auth.py:23` contains a hardcoded fallback API key — CRITICAL severity, and the review should have surfaced it.",
-    "[Review Structure] SQL injection in `db/queries.py:15` is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.",
-    "[Testing] Running the relevant test suite does not establish a passing result tied to the new code, and the review does not surface a concrete passing command result for that risk area.",
-    "[Plan Compliance] `.github/workflows/release-binaries.yml` lacks the Windows matrix leg required by the PLAN, and the review should have surfaced that mismatch.",
-    "[Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows exceptions, and the review should have surfaced that issue."
-  ],
-  "how_to_fix": [
-    "Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL finding for the hardcoded key at line 23. Remediation: load from `os.environ.get('API_TOKEN')`.",
-    "Reclassify the SQL injection in `db/queries.py:15` as CRITICAL and update the review summary and severity table accordingly.",
-    "Run the relevant test suite and record whether tests for new code run and pass. If evidence remains unavailable or the tests fail, add a Testing gap finding with the specific command output.",
-    "Re-examine `.github/workflows/release-binaries.yml` against the PLAN. If the Windows leg is absent, add a Plan Compliance gap.",
-    "Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare `except` at line 87. Remediation: catch specific exception types and preserve context."
-  ]
-}
-```
+## Summary
+- [SUM-1] The review missed a high-severity validation issue.
+
+## What Came Up Short
+- [RA-001] [Correctness] The review did not check the new error path in src/foo.py; the bare except at line 87 silently swallows exceptions.
+
+## How To Fix
+- [RA-001] Re-review src/foo.py and tests/test_foo.py, add a Correctness finding for the bare except at line 87, and submit issues if the error path is still uncovered.
+{% endset %}
+{{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
+
+{{ render_artifact_submission('review_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, review_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}

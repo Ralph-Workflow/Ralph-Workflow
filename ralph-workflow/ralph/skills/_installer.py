@@ -275,9 +275,7 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         marker_file = skill_dir / _MANAGED_MARKER
         skill_dir.mkdir(parents=True, exist_ok=True)
         on_disk_hash = (
-            hashlib.sha256(skill_file.read_bytes()).hexdigest()
-            if skill_file.exists()
-            else ""
+            hashlib.sha256(skill_file.read_bytes()).hexdigest() if skill_file.exists() else ""
         )
         if on_disk_hash == bundled_sha:
             return False
@@ -290,6 +288,68 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         return True
     except OSError:
         return False
+
+
+def _prune_removed_baseline_skills(root: Path) -> list[str]:
+    """Remove managed skill directories that the baseline no longer ships.
+
+    Walks ``root`` and deletes every immediate subdirectory whose name is
+    not in ``BASELINE_SKILL_NAMES``. The user-edit preservation contract
+    is preserved: only managed entries (those carrying ``_MANAGED_MARKER``)
+    are deleted; user-owned skill directories without the marker are left
+    untouched so a user-added skill that happens to share a name with a
+    removed baseline skill is never destroyed.
+
+    Broken symlinks are also pruned: a sibling root that points at a
+    now-removed canonical entry never resolves, so the marker check would
+    otherwise skip it. The same-name guard against ``BASELINE_SKILL_NAMES``
+    keeps a baseline symlink intact. Without this branch a stale
+    ``submit-plan-step-edits`` symlink (the per-step edit skill retired in
+    the wt-044 redesign) would survive forever in every sibling root.
+
+    Args:
+        root: Project-canonical skills root (e.g. ``.opencode/skills``).
+
+    Returns:
+        The list of pruned skill names. The list is empty when the
+        baseline matches the on-disk state.
+
+    The helper is fail-closed: any ``OSError`` during the walk or the
+    delete is swallowed and the prune continues (best-effort) so the
+    surrounding install can still finish cleanly even if one entry's
+    permissions are wrong.
+    """
+    pruned: list[str] = []
+    if not root.is_dir() and not root.is_symlink():
+        return pruned
+    try:
+        for entry in list(root.iterdir()):
+            if entry.name in BASELINE_SKILL_NAMES:
+                continue
+            # A broken symlink fails both ``is_dir()`` and ``marker.exists()``,
+            # so the managed-entry heuristic below would skip it. The name
+            # is no longer in the baseline, so the link is dead and the
+            # sibling fan-out will never recreate it; unlink unconditionally.
+            if entry.is_symlink() and not entry.exists():
+                try:
+                    entry.unlink()
+                except OSError:
+                    continue
+                pruned.append(entry.name)
+                continue
+            if not entry.is_dir():
+                continue
+            marker = entry / _MANAGED_MARKER
+            if not marker.exists():
+                continue
+            try:
+                shutil.rmtree(entry)
+            except OSError:
+                continue
+            pruned.append(entry.name)
+    except OSError:
+        return pruned
+    return pruned
 
 
 def install_project_baseline_skills(
@@ -380,11 +440,25 @@ def install_project_baseline_skills(
     # the locked conflict-resolution policy.
     for skill_name in BASELINE_SKILL_NAMES:
         _materialize_canonical_skill(canonical, skill_name)
+    # Prune any managed skill directory that the baseline no longer
+    # ships. The materialize loop only touches BASELINE_SKILL_NAMES, so a
+    # retired bundled skill (one whose name is no longer in the baseline)
+    # stays on disk otherwise. Without this step, a stale `submit-plan-step-edits`
+    # directory from a prior release would persist in the canonical and
+    # every sibling symlink would continue to point at it. The prune is
+    # scoped to managed entries (marked with `_MANAGED_MARKER`) so a
+    # user-added skill that happens to share a name with a removed
+    # baseline skill is never destroyed.
+    _prune_removed_baseline_skills(canonical)
     sibling_failures: list[str] = []
     siblings: tuple[ProjectAgentSkillRoot, ...] = project_sibling_skill_roots(workspace_root)
     for sibling in siblings:
         sibling_root = sibling.resolve(workspace_root)
         sibling_root.mkdir(parents=True, exist_ok=True)
+        # The sibling fan-out runs the same prune so a stale symlink
+        # pointing at a now-removed canonical entry does not reappear
+        # after the canonical prune.
+        _prune_removed_baseline_skills(sibling_root)
         for skill_name in BASELINE_SKILL_NAMES:
             failure = _materialize_project_sibling_dir(
                 sibling_dir=sibling_root / skill_name,
@@ -620,6 +694,7 @@ __all__ = [
     "_mirror_skill_to_sibling_root",
     "_project_root_outside_workspace",
     "_project_skills_need_install",
+    "_prune_removed_baseline_skills",
     "_resolve_within_workspace",
     "check_skills_update_available",
     "install_baseline_skills",

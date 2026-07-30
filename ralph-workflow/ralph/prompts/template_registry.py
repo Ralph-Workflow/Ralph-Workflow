@@ -44,10 +44,32 @@ class _PackagedTemplateCache:
         self,
         *,
         reader: Callable[[Path], str] | None = None,
+        partials_loader: Callable[[Path], dict[str, str]] | None = None,
     ) -> None:
         self._reader: Callable[[Path], str] = reader or _DEFAULT_READER
+        # Resolved lazily in ``partials``: the module-level cache instance is
+        # constructed above the default loader's definition.
+        self._partials_loader: Callable[[Path], dict[str, str]] | None = partials_loader
         # bounded-accumulator-ok: bounded by immutable packaged-template file set
         self._cache: dict[str, str] = {}  # bounded-accumulator-ok: packaged templates
+        # bounded-accumulator-ok: one entry per packaged template directory
+        self._partials: dict[str, dict[str, str]] = {}  # bounded-accumulator-ok: packaged dirs
+
+    def partials(self, directory: Path) -> dict[str, str]:
+        """Return the packaged partial set for ``directory``, reading it once.
+
+        Snapshotting the packaged tree on first use keeps the templates a
+        process renders consistent with the variable set its code supplies.
+        Without it, a checkout that moves under a running pipeline feeds
+        newly-added template text to older variable code mid-run.
+        """
+        key = str(directory)
+        cached = self._partials.get(key)
+        if cached is None:
+            loader = self._partials_loader or _read_partials_from_directory
+            cached = loader(directory)
+            self._partials[key] = cached
+        return dict(cached)
 
     def get(self, relative_path: str, *, root: Path) -> str:
         """Return the packaged template body for ``relative_path``.
@@ -68,6 +90,7 @@ class _PackagedTemplateCache:
     def clear(self) -> None:
         """Drop every cached template body. Used by tests for isolation."""
         self._cache.clear()
+        self._partials.clear()
 
 
 _packaged_template_cache = _PackagedTemplateCache()
@@ -122,18 +145,30 @@ class TemplateRegistry:
 
 
 def load_partial_templates(template_dirs: Iterable[Path]) -> dict[str, str]:
-    """Load all Jinja/j2/txt templates from the given directories into a dict."""
+    """Load all Jinja/j2/txt templates from the given directories into a dict.
+
+    Directories under :func:`packaged_template_root` are served from the
+    process-wide snapshot so every render in a process sees the same
+    packaged template text; workspace override directories are re-read on
+    each call because they are expected to change while the pipeline runs.
+    """
+    packaged_root = packaged_template_root()
     partials: dict[str, str] = {}
     for directory in template_dirs:
         if not directory.exists() or not directory.is_dir():
             continue
-        for path in directory.rglob("*.jinja"):
-            key = _relative_template_key(directory, path)
-            partials[key] = path.read_text(encoding="utf-8")
-        for path in directory.rglob("*.j2"):
-            key = _relative_template_key(directory, path)
-            partials[key] = path.read_text(encoding="utf-8")
-        for path in directory.rglob("*.txt"):
+        if directory.is_relative_to(packaged_root):
+            partials.update(_packaged_template_cache.partials(directory))
+            continue
+        partials.update(_read_partials_from_directory(directory))
+    return partials
+
+
+def _read_partials_from_directory(directory: Path) -> dict[str, str]:
+    """Read every Jinja/j2/txt template directly under ``directory``."""
+    partials: dict[str, str] = {}
+    for suffix in ("*.jinja", "*.j2", "*.txt"):
+        for path in directory.rglob(suffix):
             key = _relative_template_key(directory, path)
             partials[key] = path.read_text(encoding="utf-8")
     return partials

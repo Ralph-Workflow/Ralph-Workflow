@@ -4,7 +4,7 @@ import json
 import pathlib
 import tempfile
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -16,7 +16,11 @@ from ralph.mcp.server import lifecycle
 from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
+from tests._support.typed_accessors import (
+    must_str_dict,
+    must_str_list,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -158,7 +162,7 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         ),
     )
 
-    env = cast("dict[str, str]", seen["env"])
+    env = must_str_dict(seen["env"])
     assert env["RALPH_UPSTREAM_MCP_CONFIG"] == (
         '[{"name":"docs","transport":"http","url":"http://docs"}]'
     )
@@ -193,10 +197,9 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
             return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}
         return {}
 
-    client_factory_fn = cast(
-        "UpstreamClientFactory",
-        lambda srv: HttpUpstreamClient(srv, caller=fake_caller),
-    )
+    def client_factory_fn(srv: UpstreamMcpServer) -> HttpUpstreamClient:
+        return HttpUpstreamClient(srv, caller=fake_caller)
+
     upstream_registry = UpstreamRegistry.build(
         [upstream],
         client_factory=client_factory_fn,
@@ -221,7 +224,7 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
 
     lifecycle.start_mcp_server(session, workspace, upstream_registry=upstream_registry, deps=deps)
 
-    required = cast("list[str]", seen["required_tools"])
+    required = must_str_list(seen["required_tools"])
     assert "ralph_upstream__remote__ping" in required
 
 
@@ -454,7 +457,11 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
 
 
 def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> None:
-    """Bridge restarts when process is alive (poll=None) but responsiveness probe fails."""
+    """Bridge restarts an alive process once probe failures are sustained.
+
+    A restart needs repeated evidence: one missed probe window is a slow
+    server under load, not a dead one.
+    """
     inner = _make_standalone(poll_result=None)
     new_inner = _make_standalone(poll_result=None)
     restart_calls: list[int] = []
@@ -471,8 +478,8 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
-    result = bridge.check_health_and_restart_if_needed()
-    assert result is True
+    results = [bridge.check_health_and_restart_if_needed() for _ in range(3)]
+    assert results == [False, False, True]
     assert bridge.restart_count == 1
     assert restart_calls == [1]
 
@@ -493,6 +500,8 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is False
     with pytest.raises(lifecycle.McpServerError) as exc_info:
         bridge.check_health_and_restart_if_needed()
     assert exc_info.value.restart_count == 0
@@ -522,7 +531,8 @@ def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
-    bridge.check_health_and_restart_if_needed()
+    for _ in range(3):
+        bridge.check_health_and_restart_if_needed()
     assert initial_process.terminated is True, "stale process must be terminated before respawn"
 
 

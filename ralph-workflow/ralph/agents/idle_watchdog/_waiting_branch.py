@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 
+
 def effective_waiting_ceiling(
     self: IdleWatchdog,
     corroboration: CorroborationSnapshot,
@@ -158,9 +159,7 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
     _os_desc_only_suspect = (
         self._config.os_descendant_only_suspect_seconds is not None if _os_desc_only else False
     )
-    effective_suspect, suspect_reason = self._compute_effective_suspect(
-        alive_by, candidate_total
-    )
+    effective_suspect, suspect_reason = self._compute_effective_suspect(alive_by, candidate_total)
 
     # Stuck-job sub-ceiling (CHILDREN_PERSIST_TOO_LONG). When the
     # cumulative waiting time has exceeded the configured sub-ceiling
@@ -216,6 +215,12 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
         for ev_key, ev_value in evidence_block_sj.items():
             if ev_key not in diag_sj:
                 diag_sj[ev_key] = ev_value
+        # wt-047-stall-label: emit STALLED alongside HARD_STOP. The
+        # watchdog is the sole owner of the STALLED label; the
+        # HARD_STOP + gate-passed FIRE is the explicit liveness
+        # signal that the bar must mirror. ``_set_stall`` is
+        # idempotent.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.HARD_STOP,
             current_run_seconds=current_run_elapsed,
@@ -272,6 +277,12 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
         for ev_key, ev_value in evidence_block.items():
             if ev_key not in diag:
                 diag[ev_key] = ev_value
+        # wt-047-stall-label: emit STALLED alongside HARD_STOP. The
+        # watchdog is the sole owner of the STALLED label; the
+        # cumulative ceiling + unconditional FIRE is the explicit
+        # liveness signal the bar must mirror. ``_set_stall`` is
+        # idempotent.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.HARD_STOP,
             current_run_seconds=current_run_elapsed,
@@ -306,6 +317,14 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
             effective_suspect,
             effective_ceiling,
         )
+        # wt-047-stall-label: emit STALLED alongside SUSPECTED_FROZEN.
+        # The watchdog is the sole owner of the STALLED label; the
+        # suspect-threshold cross is the explicit liveness signal the
+        # bar must mirror. ``_set_stall`` is idempotent so a later
+        # HARD_STOP transition is a no-op. The flag is also reset on
+        # EXITED (``_accumulate_waiting_run``) so the wait-then-resume
+        # path emits STALL_RESUMED exactly once on exit.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.SUSPECTED_FROZEN,
             current_run_seconds=current_run_elapsed,
@@ -336,8 +355,7 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
         # unchanged -- only the human-readable payload.
         heartbeat_count = self._subagent_count_for_heartbeat()
         self._log.info(
-            "idle watchdog: agent waiting on subagent ({} alive) for {}s"
-            " - hard ceiling at {}s",
+            "idle watchdog: agent waiting on subagent ({} alive) for {}s - hard ceiling at {}s",
             heartbeat_count,
             round(candidate_total, 0),
             round(effective_ceiling, 0),
@@ -369,14 +387,9 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
     # reports a live subagent count > 0 -- both surfaces
     # are agent-agnostic (no per-worker log discovery).
     live_subagent_count = (
-        self._process_monitor.live_subagent_count()
-        if self._process_monitor is not None
-        else 0
+        self._process_monitor.live_subagent_count() if self._process_monitor is not None else 0
     )
-    if (
-        self._last_subagent_progress_description is not None
-        or live_subagent_count > 0
-    ) and (
+    if (self._last_subagent_progress_description is not None or live_subagent_count > 0) and (
         self._last_subagent_progress_emit_at is None
         or (now - self._last_subagent_progress_emit_at)
         >= self._config.watchdog_subagent_progress_interval_seconds

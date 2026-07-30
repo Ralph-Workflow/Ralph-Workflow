@@ -286,4 +286,98 @@ async def test_normal_completion_does_not_terminate_via_finally() -> None:
     )
 
 
-__all__ = ["test_finally_block_terminates_non_terminal_handle"]
+@pytest.mark.asyncio
+async def test_silent_then_successful_child_keeps_output_and_is_not_terminated() -> None:
+    """Silence below existing triggers is not death: output survives completion.
+
+    A child that produces no further output for a long simulated interval
+    (well below existing idle/no-output watchdog triggers) and then
+    completes normally must not be terminated by ownership teardown, and
+    every line already drained must remain intact. This is the
+    "silence is not death" half of the subprocess ownership contract;
+    watchdog non-fire under ACTIVE quiet is covered separately in
+    ``tests/test_live_post_tool_result_wedge.py``.
+    """
+    from ralph.agents.execution_state import AgentExecutionState
+    from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
+    from ralph.agents.timeout_clock import FakeClock
+
+    # Existing defaults keep long silence legal; use the same shape with
+    # a short idle deadline so FakeClock can advance past "long quiet"
+    # without approaching any fire threshold while classify_quiet is ACTIVE.
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=0.05,
+        max_waiting_on_child_seconds=10.0,
+        idle_poll_interval_seconds=0.001,
+        drain_window_seconds=30.0,
+        suspect_waiting_on_child_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
+        os_descendant_only_ceiling_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(policy, clock)
+    watchdog.record_activity()
+    clock.advance(20.0)  # long quiet, still under drain / child-wait ceilings
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+    assert verdict != WatchdogVerdict.FIRE
+
+    pid = 44
+    completion = asyncio.Event()
+    fake = _RecordingControllableAsyncProcess(
+        pid=pid,
+        stdout_data=b"line-one\nline-two\n",
+        completion_event=completion,
+    )
+    fake_psutil, recording_psutil = _make_fake_psutil(pid)
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.0,
+            kill_followup_timeout_s=0.0,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
+        async_process_factory=_build_factory(fake),
+        psutil=fake_psutil,
+    )
+
+    observed: list[str] = []
+
+    async def release_after_drain() -> None:
+        # Simulate a long silent interval after output has been drained,
+        # then let the child complete normally.
+        for _ in range(20):
+            await asyncio.sleep(0)
+        completion.set()
+
+    executor = SubprocessAgentExecutor(["fake-cmd"], _pm=pm)
+    unit = _make_unit("silent-then-success")
+    release_task = asyncio.create_task(release_after_drain())
+    try:
+        await asyncio.wait_for(
+            executor.run(
+                unit,
+                on_output=observed.append,
+                on_status=_ignore_status,
+            ),
+            timeout=1.0,
+        )
+    finally:
+        if not release_task.done():
+            release_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await release_task
+
+    assert observed == ["line-one", "line-two"], (
+        f"silent-then-successful child lost output; got {observed!r}"
+    )
+    assert recording_psutil.terminate_calls == 0, (
+        f"silent-then-successful child must not be terminated; "
+        f"got terminate_calls={recording_psutil.terminate_calls}"
+    )
+
+
+__all__ = [
+    "test_finally_block_terminates_non_terminal_handle",
+    "test_silent_then_successful_child_keeps_output_and_is_not_terminated",
+]

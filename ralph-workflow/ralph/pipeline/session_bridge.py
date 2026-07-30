@@ -177,15 +177,57 @@ def build_session_bridge(
     # the moment the prompt tells it to. Without this, the agent's first read
     # fails with ENOENT and the artifact submission silently breaks. (Bug
     # surfaced on 2026-06-14 when the commit prompt pointed at a format doc
-    # that hadn't been written yet.) Idempotent — re-running on a workspace
-    # that already has the docs is a no-op overwrite.
+    # that hadn't been written yet.) Idempotent and fseventsd-friendly:
+    # ``materialize_format_doc`` and ``materialize_format_index`` route
+    # through ``write_text_if_changed`` from
+    # ``ralph/mcp/artifacts/idempotent_write``, which SKIPS the physical
+    # rewrite when the on-disk doc is byte-identical, so re-running per
+    # session adds no filesystem mutation (and therefore no fsevents
+    # notification) on a workspace that already has the docs.
     materialize_all_format_docs(workspace_root)
+    # AC-11: attach one ``ExecResourceResolver`` per session so
+    # ``ralph://exec/<spill-name>`` URIs returned by ``format=summary``
+    # exec calls are replayable through ``resources/read``. The
+    # resolver owns the workspace's exec spill directory as a trusted
+    # root, plus any per-call spill roots a tool may register later.
+    # The attachment MUST happen BEFORE the subprocess is spawned so
+    # the on-disk session payload can carry the resolver config and
+    # the subprocess MCP server can re-construct the resolver. Doing
+    # this after ``bridge.start()`` would make the resources/read
+    # handler return a structured "resolver not attached" error
+    # inside the production subprocess path.
+    try:
+        from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
+
+        spill_root = workspace_root / ".agent" / "tmp"
+        # The concrete class satisfies the resolver protocol; the
+        # session attribute is typed as the protocol. Assigning the
+        # concrete instance is structurally valid because the
+        # protocol narrows to the same public surface.
+        session.exec_resource_resolver = ExecResourceResolver(spill_roots=(spill_root,))
+    except Exception:
+        # Surface as no resolver rather than failing the bridge.
+        session.exec_resource_resolver = None
     bridge = server_fn(
         session,
         workspace,
         extras=McpServerExtras(extra_env=session_mcp_plan.server_env),
     )
     bridge.start()
+    # AC-03: attach one ExploreIndex per session/workspace so every
+    # indexed read/search/grep/list/edit operation shares the same
+    # generation + dirty-path state. The build is lazy: when no
+    # indexed operation is invoked, the handle stays attached but
+    # the SQLite store is only opened on the first read.
+    try:
+        from ralph.mcp.explore.handlers import build_explore_index
+
+        explore_handle = build_explore_index(workspace_root)
+    except Exception:
+        explore_handle = None
+    if explore_handle is not None:
+        session.explore_index = explore_handle
+        workspace.explore_index = explore_handle
     return bridge
 
 

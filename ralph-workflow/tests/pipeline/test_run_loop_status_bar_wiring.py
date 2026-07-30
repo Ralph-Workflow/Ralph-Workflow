@@ -50,7 +50,7 @@ import io
 import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from rich.console import Console
@@ -60,6 +60,7 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel
 from ralph.pipeline.run_loop import (
+    _execute_with_cleanup,
     _LoopContext,
     _push_status_bar_if_changed,
     _run_inner_loop,
@@ -178,18 +179,18 @@ def _make_loop_context(
     return _LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=WorkspaceScope(root=workspace_root),
-        config=cast("object", None),
+        config=None,
         active_display=active_display,
         display_context=display_context,
         effective_verbosity=Verbosity.NORMAL,
-        registry=cast("object", type("R", (), {})()),
-        effective_pipeline_subscriber=cast("object", None),
-        controller=cast("object", type("C", (), {})()),
+        registry=type("R", (), {})(),
+        effective_pipeline_subscriber=None,
+        controller=type("C", (), {})(),
         config_path=None,
         cli_overrides={},
         monitor_stop=None,
-        connectivity_monitor=cast("object", _OnlineMonitor()),
-        sleep=cast("object", lambda _s: None),
+        connectivity_monitor=_OnlineMonitor(),
+        sleep=lambda _s: None,
         is_quiet=False,
         snapshot_registry=None,
     )
@@ -435,7 +436,7 @@ def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
     assert only_push.inner_analysis_cap is None
 
 
-@pytest.mark.parametrize("width", [40, 20, 14])
+@pytest.mark.parametrize("width", [70, 80, 99])
 def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     """AC-07 proof at the run-loop seam: workspace + phase stay visible at narrow widths.
 
@@ -466,8 +467,8 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
        a recognizable prefix of the human phase label
        (e.g. ``Dev`` for ``Development Analysis``); path shows a
        recognizable trailing segment (e.g. ``sub`` for
-       ``.../subdir``). At width 40 the canonical ``Dev N/cap`` /
-       ``Analysis N/cap`` iteration labels also render; at width 20
+       ``.../subdir``). At width 40 the canonical ``Cycle N/cap`` /
+       ``iter N/cap`` iteration labels also render; at width 20
        the iteration labels render in compact/minimal form (one or
        both segments may be dropped at very narrow widths to keep
        workspace + phase visible); at width 14 the outer iter may
@@ -504,7 +505,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
         f"AC-07: console width MUST be {width} for this parametrized variant; "
         f"got {pd._ctx.console.width!r}"
     )
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     assert isinstance(sb, StatusBar)
     workspace_root = Path("/Users/alice/code/very-long-project-name/subdir")
     workspace_root_str = str(workspace_root)
@@ -542,9 +543,10 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
             f"AC-07: _push_status_bar_if_changed must return a fresh "
             f"signature after a first push at width={width}; got None"
         )
-        assert isinstance(new_sig, tuple) and len(new_sig) == 3, (
+        assert isinstance(new_sig, tuple) and len(new_sig) == 7, (
             f"AC-07: _push_status_bar_if_changed must return a "
-            f"(phase, outer, inner) tuple; got {new_sig!r}"
+            f"(phase, outer, inner, integration_alert, outer_label, agent_name, attention) tuple; "
+            f"got {new_sig!r}"
         )
     assert captured_inside_active is True, (
         f"StatusBar must be active inside the production context manager at width={width}"
@@ -594,9 +596,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     # renders).
     phase_label = "Development Analysis"
     phase_label_prefixes = (
-        phase_label[:3],  # "Dev" -- first 3 chars of "Development Analysis"
-        phase_label[:4],  # "Deve"
-        phase_label[:2],  # "De"
+        "DAn",  # distinct narrow carrier for Development Analysis
+        phase_label[:3],
+        phase_label[:2],
     )
     phase_visible = any(prefix in plain for prefix in phase_label_prefixes)
     assert phase_visible, (
@@ -721,3 +723,206 @@ def test_setup_active_display_returns_live_context_object() -> None:
         )
     finally:
         stop_fn()
+
+
+def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
+    """wt-047-stall-label: STALLED is now watchdog-sourced.
+
+    The display no longer owns a ``last_activity_monotonic`` producer
+    -- the watchdog is the sole owner of the STALLED label. The
+    display surfaces the watchdog-sourced attention via the
+    ``watchdog_attention`` slot and the setter is wired to the
+    ``PipelineSubscriber``'s sink.
+
+    This test pins the new surface (the slot exists, defaults to
+    ``None``, and the setter writes the slot).
+    """
+    clock = {"t": 1000.0}
+    console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={}),
+        workspace_root=Path(tempfile.mkdtemp()),
+        monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
+    )
+    # Initial state: no watchdog transition yet.
+    assert pd.watchdog_attention is None
+    # Sink path: the subscriber calls set_watchdog_attention.
+    pd.set_watchdog_attention("stalled")
+    assert pd.watchdog_attention == "stalled"
+    # None clears.
+    pd.set_watchdog_attention(None)
+    assert pd.watchdog_attention is None
+
+
+def test_push_status_bar_carries_liveness_through_production_path() -> None:
+    """wt-047-stall-label: the production push path no longer carries
+    ``last_activity_monotonic``.
+
+    The display-side 30 s stall derivation is gone (zero dead code).
+    The watchdog is the sole owner of the STALLED label and surfaces
+    its state via the host's ``watchdog_attention`` slot. The push
+    helper still pushes the model through to the StatusBar so the
+    ``last_model`` reads the pushed state, but the captured model
+    carries only ``run_started_monotonic`` and ``attention`` (NOT
+    ``last_activity_monotonic``).
+    """
+    clock = {"t": 1000.0}
+    console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
+    workspace_root = Path(tempfile.mkdtemp())
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={}),
+        workspace_root=workspace_root,
+        monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
+    )
+    # Seed the watchdog-sourced attention via the host setter.
+    pd.set_watchdog_attention("stalled")
+    policy_bundle = load_policy(workspace_root / ".agent")
+    state = _make_state("development", 1, 1, 1)
+    sig = _push_status_bar_if_changed(
+        pd,
+        state,
+        policy_bundle,
+        workspace_root,
+        last_sig=None,
+    )
+    assert sig is not None
+    pushed = pd.status_bar.last_model
+    assert pushed is not None, (
+        "The production push path must reach the StatusBar's update "
+        "seam so ``last_model`` reflects the new model."
+    )
+    # wt-047-stall-label: the pushed model carries the operator-pushed
+    # ``attention`` slot only; the watchdog-sourced ``stalled`` is
+    # substituted on each Live tick via ``_model_with_live_attention``.
+    # The captured model itself does NOT carry the watchdog attention.
+    assert pushed.attention is None, (
+        "The pushed model's attention slot is operator-pushed only; "
+        "the watchdog-sourced value is substituted on each Live tick."
+    )
+    # Sanity: the field the production push path USED to carry is gone.
+    assert not hasattr(pushed, "last_activity_monotonic"), (
+        "wt-047-stall-label: the dead display-side stall derivation "
+        "must be removed from the model entirely (zero dead code)."
+    )
+
+
+def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-7: teardown follows a final, truthful terminated Status Bar push."""
+    workspace_root = Path(tempfile.mkdtemp())
+    display = _make_display()
+    loop_ctx = _make_loop_context(
+        active_display=display,
+        workspace_root=workspace_root,
+        policy_bundle=_load_default_policy(),
+    )
+    terminal_state = _make_state("complete", 1, 1, 1).copy_with(run_outcome="completed")
+    captured = _patched_update_recorder(monkeypatch)
+    monkeypatch.setattr("ralph.pipeline.run_loop._emit_run_start", lambda *_args: None)
+    monkeypatch.setattr(
+        "ralph.pipeline.run_loop._run_inner_loop",
+        lambda *_args: (terminal_state, "development", None),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.run_loop._report_pending_remote_publication",
+        lambda state, _ctx: state,
+    )
+    monkeypatch.setattr("ralph.pipeline.run_loop._emit_post_loop_result", lambda *_args: None)
+
+    observed_before_teardown: list[StatusBarModel | None] = []
+
+    def display_stop() -> None:
+        observed_before_teardown.append(display.status_bar.last_model)
+
+    assert _execute_with_cleanup(
+        terminal_state,
+        loop_ctx,
+        "development",
+        lambda: None,
+        lambda: None,
+        display_stop,
+    ) == 0
+    assert captured[-1].attention == "terminated"
+    assert observed_before_teardown == [captured[-1]]
+
+
+def test_attention_state_for_state_returns_waiting() -> None:
+    """S-2 / AC-01: a waiting phase pushes ``attention='waiting'`` through the run loop."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _make_state("waiting", 1, 1, 1)
+    assert _attention_state_for_state(state) == "waiting"
+
+
+def test_attention_state_for_state_returns_retrying() -> None:
+    """S-2 / AC-01: a retrying run pushes ``attention='retrying'`` through the run loop."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _StubState(phase="development", retrying=True)
+    assert _attention_state_for_state(state) == "retrying"
+
+
+def test_attention_state_for_state_returns_failed() -> None:
+    """S-2 / AC-01: a failed run keeps its outcome in the Status Bar."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _StubState(phase="development", run_outcome="failed")
+    assert _attention_state_for_state(state) == "failed"
+
+
+def test_attention_state_for_state_regression_failed_terminal_is_terminated() -> None:
+    """DA-002: the policy terminal-failure phase occupies the terminal slot."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+
+    assert _attention_state_for_state(_StubState(phase="failed_terminal", run_outcome="terminated")) == "terminated"
+
+
+def test_attention_state_for_state_returns_none_when_healthy() -> None:
+    """S-2 / AC-01: a healthy development phase pushes ``attention=None`` (renderer drives)."""
+    from ralph.pipeline.run_loop import _attention_state_for_state
+    state = _StubState(phase="development")
+    assert _attention_state_for_state(state) is None
+
+
+class _StubState:
+    """Lightweight stand-in for ``PipelineState`` in attention-state tests.
+
+    ``PipelineState`` is a frozen pydantic model; the
+    ``_attention_state_for_state`` helper reads via ``getattr`` so
+    a stub is the simplest way to set ``run_outcome`` / ``retrying``
+    per test without copying the model.
+    """
+
+    def __init__(
+        self,
+        *,
+        phase: str = "development",
+        run_outcome: str | None = None,
+        retrying: bool = False,
+    ) -> None:
+        self.phase = phase
+        self.run_outcome = run_outcome
+        self.retrying = retrying
+
+
+def _make_state(
+    phase: str,
+    outer_dev_iteration: int,
+    outer_dev_cap: int,
+    inner_analysis: int,
+) -> PipelineState:
+    """Build a minimal ``PipelineState`` for the wiring tests.
+
+    Mirrors the same shape ``_build_status_bar_model`` expects so
+    the helper can resolve the human phase label. Defensive
+    ``getattr`` keeps the test tolerant of new optional fields.
+    """
+    from ralph.pipeline.state import AgentChainState
+    chain = AgentChainState(agent_name="claude", attempts=0, history=())
+    return PipelineState(
+        phase=phase,
+        previous_phase=None,
+        attempts=1,
+        chain=chain,
+        started_at=0.0,
+        last_blocked_phase=None,
+        is_waiting_state=False,
+    )

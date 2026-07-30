@@ -123,7 +123,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         cmd="agy",
         yolo_flag="--dangerously-skip-permissions",
         print_flag="--print",
-        can_commit=False,
+        can_commit=True,
         interactive=True,
         no_default_session_flag=True,
     ).to_support("agy"),

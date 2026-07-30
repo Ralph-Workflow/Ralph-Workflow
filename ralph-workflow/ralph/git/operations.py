@@ -18,6 +18,7 @@ from git import Actor, InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -111,8 +112,6 @@ def _read_lock_pid(lock_path: Path) -> int | None:
 def _recover_stale_git_lock(
     operation: str,
     error: Exception,
-    *,
-    stale_lock_age_seconds: float = _STALE_GIT_LOCK_AGE_SECONDS,
 ) -> bool:
     """Recover from a transient Git lock-file error.
 
@@ -247,7 +246,7 @@ def is_repo_clean(repo_root: Path | str) -> bool:
     repo_root_path = Path(repo_root)
     try:
         result = run_git(
-            ("status", "--porcelain", "--untracked-files=no"),
+            (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no"),
             cwd=repo_root_path,
             label="git-status",
         )
@@ -348,7 +347,9 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
-            status_lines = cast("str", repo.git.status("--porcelain")).splitlines()
+            status_lines = cast(
+                "str", repo.git.status("--porcelain")
+            ).splitlines()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         finally:
             _close_repo(repo)
 
@@ -445,7 +446,9 @@ def stage_all(repo_root: Path | str) -> None:
         repo = Repo(repo_root)
 
         def _stage() -> None:
-            _ = cast("str", repo.git.add(A=True))
+            _ = cast(
+                "str", repo.git.add(A=True)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
         _run_git_operation_with_stale_lock_recovery("stage_all", _stage)
         logger.debug("Staged all changes in {}", repo_root)
@@ -469,7 +472,9 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
         repo = Repo(repo_root)
 
         def _stage() -> None:
-            _ = cast("str", repo.git.add("--all", "--", *files))
+            _ = cast(
+                "str", repo.git.add("--all", "--", *files)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
         _run_git_operation_with_stale_lock_recovery("stage_files", _stage)
         logger.debug("Staged {} selected paths in {}", len(files), repo_root)
@@ -565,11 +570,22 @@ def get_head_sha(repo_root: Path | str) -> str:
 
     Returns:
         SHA of the current HEAD commit.
+
+    Raises:
+        GitOperationError: If HEAD cannot be read.
+
+    The wrapping is deliberate and matches :func:`find_repo_root` and
+    :func:`merge_base` in this module. Raw GitPython exceptions used to
+    escape into the auto-integrate skip table, where they were recorded
+    as an opaque ``unexpected failure`` that named neither the operation
+    nor the repository.
     """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
         return repo.head.commit.hexsha
+    except Exception as exc:
+        raise GitOperationError("get_head_sha", str(exc)) from exc
     finally:
         _close_repo(repo)
 
@@ -726,9 +742,7 @@ def _atomic_append_text(
         separator = b"\n"
     _staging_hash = hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]
     _staging_pid = os.getpid()
-    staging = path.with_suffix(
-        path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}"
-    )
+    staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
     try:
         staging.write_bytes(existing + separator + payload.encode(encoding))
         staging.replace(path)

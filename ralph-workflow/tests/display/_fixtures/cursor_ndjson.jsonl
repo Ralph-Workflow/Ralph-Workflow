@@ -1,0 +1,3 @@
+{"kind":"text","provider":"cursor","content":"Cursor is checking the display.","metadata":{}}
+{"kind":"tool_use","provider":"cursor","content":"Search","metadata":{"input":{"query":"ParallelDisplay"}}}
+{"kind":"tool_result","provider":"cursor","content":"one result","metadata":{"tool":"Search"}}

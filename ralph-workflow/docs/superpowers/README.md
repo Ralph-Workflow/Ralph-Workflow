@@ -27,7 +27,7 @@ For the maintained operator manual and the contributor reference, see:
 
 ## Primary repo
 
-- Codeberg (primary):
-  <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub (read-only mirror):
+- GitHub (primary):
   <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- Codeberg mirror (retained for the time being):
+  <https://codeberg.org/RalphWorkflow/Ralph-Workflow>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,6 +26,11 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.prompts import materialize as materialize_module
 from ralph.workspace.scope import WorkspaceScope
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
+from tests.plan_fixtures import development_result_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -98,9 +103,9 @@ def test_parallel_workers_would_collide_on_shared_prompt_and_checkpoint_files_wi
             **kwargs: object,
         ) -> None:
             del command, signal_bridge
-            self._cwd = Path(cast("str | Path", kwargs.get("cwd", tmp_path)))
+            self._cwd = Path(kwargs.get("cwd", tmp_path))
             extra_env = kwargs.get("extra_env", {})
-            self._extra_env = cast("dict[str, str]", extra_env)
+            self._extra_env = must_str_dict(extra_env)
 
         async def run(
             self,
@@ -123,7 +128,10 @@ def test_parallel_workers_would_collide_on_shared_prompt_and_checkpoint_files_wi
             worker_ns = Path(self._extra_env[str(WORKER_NAMESPACE_ENV)])
             artifact_dir = worker_ns / "artifacts"
             artifact_dir.mkdir(parents=True, exist_ok=True)
-            (artifact_dir / "development_result.json").write_text("{}", encoding="utf-8")
+            (artifact_dir / "development_result.md").write_text(
+                development_result_markdown(unit.unit_id),
+                encoding="utf-8",
+            )
             fan_out_module.ckpt.save(
                 PipelineState(phase="development", work_units=(unit,)),
                 path=worker_checkpoint_path(worker_ns),
@@ -284,7 +292,7 @@ def test_run_pipeline_forwards_model_identity_and_pro_hooks_to_parallel_worker(
 
     assert result == 0
     assert captured["manifest_path"] is manifest_path
-    kwargs = cast("dict[str, object]", captured["kwargs"])
+    kwargs = must_mapping(captured["kwargs"])
     assert kwargs["model_identity"] is model_identity
     assert kwargs["pro_hooks"] is pro_hooks
 
@@ -348,7 +356,7 @@ def test_parallel_worker_manifest_persists_parent_config_and_env(
             **kwargs: object,
         ) -> None:
             del command, signal_bridge
-            self.extra_env = cast("dict[str, str]", kwargs["extra_env"])
+            self.extra_env = must_str_dict(kwargs["extra_env"])
 
     monkeypatch.setattr(
         "ralph.pipeline.parallel.parallel_coordinator.subprocess_executor.SubprocessAgentExecutor",
@@ -365,6 +373,6 @@ def test_parallel_worker_manifest_persists_parent_config_and_env(
         same_workspace,
     )
 
-    captured_executor = cast("_CaptureExecutor", executor)
+    captured_executor = executor
     assert isinstance(captured_executor, _CaptureExecutor)
     assert captured_executor.extra_env[manifest_env] == str(manifest_path)

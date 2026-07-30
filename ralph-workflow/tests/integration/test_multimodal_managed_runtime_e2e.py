@@ -15,7 +15,7 @@ All tests drive McpServer.handle_request() in-process; no threads, no sockets.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -37,11 +37,12 @@ from ralph.mcp.server.runtime import (
 from ralph.mcp.tools.names import RalphToolName
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamTool
-from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.prompts.debug_dump import media_session_path
 from ralph.prompts.materialize import collect_media_entries_for_phase
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
+from tests._support.typed_accessors import must_mapping
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -190,7 +191,7 @@ def _tools_list(server: McpServer, state: ServerState) -> set[str]:
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None
-    tools = cast("list[dict[str, Any]]", cast("dict[str, Any]", resp.result)["tools"])
+    tools = must_mapping(resp.result)["tools"]
     return {t["name"] for t in tools}
 
 
@@ -209,7 +210,7 @@ def _tool_call(
     )
     resp, _ = server.handle_request(req, state)
     assert resp is not None
-    return cast("dict[str, Any]", resp.result)
+    return resp.result
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +260,7 @@ def test_screenshot_png_round_trip_preserves_inline_or_replay_delivery(
     result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "screenshot.png"})
 
     assert result.get("isError") is not True, f"read_media returned error: {result}"
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) == 1
     block = content[0]
     block_type = block.get("type")
@@ -283,7 +284,7 @@ def test_pdf_resource_reference_is_retrievable_via_resources_read(
     result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "report.pdf"})
 
     assert result.get("isError") is not True, f"read_media returned error: {result}"
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) == 1
     block = content[0]
     assert block.get("type") == "resource_reference", (
@@ -301,10 +302,7 @@ def test_pdf_resource_reference_is_retrievable_via_resources_read(
     )
     read_resp, _ = server.handle_request(read_req, state)
     assert read_resp is not None and read_resp.result is not None
-    contents = cast(
-        "list[dict[str, Any]]",
-        cast("dict[str, Any]", read_resp.result).get("contents", []),
-    )
+    contents = must_mapping(read_resp.result).get("contents", [])
     assert len(contents) == 1
     assert contents[0].get("uri") == uri
     assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
@@ -354,7 +352,7 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
 
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=cast("UpstreamClientFactory", lambda _srv: _FakeClient()),
+        client_factory=lambda _srv: _FakeClient(),
     )
 
     result = registry.call_tool("ralph_upstream__mix_server__mix", {}, session=_FakeSession())
@@ -411,7 +409,7 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=cast("UpstreamClientFactory", lambda _srv: _FakeClient()),
+        client_factory=lambda _srv: _FakeClient(),
     )
 
     result = registry.call_tool("ralph_upstream__pdf_server__pdf_tool", {}, session=_FakeSession())
@@ -539,7 +537,7 @@ def test_gemini_audio_delivers_typed_audio_block(tmp_path: Path) -> None:
     assert result.get("isError") is not True, (
         f"read_media should not be an error for Gemini audio, got: {result}"
     )
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) == 1
     block = content[0]
     # Gemini audio must come back as an AudioContent typed block (type='audio') or
@@ -570,7 +568,7 @@ def test_gemini_video_delivers_typed_video_block(tmp_path: Path) -> None:
     assert result.get("isError") is not True, (
         f"read_media should not be an error for Gemini video, got: {result}"
     )
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) == 1
     block = content[0]
     # Gemini video must come back as a VideoContent typed block (type='video') or
@@ -637,7 +635,7 @@ def test_openai_audio_returns_explicit_unsupported_error(tmp_path: Path) -> None
         f"read_media must return isError=True for OpenAI audio (unsupported modality), "
         f"got: {result}"
     )
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) >= 1
     error_text = str(content[0].get("text", ""))
     assert "audio" in error_text.lower() or "unsupported" in error_text.lower(), (
@@ -663,7 +661,7 @@ def test_openai_pdf_returns_explicit_unsupported_error(tmp_path: Path) -> None:
     assert result.get("isError") is True, (
         f"read_media must return isError=True for OpenAI PDF (unsupported modality), got: {result}"
     )
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) >= 1
     error_text = str(content[0].get("text", ""))
     assert "pdf" in error_text.lower() or "unsupported" in error_text.lower(), (
@@ -719,7 +717,7 @@ def test_claude_docx_round_trip_preserves_typed_document_or_replay_delivery(
     assert result.get("isError") is not True, (
         f"read_media must not return an error for Claude DOCX, got: {result}"
     )
-    content = cast("list[dict[str, Any]]", result.get("content", []))
+    content = result.get("content", [])
     assert len(content) == 1, f"Expected exactly 1 content block, got: {content}"
     block = content[0]
     block_type = block.get("type")

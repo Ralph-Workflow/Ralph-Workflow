@@ -15,6 +15,10 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
+from ralph.git.commit_cleanup import (
+    add_to_git_exclude,
+    is_recognized_secret_path,
+)
 from ralph.git.operations import (
     create_commit,
     has_uncommitted_changes,
@@ -42,6 +46,13 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+_SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
+    ".env",
+    ".env.local",
+    ".env.*.local",
+    "secrets.yml",
+    "credentials.json",
+)
 
 
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
@@ -56,13 +67,17 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
         display = display_context
     elif display_context is not None:
         try:
-            display = resolve_active_display(None, cast("DisplayContext", display_context))
+            display = resolve_active_display(
+                None, cast("DisplayContext", display_context)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         except Exception:
             display = None
     if display is None:
         return
     with suppress(Exception):
-        cast("ParallelDisplay", display).emit_commit_message(repo_root)
+        cast("ParallelDisplay", display).emit_commit_message(
+            repo_root
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 @dataclass(frozen=True)
@@ -92,7 +107,9 @@ def execute_commit_effect(
     **opts: object,
 ) -> PipelineEvent:
     """Execute a commit effect, creating or skipping a git commit."""
-    verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
+    verbosity = cast(
+        "Verbosity", opts.get("verbosity", Verbosity.VERBOSE)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     _raw_create = opts.get("create_commit_fn")
     _create_commit_fn: _CreateCommitFn = cast(
         "_CreateCommitFn", _raw_create if callable(_raw_create) else create_commit
@@ -131,7 +148,9 @@ def execute_commit_effect(
             _render_commit_fn(repo_root, get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
+                cast("ParallelDisplay", display).record_artifact_outcome(
+                    f"sha={sha[:8]}"
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
@@ -152,11 +171,16 @@ def _stage_commit_scope(
     payload: dict[str, object],
     stage_all_fn: _StageAllFn,
 ) -> None:
+    if stage_all_fn is stage_all:
+        add_to_git_exclude(repo_root, list(_SECRET_EXCLUDE_PATTERNS))
     include_paths = _commit_include_paths(repo_root, payload)
     if include_paths is None:
         stage_all_fn(str(repo_root))
         return
-    _stage_files(str(repo_root), include_paths)
+    _stage_files(
+        str(repo_root),
+        [path for path in include_paths if not is_recognized_secret_path(path)],
+    )
 
 
 def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:
@@ -263,9 +287,7 @@ def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None
     repo_root_resolved = Path(repo_root).resolve(strict=False)
     candidate = repo_root / normalized_path
     if candidate.is_symlink():
-        raise ValueError(
-            f"Refusing to stage symlink in commit scope: {normalized_path!r}"
-        )
+        raise ValueError(f"Refusing to stage symlink in commit scope: {normalized_path!r}")
     for parent in candidate.parents:
         if parent == repo_root_resolved or parent == Path(repo_root):
             break
@@ -279,8 +301,7 @@ def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None
         resolved_candidate.relative_to(repo_root_resolved)
     except ValueError as exc:
         raise ValueError(
-            f"Refusing to stage path outside repository root in commit scope: "
-            f"{normalized_path!r}"
+            f"Refusing to stage path outside repository root in commit scope: {normalized_path!r}"
         ) from exc
 
 
@@ -348,8 +369,12 @@ def clear_phase_output_artifacts(
     outputs again here reintroduces a second, less-informed authority and can
     delete the live plan handoff on non-fresh planning entries.
     """
-    drain = cast("str | None", opts.get("drain"))
-    policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
+    drain = cast(
+        "str | None", opts.get("drain")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    policy_bundle = cast(
+        "PolicyBundle | None", opts.get("policy_bundle")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     effective_drain = drain or phase
     required_artifact = (
         resolve_phase_required_artifact(
@@ -379,14 +404,14 @@ def phase_output_artifact_paths(
         else None
     )
     if ra is not None:
-        paths.append(ra.json_path)
+        paths.append(ra.artifact_path)
         if ra.markdown_path is not None:
             paths.append(ra.markdown_path)
     if policy_bundle is not None:
         phase_def = policy_bundle.pipeline.phases.get(phase)
         if phase_def is not None:
             if phase_def.parallelization is not None:
-                paths.append(".agent/artifacts/parallel_development_summary.json")
+                paths.append(".agent/artifacts/parallel_development_summary.md")
             if phase_def.role == "commit" and ra is None:
                 paths.append(COMMIT_MESSAGE_ARTIFACT)
     return tuple(paths)

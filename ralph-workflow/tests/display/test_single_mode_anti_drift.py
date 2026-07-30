@@ -33,6 +33,7 @@ The AST cache is populated at module import time so the test runs in
 from __future__ import annotations
 
 import ast
+import os
 import re
 import subprocess
 from functools import cache, lru_cache
@@ -259,85 +260,207 @@ def _token_marker(token: str) -> str:
 
 
 # Per-test timeout: the drift-check shell script greps ralph/, tests/, docs/
-# on every invocation. With 8 parametrized tokens x 2 invocations each, the
-# cumulative wall-clock cost is well under the 60s combined budget, but each
-# individual parametrized variant needs more headroom than the default 1s
-# because the bash startup + grep cost on the ralph-workflow tree takes
-# ~0.5-1s per invocation on a busy CI runner.
+# on every invocation. The 8 named legacy tokens are batched into ONE FAIL
+# invocation (with all 8 probes present) and ONE PASS invocation (after
+# all probes are removed), so the cumulative subprocess cost stays well
+# within the 60s combined budget. Each individual probe write/delete is
+# bounded by the per-test 8s timeout; the bash + grep cost on the
+# ralph-workflow tree is ~0.7-0.9s per invocation on a busy CI runner.
 #
 # The subprocess_e2e marker exempts this file from the audit_test_policy
 # subprocess audit: the bash script IS the system-under-test (the same
 # artifact make verify-drift invokes), so subprocess.run is the
 # legitimate invocation path, not a bypass of the MockProcessExecutor
 # test-infra seam.
-pytestmark = [pytest.mark.timeout_seconds(8), pytest.mark.subprocess_e2e]
+pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
 
 
-@pytest.mark.parametrize("token", _DRIFT_PROBE_TOKENS)
-def test_drift_check_script_fails_closed_against_every_named_legacy_token(
-    token: str,
-) -> None:
+def test_drift_check_script_fails_closed_against_every_named_legacy_token() -> None:
     """``scripts/wt028-drift-check.sh`` is fail-closed against every legacy token.
+
+    Batched probe strategy (cuts subprocess cost ~8x vs. a parametrized
+    one-probe-per-test design): all 8 named legacy probes are written at
+    once, the bash script is run ONCE to assert FAIL with every probe
+    file name and every token marker in the output, then all 8 probes
+    are removed and the bash script is run ONCE to assert PASS.
 
     For each named legacy token the closure-pass consolidation named,
     this test (a) writes the token to a temporary probe file under
     ``ralph/``, (b) runs the actual bash script via subprocess with a
     bounded timeout (the same invocation path ``make verify-drift``
-    uses), (c) asserts non-zero exit AND that the offending token's
-    recognizable marker appears in the FAIL output (proving the
-    script actually identified the token, not just the probe file),
-    (d) deletes the probe and re-runs the script, (e) asserts exit
+    uses), (c) asserts non-zero exit AND that every offending token's
+    recognizable marker appears in the FAIL output (proving the script
+    actually identified every token, not just the probe files),
+    (d) deletes all probes and re-runs the script, (e) asserts exit
     code 0.
 
-    The probe file is named ``_drift_probe_<sanitized-token>.py`` and
-    lives under ``ralph/`` — outside the historical-context allowlist
+    The probe files are named ``_drift_probe_<sanitized-token>.py`` and
+    live under ``ralph/`` — outside the historical-context allowlist
     (the allowlist covers ``ralph/display/status_bar.py``,
     ``ralph/display/__init__.py``, ``ralph/display/mode.py``,
     ``ralph/display/_mode_adaptive_limits.py``, ``ralph/display/context.py``,
     so a probe file at ``ralph/_drift_probe_*.py`` cannot accidentally
-    fall inside it). try/finally guarantees the probe is cleaned up
+    fall inside it). try/finally guarantees the probes are cleaned up
     even on assertion failure.
     """
-    probe_name = f"_drift_probe_{_safe_probe_name(token)}.py"
-    probe_path = _PROJECT_ROOT / "ralph" / probe_name
-    assert not probe_path.exists(), (
-        f"probe file {probe_path!r} should not exist before the test starts"
-    )
-    token_marker = _token_marker(token)
+    probes: list[tuple[Path, str, str, str]] = []
+    for token in _DRIFT_PROBE_TOKENS:
+        probe_name = f"_drift_probe_{_safe_probe_name(token)}.py"
+        probe_path = _PROJECT_ROOT / "ralph" / probe_name
+        assert not probe_path.exists(), (
+            f"probe file {probe_path!r} should not exist before the test starts"
+        )
+        probes.append(
+            (probe_path, probe_name, token, _token_marker(token))
+        )
     try:
-        probe_path.write_text(f"{token} = '1'\n", encoding="utf-8")
+        for probe_path, _probe_name, token, _marker in probes:
+            probe_path.write_text(f"{token} = '1'\n", encoding="utf-8")
         result = _run_drift_check()
         assert result.returncode != 0, (
-            f"drift-check script must FAIL when probe file contains the "
-            f"legacy token {token!r}; got rc={result.returncode}, "
+            f"drift-check script must FAIL when probe files contain "
+            f"the legacy tokens; got rc={result.returncode}, "
             f"stdout={result.stdout!r}, stderr={result.stderr!r}"
         )
         combined_output = result.stdout + "\n" + result.stderr
-        assert probe_name in combined_output, (
-            f"drift-check FAIL output must name the offending probe file "
-            f"{probe_name!r}; got stdout={result.stdout!r}, "
-            f"stderr={result.stderr!r}"
-        )
-        assert token_marker in combined_output, (
-            f"drift-check FAIL output must surface the offending token "
-            f"itself (marker {token_marker!r} derived from {token!r}); "
-            f"got stdout={result.stdout!r}, stderr={result.stderr!r}"
-        )
+        for _probe_path, probe_name, _token, token_marker in probes:
+            assert probe_name in combined_output, (
+                f"drift-check FAIL output must name the offending probe "
+                f"file {probe_name!r}; got stdout={result.stdout!r}, "
+                f"stderr={result.stderr!r}"
+            )
+            assert token_marker in combined_output, (
+                f"drift-check FAIL output must surface the offending "
+                f"token itself (marker {token_marker!r}); got "
+                f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+            )
         assert "FAIL" in combined_output, (
             f"drift-check FAIL output must include the FAIL marker; "
             f"got stdout={result.stdout!r}, stderr={result.stderr!r}"
         )
+        # Per docs/ralph-workflow-policy/gate-script-policy.md § Failure
+        # output, the FAIL output MUST cite the governing policy file
+        # by path so an agent that hits a red gate can find the rule
+        # without loading every policy into context.
+        assert "gate-script-policy.md" in combined_output, (
+            f"drift-check FAIL output must cite the governing policy "
+            f"(gate-script-policy.md); got stdout={result.stdout!r}, "
+            f"stderr={result.stderr!r}"
+        )
     finally:
-        if probe_path.exists():
-            probe_path.unlink()
+        for probe_path, _probe_name, _token, _marker in probes:
+            if probe_path.exists():
+                probe_path.unlink()
     result_after = _run_drift_check()
     assert result_after.returncode == 0, (
-        f"drift-check script must PASS after the probe file is removed; "
+        f"drift-check script must PASS after the probe files are removed; "
         f"got rc={result_after.returncode}, stdout={result_after.stdout!r}, "
         f"stderr={result_after.stderr!r}"
     )
     assert "PASS" in result_after.stdout, (
         f"drift-check PASS output must include the PASS marker; got stdout={result_after.stdout!r}"
+    )
+
+
+def test_drift_check_fails_closed_when_search_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unexpected search failures must not be reported as a clean drift check."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_git = bin_dir / "git"
+    fake_git.write_text("#!/usr/bin/env bash\nexit 127\n", encoding="utf-8")
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    result = _run_drift_check()
+
+    assert result.returncode == 2
+    assert "FAIL: bad path or permission in upstream grep" in result.stderr
+
+
+def test_drift_check_times_out_when_search_stalls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stalled scan is bounded and fails with the gate-timeout guidance."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_git = bin_dir / "git"
+    fake_git.write_text("#!/usr/bin/env bash\nwhile :; do :; done\n", encoding="utf-8")
+    fake_git.chmod(0o755)
+    fake_sleep = bin_dir / "sleep"
+    fake_sleep.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    fake_sleep.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    result = _run_drift_check()
+
+    assert result.returncode == 124
+    assert "drift scan exceeded 2s and was stopped" in result.stderr
+    assert "gate-script-policy.md § Bounded" in result.stderr
+
+
+def test_drift_check_passes_on_the_clean_real_tree_without_raising_its_bound() -> None:
+    """The gate succeeds on the real repository, and its bound is not raised.
+
+    wt-040 regression. The scan was ``find ... -exec grep -lE`` over the
+    six-branch DRIFT_PATTERNS. BSD grep re-scans the corpus roughly once per
+    alternation branch, and the two whitespace-bearing branches fall off its
+    fast literal path entirely, so as the tree grew past ~2.7k files /
+    ~21 MB the scan started overrunning the script's own 2s bound. That made
+    ``make verify`` die at ``verify-drift`` with rc 124 *before* any Python
+    verify step ran, since ``verify`` lists ``verify-drift`` as its first
+    prerequisite. The repair replaced the per-branch re-scan with a single
+    compiled pass over each file.
+
+    Two assertions, both deterministic:
+
+    1. ``GREP_TIMEOUT_SECONDS`` is still 2. Per
+       docs/ralph-workflow-policy/gate-script-policy.md section Bounded, the
+       supported repair for a slow gate is a faster scan, never a larger
+       timeout -- so the bound is pinned against that bypass.
+    2. The gate exits 0 with the PASS marker and no timeout marker on the
+       clean real tree.
+
+    Deliberately NOT asserted: a wall-clock budget. Measured on this tree
+    with the two implementations interleaved (12 runs each), the pre-fix
+    scan ran 1.283s/1.641s/2.169s (min/median/max, failing its bound on
+    4 of 12 runs) while the single-pass scan ran 0.408s/0.544s/1.192s. The
+    distributions overlap at the tails, so any threshold that reliably
+    passes the fast scan on a loaded runner would also sometimes pass the
+    slow one: a timing assertion here would be flaky without being a real
+    discriminator. The structural assertion below is what actually pins the
+    single-pass property; the script's own watchdog remains the enforcement.
+    """
+    script_text = _DRIFT_SCRIPT.read_text(encoding="utf-8")
+    assert "GREP_TIMEOUT_SECONDS=2" in script_text, (
+        "the drift-check scan bound must stay at 2s; the supported repair "
+        "for a slow scan is a faster scan, not a larger timeout "
+        "(docs/ralph-workflow-policy/gate-script-policy.md section Bounded)"
+    )
+    assert 'grep -lE "$DRIFT_PATTERNS"' not in script_text, (
+        "the drift scan must not go back to grepping the full six-branch "
+        "DRIFT_PATTERNS alternation over the corpus: BSD grep re-scans "
+        "roughly once per branch, which overran the 2s bound on 4 of 12 "
+        "measured runs and turned make verify red at verify-drift. Keep the "
+        "scan to a single compiled pass per file."
+    )
+
+    result = _run_drift_check()
+
+    assert "drift scan exceeded" not in result.stderr, (
+        f"the real-tree drift scan overran its own "
+        f"GREP_TIMEOUT_SECONDS bound; make the scan faster rather than "
+        f"raising the bound. stderr={result.stderr!r}"
+    )
+    assert result.returncode == 0, (
+        f"drift-check must exit 0 on the clean real repository; got "
+        f"rc={result.returncode}, stdout={result.stdout!r}, "
+        f"stderr={result.stderr!r}"
+    )
+    assert "PASS" in result.stdout, (
+        f"drift-check must report the PASS marker on the clean real "
+        f"repository; got stdout={result.stdout!r}"
     )
 
 

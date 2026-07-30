@@ -1,11 +1,19 @@
-"""Reproduction and assertion tests for thinking preview and transcript noise reduction.
+"""Reproduction and assertion tests for tool_result coalescing (S-7).
 
-These tests verify:
-- Thinking blocks show previews on open, checkpoint, and close
-- Tool_result shows a summary line for non-trivial content
-- Redundant META [activity] lines are suppressed when CONT [tool] was just emitted
-- Bare lifecycle tokens are suppressed for all provider prefixes
-- Longer sentences containing lifecycle tokens are NOT suppressed (negative cases)
+Pre-S-7, ``tool_result`` triggered a ``↳ summary:`` line above the
+tool-result content as part of the same over-emission that produced
+``↳ preview:`` and ``↳ ai-summary:`` lines for thinking blocks.
+
+Post-S-7, ``tool_result`` is no longer in ``_STREAMING_KINDS``-style
+emission paths that produce preview / summary / ai-summary supplements.
+The single-entry contract means each tool_result is one line carrying
+its own content; the ``↳ summary:`` supplement is retired along with the
+other preview machinery.
+
+These tests pin the new shape: tool_result content is rendered as a
+single entry, no ``↳ summary:`` line follows, and the underlying
+``build_headline_or_placeholder`` helper still surfaces a headline when
+callers ask for one explicitly (the helper itself is not retired).
 """
 
 from __future__ import annotations
@@ -22,11 +30,6 @@ from ralph.display.parallel_display import ParallelDisplay
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Minimum preview lines expected: one for block open, one for block close
-_MIN_PREVIEW_LINES_FOR_THINKING_BLOCK = 2
-# Threshold for triggering thinking preview on long continuation fragments
-_THINKING_PREVIEW_MIN_CHARS = 80
-
 
 def _make_display(
     tmp_path: Path,
@@ -40,58 +43,54 @@ def _make_display(
     return pd, buf, console
 
 
-def _extract_lines(output: str) -> list[str]:
-    """Extract plain text lines from console output, stripping Rich formatting."""
-    return [line.strip() for line in output.strip().split("\n") if line.strip()]
+def _plain_lines(output: str) -> list[str]:
+    return [line for line in output.splitlines() if line.strip()]
 
 
-def _find_line_index(lines: list[str], pattern: str) -> int | None:
-    """Find index of first line containing pattern, or None."""
-    for i, line in enumerate(lines):
-        if pattern in line:
-            return i
-    return None
+class TestToolResultSingleEntry:
+    """S-7: tool_result is one entry, no ↳ summary: supplement."""
 
-
-def _find_line_index_after(lines: list[str], pattern: str, after_idx: int) -> int | None:
-    """Find index of first line containing pattern after a given index."""
-    for i in range(after_idx + 1, len(lines)):
-        if pattern in lines[i]:
-            return i
-    return None
-
-
-class TestToolResultHeadline:
-    """Step 3: Tool result headline for content below condensation threshold."""
-
-    def test_short_tool_result_no_summary(self, tmp_path: Path) -> None:
-        """Short tool result (<80 chars) does NOT get a summary line."""
+    def test_short_tool_result_emits_one_line_with_content(self, tmp_path: Path) -> None:
+        """Short tool_result content surfaces as exactly one [result] entry."""
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TOOL_RESULT,
-            content="Done.",  # Short content
+            content="Done.",
             metadata={},
         )
 
-        pd.stop()
         out = buf.getvalue()
+        lines = _plain_lines(out)
+        result_lines = [line for line in lines if "[result][u1]" in line]
 
-        # Short content should NOT get a summary line
-        assert "↳ summary:" not in out, (
-            f"Short tool_result should not show ↳ summary:. Output:\n{out}"
+        assert len(result_lines) == 1, (
+            f"Expected exactly 1 tool_result entry, got {len(result_lines)}: "
+            f"{result_lines}\nFull output:\n{out}"
+        )
+        assert "Done." in result_lines[0]
+        assert "\u21b3 summary:" not in out, (
+            f"Retired ↳ summary: supplement must not appear:\n{out}"
         )
 
-    def test_long_tool_result_gets_summary(self, tmp_path: Path) -> None:
-        """Tool result >=80 chars gets a summary line via build_headline_or_placeholder."""
+    def test_long_tool_result_emits_one_line_with_content_no_summary_supplement(
+        self, tmp_path: Path
+    ) -> None:
+        """Long tool_result content still emits exactly one entry, no summary supplement.
+
+        The pre-S-7 expectation that "long tool_result gets a summary line"
+        is now retired — the single-entry contract means the content
+        itself is the entry, and a ``↳ summary:`` supplement is no longer
+        appended.
+        """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
         long_content = (
-            "This is a longer tool result content that should trigger "
-            "the headline summary since it exceeds the 80 character threshold."
+            "This is a longer tool result content that used to trigger "
+            "the headline summary since it exceeded the 80 character threshold."
         )
         pd.emit_parsed_event(
             unit_id=unit_id,
@@ -100,10 +99,16 @@ class TestToolResultHeadline:
             metadata={},
         )
 
-        pd.stop()
         out = buf.getvalue()
+        lines = _plain_lines(out)
+        result_lines = [line for line in lines if "[result][u1]" in line]
 
-        # Should get a summary line
-        assert "↳ summary:" in out, (
-            f"Expected tool_result >=80 chars to show ↳ summary:. Output:\n{out}"
+        assert len(result_lines) == 1, (
+            f"Expected exactly 1 tool_result entry, got {len(result_lines)}: "
+            f"{result_lines}\nFull output:\n{out}"
         )
+        assert "\u21b3 summary:" not in out, (
+            f"Retired ↳ summary: supplement must not appear:\n{out}"
+        )
+        assert "\u21b3 preview:" not in out
+        assert "\u21b3 ai-summary:" not in out

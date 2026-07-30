@@ -1,0 +1,3 @@
+{"kind":"text","provider":"codex","content":"Codex is reading the renderer.","metadata":{}}
+{"kind":"tool_use","provider":"codex","content":"Read","metadata":{"input":{"path":"ralph/display/parallel_display.py"}}}
+{"kind":"tool_result","provider":"codex","content":"renderer source","metadata":{"tool":"Read"}}

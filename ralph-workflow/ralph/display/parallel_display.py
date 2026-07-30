@@ -93,8 +93,12 @@ from __future__ import annotations
 import contextlib
 import json
 import queue
+import re
+import textwrap
+import threading
 import time
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -103,6 +107,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
 from rich.console import Group
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -114,47 +119,52 @@ from ralph.display._phase_close_counters import _PhaseCloseCounters
 from ralph.display._phase_close_options import PhaseCloseOptions
 from ralph.display._phase_counters import PhaseCounters as _PhaseCounters
 from ralph.display._plain_constants import (
-    _ANSI_ESCAPE,
-    _CAT_THEME_KEYS,
     _EMPTY_PLAN_SIGNATURE,
     _KIND_TO_LEVEL,
     _KIND_TO_TAG,
-    _LEVEL_THEME_KEYS,
     _STREAMING_BLOCK_TAGS,
     _STREAMING_KINDS,
     LEVELS,
     TAG_CATEGORY,
     _sanitize,
-    _strip_markup,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
+from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.agent_event_renderer import _format_timestamp as _format_iso_timestamp_hh_mm_ss
+from ralph.display.agent_event_renderer import (
+    make_event_for_emit,
+    render_event,
+)
 from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
 )
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
-from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
-from ralph.display.long_content_summary import (
-    build_ai_summary,
-    build_headline_or_placeholder,
+from ralph.display.edit_preview import (
+    build_edit_preview,
+    preview_header,
+    preview_record_text,
+    render_markdown_preview,
 )
+from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
+from ralph.display.line_sanitizer import strip_markup_safe, strip_terminal_control
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
     format_elapsed_seconds,
     format_transition_context_items,
 )
+from ralph.display.presented_entry import outcome_is_failure
+from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
+from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter, rendered_record_path
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.display.tool_args import format_tool_input, friendly_tool_name
+from ralph.display.theme import detect_terminal_background_is_light
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
-from ralph.mcp.artifacts.handoffs import (
-    ensure_markdown_handoff_from_artifact,
-    handoff_path_for_artifact,
-)
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -177,10 +187,28 @@ _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 _MAX_RENDERED_UNIT_ID_CHARS = 24
 _MAX_STREAMING_FRAGMENTS: int = 2048
+_SECONDS_PER_MINUTE: int = 60
+_PREVIEW_MAX_LINES: int = 40
 
 # A tool activity is "repeated" (coalesced with a "xN" count in the live status)
 # starting from the second consecutive identical call.
 _MIN_COALESCE_REPEAT = 2
+_MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
+_TOOL_RESULT_CHANNEL_RE = re.compile(r"\[tool-result\]\s*")
+_TOOL_RESULT_RUNNING_RE = re.compile(r"\s*\(running\.\.\.\)")
+_TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE = re.compile(
+    r"\b(severity=\S+)\s+\1\s+(\S+)\s+\2\b"
+)
+
+
+def _clean_tool_result_content(content: str, unit_id: str) -> str:
+    """Remove transport residue from a tool result before shared rendering."""
+    clean = _TOOL_RESULT_CHANNEL_RE.sub("", content)
+    clean = _TOOL_RESULT_RUNNING_RE.sub("", clean)
+    clean = _TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE.sub(r"\1 \2", clean)
+    if unit_id:
+        clean = re.sub(rf"\b{re.escape(unit_id)}(?:\s+{re.escape(unit_id)})+\b", unit_id, clean)
+    return " ".join(clean.split())
 
 
 def _strip_control_chars_for_render(text: str) -> str:
@@ -254,6 +282,16 @@ _PHASE_STYLES: dict[str, str] = {
     "verification": "theme.phase.development_analysis",
     "terminal": "theme.phase.complete",
     "fanout_join": "theme.phase.development",
+    # Not declared in pipeline.toml, and deliberately so: rebase conflict
+    # resolution is not a pipeline phase but a nested resolution pipeline
+    # entered from the auto-integration seams. It therefore never resolves
+    # through the pipeline-policy branch below, and without this entry
+    # _phase_style falls through to "theme.text.muted" -- rendering the one
+    # phase the operator most needs to see as inert grey text. The name is
+    # a literal rather than an import of PHASE_RESOLUTION
+    # (ralph/pipeline/conflict_resolution/graph.py) because ralph.display
+    # must not import ralph.pipeline at runtime.
+    "rebase_conflict_resolution": "theme.phase.fix",
 }
 
 _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
@@ -372,8 +410,19 @@ _ARTIFACTS_DIR: str = ".agent/artifacts"
 
 
 def strip_markup(line: str) -> str:
-    """Strip Rich markup tags from a line, returning plain text."""
+    """Strip valid Rich markup and terminal control sequences."""
     return ParallelDisplay.strip_markup(line)
+
+
+def _strip_markup(line: str) -> str:
+    """Reduce valid Rich markup for explicit markup-stripping callers.
+
+    Delegates to :func:`strip_markup_safe` -- the single choke point that owns
+    the markup-parse guard, so malformed agent markup (an unmatched
+    ``[/pdf /text /imageb]`` closing tag in a grep pattern) cannot raise out
+    of the activity emit path.
+    """
+    return strip_markup_safe(line)
 
 
 class ParallelDisplay:
@@ -395,6 +444,8 @@ class ParallelDisplay:
         "_active_block",
         "_active_block_chars",
         "_activity_router",
+        "_block_open_mono",
+        "_block_open_wall",
         "_clock",
         "_ctx",
         "_drop_last_warned",
@@ -410,19 +461,30 @@ class ParallelDisplay:
         "_last_phase",
         "_last_phase_artifact_outcome",
         "_last_phase_elapsed_seconds",
+        "_last_phase_per_unit",
         "_last_phase_saved_counters",
         "_last_plan_signature",
+        "_last_recorded_body",
+        "_last_text_thinking_block_close",
+        "_last_tool_result_content",
         "_last_waiting_signature",
         "_last_worker_states",
         "_monotonic",
         "_overflow_logs",
         "_overflow_warned",
+        "_pending_phase_headers",
+        "_pending_tool_results",
         "_phase_close_emitted",
         "_phase_counters",
+        "_recorded_tool_call_ids",
+        "_rendered_writers",
         "_run_counters",
         "_run_start_time",
         "_status_bar",
         "_subscriber",
+        "_terminal_bg_is_light",
+        "_watchdog_attention",
+        "_watchdog_attention_lock",
         "_workspace_root",
     )
 
@@ -446,12 +508,29 @@ class ParallelDisplay:
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._is_quiet: bool = is_quiet
+        # Resolve the terminal background ONCE, here, so the pure
+        # preview builder never touches env or the tty. The resolution
+        # asks the terminal for its actual background colour (OSC 11)
+        # and falls back to env hints, so syntax-highlight colours are
+        # chosen against the operator's real background rather than an
+        # assumed one. Any failure degrades to ``None``, selecting the
+        # both-backgrounds-safe unknown palette rather than assuming dark;
+        # the probe must never be able to break display construction.
+        self._terminal_bg_is_light: bool | None = None
+        with contextlib.suppress(Exception):
+            self._terminal_bg_is_light = detect_terminal_background_is_light(display_context.env)
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else (lambda: datetime.now(UTC))
         )
         self._monotonic: Callable[[], float] = (
             monotonic if monotonic is not None else time.monotonic
         )
+        # wt-047-stall-label: watchdog-sourced attention state for the Status
+        # Bar's STALLED slot. The subscriber mirrors every event's
+        # authoritative stall assessment through its sink. The host substitutes
+        # this value only when pushed attention is None. Thread-safe below.
+        self._watchdog_attention: str | None = None
+        self._watchdog_attention_lock = threading.Lock()
 
         # Inlined from _PlainLogRendererBase.__init__ -- 22 state attributes
         # that previously lived on a separate renderer instance. Documented in
@@ -481,6 +560,13 @@ class ParallelDisplay:
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._active_block: dict[str, tuple[str, list[str]]] = {}  # bounded-accumulator-ok
         self._active_block_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
+        # Streaming block-open wall + monotonic times so the close entry can
+        # carry the sanctioned sketch-J span and duration. Populated in
+        # ``_handle_new_streaming_block`` and popped in ``_close_block``;
+        # the lifetime never exceeds ``_active_block`` so the bounded-accumulator
+        # contract carries through.
+        self._block_open_wall: dict[str, datetime] = {}  # bounded-accumulator-ok: _active_block
+        self._block_open_mono: dict[str, float] = {}  # bounded-accumulator-ok: _active_block
         self._last_checkpoint_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
@@ -493,7 +579,67 @@ class ParallelDisplay:
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}  # bounded-accumulator-ok
+        self._last_emitted_tool_signature: dict[
+            str, tuple[str, str, str, int | None]
+        ] = {}  # bounded-accumulator-ok
+        # S-13 (wt-028-display P1 / AC-02 / AC-03): cross-kind
+        # identical-content dedup at the rendered-record seam. The
+        # ``pi`` agent (and others) can emit a ``text:`` event and a
+        # ``thinking:`` event with byte-identical bodies for the same
+        # reasoning pass; tracking the last ``(event_kind, body)`` per
+        # unit at the record seam drops the second entry only when the
+        # event kind ALSO matches (a cross-kind correlated companion),
+        # so two distinct identical tool_use events still produce two
+        # record entries. The lifetime never exceeds the per-wave set
+        # so the bounded-accumulator contract carries through.
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._last_recorded_body: dict[
+            str, tuple[ActivityEventKind, str]
+        ] = {}  # bounded-accumulator-ok: drop_unit
+        # Recent parser aliases for one tool invocation. Pi can announce a
+        # call through multiple wire events; retaining a small per-unit window
+        # keeps that transport duplication off both presentation surfaces.
+        self._recorded_tool_call_ids: dict[
+            str, tuple[str, ...]
+        ] = {}  # bounded-accumulator-ok: capped at 64 per unit
+        self._last_tool_result_content: dict[
+            str, tuple[str | None, str]
+        ] = {}  # bounded-accumulator-ok: drop_unit
+        # A terminal transport occasionally repeats one result record in a
+        # tight burst. Hold one per unit until its run boundary is known.
+        self._pending_tool_results: dict[
+            str, tuple[str, dict[str, object], str | None, str | None, float, int]
+        ] = {}  # bounded-accumulator-ok: one pending result per unit
+        # DA-002 (wt-028-display S-2 / S-3): the streaming-block
+        # live-log dedup. When a ``TEXT`` streaming block closes and
+        # the next event opens a ``THINKING`` streaming block with
+        # the same body (the cross-kind companion the ``pi`` agent
+        # emits for one logical reasoning pass), the close-time live
+        # print must also dedup so the live log and the rendered
+        # record stay one entry per logical event -- the
+        # ``_append_recorded_entry`` dedup covers the file surface
+        # but the live console prints in ``_close_block`` BEFORE the
+        # dedup check fires, so the live log would carry the
+        # duplicate. The companion body is keyed on
+        # ``(kind, body)`` per unit; the dedup only fires on a
+        # cross-kind text/thinking pair with the same body, so two
+        # distinct identical ``text`` events (the tool_use flood
+        # case adapted for streaming) both keep their live entries.
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._last_text_thinking_block_close: dict[
+            str, tuple[ActivityEventKind, str]
+        ] = {}  # bounded-accumulator-ok: drop_unit
+
+        # wt-028-display S-5 (AC-04): the most recent (phase, cycle,
+        # iter_) seen per active unit, refreshed by
+        # ``_emit_phase_header_record``. Ordinary activity events
+        # read this in ``_append_recorded_entry`` so the rendered
+        # record's ``phase`` / ``cycle`` / ``iter_`` fields are
+        # populated instead of ``None``. Keyed per unit and
+        # bounded by ``drop_unit`` (S-23).
+        self._last_phase_per_unit: dict[
+            str, tuple[str, int | None, str | None]
+        ] = {}  # bounded-accumulator-ok: drop_unit
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
@@ -506,8 +652,34 @@ class ParallelDisplay:
         # Per-unit last drop-warning timestamp; _NEVER_WARNED means never warned yet
         self._drop_last_warned: dict[str, float] = {}  # bounded-accumulator-ok: drop_unit
 
+        # P0 (wt-028-display S-11 / AC-07): the rendered-record writer is
+        # the production seam that puts one entry per agent event under
+        # ``.agent/raw/<safe_id>.rendered.log``. The dictionary is bounded
+        # by ``drop_unit`` (parallel coordinator ``finally``) and by
+        # ``stop()``'s flush, so a long unattended run cannot accumulate
+        # writers beyond the per-wave set. Quiet mode (single-line runs)
+        # and tests that disable the writer get a no-op append.
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._rendered_writers: dict[
+            str, RenderedRecordWriter
+        ] = {}  # bounded-accumulator-ok: drop_unit
+
+        # S-15 (wt-028-display P1 / AC-05): phase banners may fire
+        # before any unit has produced visible events (a phase_start
+        # triggered by an empty session, or a phase banner emitted
+        # above the first agent line). The render-to-record seam
+        # only writes to existing writers, so a phase_start with no
+        # writers would be lost. Buffer the headers here and flush
+        # them when the first writer is created. The buffer is
+        # bounded by the number of phase transitions per run, so
+        # even an aggressive failure loop cannot accumulate
+        # unbounded entries.
+        self._pending_phase_headers: list[
+            dict[str, object]
+        ] = []  # bounded-accumulator-ok: _flush_pending_phase_headers
+
         self._activity_router: ActivityRouter = ActivityRouter(
-            on_event=self._emit_activity_event,
+            on_event=self._on_activity_router_event,
             raw_overflow_callback=self._raw_overflow_write,
         )
 
@@ -522,6 +694,15 @@ class ParallelDisplay:
 
         if subscriber is not None:
             self._subscriber = subscriber
+            # wt-047-stall-label (DA-001): an externally-supplied
+            # subscriber owns its own constructor args; the display
+            # cannot re-construct it with a sink. Bind the host's
+            # :meth:`set_watchdog_attention` callback through the
+            # subscriber's public late-binder so the STALLED slot
+            # is populated for the injected-subscriber path too.
+            # The constructor path below binds at construction
+            # time (cheaper) so the binder is only needed here.
+            self._subscriber.set_watchdog_attention_sink(self.set_watchdog_attention)
         else:
             snapshot_q: queue.Queue[PipelineSnapshot] = queue.Queue(
                 maxsize=_DEFAULT_SNAPSHOT_QUEUE_MAXSIZE
@@ -533,6 +714,7 @@ class ParallelDisplay:
                 run_id=effective_run_id,
                 on_snapshot=self.emit_snapshot,
                 pipeline_policy=pipeline_policy,
+                watchdog_attention_sink=self.set_watchdog_attention,
             )
 
     @property
@@ -542,34 +724,212 @@ class ParallelDisplay:
     # -- Pure helpers (inlined from _PlainLogRendererBase) ----------------
 
     def _format_timestamp(self, ts: datetime) -> str:
-        """Format a datetime as an ISO 8601 timestamp string (single default mode)."""
-        return ts.isoformat()
+        """Format a wall-clock datetime as ``HH:MM:SS`` for the line chrome.
 
-    def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
-        """Build a styled Text line with level and category badge segments."""
+        DA-002 (wt-028-display P1 / S-4 / AC-03): the line chrome
+        column carries a compact ``HH:MM:SS`` token (8 chars) so the
+        chrome fits on a 40-column terminal alongside the badge
+        and at least one body token. Pre-fix, the chrome used the
+        full ISO-8601 string (33 chars) which left zero room for
+        the body on a 40-column terminal -- Rich truncated the
+        line to the chrome and dropped the body / continuation
+        badge. The full ISO-8601 timestamp still appears in the
+        rendered record (see :mod:`ralph.display.record_writer`)
+        so the file surface stays lossless; only the live-log
+        chrome column is compacted.
+        """
+        return ts.strftime("%H:%M:%S")
+
+    @staticmethod
+    def _format_hh_mm_ss(ts: datetime) -> str:
+        """Format a wall-clock datetime as ``HH:MM:SS`` for span markers.
+
+        The sketch-J close-line shape uses a compact ``HH:MM:SS`` so the
+        span ``start \u2192 end`` fits on one line; the full ISO-8601
+        timestamp still appears as the leading column of the line
+        (see ``_format_timestamp``). Time is rendered as-is from the
+        ``datetime`` value (the production clock returns a UTC value).
+        """
+        return ts.strftime("%H:%M:%S")
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format a duration in seconds as a compact human string.
+
+        Sub-minute deltas render as ``<n>s`` (e.g. ``0s``, ``10s``);
+        longer deltas render as ``<m>m<ss>s`` (e.g. ``1m30s``). The
+        value is floored to whole seconds so a sub-second
+        monotonic delta still renders as ``0s``.
+        """
+        total = max(0, int(seconds))
+        if total < _SECONDS_PER_MINUTE:
+            return f"{total}s"
+        minutes, secs = divmod(total, _SECONDS_PER_MINUTE)
+        return f"{minutes}m{secs}s"
+
+    def _build_line(
+        self,
+        timestamp: str,
+        level: str,
+        cat: str,
+        suffix: str,
+        *,
+        leading_indent: str = "",
+    ) -> Text:
+        """Build a styled Text line with no LEVEL/CAT badge.
+
+        wt-028-display S-4: the rendered line shape is
+        ``HH:MM:SS [tag][unit] body`` -- no LEVEL or CAT
+        plumbing-vocabulary badge in the chrome. Severity is
+        carried by the renderer icon+label carrier. ``level``
+        and ``cat`` parameters are kept (so existing call sites
+        still typecheck) but rendered as nothing.
+        """
+        del level
+        del cat
         t = Text()
+        if leading_indent:
+            t.append(leading_indent)
         t.append(timestamp + " ")
-        t.append(level, style=_LEVEL_THEME_KEYS.get(level, ""))
-        t.append(" ")
-        t.append(cat, style=_CAT_THEME_KEYS.get(cat, ""))
-        t.append(" ")
         t.append(suffix)
         return t
+
+    @staticmethod
+    def _wrap_body_with_hanging_indent(
+        prefix: str,
+        body: str,
+        *,
+        total_width: int,
+        body_measure: int,
+    ) -> str:
+        """Wrap ``body`` so continuation lines hang-indent to ``prefix``.
+
+        S-4 (wt-028-display P1 / AC-03 / DA-002) and S-5 (P1 / AC-04 /
+        DA-004): one shared rendering seam applies two contracts:
+
+        * the wide-terminal measure cap (``body_measure`` -- never
+          wider than 100 cols on a 250-col terminal, never narrower
+          than 40 cols),
+        * the hanging-indent continuation that keeps the body
+          aligned with the prefix column so the reader does not
+          lose the line's structural position on a wrap.
+
+        P0 (wt-028-display S-4 / DA-002): the body passed in is the
+        raw body content, NOT the full chrome-prefixed rendered text.
+        Passing the full rendered text would consume most of the
+        narrow-terminal budget on the chrome prefix and force
+        ``textwrap`` to break the body's natural words into
+        one-character fragments (the pre-fix bug). The first line
+        of the line carries the timestamp + level + cat + badge
+        chrome separately; the body is wrapped as a standalone
+        string at the ``prefix`` column, and the caller hangs
+        continuations at ``prefix`` via the matching ``hang_prefix``
+        in ``emit_activity_line``.
+
+        DA-002 (S-4): no built-in ``subsequent_indent`` is emitted
+        by ``textwrap.wrap`` here. The continuation print path in
+        ``emit_activity_line`` prefixes every continuation line with
+        the matching ``hang_prefix``, so a built-in indent would
+        double-count (the pre-fix bug doubled the indent at 40 cols).
+
+        The available column count for the body is
+        ``min(total_width - len(prefix), body_measure - len(prefix))``
+        with a floor of 20 cols so a single token wider than the
+        budget still flows through ``textwrap`` without crashing on
+        a zero-or-negative effective measure. Rules, tables, and
+        aligned columns that need the full terminal width go
+        through a different emit path (``_console.print`` with
+        ``no_wrap=True``) so this helper does not touch them.
+
+        Returns the body ready to be appended after ``prefix``: the
+        first line carries the original ``body`` text, continuation
+        lines are NOT prefixed with any indent here -- the caller
+        applies the matching hang prefix when emitting. When the
+        body fits in one line the original string is returned
+        unchanged so the single-line case has no trailing
+        whitespace.
+        """
+        if not body:
+            return body
+        prefix_len = len(prefix)
+        # Cap by both terminal width and the body measure; both
+        # subtract the prefix so a long prefix can't push the body
+        # below the floor on a short terminal.
+        budget_terminal = total_width - prefix_len
+        budget_measure = body_measure - prefix_len
+        # DA-004 (S-4): the floor is the available budget itself, not a
+        # fixed ``max(20, ...)``. On a 40-column terminal with a 33-col
+        # chrome prefix the available body width is 7 cols; the previous
+        # ``max(20, ...)`` floor forced body wraps to 20 cols that
+        # overflowed the terminal and broke the hanging-indent column.
+        # A body that fits a single token flows through unchanged.
+        budget = max(1, min(budget_terminal, budget_measure))
+        if budget <= 0 or len(body) <= budget:
+            return body
+        # DA-003 (wt-028-display S-4): prefer ``break_long_words=False``
+        # so chrome tokens such as ``PASS``, ``read_file``, or the
+        # ``↳ read_file`` result marker survive a narrow-terminal wrap
+        # intact (the pre-fix ``break_long_words=True`` broke those
+        # tokens into 1-2 char fragments at the 40-col floor, e.g.
+        # ``↳ re``, ``ad_f``, ``ile`` for ``↳ read_file`` -- a
+        # 40-column tool_result header that did not name the tool or
+        # its outcome). When the body has a single token longer than
+        # the budget (an oversized file path or a single word wider
+        # than the floor), fall back to ``break_long_words=True`` so
+        # the line still flows through rather than overflowing past
+        # the terminal width -- the single long token is the only
+        # thing that gets broken, and the surrounding chrome tokens
+        # (``PASS``, ``read_file``, the result marker) are preserved
+        # on the line that introduces them.
+        wrapped = [
+            chunk
+            for line in body.split("\n")
+            for chunk in (
+                textwrap.wrap(
+                    line,
+                    width=budget,
+                    initial_indent="",
+                    subsequent_indent="",
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [line]
+            )
+        ]
+        if not wrapped:
+            # All chrome tokens survived but the longest one
+            # overflowed the budget; allow ``break_long_words`` for
+            # this single edge case so the line still flows.
+            wrapped = textwrap.wrap(
+                body,
+                width=budget,
+                initial_indent="",
+                subsequent_indent="",
+                break_long_words=True,
+                break_on_hyphens=False,
+            )
+        if not wrapped:
+            return body
+        return "\n".join(wrapped)
 
     @staticmethod
     def _build_agents_parts(orientation: RunStartOrientation) -> list[str]:
         """Collect developer agent+model tokens for the run-start agents line."""
         parts: list[str] = []
         if orientation.developer_agent is not None:
-            parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+            parts.append(f"developer={strip_markup(orientation.developer_agent)}")
         if orientation.developer_model is not None:
-            parts.append(f"model={_sanitize(orientation.developer_model)}")
+            parts.append(f"model={strip_markup(orientation.developer_model)}")
         return parts
 
     @classmethod
     def strip_markup(cls, line: str) -> str:
-        """Strip Rich markup and ANSI escapes from a line, returning plain text."""
-        return _ANSI_ESCAPE.sub("", _strip_markup(line))
+        """Strip valid Rich markup and terminal control sequences.
+
+        Malformed markup remains literal so agent output is not lost.
+        """
+        line = _strip_markup(line)
+        return strip_terminal_control(line)
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 
@@ -585,8 +945,31 @@ class ParallelDisplay:
         summary_line: str | None = None,
         ai_summary_line: str | None = None,
         tool_signature: tuple[str, str] | None = None,
+        body_text: str | None = None,
+        source_timestamp: str | None = None,
     ) -> None:
-        """Emit a kind-tagged, level-badged content line."""
+        """Emit a kind-tagged, level-badged content line.
+
+        ``body_text`` (wt-028-display S-4 / DA-002): the body content
+        to wrap on continuations. When ``None`` (the default) the
+        function falls back to ``sanitized`` (the full rendered
+        text) -- the pre-fix behavior that broke the 40-column wrap
+        by consuming the budget on the chrome prefix. When a caller
+        passes the raw body separately, the wrap uses it as a
+        standalone string and the first line keeps the chrome prefix
+        (timestamp + level + cat + badge + rendered chrome) on its
+        own row, so a continuation at the floor carries readable
+        multiword body chunks instead of one-character fragments.
+
+        ``source_timestamp`` (DA-003 / wt-028-display): the
+        source-event ISO-8601 timestamp the parser pipeline
+        extracted from the agent output. When supplied, it
+        replaces the display clock fallback so the rendered
+        record carries the source time instead of the moment
+        ``emit_activity_line`` happened to run. ``None`` (the
+        default) keeps the pre-fix behaviour -- the display
+        clock stamps the line.
+        """
         if options is None:
             options = _ActivityLineOptions(
                 condensed_ref=condensed_ref,
@@ -596,54 +979,280 @@ class ParallelDisplay:
                 tool_signature=tool_signature,
             )
         opts = options
-        timestamp = self._format_timestamp(self._clock())
+        # DA-003 (wt-028-display): when the caller supplied a
+        # source-event ISO-8601 timestamp, use it; otherwise stamp
+        # the display clock. The chrome column reads the same
+        # ``HH:MM:SS`` token either way so the visual contract
+        # is unchanged; only the rendered record carries the
+        # source time end-to-end when the caller had one.
+        if source_timestamp is not None:
+            timestamp = _format_iso_timestamp_hh_mm_ss(source_timestamp)
+        else:
+            timestamp = self._format_timestamp(self._clock())
         rendered_unit_id = _render_unit_id(unit_id)
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
         cat = TAG_CATEGORY.get(base_tag, "META")
-        sanitized = _sanitize(content)
+        # raw kind is the transcript/log sink path: preserve literal markup
+        # so copy-pasteable raw payloads survive verbatim. Other kinds render
+        # to the visible console and reduce valid Rich markup to plain text.
+        sanitized = _sanitize(content) if kind == "raw" else strip_markup(content)
         if opts.condensed_ref is not None and opts.condensed_flag:
             sanitized = f"{sanitized} [see {opts.condensed_ref}]"
 
-        if kind in _STREAMING_KINDS:
-            if kind == "thinking" and not content.strip():
-                return
-            block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
-            if block_tags is not None:
-                ctx = _StreamingCtx(
-                    unit_id=unit_id,
-                    kind=kind,
-                    content=content,
-                    base_tag=base_tag,
-                    timestamp=timestamp,
-                )
-                result = self._process_streaming_block(ctx, block_tags)
-                if result is None:
-                    return
-                tag, sanitized_override = result
-                if sanitized_override is not None:
-                    sanitized = sanitized_override
-            else:
-                tag = base_tag
-                self._update_counters(kind, is_new_block=False)
-        else:
-            for uid in list(self._active_block.keys()):
-                self._close_block(uid, timestamp)
-            tag = base_tag
-            self._update_counters(kind, is_new_block=False)
+        # S-7 (wt-028-display P1): streaming blocks buffer fragments and the
+        # close path emits the single coalesced entry. ``_route_streaming``
+        # returns False when the live console should stay silent.
+        if self._route_streaming(unit_id, kind, content, base_tag, timestamp) is False:
+            return
+
+        # S-14 (wt-028-display P1 / AC-04): the empty-body guard
+        # for non-streaming TEXT / THINKING / ERROR / TOOL_RESULT
+        # kinds. Empty bodies produce no live-log line AND no
+        # record entry; the seam append below short-circuits the
+        # same way. Streaming TEXT / THINKING already had its own
+        # ``content.strip()`` guard at the top of the
+        # ``_STREAMING_KINDS`` branch; ``tool_use`` / ``status`` /
+        # ``raw`` / ``progress`` are not body-bearing lines and
+        # may legitimately carry no body, so they are excluded.
+        if (
+            kind in {"text", "thinking", "error", "tool_result"}
+            and not sanitized.strip()
+            and opts.record_body is None
+        ):
+            return
 
         if kind == "tool_use" and opts.tool_signature is not None:
             tool_name, tool_path = opts.tool_signature
-            self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
+            metadata = opts.activity_metadata or {}
+            input_obj = metadata.get("input", metadata.get("args"))
+            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            pattern = input_dict.get("pattern", metadata.get("pattern", ""))
+            line_start = input_dict.get("line_start")
+            self._last_emitted_tool_signature[unit_id] = (
+                tool_name,
+                tool_path,
+                str(pattern or ""),
+                line_start if isinstance(line_start, int) and not isinstance(line_start, bool) else None,
+            )
 
-        self._emit_activity_supplements(unit_id, timestamp, tag, cat, opts)
+        self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
 
-        self._console.print(
-            self._build_line(timestamp, level, cat, f"[{tag}][{rendered_unit_id}] {sanitized}"),
-            markup=False,
-            highlight=False,
-            no_wrap=False,
-            overflow="fold",
+        # S-7 (wt-028-display P1 / AC-07): quiet mode suppresses the
+        # terminal surface only. The rendered record append below
+        # still runs so the file surface keeps the same presented
+        # entries a non-quiet run would have written.
+        if not self._is_quiet:
+            # DA-002 / DA-004 (S-4 + S-5): the live log body hangs at
+            # the prefix column on wrap and is capped at the shared
+            # ``body_measure`` so a 250-col terminal doesn't print
+            # 180-char lines. We split the work into two print calls:
+            # the first prints the full badge-bearing line; the
+            # subsequent continuations carry the chrome prefix and a
+            # hanging indent that lands at the actual first body
+            # column (timestamp + level + cat + badge prefix).
+            # ``no_wrap=True`` prevents Rich from reflowing the
+            # already-wrapped first line (the pre-fix bug dropped
+            # the chrome into one or more column-0 rows on a 40-col
+            # console and put the body on a continuation row that
+            # Rich re-wrapped to column 0).
+            #
+            # DA-004 (S-4): the hanging indent must mirror the FULL
+            # chrome prefix emitted on the first line -- timestamp,
+            # level, category, badge -- so the body continuation
+            # lands at the same column the first-line body started
+            # at. Pre-fix, the hang only covered the badge prefix;
+            # on a 40-column terminal where Rich folds the
+            # timestamp/level/cat, the first body chunk landed at
+            # column 0 while continuations started at the badge
+            # column, breaking the structural column the body
+            # belonged to.
+            # wt-028-display S-4: the chrome prefix is now just
+            # ``HH:MM:SS `` -- no LEVEL or CAT badge. Severity
+            # is carried by the renderer's own icon+label carrier
+            # (e.g. ``✓ PASS`` / ``✗ FAIL``) which already
+            # survives color-off, so the second copy of severity
+            # in the chrome prefix was the duplication AC-03
+            # explicitly forbids. The plumbing vocabulary
+            # (``META``/``OUT``) never reaches the operator
+            # surface.
+            chrome_prefix = f"{timestamp} "
+            display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
+            badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
+            # DA-002 (S-4 / S-12 / AC-07): the canonical
+            # ``PresentedEntry`` hierarchy data drives the live log's
+            # hanging-indent continuation column. ``indent_level``
+            # adds N copies of the per-level indent (``_INDENT_WIDTH``
+            # spaces) so a tool_result hangs one level under its
+            # call, and a reasoning entry reads as one subordinated
+            # passage. The badge column stays at the same physical
+            # column for level-0 entries so a level-1 continuation
+            # visibly nests under the call it belongs to.
+            indent_level: int = max(0, int(cast("int", getattr(opts, "indent_level", 0))))
+            # ``grouping_role`` is read off ``opts`` so downstream
+            # consumers (downstream greps, screen readers, the
+            # audit trail) can recover the structural position; the
+            # live log surface only needs the indent column. The
+            # read here is the pinned structural-position probe
+            # that the DA-002 / AC-07 contract depends on.
+            grouping_role: str = str(opts.grouping_role) if opts.grouping_role else "agent_text"
+            del grouping_role
+            level_indent = " " * (_INDENT_WIDTH * indent_level)
+            # The level indent prefixes the chrome column on the
+            # first line and the continuation column on wrap
+            # rows, so a level-1 entry starts at column
+            # ``_INDENT_WIDTH`` and continuations line up
+            # vertically under the badge column of the first
+            # line. ``chrome_prefix`` is the original
+            # timestamp/level/cat text -- the leading indent is
+            # applied via ``_build_line(leading_indent=...)`` and
+            # via the leading-spaces in ``hang_prefix``.
+            # DA-002 (S-4): the hang column is the FIRST body
+            # token's column on the first line, which equals
+            # the leading_indent + the chrome_prefix length +
+            # the badge_prefix length (because the body itself
+            # starts immediately after the badge). On a 40-col
+            # console the chrome (18) + badge (14) consumes 32
+            # cols, leaving only 8 cols for the body on the
+            # first line; the manual wrap must use the SAME
+            # budget so the first body token column equals the
+            # hang column on every continuation.
+            full_chrome_prefix = chrome_prefix + badge_prefix
+            # DA-002 (S-4): the wrap budget must subtract the
+            # LEVEL indent too, because the first line is
+            # ``level_indent + chrome + badge + first_chunk`` --
+            # ignoring the level indent caused the wrapped
+            # first line to overshoot the terminal width and
+            # Rich truncated the body (the pre-fix bug on
+            # level-1 entries like ``[result]``).
+            effective_prefix_for_wrap = level_indent + full_chrome_prefix
+            # DA-002 (S-4): the continuation lines carry ONLY the
+            # hanging indent (spaces matching the chrome column),
+            # NOT a fresh chrome prefix. The pre-fix bug stamped
+            # ``10:27:44 SUCCESS OUT [result][u1]`` on every
+            # continuation line, which broke the one-entry-per-event
+            # invariant for multi-line bodies and turned a single
+            # tool_result into N records. The hang column is still
+            # the badge column on the first line; the chrome is
+            # dropped because the badge itself is the structural
+            # marker and the reader can scroll back to the first
+            # line for the timestamp. The wrap budget below still
+            # uses the FULL prefix so the body lands at the same
+            # column on the first line.
+            hang_prefix = level_indent + " " * len(full_chrome_prefix)
+            # DA-002 (S-4): wrap the body against the FULL
+            # chrome+badge prefix so the first body token column
+            # on the first line equals the hang column on every
+            # continuation. Pre-fix, the wrap budget was computed
+            # against ``badge_prefix`` only (14 chars), but the
+            # actual first-line chrome is 32 chars long; Rich then
+            # re-wrapped the resulting 32 + 26 = 58-char first
+            # line at 40 cols, dropping continuations to column 0.
+            wrap_target = body_text if body_text is not None else sanitized
+            wrapped_body = self._wrap_body_with_hanging_indent(
+                effective_prefix_for_wrap,
+                wrap_target,
+                total_width=self._ctx.width,
+                body_measure=self._ctx.body_measure(),
+            )
+            chunks = wrapped_body.split("\n")
+            first_chunk = chunks[0]
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    level,
+                    cat,
+                    f"{badge_prefix}{first_chunk}",
+                    leading_indent=level_indent,
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+                overflow="ignore",
+            )
+            for chunk in chunks[1:]:
+                # ponytail: continuations keep the badge prefix so
+                # the line still reads as a continuation of the same
+                # entry; the timestamp/level/cat is dropped because
+                # the badge carries the structural information and
+                # the reader can scroll back to the first line for
+                # the timestamp. ``grouping_role`` is carried
+                # alongside the badge column so a downstream grep
+                # can recover the structural position even when the
+                # leading whitespace is stripped (e.g. a screen
+                # reader or a braille display). ``no_wrap=True`` so
+                # Rich cannot re-wrap our already-wrapped continuation
+                # (the pre-fix bug dropped continuations to column 0
+                # on a 40-col console).
+                self._console.print(
+                    f"{hang_prefix}{chunk}",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                    overflow="ignore",
+                )
+
+        self._append_seam_record(unit_id, kind, sanitized, timestamp, opts)
+
+    def _route_streaming(
+        self,
+        unit_id: str,
+        kind: str,
+        content: str,
+        base_tag: str,
+        timestamp: str,
+    ) -> bool:
+        """Dispatch streaming blocks; return False to suppress live emission."""
+        if kind not in _STREAMING_KINDS:
+            for uid in list(self._active_block.keys()):
+                self._close_block(uid, timestamp)
+            self._update_counters(kind, is_new_block=False)
+            return True
+
+        if kind == "thinking" and not content.strip():
+            return False
+
+        block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
+        if block_tags is None:
+            self._update_counters(kind, is_new_block=False)
+            return True
+
+        ctx = _StreamingCtx(
+            unit_id=unit_id,
+            kind=kind,
+            content=content,
+            base_tag=base_tag,
+            timestamp=timestamp,
+        )
+        self._process_streaming_block(ctx, block_tags)
+        return False
+
+    def _append_seam_record(
+        self,
+        unit_id: str,
+        kind: str,
+        sanitized: str,
+        timestamp: str,
+        opts: _ActivityLineOptions,
+    ) -> None:
+        """Append one record entry at the shared presentation seam (S-13)."""
+        if kind == "raw":
+            return
+        if kind == ActivityEventKind.SUBAGENT_PROGRESS:
+            return
+        try:
+            event_kind = ActivityEventKind(kind)
+        except ValueError:
+            # Defensive: unrecognised kinds still reach the live log but skip
+            # the record append rather than crash the seam.
+            return
+        record_body = opts.record_body or sanitized
+        self._append_recorded_entry(
+            unit_id,
+            event_kind=event_kind,
+            body=record_body,
+            timestamp=timestamp,
+            metadata=opts.activity_metadata,
         )
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
@@ -784,60 +1393,204 @@ class ParallelDisplay:
             )
 
     def _close_block(self, unit_id: str, timestamp: str) -> None:
-        """Close an active streaming block, emitting the end-line and optional AI summary."""
+        """Close an active streaming block: emit exactly one coalesced entry.
+
+        S-7 (wt-028-display P1): one entry per block. The close line carries
+        the joined passage with span and duration (sketch J shape). The
+        preview line, the AI summary line, the close summary, and the
+        per-fragment emission paths are all retired; the live log must
+        present a single coalesced entry for the whole block rather than
+        the up-to-four repeat-renderings that used to surface here.
+
+        S-13 (wt-028-display P1): the close line is shaped as
+        ``\u22ef <tag> \u00b7 <start> \u2192 <end> \u00b7 <duration>`` followed by the
+        joined passage on the next line. ``<start>`` is the wall-clock
+        time the block opened (``HH:MM:SS``); ``<end>`` is the wall-clock
+        time of the close; ``<duration>`` is the monotonic delta in
+        seconds. Both clocks are injected, so tests render a deterministic
+        ``0s`` / ``10s`` / ``<m>m<ss>s`` shape.
+        """
         if unit_id not in self._active_block:
             return
         rendered_unit_id = _render_unit_id(unit_id)
         base_tag, accumulated = self._active_block.pop(unit_id)
         self._last_checkpoint_chars.pop(unit_id, None)
         self._active_block_chars.pop(unit_id, None)
+        # S-13: pop the recorded block-open wall + monotonic times so the
+        # close line can carry the sanctioned sketch-J span and duration.
+        open_wall = self._block_open_wall.pop(unit_id, None)
+        open_mono = self._block_open_mono.pop(unit_id, None)
+        end_wall = self._clock()
+        end_mono = self._monotonic()
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
             return
-        end_tag = block_tags[2]
-        n = len(accumulated)
-        chars = sum(len(x) for x in accumulated)
+        if not accumulated:
+            return
         joined = " ".join(accumulated)
-        headline = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "CONT",
-                f"[{end_tag}][{rendered_unit_id}] ({n} fragments, {chars} chars) {headline}",
+        sanitized_joined = _sanitize(joined)
+        # S-7 / AC-06: condensation still applies to the joined passage --
+        # a long reasoning or text block may exceed the soft limit on
+        # close. The condenser carries the count + size + destination
+        # marker the product criteria require; the verbatim overflow
+        # log under .agent/raw/<safe_id>.log remains the destination.
+        overflow = self._get_overflow_log(unit_id)
+        overflow_ref = overflow.relative_reference(self._workspace_root)
+        if base_tag == "think":
+            from ralph.display.presented_entry import _strip_markdown_emphasis
+
+            sanitized_joined = _strip_markdown_emphasis(sanitized_joined)
+        visible, condensed_flag = cast(
+            "tuple[str, bool]",
+            condense_content(
+                sanitized_joined,
+                options=CondenseOptions(
+                    soft_limit=self._ctx.condenser_soft_limit,
+                    hard_limit=self._ctx.condenser_hard_limit,
+                    overflow_ref=overflow_ref,
+                ),
             ),
-            markup=False,
-            highlight=False,
-            no_wrap=False,
-            overflow="fold",
         )
-
-        if base_tag == "thinking":
-            preview = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
-            preview_suffix = f"[{end_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
-            self._console.print(
-                self._build_line(timestamp, "INFO", "CONT", preview_suffix),
-                markup=False,
-                highlight=False,
-                no_wrap=False,
-                overflow="fold",
+        if condensed_flag:
+            with contextlib.suppress(Exception):
+                overflow.append(sanitized_joined)
+                self._check_overflow_size(unit_id, overflow)
+        # S-7 / S-9 / S-13 (wt-028-display P1 / AC-04 / AC-05): single-entry
+        # shape with human vocabulary only. The "fragments" footer
+        # and the "CONT" category are machine vocabulary and
+        # belong on no surface. The close line carries the base
+        # tag, a span and duration suffix, and (when oversized) the
+        # condensation marker the condenser already produced; the
+        # verbatim overflow log under .agent/raw/<safe_id>.log
+        # remains the destination the marker points to.
+        # DA-002 (wt-028-display S-2 / S-3): the cross-kind text/
+        # thinking companion dedup at close time. When the previous
+        # closed block for this unit was a TEXT streaming block
+        # whose visible body equals THIS block's visible body (and
+        # the kind differs -- a THINKING companion), the pre-fix
+        # contract fired the live console print here and the record
+        # append below, leaving the live log with two entries for
+        # one logical reasoning pass even though the record already
+        # dedup'd at ``_append_recorded_entry``. The dedup runs
+        # BEFORE the live print and the record append so the live
+        # log and the rendered record stay one entry per logical
+        # event. State is left unchanged when a dedup fires so a
+        # third identical event still dedups against the original
+        # (the tool_use flood contract adapted for streaming).
+        _base_tag_to_record_kind = {
+            "content": ActivityEventKind.TEXT,
+            "think": ActivityEventKind.THINKING,
+        }
+        close_record_kind = _base_tag_to_record_kind.get(base_tag, ActivityEventKind.TEXT)
+        if (
+            close_record_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+            and visible.strip()
+        ):
+            prev_close = self._last_text_thinking_block_close.get(unit_id)
+            if (
+                prev_close is not None
+                and prev_close[1] == visible
+                and prev_close[0] in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+                and prev_close[0] != close_record_kind
+            ):
+                # Drop the live print and the record append; the
+                # previous entry already represents this logical
+                # reasoning pass. State is left unchanged so a
+                # follow-up identical event still dedups against
+                # the SAME previous entry.
+                return
+        start_str = self._format_hh_mm_ss(open_wall) if open_wall is not None else "??:??:??"
+        end_str = self._format_hh_mm_ss(end_wall)
+        if open_mono is not None:
+            duration_str = self._format_duration(end_mono - open_mono)
+        else:
+            duration_str = "0s"
+        display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
+        body = f"\u22ef {display_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
+        # S-7 (AC-07): quiet mode suppresses the terminal surface;
+        # the record append below still runs so the file surface
+        # keeps the same close entry.
+        if not self._is_quiet:
+            # DA-002 / DA-004 (S-4 + S-5): the close-entry body has
+            # the span header on its own line then the joined
+            # passage. Wrap each line independently so a wide
+            # console stays at the body_measure cap and a narrow
+            # console's continuations hang at the badge column.
+            # ``no_wrap=True`` prevents Rich from reflowing our
+            # manually wrapped lines (the pre-fix bug dropped
+            # continuations to column 0 on a 40-col console because
+            # Rich re-wrapped the ``close_hang_prefix + wrapped_cont``
+            # embedded-newline string and only the first embedded
+            # line carried the prefix).
+            close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
+            close_hang_prefix = " " * len(close_badge_prefix)
+            body_chunks = body.split("\n")
+            wrapped_first = self._wrap_body_with_hanging_indent(
+                close_badge_prefix,
+                body_chunks[0],
+                total_width=self._ctx.width,
+                body_measure=self._ctx.body_measure(),
             )
-
-        ai_summary = build_ai_summary(joined, self._ctx.env)
-        if ai_summary:
-            ai_text = _sanitize(ai_summary)
             self._console.print(
                 self._build_line(
                     timestamp,
                     "INFO",
-                    "CONT",
-                    f"[{end_tag}][{rendered_unit_id}] \u21b3 ai-summary: {ai_text}",
+                    "",
+                    f"{close_badge_prefix}{wrapped_first}",
                 ),
                 markup=False,
                 highlight=False,
-                no_wrap=False,
-                overflow="fold",
+                no_wrap=True,
+                overflow="ignore",
             )
+            for continuation in body_chunks[1:]:
+                wrapped_cont = self._wrap_body_with_hanging_indent(
+                    close_badge_prefix,
+                    continuation,
+                    total_width=self._ctx.width,
+                    body_measure=self._ctx.body_measure(),
+                )
+                # Each embedded line in ``wrapped_cont`` must
+                # carry the hang prefix so the body stays at the
+                # badge column on wrap. Print each line as its
+                # own console.write so the prefix lands on every
+                # row, not just the first (the pre-fix bug).
+                for cont_line in wrapped_cont.split("\n"):
+                    self._console.print(
+                        f"{close_hang_prefix}{cont_line}",
+                        markup=False,
+                        highlight=False,
+                        no_wrap=True,
+                        overflow="ignore",
+                    )
+
+        # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
+        # also the single record entry for the streaming block. Map the
+        # base_tag back to an ``ActivityEventKind`` so the record line
+        # carries the same kind vocabulary as the live log.
+        _base_tag_to_kind = {
+            "content": ActivityEventKind.TEXT,
+            # wt-028-display S-3 (DA-001): the public base tag is
+            # ``think``; the close path must follow the same key so
+            # the record line carries the correct kind.
+            "think": ActivityEventKind.THINKING,
+        }
+        record_kind = _base_tag_to_kind.get(base_tag, ActivityEventKind.TEXT)
+        self._append_recorded_entry(
+            unit_id,
+            event_kind=record_kind,
+            body=body,
+            timestamp=timestamp,
+        )
+        # DA-002 (wt-028-display S-2 / S-3): record the close on
+        # the per-unit live-log dedup key so a follow-up
+        # cross-kind text/thinking companion dedups against THIS
+        # block on the next close. Only set when the close actually
+        # surfaced on at least one surface; the dedup at the top
+        # of this function returns early before this point when the
+        # live print and record append are both suppressed.
+        if record_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING):
+            self._last_text_thinking_block_close[unit_id] = (record_kind, visible)
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks and refresh display context."""
@@ -852,18 +1605,28 @@ class ParallelDisplay:
         self,
         ctx: _StreamingCtx,
         start_tag: str,
-    ) -> tuple[str, str | None]:
-        """Open a new streaming block and return (tag, sanitized_override | None)."""
+    ) -> tuple[str, str | None] | None:
+        """Open a new streaming block: accumulate first fragment, suppress emission.
+
+        S-7 (wt-028-display P1): one entry per block. The streaming layer is
+        silent on open; the close path emits the single coalesced entry.
+        Returning ``None`` here causes ``emit_activity_line`` to skip the
+        per-fragment console-print while the fragment is still buffered
+        into ``_active_block`` for ``_close_block`` to join.
+
+        S-13 (wt-028-display P1): record block-open wall + monotonic times
+        so the close path can render the sanctioned sketch-J span
+        ``start → end`` and duration ``<n>s`` / ``<m>s<n>s`` shape. Both
+        clocks flow through the injected ``self._clock`` and
+        ``self._monotonic`` so tests stay deterministic.
+        """
         self._active_block[ctx.unit_id] = (ctx.base_tag, [ctx.content])
         self._last_checkpoint_chars[ctx.unit_id] = 0
         self._active_block_chars[ctx.unit_id] = len(ctx.content)
+        self._block_open_wall[ctx.unit_id] = self._clock()
+        self._block_open_mono[ctx.unit_id] = self._monotonic()
         self._update_counters(ctx.kind, is_new_block=True)
-        if ctx.kind == "thinking":
-            headline = build_headline_or_placeholder(
-                ctx.content, max_chars=self._ctx.headline_max_chars
-            )
-            return start_tag, f"\u21b3 preview: {_sanitize(headline)}"
-        return start_tag, None
+        return None  # S-7: suppress per-fragment emission; close emits one entry
 
     def _continue_streaming_block(
         self,
@@ -872,71 +1635,37 @@ class ParallelDisplay:
         continue_tag: str,
         start_tag: str,
     ) -> tuple[str, str | None] | None:
-        """Continue an existing streaming block; returns (tag, override) or None for dedup."""
+        """Continue an existing streaming block: accumulate fragment, suppress emission.
+
+        S-7 (wt-028-display P1): the live log is silent during streaming.
+        The single coalesced entry is emitted on ``_close_block``.
+        Returns ``None`` to suppress the per-fragment console-print while
+        still appending to ``accumulated`` so the close path can join
+        the passage. The close-and-reopen cap (memory-perf GAP-MEM-03)
+        still fires here so a chatty stream cannot blow the fragment cap.
+        """
         if self._ctx.streaming_dedup_enabled and accumulated and accumulated[-1] == ctx.content:
             return None
         if len(accumulated) >= _MAX_STREAMING_FRAGMENTS:
+            # Close-and-reopen: close the current block (which emits the
+            # coalesced entry) and open a fresh one with the current
+            # fragment. Both paths are silent at the streaming layer; the
+            # close is the single visible emission.
             self._close_block(ctx.unit_id, ctx.timestamp)
-            return self._handle_new_streaming_block(ctx, start_tag)
-        seq = len(accumulated) + 1
+            self._handle_new_streaming_block(ctx, start_tag)
+            return None  # S-7: suppress this fragment's per-line emission
         accumulated.append(ctx.content)
         running_total = self._active_block_chars.get(ctx.unit_id, 0) + len(ctx.content)
         self._active_block_chars[ctx.unit_id] = running_total
-        tag = f"{continue_tag}#{seq}"
-        if self._ctx.streaming_checkpoints_enabled:
-            total_chars = self._active_block_chars.get(ctx.unit_id, 0)
-            last_cp = self._last_checkpoint_chars.get(ctx.unit_id, 0)
-            emit_checkpoint = (
-                seq % self._ctx.streaming_checkpoint_fragments == 0
-                or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
-            )
-            if emit_checkpoint:
-                self._last_checkpoint_chars[ctx.unit_id] = total_chars
-                rendered_unit_id = _render_unit_id(ctx.unit_id)
-                headline = build_headline_or_placeholder(
-                    " ".join(accumulated), max_chars=self._ctx.headline_max_chars
-                )
-                cp_tag = f"{ctx.base_tag}-checkpoint#{seq}"
-                cp_suffix = (
-                    f"[{cp_tag}][{rendered_unit_id}] "
-                    f"({seq} fragments, {total_chars} chars) {headline}"
-                )
-                self._console.print(
-                    self._build_line(ctx.timestamp, "INFO", "CONT", cp_suffix),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=False,
-                    overflow="fold",
-                )
-                if ctx.kind == "thinking":
-                    preview = build_headline_or_placeholder(
-                        " ".join(accumulated), max_chars=self._ctx.headline_max_chars
-                    )
-                    preview_suffix = (
-                        f"[{cp_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
-                    )
-                    self._console.print(
-                        self._build_line(ctx.timestamp, "INFO", "CONT", preview_suffix),
-                        markup=False,
-                        highlight=False,
-                        no_wrap=False,
-                        overflow="fold",
-                    )
-        thinking_min = self._ctx.thinking_preview_min_chars
-        if ctx.kind == "thinking" and len(ctx.content) >= thinking_min:
-            preview = build_headline_or_placeholder(
-                ctx.content, max_chars=self._ctx.headline_max_chars
-            )
-            return tag, f"\u21b3 preview: {_sanitize(preview)}"
-        return tag, None
+        return None  # S-7: suppress per-fragment emission; close emits one entry
 
     def _process_streaming_block(
         self,
         ctx: _StreamingCtx,
-        block_tags: tuple[str, str, str],
+        block_tags: tuple[str, str],
     ) -> tuple[str, str | None] | None:
         """Dispatch streaming block state; returns (tag, override) or None on dedup/early-return."""
-        start_tag, continue_tag, _end_tag = block_tags
+        start_tag, continue_tag = block_tags
         for other_uid in [uid for uid in self._active_block if uid != ctx.unit_id]:
             self._close_block(other_uid, ctx.timestamp)
         if ctx.unit_id not in self._active_block:
@@ -1075,7 +1804,7 @@ class ParallelDisplay:
         if not is_repeat and snapshot.active_tool and snapshot.active_path:
             tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
-                last_tool, last_path = tool_sig
+                last_tool, last_path, _last_pattern, _last_line_start = tool_sig
                 if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
                     return []
 
@@ -1239,12 +1968,443 @@ class ParallelDisplay:
             return None
         return max(0.0, self._monotonic() - self._run_start_time)
 
+    @property
+    def run_started_monotonic(self) -> float | None:
+        """Return the run-start monotonic anchor (``time.monotonic`` units) or ``None``.
+
+        P0 (wt-028-display AC-01): exposed so the Status Bar can
+        recompute elapsed at render time without a model re-push. The
+        anchor is the same ``self._run_start_time`` value
+        ``run_elapsed_seconds`` is built on, so callers that want a
+        snapshot use the latter and callers that want the live bar to
+        tick use this anchor plus ``self._monotonic()`` (or an
+        injected clock) at render time.
+        """
+        return self._run_start_time
+
+    @property
+    def watchdog_attention(self) -> str | None:
+        """Return the watchdog-sourced attention state, or ``None``.
+
+        wt-047-stall-label: this is the Status Bar host's read of the
+        watchdog's per-event stall assessment stream. The subscriber mirrors
+        each assessment as ``"stalled"`` / ``None`` and calls
+        :meth:`set_watchdog_attention`. The host substitutes the value only
+        when pushed ``attention`` is None; pushed ``waiting`` / ``retrying`` /
+        ``terminated`` always win. Returns ``None`` when no stall transition
+        has been published since the last run cleanup.
+        """
+        with self._watchdog_attention_lock:
+            return self._watchdog_attention
+
+    def set_watchdog_attention(self, value: str | None) -> None:
+        """Set the watchdog-sourced attention state.
+
+        wt-047-stall-label: the subscriber's sink mirrors every watchdog
+        event's authoritative assessment as ``"stalled"`` / ``None``.
+        It is called from the subscriber thread (indirectly from the watchdog
+        emit path), so the dedicated lock keeps Status Bar reads race-free.
+        ``None`` clears the stall.
+
+        # ponytail: one run-level slot is last-writer-wins during fan-out;
+        # track per-unit stalls only if concurrent stalls become an operator hazard.
+        """
+        with self._watchdog_attention_lock:
+            self._watchdog_attention = value
+
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._overflow_logs:
             self._overflow_logs[unit_id] = RawOverflowLog(
                 self._workspace_root, unit_id, max_bytes=_MAX_OVERFLOW_FILE_BYTES
             )
         return self._overflow_logs[unit_id]
+
+    def _result_preview_target(self, unit_id: str, metadata: dict[str, object]) -> tuple[str, str]:
+        """Return a correlated result tool name/path, with display-local fallback."""
+        tool_name = str(metadata.get("tool_name", "") or "")
+        path = str(metadata.get("tool_path", "") or "")
+        previous = self._last_emitted_tool_signature.get(unit_id)
+        if previous is not None:
+            tool_name = tool_name or previous[0]
+            path = path or previous[1]
+        return tool_name.removeprefix("mcp__ralph__").removeprefix("ralph."), path
+
+    def _result_preview_input(
+        self, unit_id: str, metadata: dict[str, object], content: str
+    ) -> tuple[str, dict[str, object], bool]:
+        """Build a correlated result envelope and report whether it is previewable."""
+        tool_name, path = self._result_preview_target(unit_id, metadata)
+        previous = self._last_emitted_tool_signature.get(unit_id)
+        correlated_start = previous[3] if previous is not None else None
+        result_start = metadata.get("line_start")
+        result_content: object = content
+        if tool_name == "read_file":
+            with contextlib.suppress(ValueError):
+                envelope = cast("object", json.loads(content))
+                if isinstance(envelope, dict):
+                    envelope_path = envelope.get("path")
+                    if isinstance(envelope_path, str) and envelope_path:
+                        path = envelope_path
+                    envelope_content = envelope.get("content")
+                    if isinstance(envelope_content, str):
+                        result_content = envelope_content
+                    else:
+                        return tool_name, {"input": {}}, False
+                else:
+                    return tool_name, {"input": {}}, False
+        payload: dict[str, object] = {
+            "path": path,
+            "content": result_content,
+            "line_start": result_start if isinstance(result_start, int) else correlated_start or 1,
+            "is_snippet": bool(result_start is None and correlated_start is None),
+        }
+        preview_input: dict[str, object] = {"input": payload}
+        if tool_name in {"grep_files", "search_files"}:
+            previous = self._last_emitted_tool_signature.get(unit_id)
+            if previous is not None:
+                payload["pattern"] = previous[2]
+        return (
+            tool_name,
+            preview_input,
+            payload_from_tool_event(tool_name, preview_input) is not None,
+        )
+
+    def _emit_activity_preview(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        tool_name: str,
+        preview_input: dict[str, object],
+        timestamp: str,
+        *,
+        include_header: bool = True,
+    ) -> None:
+        """Print a tool-use or recognized successful result preview."""
+        self._emit_file_preview(
+            unit_id, kind, tool_name, preview_input, timestamp, include_header=include_header
+        )
+
+    def _emit_file_preview(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        tool_name: str,
+        preview_input: dict[str, object],
+        timestamp: str,
+        *,
+        include_header: bool = True,
+    ) -> None:
+        """Project a file preview to the record and, unless quiet, terminal."""
+        overflow = self._get_overflow_log(unit_id)
+        overflow_ref = overflow.relative_reference(self._workspace_root)
+        _record_preview, full_source = preview_record_text(
+            tool_name,
+            preview_input,
+            overflow_ref=overflow_ref,
+            glyphs_enabled=self._ctx.glyphs_enabled,
+        )
+        if full_source is not None and full_source.count("\n") + 1 > _PREVIEW_MAX_LINES:
+            overflow.append(full_source)
+            self._check_overflow_size(unit_id, overflow)
+        if self._is_quiet:
+            return
+        preview = build_edit_preview(
+            tool_name,
+            preview_input,
+            width=self._ctx.width,
+            terminal_bg_is_light=self._terminal_bg_is_light,
+            overflow_ref=overflow_ref,
+            glyphs_enabled=self._ctx.glyphs_enabled,
+        )
+        if preview is None:
+            return
+        path = ""
+        payload = preview_input.get("input")
+        if isinstance(payload, dict):
+            path_value = payload.get("path", "")
+            path = path_value if isinstance(path_value, str) else ""
+        with contextlib.suppress(Exception):
+            preview_body = Padding(preview, (0, 0, 0, _INDENT_WIDTH * 2))
+            if include_header:
+                self._console.print(
+                    Group(
+                        Padding(
+                            preview_header(
+                                tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
+                            ),
+                            (0, 0, 0, _INDENT_WIDTH),
+                        ),
+                        preview_body,
+                    )
+                )
+            else:
+                self._console.print(preview_body)
+        del kind, timestamp
+
+    def _get_rendered_writer(self, unit_id: str) -> RenderedRecordWriter | None:
+        """Return the per-unit rendered-record writer, lazy-created.
+
+        P0 (wt-028-display S-11 / AC-07): the writer is created on
+        first use so quiet-mode runs and tests that never emit
+        activity events pay nothing. ``drop_unit`` flushes and
+        removes the writer; ``stop()`` flushes any straggler
+        writers at run end so a buffered line is not lost.
+
+        S-7 (wt-028-display P1 / AC-07): quiet mode no longer
+        suppresses the file surface. The terminal surface is silent
+        (``_is_quiet`` still short-circuits ``emit_activity_line``
+        and the phase-banner methods), but the rendered record
+        receives the same presented entries a non-quiet run would
+        have written. Plumbing commands are unaffected because
+        they never reach ``_emit_activity_event`` (they emit status
+        and progress through their own sinks).
+        """
+        if unit_id not in self._rendered_writers:
+            self._rendered_writers[unit_id] = RenderedRecordWriter(self._workspace_root, unit_id)
+            # S-15 (AC-05): a phase_start may have arrived before any
+            # unit produced a visible event. Flush the buffered
+            # headers into the freshly-spawned writer so the
+            # rendered record carries the phase boundary at the
+            # right place.
+            self._flush_pending_phase_headers(unit_id)
+        return self._rendered_writers[unit_id]
+
+    def _flush_pending_phase_headers(self, unit_id: str) -> None:
+        """Drain buffered phase-start headers into ``unit_id``'s record.
+
+        The buffer holds entries whose phase_start happened before
+        any writer existed; once the first writer is created, the
+        headers are flushed in arrival order so the rendered record
+        shows the phase boundary at the correct position relative to
+        the first event. The buffer is always drained (not partially
+        flushed) so a stale header cannot leak into a later wave.
+        """
+        if not self._pending_phase_headers:
+            return
+        for entry in self._pending_phase_headers:
+            cycle_value = entry["cycle"]
+            cycle_int = int(cycle_value) if isinstance(cycle_value, int) else None
+            phase = str(entry["phase"]) if entry["phase"] is not None else None
+            iter_ = str(entry["iter_"]) if entry["iter_"] is not None else None
+            self._append_recorded_entry(
+                unit_id,
+                event_kind=ActivityEventKind.LIFECYCLE,
+                body=str(entry["body"]),
+                timestamp=str(entry["timestamp"]),
+                phase=phase,
+                cycle=cycle_int,
+                iter_=iter_,
+            )
+            if phase is not None:
+                self._last_phase_per_unit[unit_id] = (phase, cycle_int, iter_)
+        self._pending_phase_headers.clear()
+
+    def _append_recorded_entry(
+        self,
+        unit_id: str,
+        *,
+        event_kind: ActivityEventKind,
+        body: str,
+        timestamp: str,
+        metadata: dict[str, object] | None = None,
+        phase: str | None = None,
+        cycle: int | None = None,
+        iter_: str | None = None,
+    ) -> None:
+        """Append a presented entry to the rendered record at the seam.
+
+        S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered record
+        consumes the same stream the live log emits so the file
+        surface and the terminal surface present one entry per
+        logical event, in the same order, with the same vocabulary.
+        The caller is responsible for stamping the entry with the
+        display clock (``self._clock()``); the record line carries a
+        real ``[hh:mm:ss]`` slot, never ``[??:??:??]``.
+
+        Cross-kind identical-content dedup: a second entry for the
+        same unit with a byte-identical body to the immediately
+        previous entry is dropped on the file surface. This kills
+        the ``text:`` / ``thinking:`` double that pi (and others)
+        emit when the agent's reasoning pass writes the same content
+        through both channels.
+
+        SUBAGENT_PROGRESS is intentionally routed through this seam
+        (not the per-event append it used to live on) so the
+        watchdog audit-trail entry is still recorded; the live
+        console continues to skip it via the ``emit_activity_line``
+        guard so the live log and the record are still one entry
+        per visible event.
+
+        Suppresses on any writer error so a transient disk failure
+        cannot break the display path.
+        """
+        if not body.strip() or (event_kind is ActivityEventKind.LIFECYCLE and phase is None):
+            # Agent lifecycle boundaries are transport noise; only explicit pipeline
+            # phase headers carry phase context into the rendered record.
+            return
+        writer = self._get_rendered_writer(unit_id)
+        if writer is None:
+            return
+        # Cross-kind identical-content dedup at the seam. DA-002
+        # (wt-028-display): two distinct identical ``tool_use`` events
+        # must each get their own record entry, so the dedup key is
+        # ``(event_kind, body)`` rather than just ``body``. The
+        # companion dedup -- the ``text:`` / ``thinking:`` pair the
+        # ``pi`` agent emits for the same reasoning pass -- is
+        # preserved by allowing a same-body, cross-kind entry to
+        # replace a previously-recorded ``TEXT`` or ``THINKING``
+        # entry with the same body. That narrowed contract keeps
+        # the live log and the rendered record one entry per logical
+        # reasoning pass without ever silently dropping two
+        # distinct same-kind tool events.
+        prev = self._last_recorded_body.get(unit_id)
+        if prev is not None:
+            prev_kind, prev_body = prev
+            if prev_kind == event_kind and prev_body == body:
+                # DA-002: distinct identical same-kind events both
+                # land in the record (the regression case for the
+                # tool_use flood).
+                pass
+            elif (
+                prev_body == body
+                and prev_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+                and event_kind in (ActivityEventKind.TEXT, ActivityEventKind.THINKING)
+            ):
+                # Cross-kind text/thinking companion: dedup.
+                return
+            elif prev_kind != event_kind and prev_body == body:
+                # Other cross-kind identical content: preserve both
+                # entries so the record carries the actual event
+                # stream rather than silently collapsing it.
+                pass
+        # Build the canonical PresentedEntry so the writer's
+        # formatter produces the stable field-order line.
+        from ralph.display.agent_event_renderer import make_event_for_emit
+        from ralph.display.presented_entry import build_presented_entry
+
+        # wt-028-display S-5 (AC-04): when the caller did not supply
+        # explicit phase / cycle / iter_, read the unit's last-known
+        # run state from ``_last_phase_per_unit`` so the rendered
+        # record line carries real values. Explicit caller-provided
+        # values still win (e.g. ``_flush_pending_phase_headers``
+        # stamps the buffered header values verbatim).
+        if phase is None or cycle is None or iter_ is None:
+            cached = self._last_phase_per_unit.get(unit_id)
+            if cached is not None:
+                cached_phase, cached_cycle, cached_iter = cached
+                if phase is None:
+                    phase = cached_phase
+                if cycle is None:
+                    cycle = cached_cycle
+                if iter_ is None:
+                    iter_ = cached_iter
+
+        overflow = self._get_overflow_log(unit_id)
+        visible_body, condensed = cast(
+            "tuple[str, bool]",
+            condense_content(
+                body,
+                options=CondenseOptions(
+                    soft_limit=self._ctx.condenser_soft_limit,
+                    hard_limit=self._ctx.condenser_hard_limit,
+                    overflow_ref=overflow.relative_reference(self._workspace_root),
+                ),
+            ),
+        )
+        # The live presentation seam already preserves the unabridged body
+        # in this same per-unit verbatim log. The record shares that reference;
+        # writing again would duplicate the capture.
+        del condensed
+        event = make_event_for_emit(
+            event_kind,
+            visible_body,
+            timestamp=timestamp,
+            metadata=metadata or {},
+            source=unit_id,
+        )
+        entry = build_presented_entry(
+            event,
+            unit_id=unit_id,
+            timestamp=timestamp,
+            phase=phase,
+            cycle=cycle,
+            iter_=iter_,
+        )
+        if phase is not None and entry.grouping_role != "phase_header":
+            entry = replace(entry, indent_level=entry.indent_level + 1)
+        with contextlib.suppress(Exception):
+            writer.append(entry)
+            self._last_recorded_body[unit_id] = (event_kind, body)
+
+    def _emit_phase_header_record(
+        self,
+        phase: str,
+        transition: str,
+        *,
+        cycle: int | None = None,
+        iter_: str | None = None,
+        agent_name: str | None = None,
+    ) -> None:
+        """Append a phase-header record entry to every active unit's record.
+
+        S-15 (wt-028-display P1 / AC-05): phase banners on the live
+        surface (``emit_phase_start`` / ``emit_phase_close_from_exit``)
+        carry rich glyphs and the phase label; the corresponding
+        record line is the text-first equivalent -- ``kind=lifecycle``,
+        ``phase=<phase>``, ``body=phase_start`` / ``body=phase_close``,
+        ``role=phase_header``, ``indent_level=0`` -- so a reader of
+        ``.agent/raw/<id>.rendered.log`` can locate the phase
+        boundaries without parsing Rich output. The entry is written
+        to every unit that already has a writer (i.e. units that have
+        produced visible events this run); units with no writer yet
+        are skipped because the phase banner is a global event and
+        creating an empty record for a phase-only run would create
+        stale ``.agent/raw/<id>.rendered.log`` files.
+
+        ``transition`` is the canonical body token (``phase_start``
+        or ``phase_close``); a future transition (``phase_pause``,
+        ``phase_resume``) extends the contract by adding one new
+        token, never a new field.
+        """
+        timestamp = self._format_timestamp(self._clock())
+        # The header fields carry the phase context; a lifecycle token has no
+        # reader value once that context is present.
+        body = transition
+        del agent_name
+        # wt-028-display S-5 (AC-04): every unit's last-known phase
+        # state is cached here so subsequent ``_append_recorded_entry``
+        # calls (for ordinary activity events) can populate their
+        # ``phase`` / ``cycle`` / ``iter_`` fields with the live run
+        # state instead of leaving them ``None``. The cache is keyed
+        # per unit and bounded by ``drop_unit``.
+        self._last_phase_per_unit.clear()
+        for unit_id in self._rendered_writers:
+            self._last_phase_per_unit[unit_id] = (phase, cycle, iter_)
+        if not self._rendered_writers:
+            # No writer yet: buffer the header so the first writer
+            # spawn can flush it (S-15 / AC-05). The header carries
+            # the same body so the rendered record line is identical
+            # whether the writer existed at phase_start time or not.
+            self._pending_phase_headers.append(
+                {
+                    "body": body,
+                    "timestamp": timestamp,
+                    "phase": phase,
+                    "cycle": cycle,
+                    "iter_": iter_,
+                }
+            )
+            return
+        for unit_id in list(self._rendered_writers.keys()):
+            self._append_recorded_entry(
+                unit_id,
+                event_kind=ActivityEventKind.LIFECYCLE,
+                body=body,
+                timestamp=timestamp,
+                phase=phase,
+                cycle=cycle,
+                iter_=iter_,
+            )
 
     def _raw_overflow_write(self, unit_id: str, raw_line: str) -> None:
         """Write a raw malformed line to the per-unit overflow log for diagnosis.
@@ -1301,44 +2461,163 @@ class ParallelDisplay:
             f"dropped {delta} lines since last flush",
         )
 
+    def _preview_header_metadata(
+        self, tool_name: str, input_dict: dict[str, object], metadata: dict[str, object]
+    ) -> dict[str, object] | None:
+        """Remove file-preview content from the generic tool-call header."""
+        if payload_from_tool_event(tool_name, {"input": input_dict}) is None:
+            return None
+        preview_keys = {"content", "patch", "oldText", "newText", "old_string", "new_string", "edits"}
+        header_metadata = dict(metadata)
+        header_metadata["input"] = {
+            key: value for key, value in input_dict.items() if key not in preview_keys
+        }
+        return header_metadata
+
     def _emit_activity_event(
         self,
         unit_id: str,
         kind: ActivityEventKind,
         content: str | None,
-        raw_ref: str | None,
+        _raw_ref: str | None,
         metadata: dict[str, object] | None = None,
+        timestamp: str | None = None,
     ) -> None:
+        """Render an agent event through the single registry and emit it.
+
+        After the wt-028-display consolidation, every agent-event
+        formatting decision lives in
+        :mod:`ralph.display.agent_event_renderer`. This function
+        constructs/normalize a canonical :class:`AgentActivityEvent`
+        at the ingestion boundary (via
+        :func:`agent_event_renderer.make_event_for_emit`) so the
+        loose ``(kind, content, metadata)`` arguments are normalized
+        to the same typed event the registry consumes, then calls
+        :func:`agent_event_renderer.render_event` directly. This
+        function owns the *delivery* of the event (overflow tracking,
+        badge wrapping, drop-warning, subscriber metadata) and
+        forwards the visible text into ``emit_activity_line`` so the
+        standard timestamp + level + cat badge contract is preserved.
+        The same registry powers the pipeline runner's
+        ``_render_agent_activity_line`` and the activity-router's
+        ``render_event_line`` so the same logical event renders
+        identically regardless of which path produced it
+        (AC-06/AC-07/AC-08).
+
+        ``timestamp`` (DA-003 / wt-028-display): the optional
+        source-event ISO-8601 timestamp the parser pipeline
+        extracted from the agent output. When supplied, it
+        replaces the ``datetime.now(UTC)`` fallback at the
+        boundary so the rendered record carries the source
+        event's real time instead of the display clock.
+        """
         metadata = {} if metadata is None else metadata
-        text = content or ""
+        text_content = content or ""
+
+        # Normalize loose render args to a canonical
+        # :class:`AgentActivityEvent` BEFORE rendering so the registry
+        # owns every presentation decision and this ingestion site
+        # cannot drift from the pipeline runner / activity-router
+        # paths. ``timestamp`` (DA-003): when the caller supplies a
+        # source-event ISO-8601 timestamp we forward it into the
+        # canonical event so the rendered record carries the source
+        # time instead of the display clock fallback.
+        event = make_event_for_emit(
+            kind,
+            text_content,
+            timestamp=timestamp,
+            metadata=metadata,
+            source=unit_id,
+        )
+
+        # A parser's badge-only unknown event has no operator-facing body.
+        # Drop it before registry rendering so it cannot become an empty WARN row.
+        if kind is ActivityEventKind.UNKNOWN:
+            from ralph.display.presented_entry import build_presented_entry
+
+            if not build_presented_entry(event, unit_id=unit_id).body:
+                return
 
         tool_signature: tuple[str, str] | None = None
 
+        # Hoist the TOOL_USE input_dict to method scope so the additive
+        # edit-preview print (after the header line) can reach it. The
+        # variable is only populated for TOOL_USE events; the preview
+        # builder returns None for non-content events so the value is
+        # only consumed when it matters.
+        input_dict: dict[str, object] = {}
+
         if kind is ActivityEventKind.TOOL_USE:
-            original_name = text
-            text = friendly_tool_name(text)
-            input_obj = metadata.get("input")
-            args_str = format_tool_input(input_obj)
-            if args_str:
-                text = f"{text} {args_str}"
-            input_dict: dict[str, object] = (
-                cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
-            )
-            tool_path = str(input_dict.get("path", "") or "")
-            tool_workdir = str(input_dict.get("workdir", "") or "")
-            tool_command = str(input_dict.get("command", "") or "")
-            tool_pattern = str(input_dict.get("pattern", "") or "")
+            # Subscriber delivery still needs the raw tool name +
+            # structured input fields so audit/recap paths keep
+            # working. Rendering flows through the registry; delivery
+            # decisions (record_activity) stay here.
+            input_obj = metadata.get("input", metadata.get("args"))
+            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            original_name = text_content
+            tool_path = strip_terminal_control(str(input_dict.get("path", "") or ""))
+            tool_workdir = strip_terminal_control(str(input_dict.get("workdir", "") or ""))
+            tool_command = strip_terminal_control(str(input_dict.get("command", "") or ""))
+            tool_pattern = strip_terminal_control(str(input_dict.get("pattern", "") or ""))
             tool_signature = (original_name, tool_path)
+            # Subscriber receives the registry-rendered text so the
+            # recorded line matches what the operator sees in the log.
+            sub_line = render_event(
+                event,
+                unit_id=unit_id,
+                active_identities=(*self._last_recorded_body, unit_id),
+                escape_body=False,
+            ).plain
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
-                    line=text,
+                    line=sub_line,
                     tool_name=original_name,
                     path=tool_path or None,
                     workdir=tool_workdir or None,
                     command=tool_command or None,
                     pattern=tool_pattern or None,
                 )
+            # DA-004: structured file previews own their content; retaining
+            # edit/patch text in the generic header says the same thing twice.
+            header_metadata = self._preview_header_metadata(original_name, input_dict, metadata)
+            if header_metadata is not None:
+                event = make_event_for_emit(
+                    kind,
+                    text_content,
+                    timestamp=timestamp,
+                    metadata=header_metadata,
+                    source=unit_id,
+                )
+
+        # ALL formatting goes through the registry -- the friendly name,
+        # formatted input, agent prefix, and non-color icon + label
+        # carrier all come from ``render_event`` so this path cannot
+        # drift from the pipeline runner's path. We pass the canonical
+        # typed event to the registry directly; the registry's own
+        # cell-aware 200-cell cap is bypassed here by reaching for
+        # ``text.plain`` BEFORE truncation, so the condenser owns the
+        # soft/hard overflow path (so an over-soft-limit line still
+        # picks up the ``[see .agent/raw/unit-N.log]`` ref), and the
+        # registry's default 200-cell cap would otherwise pre-truncate
+        # short of ``soft_limit`` and silently bypass overflow tracking.
+        text = strip_terminal_control(
+            render_event(
+                event,
+                unit_id=unit_id,
+                active_identities=(*self._last_recorded_body, unit_id),
+                escape_body=False,
+            ).plain
+        )
+        if len(text) > self._ctx.condenser_hard_limit + 256:
+            # Defensive cap: even the plain-text path must hand the
+            # condenser a bounded payload, otherwise a pathologically
+            # long line would blow the soft/hard gates. The
+            # ``+ 256`` slack matches the legacy ``max_chars`` knob so
+            # the visible truncation behavior is preserved.
+            from ralph.display.agent_event_renderer import _truncate_to_cells
+
+            text = _truncate_to_cells(text, self._ctx.condenser_hard_limit + 256)
 
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
@@ -1360,30 +2639,179 @@ class ParallelDisplay:
             overflow.append(text)
             self._check_overflow_size(unit_id, overflow)
 
-        effective_summary_line = summary_line
-        if (
-            kind is ActivityEventKind.TOOL_RESULT
-            and summary_line is None
-            and text.strip()
-            and len(text) >= self._ctx.tool_result_headline_min_chars
-        ):
-            effective_summary_line = build_headline_or_placeholder(
-                text, max_chars=self._ctx.headline_max_chars
+        # A tool result's own row is its summary. Rendering the condenser's
+        # headline as a supplement duplicates that event in the live log.
+        effective_summary_line = None if kind is ActivityEventKind.TOOL_RESULT else summary_line
+
+        # S-7 (wt-028-display P1): streaming kinds must buffer raw content,
+        # not the registry-rendered visible text. The registry's render_event
+        # prepends ``\u25d0 RUN <ts> <unit_id>`` to each fragment; if that
+        # pre-formatted text were stored in ``_active_block`` and joined at
+        # close, the joined passage would carry the prefix between every
+        # fragment. The close path formats the joined passage itself via
+        # ``_build_line`` so per-fragment formatting must be skipped here.
+        content_for_emit = text_content if kind.value in _STREAMING_KINDS else visible
+        result_preview_tool_name = ""
+        result_preview_input: dict[str, object] = {}
+        result_previewable = False
+        previewed_result = kind is ActivityEventKind.TOOL_RESULT and not outcome_is_failure(
+            metadata
+        )
+        if previewed_result:
+            result_preview_tool_name, result_preview_input, result_previewable = (
+                self._result_preview_input(unit_id, metadata, text_content)
+            )
+            previewed_result = (
+                unit_id in self._last_emitted_tool_signature
+                and result_previewable
+                and build_edit_preview(
+                result_preview_tool_name,
+                result_preview_input,
+                width=self._ctx.width,
+                terminal_bg_is_light=self._terminal_bg_is_light,
+                overflow_ref=overflow_ref,
+                    glyphs_enabled=self._ctx.glyphs_enabled,
+                )
+                is not None
+            )
+            if previewed_result:
+                content_for_emit = f"↳ {result_preview_tool_name}"
+        # S-7 (wt-028-display P1): SUBAGENT_PROGRESS is a watchdog-side
+        # companion event. The audit trail (rendered record writer below)
+        # still records it, but the live console must not surface a
+        # ``[progress][unit] \u25d0 RUN ... <summary>`` line alongside the
+        # close-path entry that already carries the same content -- one
+        # event, one visible line.
+        if kind is not ActivityEventKind.SUBAGENT_PROGRESS:
+            # wt-028-display S-3 (DA-001): for non-streaming kinds the
+            # body the wrap should use is the registry-rendered visible
+            # text (so the friendly tool name ``ralph.read_file``
+            # survives instead of the raw ``mcp__ralph__read_file``
+            # parser-kind identifier). For streaming kinds we keep the
+            # raw fragment text so the close path can join the buffered
+            # passage without the registry's per-fragment chrome.
+            body_text_for_wrap = (
+                content_for_emit
+                if previewed_result
+                else text_content
+                if kind.value in _STREAMING_KINDS
+                else visible
+            )
+            # DA-002 (S-12 / AC-07): the canonical ``PresentedEntry``
+            # hierarchy data drives the live log's hanging-indent
+            # continuation column. The record writer already consumes
+            # ``indent_level`` / ``grouping_role``; the live log now
+            # consumes the same struct so the two surfaces share one
+            # vocabulary (a tool result hangs one level under its
+            # call, reasoning reads as one subordinated passage). The
+            # builder is the canonical source -- the registry's
+            # ``_KIND_TO_GROUPING`` table is the only place this
+            # mapping is defined.
+            from ralph.display.presented_entry import build_presented_entry
+
+            # DA-003 (wt-028-display): the canonical
+            # ``PresentedEntry`` carries the source-event timestamp
+            # when one was supplied, and the display clock only when
+            # the source genuinely omitted it. ``timestamp`` is the
+            # ``event.timestamp`` (already normalised by
+            # ``make_event_for_emit``) so we prefer the event's own
+            # value over ``self._clock().isoformat()``.
+            entry_timestamp = event.timestamp if event.timestamp else self._clock().isoformat()
+            _entry = build_presented_entry(
+                event,
+                unit_id=unit_id,
+                timestamp=entry_timestamp,
+            )
+            self.emit_activity_line(
+                unit_id,
+                kind.value,
+                content_for_emit,
+                options=_ActivityLineOptions(
+                    condensed_ref=overflow_ref if condensed_flag else None,
+                    condensed_flag=condensed_flag,
+                    summary_line=effective_summary_line,
+                    ai_summary_line=ai_summary_line,
+                    tool_signature=tool_signature,
+                    activity_metadata=metadata,
+                    indent_level=_entry.indent_level,
+                    grouping_role=_entry.grouping_role,
+                    record_body=(
+                        preview_record_text(
+                            text_content,
+                            metadata,
+                            overflow_ref=overflow_ref,
+                            glyphs_enabled=self._ctx.glyphs_enabled,
+                        )[0]
+                        or None
+                    )
+                    if kind is ActivityEventKind.TOOL_USE
+                    else "\n".join(
+                        part
+                        for part in (
+                            preview_record_text(
+                                result_preview_tool_name,
+                                result_preview_input,
+                                overflow_ref=overflow_ref,
+                                glyphs_enabled=self._ctx.glyphs_enabled,
+                            )[0],
+                            text_content,
+                        )
+                        if part
+                    )
+                    if result_previewable
+                    and result_preview_tool_name == "read_file"
+                    and text_content.lstrip().startswith("{")
+                    else text_content
+                    if kind is ActivityEventKind.TOOL_RESULT
+                    else None,
+                ),
+                # DA-003 (wt-028-display): forward the
+                # source-event timestamp so the rendered record
+                # carries the parser time, not the display clock.
+                source_timestamp=event.timestamp or None,
+                # DA-002 (S-4): pass the wrap-target body so the wrap
+                # uses the standalone body instead of the full
+                # chrome-prefixed rendered text. The chrome prefix
+                # (``icon label ts ↳ read_file u1``) is rendered on
+                # the first line by ``emit_activity_line``; the
+                # continuation wraps the body alone at the badge
+                # column so the 40-col floor produces readable
+                # multiword chunks rather than one-character
+                # fragments.
+                body_text=body_text_for_wrap,
             )
 
-        self.emit_activity_line(
-            unit_id,
-            kind.value,
-            visible,
-            options=_ActivityLineOptions(
-                condensed_ref=overflow_ref if condensed_flag else None,
-                condensed_flag=condensed_flag,
-                summary_line=effective_summary_line,
-                ai_summary_line=ai_summary_line,
-                tool_signature=tool_signature,
-            ),
-        )
+            if kind is ActivityEventKind.TOOL_USE or previewed_result:
+                self._emit_activity_preview(
+                    unit_id,
+                    kind,
+                    result_preview_tool_name if previewed_result else text_content,
+                    result_preview_input if previewed_result else metadata,
+                    entry_timestamp,
+                    include_header=True,
+                )
 
+        # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
+        # record append now lives at the shared presentation seam
+        # (the ``emit_activity_line`` print path and the
+        # ``_close_block`` single close entry). The per-event append
+        # here is gone so the file surface cannot drift ahead of the
+        # terminal surface (the original bug: raw events appended
+        # upstream of the streaming-block coalescing produced
+        # doubled / fragmented rows the operator never saw).
+        #
+        # DA-001 (S-2): SUBAGENT_PROGRESS is a watchdog companion
+        # event. The watchdog's per-channel evidence surface stays
+        # fresh via the ``invoke_subagent_sink`` contextvar path
+        # reached upstream of this function (see
+        # ``ralph.pipeline.activity_stream``); recording an
+        # additional ``role=progress`` audit-trail entry on top of
+        # the visible event's close entry was the duplication the
+        # corpus showed. The live console emission is suppressed
+        # above (the SUBAGENT_PROGRESS guard around the
+        # ``emit_activity_line`` call), so the file surface and the
+        # terminal surface both present one entry per visible
+        # event.
         self._emit_drop_warning(unit_id)
 
     @property
@@ -1408,6 +2836,28 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._status_bar.stop()
         self.flush_blocks()
+        self._flush_pending_tool_results()
+        # P0 (wt-028-display S-11 / AC-07): flush any per-unit
+        # rendered-record writer that was not already collected by
+        # ``drop_unit`` (e.g. a single-wave run whose drop_unit is
+        # never called). Each writer is disabled after flush so a
+        # second ``stop()`` is a no-op.
+        for writer in self._rendered_writers.values():
+            with contextlib.suppress(Exception):
+                writer.flush()
+            with contextlib.suppress(Exception):
+                writer.disable()
+        self._rendered_writers.clear()
+        # S-23 (wt-028-display P1 / AC-06): flush the verbatim
+        # overflow logs too so the condensed-content marker on the
+        # rendered record line points at a file that has the
+        # unabridged body on disk. ``RawOverflowLog`` buffers in
+        # userspace; without this flush the marker would advertise a
+        # reference that is empty until the 5-second flush interval
+        # elapses (or run end never arrives).
+        for overflow in self._overflow_logs.values():
+            with contextlib.suppress(Exception):
+                overflow.flush()
 
     def update_status_bar(self, model: object) -> None:
         """Push a new :class:`StatusBarModel` to the composed StatusBar.
@@ -1439,14 +2889,19 @@ class ParallelDisplay:
             return
         if _is_bare_lifecycle(line):
             return
+        # Visible transcript content is normalized via strip_markup so the
+        # subscriber snapshot and rendered transcript both carry plain text
+        # (Rich markup reduced). The transcript sink path (emit_log_line /
+        # kind="raw") still preserves literal brackets for raw log payloads.
+        sanitized_line = strip_markup(line)
         if unit_id is not None:
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
-                    line=strip_markup(line),
+                    line=sanitized_line,
                     agent_name=unit_id,
                 )
-        self.emit_log_line(unit_id or "run", line)
+        self.emit_log_line(unit_id or "run", sanitized_line)
 
     def emit_parsed_event(
         self,
@@ -1454,15 +2909,188 @@ class ParallelDisplay:
         kind: ActivityEventKind,
         content: str | None,
         metadata: dict[str, object],
+        timestamp: str | None = None,
     ) -> None:
-        """Route a pre-parsed agent event through the structured activity path."""
+        """Buffer consecutive terminal results so transport floods collapse."""
+        if kind is ActivityEventKind.TOOL_RESULT and content is not None:
+            clean_content = _clean_tool_result_content(content, unit_id)
+            # Only transport-shaped results wait for a possible burst. Ordinary
+            # results remain synchronous so a completed tool call is visible at
+            # once instead of being held until a later event or run shutdown.
+            if clean_content == " ".join(content.split()):
+                self._flush_pending_tool_result(unit_id)
+                self._emit_parsed_event_now(unit_id, kind, clean_content, metadata, timestamp)
+                return
+            arrived_at = self._monotonic()
+            pending = self._pending_tool_results.get(unit_id)
+            signature = (clean_content, str(metadata.get("tool", metadata.get("tool_name", ""))))
+            if (
+                pending is not None
+                and signature
+                == (pending[0], str(pending[1].get("tool", pending[1].get("tool_name", ""))))
+                and self._within_tool_result_burst(pending[3], timestamp, pending[4], arrived_at)
+            ):
+                self._pending_tool_results[unit_id] = (
+                    pending[0],
+                    pending[1],
+                    pending[2],
+                    timestamp,
+                    arrived_at,
+                    pending[5] + 1,
+                )
+                return
+            self._flush_pending_tool_result(unit_id)
+            self._pending_tool_results[unit_id] = (
+                clean_content,
+                dict(metadata),
+                timestamp,
+                timestamp,
+                arrived_at,
+                1,
+            )
+            return
+        self._flush_pending_tool_result(unit_id)
+        self._emit_parsed_event_now(unit_id, kind, content, metadata, timestamp)
+
+    @staticmethod
+    def _within_tool_result_burst(
+        previous: str | None,
+        current: str | None,
+        previous_arrival: float,
+        current_arrival: float,
+    ) -> bool:
+        """Return whether adjacent results arrived within one second."""
+        if previous is not None and current is not None:
+            with contextlib.suppress(ValueError):
+                return abs(
+                    (datetime.fromisoformat(current.replace("Z", "+00:00"))
+                    - datetime.fromisoformat(previous.replace("Z", "+00:00"))).total_seconds()
+                ) <= 1.0
+        return current_arrival - previous_arrival <= 1.0
+
+    def _flush_pending_tool_results(self) -> None:
+        for unit_id in tuple(self._pending_tool_results):
+            self._flush_pending_tool_result(unit_id)
+
+    def _flush_pending_tool_result(self, unit_id: str) -> None:
+        pending = self._pending_tool_results.pop(unit_id, None)
+        if pending is None:
+            return
+        content, metadata, timestamp, _last_timestamp, _last_arrival, count = pending
+        self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, content, metadata, timestamp)
+        if count >= _MIN_TOOL_RESULT_COLLAPSE_COUNT:
+            hidden_count = count - 1
+            hidden_bytes = hidden_count * len(content.encode())
+            overflow = self._get_overflow_log(unit_id)
+            overflow.append("\n".join([content] * hidden_count))
+            self._check_overflow_size(unit_id, overflow)
+            marker = (
+                f"… {hidden_count} more identical results ({hidden_bytes} B) "
+                f"[see {overflow.relative_reference(self._workspace_root)}]"
+            )
+            self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, marker, metadata, timestamp)
+
+    def _emit_parsed_event_now(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        metadata: dict[str, object],
+        timestamp: str | None = None,
+    ) -> None:
+        """Route a pre-parsed agent event through the structured activity path.
+
+        ``timestamp`` (DA-003 / wt-028-display): the optional
+        source-event ISO-8601 timestamp the parser pipeline
+        extracted from the agent output. When supplied, it is
+        forwarded all the way to ``_emit_activity_event`` and
+        from there into the rendered record line.
+        """
         if (
             kind in (ActivityEventKind.LIFECYCLE, ActivityEventKind.UNKNOWN)
             and content is not None
             and _is_bare_lifecycle(content)
         ):
             return
-        self._emit_activity_event(unit_id, kind, content, None, metadata)
+        # S-7 (wt-028-display P1): SUBAGENT_PROGRESS still reaches
+        # ``_emit_activity_event`` here so the event-emission contract
+        # (``stream_parsed_agent_activity`` -> ``display.emit_parsed_event``
+        # carries the watchdog companion event end-to-end) is preserved
+        # for tests and other subscribers that hook ``_emit_activity_event``.
+        # The LIVE console emission is suppressed inside
+        # ``_emit_activity_event`` itself (the watchdog's audit trail still
+        # records the event via the rendered record writer path).
+        #
+        # DA-003 (wt-028-display S-2): when the caller did not supply a
+        # source-event timestamp, default to the display clock (NOT
+        # ``datetime.now(UTC)``) so the rendered record carries the
+        # injected test clock and the production-time clock both stay
+        # deterministic. ``make_event_for_emit`` still falls back to
+        # ``datetime.now(UTC)`` for callers that bypass this seam (e.g.
+        # direct registry calls), but the production path goes through
+        # here.
+        if timestamp is None:
+            timestamp = self._clock().isoformat()
+        call_id = tool_call_id(metadata)
+        if kind is ActivityEventKind.TOOL_USE and call_id:
+            recent = self._recorded_tool_call_ids.get(unit_id, ())
+            if call_id in recent:
+                return
+            self._recorded_tool_call_ids[unit_id] = (*recent, call_id)[-64:]
+        elif kind in (ActivityEventKind.TOOL_RESULT, ActivityEventKind.ERROR) and content is not None:
+            self._last_tool_result_content[unit_id] = (call_id, content)
+        elif kind is ActivityEventKind.TEXT and content is not None:
+            previous = self._last_tool_result_content.pop(unit_id, None)
+            if previous is not None:
+                previous_id, previous_content = previous
+                same_call = call_id is not None and call_id == previous_id
+                idless_companion = call_id is None and bool(previous_content) and (
+                    content == previous_content
+                    or content in previous_content
+                    or previous_content in content
+                )
+                if (same_call and content == previous_content) or idless_companion:
+                    return
+        else:
+            self._last_tool_result_content.pop(unit_id, None)
+        record_metadata = dict(metadata)
+        emitted_content = content
+        if kind is ActivityEventKind.TOOL_USE and not call_id:
+            input_obj = record_metadata.get("input", record_metadata.get("args"))
+            input_dict = (
+                cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            )
+            if not any(input_dict.get(key) for key in ("path", "command", "pattern")):
+                # ponytail: a global call ordinal is enough to make unknown-target calls skimmable.
+                target = f"call {self._run_counters.tool_calls + 1}"
+                record_metadata["target"] = target
+                emitted_content = f"{content or record_metadata.get('tool_name', 'call')} {target}"
+        self._emit_activity_event(unit_id, kind, emitted_content, None, record_metadata, timestamp)
+
+    def _on_activity_router_event(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        raw_reference: str | None,
+        metadata: dict[str, object] | None,
+    ) -> None:
+        """Adapter between ``ActivityRouter.on_event`` and ``_emit_activity_event``.
+
+        S-7 (wt-028-display P1): the router forwards SUBAGENT_PROGRESS
+        events for every thinking / text / tool line so the watchdog
+        sink stays fresh. The watchdog sink is reached BEFORE this
+        adapter runs (via ``invoke_subagent_sink`` in
+        ``ActivityRouter._dispatch_subagent_progress``), so dropping the
+        event here does not lose watchdog coverage. Dropping it here
+        also prevents the per-fragment watchdog summary from closing the
+        active streaming block before the operator sees the joined
+        passage, and from emitting a duplicate progress line alongside
+        the close entry.
+        """
+        if kind is ActivityEventKind.SUBAGENT_PROGRESS:
+            return
+        self._emit_activity_event(unit_id, kind, content, raw_reference, metadata)
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         if self._is_quiet:
@@ -1505,19 +3133,29 @@ class ParallelDisplay:
             self._console.print(rule_text, highlight=False, overflow="ignore")
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:
-        """Emit a one-time run-start orientation block at pipeline start."""
+        """Emit a one-time run-start orientation block at pipeline start.
+
+        DA-005 (S-6 / AC-05): on a height-constrained console
+        (``height <= 12``) the visual chrome (section rule blank
+        line + glyph banner) compresses before any information is
+        dropped; the orientation rows stay visible, condensed into a
+        single unboxed headed block, so the same information reaches
+        the operator on a 12-row split pane or a magnified screen.
+        """
         if self._is_quiet:
             return
+        height_constrained = self._ctx.is_height_constrained()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[run-start]")
+            if not height_constrained:
+                self._emit_section_rule("[run-start]")
             timestamp = self._format_timestamp(self._clock())
 
             t = _RichText()
+            # wt-028-display S-4: the run-start header drops the
+            # MILESTONE LEVEL and META category chrome — severity
+            # is carried by the milestone glyph in the body, exactly
+            # once per the AC-03 single-severity contract.
             t.append(f"{timestamp} ")
-            t.append("MILESTONE", style="theme.level.milestone")
-            t.append(" ")
-            t.append("META", style="theme.cat.meta")
-            t.append(" ")
             t.append(
                 f"[run-start] {self._ctx.glyph_for('milestone')} ",
                 style="theme.banner.ascii",
@@ -1525,87 +3163,225 @@ class ParallelDisplay:
             t.append("Ralph Workflow run start", style="theme.banner.title")
             self._console.print(t, markup=False, highlight=False, no_wrap=True)
 
-            if orientation.legend_enabled:
-                self._console.print(
-                    self._build_line(
-                        timestamp,
-                        "INFO",
-                        "META",
-                        "[run-start] legend: levels: INFO|SUCCESS|WARN|ERROR|MILESTONE"
-                        "  cats: META|CONT  format: [tag][unit] message",
-                    ),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=True,
-                )
+            self._emit_run_start(timestamp, orientation, height_constrained=height_constrained)
 
-            self._emit_run_start(timestamp, orientation)
+    #: DA-003 (wt-028-display S-6 / AC-05): column prefix the
+    #: ``_build_line`` chrome (timestamp + level + category + tag)
+    #: takes on a run-start line. The body has to fit within
+    #: ``body_measure() - chrome_prefix_len`` columns so a
+    #: long ``workspace_root`` left-elides to that budget rather
+    #: than silently overflowing the terminal width.
+    _RUN_START_CHROME_PREFIX_LEN: int = len("00:00:00 INFO META [run-start] ")
 
-    def _emit_run_start(self, timestamp: str, orientation: RunStartOrientation) -> None:
-        """Emit the run-start orientation body (single default-mode layout)."""
-        pw_parts: list[str] = []
+    def _emit_run_start(
+        self,
+        timestamp: str,
+        orientation: RunStartOrientation,
+        *,
+        height_constrained: bool = False,
+    ) -> None:
+        """Emit the run-start orientation body (single default-mode layout).
+
+        DA-003 (S-6 / AC-05): the height-constrained console path
+        renders one heading line plus one ``key=value`` line per
+        supplied field. The body of each line is left-elided to fit
+        within ``body_measure() - chrome_prefix_len`` so a long
+        ``workspace_root`` or ``prompt_path`` cannot silently clip
+        later fields the way the previous single ``no_wrap=True``
+        line did -- a 12-row, 80-col probe at fully-populated
+        orientation rendered only ``prompt=...`` and dropped
+        ``developer``, ``iterations``, ``parallel``, ``plan``, and
+        ``verbosity``. With the structured layout every supplied
+        field has its own line and either renders in full, left-elides
+        with an accounted-for marker, or condenses to a counted
+        marker that points at the verbatim capture.
+        """
+        pw_parts: list[tuple[str, str]] = []
         if orientation.prompt_path is not None:
-            pw_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
+            pw_parts.append(("prompt", strip_markup(orientation.prompt_path)))
         if orientation.workspace_root is not None:
-            pw_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
-        if pw_parts:
-            self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        agents_parts = self._build_agents_parts(orientation)
-        if agents_parts:
-            self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-start] {' '.join(agents_parts)}"
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        iter_parts: list[str] = []
+            pw_parts.append(("workspace", strip_markup(orientation.workspace_root)))
+        agents_parts: list[tuple[str, str]] = []
+        if orientation.developer_agent is not None:
+            agents_parts.append(("developer", strip_markup(orientation.developer_agent)))
+        if orientation.developer_model is not None:
+            agents_parts.append(("model", strip_markup(orientation.developer_model)))
+        iter_parts: list[tuple[str, str]] = []
         if orientation.developer_iters is not None:
-            iter_parts.append(f"dev:{orientation.developer_iters}")
-        if iter_parts:
-            self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[run-start] iterations={' '.join(iter_parts)}",
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
+            iter_parts.append(("iterations", f"dev:{orientation.developer_iters}"))
+        parallel_parts: list[tuple[str, str]] = []
         if orientation.parallel_max_workers is not None:
+            parallel_parts.append(("parallel", f"max_workers={orientation.parallel_max_workers}"))
+        plan_val = "ready" if orientation.plan_present else "absent"
+        plan_parts: list[tuple[str, str]] = [("plan", plan_val)]
+        if orientation.verbosity is not None:
+            plan_parts.append(("verbosity", orientation.verbosity))
+
+        if height_constrained:
+            self._emit_run_start_unboxed(
+                timestamp,
+                pw_parts=pw_parts,
+                agents_parts=agents_parts,
+                iter_parts=iter_parts,
+                parallel_parts=parallel_parts,
+                plan_parts=plan_parts,
+            )
+            return
+
+        for key, value in pw_parts:
             self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[run-start] parallel=max_workers={orientation.parallel_max_workers}",
-                ),
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        plan_val = "ready" if orientation.plan_present else "absent"
-        plan_parts: list[str] = [f"plan={plan_val}"]
-        if orientation.verbosity is not None:
-            plan_parts.append(f"verbosity={orientation.verbosity}")
+        for key, value in agents_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        for key, value in iter_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        for key, value in parallel_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        for key, value in plan_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {key}={value}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def _emit_run_start_unboxed(
+        self,
+        timestamp: str,
+        *,
+        pw_parts: list[tuple[str, str]],
+        agents_parts: list[tuple[str, str]],
+        iter_parts: list[tuple[str, str]],
+        parallel_parts: list[tuple[str, str]],
+        plan_parts: list[tuple[str, str]],
+    ) -> None:
+        """Emit the run-start body on a height-constrained console.
+
+        DA-003 (wt-028-display S-6 / AC-05): one heading line plus
+        one ``key=value`` line per supplied field. Each body is
+        left-elided to fit the available body budget so a long
+        ``workspace_root`` cannot silently clip later fields -- the
+        pre-fix single ``no_wrap=True`` line on a 12-row, 80-col
+        probe at fully-populated orientation dropped
+        ``iterations``, ``parallel``, ``plan``, and ``verbosity``
+        after the path consumed the entire row. Each line
+        carries the indentation of the chrome prefix so the
+        sub-rows hang under the heading row. Body budgets below
+        the 40-column floor fall back to a counted condensation
+        marker so the field is never silently dropped.
+        """
+        # Heading line: still tags the run-start so the entry is
+        # findable in scrollback / the record.
         self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"),
+            self._build_line(timestamp, "INFO", "META", "[run-start] orientation"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
+        chrome_prefix_len = self._RUN_START_CHROME_PREFIX_LEN + len("  ")
+        # The body budget must accommodate the 2-space hanging indent
+        # that aligns each ``key=value`` row beneath the heading. We
+        # floor at 12 so the smallest sane token still survives --
+        # below that we condense to a counted marker rather than
+        # silently dropping the field.
+        body_budget = max(12, self._ctx.body_measure() - chrome_prefix_len)
+
+        groups: list[tuple[str, list[tuple[str, str]]]] = [
+            ("prompt", pw_parts),
+            ("agents", agents_parts),
+            ("iterations", iter_parts),
+            ("parallel", parallel_parts),
+            ("plan", plan_parts),
+        ]
+        condensed_count = 0
+        condensed_chars = 0
+        for _group_label, items in groups:
+            for key, value in items:
+                rendered = self._render_run_start_field(timestamp, key, value, body_budget)
+                if rendered is None:
+                    condensed_count += 1
+                    condensed_chars += len(value)
+                else:
+                    self._console.print(rendered, markup=False, highlight=False)
+        if condensed_count:
+            marker = (
+                f"\u22ee {condensed_count} field"
+                f"{'s' if condensed_count != 1 else ''} condensed"
+                f" \u00b7 {condensed_chars} chars"
+                " \u00b7 in verbatim capture"
+            )
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {marker}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def _render_run_start_field(
+        self,
+        timestamp: str,
+        key: str,
+        value: str,
+        body_budget: int,
+    ) -> Text | None:
+        """Render a single ``key=value`` row, left-eliding long values.
+
+        DA-003 (wt-028-display S-6 / AC-05): when the rendered
+        ``key=value`` line fits within ``body_budget`` columns the
+        value is rendered in full; when it does not the value is
+        left-elided (``\u2026`` prefix) until it does. Returns
+        ``None`` when the budget cannot accommodate even a
+        counted marker for the field so the caller can collapse to
+        a single ``N fields condensed \u00b7 M chars \u00b7 in verbatim
+        capture`` marker at the end of the block.
+        """
+        rendered = f"{key}={value}"
+        if len(rendered) <= body_budget:
+            line = self._build_line(timestamp, "INFO", "META", f"[run-start]   {rendered}")
+            return line
+        # Leave room for ``key=`` plus the elision glyph and the
+        # closing ``\u2026`` so the operator still sees which key this
+        # row carried. If the budget cannot even hold ``key=\u2026`` the
+        # caller counts this row in the block-level marker.
+        keep_suffix = "\u2026"
+        key_prefix = f"{key}="
+        available = body_budget - len(key_prefix) - len(keep_suffix)
+        if available <= 0:
+            return None
+        elided = f"{keep_suffix}{value[-available:]}" if available > 0 else keep_suffix
+        rendered = f"{key_prefix}{elided}"
+        if len(rendered) > body_budget:
+            # Final safety net -- extremely tight budget. We still
+            # emit the row with whatever fits rather than silently
+            # dropping the field; this branch is unreachable under
+            # the ``available > 0`` check above in practice but
+            # preserves the no-silent-drop guarantee if the budget
+            # arithmetic changes.
+            rendered = rendered[:body_budget]
+        return self._build_line(timestamp, "INFO", "META", f"[run-start]   {rendered}")
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters."""
@@ -1682,7 +3458,7 @@ class ParallelDisplay:
         opts = options or PhaseCloseOptions()
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
-        clean_produced = _sanitize(produced).strip()
+        clean_produced = strip_markup(produced).strip()
         counters = self._phase_counters
         if counters is not None:
             elapsed_s = round(max(0.0, self._monotonic() - counters.start_time), 1)
@@ -1753,6 +3529,23 @@ class ParallelDisplay:
             self._last_phase_artifact_outcome = exit_model.artifact_outcome
             self._phase_close_emitted = True
             iter_ctx = exit_model.to_iteration_context()
+        # S-15 (AC-05): write the phase-close record entry outside
+        # the suppressed body block so a record-side error cannot
+        # roll back the live emission (or vice versa). The
+        # ``_append_recorded_entry`` helper is itself suppress-
+        # guarded, so a phase-close record failure stays invisible.
+        with contextlib.suppress(Exception):
+            self._emit_phase_header_record(
+                exit_model.phase_name,
+                "phase_close",
+                cycle=exit_model.outer_dev_iteration,
+                iter_=(
+                    f"{exit_model.inner_analysis}/{exit_model.inner_analysis_cap}"
+                    if exit_model.inner_analysis is not None
+                    and exit_model.inner_analysis_cap is not None
+                    else None
+                ),
+            )
             counter_overrides = None
             if (
                 exit_model.content_blocks > 0
@@ -1832,11 +3625,11 @@ class ParallelDisplay:
             elapsed_str = format_elapsed_seconds(total_elapsed_s)
 
             t = _RichText()
+            # wt-028-display S-4: the run-end header drops the
+            # MILESTONE LEVEL and META category chrome — severity is
+            # carried by the milestone glyph in the body, exactly
+            # once per the AC-03 single-severity contract.
             t.append(f"{timestamp} ")
-            t.append("MILESTONE", style="theme.level.milestone")
-            t.append(" ")
-            t.append("META", style="theme.cat.meta")
-            t.append(" ")
             t.append(
                 f"[run-end] {self._ctx.glyph_for('milestone')} ",
                 style="theme.banner.ascii",
@@ -1872,7 +3665,7 @@ class ParallelDisplay:
             if pr_url is not None:
                 self._console.print(
                     self._build_line(
-                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
+                        timestamp, "INFO", "META", f"[run-end] pr={strip_markup(pr_url)}"
                     ),
                     markup=False,
                     highlight=False,
@@ -1935,16 +3728,95 @@ class ParallelDisplay:
             self._emit_section_rule("[run-completion]")
             from ralph.display.completion_summary import (
                 CompletionSummaryOptions,
-                render_completion_summary_group,
+                _exit_trigger_label,
+                render_completion_summary,
+                style_for_role,
+                style_for_terminal_failure,
             )
+            from ralph.display.phase_status import format_elapsed_seconds
 
             resolved_options = options if options is not None else CompletionSummaryOptions()
-            group = render_completion_summary_group(
-                snapshot,
-                display_context=self._ctx,
-                options=resolved_options,
-            )
-            self._console.print(group, markup=False, highlight=False)
+            # DA-003 (wt-028-display S-6 / AC-05): on a height-constrained
+            # console (``height <= 12``) the full Rich Group of
+            # rules/sections collapses to an unboxed condensed heading.
+            # The bordered layout (Plan / Metrics / Decisions / Review /
+            # Analysis / Iteration Context / Activity / Commit /
+            # auto-integrate / tail / closing rule) would consume the
+            # entire 12-row working area; the condensed heading keeps
+            # the outcome + essential counts in 4 rows or fewer so the
+            # status bar / scrollback stay usable. The information is
+            # the same; the visual chrome is dropped.
+            if self._ctx.is_height_constrained():
+                failed = snapshot.is_terminal_failure
+                style = (
+                    style_for_terminal_failure(resolved_options.pipeline_policy)
+                    if failed
+                    else style_for_role("terminal", resolved_options.pipeline_policy)
+                )
+                title = "Pipeline Failed" if failed else "Pipeline Complete"
+                heading = Text()
+                heading.append(title, style=style)
+                self._console.print(heading)
+                self._console.print(
+                    Text(
+                        f"  exit={_exit_trigger_label(snapshot)}"
+                        + (
+                            f"  elapsed={format_elapsed_seconds(resolved_options.elapsed_seconds)}"
+                            if resolved_options.elapsed_seconds is not None
+                            else ""
+                        )
+                        + f"  agent_calls={snapshot.total_agent_calls}",
+                        style="theme.text.muted",
+                    )
+                )
+                if snapshot.is_terminal_failure and snapshot.last_error:
+                    self._console.print(
+                        Text(f"  error: {snapshot.last_error}", style="theme.level.error")
+                    )
+                # DA-005 (S-6 / AC-05): on a height-constrained console
+                # the bordered layout drops Plan / Metrics / Decisions /
+                # Review / Analysis / Iteration / Activity / Commit /
+                # auto-integrate sections; emit a single accounted-for
+                # marker naming what was condensed so the reader knows
+                # the omission is intentional, not a bug. The marker
+                # uses the same vocabulary as the live log's content
+                # condensation markers (``-- condensed`` / ``-- in <file>``)
+                # so it reads as one rule, not a new convention.
+                condensed_sections = (
+                    "Plan",
+                    "Metrics",
+                    "Decisions",
+                    "Review",
+                    "Analysis",
+                    "Iteration",
+                    "Activity",
+                    "Commit",
+                    "auto-integrate",
+                )
+                record_path = rendered_record_path(
+                    resolved_options.workspace_root or Path(), snapshot.active_agent or "unknown"
+                )
+                condensed_chars = len(
+                    render_completion_summary(snapshot, options=resolved_options).plain
+                )
+                self._console.print(
+                    Text(
+                        f"  -- {len(condensed_sections)} sections condensed · "
+                        f"{condensed_chars} chars · in {record_path}",
+                        style="theme.text.muted",
+                    )
+                )
+            else:
+                from ralph.display.completion_summary import (
+                    render_completion_summary_group,
+                )
+
+                group = render_completion_summary_group(
+                    snapshot,
+                    display_context=self._ctx,
+                    options=resolved_options,
+                )
+                self._console.print(group, markup=False, highlight=False)
 
     # -- Phase banner methods (port of phase_banner.py) ---------------------
     # All four methods route through self._console.print. Each method calls
@@ -1960,12 +3832,13 @@ class ParallelDisplay:
     ) -> None:
         """Display the start of a pipeline phase (no iteration context).
 
-        Port of :func:`ralph.display.phase_banner.show_phase_start`.
+        Port of the retired ralph.display.phase_banner.show_phase_start helper.
         """
         if self._is_quiet:
             return
+        self.flush_blocks()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[phase-start]")
+            self._emit_section_rule("")
             c = self._console
             style = _phase_style(phase, pipeline_policy)
             label = _phase_label(phase)
@@ -1976,6 +3849,14 @@ class ParallelDisplay:
             if agent_name is not None:
                 line.append(f"  agent={agent_name}", style="theme.text.muted")
             c.print(line)
+        # S-15 (AC-05): write the phase-header record entry so the
+        # text-first surface carries the phase boundary.
+        with contextlib.suppress(Exception):
+            self._emit_phase_header_record(
+                phase,
+                "phase_start",
+                agent_name=agent_name,
+            )
 
     def emit_phase_start_from_entry(
         self,
@@ -1985,21 +3866,35 @@ class ParallelDisplay:
     ) -> None:
         """Display the start of a pipeline phase from a lifecycle entry model.
 
-        Port of :func:`ralph.display.phase_banner.show_phase_start_from_entry`.
+        Port of the retired ralph.display.phase_banner.show_phase_start_from_entry helper.
         Canonical model-based path (single default-mode layout): emits a
         titled Rule with phase label, outer development iteration,
         inner analysis iteration, and an optional agent line.
         """
         if self._is_quiet:
             return
+        self.flush_blocks()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[phase-start]")
+            self._emit_section_rule("")
             c = self._console
             style = _phase_style(entry.phase_name, pipeline_policy)
             label = entry.human_label()
             start_glyph = self._ctx.glyph_for("start")
             od_glyph = self._ctx.glyph_for("outer_dev")
             ia_glyph = self._ctx.glyph_for("inner_analysis")
+        # S-15 (AC-05): write the phase-header record entry.
+        with contextlib.suppress(Exception):
+            self._emit_phase_header_record(
+                entry.phase_name,
+                "phase_start",
+                cycle=entry.outer_dev_iteration,
+                iter_=(
+                    f"{entry.inner_analysis}/{entry.inner_analysis_cap}"
+                    if entry.inner_analysis is not None and entry.inner_analysis_cap is not None
+                    else None
+                ),
+                agent_name=entry.agent_name,
+            )
 
             rule_title = Text()
             rule_title.append(f"{start_glyph} ", style=style)
@@ -2047,13 +3942,14 @@ class ParallelDisplay:
     ) -> None:
         """Display a visual transition between pipeline phases.
 
-        Port of :func:`ralph.display.phase_banner.show_phase_transition`.
+        Port of the retired ralph.display.phase_banner.show_phase_transition helper.
         Major transitions get a prominent Rule banner; minor transitions get
         a simple titled Rule. The leading section rule is always emitted in
         the single default mode (no per-mode gating remains).
         """
         if self._is_quiet:
             return
+        self.flush_blocks()
         with contextlib.suppress(Exception):
             c = self._console
             style = _phase_style(to_phase, pipeline_policy)
@@ -2087,7 +3983,7 @@ class ParallelDisplay:
     ) -> None:
         """Display the close of a pipeline phase from a lifecycle exit model.
 
-        Port of :func:`ralph.display.phase_banner.show_phase_close_banner`.
+        Port of the retired ralph.display.phase_banner.show_phase_close_banner helper.
         The rich, model-based phase-close banner (full stats line, review
         outcome, debug breadcrumb, and trailing titled Rule).
 
@@ -2265,9 +4161,9 @@ class ParallelDisplay:
     # unified with the rest of the transcript.
 
     def emit_plan_artifact(self, workspace_root: Path) -> None:
-        """Render the agent-facing plan handoff, falling back to the JSON summary.
+        """Render the agent-facing plan handoff or canonical Markdown summary.
 
-        Port of :func:`ralph.display.artifact_renderer.render_plan_artifact`.
+        Port of the retired artifact_renderer.render_plan_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2276,7 +4172,6 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "plan",
-                workspace_root / _ARTIFACTS_DIR / "plan.json",
             )
             if markdown:
                 self._render_text_block("PLAN", markdown, "execution")
@@ -2301,7 +4196,7 @@ class ParallelDisplay:
     def emit_development_artifact(self, workspace_root: Path) -> None:
         """Render development results using the authoritative Markdown handoff.
 
-        Port of :func:`ralph.display.artifact_renderer.render_development_artifact`.
+        Port of the retired artifact_renderer.render_development_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2310,26 +4205,14 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "development_result",
-                workspace_root / _ARTIFACTS_DIR / "development_result.json",
             )
             if markdown:
                 self._render_text_block("DEVELOPMENT RESULT", markdown, "execution")
-                return
-            found = self._read_json_defensive(
-                workspace_root / _ARTIFACTS_DIR / "development_result.json"
-            )
-            if found is None:
-                return
-            self._render_text_block(
-                "DEVELOPMENT RESULT",
-                json.dumps(found, indent=2),
-                "execution",
-            )
 
     def emit_review_artifact(self, workspace_root: Path) -> None:
         """Render review findings using the authoritative Markdown handoff.
 
-        Port of :func:`ralph.display.artifact_renderer.render_review_artifact`.
+        Port of the retired artifact_renderer.render_review_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2338,24 +4221,14 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "issues",
-                workspace_root / _ARTIFACTS_DIR / "issues.json",
             )
             if markdown:
                 self._render_text_block("REVIEW ISSUES", markdown, "review")
-                return
-            found = self._read_json_defensive(workspace_root / _ARTIFACTS_DIR / "issues.json")
-            if found is None:
-                return
-            self._render_text_block(
-                "REVIEW ISSUES",
-                json.dumps(found, indent=2),
-                "review",
-            )
 
     def emit_fix_artifact(self, workspace_root: Path) -> None:
         """Render fix result artifacts as a titled block.
 
-        Port of :func:`ralph.display.artifact_renderer.render_fix_artifact`.
+        Port of the retired artifact_renderer.render_fix_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2364,24 +4237,14 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "fix_result",
-                workspace_root / _ARTIFACTS_DIR / "fix_result.json",
             )
             if markdown:
                 self._render_text_block("FIX", markdown, "fix")
-                return
-            found = self._first_json_candidate(
-                workspace_root / _ARTIFACTS_DIR / "fix_result.json",
-                workspace_root / _ARTIFACTS_DIR / "issues.json",
-            )
-            if found is None:
-                return
-            lines = self._render_fix_json_summary(found)
-            self._render_titled_lines("FIX", "fix", lines)
 
     def emit_analysis_decision(self, workspace_root: Path, drain: str) -> None:
         """Render an analysis decision artifact as a titled block.
 
-        Port of :func:`ralph.display.artifact_renderer.render_analysis_decision`.
+        Port of the retired artifact_renderer.render_analysis_decision helper.
         """
         if self._is_quiet:
             return
@@ -2392,7 +4255,6 @@ class ParallelDisplay:
                 markdown = self._resolve_authoritative_markdown_handoff(
                     workspace_root,
                     artifact_type,
-                    workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.json",
                 )
                 if markdown:
                     self._render_text_block(f"ANALYSIS: {drain}", markdown, "analysis")
@@ -2408,7 +4270,7 @@ class ParallelDisplay:
     def emit_commit_message(self, workspace_root: Path) -> None:
         """Render the commit message artifact as a titled block.
 
-        Port of :func:`ralph.display.artifact_renderer.render_commit_message`.
+        Port of the retired artifact_renderer.render_commit_message helper.
         """
         if self._is_quiet:
             return
@@ -2425,7 +4287,7 @@ class ParallelDisplay:
     def emit_missing_plan_hint(self) -> None:
         """Emit a plain INFO line when the plan artifact is absent at phase completion.
 
-        Port of :func:`ralph.display.artifact_renderer.render_missing_plan_hint`.
+        Port of the retired artifact_renderer.render_missing_plan_hint helper.
         """
         if self._is_quiet:
             return
@@ -2463,51 +4325,41 @@ class ParallelDisplay:
         return stripped or None
 
     @staticmethod
-    def _regenerated_markdown_handoff(
-        workspace_root: Path,
-        artifact_type: str,
-        artifact_path: Path,
-    ) -> str | None:
-        artifact_content = ParallelDisplay._read_text_defensive(artifact_path)
-        if artifact_content is None:
-            return None
-        try:
-            created_path = ensure_markdown_handoff_from_artifact(
-                workspace_root,
-                artifact_type,
-                artifact_content,
-            )
-        except (json.JSONDecodeError, OSError, PermissionError, TypeError, ValueError):
-            return None
-        if created_path is None:
-            return None
-        regenerated = ParallelDisplay._read_text_defensive(Path(created_path))
-        if regenerated is None:
-            return None
-        stripped = regenerated.strip()
-        return stripped or None
-
-    @staticmethod
     def _resolve_authoritative_markdown_handoff(
         workspace_root: Path,
         artifact_type: str,
-        artifact_path: Path,
     ) -> str | None:
-        regenerated = ParallelDisplay._regenerated_markdown_handoff(
-            workspace_root, artifact_type, artifact_path
-        )
-        if regenerated is not None:
-            return regenerated
-        return ParallelDisplay._read_markdown_handoff(workspace_root, artifact_type)
+        """Return the submitted markdown for an artifact type.
+
+        Markdown artifacts are the source of truth; submission writes the
+        handoff copy as identical bytes, so this reads the handoff first and
+        falls back to the artifact document itself. No derivation happens here.
+        """
+        handoff = ParallelDisplay._read_markdown_handoff(workspace_root, artifact_type)
+        if handoff is not None:
+            return handoff
+        artifact_path = workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.md"
+        markdown = ParallelDisplay._read_text_defensive(artifact_path)
+        if markdown is None:
+            return None
+        stripped = markdown.strip()
+        return stripped or None
 
     def _render_titled_lines(self, title: str, style_phase: str, lines: list[str]) -> None:
-        """Render a title rule, the body lines, and a closing rule."""
+        """Render a title rule, the body lines, and a closing rule.
+
+        Body lines are sanitized through :func:`strip_terminal_control`
+        so a hostile escape sequence in a handoff body cannot paint the
+        real terminal -- but the literal ``[``/``]`` characters common in
+        markdown bodies (``[title](url)``) are preserved because that
+        sink already uses ``markup=False``.
+        """
         self._console.print()
         self._console.print(
             Rule(title, style=_phase_style(style_phase)), markup=False, highlight=False
         )
         for line in lines:
-            self._console.print(line, markup=False, highlight=False)
+            self._console.print(strip_terminal_control(line), markup=False, highlight=False)
         self._console.print(Rule(style=_phase_style(style_phase)), markup=False, highlight=False)
 
     def _render_text_block(
@@ -2518,76 +4370,60 @@ class ParallelDisplay:
         *,
         indent: bool = False,
     ) -> None:
-        lines = [line.rstrip() for line in body.splitlines() if line.strip()]
-        if indent:
-            lines = [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
-        self._render_titled_lines(title, style_phase, lines)
-
-    @staticmethod
-    def _read_json_defensive(path: Path) -> dict[str, object] | None:
-        raw = ParallelDisplay._read_text_defensive(path)
-        if raw is None:
-            return None
-        try:
-            parsed_obj: object = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(parsed_obj, dict):
-            return None
-        return cast("dict[str, object]", parsed_obj)
-
-    @staticmethod
-    def _first_json_candidate(*candidates: Path) -> dict[str, object] | None:
-        for candidate in candidates:
-            found = ParallelDisplay._read_json_defensive(candidate)
-            if found is not None:
-                return found
-        return None
-
-    @staticmethod
-    def _render_fix_json_summary(found: dict[str, object]) -> list[str]:
-        if "issues" in found and isinstance(found["issues"], list):
-            return ParallelDisplay._render_issues_summary(found["issues"])
-        if "fixed" in found:
-            return ParallelDisplay._render_fixed_summary(found["fixed"])
-        return [f"  Fix artifact: {list(found.keys())[:5]}"]
-
-    @staticmethod
-    def _render_issues_summary(issues: list[object]) -> list[str]:
-        lines = [f"  {len(issues)} issue(s) addressed:"]
-        for issue in issues[:10]:
-            if isinstance(issue, dict):
-                desc_obj = issue.get("description") or issue.get("message") or str(issue)
-            else:
-                desc_obj = str(issue)
-            lines.append(f"    - {str(desc_obj)[:120]}")
-        return lines
-
-    @staticmethod
-    def _render_fixed_summary(fixed: object) -> list[str]:
-        if isinstance(fixed, list):
-            lines = [f"  {len(fixed)} item(s) fixed:"]
-            lines.extend(f"    - {str(item)[:120]}" for item in fixed[:10])
-            return lines
-        return [f"  Fixed: {fixed}"]
+        del indent
+        self._console.print()
+        self._console.print(Rule(title, style=_phase_style(style_phase)))
+        self._console.print(
+            render_markdown_preview(
+                body,
+                width=self._ctx.width,
+                terminal_bg_is_light=self._terminal_bg_is_light,
+            )
+        )
+        self._console.print(Rule(style=_phase_style(style_phase)))
 
     # -- Welcome-banner, first-run-panel, table, capability-summary, status -
 
     def emit_first_run_panel(self, content: list[RenderableType]) -> None:
         """Print the first-run welcome Panel to ``self._ctx.console``.
 
-        Port of :func:`ralph.display.first_run_panel.render_first_run_panel`.
+        Port of the retired ralph.display.first_run_panel.render_first_run_panel helper.
+
+        P0 (wt-028-display S-6 / AC-05 / DA-005): on a height-constrained
+        console (``self._ctx.height <= 12`` per
+        :meth:`DisplayContext.is_height_constrained`) the bordered
+        Panel degrades to unboxed headed text so the welcome takes
+        fewer rows in the working area. The information is the same;
+        the visual chrome is dropped because the panel border +
+        padding would crowd a 12-row split pane. The threshold is
+        ``<=`` (not strict ``<``) so the canonical 12-row floor
+        activates the constrained presentation -- the 12-row split
+        pane is the documented accessibility path and must trigger
+        the degradation on the boundary itself.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            panel = Panel(
-                Group(*content),
-                title="Ralph Workflow first-run setup",
-                border_style="theme.banner.border",
-                padding=(1, 2),
-            )
-            self._console.print(panel)
+            if self._ctx.is_height_constrained():
+                # Unboxed heading: title row + content lines, no
+                # border, no padding. The title still carries the
+                # semantic role (theme.banner.title) so a CVD /
+                # no-color reader still sees the heading.
+                self._console.rule(
+                    "Ralph Workflow first-run setup",
+                    style="theme.banner.border",
+                    align="left",
+                )
+                for item in content:
+                    self._console.print(item)
+            else:
+                panel = Panel(
+                    Group(*content),
+                    title="Ralph Workflow first-run setup",
+                    border_style="theme.banner.border",
+                    padding=(1, 2),
+                )
+                self._console.print(panel)
 
     def emit_welcome_banner(
         self,
@@ -2596,30 +4432,49 @@ class ParallelDisplay:
     ) -> None:
         """Print the Ralph Workflow welcome banner.
 
-        Port of :func:`ralph.banner.show_banner`.
+        Port of the retired ralph.banner.show_banner helper.
+
+        P0 (wt-028-display S-6 / AC-05): on a height-constrained
+        console the bordered ``Panel.fit`` around the ASCII-art
+        banner degrades to a plain heading line so the banner
+        takes one row instead of seven. The ASCII art itself is
+        skipped on the constrained surface (it would dominate
+        the 12-row working area); the title + version line
+        carries the same identity information.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[welcome]")
-            banner_text = Text("\n".join(_ASCII_ART_BANNER), style="theme.banner.ascii")
-            version_text = Text(f"v{version}", style="theme.banner.version")
-            title_text = Text("Ralph Workflow", style="theme.banner.title")
-            welcome_text = Text(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
-            tagline_text = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
-            banner_panel = Panel.fit(
-                banner_text,
-                border_style="theme.banner.border",
-                padding=(0, 1),
-                title=title_text,
-                subtitle=version_text,
-            )
-            self._console.print(Group(banner_panel, welcome_text, tagline_text))
+            if self._ctx.is_height_constrained():
+                # Unboxed heading: title + version on one line,
+                # welcome + tagline on the next. The box is gone
+                # but the text reads the same.
+                self._console.print(
+                    f"Ralph Workflow v{version}",
+                    style="theme.banner.title",
+                )
+                self._console.print(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
+                self._console.print(_TAGLINE_TEXT, style="theme.banner.tagline")
+            else:
+                banner_text = Text("\n".join(_ASCII_ART_BANNER), style="theme.banner.ascii")
+                version_text = Text(f"v{version}", style="theme.banner.version")
+                title_text = Text("Ralph Workflow", style="theme.banner.title")
+                welcome_text = Text(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
+                tagline_text = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
+                banner_panel = Panel.fit(
+                    banner_text,
+                    border_style="theme.banner.border",
+                    padding=(0, 1),
+                    title=title_text,
+                    subtitle=version_text,
+                )
+                self._console.print(Group(banner_panel, welcome_text, tagline_text))
 
     def emit_agents_table(self, agents: Mapping[str, object]) -> None:
         """Render the agent table for --list-agents.
 
-        Port of :func:`ralph.cli.options.display_agents_table`.
+        Port of the retired ralph.cli.options.display_agents_table helper.
         """
         if self._is_quiet:
             return
@@ -2631,9 +4486,7 @@ class ParallelDisplay:
             table.add_column("Parser", style="theme.cat.cont")
             table.add_column("Can Commit", justify="center")
             if not agents:
-                table.add_row(
-                    Text("No agents configured", style="theme.text.muted"), "", "", ""
-                )
+                table.add_row(Text("No agents configured", style="theme.text.muted"), "", "", "")
             else:
                 for name, agent in agents.items():
                     cmd = getattr(agent, "cmd", "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -2647,7 +4500,7 @@ class ParallelDisplay:
     def emit_providers_table(self, providers: list[str]) -> None:
         """Render the providers table for --list-providers.
 
-        Port of :func:`ralph.cli.options.display_providers_table`.
+        Port of the retired ralph.cli.options.display_providers_table helper.
         """
         if self._is_quiet:
             return
@@ -2666,20 +4519,54 @@ class ParallelDisplay:
     def emit_config_table(self, config: UnifiedConfig) -> None:
         """Render the effective config panel for --check-config.
 
-        Port of :func:`ralph.display.tables.show_config`.
+        Port of the retired ralph.display.tables.show_config helper.
+
+        DA-004 (wt-028-display S-6 / AC-05): on a height-constrained
+        console (``height <= 12``) the bordered ``Panel`` around the
+        full config JSON degrades to an unboxed headed summary that
+        lists the top-level config keys (without the giant nested
+        JSON body). The bordered form would consume the entire
+        12-row working area; the heading-only form keeps the section
+        rule + a condensed key list so the operator still sees the
+        effective configuration structure without scrolling past a
+        90+ row bordered panel.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[config]")
-            config_json = config.model_dump_json(indent=2)
-            self._console.print(
-                Panel(
-                    config_json,
-                    title="Effective Configuration",
-                    border_style="theme.phase.planning",
+            if self._ctx.is_height_constrained():
+                # Unboxed heading + condensed key list: title rule,
+                # then the top-level keys of the dumped config.
+                # ``model_dump`` returns a dict; ``dict.keys()`` are
+                # the top-level field names. The values are dropped
+                # on the constrained surface because a 12-row
+                # working area cannot fit the nested JSON body and
+                # the field names already document the structure.
+                self._console.rule(
+                    "Effective Configuration",
+                    style="theme.phase.planning",
+                    align="left",
                 )
-            )
+                top_level_keys = list(config.model_dump().keys())
+                if top_level_keys:
+                    self._console.print(
+                        Text(
+                            "  " + ", ".join(top_level_keys),
+                            style="theme.text.muted",
+                        )
+                    )
+                else:
+                    self._console.print(Text("(no fields)", style="theme.text.muted"))
+            else:
+                config_json = config.model_dump_json(indent=2)
+                self._console.print(
+                    Panel(
+                        config_json,
+                        title="Effective Configuration",
+                        border_style="theme.phase.planning",
+                    )
+                )
 
     def emit_capability_summary(
         self,
@@ -2699,7 +4586,10 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[capabilities]")
-            from ralph.cli._capability_summary import collect_skill_root_rows
+            from ralph.cli._capability_summary import (
+                DOCS_MCP_NOT_INSTALLED_MESSAGE,
+                collect_skill_root_rows,
+            )
             from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
             from ralph.skills._capability_status import CapabilityStatus
 
@@ -2723,6 +4613,13 @@ class ParallelDisplay:
             for label, entry in managed_rows:
                 if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
                     status_text = Text("OK", style="theme.status.success")
+                elif (
+                    label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED
+                ):
+                    status_text = Text(
+                        DOCS_MCP_NOT_INSTALLED_MESSAGE,
+                        style="theme.status.warning",
+                    )
                 elif entry.update_available:
                     status_text = Text(
                         "Update available \u2014 run `ralph --init` to update",
@@ -2770,7 +4667,11 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[warning]")
-            self._console.print(message, markup=False, highlight=False, no_wrap=True)
+            # ``soft_wrap=True`` preserves long lines (warnings that mention a
+            # concrete file path or a re-run command) without truncating at
+            # the terminal width — critical because a clipped warning hides
+            # the fix-it phrase the operator needs to act on.
+            self._console.print(message, markup=False, highlight=False, soft_wrap=True)
 
     def emit_skill_failure_warning(self, failures: list[str]) -> None:
         """Emit a single warning line listing the skill-failure entries.
@@ -2818,18 +4719,65 @@ class ParallelDisplay:
         Used by ``diagnose`` to surface the "Next steps" panel and any
         free-form info block. Replaces the inline ``Panel(...)`` call
         in diagnose.py.
+
+        P0 (wt-028-display S-6 / AC-05): on a height-constrained
+        console the bordered Panel degrades to a heading + body
+        pair (no border, no padding) so the info block fits inside
+        a 12-row working area without crowding the scrollback. The
+        title still carries the theme.phase.planning color so the
+        reader can still locate the section.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[info]")
-            panel = Panel(content, title=title, border_style="theme.phase.planning", padding=(1, 2))
-            self._console.print(panel)
+            if self._ctx.is_height_constrained():
+                self._console.print(
+                    Text(title, style="theme.phase.planning"),
+                )
+                # DA-001 (S-5 / AC-04): the unboxed headed body
+                # also honors the body measure so a 250-col
+                # console does not print 250-char prose lines from
+                # an info panel. The measure is the shared cap
+                # exposed by DisplayContext.body_measure(); the
+                # ``soft_wrap=True`` flag preserves long single
+                # lines (paths, re-run commands) without
+                # truncating the operator's fix-it phrase.
+                self._console.print(
+                    content,
+                    markup=False,
+                    highlight=False,
+                    soft_wrap=True,
+                    no_wrap=False,
+                    overflow="fold",
+                    width=self._ctx.body_measure(),
+                )
+            else:
+                # DA-001 (S-5 / AC-04): the bordered Panel must
+                # constrain its content width to the shared
+                # ``body_measure()`` so prose on a 250-col console
+                # stops running full width. Rules, tables, and
+                # aligned columns keep using ``self._ctx.width``
+                # because they have their own width negotiation;
+                # only prose-shaped panels honor the measure cap.
+                # ``expand=False`` keeps the panel's outer width
+                # fixed at the cap (Rich's default ``expand=True``
+                # would still let the wrapped body reach the
+                # terminal width through the panel's title bar).
+                panel = Panel(
+                    content,
+                    title=title,
+                    border_style="theme.phase.planning",
+                    padding=(1, 2),
+                    expand=False,
+                    width=self._ctx.body_measure(),
+                )
+                self._console.print(panel)
 
     def emit_metrics_table(self, metrics: dict[str, int]) -> None:
         """Render the metrics table for pipeline summary stats.
 
-        Port of :func:`ralph.display.tables.show_metrics`.
+        Port of the retired ralph.display.tables.show_metrics helper.
         """
         if self._is_quiet:
             return
@@ -2851,7 +4799,7 @@ class ParallelDisplay:
     def emit_checkpoint_summary_table(self, options: object) -> None:
         """Render the checkpoint summary table.
 
-        Port of :func:`ralph.display.tables.show_checkpoint_summary`.
+        Port of the retired ralph.display.tables.show_checkpoint_summary helper.
         ``options`` is a ``CheckpointSummaryOptions``-like object with
         ``phase`` (str) and ``budget_progress`` (Mapping[str, tuple[int, int]]).
         """
@@ -3031,16 +4979,59 @@ class ParallelDisplay:
         ``ActivityRouter``. Safe to call for a unit that was never
         added; missing entries are silently skipped.
         """
-        overflow = self._overflow_logs.pop(unit_id, None)
-        if overflow is not None:
-            overflow.close()
         self._overflow_warned.discard(unit_id)
         self._drop_last_warned.pop(unit_id, None)
         self._last_emitted_tool_signature.pop(unit_id, None)
         self._last_worker_states.pop(unit_id, None)
+        # S-13 (wt-028-display P1 / AC-02): close any open
+        # streaming block for this unit so the seam-append path
+        # emits the close entry (carrying the joined passage, span,
+        # and duration) and the rendered record receives the
+        # matching single entry. Without this, ``drop_unit`` would
+        # flush an empty writer for streaming-kinds runs and the
+        # close entry would vanish on the file surface.
+        # S-23 (wt-028-display P1): the close MUST run BEFORE the
+        # overflow log is popped so the close path's appended
+        # buffered full payload lands in the same RawOverflowLog
+        # the original event opened (and that drop_unit will close).
+        if unit_id in self._active_block:
+            with contextlib.suppress(Exception):
+                self._close_block(unit_id, self._format_timestamp(self._clock()))
         self._active_block.pop(unit_id, None)
         self._active_block_chars.pop(unit_id, None)
         self._last_checkpoint_chars.pop(unit_id, None)
+        self._last_recorded_body.pop(unit_id, None)
+        self._recorded_tool_call_ids.pop(unit_id, None)
+        self._last_tool_result_content.pop(unit_id, None)
+        self._flush_pending_tool_result(unit_id)
+        self._last_text_thinking_block_close.pop(unit_id, None)
+        # wt-028-display S-5 (AC-04): clear the per-unit last-phase
+        # cache so a re-spawned worker does not carry a stale
+        # phase / cycle / iter_ across drop_unit boundaries.
+        self._last_phase_per_unit.pop(unit_id, None)
+        # S-23 (wt-028-display P1): close the overflow log AFTER
+        # the streaming-block close so the buffered full payload
+        # lands in the same handle drop_unit is about to close.
+        overflow = self._overflow_logs.pop(unit_id, None)
+        if overflow is not None:
+            with contextlib.suppress(Exception):
+                overflow.flush()
+            with contextlib.suppress(Exception):
+                overflow.close()
+        # P0 (wt-028-display S-11 / AC-07): the rendered-record
+        # writer is per-unit; ``drop_unit`` flushes the buffered
+        # entries to ``.agent/raw/<safe_id>.rendered.log`` and
+        # disables the writer so a follow-up ``_emit_activity_event``
+        # for the same unit id (a re-spawned worker) does not double-
+        # flush an already-disabled instance. The actual pop
+        # happens after flush so the writer is reachable for its
+        # own flush call.
+        writer = self._rendered_writers.pop(unit_id, None)
+        if writer is not None:
+            with contextlib.suppress(Exception):
+                writer.flush()
+            with contextlib.suppress(Exception):
+                writer.disable()
         self._activity_router.drop_unit(unit_id)
 
     def __enter__(self) -> ParallelDisplay:
@@ -3077,9 +5068,13 @@ def emit_activity_line(
             return
         console = display_context.console
         if unit_id is None:
-            console.print(line)
+            console.print(_sanitize(line), markup=False, highlight=False)
             return
-        console.print(f"[{_render_unit_id(unit_id)}] {line}")
+        console.print(
+            f"[{_render_unit_id(unit_id)}] {_sanitize(line)}",
+            markup=False,
+            highlight=False,
+        )
         return
     display.emit(unit_id, line)
 
@@ -3209,7 +5204,9 @@ def subscriber_for_display(
     """Return the pipeline subscriber attached to the given display, when present."""
     if display is None:
         return None
-    return cast("PipelineSubscriber | None", getattr(display, "subscriber", None))
+    return cast(
+        "PipelineSubscriber | None", getattr(display, "subscriber", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 __all__ = [

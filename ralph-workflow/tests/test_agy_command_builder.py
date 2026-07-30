@@ -1,16 +1,15 @@
-"""Tests for the AGY command builder's model_flag wiring."""
+"""Tests for the AGY command builder's measured v1.1.8 flag wiring."""
 
 from __future__ import annotations
 
-import shlex
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 from ralph.agents.invoke import BuildCommandOptions, build_command
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_prompt_file(tmp_path: Path, text: str = "hello") -> Path:
@@ -19,114 +18,63 @@ def _make_prompt_file(tmp_path: Path, text: str = "hello") -> Path:
     return prompt_file
 
 
-def test_build_agy_command_applies_model_flag_from_config(tmp_path: Path) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
-    display_name = "Claude Sonnet 4.6 (Thinking)"
+def test_build_agy_command_applies_model_and_effort_from_config(tmp_path: Path) -> None:
     config = AgentConfig(
         cmd="agy",
         print_flag="--print",
-        model_flag=f"--model {shlex.quote(display_name)}",
+        model_flag="--model gemini-3.6-flash-low --effort medium",
         transport=AgentTransport.AGY,
     )
 
-    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+    cmd = build_command(config, str(_make_prompt_file(tmp_path)), options=BuildCommandOptions())
 
-    assert cmd[cmd.index("--model") + 1] == display_name
-
-
-def test_build_agy_command_omits_model_flag_when_unset(tmp_path: Path) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
-    config = AgentConfig(
-        cmd="agy",
-        print_flag="--print",
-        transport=AgentTransport.AGY,
-    )
-
-    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
-
-    assert "--model" not in cmd
+    assert cmd[cmd.index("--model") : cmd.index("--model") + 2] == [
+        "--model",
+        "gemini-3.6-flash-low",
+    ]
+    assert cmd[cmd.index("--effort") : cmd.index("--effort") + 2] == ["--effort", "medium"]
 
 
 def test_build_agy_command_options_model_flag_overrides_config(tmp_path: Path) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
-    config_display_name = "Claude Sonnet 4.6 (Thinking)"
-    option_display_name = "Gemini 3.5 Flash (High)"
     config = AgentConfig(
         cmd="agy",
         print_flag="--print",
-        model_flag=f"--model {shlex.quote(config_display_name)}",
+        model_flag="--model gemini-3.6-flash-low",
         transport=AgentTransport.AGY,
     )
 
     cmd = build_command(
         config,
-        str(prompt_file),
-        options=BuildCommandOptions(model_flag=f"--model {shlex.quote(option_display_name)}"),
+        str(_make_prompt_file(tmp_path)),
+        options=BuildCommandOptions(model_flag="--model claude-sonnet-4-6"),
     )
 
-    assert cmd[cmd.index("--model") + 1] == option_display_name
-    assert config_display_name not in cmd
+    assert cmd[cmd.index("--model") + 1] == "claude-sonnet-4-6"
+    assert "gemini-3.6-flash-low" not in cmd
 
 
-def test_agy_command_argv_starts_with_agy(tmp_path: Path) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
+def test_agy_command_yolo_flag_precedes_model_and_print(tmp_path: Path) -> None:
     config = AgentConfig(
         cmd="agy",
         print_flag="--print",
-        transport=AgentTransport.AGY,
-    )
-
-    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
-
-    assert cmd[0] == "agy"
-
-
-def test_agy_command_yolo_flag_precedes_print(tmp_path: Path) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
-    config = AgentConfig(
-        cmd="agy",
-        print_flag="--print",
+        model_flag="--model gemini-3.6-flash-low",
         yolo_flag="--dangerously-skip-permissions",
         transport=AgentTransport.AGY,
     )
 
-    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+    cmd = build_command(config, str(_make_prompt_file(tmp_path)), options=BuildCommandOptions())
 
-    assert cmd.index("--dangerously-skip-permissions") < cmd.index("--print")
-
-
-def test_agy_command_model_flag_is_single_argv_with_spaces_and_parens(
-    tmp_path: Path,
-) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
-    display_name = "Claude Sonnet 4.6 (Thinking)"
-    config = AgentConfig(
-        cmd="agy",
-        print_flag="--print",
-        model_flag=f"--model {shlex.quote(display_name)}",
-        transport=AgentTransport.AGY,
-    )
-
-    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
-
-    model_index = cmd.index("--model")
-    assert cmd[model_index + 1] == display_name
-    assert cmd[model_index : model_index + 2] == ["--model", display_name]
+    assert cmd[0] == "agy"
+    assert cmd.index("--dangerously-skip-permissions") < cmd.index("--model") < cmd.index("--print")
 
 
 def test_agy_command_add_dir_present_with_workspace(tmp_path: Path) -> None:
-    prompt_file = _make_prompt_file(tmp_path)
-    config = AgentConfig(
-        cmd="agy",
-        print_flag="--print",
-        transport=AgentTransport.AGY,
-    )
+    config = AgentConfig(cmd="agy", print_flag="--print", transport=AgentTransport.AGY)
 
     cmd = build_command(
         config,
-        str(prompt_file),
+        str(_make_prompt_file(tmp_path)),
         options=BuildCommandOptions(workspace_path=str(tmp_path)),
     )
 
-    add_dir_index = cmd.index("--add-dir")
-    assert cmd[add_dir_index + 1] == str(tmp_path.resolve())
+    assert cmd[cmd.index("--add-dir") + 1] == str(tmp_path.resolve())

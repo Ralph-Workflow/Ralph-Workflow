@@ -1,38 +1,41 @@
 MCP TOOLS (Ralph Workflow Brokered)
 
-You MUST use Ralph Workflow's MCP tools for all file and shell operations. Native file and shell tools are DISABLED.
-Your runtime's native orchestration tools — sub-agents/tasks, skills, todo tracking, and web fetch/search — remain ENABLED; use them whenever they help (parallel work, specialized skills, research).
-All file and shell tools are provided through the MCP server — use them directly by name.
+You MUST use Ralph Workflow's MCP tools for all file and shell operations in
+this brokered session. Availability varies by runtime: use only the brokered
+tools from the exact rendered name below. Tool names are callable identifiers,
+not shell commands.
+
+READ / SEARCH: {{READ_FILE_TOOL_REFERENCE}}, {{READ_MULTIPLE_FILES_TOOL_REFERENCE}}{% if STAT_PATH_TOOL_REFERENCE %}, {{STAT_PATH_TOOL_REFERENCE}}{% endif %}{% if LIST_ALLOWED_ROOTS_TOOL_REFERENCE %}, {{LIST_ALLOWED_ROOTS_TOOL_REFERENCE}}{% endif %}, {{LIST_DIRECTORY_TOOL_REFERENCE}}, {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}}{% if DIRECTORY_TREE_TOOL_REFERENCE %}, {{DIRECTORY_TREE_TOOL_REFERENCE}}{% endif %}, {{SEARCH_FILES_TOOL_REFERENCE}}, {{GREP_FILES_TOOL_REFERENCE}} (indexed; FTS5 path is correct-by-default)
+Use these for every workspace read or search; native shell/file commands must not be used to read or search the workspace.
+
+EXPLORE INDEX: {{RALPH_INDEX_STATUS_TOOL_REFERENCE}}, {{RALPH_REINDEX_TOOL_REFERENCE}} (call when results look stale or the index reports cold), {{RALPH_GRAPH_TOOL_REFERENCE}}
 
 {% if HAS_MCP_WRITE %}
-WRITE OPERATIONS:
-- Use {{WRITE_FILE_TOOL_REFERENCE}} to create or modify files
+WRITE: {{WRITE_FILE_TOOL_REFERENCE}}{% if EDIT_FILE_TOOL_REFERENCE %}, {{EDIT_FILE_TOOL_REFERENCE}}{% endif %}{% if APPEND_FILE_TOOL_REFERENCE %}, {{APPEND_FILE_TOOL_REFERENCE}}{% endif %}{% if CREATE_DIRECTORY_TOOL_REFERENCE %}, {{CREATE_DIRECTORY_TOOL_REFERENCE}}{% endif %}{% if MOVE_FILE_TOOL_REFERENCE %}, {{MOVE_FILE_TOOL_REFERENCE}}{% endif %}{% if COPY_FILE_TOOL_REFERENCE %}, {{COPY_FILE_TOOL_REFERENCE}}{% endif %}{% if DELETE_PATH_TOOL_REFERENCE %}, {{DELETE_PATH_TOOL_REFERENCE}}{% endif %}
+These Ralph Workflow edit tools are the ONLY permitted write/edit path — native shell redirection, the runtime's Write/Edit tools, and editor commands are all prohibited for mutating the workspace.
 {% endif %}
-
-READ OPERATIONS:
-- Use {{LIST_DIRECTORY_TOOL_REFERENCE}} to explore directories
-- Use {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}} to explore directories recursively
-- Use {{SEARCH_FILES_TOOL_REFERENCE}} to search file contents
-
 {% if HAS_MCP_EXEC %}
-EXECUTION:
-- Use {{EXEC_TOOL_REFERENCE}} to run shell commands
-- Use {{REPORT_PROGRESS_TOOL_REFERENCE}} to report status
+EXEC: {{EXEC_TOOL_REFERENCE}}{% if UNSAFE_EXEC_TOOL_REFERENCE %} (and {{UNSAFE_EXEC_TOOL_REFERENCE}} / {{RAW_EXEC_TOOL_REFERENCE}} when explicitly granted){% endif %}{% if READ_ENV_TOOL_REFERENCE %}; {{READ_ENV_TOOL_REFERENCE}}{% endif %}{% if REPORT_PROGRESS_TOOL_NAME %}; {{REPORT_PROGRESS_TOOL_REFERENCE}}{% endif %}
+{% endif %}
+{% if HAS_MCP_GIT %}
+GIT: {{GIT_STATUS_TOOL_REFERENCE}}, {{GIT_DIFF_TOOL_REFERENCE}}, {{GIT_LOG_TOOL_REFERENCE}}, {{GIT_SHOW_TOOL_REFERENCE}}
+{% endif %}
+{% if COORDINATE_TOOL_REFERENCE %}
+COORDINATION: {{COORDINATE_TOOL_REFERENCE}}
+{% endif %}
+BROKERED-ONLY: Ralph Workflow's brokered tools are the only permitted workspace path; native file/shell write tools are prohibited.
+{% if WEB_SEARCH_TOOL_REFERENCE %}
+WEB / MEDIA: {{WEB_SEARCH_TOOL_REFERENCE}}{% if VISIT_URL_TOOL_REFERENCE %}, {{VISIT_URL_TOOL_REFERENCE}}{% endif %}{% if DOWNLOAD_URL_TOOL_REFERENCE %}, {{DOWNLOAD_URL_TOOL_REFERENCE}}{% endif %}{% if READ_IMAGE_TOOL_REFERENCE %}, {{READ_IMAGE_TOOL_REFERENCE}}{% endif %}{% if READ_MEDIA_TOOL_REFERENCE %}, {{READ_MEDIA_TOOL_REFERENCE}}{% endif %}
 {% endif %}
 
 {% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
 ARTIFACT SUBMISSION:
-- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results with a fresh `content` native JSON object or JSON-serialized string
-{% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage plan sections incrementally{% endif %}
-{% if SUBMIT_PLAN_SECTIONS_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage multiple complete plan sections together only after each entry is analysis-ready (validates ALL before any merge; whole batch is rejected on the first failure){% endif %}
-{% if INSERT_PLAN_STEP_TOOL_NAME %}- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a numbered plan step and automatically reindex the steps list{% endif %}
-{% if REPLACE_PLAN_STEP_TOOL_NAME %}- Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a numbered plan step without rewriting the whole section{% endif %}
-{% if PATCH_PLAN_STEP_TOOL_NAME %}- Use {{PATCH_PLAN_STEP_TOOL_REFERENCE}} to partial-update a single step (shallow-merge; missing fields are preserved){% endif %}
-{% if REMOVE_PLAN_STEP_TOOL_NAME %}- Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a numbered plan step and automatically reindex the remaining steps{% endif %}
-{% if MOVE_PLAN_STEP_TOOL_NAME %}- Use {{MOVE_PLAN_STEP_TOOL_REFERENCE}} to move a plan step to a new index in a single call (auto-reindex, depends_on rewrite, AC remap){% endif %}
-{% if VALIDATE_PLAN_DRAFT_TOOL_NAME %}- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to run the full PlanArtifact cross-section validator without writing plan.json and without deleting the draft (read-only){% endif %}
-{% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
-{% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}
-{% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}
-{% endif %}
+- Use {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} to submit an artifact: pass `artifact_type` and `content` (the complete markdown document per its `.agent/artifact-formats/<type>.md` format doc)
+{% if VERIFY_MD_ARTIFACT_TOOL_NAME %}- Use {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} to validate an artifact document without persisting it (read-only; same arguments; returns line/section/rule-anchored diagnostics){% endif %}
+{% if STAGE_MD_ARTIFACT_TOOL_NAME %}- For long documents, stage incrementally: {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} appends (or `mode="replace_all"` replaces) draft content{% if GET_MD_DRAFT_TOOL_NAME %}, {{GET_MD_DRAFT_TOOL_REFERENCE}} returns the draft with diagnostics{% endif %}{% if FINALIZE_MD_ARTIFACT_TOOL_NAME %}, {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} validates and submits the assembled draft (the draft is retained either way){% endif %}{% if DISCARD_MD_DRAFT_TOOL_NAME %}, {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} drops the draft for a genuine wholesale restart only — never to recover from validation errors or to make a revision substantially similar to the draft, which throws the document away and forces a full retype{% endif %}{% endif %}
+{% if EDIT_MD_ARTIFACT_TOOL_NAME %}- Every submission stages its document as that artifact's draft, valid or not. To fix validation errors, edit the draft in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}: pass `artifact_type` and `edits` (a list of `oldText`/`newText` pairs applied by sequential first-occurrence replacement, all-or-nothing if any `oldText` is missing). Use `dry_run` to preview the diff. Do NOT resend the whole document to change part of it.
+- {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} IS a submission: it is {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} starting from the existing draft, and it submits the artifact canonically as soon as the edited draft validates — no separate {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} call. If the edited draft still has errors it is kept as a draft for further repair and nothing is submitted; the response reports `submitted` either way. Submitting does not end the phase, so a later edit in the same attempt simply resubmits.
+- To revise a submitted or staged document: inspect it with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then apply {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} edits. Replacing the whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) is the fallback when a rewrite really is wholesale — not for a revision whose content is substantially similar to the draft.
+{% else %}- To revise a staged plan, call {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) with the complete updated document, inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}.
+{% endif %}{% endif %}
 - Use {{DECLARE_COMPLETE_TOOL_REFERENCE}} when finished

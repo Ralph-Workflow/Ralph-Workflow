@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,18 +17,19 @@ from ralph.workspace.memory import MemoryWorkspace
 
 _TINY_PROMPT = "Implement the feature."
 _LARGE_CONTENT = "X" * (100 * 1024 + 1)
+_MINIMAL_DEV_RESULT = """---
+type: development_result
+status: completed
+---
+## Summary
+Done.
 
-_MINIMAL_DEV_RESULT = json.dumps(
-    {
-        "type": "development_result",
-        "content": {
-            "status": "completed",
-            "summary": "Done.",
-            "files_changed": "- src/app.py",
-        },
-    }
-)
+## Files Changed
+- src/app.py
 
+## Proof
+- [S-1] Added the regression coverage.
+"""
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
 _MIN_EXPECTED_ANALYSIS_TEMPLATES = 2
@@ -53,7 +53,7 @@ def _render_development_analysis(
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", prompt_content)
     _write_plan_handoff(workspace)
-    workspace.write(".agent/artifacts/development_result.json", _MINIMAL_DEV_RESULT)
+    workspace.write(".agent/artifacts/development_result.md", _MINIMAL_DEV_RESULT)
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
             PromptPhaseContext(
@@ -99,7 +99,7 @@ class TestDevelopmentAnalysisWithoutDevResult:
     """Verify development_analysis prompt renders correctly when development_result is absent.
 
     Prompt materialization for development_analysis must not crash and must still reference
-    CURRENT_PROMPT.md and PLAN.
+    PRODUCT_CRITERIA.md and PLAN.
     """
 
     def test_renders_without_crash_when_dev_result_absent(self, tmp_path: Path) -> None:
@@ -108,7 +108,7 @@ class TestDevelopmentAnalysisWithoutDevResult:
 
     def test_prompt_reference_present_when_dev_result_absent(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis_no_dev_result(tmp_path)
-        assert "CURRENT_PROMPT.md" in rendered
+        assert "PRODUCT_CRITERIA.md" in rendered
 
     def test_plan_reference_present_when_dev_result_absent(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis_no_dev_result(tmp_path)

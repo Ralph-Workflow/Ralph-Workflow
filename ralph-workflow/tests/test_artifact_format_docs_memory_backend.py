@@ -40,6 +40,9 @@ class MemoryBackend(FileBackend):
         self._directories.update(destination.parent.parents)
         self._files[destination] = self._files.pop(source)
 
+    def sync_directory(self, path: Path) -> None:
+        del path
+
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         if missing_ok:
             self._files.pop(path, None)

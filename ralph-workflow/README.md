@@ -9,12 +9,38 @@ and come back to reviewable, tested work.
 ```bash
 pipx install ralph-workflow
 ralph --version
-ralph --diagnose   # optional pre-flight check
 ```
 
 `pipx` keeps the install isolated from your other Python projects; the
 post-condition is that `ralph --version` prints the installed package
 version.
+
+## First run
+
+The complete first-run path is six short steps and does not require
+opening any other config file before your first run.
+
+1. **Install Ralph Workflow.** Use `pipx install ralph-workflow` (or
+   `pip install ralph-workflow`).
+2. **Start in your project.** `cd /path/to/your/project` and run
+   `ralph --init`. It creates your user-global config and a `PROMPT.md`;
+   project-local config is optional later via `ralph --init-local-config`.
+3. **Confirm a coding agent.** Ralph Workflow looks for supported agents
+   already on your `PATH` and enables the ones it finds. Install and
+   authenticate an agent first if none are found.
+4. **Check the setup.** Run `ralph --diagnose` and fix any reported
+   problem before starting work.
+5. **Describe the task.** Edit `PROMPT.md` with the outcome and checks
+   you expect. For a task-shaped starter, use `ralph --init feature-spec`,
+   `guardrail`, `refactor`, `test-coverage`, or `docs` before a prompt
+   file exists.
+6. **Run Ralph Workflow.** Run `ralph`, then read the finish-receipt
+   artifact: it names the change, checks run, and review focus before you
+   decide what to do next.
+
+The canonical first-run walkthrough is [Getting started](docs/sphinx/getting-started.md).
+For agent-specific model-string formats, see
+[Agent compatibility](docs/sphinx/agent-compatibility.md).
 
 ## Supported agents
 
@@ -27,7 +53,7 @@ Eight built-in agents ship with Ralph Workflow:
 | **Codex** | OpenAI's Codex CLI. |
 | **OpenCode** | Open-source terminal coding agent. |
 | **Nanocoder** | Local-only TUI coding agent. |
-| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`, v1.0.9+). |
+| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`), measured on v1.1.8: `gemini-3.6-flash-low`, `gemini-3.6-flash-high --effort high`, stream-json `init`/`step_update`/`result`, and the manual smoke's exit-0 validated fallback-artifact path have live evidence. Re-run the manual smoke after AGY updates. |
 | **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>`. |
 | **Cursor** | Cursor Agent CLI (`agent`), headless `--print` mode. |
 
@@ -56,8 +82,8 @@ concepts, troubleshooting, diagnostics, and developer internals.
 
 ## Project home
 
-- **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Repository:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 - **PyPI:** <https://pypi.org/project/ralph-workflow/>
-- **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Issue tracker:** <https://github.com/Ralph-Workflow/Ralph-Workflow/issues/new>
 - **Contribution route:**
   [`CONTRIBUTING.md`](CONTRIBUTING.md)

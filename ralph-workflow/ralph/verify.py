@@ -40,11 +40,17 @@ check (``if``/``raise`` rather than ``assert`` so the checks survive
 * Raising ``_TOTAL_TEST_BUDGET_SECONDS`` or any of the per-step
   timeouts (an epsilon check pins the 60-second value to 60.0).
 
-Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
-main ``make test`` suite and do **not** count against the combined
-budget. The single allowed skip is ``tests/test_verify_invariants.py``
-(Python 3.14 + loguru import-order incompatibility; the invariants
-remain enforced in the main ``make verify`` path).
+The broad ``@pytest.mark.subprocess_e2e`` profile is excluded from the
+main ``make test`` suite. Required real-git auto-integration files are
+also marked ``required_auto_integrate_e2e``, however, and the combined
+verification marker expression includes them inside ``make test``.
+Their wall-clock time is therefore charged through that budget-tracked
+step; there is no separate auto-integration step in ``_VERIFY_STEPS``.
+"It also carries a subprocess marker" is not a budget exemption. The
+single allowed skip is
+``tests/test_verify_invariants.py`` (Python 3.14 + loguru import-order
+incompatibility; the invariants remain enforced in the main
+``make verify`` path).
 
 If tests are too slow, fix the test design — replace real I/O with
 fakes (``MemoryWorkspace``, ``tmp_path``, ``MockProcessExecutor``),
@@ -66,6 +72,7 @@ from ralph.executor.process import (
     ProcessRunOptions,
     run_process,
 )
+from ralph.process._spawn_env import sanitize_process_environment
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -131,9 +138,11 @@ _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 #
 # _BUDGET_TRACKED_STEPS: the indices within _VERIFY_STEPS whose
 # elapsed wall-clock time counts against _TOTAL_TEST_BUDGET_SECONDS.
-# Currently only index 2 (make test) counts. Adding more test-related
-# steps here does NOT increase the combined budget — the cumulative
-# tracker sums time across ALL tracked indices.
+# The current tracked entry is make test, whose combined marker profile
+# includes required_auto_integrate_e2e real-git tests. Any future step
+# that runs tests must also be tracked. Adding test-related steps does
+# NOT increase the combined budget: the cumulative tracker sums time
+# across ALL tracked indices.
 _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     (
         "ruff check ralph/ tests/",
@@ -279,8 +288,153 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # AST + literal-string audit that pins the terminal-escape
+        # containment contract documented in
+        # docs/agents/verification.md §'Terminal escape containment'.
+        # Enforces literal-string + AST-scoped invariants across
+        # the display sinks, the SpawnOptions dataclass + every call
+        # site anywhere under ralph/, both loguru logging
+        # configurators, the DisplayContext sink, and the PTY
+        # child-spawn path so that the hosti's full CSI+OSC
+        # containment (alternate screen, erase display,
+        # private-parameter CSI, OSC, SGR) survives future
+        # refactors of those files. Appended LAST so the
+        # index-based timeout assertions in tests/test_verify.py are
+        # not shifted; NOT a budget-tracked step (it does NOT count
+        # against _TOTAL_TEST_BUDGET_SECONDS -- the immutable
+        # 60-second combined budget is preserved).
+        "terminal escape containment audit (audit_terminal_escape_containment)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # Repo-structure policy: file size, one public class per module,
+        # no private ralph imports in tests, no unallowlisted bypass
+        # comments. This lived ONLY in a subprocess_e2e test that `make
+        # test` excludes, so it rotted silently while the gate stayed
+        # green. Wired here so ANY structural regression fails verify on
+        # every run, regardless of who introduced it. Appended LAST so
+        # the index-based timeout assertions in tests/test_verify.py are
+        # not shifted; NOT budget-tracked (does not count against the
+        # immutable 60-second combined test budget).
+        "repo structure audit (audit_repo_structure)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_repo_structure"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-039 fsevents: AST-only drift audit that locks the
+        # single-recursive-root-watch consolidation in
+        # ``ralph/agents/invoke/_workspace.py`` so a future refactor
+        # cannot silently re-introduce multi-stream / dynamic
+        # per-directory / per-loop-iteration watchdog watches that
+        # reinflate the macOS fseventsd footprint. Mirrors the
+        # existing ``audit_watchdog_drift`` consolidation-lock
+        # pattern (ast + Path.read_text only -- no subprocess, no
+        # sleep, no real I/O). Appended LAST so the index-based
+        # timeout assertions in tests/test_verify.py are not shifted;
+        # NOT budget-tracked (does not count against the immutable
+        # 60-second combined test budget).
+        "fsevents watch consolidation audit (audit_fsevents_watch_consolidation)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-039 fsevents: AST-only drift audit that locks the
+        # ``buffering=8192`` invariant on every file-path
+        # ``logger.add(...)`` call in ``ralph/logging.py`` so a
+        # future refactor cannot silently regress to loguru's
+        # ``FileSink`` line-buffered default (one OS write per
+        # record, one fsevents notification per record -- the exact
+        # per-record filesystem-mutation source the fseventsd
+        # mitigation closes). Discriminates file sinks structurally
+        # (a ``/``-join ``BinOp`` or ``Path(...)`` call) from
+        # callable/stream sinks (``make_stderr_log_sink()``,
+        # ``sys.stderr``) so the CLI's terminal sink is not
+        # false-flagged. AST + Path.read_text only -- no subprocess,
+        # no sleep, no real I/O. Appended LAST so the index-based
+        # timeout assertions in tests/test_verify.py are not shifted;
+        # NOT budget-tracked (does not count against the immutable
+        # 60-second combined test budget).
+        "log sink buffering audit (audit_log_sink_buffering)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-039 fsevents: AST-only drift audit that locks the
+        # idempotent-write consolidation across stable persistence
+        # paths so a future refactor cannot silently replace
+        # write_text_if_changed with raw write_text calls and
+        # reinflate the macOS fseventsd footprint. AST +
+        # Path.read_text only -- no subprocess, no sleep, no real
+        # I/O. Appended LAST so the index-based timeout assertions
+        # in tests/test_verify.py are not shifted; NOT
+        # budget-tracked (does not count against the immutable
+        # 60-second combined test budget).
+        "idempotent write adoption audit (audit_idempotent_write_adoption)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-043: render-integrity audit for the packaged prompt
+        # templates. Renders every top-level .jinja template through the
+        # real registry/partials/render_template path across the main
+        # toggle scenarios (LAST_RETRY_ERROR, ANALYSIS_FEEDBACK,
+        # HAS_GIT_WRITE, HIDE_ARTIFACT_SUBMISSION_GUIDANCE) and fails on
+        # unrendered Jinja markers, include-resolution errors, duplicated
+        # headings, duplicated >=120-char paragraphs, 3+ blank-line runs,
+        # and doubled label lines. In-memory rendering only (<2s) -- no
+        # subprocess, no sleep, no repo mutation. Appended LAST so the
+        # index-based timeout assertions in tests/test_verify.py are not
+        # shifted; NOT budget-tracked (does not count against the
+        # immutable 60-second combined test budget).
+        "template render-integrity audit (audit_template_render_integrity)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_template_render_integrity"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-043 Task #14: validate every fenced artifact example in packaged
+        # prompt templates and format docs against its registered Markdown
+        # spec. The audit performs bounded local reads and parsing only, so it
+        # is not a test-budget-tracked step.
+        "fenced artifact example audit (audit_fenced_artifact_examples)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-045 typechecking: AST + literal-string audit that enforces the
+        # ``Type assertions and casts`` section of
+        # ``docs/ralph-workflow-policy/typechecking-policy.md``. The audit
+        # rejects every ``cast(`` call in production code that is not (a)
+        # sound-by-construction (universal leaf types), (b) confined to a
+        # named boundary helper, or (c) carrying an inline
+        # ``# cast-policy: seam: <rationale>`` marker; it also rejects
+        # EVERY ``cast(`` in tests/. AST + Path.read_text only -- no
+        # subprocess, no sleep, no real I/O. Appended LAST so the
+        # index-based timeout assertions in tests/test_verify.py are
+        # not shifted; NOT budget-tracked (does not count against the
+        # immutable 60-second combined test budget).
+        "cast policy audit (audit_cast_policy)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_cast_policy"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
+#: Index 2 is ``make test``: the primary test step, charged against
+#: ``_TOTAL_TEST_BUDGET_SECONDS`` together with every other test step whose
+#: label is in ``_KNOWN_TEST_STEP_LABELS``. Only ``make test`` qualifies
+#: today; adding a new test step without also adding its label to
+#: ``_KNOWN_TEST_STEP_LABELS`` (and its index here) lets it run without
+#: contributing to the combined budget, which the immutable 60 s ceiling
+#: prohibits.
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
 
 # --- Module-level invariants ---
@@ -597,6 +751,7 @@ def main(
     """
     if argv:
         raise SystemExit("ralph.verify does not accept positional arguments")
+    sanitize_process_environment()
     resolved_cwd = cwd if cwd is not None else Path(__file__).parent.parent
     return run_verify(cwd=resolved_cwd, runner=runner)
 

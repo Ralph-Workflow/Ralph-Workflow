@@ -144,7 +144,7 @@ def test_blank_line_before_and_after_section_rule() -> None:
                 f"full plain text:\n{plain!r}"
             )
     # The blank line after the run-end block is followed by the
-    # [content][unit-1] emit. Verify that a `\n\n` (blank line) appears
+    # [output][unit-1] emit. Verify that a `\n\n` (blank line) appears
     # between the last run-end section rule block and the next emit.
     last_run_end_rule = plain.rfind("─── [run-end]")
     assert last_run_end_rule > 0, f"last run-end section rule not found in:\n{plain!r}"
@@ -270,6 +270,135 @@ def test_visual_hierarchy_emit_info_panel() -> None:
     assert "Run ralph --init" in text, f"missing panel content: {text!r}"
 
 
+def _hierarchy_emits_grouping_and_indent(*, force_terminal: bool, width: int) -> str:
+    """Drive the production path with a tool call + tool result + thinking block.
+
+    Returns the captured live-log text. The shared helper lets the
+    40-column and color-off cases share the same production-path
+    exercise (driven through ``ParallelDisplay``) without
+    duplicating the event sequence in every test.
+    """
+    import io as _io
+
+    from ralph.display.activity_event_kind import ActivityEventKind
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+
+    buf = _io.StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=force_terminal,
+        color_system=("truecolor" if force_terminal else None),
+        width=width,
+        theme=RALPH_THEME,
+    )
+    ctx = make_display_context(console=console, env={"CI": "1"})
+    pd = ParallelDisplay(ctx)
+    pd.start()
+    # Tool call → result pair; the result must hang under the call.
+    pd.emit_parsed_event(
+        unit_id="u1",
+        kind=ActivityEventKind.TOOL_USE,
+        content="read_file /tmp/example.py",
+        metadata={"tool_name": "read_file", "tool_path": "/tmp/example.py"},
+    )
+    pd.emit_parsed_event(
+        unit_id="u1",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="file contents here",
+        metadata={"exit_code": 0, "tool_name": "read_file"},
+    )
+    # Thinking deltas coalesce into one subordinated passage.
+    for index in range(3):
+        pd.emit_parsed_event(
+            unit_id="u1",
+            kind=ActivityEventKind.THINKING,
+            content=f"thought {index} ",
+            metadata={},
+        )
+    pd.stop()
+    return _ANSI_ESCAPE_RE.sub("", buf.getvalue())
+
+
+def test_visual_hierarchy_grouping_survives_at_40_columns() -> None:
+    """S-4: hanging indent and grouping survive at the 40-column floor.
+
+    The visual hierarchy is encoded in the line tags, not in
+    leading whitespace (the tags survive a 40-col wrap; leading
+    whitespace would be lost on a Rich reflow). The tool_result
+    line carries the same ``\u21b3`` (RIGHTWARDS ARROW) marker the
+    tool_call line carries, plus a leading two-space indent
+    inside the body; the marker is the structural position, not
+    a glyph-only prefix.
+
+    At 40 cols the call line ``[call][u1] \u25d0 RUN <ts> u1 read_file
+    /tmp/example.py \u21b3`` exceeds the width so Rich wraps the body
+    onto a continuation line. The tag stays on the first line and
+    the tool name + result marker span the wrap. The structural
+    assertion is therefore: the call tag and the result tag both
+    appear, the result tag line carries the pair marker, and the
+    call's tool name (``read_file``) appears in the wrapped
+    output. The wrap IS the hierarchy-preserving behavior; this
+    test pins it.
+    """
+    plain = _hierarchy_emits_grouping_and_indent(force_terminal=True, width=40)
+    # Rich wraps long lines at 40 cols; search the joined output
+    # for the structural pieces (call tag, result tag, pair marker,
+    # tool name) instead of a single line containing all of them.
+    assert "[call]" in plain, f"tool_call tag not found at 40 cols:\n{plain!r}"
+    assert "[result]" in plain, f"tool_result tag not found at 40 cols:\n{plain!r}"
+    assert "read_file" in plain, f"tool name not found in wrapped output:\n{plain!r}"
+    # The pair correlation marker is the structural position, not
+    # a glyph-only prefix. The result line carries it because the
+    # ``_TOOL_RESULT_INDENT`` ``  \u21b3 `` body prefix is part of
+    # the body's semantic content; the call line carries the
+    # suffix ``\u21b3``. Count the markers: there is at least one
+    # on the call (suffix) and at least one on the result (body
+    # prefix) for a minimum of 2.
+    assert plain.count("\u21b3") >= 2, (
+        f"expected pair marker on call AND result, got {plain.count('\u21b3')!r}:\n{plain!r}"
+    )
+
+
+def test_visual_hierarchy_grouping_survives_color_off() -> None:
+    """S-4: hanging indent and grouping survive with color disabled."""
+    plain = _hierarchy_emits_grouping_and_indent(force_terminal=False, width=120)
+    call_lines = [line for line in plain.splitlines() if "[call]" in line and "read_file" in line]
+    result_lines = [
+        line for line in plain.splitlines() if "[result]" in line and "read_file" in line
+    ]
+    assert call_lines, f"tool_call line not found:\n{plain!r}"
+    assert result_lines, f"tool_result line not found:\n{plain!r}"
+    call_line = call_lines[0]
+    result_line = result_lines[0]
+    # Same correlation marker check as the 40-col case.
+    assert "\u21b3" in call_line, f"call line missing pair marker: {call_line!r}"
+    assert "\u21b3" in result_line, f"result line missing pair marker: {result_line!r}"
+    # No ANSI escape sequences in the color-off surface.
+    assert "\x1b[" not in plain, f"ANSI escape leaked into color-off output:\n{plain!r}"
+
+
+def test_visual_hierarchy_grouping_survives_at_40_columns_color_off() -> None:
+    """S-4: 40-column AND color-off simultaneously (the worst case).
+
+    Rich may wrap the long tool_call body across multiple lines at
+    40 cols; the structural tags (``[call]`` / ``[result]``)
+    are the invariant we assert. The call / result pair correlation
+    marker (``\u21b3``) survives the wrap because it is part of
+    the semantic content, not the layout.
+    """
+    plain = _hierarchy_emits_grouping_and_indent(force_terminal=False, width=40)
+    # At 40 cols / color off the call and result tags still appear
+    # and the pair marker is preserved (the call tag and the
+    # result tag are the structural position, not glyph-only).
+    assert "[call]" in plain, f"tool_call tag not found:\n{plain!r}"
+    assert "[result]" in plain, f"tool_result tag not found:\n{plain!r}"
+    assert "read_file" in plain, f"tool name not found in wrapped output:\n{plain!r}"
+    assert "\u21b3" in plain, f"pair marker lost at 40 cols / color off:\n{plain!r}"
+    # No ANSI escape sequences in the color-off surface.
+    assert "\x1b[" not in plain, f"ANSI escape leaked into color-off output:\n{plain!r}"
+
+
 def test_visual_hierarchy_emit_completion_summary_panel() -> None:
     """AC-01+AC-03: emit_completion_summary_panel emits the [run-completion] section rule.
 
@@ -321,3 +450,61 @@ def test_visual_hierarchy_emit_completion_summary_panel() -> None:
         f"section rule line must carry the theme.banner.border sky-blue ANSI "
         f"({_SKY_BLUE_24BIT_ANSI!r}); got:\n{text!r}"
     )
+
+
+def test_visual_hierarchy_regression_preview_body_is_nested_below_header() -> None:
+    """DA-002: file-preview bodies stay below their structural header at all widths."""
+    from ralph.display.activity_event_kind import ActivityEventKind
+
+    for force_terminal, width in ((False, 100), (True, 100), (False, 40), (True, 40)):
+        buf = io.StringIO()
+        console = Console(
+            file=buf,
+            force_terminal=force_terminal,
+            color_system=("truecolor" if force_terminal else None),
+            width=width,
+            theme=RALPH_THEME,
+        )
+        pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
+        pd.emit_parsed_event(
+            unit_id="claude",
+            kind=ActivityEventKind.TOOL_USE,
+            content="read_file",
+            metadata={
+                "tool_name": "read_file",
+                "input": {
+                    "path": "a/very/long/path/that/wraps/at/the/terminal/floor/example.py",
+                    "content": "first preview line\nsecond preview line",
+                },
+            },
+        )
+        pd.stop()
+        plain = _ANSI_ESCAPE_RE.sub("", buf.getvalue())
+        header_index = next(index for index, line in enumerate(plain.splitlines()) if "▸ read" in line)
+        body_lines = [
+            line
+            for line in plain.splitlines()[header_index + 1 :]
+            if line.lstrip(" ").startswith(("1 ", "2 "))
+        ]
+        assert len(body_lines) == 2, f"preview body missing at width={width}:\n{plain!r}"
+        assert all(len(line) - len(line.lstrip(" ")) >= 4 for line in body_lines), (
+            f"preview body escaped its header at width={width}:\n{plain!r}"
+        )
+
+
+def test_visual_hierarchy_regression_phase_start_hides_internal_title() -> None:
+    """DA-003: both phase-start APIs use human labels, never event names."""
+    from ralph.display.phase_lifecycle import PhaseEntryModel
+
+    for emit in (
+        lambda pd: pd.emit_phase_start("development", agent_name="claude"),
+        lambda pd: pd.emit_phase_start_from_entry(
+            PhaseEntryModel(phase_name="development", agent_name="claude")
+        ),
+    ):
+        pd, buf = _make_display(force_terminal=False)
+        emit(pd)
+        pd.stop()
+        text = buf.getvalue()
+        assert "[phase-start]" not in text
+        assert "Development" in text and "claude" in text

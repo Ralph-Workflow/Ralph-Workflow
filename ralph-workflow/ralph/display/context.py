@@ -15,9 +15,10 @@ every applicable width:
 
 1. Long paths middle-truncate to absorb excess length on long paths.
 2. Long phase labels tail-truncate to absorb excess length on labels.
-3. Iteration label form degrades canonical (``Dev 1/3`` /
-   ``Analysis 2/5``) -> compact (``D1/3`` / ``A2/5``) -> minimal
-   (``1/3`` / ``2/5``) below the canonical-fit threshold (40 cols).
+3. Iteration label form degrades canonical (``Cycle 1/3`` /
+   ``iter 2/5``) -> compact (``C1/3`` / ``i2/5``) -> minimal
+   (``1/3`` / ``2/5``) below the canonical-fit threshold. Custom
+   outer labels (such as ``Remediation`` or ``Round``) override ``Cycle``.
 4. The phase marker is dropped below the marker-fit threshold.
 5. Per-iteration glyphs are dropped below the glyph-fit threshold.
 6. Iteration segments drop one at a time (outer_dev first, then
@@ -49,6 +50,7 @@ from ralph.display.theme import (
     UNICODE_GLYPHS,
     detect_glyph_capability,
     make_console,
+    terminal_background_is_light,
 )
 
 if TYPE_CHECKING:
@@ -159,6 +161,8 @@ def _compute_width(
     force_width: int | None,
     *,
     prefer_configured_width: bool = True,
+    injected_console: bool = False,
+    explicit_env: bool = False,
 ) -> int:
     """Resolve effective terminal width from overrides, env, and console.
 
@@ -166,14 +170,94 @@ def _compute_width(
         resolved_env: Pre-resolved environment settings.
         console: Console to read width from as fallback.
         force_width: Explicit width override.
+        prefer_configured_width: Whether the console's configured
+            (``_width``) attribute may short-circuit env resolution.
+        injected_console: When ``True`` (the caller passed an explicit
+            ``console=`` argument) AND no explicit ``env=`` was passed,
+            the console's own width is AUTHORITATIVE: the
+            caller-injected console is the source of truth.
+        explicit_env: When ``True`` the caller passed ``env=...`` to
+            :func:`make_display_context`. In that mode a ``COLUMNS``
+            value in the explicit env wins over both Ralph-built and
+            caller-injected consoles (because the operator who set
+            the env meant to control the rendered width). When
+            ``False`` (default; the caller did NOT pass ``env=``),
+            host-shell ``COLUMNS`` inherited via ``os.environ`` is
+            NOT authoritative -- the injected console's width is
+            instead, so a 40-column test fixture is not silently
+            widened to whatever the host terminal reported.
 
     Returns:
         Effective terminal width in characters.
     """
     if force_width is not None and force_width > 0:
         return force_width
-    if resolved_env.columns is not None:
+    return _compute_width_uncached(
+        resolved_env,
+        console,
+        prefer_configured_width=prefer_configured_width,
+        injected_console=injected_console,
+        explicit_env=explicit_env,
+    )
+
+
+def _compute_width_uncached(
+    resolved_env: _ResolvedEnv,
+    console: Console,
+    *,
+    prefer_configured_width: bool,
+    injected_console: bool,
+    explicit_env: bool,
+) -> int:
+    """Body of :func:`_compute_width` after the ``force_width`` short-circuit.
+
+    Extracted to keep the parent function under the
+    ``PLR0911`` (too-many-return-statements) cap while
+    preserving the per-rule return so the precedence order
+    reads top-to-bottom.
+
+    Precedence (top to bottom):
+
+    1. Explicit ``COLUMNS`` env override -- wins over both Ralph-built
+       and caller-injected consoles ONLY when the caller passed
+       ``env=...`` to :func:`make_display_context` (because the operator
+       who set the env meant to control the rendered width regardless
+       of which console Ralph happened to be holding).
+    2. Caller-injected ``console=`` -- the caller's own width is the
+       source of truth when no explicit env override was provided.
+    3. The console's ``_width`` attribute when ``prefer_configured_width``
+       is set (Ralph-built console path).
+    4. The console's live width attribute.
+    5. ``80`` as a final fallback when nothing else resolves.
+
+    Note: the *previous* precedence order consulted
+    ``resolved_env.columns`` BEFORE the injected console's width
+    regardless of whether the caller passed ``env=...``. That
+    silently widened a 40-column test fixture (which used
+    ``make_display_context(console=...)`` with no explicit ``env=``)
+    to whatever the host shell reported for ``COLUMNS``, breaking
+    the ``test_truncation_stability_across_widths`` invariant under
+    non-default environments. The fix below gates the
+    ``COLUMNS``-wins branch on ``explicit_env=True`` so the two
+    invariants are mutually compatible:
+    * ``test_columns_env_overrides_console_width`` -- caller passes
+      ``env={"COLUMNS": "40"}`` so ``explicit_env=True`` and
+      ``resolved_env.columns`` wins over the console's injected width.
+    * ``test_truncation_stability_across_widths`` -- caller passes
+      no ``env=`` so ``explicit_env=False``; host-shell ``COLUMNS``
+      is ignored and the injected console's width is authoritative.
+    """
+    if explicit_env and resolved_env.columns is not None:
         return resolved_env.columns
+    if injected_console:
+        # The caller passed an explicit console; its own width is the
+        # source of truth when no explicit env override was provided.
+        configured_width = cast("object", getattr(console, "_width", None))
+        if isinstance(configured_width, int) and configured_width > 0:
+            return configured_width
+        if console.width > 0:
+            return console.width
+        return 80
     configured_width = cast("object", getattr(console, "_width", None))
     if prefer_configured_width and isinstance(configured_width, int) and configured_width > 0:
         return configured_width
@@ -188,6 +272,46 @@ def _set_injected_console_width(console: Console, width: int) -> None:
             height = console.size.height
         console._width = width
         console._height = height
+
+
+def _compute_height(console: Console, force_height: int | None) -> int | None:
+    """Resolve effective terminal height using the documented precedence.
+
+    P0 (wt-028-display S-6 / AC-03): the height is resolved the same
+    way as width so ``refreshed()`` can recompute it on every cycle
+    (SIGWINCH on POSIX, poll on Windows) without losing the
+    ``force_height`` override the operator pinned at construction
+    time. Precedence:
+
+    1. Explicit ``force_height > 0`` -- the operator override.
+    2. Explicit ``force_height`` of zero or negative -- the legacy
+       opt-out: ``None`` disables height-aware rendering.
+    3. The Console's own ``_height`` attribute when set and positive.
+    4. The Console's live ``size.height`` when positive.
+    5. ``None`` when nothing else resolves (the legacy contract).
+
+    Args:
+        console: Console to read height from as fallback.
+        force_height: Operator override (``None`` to opt out).
+
+    Returns:
+        Effective terminal height in rows, or ``None`` when no source
+        resolves a positive integer.
+    """
+    if force_height is not None and force_height > 0:
+        return force_height
+    if force_height is not None:
+        # Explicit zero / negative -> legacy opt-out.
+        return None
+    configured_height = cast("object", getattr(console, "_height", None))
+    if isinstance(configured_height, int) and configured_height > 0:
+        return configured_height
+    size_obj: object = getattr(console, "size", None)
+    if size_obj is not None:
+        candidate: object = getattr(size_obj, "height", None)
+        if isinstance(candidate, int) and candidate > 0:
+            return candidate
+    return None
 
 
 def _compute_default_mode() -> Literal["default"]:
@@ -239,6 +363,24 @@ class DisplayContext:
     streaming_checkpoints_enabled: bool
     thinking_preview_min_chars: int
     tool_result_headline_min_chars: int
+    # P1 (wt-028-display S-5 / AC-04): maximum comfortable column
+    # count for prose and log body text. Consumers that render
+    # prose-shaped content (paragraphs, log body, single-line tool
+    # summaries) cap the visible width at this value; rules, tables,
+    # and aligned columns continue to use the full ``width`` because
+    # they have their own width negotiation. Default 100 keeps prose
+    # readable on a 250-column monitor; the value is also the upper
+    # bound of ``body_measure()`` so the cap is honored on any width.
+    body_measure_cap: int = 100
+    # Resolved once at context construction so every renderer selects the
+    # same accessible palette without probing the terminal independently.
+    terminal_background_is_light: bool | None = None
+    # P0 (wt-028-display S-5 / AC-06): the vertical dimension of the
+    # terminal is consumed by height-aware presentation -- boxed
+    # panels degrade to unboxed headed text below a row threshold
+    # so the working area remains usable on a 12-row split pane.
+    # ``None`` disables height-aware rendering (the legacy contract).
+    height: int | None = None
     # Captured env mapping used to resolve flags; excluded from equality and hash
     env: Mapping[str, str] = field(default_factory=dict, compare=False, repr=False)
     # Stored overrides for refreshed() — excluded from equality and hash
@@ -256,6 +398,8 @@ class DisplayContext:
     )
     _force_width: int | None = field(default=None, repr=False, compare=False)
     _force_glyphs: bool | None = field(default=None, repr=False, compare=False)
+    _force_height: int | None = field(default=None, repr=False, compare=False)
+    _explicit_env: bool = field(default=False, repr=False, compare=False)
 
     def glyph_for(self, name: str) -> str:
         """Return the glyph string for the given logical name.
@@ -276,24 +420,91 @@ class DisplayContext:
             return UNICODE_GLYPHS[name]
         return ASCII_GLYPHS[name]
 
+    def is_height_constrained(self, threshold: int = 12) -> bool:
+        """Return ``True`` when the height is known and at-or-below ``threshold``.
+
+        P0 (wt-028-display S-6 / AC-05 / DA-005): on a short
+        terminal (``height <= threshold``) framed presentation
+        degrades to unboxed headed text. The threshold defaults to
+        12 rows (the canonical split-pane size where the working
+        area shrinks enough that a bordered panel would crowd the
+        scrollback). When ``height`` is ``None`` (the legacy
+        opt-out) the constraint check returns ``False`` so a
+        caller without a known height keeps the full boxed
+        presentation -- the height is required to make the
+        degradation decision at all.
+
+        The check is at-or-below (``<=``) rather than strict
+        less-than (``<``) so the canonical 12-row floor activates
+        the constrained presentation -- a 12-row split pane is
+        the documented accessibility path (large-text / magnified /
+        braille displays) and the framed panels must degrade
+        there, not one row later.
+
+        Args:
+            threshold: The row count at or below which the
+                presentation is considered "height-constrained".
+                Defaults to 12 (the canonical short-terminal
+                threshold).
+
+        Returns:
+            ``True`` when ``self.height`` is set and is at-or-below
+            ``threshold``; ``False`` when ``self.height`` is
+            ``None`` or is ``> threshold``.
+        """
+        if self.height is None:
+            return False
+        return self.height <= threshold
+
+    def body_measure(self) -> int:
+        """Return the cap for prose / log body text on this console.
+
+        P1 (wt-028-display S-5 / AC-04): one measure rule for prose
+        and log body text. On a very wide terminal (e.g. 250 cols)
+        the cap keeps the line at a comfortable measure (the
+        ``body_measure_cap`` constant) so the operator's eye does
+        not have to track a 250-char line. On a narrow console
+        (e.g. 80 cols) the cap is a no-op because the full width
+        is already at or below the cap. Rules, tables, and aligned
+        columns use ``self.width`` directly; they are not prose.
+
+        The minimum of 40 columns is preserved even on the narrowest
+        consoles so a single token wider than the floor still wraps
+        through the line wrap machinery instead of crashing on a
+        zero-or-negative effective measure.
+        """
+        return max(40, min(self.width, self.body_measure_cap))
+
     def refreshed(self) -> DisplayContext:
-        """Return a new DisplayContext with refreshed terminal width.
+        """Return a new DisplayContext with refreshed terminal width AND height.
 
         Re-resolves width using the same precedence rules as
         make_display_context(), preserving any active overrides (COLUMNS,
-        force_width) stored at construction time. The console identity,
+        force_width) stored at construction time. P0 (wt-028-display
+        S-6 / AC-03): height is RE-RESOLVED from the live Console on
+        every cycle so a SIGWINCH or poll refresher observes a vertical
+        resize, while the ``force_height`` override the operator pinned
+        at construction time continues to win. The console identity,
         theme, color_enabled, glyphs_enabled, and adaptive limits are
         unchanged. Mode is always ``'default'``.
 
         Returns:
-            New DisplayContext with updated width.
+            New DisplayContext with updated width and height.
         """
         new_width = _compute_width(
             self._resolved_env,
             self.console,
             self._force_width,
             prefer_configured_width=False,
+            explicit_env=self._explicit_env,
         )
+        # P0 (wt-028-display S-6 / AC-03): re-resolve height the same
+        # way ``make_display_context`` does so a vertical resize is
+        # observed. ``_force_height`` is preserved (the operator's
+        # construction-time override continues to win) and the
+        # Console's own ``size.height`` is the source of truth for
+        # non-overridden callers.
+        new_height = _compute_height(self.console, self._force_height)
 
         return DisplayContext(
             console=self.console,
@@ -311,10 +522,15 @@ class DisplayContext:
             streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
             thinking_preview_min_chars=self.thinking_preview_min_chars,
             tool_result_headline_min_chars=self.tool_result_headline_min_chars,
+            body_measure_cap=self.body_measure_cap,
+            terminal_background_is_light=self.terminal_background_is_light,
+            height=new_height,
             _resolved_env=self._resolved_env,
             env=self.env,
             _force_width=self._force_width,
             _force_glyphs=self._force_glyphs,
+            _force_height=self._force_height,
+            _explicit_env=self._explicit_env,
         )
 
 
@@ -324,6 +540,7 @@ def make_display_context(
     console: Console | None = None,
     force_width: int | None = None,
     force_glyphs: bool | None = None,
+    force_height: int | None = None,
 ) -> DisplayContext:
     """Create a DisplayContext with resolved terminal metrics and adaptive limits.
 
@@ -332,6 +549,11 @@ def make_display_context(
         console: Console to use (defaults to make_console() with env-aware color policy).
         force_width: Override terminal width detection.
         force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
+        force_height: Override terminal height detection. ``None``
+            falls back to ``console.size.height`` (the canonical
+            Rich Console contract); ``None`` disables height-aware
+            rendering for callers that don't consume the height
+            field.
 
     Returns:
         Fully initialised DisplayContext.
@@ -346,11 +568,41 @@ def make_display_context(
         injected_console = True
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
-    width = _compute_width(resolved_env, resolved_console, force_width)
+    width = _compute_width(
+        resolved_env,
+        resolved_console,
+        force_width,
+        injected_console=injected_console,
+        explicit_env=env_was_provided,
+    )
     if injected_console:
         _set_injected_console_width(resolved_console, width)
     mode = _compute_default_mode()
     limits = _DEFAULT_LIMITS
+    # P0 (wt-028-display S-5 / AC-06): height is resolved the same
+    # way as width -- an explicit ``force_height`` wins, otherwise we
+    # read the console's own ``size.height`` (Rich keeps it fresh).
+    # A non-positive or missing height disables height-aware
+    # rendering (the legacy contract); callers that want the
+    # explicit ``None`` contract pass ``force_height=-1`` so the
+    # resolved value is ``None``.
+    if force_height is not None and force_height > 0:
+        height_value = force_height
+    elif force_height is not None:
+        # Explicit ``force_height=0`` or negative is treated as the
+        # legacy ``None`` opt-out (callers that want to disable
+        # height-aware rendering). ``force_height=None`` falls
+        # through to the Console's own ``size.height``.
+        height_value = None
+    else:
+        size_obj: object = getattr(resolved_console, "size", None)
+        height_attr: int | None = None
+        if size_obj is not None:
+            candidate: object = getattr(size_obj, "height", None)
+            if isinstance(candidate, int) and candidate > 0:
+                height_attr = candidate
+        positive_height: int | None = height_attr
+        height_value = positive_height
 
     # NO_COLOR wins over FORCE_COLOR per CLI conventions.
     color_enabled = not resolved_env.no_color and not _console_has_no_color(
@@ -375,6 +627,7 @@ def make_display_context(
         theme=RALPH_THEME,
         width=width,
         mode=mode,
+        height=height_value,
         color_enabled=color_enabled,
         glyphs_enabled=glyphs_enabled,
         headline_max_chars=limits.headline_max_chars,
@@ -386,10 +639,14 @@ def make_display_context(
         streaming_checkpoints_enabled=resolved_env.streaming_checkpoints_enabled,
         thinking_preview_min_chars=limits.thinking_preview_min_chars,
         tool_result_headline_min_chars=limits.tool_result_headline_min_chars,
+        body_measure_cap=limits.body_measure_cap,
+        terminal_background_is_light=terminal_background_is_light(env_dict),
         env=env_dict,
         _resolved_env=resolved_env,
         _force_width=force_width,
         _force_glyphs=force_glyphs,
+        _force_height=force_height,
+        _explicit_env=env_was_provided,
     )
 
 
@@ -423,7 +680,7 @@ def install_sigwinch_refresher(
     if threading.main_thread() is not threading.current_thread():
         return
 
-    def handler(signum: int, frame: object) -> None:
+    def handler(_signum: int, _frame: object) -> None:
         refreshed = ctx_holder[0].refreshed()
         ctx_holder[0] = refreshed
         if on_refresh is not None:
@@ -504,3 +761,15 @@ __all__ = [
     "install_width_refresher",
     "make_display_context",
 ]
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: D8
+# ladder rung: 4
+# ----- end AC-14 catalog evidence -----

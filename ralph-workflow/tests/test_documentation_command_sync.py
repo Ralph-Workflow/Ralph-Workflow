@@ -13,6 +13,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 README_PATH = REPO_ROOT / "README.md"
 CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
 WORKSPACE_ROOT = REPO_ROOT.parent
+ARTIFACT_SUBMISSION_CONTRACT_PATH = (
+    REPO_ROOT / "docs" / "agents" / "artifact-submission-contract.md"
+)
+VERIFICATION_POLICY_PATH = (
+    WORKSPACE_ROOT / "docs" / "ralph-workflow-policy" / "verification-policy.md"
+)
+ARCHITECTURE_POLICY_PATH = (
+    WORKSPACE_ROOT / "docs" / "ralph-workflow-policy" / "architecture-policy.md"
+)
+ROOT_AGENTS_PATH = WORKSPACE_ROOT / "AGENTS.md"
 # wt-026 consolidation: CODE_STYLE.md and docs/tooling/python-tooling.md were
 # removed; their content now lives in docs/code-style/index.md and
 # docs/sphinx/configuration.md respectively. The typing-contract and
@@ -79,6 +89,54 @@ def test_contributing_required_verification_references_make_verify() -> None:
         "CONTRIBUTING.md must reference the canonical `make verify` command "
         "in its Required verification section."
     )
+
+
+def test_artifact_submission_contract_describes_active_markdown_fallback() -> None:
+    """The fallback contract must not contradict the live promotion path."""
+    contract = ARTIFACT_SUBMISSION_CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert "fallback promotion path removed" not in contract
+    assert "``promote_fallback_artifact``" in contract
+    assert "``is_artifact_submitted`` first checks" in contract
+    assert "if no receipt exists" in contract
+    assert "before checking for the run-scoped receipt" not in contract
+    assert "obsolete ``.agent/tmp/*.json`` files" not in contract
+    assert "receipt is **always written to ``.agent/state.db``**" not in contract
+    assert "sentinel (for single-shot types) is **always written" not in contract
+
+
+def test_verification_docs_avoid_volatile_gate_counts() -> None:
+    """Verification topology must be tied to code, not instantly stale totals."""
+    volatile_count = re.compile(
+        r"\b\d+-step\b"
+        r"|\b\d+ audit(?: steps|s)\b"
+        r"|\b\d+ policy / lifecycle / drift audits\b"
+        r"|\bstep \d+\b"
+        r"|\b\d+ non-budget-tracked verify steps\b"
+    )
+    paths = (
+        CONTRIBUTING_PATH,
+        VERIFICATION_POLICY_PATH,
+        ARCHITECTURE_POLICY_PATH,
+    )
+
+    for path in paths:
+        content = path.read_text(encoding="utf-8")
+        assert volatile_count.search(content) is None, (
+            f"{path} hard-codes a volatile verify-step or audit count; "
+            "describe the authoritative _VERIFY_STEPS topology instead"
+        )
+
+
+def test_verification_docs_describe_required_real_git_e2e_inside_make_test() -> None:
+    """The maintained topology has no separate auto-integrate verify step."""
+    verification_policy = VERIFICATION_POLICY_PATH.read_text(encoding="utf-8")
+    agents = ROOT_AGENTS_PATH.read_text(encoding="utf-8")
+
+    assert "required_auto_integrate_e2e" in verification_policy
+    assert "required_auto_integrate_e2e" in agents
+    assert "make test-auto-integrate-e2e" not in verification_policy
+    assert "make test-auto-integrate-e2e" not in agents
 
 
 def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
@@ -481,13 +539,16 @@ def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
 
 
 def test_agents_doc_explains_interactive_completion_evaluation() -> None:
-    """agents.md must explain interactive Claude completion via artifacts or declare_complete."""
+    """agents.md must document receipt-plus-sentinel completion."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
-    assert "artifact" in content, (
-        "docs/sphinx/agents.md must explain that completion is evaluated via artifact evidence"
+    assert "receipt" in content, (
+        "docs/sphinx/agents.md must explain required artifact receipt evidence"
     )
     assert "declare_complete" in content, (
-        "agents.md must explain that an explicit declare_complete MCP call signals completion"
+        "agents.md must explain that declare_complete persists the required sentinel"
+    )
+    assert "both" in content, (
+        "agents.md must make the receipt-plus-sentinel conjunction explicit"
     )
 
 

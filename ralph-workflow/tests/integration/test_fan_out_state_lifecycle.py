@@ -11,6 +11,7 @@ re-entry resumes only the unfinished units.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -64,6 +65,7 @@ def _run_fan_out(
     events: list[object],
     expect_coordinator_call: bool = True,
     checkpointed_states: list[PipelineState] | None = None,
+    on_successful_completion: Callable[[PipelineState], PipelineState] | None = None,
 ) -> PipelineState:
     coordinator_calls: list[bool] = []
 
@@ -85,6 +87,7 @@ def _run_fan_out(
         policy_bundle=_default_policy_bundle(),
         workspace_scope=WorkspaceScope(tmp_path),
         _install_signal_handlers=lambda *_args, **_kwargs: None,
+        _on_successful_completion=on_successful_completion,
     )
     assert coordinator_calls == ([True] if expect_coordinator_call else [])
     return result
@@ -147,6 +150,32 @@ def test_partial_failure_preserves_resume_state(
     assert {u.unit_id for u in result.work_units} == {"unit-a", "unit-b"}
     assert result.worker_states["unit-a"].status == WorkerStatus.SUCCEEDED
     assert result.worker_states["unit-b"].status == WorkerStatus.FAILED
+
+
+def test_failed_wave_does_not_run_successful_completion_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Analysis regression: a failed worker must not integrate shared refs."""
+    completions: list[PipelineState] = []
+
+    def _record_completion(finished_state: PipelineState) -> PipelineState:
+        completions.append(finished_state)
+        return finished_state
+
+    _run_fan_out(
+        monkeypatch,
+        tmp_path,
+        state=PipelineState(phase="development"),
+        events=[
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerCompletedEvent(unit_id="unit-a", exit_code=0),
+            WorkerFailedEvent(unit_id="unit-b", exit_code=1, error="boom"),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ],
+        on_successful_completion=_record_completion,
+    )
+
+    assert completions == []
 
 
 def test_successful_wave_checkpoints_cleared_state(

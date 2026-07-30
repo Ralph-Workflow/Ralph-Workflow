@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
-    ToolContent,
     ToolError,
 )
 from ralph.mcp.tools.workspace import (
@@ -34,7 +32,7 @@ class TestHandleReadFileNonUtf8:
             MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "binary.bin"}
         )
         assert result.is_error is True
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["status"] == "binary_or_invalid_utf8"
         assert payload["path"] == "binary.bin"
         assert payload["byte_offset"] == 0

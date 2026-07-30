@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.guidelines import stack
 
@@ -183,7 +183,7 @@ def test_stack_guidelines_merge_from_deduplicates_items_per_category() -> None:
         api_design_checks=[],
     )
 
-    merged.merge_from(cast("Any", source))
+    merged.merge_from(source)
 
     assert merged.quality_checks.count("Code follows consistent style and formatting") == 1
     assert merged.quality_checks[-1] == "New quality rule"

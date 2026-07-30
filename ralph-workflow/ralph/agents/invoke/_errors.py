@@ -11,6 +11,7 @@ from ralph.agents.invoke._interactive_permission_prompt_error import (
 )
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
+from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
 from ralph.agents.invoke._unsupported_mcp_transport_error import UnsupportedMcpTransportError
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "InteractivePermissionPromptError",
     "OpenCodeResumableExitError",
     "PiContextExhaustedExitError",
+    "PiProviderFailureExitError",
     "UnsupportedMcpTransportError",
     "_IdleStreamTimeoutError",
 ]

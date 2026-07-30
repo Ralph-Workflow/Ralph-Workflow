@@ -9,7 +9,6 @@ phase-close → completion.
 from __future__ import annotations
 
 import contextlib
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,6 +29,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -135,38 +135,54 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     monkeypatch.setenv("CI", "1")
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
-    # Write a minimal plan.json so the subscriber sees plan_present=True
+    # Write a minimal valid plan.md so the subscriber sees plan_present=True
     artifacts_dir = tmp_path / ".agent" / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    plan_data = {
-        "summary": {
-            "context": "Test plan",
-            "scope_items": [
-                {"text": "step 1"},
-                {"text": "step 2"},
-                {"text": "step 3"},
-            ],
-        },
-        "skills_mcp": {
-            "skills": [
-                "test-driven-development",
-                "verification-before-completion",
-            ],
-            "mcps": [],
-        },
-        "steps": [{"number": 1, "title": "Validate", "content": "Do the work"}],
-        "critical_files": {
-            "primary_files": [{"path": "ralph/pipeline/runner.py", "action": "modify"}],
-            "reference_files": [],
-        },
-        "risks_mitigations": [
-            {"risk": "Risk A", "mitigation": "Mitigation A"},
-        ],
-        "verification_strategy": [
-            {"method": "pytest", "expected_outcome": "passes"},
-        ],
-    }
-    (artifacts_dir / "plan.json").write_text(json.dumps(plan_data), encoding="utf-8")
+    plan_markdown = (
+        "---\n"
+        "type: plan\n"
+        "---\n"
+        "## Summary\n"
+        "Test plan\n"
+        "\n"
+        "Intent: Exercise the transcript pipeline.\n"
+        "Coverage: test\n"
+        "\n"
+        "## Scope\n"
+        "- [SC-1] step 1\n"
+        "  Category: test\n"
+        "- [SC-2] step 2\n"
+        "  Category: test\n"
+        "- [SC-3] step 3\n"
+        "  Category: test\n"
+        "\n"
+        "## Skills MCP\n"
+        "Skills: test-driven-development, verification-before-completion\n"
+        "\n"
+        "## Steps\n"
+        "\n"
+        "### [S-1] Validate\n"
+        "Do the work\n"
+        "\n"
+        "Type: verify\n"
+        "Verify: pytest -q\n"
+        "Expect: the repository test suite passes with exit code 0\n"
+        "\n"
+        "## Critical Files\n"
+        "- [CF-1] ralph/pipeline/runner.py\n"
+        "  Action: modify\n"
+        "  Changes: exercise transcript ordering\n"
+        "\n"
+        "## Risks\n"
+        "- [R-1] Risk A\n"
+        "  Severity: low\n"
+        "  Mitigation: Mitigation A\n"
+        "\n"
+        "## Verification\n"
+        "- [V-1] pytest -q\n"
+        "  Expect: passes\n"
+    )
+    (artifacts_dir / "plan.md").write_text(plan_markdown, encoding="utf-8")
 
     _invoked_phases, captured_console, _captured_displays = _install_runner_stubs(
         monkeypatch, policy_bundle, tmp_path
@@ -177,7 +193,10 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         budget_caps={"iteration": 1},
     )
 
-    exit_code = runner_module.run(_config(), initial_state=state)
+    pipeline_deps = make_test_pipeline_deps(
+        make_display_context(console=captured_console, force_width=300)
+    )
+    exit_code = runner_module.run(_config(), initial_state=state, pipeline_deps=pipeline_deps)
     assert exit_code == 0
 
     out = captured_console.export_text()
@@ -194,17 +213,37 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     )
 
     # --- Assert run-start comes before first phase ---
-    run_start_idx = out.index("MILESTONE META [run-start]")
+    # wt-028-display S-4: the chrome prefix no longer carries the
+    # MILESTONE LEVEL and META category badges; the match anchors
+    # on the [run-start] tag and the "Ralph Workflow run start"
+    # body text instead.
+    run_start_idx = out.index("Ralph Workflow run start")
     assert run_start_idx < planning_idx, "run-start should appear before the first phase transition"
 
     # --- Assert streaming content block structure ---
-    # Content is emitted during the stubbed agent runs, which may span multiple phases.
-    # We check for the overall streaming block structure rather than assuming content starts
-    # in any particular phase.
-    assert "[content-start]" in out, "Transcript should contain a content-start marker"
-    # Require proper streaming sequence: content-start → content-continue#N → content-end
-    assert "[content-continue" in out, "Transcript should contain content-continue markers"
-    assert "[content-end]" in out, "Transcript should contain a content-end marker"
+    # S-7 (wt-028-display P1): one entry per block close, with the
+    # joined passage. The close-line tag is ``[output]`` (NOT
+    # ``[content-start]`` / ``[content-end]``); there are no per-fragment
+    # ``[content-continue#N]`` markers because the streaming layer is
+    # silent during open / continue.
+    assert "[output]" in out, "Transcript should contain a [output] close line"
+    # S-2 (wt-028-display P1): close-line shape carries span + duration
+    # via the sketch-J shape ``⋯ <tag> · <start> → <end> · <duration>``
+    # followed by the joined passage. The retirement of the S-9
+    # ``fragments`` / ``chars`` footer vocabulary is part of the SAME
+    # deliberate contract change, so the transcript must NOT contain
+    # the retired tokens either.
+    assert "→" in out, "Transcript should contain span → end character on close"
+    # The pre-S-7 per-fragment / preview tokens must NOT surface.
+    for forbidden in (
+        "[content-start]",
+        "[content-end]",
+        "[content-continue#",
+        "[content-checkpoint#",
+    ):
+        assert forbidden not in out, (
+            f"Retired streaming token {forbidden!r} leaked into transcript"
+        )
 
     # --- Assert [phase-close] contains elapsed= and content_blocks= ---
     # Exclude the visual-hierarchy section rule line `─── [phase-close]`
@@ -216,8 +255,12 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         assert "content_blocks=" in pc_line, f"[phase-close] missing content_blocks=: {pc_line}"
 
     # --- Assert [run-end] appears after last [phase-close] and before completion ---
-    assert "MILESTONE META [run-end]" in out, "Transcript should contain [run-end] MILESTONE"
-    run_end_idx = out.index("MILESTONE META [run-end]")
+    # wt-028-display S-4: the chrome prefix no longer carries the
+    # MILESTONE LEVEL and META category badges; the [run-end] tag
+    # and the "Ralph Workflow run end" body text are the
+    # remaining anchors.
+    assert "Ralph Workflow run end" in out, "Transcript should contain [run-end] header"
+    run_end_idx = out.index("Ralph Workflow run end")
     last_phase_close_idx = out.rindex("[phase-close]")
     assert last_phase_close_idx < run_end_idx, "[run-end] should appear after last [phase-close]"
     # Completion summary should appear after run-end
@@ -255,7 +298,15 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
 
     # Run with Verbosity.QUIET
     quiet_config = UnifiedConfig()
-    exit_code = runner_module.run(quiet_config, initial_state=state, verbosity=Verbosity.QUIET)
+    pipeline_deps = make_test_pipeline_deps(
+        make_display_context(console=captured_console, force_width=300)
+    )
+    exit_code = runner_module.run(
+        quiet_config,
+        initial_state=state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=pipeline_deps,
+    )
     assert exit_code == 0
 
     out = captured_console.export_text()

@@ -47,7 +47,9 @@ _psutil: _PsutilMod | None
 try:
     import psutil as _psutil_imported
 
-    _psutil = cast("_PsutilMod", _psutil_imported)
+    _psutil = cast(
+        "_PsutilMod", _psutil_imported
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 except ImportError:
     _psutil = None
 
@@ -130,7 +132,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Cancel the suite watchdog when pytest finishes normally."""
     del exitstatus
-    watchdog = cast("_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None))
+    watchdog = cast(
+        "_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if watchdog is None:
         return
     watchdog.cancel_event.set()

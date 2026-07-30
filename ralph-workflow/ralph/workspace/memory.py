@@ -21,9 +21,12 @@ class MemoryWorkspace:
 
     def __init__(self, root: str = "/workspace") -> None:
         """Initialize empty in-memory workspace."""
-        self._storage: dict[str, str] = {}
+        self._storage: dict[str, str] = {}  # bounded-accumulator-ok: MemoryWorkspace test double drained by clear()
         self._dirs: set[str] = {""}  # Root is always present
         self._root = PurePosixPath(root)
+        # Optional ExploreIndex handle attached by the production
+        # session bridge; ``None`` keeps the legacy contract.
+        self.explore_index: object | None = None
 
     def _normalize(self, path: str) -> str:
         """Normalize path to POSIX-style relative path.

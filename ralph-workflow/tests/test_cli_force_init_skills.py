@@ -39,7 +39,7 @@ def test_force_init_skills_flag_invokes_reinstall(
     captured: dict[str, object] = {}
 
     def fake_reinstall(
-        self_obj: object, *, workspace_root: Path
+        _self_obj: object, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
         captured["workspace_root"] = workspace_root
         return fake_state, []
@@ -95,7 +95,7 @@ def test_force_init_skills_flag_early_exit_reached_in_standalone(
     captured: dict[str, object] = {}
 
     def fake_reinstall(
-        self_obj: object, *, workspace_root: Path
+        _self_obj: object, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
         captured["called"] = True
         return fake_state, []

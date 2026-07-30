@@ -63,9 +63,10 @@ views used by CLI diagnostics and listing commands.
 
    1. Long paths middle-truncate to absorb excess length on long paths.
    2. Long phase labels tail-truncate to absorb excess length on labels.
-   3. Iteration label form degrades canonical (``Dev 1/3`` /
-      ``Analysis 2/5``) -> compact (``D1/3`` / ``A2/5``) -> minimal
-      (``1/3`` / ``2/5``) below the canonical-fit threshold (40 cols).
+   3. Iteration label form degrades canonical (``Cycle 1/3`` /
+      ``iter 2/5``) -> compact (``C1/3`` / ``i2/5``) -> minimal
+      (``1/3`` / ``2/5``) below the canonical-fit threshold. Custom
+      outer labels (such as ``Remediation`` or ``Round``) override ``Cycle``.
    4. The phase marker is dropped below the marker-fit threshold.
    5. Per-iteration glyphs are dropped below the glyph-fit threshold.
    6. Iteration segments drop one at a time (outer_dev first, then

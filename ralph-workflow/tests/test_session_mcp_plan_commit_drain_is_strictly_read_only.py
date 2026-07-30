@@ -256,7 +256,7 @@ class TestCommitDrainIsStrictlyReadOnly:
     """Commit drains must not be able to modify git-tracked files or run processes.
 
     workspace.write_ephemeral is intentionally granted so the commit agent can
-    use the write_file fallback path (.agent/tmp/commit_message.json) when
+    use the write_file fallback path (.agent/tmp/commit_message.md) when
     artifact.submit is unavailable. Only non-tracked ephemeral files may be
     written; git.write and workspace.write_tracked remain reserved for the
     orchestrator.
@@ -312,7 +312,7 @@ enabled = true
         drain: str,
     ) -> None:
         """Commit sessions need workspace.write_ephemeral so the agent can write
-        the commit payload to .agent/tmp/commit_message.json when artifact.submit
+        the commit payload to .agent/tmp/commit_message.md when artifact.submit
         is unavailable. This is the write_file fallback promised by commit prompts.
         """
         plan = build_session_mcp_plan(

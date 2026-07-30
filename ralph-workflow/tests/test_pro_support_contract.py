@@ -30,7 +30,7 @@ import json
 import re
 import sys
 import threading
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from loguru import logger as loguru_logger
@@ -74,7 +74,6 @@ from ralph.pro_support.workspace import resolve_pro_workspace
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     import pytest
@@ -505,6 +504,7 @@ def _run_pipeline_with_heartbeat(
         recording.start()
         return recording
 
+    monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", lambda *_args, **_kwargs: (None, None))
     monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", _fake_start)
 
     pipeline = PipelinePolicy(
@@ -543,7 +543,6 @@ def _run_pipeline_with_heartbeat(
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
             )
         }
     )
@@ -843,7 +842,6 @@ def test_section_7_heartbeat_adopts_late_marker(
                 "plan": ArtifactContract(
                     drain="planning",
                     artifact_type="plan",
-                    json_path=".agent/artifacts/plan.json",
                 )
             }
         ),
@@ -929,7 +927,7 @@ def test_section_7_heartbeat_adopts_late_marker(
         return _SynchronousLateWatcher()
 
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state_in, pro_hooks=hooks
     )
     assert exit_code == 0

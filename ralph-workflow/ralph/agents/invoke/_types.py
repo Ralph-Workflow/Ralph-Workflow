@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.config.models import AgentConfig
     from ralph.process.liveness import LivenessProbe
+    from ralph.process.teardown import ProcessTeardown
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class _ProcessReaderCtx:
     policy: TimeoutPolicy
     execution_strategy: BaseExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None
+    process_teardown: ProcessTeardown | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None
     monitor: WorkspaceMonitor | None = None

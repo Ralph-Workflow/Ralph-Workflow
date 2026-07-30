@@ -1,12 +1,11 @@
-"""Invariant: pipeline success uses worker-local artifact evidence, not process exit codes."""
+"""Worker process exit failures must not be masked by artifact evidence."""
 
 from __future__ import annotations
 
 import contextlib
 import importlib
-import json
 import sys
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -82,10 +81,7 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
 
 
 def _load_coordinator() -> _CoordinatorModule:
-    return cast(
-        "_CoordinatorModule",
-        importlib.import_module("ralph.pipeline.parallel.coordinator"),
-    )
+    return importlib.import_module("ralph.pipeline.parallel.coordinator")
 
 
 def _make_unit(unit_id: str) -> WorkUnit:
@@ -99,17 +95,9 @@ def _make_unit(unit_id: str) -> WorkUnit:
 
 def _seed_artifact(artifact_dir: Path) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "plan.md").write_text(
+        "---\ntype: plan\n---\n## Summary\ndone\n",
+        encoding="utf-8",
     )
 
 
@@ -130,12 +118,10 @@ def _make_ctx(module: _CoordinatorModule, same_workspace: object) -> object:
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path: Path) -> None:
-    """Worker coordinator: exit_code != 0 but artifact present → worker succeeds.
-
-    This is the exit-code-not-trusted invariant: success comes from worker-local
-    artifact evidence, not the process exit code.
-    """
+async def test_parallel_coordinator_regression_nonzero_exit_with_artifact_fails(
+    tmp_path: Path,
+) -> None:
+    """Regression: a failed agent process cannot advance a fan-out wave."""
     module = _load_coordinator()
     unit = _make_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -160,19 +146,16 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path: Path) 
         ctx=_make_ctx(module, same_workspace),
     )
 
-    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE, (
-        "Worker with artifact should succeed regardless of exit code"
+    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
+    assert display.statuses["unit-a"][-1] is WorkerStatus.FAILED
+    assert any(
+        isinstance(event, WorkerFailedEvent) and event.unit_id == "unit-a" for event in events
     )
-    assert display.statuses["unit-a"][-1] is WorkerStatus.SUCCEEDED
 
 
 @pytest.mark.asyncio
 async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path: Path) -> None:
-    """Worker coordinator: exit_code == 0 but no artifact → worker fails.
-
-    This is the exit-code-not-trusted invariant: only worker-local artifact
-    evidence determines success, never the process exit code.
-    """
+    """Worker coordinator: exit_code == 0 but no artifact still fails."""
     module = _load_coordinator()
     unit = _make_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)

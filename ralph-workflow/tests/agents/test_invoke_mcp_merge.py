@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Literal
 from unittest.mock import patch
 
 import pytest
@@ -25,6 +25,10 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,7 +40,7 @@ pytestmark = pytest.mark.timeout_seconds(5)
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 class _FakeProcess:
@@ -268,6 +272,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
@@ -371,6 +376,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
@@ -396,9 +402,9 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
     def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
         del cmd, extras
         config_at_launch.append(
-            cast("dict[str, object]", json.loads(config_path.read_text(encoding="utf-8")))
+            must_mapping(json.loads(config_path.read_text(encoding="utf-8")))
         )
-        env_at_launch.append(cast("dict[str, str]", cast("Any", ctx).extra_env))
+        env_at_launch.append(must_str_dict(ctx.extra_env))
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(
@@ -426,9 +432,9 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
 
     assert len(config_at_launch) == 1
     launch_config = config_at_launch[0]
-    servers = cast("dict[str, object]", launch_config["mcpServers"])
+    servers = must_mapping(launch_config["mcpServers"])
     assert len(servers) == 1
-    ralph = cast("dict[str, object]", servers["ralph"])
+    ralph = must_mapping(servers["ralph"])
     assert ralph["serverUrl"] == endpoint
     assert UPSTREAM_MCP_CONFIG_ENV in env_at_launch[0]
     upstreams = load_upstream_mcp_servers(env_at_launch[0][UPSTREAM_MCP_CONFIG_ENV])
@@ -447,7 +453,7 @@ def test_agy_upstream_env_var_includes_mcp_toml_server(
 
     def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
         del cmd, extras
-        seen_env.append(cast("dict[str, str]", cast("Any", ctx).extra_env))
+        seen_env.append(must_str_dict(ctx.extra_env))
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
@@ -564,12 +570,12 @@ def test_cursor_runtime_resolver_writes_workspace_mcp_json_and_restores(
     # The Ralph entry is present in both with the documented ``url`` key.
     workspace_config = json.loads(cursor_workspace_config.read_text(encoding="utf-8"))
     home_config = json.loads(fake_cursor_home_config.read_text(encoding="utf-8"))
-    workspace_servers = cast("dict[str, object]", workspace_config["mcpServers"])
-    home_servers = cast("dict[str, object]", home_config["mcpServers"])
+    workspace_servers = must_mapping(workspace_config["mcpServers"])
+    home_servers = must_mapping(home_config["mcpServers"])
     assert "ralph" in workspace_servers
     assert "ralph" in home_servers
-    workspace_ralph = cast("dict[str, object]", workspace_servers["ralph"])
-    home_ralph = cast("dict[str, object]", home_servers["ralph"])
+    workspace_ralph = must_mapping(workspace_servers["ralph"])
+    home_ralph = must_mapping(home_servers["ralph"])
     assert workspace_ralph["url"] == endpoint
     assert home_ralph["url"] == endpoint
 
@@ -632,7 +638,7 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
     )
     try:
         merged = json.loads(cursor_workspace_config.read_text(encoding="utf-8"))
-        merged_servers = cast("dict[str, object]", merged["mcpServers"])
+        merged_servers = must_mapping(merged["mcpServers"])
         assert "ralph" in merged_servers
         assert "existing-svc" in merged_servers
     finally:
@@ -661,7 +667,7 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
     try:
         # In safe mode the existing-svc is dropped in favor of the ralph entry.
         merged = json.loads(cursor_workspace_config.read_text(encoding="utf-8"))
-        merged_servers = cast("dict[str, object]", merged["mcpServers"])
+        merged_servers = must_mapping(merged["mcpServers"])
         assert "ralph" in merged_servers
         assert "existing-svc" not in merged_servers
     finally:

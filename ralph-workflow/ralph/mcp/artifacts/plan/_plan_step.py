@@ -6,18 +6,15 @@ step into an executor-ready unit with an explicit completion contract. The
 ``file_change`` step declares at least one ``targets`` entry and every
 ``verify`` step declares either ``verify_command`` or ``location``.
 
-The step type is a ``StepType`` StrEnum (see ``_step_contract``) so the
-closed set of kinds is self-documenting and the per-step contract helpers
-(``requires_targets`` / ``requires_verify_handle``) can be consulted
-instead of pattern-matching literal strings.
+The built-in step types are documented by ``StepType`` (see
+``_step_contract``), while project-specific descriptive values remain valid.
+The per-step contract helpers apply requirements only to recognized values.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Literal
 
-from loguru import logger as _logger
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef
@@ -35,14 +32,6 @@ _ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^[A-Z]+-\d{2,}$")
 # max_evidence_per_step cap. The per-entry length is enforced inside
 # _evidence_ref.EvidenceRef.
 _MAX_EVIDENCE_ENTRIES = 500
-_MAX_EVIDENCE_ENTRY_LENGTH = 1000
-
-_STEP_TYPE_ALIASES: dict[str, str] = {
-    "test": "verify",
-    "tests": "verify",
-    "check": "verify",
-    "run": "verify",
-}
 
 
 class PlanStep(RalphBaseModel):
@@ -65,18 +54,24 @@ class PlanStep(RalphBaseModel):
         description="Short step title (non-empty, max 500 chars).",
     )
     content: str = Field(
-        ...,
-        min_length=1,
+        default="",
         max_length=20000,
-        description="Step body / detailed content (non-empty, max 20000 chars).",
+        description="Optional step body / detailed content (max 20000 chars).",
     )
-    step_type: StepType = Field(
-        default=StepType.ACTION,
-        description="StepType; see StepType literal. file_change needs targets.",
+    step_type: str = Field(
+        default=StepType.ACTION.value,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Free-form step type. Built-in file_change needs targets; built-in "
+            "verify needs a command or location."
+        ),
     )
-    priority: Literal["critical", "high", "medium", "low"] | None = Field(
+    priority: str | None = Field(
         default=None,
-        description="Optional priority; one of critical, high, medium, low.",
+        min_length=1,
+        max_length=200,
+        description="Optional free-form scheduling/importance hint.",
     )
     targets: list[StepTarget] = Field(
         default_factory=list,
@@ -111,39 +106,15 @@ class PlanStep(RalphBaseModel):
         default=None,
         max_length=2000,
         description=(
-            "Optional verify command (max 2000 chars); required for verify steps when "
-            "location is absent."
+            "Optional verify command (max 2000 chars). Commands require an "
+            "expected_outcome; verify steps may instead name a location."
         ),
     )
-
-    @field_validator("step_type", mode="before")
-    @classmethod
-    def _coerce_step_type_aliases(cls, value: object) -> object:
-        """Coerce common step_type mistakes to the likely intended value.
-
-        Cheap models sometimes use ``step_type='test'`` (or ``'tests'``,
-        ``'check'``, ``'run'``) when they really mean ``'verify'``. A
-        before-validator lowercases the trimmed string, looks it up in
-        the closed allowlist ``_STEP_TYPE_ALIASES``, and returns the
-        mapped value with a WARNING log. Unknown values fall through
-        so the closed StrEnum rejects them with a clear error.
-
-        The before-validator is a pure function: raw in, coerced out.
-        No ClassVar, no module-level mutable state, no thread-local —
-        the observable ``step_type`` value is the contract.
-        """
-        if not isinstance(value, str):
-            return value
-        lowered = value.strip().lower()
-        coerced = _STEP_TYPE_ALIASES.get(lowered)
-        if coerced is None:
-            return value
-        _logger.warning(
-            "plan step_type coerced from {!r} to {!r} (likely intended value)",
-            value,
-            coerced,
-        )
-        return coerced
+    expected_outcome: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Observable result expected from verify_command (max 8000 chars).",
+    )
 
     @field_validator("satisfies")
     @classmethod
@@ -168,13 +139,11 @@ class PlanStep(RalphBaseModel):
     def _validate_expected_evidence(cls, value: object) -> list[EvidenceRef]:
         """Validate and dedupe ``expected_evidence`` entries.
 
-        Each entry is converted to ``EvidenceRef`` (the model-level
-        before-validator handles bare strings). Dedup is case-insensitive
-        on ``(kind, ref.lower())`` with last-wins so a later
-        ``EvidenceRef`` overrides an earlier one with the same key.
-        The ``_MAX_EVIDENCE_ENTRIES=500`` cap and the per-entry
-        ``max_length=1000`` (enforced by ``EvidenceRef``) together bound
-        the size of the evidence list.
+        Each structured entry is converted to ``EvidenceRef``. Dedup is
+        case-insensitive on ``(kind, ref.lower())`` with last-wins so a
+        later ``EvidenceRef`` overrides an earlier one with the same key.
+        The ``_MAX_EVIDENCE_ENTRIES=500`` cap and ``EvidenceRef.ref`` field
+        limit together bound the size of the evidence list.
         """
         if value is None:
             return []
@@ -184,8 +153,6 @@ class PlanStep(RalphBaseModel):
         cleaned: list[EvidenceRef] = []
         position_by_key: dict[tuple[str, str], int] = {}
         for entry in value:
-            if isinstance(entry, str) and not entry.strip():
-                continue
             ref = entry if isinstance(entry, EvidenceRef) else EvidenceRef.model_validate(entry)
             key = (str(ref.kind), ref.ref.lower())
             if key in position_by_key:
@@ -196,7 +163,6 @@ class PlanStep(RalphBaseModel):
         if len(cleaned) > _MAX_EVIDENCE_ENTRIES:
             msg = f"expected_evidence has more than {_MAX_EVIDENCE_ENTRIES} entries"
             raise ValueError(msg)
-        _ = _MAX_EVIDENCE_ENTRY_LENGTH  # per-entry cap enforced inside EvidenceRef
         return cleaned
 
     @field_validator("verify_command")
@@ -207,6 +173,17 @@ class PlanStep(RalphBaseModel):
         stripped = value.strip()
         if not stripped:
             msg = "verify_command must not be empty when provided"
+            raise ValueError(msg)
+        return stripped
+
+    @field_validator("expected_outcome")
+    @classmethod
+    def _validate_expected_outcome(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            msg = "expected_outcome must not be empty when provided"
             raise ValueError(msg)
         return stripped
 
@@ -221,6 +198,9 @@ class PlanStep(RalphBaseModel):
             and self.location is None
         ):
             msg = "verify step must declare verify_command or location"
+            raise ValueError(msg)
+        if self.verify_command is not None and self.expected_outcome is None:
+            msg = "verify_command must declare expected_outcome"
             raise ValueError(msg)
         return self
 

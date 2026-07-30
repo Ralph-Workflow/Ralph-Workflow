@@ -1,7 +1,7 @@
 """Consolidated acceptance-criteria test for the Trustworthy Idle Watchdog spec.
 
 This module is the consolidated acceptance-criteria summary for the
-wt-021 product spec (see ``.agent/CURRENT_PROMPT.md``). Every R1-R8
+wt-021 product spec (see ``.agent/PRODUCT_CRITERIA.md``). Every R1-R8
 criterion is exercised in ONE ordinary test method (``test_r1`` through
 ``test_r8``). The methods are NOT parametrized -- they mirror the
 plain-method precedent in ``tests/agents/test_builtin_spec_consolidation.py``
@@ -47,7 +47,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import loguru
 import pytest
@@ -60,7 +60,6 @@ from ralph.agents.idle_watchdog import (
     SubagentPidRegistry,
     TimeoutPolicy,
     WaitingStatusEvent,
-    WaitingStatusListener,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -305,7 +304,7 @@ class TestTrustworthyIdleWatchdogSpec:
         with pytest.raises(ValueError, match="unknown subagent source"):
             SubagentIdentity(
                 pid=1234,
-                source=cast("SubagentIdentity.__init__", bad_source),
+                source=bad_source,
                 registered_at_monotonic=0.0,
             )
 
@@ -627,7 +626,7 @@ class TestTrustworthyIdleWatchdogSpec:
         )
         watchdog.record_invocation_start()
         watchdog.register_default_subagent_activity_listener(
-            cast("WaitingStatusListener", _capture)
+            _capture
         )
         # Baseline: all three R5 fields are None at invocation start
         # (per-invocation reset semantics).
@@ -771,11 +770,18 @@ class TestTrustworthyIdleWatchdogSpec:
                 clock=clock,
             )
 
-            # (b) Force ``_classify_stuck_now`` to cycle SILENT_SUBAGENT
+            # (b) Force ``_classify_stuck_now`` to cycle DUPLICATE_KILL
             # <-> LOADING on every call so the per-tuple throttle key
             # changes every tick. The COARSE throttle (the headline
             # R6 fix) caps emissions regardless.
-            cycle = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
+            #
+            # R6 is about LOG THROTTLING, not fire/defer policy: it needs
+            # any two kinds the gate DEFERS on. It used to cycle
+            # SILENT_SUBAGENT, which the gate now FIRES on (a silent
+            # subagent with no live child is a dead agent -- see
+            # ``test_silent_subagent_fires.py``). DUPLICATE_KILL still
+            # defers, so the throttle proof is unchanged.
+            cycle = [StuckKind.DUPLICATE_KILL, StuckKind.LOADING]
             call_log: list[StuckKind] = []
 
             def _stuck_now(
@@ -784,7 +790,7 @@ class TestTrustworthyIdleWatchdogSpec:
                 idle_elapsed: float,
                 corroboration: CorroborationSnapshot | None = None,
             ) -> StuckKind:
-                kind = call_log[0] if call_log else StuckKind.SILENT_SUBAGENT
+                kind = call_log[0] if call_log else StuckKind.DUPLICATE_KILL
                 return kind
 
             # ``setattr`` with attribute name in a local variable

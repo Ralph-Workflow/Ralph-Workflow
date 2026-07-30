@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -21,6 +21,11 @@ class AcceptanceCriterion(RalphBaseModel):
         default=None,
         max_length=2000,
         description="Optional verification step (max 2000 chars; medium tier).",
+    )
+    expected_outcome: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Observable result expected from verification_step.",
     )
     evidence_path: str | None = Field(
         default=None,
@@ -75,6 +80,13 @@ class AcceptanceCriterion(RalphBaseModel):
             seen.add(entry)
             cleaned.append(entry)
         return cleaned
+
+    @model_validator(mode="after")
+    def _require_expected_outcome_for_command(self) -> AcceptanceCriterion:
+        if self.verification_step is not None and self.expected_outcome is None:
+            msg = "verification_step must declare expected_outcome"
+            raise ValueError(msg)
+        return self
 
 
 class AcceptanceCriteria(RalphBaseModel):

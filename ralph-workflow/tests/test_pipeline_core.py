@@ -13,8 +13,8 @@ from ralph.display.context import make_display_context
 from ralph.pipeline.factory import (
     PipelineCore,
     PipelineDeps,
+    _materialize_master_prompt,
     _materialize_prompt_for_phase,
-    _materialize_system_prompt,
     _resolve_phase_required_artifact,
     build_default_pipeline_deps,
     build_minimal_pipeline_core,
@@ -33,21 +33,21 @@ def test_pipeline_core_constructed_with_all_collaborators() -> None:
     """``PipelineCore`` can be constructed with all four PROMPT collaborators."""
     display_context = _fake_display_context()
     model_identity = MagicMock()
-    system_prompt_materializer = MagicMock()
+    master_prompt_materializer = MagicMock()
     phase_prompt_materializer = MagicMock()
     artifact_requirements_resolver = MagicMock()
 
     core = PipelineCore(
         display_context=display_context,
         model_identity=model_identity,
-        system_prompt_materializer=system_prompt_materializer,
+        master_prompt_materializer=master_prompt_materializer,
         phase_prompt_materializer=phase_prompt_materializer,
         artifact_requirements_resolver=artifact_requirements_resolver,
     )
 
     assert core.display_context is display_context
     assert core.model_identity is model_identity
-    assert core.system_prompt_materializer is system_prompt_materializer
+    assert core.master_prompt_materializer is master_prompt_materializer
     assert core.phase_prompt_materializer is phase_prompt_materializer
     assert core.artifact_requirements_resolver is artifact_requirements_resolver
 
@@ -71,7 +71,7 @@ def test_build_minimal_pipeline_core_wires_production_defaults() -> None:
     assert isinstance(core, PipelineCore)
     assert core.display_context is display_context
     assert core.model_identity is None
-    assert core.system_prompt_materializer is _materialize_system_prompt
+    assert core.master_prompt_materializer is _materialize_master_prompt
     assert core.phase_prompt_materializer is _materialize_prompt_for_phase
     assert core.artifact_requirements_resolver is _resolve_phase_required_artifact
 
@@ -104,14 +104,14 @@ def test_apply_pro_hooks_to_core_propagates_collaborators() -> None:
     core = PipelineCore(display_context=_fake_display_context())
     new_display_context = _fake_display_context()
     new_model_identity = MagicMock()
-    new_system_prompt_materializer = MagicMock()
+    new_master_prompt_materializer = MagicMock()
     new_phase_prompt_materializer = MagicMock()
     new_artifact_requirements_resolver = MagicMock()
 
     pro_hooks = ProPipelineHooks(
         display_context=new_display_context,
         model_identity=new_model_identity,
-        system_prompt_materializer=new_system_prompt_materializer,
+        master_prompt_materializer=new_master_prompt_materializer,
         phase_prompt_materializer=new_phase_prompt_materializer,
         artifact_requirements_resolver=new_artifact_requirements_resolver,
     )
@@ -121,7 +121,7 @@ def test_apply_pro_hooks_to_core_propagates_collaborators() -> None:
     assert overridden is not core
     assert overridden.display_context is new_display_context
     assert overridden.model_identity is new_model_identity
-    assert overridden.system_prompt_materializer is new_system_prompt_materializer
+    assert overridden.master_prompt_materializer is new_master_prompt_materializer
     assert overridden.phase_prompt_materializer is new_phase_prompt_materializer
     assert overridden.artifact_requirements_resolver is new_artifact_requirements_resolver
 
@@ -163,6 +163,6 @@ def test_pipeline_deps_backward_compat_properties_read_from_core() -> None:
 
     assert deps.display_context is display_context
     assert deps.model_identity is model_identity
-    assert deps.system_prompt_materializer is deps.core.system_prompt_materializer
+    assert deps.master_prompt_materializer is deps.core.master_prompt_materializer
     assert deps.phase_prompt_materializer is deps.core.phase_prompt_materializer
     assert deps.artifact_requirements_resolver is deps.core.artifact_requirements_resolver

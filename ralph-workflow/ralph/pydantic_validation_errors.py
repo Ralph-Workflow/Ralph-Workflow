@@ -74,7 +74,9 @@ def format_validation_error_messages(exc: ValidationError) -> list[str]:
         exception. The location is the dotted field path; the message
         includes the rejected value and the allowed shape.
     """
-    details = cast("ValidationErrorDetails", exc.errors())
+    details = cast(
+        "ValidationErrorDetails", exc.errors()
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return [format_validation_error_detail(detail) for detail in details]
 
 

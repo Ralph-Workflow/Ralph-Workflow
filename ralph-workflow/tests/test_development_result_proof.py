@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -10,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import ExecutionResultEvent, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -20,12 +19,6 @@ from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
-
-
-_FUZZY_ANALYSIS_HOW_TO_FIX = (
-    "Edit `ralph-workflow/Makefile` to remove the contradictory "
-    "`'(part of verify)'` claim from the doc"
-)
 
 
 @lru_cache(maxsize=1)
@@ -56,111 +49,253 @@ def _invoke() -> InvokeAgentEffect:
 
 def _write_plan_steps(workspace: MemoryWorkspace) -> None:
     workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Test context",
-                        "scope_items": [
-                            {"text": "Scope item one"},
-                            {"text": "Scope item two"},
-                            {"text": "Scope item three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [
-                        {"number": 1, "title": "Add validation", "content": "Do the work"},
-                    ],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/main.py", "action": "modify"}],
-                    },
-                    "risks_mitigations": [{"risk": "Test risk", "mitigation": "Test mitigation"}],
-                    "verification_strategy": [
-                        {"method": "Run tests", "expected_outcome": "Tests pass"},
-                    ],
-                },
-            }
-        ),
-    )
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+schema_version: 1
+---
+## Summary
+Test context.
 
+Intent: Add validation.
+Coverage: feature
 
-def _write_plan_work_units(workspace: MemoryWorkspace) -> None:
-    workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "work_units": [
-                    {
-                        "unit_id": "u1",
-                        "description": "Implement feature",
-                        "allowed_directories": ["src"],
-                    },
-                    {
-                        "unit_id": "u2",
-                        "description": "Add tests",
-                        "allowed_directories": ["tests"],
-                    },
-                ]
-            }
-        ),
+## Scope
+- [SC-1] Add validation
+  Category: feature
+- [SC-2] Preserve proof validation
+  Category: test
+- [SC-3] Verify the result
+  Category: test
+
+## Skills MCP
+Skills: test-driven-development, verification-before-completion
+
+## Steps
+
+### [S-1] Add validation
+Do the work.
+
+Type: file_change
+Files:
+- modify src/main.py
+
+## Critical Files
+- [CF-1] src/main.py
+  Action: modify
+  Changes: add validation
+
+## Risks
+- [R-1] Validation regresses
+  Severity: medium
+  Mitigation: Run the focused test.
+
+## Verification
+- [V-1] pytest -q
+  Expect: tests pass
+""",
     )
 
 
 def _write_analysis_feedback(workspace: MemoryWorkspace) -> None:
     workspace.write(
-        ".agent/artifacts/development_analysis_decision.json",
-        json.dumps(
-            {
-                "status": "request_changes",
-                "summary": "Issues found",
-                "what_came_up_short": ["Missing test"],
-                "how_to_fix": ["Add test for edge case"],
-            }
-        ),
+        ".agent/artifacts/development_analysis_decision.md",
+        """---
+type: development_analysis_decision
+status: request_changes
+---
+## Summary
+- [SUM-1] Issues found.
+
+## What Came Up Short
+- [FIX-1] Missing test.
+
+## How To Fix
+- [FIX-1] Add test for edge case.
+""",
     )
 
 
 def _write_noop_plan(workspace: MemoryWorkspace) -> None:
     workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps({"type": "plan", "content": {"steps": [], "work_units": []}}),
+        ".agent/artifacts/plan.md",
+        "---\ntype: plan\nnoop: true\n---\n",
+    )
+
+
+def _write_nested_work_unit_plan(workspace: MemoryWorkspace) -> None:
+    sections = []
+    for number, name in enumerate(("api", "web", "docs", "contract", "integration"), start=1):
+        sections.append(
+            f"""## Work Units
+- [{name}] Implement the {name} unit
+  Directories: src/{name}
+
+### [S-{number}] Implement {name}
+Change the {name} component.
+
+Type: action
+"""
+        )
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        "---\ntype: plan\n---\n" + "\n".join(sections),
+    )
+
+
+def _write_work_units_with_main_fan_in(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+## Work Units
+- [api] Implement the API unit
+  Directories: src/api
+
+### [S-1] Implement API
+Change the API component.
+
+Type: action
+
+## Work Units
+- [web] Implement the web unit
+  Directories: src/web
+
+### [S-2] Implement web
+Change the web component.
+
+Type: action
+
+## Integration and Verification
+
+### [S-3] Integrate and verify
+Integrate both unit results in the main session.
+
+Type: action
+Depends on: S-1, S-2
+""",
+    )
+
+
+def _write_work_unit_with_nested_criterion(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+## Work Units
+- [api] Implement and prove the API unit
+  Directories: src/api
+
+### [S-1] Implement API
+Change the API component.
+
+Type: action
+
+- [AC-01] The API report proves completion
+  Satisfied by: S-1
+  Evidence: reports/api-proof.json
+""",
+    )
+
+
+def _write_subplan_plan(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+
+## API Subplan
+
+### [S-1] Add the API
+Implement the API.
+
+Type: file_change
+Files:
+- modify src/api/main.py
+
+### [S-2] Test the API
+Cover the API behavior.
+
+Type: file_change
+Files:
+- modify src/api/test_main.py
+
+## UI Subplan
+
+### [S-3] Add the UI
+Implement the UI.
+
+Type: file_change
+Files:
+- modify src/ui/main.py
+""",
     )
 
 
 def _write_dev_result(
-    workspace: MemoryWorkspace, *, plan_items: object = None, analysis_items: object = None
+    workspace: MemoryWorkspace,
+    *,
+    plan_items: object = None,
+    analysis_items: object = None,
+    artifact_path: str = ".agent/artifacts/development_result.md",
 ) -> None:
-    workspace.write(
-        ".agent/artifacts/development_result.json",
-        json.dumps(
-            {
-                "type": "development_result",
-                "content": {
-                    "status": "completed",
-                    "summary": "Done.",
-                    "files_changed": "- src/main.py",
-                    "plan_items_proven": plan_items or [],
-                    "analysis_items_addressed": analysis_items or [],
-                },
-            }
-        ),
+    plan_entries = "\n".join(
+        f"- [{item['plan_item']}] {item['proof']}" for item in (plan_items or [])
     )
+    analysis_entries = "\n".join(
+        f"- [{item['how_to_fix_item']}] {item['proof']}" for item in (analysis_items or [])
+    )
+    workspace.write(
+        artifact_path,
+        f"""---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Done.
+
+## Files Changed
+- [F-1] src/main.py
+
+## Plan Items Proven
+{plan_entries}
+
+## Analysis Items Addressed
+{analysis_entries}
+""",
+    )
+
+
+def test_partial_development_result_skips_proof_validation() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    _write_analysis_feedback(workspace)
+    workspace.write(
+        ".agent/artifacts/development_result.md",
+        """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Ran out of budget mid-refactor; nothing below follows the completed grammar.
+""",
+    )
+    ctx = _make_context(workspace)
+
+    events = handle_execution_phase(_invoke(), ctx)
+
+    assert events == [ExecutionResultEvent(phase="development", status="partial")]
 
 
 def test_schema_invalid_development_result_returns_phase_failure() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     workspace.write(
-        ".agent/artifacts/development_result.json",
-        json.dumps({"type": "development_result", "content": {"status": "completed"}}),
+        ".agent/artifacts/development_result.md",
+        "---\ntype: development_result\nstatus: completed\n---\n",
     )
     ctx = _make_context(workspace)
 
@@ -192,7 +327,7 @@ def test_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> None:
 
     events = handle_execution_phase(_invoke(), ctx)
 
-    assert events == [PipelineEvent.AGENT_SUCCESS]
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
 def test_steps_plan_fails_when_no_proof_is_submitted() -> None:
@@ -244,8 +379,8 @@ def test_steps_plan_rejects_duplicate_plan_item_entries() -> None:
     _write_dev_result(
         workspace,
         plan_items=[
-            {"plan_item": "Step 1: Add validation", "proof": "Evidence 1"},
-            {"plan_item": "Step 1: Add validation", "proof": "Evidence 2"},
+            {"plan_item": "S-1", "proof": "Evidence 1"},
+            {"plan_item": "S-1", "proof": "Evidence 2"},
         ],
     )
     ctx = _make_context(workspace)
@@ -254,7 +389,7 @@ def test_steps_plan_rejects_duplicate_plan_item_entries() -> None:
 
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
-    assert "Duplicate" in failure_events[0].reason
+    assert "duplicate" in failure_events[0].reason.lower()
 
 
 def test_steps_plan_rejects_wrong_step_title_even_when_counts_match() -> None:
@@ -262,7 +397,7 @@ def test_steps_plan_rejects_wrong_step_title_even_when_counts_match() -> None:
     _write_plan_steps(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "Step 1: Wrong title", "proof": "Implemented."}],
+        plan_items=[{"plan_item": "S-99", "proof": "Implemented."}],
     )
     ctx = _make_context(workspace)
 
@@ -274,47 +409,254 @@ def test_steps_plan_rejects_wrong_step_title_even_when_counts_match() -> None:
     assert "Unknown plan_item reference" in failure_events[0].reason
 
 
-def test_work_units_plan_fails_when_no_proof_is_submitted() -> None:
+def test_main_work_unit_result_rejects_one_of_five_unit_proofs() -> None:
     workspace = MemoryWorkspace()
-    _write_plan_work_units(workspace)
-    _write_dev_result(workspace)
-    ctx = _make_context(workspace)
-
-    events = handle_execution_phase(_invoke(), ctx)
-
-    failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
-    assert failure_events
-    assert "at least one work unit" in failure_events[0].reason
-
-
-def test_work_units_plan_accepts_assigned_unit_id() -> None:
-    workspace = MemoryWorkspace()
-    _write_plan_work_units(workspace)
+    _write_nested_work_unit_plan(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "u1", "proof": "Implemented."}],
+        plan_items=[{"plan_item": "api", "proof": "Completed api."}],
     )
-    ctx = _make_context(workspace)
 
-    events = handle_execution_phase(_invoke(), ctx)
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
 
-    assert events == [PipelineEvent.AGENT_SUCCESS]
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "contract" in failure_event.reason
+    assert "integration" in failure_event.reason
+    assert "web" in failure_event.reason
 
 
-def test_work_units_plan_rejects_unknown_unit_id() -> None:
+def test_main_work_unit_result_accepts_all_five_unit_proofs() -> None:
     workspace = MemoryWorkspace()
-    _write_plan_work_units(workspace)
+    _write_nested_work_unit_plan(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "unknown", "proof": "Implemented."}],
+        plan_items=[
+            {"plan_item": unit_id, "proof": f"Completed {unit_id}."}
+            for unit_id in ("api", "web", "docs", "contract", "integration")
+        ],
     )
-    ctx = _make_context(workspace)
 
-    events = handle_execution_phase(_invoke(), ctx)
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
 
-    failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
-    assert failure_events
-    assert "Unknown plan_item reference" in failure_events[0].reason
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_nested_criterion_does_not_create_a_global_step_proof_obligation() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_unit_with_nested_criterion(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "api", "proof": "Implemented and proved the API."}],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_main_work_unit_result_requires_unowned_fan_in_step_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_units_with_main_fan_in(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed API work."},
+            {"plan_item": "web", "proof": "Completed web work."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-3" in failure_event.reason
+
+
+def test_main_work_unit_result_accepts_units_plus_unowned_fan_in_steps() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_units_with_main_fan_in(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed API work."},
+            {"plan_item": "web", "proof": "Completed web work."},
+            {"plan_item": "S-3", "proof": "Integrated both units and ran the final checks."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_accepts_exactly_its_assigned_unit_proof() -> None:
+    """Each worker proves one assigned unit while the main result proves all units."""
+    for unit_id in ("api", "web", "docs", "contract", "integration"):
+        workspace = MemoryWorkspace()
+        _write_nested_work_unit_plan(workspace)
+        worker_artifact_path = (
+            f".agent/workers/{unit_id}/artifacts/development_result.md"
+        )
+        _write_dev_result(
+            workspace,
+            plan_items=[{"plan_item": unit_id, "proof": f"Completed {unit_id}."}],
+            artifact_path=worker_artifact_path,
+        )
+
+        events = handle_execution_phase(
+            _invoke(),
+            _make_context(workspace),
+            output_artifact_path=worker_artifact_path,
+            assigned_work_unit_id=unit_id,
+        )
+
+        assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_assignment_is_authoritative_for_linear_plan_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    worker_artifact_path = (
+        ".agent/workers/runtime-unit/artifacts/development_result.md"
+    )
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "runtime-unit",
+                "proof": "Completed the runtime-assigned unit.",
+            }
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="runtime-unit",
+    )
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_rejects_an_extra_unit_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    worker_artifact_path = ".agent/workers/api/artifacts/development_result.md"
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed api."},
+            {"plan_item": "web", "proof": "Also changed web."},
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="api",
+    )
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "exactly one proof" in failure_event.reason
+    assert "web" in failure_event.reason
+    assert workspace.exists(
+        ".agent/workers/api/tmp/last_retry_error_development.txt"
+    )
+    assert not workspace.exists(".agent/tmp/last_retry_error_development.txt")
+
+
+def test_work_unit_plan_preserves_complete_global_step_proof_for_serial_execution() -> None:
+    """Preservation pin: accepted mixed plans may still prove all global step IDs."""
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": f"S-{number}", "proof": f"Completed step {number}."}
+            for number in range(1, 6)
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_subplan_main_result_requires_every_step_not_only_synthetic_unit_ids() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "S-1", "proof": "Completed API subplan."},
+            {"plan_item": "S-3", "proof": "Completed UI subplan."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-2" in failure_event.reason
+
+
+def test_subplan_main_result_rejects_complete_synthetic_worker_unit_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "subplan-s-1",
+                "proof": "Completed the API subplan.",
+            },
+            {
+                "plan_item": "subplan-s-3",
+                "proof": "Completed the UI subplan.",
+            },
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-1" in failure_event.reason
+    assert "S-2" in failure_event.reason
+    assert "S-3" in failure_event.reason
+    assert "subplan-s-1" in failure_event.reason
+
+
+def test_subplan_isolated_worker_uses_synthetic_unit_id_not_every_owned_step() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    worker_artifact_path = (
+        ".agent/workers/subplan-s-1/artifacts/development_result.md"
+    )
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "subplan-s-1",
+                "proof": "Completed the API subplan.",
+            }
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="subplan-s-1",
+    )
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
 def test_noop_plan_skips_proof_validation() -> None:
@@ -327,13 +669,13 @@ def test_noop_plan_skips_proof_validation() -> None:
     assert events == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_analysis_feedback_requires_exact_how_to_fix_text() -> None:
+def test_analysis_feedback_requires_stable_how_to_fix_id() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
     _write_analysis_feedback(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
+        plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
     )
     ctx = _make_context(workspace)
 
@@ -341,7 +683,7 @@ def test_analysis_feedback_requires_exact_how_to_fix_text() -> None:
 
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
-    assert "how_to_fix item" in failure_events[0].reason
+    assert "analysis item ID" in failure_events[0].reason
 
 
 def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
@@ -350,10 +692,10 @@ def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
     _write_analysis_feedback(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
+        plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
         analysis_items=[
-            {"how_to_fix_item": "Add test for edge case", "proof": "Added test 1."},
-            {"how_to_fix_item": "Add test for edge case", "proof": "Added test 2."},
+            {"how_to_fix_item": "FIX-1", "proof": "Added test 1."},
+            {"how_to_fix_item": "FIX-1", "proof": "Added test 2."},
         ],
     )
     ctx = _make_context(workspace)
@@ -362,7 +704,7 @@ def test_analysis_feedback_rejects_duplicate_how_to_fix_entries() -> None:
 
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
-    assert "Duplicate" in failure_events[0].reason
+    assert "duplicate" in failure_events[0].reason.lower()
 
 
 def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> None:
@@ -371,8 +713,8 @@ def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> N
     _write_analysis_feedback(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
-        analysis_items=[{"how_to_fix_item": "Different text entirely", "proof": "Evidence"}],
+        plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
+        analysis_items=[{"how_to_fix_item": "FIX-99", "proof": "Evidence"}],
     )
     ctx = _make_context(workspace)
 
@@ -381,7 +723,7 @@ def test_analysis_feedback_rejects_wrong_item_text_even_when_counts_match() -> N
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
     assert "PROOF INVALID" in failure_events[0].reason
-    assert "Unknown how_to_fix_item reference" in failure_events[0].reason
+    assert "Unknown how_to_fix_item ID" in failure_events[0].reason
 
 
 def test_analysis_feedback_passes_with_exact_text() -> None:
@@ -390,81 +732,13 @@ def test_analysis_feedback_passes_with_exact_text() -> None:
     _write_analysis_feedback(workspace)
     _write_dev_result(
         workspace,
-        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
+        plan_items=[{"plan_item": "S-1", "proof": "Implemented."}],
         analysis_items=[
-            {"how_to_fix_item": "Add test for edge case", "proof": "Added test."},
+            {"how_to_fix_item": "FIX-1", "proof": "Added test."},
         ],
     )
     ctx = _make_context(workspace)
 
     events = handle_execution_phase(_invoke(), ctx)
 
-    assert events == [PipelineEvent.AGENT_SUCCESS]
-
-
-def test_analysis_feedback_passes_with_case_and_punctuation_variation() -> None:
-    workspace = MemoryWorkspace()
-    _write_plan_steps(workspace)
-    _write_analysis_feedback(workspace)
-    _write_dev_result(
-        workspace,
-        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
-        analysis_items=[
-            {
-                "how_to_fix_item": (
-                    "edit makefile to remove the contradictory part of verify claim from the doc"
-                ),
-                "proof": "Updated the document wording.",
-            },
-        ],
-    )
-    workspace.write(
-        ".agent/artifacts/development_analysis_decision.json",
-        json.dumps(
-            {
-                "status": "request_changes",
-                "summary": "Issues found",
-                "what_came_up_short": ["Doc wording was contradictory"],
-                "how_to_fix": [_FUZZY_ANALYSIS_HOW_TO_FIX],
-            }
-        ),
-    )
-    ctx = _make_context(workspace)
-
-    events = handle_execution_phase(_invoke(), ctx)
-
-    assert events == [PipelineEvent.AGENT_SUCCESS]
-
-
-def test_analysis_feedback_passes_with_minor_spelling_variation() -> None:
-    workspace = MemoryWorkspace()
-    _write_plan_steps(workspace)
-    workspace.write(
-        ".agent/artifacts/development_analysis_decision.json",
-        json.dumps(
-            {
-                "status": "request_changes",
-                "summary": "Issues found",
-                "what_came_up_short": ["Doc wording was contradictory"],
-                "how_to_fix": [_FUZZY_ANALYSIS_HOW_TO_FIX],
-            }
-        ),
-    )
-    _write_dev_result(
-        workspace,
-        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
-        analysis_items=[
-            {
-                "how_to_fix_item": (
-                    "Edit ralph workflow Makefile to remove the contradictry part of "
-                    "verify claim from the doc"
-                ),
-                "proof": "Updated the document wording.",
-            },
-        ],
-    )
-    ctx = _make_context(workspace)
-
-    events = handle_execution_phase(_invoke(), ctx)
-
-    assert events == [PipelineEvent.AGENT_SUCCESS]
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]

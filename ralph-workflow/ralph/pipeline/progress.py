@@ -229,6 +229,11 @@ def apply_commit_outcome(
     return advanced_state
 
 
+def consume_post_commit_phase_override(state: PipelineState) -> PipelineState:
+    """Clear a transient post-commit route after its target has been resolved."""
+    return state.copy_with(post_commit_phase_override=None)
+
+
 def _apply_lifecycle_completion_policy(
     state: PipelineState,
     advanced_state: PipelineState,

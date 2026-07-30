@@ -22,6 +22,22 @@ from ralph.mcp.transport.pi import write_pi_mcp_extension
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
+def test_generated_pi_extension_bounds_startup_tool_discovery(tmp_path: Path) -> None:
+    extension_path, cleanup = write_pi_mcp_extension(
+        "http://localhost:9999/mcp",
+        workspace_path=tmp_path,
+    )
+    assert cleanup is None
+
+    source = extension_path.read_text(encoding="utf-8")
+
+    assert "const MCP_STARTUP_TIMEOUT_MS" in source
+    assert "new AbortController()" in source
+    assert "listTools(controller.signal)" in source
+    assert "clearTimeout(timeoutId)" in source
+    assert "const tools = await listTools();" not in source
+
+
 def test_generated_pi_extension_resolves_matching_sse_frame_without_eof(tmp_path: Path) -> None:
     bun = shutil.which("bun")
     assert bun is not None, "bun is required to execute the generated TypeScript extension"
@@ -37,7 +53,7 @@ def test_generated_pi_extension_resolves_matching_sse_frame_without_eof(tmp_path
         f"""
 import extensionFactory from {json.dumps(extension_path.as_posix())};
 
-let registeredTool: {{ execute: Function }} | undefined;
+const registeredTools = new Map<string, {{ execute: Function }}>();
 let cancelCount = 0;
 let toolsCallCount = 0;
 
@@ -98,33 +114,68 @@ globalThis.fetch = (async (_url: string, init?: RequestInit): Promise<Response> 
       jsonrpc: "2.0",
       id: body.id,
       result: {{
-        tools: [{{
-          name: "exec",
-          description: "Execute",
-          inputSchema: {{ type: "object", additionalProperties: true }},
-        }}],
+        tools: [
+          {{ name: "exec", description: "Execute", inputSchema: {{ type: "object" }} }},
+          {{ name: "declare_complete", description: "Complete", inputSchema: {{ type: "object" }} }},
+          {{ name: "ralph_submit_md_artifact", description: "Submit", inputSchema: {{ type: "object" }} }},
+          {{ name: "ralph_finalize_md_artifact", description: "Finalize", inputSchema: {{ type: "object" }} }},
+        ],
       }},
     }});
   }}
   if (body.method === "tools/call") {{
     toolsCallCount += 1;
-    if (body.id !== 3) throw new Error(`expected tools/call id 3, got ${{body.id}}`);
-    return openSseResponse();
+    if (body.id === 3 && body.params.name === "exec") return openSseResponse();
+    if (body.id === 4 && body.params.name === "declare_complete") {{
+      return jsonResponse({{
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {{ content: [{{ type: "text", text: "complete" }}], isError: false }},
+      }});
+    }}
+    if (body.id === 5 && body.params.name === "ralph_submit_md_artifact") {{
+      return jsonResponse({{
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {{ content: [{{ type: "text", text: "submitted" }}], isError: false }},
+      }});
+    }}
+    if (body.id === 6 && body.params.name === "ralph_finalize_md_artifact") {{
+      return jsonResponse({{
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {{ content: [{{ type: "text", text: "finalized" }}], isError: false }},
+      }});
+    }}
+    throw new Error(`unexpected tools/call ${{body.id}} ${{body.params.name}}`);
   }}
   throw new Error(`unexpected method ${{body.method}}`);
 }}) as typeof fetch;
 
 await extensionFactory({{
-  registerTool(tool: {{ execute: Function }}) {{
-    registeredTool = tool;
+  registerTool(tool: {{ name: string; execute: Function }}) {{
+    registeredTools.set(tool.name, tool);
   }},
 }} as any);
 
-if (!registeredTool) throw new Error("extension did not register tool");
-const result = await registeredTool.execute("call-1", {{ command: "printf ok" }}, undefined);
-const text = result.content?.[0]?.text;
-if (text !== "ok") throw new Error(`unexpected tool text: ${{text}}`);
-if (toolsCallCount !== 1) throw new Error(`tools/call count: ${{toolsCallCount}}`);
+const execTool = registeredTools.get("exec");
+const completeTool = registeredTools.get("declare_complete");
+const submitTool = registeredTools.get("ralph_submit_md_artifact");
+const finalizeTool = registeredTools.get("ralph_finalize_md_artifact");
+if (!execTool || !completeTool || !submitTool || !finalizeTool) {{
+  throw new Error("extension did not register tools");
+}}
+const result = await execTool.execute("call-1", {{ command: "printf ok" }}, undefined);
+if (result.content?.[0]?.text !== "ok") throw new Error("unexpected exec result");
+if (result.terminate !== false) throw new Error("ordinary tool terminated the main agent");
+const completion = await completeTool.execute("call-2", {{}}, undefined);
+if (completion.content?.[0]?.text !== "complete") throw new Error("unexpected completion result");
+if (completion.terminate !== true) throw new Error("completion tool did not terminate the main agent");
+const submission = await submitTool.execute("call-3", {{}}, undefined);
+if (submission.terminate !== false) throw new Error("submission tool terminated the main agent");
+const finalization = await finalizeTool.execute("call-4", {{}}, undefined);
+if (finalization.terminate !== false) throw new Error("finalize tool terminated the main agent");
+if (toolsCallCount !== 4) throw new Error(`tools/call count: ${{toolsCallCount}}`);
 if (cancelCount !== 1) throw new Error(`reader cancel count: ${{cancelCount}}`);
 console.log("ok");
 """,

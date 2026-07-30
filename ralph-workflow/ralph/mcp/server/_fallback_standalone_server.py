@@ -30,7 +30,9 @@ class _FallbackStandaloneServer:
         """Return the (host, port) the server is bound to after run() is called."""
         if self._httpd is None:
             raise RuntimeError("Server has not been started yet")
-        return cast("tuple[str, int]", self._httpd.server_address)
+        return cast(
+            "tuple[str, int]", self._httpd.server_address
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     def run(
         self,

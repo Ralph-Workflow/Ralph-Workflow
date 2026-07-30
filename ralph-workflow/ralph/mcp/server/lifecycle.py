@@ -124,6 +124,12 @@ if TYPE_CHECKING:
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
+#: Consecutive failed probes required before an otherwise-running MCP server
+#: is restarted. A single bounded probe window is not evidence of death: on a
+#: loaded machine a healthy server misses one routinely, and restarting on the
+#: first miss tore down working servers in the middle of agent calls.
+_PROBE_FAILURES_BEFORE_RESTART = 3
+
 
 class RestartAwareMcpBridge:
     """SessionBridgeLike wrapper that auto-restarts the MCP server on crash.
@@ -161,6 +167,14 @@ class RestartAwareMcpBridge:
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
         self._restart_count = 0
+        # Consecutive failed probes. A probe that times out proves the
+        # server is slow, not dead: under load a healthy server routinely
+        # misses one bounded probe window. Restarting on the first miss
+        # killed working servers mid-call, so a restart needs
+        # _PROBE_FAILURES_BEFORE_RESTART misses in a row. A process that
+        # has actually exited still restarts immediately — that signal is
+        # unambiguous.
+        self._consecutive_probe_failures = 0
         # Tool-registry resets are tracked separately from crash
         # restarts so the orchestrator can distinguish a "tool-registry
         # rebuild" event from a "MCP server crashed" event. The cap
@@ -245,7 +259,23 @@ class RestartAwareMcpBridge:
                 except Exception:
                     probe_failed = True
 
+            if probe_failed:
+                self._consecutive_probe_failures += 1
+            else:
+                self._consecutive_probe_failures = 0
+
             if not process_exited and not probe_failed:
+                return False
+
+            if (
+                not process_exited
+                and self._consecutive_probe_failures < _PROBE_FAILURES_BEFORE_RESTART
+            ):
+                logger.debug(
+                    "MCP server probe failed ({}/{} before restart); server still running",
+                    self._consecutive_probe_failures,
+                    _PROBE_FAILURES_BEFORE_RESTART,
+                )
                 return False
 
             if self._restart_count >= self._restart_policy.max_restarts:
@@ -272,6 +302,7 @@ class RestartAwareMcpBridge:
             self._inner.shutdown()
             self._inner = self._restart_fn()
             self._restart_count += 1
+            self._consecutive_probe_failures = 0
             logger.info(
                 "MCP server restarted on stable endpoint {}; restart_count={}",
                 self._inner.endpoint,
@@ -515,7 +546,9 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    response = cast("IO[bytes]", urllib.request.urlopen(request, timeout=timeout))
+    response = cast(
+        "IO[bytes]", urllib.request.urlopen(request, timeout=timeout)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
         # Bound the read so a misbehaving upstream cannot OOM the parent by
         # streaming an unbounded response body (AC-08). 1 MiB is well above
@@ -551,7 +584,9 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
     if not isinstance(tools, list):
         return []
     return [
-        cast("str", entry_map["name"])
+        cast(
+            "str", entry_map["name"]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for entry in tools
         for entry_map in [cast("dict[str, object]", entry)]
         if isinstance(entry, dict) and isinstance(entry_map.get("name"), str)
@@ -636,29 +671,35 @@ def _spawn_mcp_process(
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation."""
     endpoint = f"http://127.0.0.1:{port}/mcp"
-    session_file = deps.create_session_file(root, session)
-    env = deps.subprocess_env(session_file)
-    if _extra_env:
-        # Merge extra_env so the subprocess inherits worker-specific env vars
-        # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
-        env.update(_extra_env)
-    process = deps.spawn_process(
-        [
-            sys.executable,
-            "-m",
-            "ralph.mcp.server",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--workspace",
-            str(root),
-        ],
-        root,
-        env,
-        phase=phase,
-    )
-    bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
+    session_file: Path | None = None
+    try:
+        session_file = deps.create_session_file(root, session)
+        env = deps.subprocess_env(session_file)
+        if _extra_env:
+            # Merge extra_env so the subprocess inherits worker-specific env vars
+            # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
+            env.update(_extra_env)
+        process = deps.spawn_process(
+            [
+                sys.executable,
+                "-m",
+                "ralph.mcp.server",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--workspace",
+                str(root),
+            ],
+            root,
+            env,
+            phase=phase,
+        )
+        bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
+    except BaseException:
+        if session_file is not None:
+            session_file.unlink(missing_ok=True)
+        raise
 
     try:
         deps.preflight(endpoint, _visible_tools, deps.preflight_timeout())
@@ -671,7 +712,14 @@ def _spawn_mcp_process(
                 f"(rc={returncode})",
                 restart_count=0,
             ) from exc
-        raise
+        # A live-but-unready process is the same failure class as an exited
+        # one, so it must surface as McpServerError too. Re-raising the raw
+        # preflight error escaped the supervisor's handler and killed the
+        # supervisor thread, leaving the run with nothing probing the server.
+        raise McpServerError(
+            f"MCP server endpoint {endpoint} did not become ready: {exc}",
+            restart_count=0,
+        ) from exc
 
     return bridge
 
@@ -698,7 +746,9 @@ def _visible_mcp_tool_names_owned(
 def _workspace_root(workspace: WorkspaceLike) -> Path:
     if isinstance(workspace, FsWorkspace):
         return workspace.root
-    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    root_value = cast(
+        "Path | str | None", getattr(workspace, "root", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if isinstance(root_value, Path):
         return root_value.resolve()
     if isinstance(root_value, str):
@@ -710,7 +760,9 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 def _reserve_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
-        return cast("int", sock.getsockname()[1])
+        return cast(
+            "int", sock.getsockname()[1]
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _subprocess_env(session_file: Path) -> dict[str, str]:
@@ -776,7 +828,9 @@ def _default_lifecycle_deps() -> LifecycleDeps:
 
 
 def _create_session_file(root: Path, session: SessionLike) -> Path:
-    session_dir = root / ".agent" / "tmp"
+    # Session metadata lives outside .agent/tmp so it survives prompt-triggered
+    # tmp cleanup and the run-start aged retention sweep for the MCP server's lifetime.
+    session_dir = root / ".agent"
     session_dir.mkdir(parents=True, exist_ok=True)
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json", dir=session_dir)
     os.close(fd)
@@ -819,6 +873,25 @@ def session_payload_json(session: SessionLike) -> str:
         session_payload["capability_profile"] = resolve_capability_profile(
             raw_identity
         ).to_payload()
+    # AC-11: when the parent session owns an exec resource resolver,
+    # serialize the trusted spill roots so the subprocess session
+    # (FileBackedSession) can re-construct a matching resolver. This is
+    # the only path through which ``ralph://exec/<spill-name>`` URIs
+    # returned by ``format=summary`` exec calls are re-readable inside
+    # the production subprocess path.
+    exec_resolver: object = getattr(session, "exec_resource_resolver", None)
+    if exec_resolver is not None:
+        resolver_roots: list[str] = []
+        spill_roots_attr: object = getattr(exec_resolver, "spill_roots", ())
+        if isinstance(spill_roots_attr, tuple):
+            for root_path in spill_roots_attr:
+                if isinstance(root_path, Path):
+                    resolver_roots.append(str(root_path))
+                    continue
+                if isinstance(root_path, str) and root_path:
+                    resolver_roots.append(root_path)
+        if resolver_roots:
+            session_payload["exec_spill_roots"] = resolver_roots
     return json.dumps(session_payload)
 
 

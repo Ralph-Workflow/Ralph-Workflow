@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -42,3 +44,525 @@ class TestHandleGitStatus:
             result = handle_git_status(session, workspace, {})
             assert result.is_error is False
             assert "On branch main" in result.content[0].text
+
+    def test_status_compact_emits_index_metadata_without_handle(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: compact ``git_status`` always surfaces
+        ``index_used`` and ``index_status`` so agents do not
+        guess when the index is unavailable.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            stdout=b"M  a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        assert result.is_error is False
+        payload = json.loads(result.content[0].text)
+        assert payload["format"] == "compact"
+        assert "index_used" in payload
+        assert "index_status" in payload
+        assert "fallback_reason" in payload
+        # No handle attached: index is unavailable, not used.
+        assert payload["index_used"] is False
+        assert payload["index_status"] == "unavailable"
+        assert payload["index_generation"] == 0
+        assert payload["changed_symbols"] == {}
+        assert payload["fallback_reason"] == "index_not_attached"
+
+    def test_status_compact_marks_index_stale_when_generation_zero(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when the attached index has no committed
+        generation, the compact payload marks the index as
+        stale with an explicit reason so agents do not treat
+        absent evidence as fresh.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        # Attach a fake handle with a store that returns no
+        # current generation. We need to wire it after the
+        # session is constructed so the attribute lookup
+        # succeeds.
+        class _FakeStore:
+            def get_setting(self, _key: str) -> str | None:
+                return None
+
+        class _FakeHandle:
+            store = _FakeStore()
+            is_stale = False
+
+        session.explore_index = _FakeHandle()
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            stdout=b"M  a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        assert payload["index_used"] is False
+        assert payload["index_status"] == "stale"
+        assert payload["fallback_reason"] == "no_committed_generation"
+
+    def test_status_compact_marks_index_stale_when_dirty_paths_pending(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when the attached index has a current generation
+        but the persisted ``dirty_paths`` queue is non-empty (a
+        workspace mutation marked a path dirty but the reindex
+        has not yet consumed the entry), the compact payload
+        MUST report ``index_used=False`` and
+        ``index_status="stale"`` with an explicit
+        ``fallback_reason``. The payload must NOT emit any
+        ``changed_symbols`` hints because the persisted index no
+        longer reflects the working tree.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            # Mark a path dirty WITHOUT consuming it via reindex.
+            # The compact payload must observe the dirty queue
+            # and mark the index as stale.
+            handle.store.mark_dirty(
+                "a.py", reason="mutated", source_tool="write_file"
+            )
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is False
+            assert payload["index_status"] == "stale"
+            assert payload["fallback_reason"] == "index_reports_stale"
+            # No hints emitted against stale state.
+            assert payload["changed_symbols"] == {}
+        finally:
+            handle.store.close()
+
+    def test_status_compact_attaches_changed_symbols_when_index_current(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when the index is current, compact ``git_status``
+        attaches bounded changed-symbol hints per changed path
+        so the agent does not have to repeat a second lookup.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is True
+            assert payload["index_status"] == "current"
+            assert payload["index_generation"] >= 1
+            assert payload["fallback_reason"] is None
+            # The a.py path must carry at least one symbol hint.
+            assert "a.py" in payload["changed_symbols"]
+            symbols = payload["changed_symbols"]["a.py"]
+            assert symbols, "expected at least one changed-symbol hint"
+            first = symbols[0]
+            assert first["qualified_name"]
+            assert first["kind"]
+            assert first["symbol_id"]
+            assert first["span_id"]
+        finally:
+            handle.store.close()
+
+    def test_status_compact_marks_index_unavailable_when_dirty_paths_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when ``peek_dirty_paths()`` raises, the compact
+        payload must report ``index_used=False`` and
+        ``index_status='unavailable'`` with the explicit
+        fallback reason ``dirty_paths_read_failed``. The
+        payload must NOT emit any ``changed_symbols`` hints
+        because freshness is unknown.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            # Force ``peek_dirty_paths`` to raise.
+            handle.store.peek_dirty_paths = (
+                lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+            )
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is False
+            assert payload["index_status"] == "unavailable"
+            assert payload["fallback_reason"] == "dirty_paths_read_failed"
+            assert payload["changed_symbols"] == {}
+        finally:
+            handle.store.close()
+
+    def test_status_compact_marks_index_stale_when_deleted_file_present(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when a file row with ``is_deleted=1`` is
+        present in the manifest (a remove that the next
+        reindex has not yet processed), the compact payload
+        must report ``index_used=False`` and
+        ``index_status='stale'`` with
+        ``fallback_reason='index_reports_stale'``. The
+        detection MUST use the bounded
+        ``has_deleted_files`` aggregate rather than
+        ``iter_files`` (which filters out deleted rows) or a
+        materializing ``fetchall`` scan.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+        from ralph.mcp.explore.store import FileRow
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            # Inject a deleted file row so the persisted
+            # manifest no longer matches the working tree.
+            handle.store.upsert_file(
+                FileRow(
+                    path="gone.py",
+                    content_hash="deadbeef" * 8,
+                    size_bytes=0,
+                    mtime_ns=0,
+                    language="python",
+                    indexed_generation=1,
+                    indexed_at=0.0,
+                    is_deleted=True,
+                )
+            )
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is False
+            assert payload["index_status"] == "stale"
+            assert payload["fallback_reason"] == "index_reports_stale"
+            assert payload["changed_symbols"] == {}
+        finally:
+            handle.store.close()
+
+    def test_status_compact_does_not_materialize_files_table(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: the compact ``git_status`` payload must
+        detect stale state through bounded aggregates
+        (``has_deleted_files``) rather than calling
+        ``iter_files`` and materializing the full table. The
+        test swaps the live store for a subclass that wraps
+        the bounded-aggregate call and counts it; if the
+        helper regresses to ``fetchall``/``iter_files`` the
+        test will reveal the regression.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        iter_calls = {"n": 0}
+        has_deleted_calls = {"n": 0}
+        try:
+            inner = handle.store
+
+            class _SpyingStore(type(inner)):
+                """Subclass that delegates every attribute to
+                ``inner`` except for the two freshness
+                signals, which are counted."""
+
+                def __init__(self) -> None:
+                    self._inner = inner
+
+                def __getattr__(self, name: str) -> object:
+                    return getattr(self._inner, name)
+
+                def has_deleted_files(self) -> bool:
+                    has_deleted_calls["n"] += 1
+                    return self._inner.has_deleted_files()
+
+                def iter_files(self) -> object:
+                    iter_calls["n"] += 1
+                    return self._inner.iter_files()
+
+            spy: object = _SpyingStore()
+            # ``handle.store`` is typed as a concrete
+            # ``ExploreStore`` but at runtime accepts any
+            # object exposing the same surface. The
+            # runtime ``__dict__`` mutation keeps the test
+            # typed (no ``type: ignore``).
+            handle.__dict__["store"] = spy
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_status"] == "current"
+            # The bounded aggregate is consulted; the
+            # materializing ``iter_files`` path is NOT.
+            assert has_deleted_calls["n"] >= 1
+            assert iter_calls["n"] == 0
+        finally:
+            handle.store.close()
+
+    # --- AC-06: ranked-card contract -----------------------------------
+
+    def test_status_compact_attaches_deterministic_score_per_card(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: every compact card carries an integer ``score``
+        and a list of ``score_reasons`` describing which signals
+        contributed. The score is deterministic across calls.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            stdout=b"M  src/a.py\n M b.py\n?? c.txt\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        # Every card carries a score and reasons.
+        for card in cards:
+            assert isinstance(card["score"], int)
+            assert isinstance(card["score_reasons"], list)
+            assert card["score_reasons"], (
+                f"empty score_reasons for {card['path']!r}"
+            )
+        # The ranking metadata documents the contract.
+        ranking = payload["ranking"]
+        assert ranking["scheme"] == "deterministic_integer_score"
+        assert ranking["tiebreak"] == "lexicographic_path"
+        assert any("+100 role=unstaged" in c for c in ranking["components"])
+        assert any("+80 role=staged" in c for c in ranking["components"])
+        assert any("+60 role=untracked" in c for c in ranking["components"])
+        assert any(
+            "-50 generated_or_vendor_path" in c for c in ranking["components"]
+        )
+
+    def test_status_compact_sorts_cards_by_score_descending(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: cards are sorted by ``score`` descending. The
+        documented score formula puts unstaged (+100) above
+        staged (+80) above untracked (+60). The test wires a
+        mixed porcelain output and asserts the cards are in
+        the documented priority order.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        # Order in porcelain is deliberately reverse of the
+        # expected rank so the sort must move entries.
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            # b.txt: untracked (+60)
+            # a.py: staged (+80)
+            # c.py: unstaged (+100)
+            stdout=b"?? b.txt\nM  a.py\n M c.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        # The unsorted test data puts c.py AFTER a.py and
+        # b.txt. After sorting, c.py (unstaged, +100) must
+        # come first, a.py (staged, +80) second, and b.txt
+        # (untracked, +60) last.
+        ordered_paths = [c["path"] for c in cards]
+        assert ordered_paths == ["c.py", "a.py", "b.txt"]
+        assert [c["score"] for c in cards] == [100, 80, 60]
+
+    def test_status_compact_lexicographic_tiebreak(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: cards with equal scores sort lexicographically
+        by path. The test emits two unstaged paths with the
+        same role; the sorted output must put ``a.py`` before
+        ``b.py``.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            # Two unstaged changes with reversed source order
+            # so the tiebreak must reorder.
+            stdout=b" M b.py\n M a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        assert [c["path"] for c in cards] == ["a.py", "b.py"]
+        # Both cards carry the same score (+100 unstaged).
+        assert cards[0]["score"] == cards[1]["score"] == 100
+
+    def test_status_compact_generated_or_vendor_path_demoted(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: a generated/vendor path receives the ``-50``
+        penalty and ranks below an unstaged path even when its
+        role is unstaged (a vendor with unstaged status still
+        loses to a regular unstaged path).
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            # vendor/foo.py is unstaged (+100) but vendor path (-50) = +50
+            # a.py is unstaged (+100) = +100
+            stdout=b" M vendor/foo.py\n M a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        # ``a.py`` (regular unstaged, +100) ranks first;
+        # ``vendor/foo.py`` (vendor + unstaged, +50) second.
+        assert [c["path"] for c in cards] == ["a.py", "vendor/foo.py"]
+        assert cards[0]["score"] == 100
+        assert cards[1]["score"] == 50
+        # The vendor card explicitly carries the -50 reason.
+        assert "-50 generated_or_vendor_path" in cards[1]["score_reasons"]

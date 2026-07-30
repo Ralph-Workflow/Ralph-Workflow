@@ -59,12 +59,24 @@ class GeneralConfig(RalphBaseModel):
         ),
     )
     workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
-    developer_iters: int = Field(default=5, ge=1)
+    developer_iters: int = Field(default=2, ge=1)
     developer_context: int = Field(default=1, ge=1)
     prompt_path: Path | None = None
     templates_dir: Path | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
+    # RESERVED dead knob: provider_fallback is NOT consumed by any runtime code.
+    # Agent fallback is provided exclusively by [agent_chains] in
+    # ralph-workflow.toml (an ORDERED FALLBACK LIST of agents per role).
+    # This field exists only so a legacy user-global config that still
+    # carries `provider_fallback = {...}` does not trip the unknown-field
+    # detector. Do not document it in user-facing onboarding or TOML
+    # comments; do not add typed accessors for it; do not add a
+    # ``Field(description=...)`` exposing the dead knob through Pydantic
+    # JSON schema. A regression-guard test in tests/test_config_loader.py
+    # asserts it is absent from every bundled ralph/policy/defaults/*.toml.
+    # The loader warns when a non-empty legacy value is encountered so users
+    # get the active [agent_chains] replacement at the point of use.
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
     max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)
@@ -74,6 +86,24 @@ class GeneralConfig(RalphBaseModel):
     max_backoff_ms: int = Field(default=60000, ge=0)
     max_cycles: int = Field(default=3, ge=1)
     execution_history_limit: int = Field(default=1000, ge=1)
+    auto_integrate_enabled: bool = Field(
+        default=True,
+        description="Enable local auto-integration at pipeline seams.",
+    )
+    auto_integrate_target: str = Field(
+        default="main",
+        min_length=1,
+        description="Local branch that receives integrated feature work.",
+    )
+    auto_integrate_remote_enabled: bool = Field(
+        default=False,
+        description="Enable opt-in remote synchronization for auto-integration.",
+    )
+    auto_integrate_remote: str = Field(
+        default="origin",
+        min_length=1,
+        description="Remote used when remote auto-integration is enabled.",
+    )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,
@@ -541,6 +571,10 @@ class GeneralConfig(RalphBaseModel):
                 " agent_idle_no_progress_waiting_on_child_seconds"
             )
             raise ValueError(msg)
+        if not self.auto_integrate_target.strip():
+            raise ValueError("auto_integrate_target must not be empty or whitespace")
+        if not self.auto_integrate_remote.strip():
+            raise ValueError("auto_integrate_remote must not be empty or whitespace")
         self._validate_workspace_change_weights()
         return self
 

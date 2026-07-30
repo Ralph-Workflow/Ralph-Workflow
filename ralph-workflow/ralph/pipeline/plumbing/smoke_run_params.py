@@ -29,3 +29,4 @@ class SmokeRunParams:
     display_context: DisplayContext
     bridge: SessionBridgeLike | None = None
     pipeline_deps: PipelineDeps | None = None
+    subagents_requested: bool = False

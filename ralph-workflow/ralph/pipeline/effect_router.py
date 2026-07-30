@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.git.operations import has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -46,6 +46,7 @@ from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -63,6 +64,8 @@ def determine_effect_from_policy(
     workspace_scope: WorkspaceScope | None = None,
     *,
     config: UnifiedConfig | None = None,
+    has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
+    agy_agents_probe: Callable[[], str] | None = None,
 ) -> Effect:
     """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
@@ -82,9 +85,18 @@ def determine_effect_from_policy(
 
     if phase_def.role == "commit":
         scope = workspace_scope or resolve_workspace_scope()
-        return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
+        return _commit_phase_effect(
+            state,
+            policy_bundle,
+            phase_def,
+            scope,
+            config=config,
+            has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+        )
 
-    return _parallel_or_agent_effect(state, phase_def, policy_bundle, config, workspace_scope)
+    return _parallel_or_agent_effect(
+        state, phase_def, policy_bundle, config, workspace_scope, agy_agents_probe=agy_agents_probe
+    )
 
 
 def _skip_invocation_effect(
@@ -108,6 +120,8 @@ def _parallel_or_agent_effect(
     policy_bundle: PolicyBundle,
     config: UnifiedConfig | None,
     workspace_scope: WorkspaceScope | None = None,
+    *,
+    agy_agents_probe: Callable[[], str] | None = None,
 ) -> Effect:
     work_units = state.work_units
     if not work_units and phase_def.parallelization is not None:
@@ -116,6 +130,16 @@ def _parallel_or_agent_effect(
     if len(work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
         phase_para = phase_def.parallelization
         if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
+            agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
+            if agent_name == "agy" or (agent_name is not None and agent_name.startswith("agy/")):
+                available_agents = _agy_available_agents(agy_agents_probe)
+                if not available_agents:
+                    return ExitFailureEffect(
+                        reason=(
+                            "AGY dispatch unavailable: `agy agents` reported no sub-agents on this "
+                            "install; configure an AGY sub-agent and retry."
+                        )
+                    )
             logger.warning(
                 "Ralph-managed fan-out is dormant in this build; the executing AI agent is "
                 "expected to dispatch its own sub-agents per the plan. The declared "
@@ -139,6 +163,45 @@ def _parallel_or_agent_effect(
         prompt_file=prompt_file_for_phase(state.phase),
         drain=phase_def.drain,
     )
+
+
+def _make_default_agy_agents_probe() -> Callable[[], str]:
+    """Build the per-process cached, bounded AGY sub-agent probe."""
+    cached_output: str | None = None
+
+    def probe() -> str:
+        """Read AGY's configured sub-agents, failing closed on process failure."""
+        nonlocal cached_output
+        if cached_output is None:
+            try:
+                result = run_process(
+                    "agy",
+                    ("agents",),
+                    options=ProcessRunOptions(
+                        capture_output=True,
+                        timeout=5.0,
+                        label="pipeline:agy-agents",
+                    ),
+                )
+            except OSError:
+                cached_output = ""
+            else:
+                cached_output = result.stdout if result.returncode == 0 else ""
+        return cached_output
+
+    return probe
+
+
+_default_agy_agents_probe = _make_default_agy_agents_probe()
+
+
+def _agy_available_agents(probe: Callable[[], str] | None) -> tuple[str, ...]:
+    """Return AGY's current configured sub-agent names, failing closed on probe failure."""
+    try:
+        output = (probe or _default_agy_agents_probe)()
+    except (OSError, ProcessExecutionError):
+        return ()
+    return tuple(line.strip().lstrip("- ") for line in output.splitlines() if line.strip() and ":" not in line)
 
 
 def _fan_out_effect(
@@ -194,7 +257,6 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
         parsed = parse_work_units_from_artifact(artifact)
     except (
         PhaseArtifactError,
-        json.JSONDecodeError,
         PlanArtifactValidationError,
         ValueError,
         WorkUnitsValidationError,
@@ -261,10 +323,14 @@ def _commit_phase_effect(
     workspace_scope: WorkspaceScope,
     *,
     config: UnifiedConfig | None = None,
+    has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
 ) -> Effect:
     if state.commit.agent_invoked:
         return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
-    if _should_early_skip_commit(workspace_scope.root):
+    if _should_early_skip_commit(
+        workspace_scope.root,
+        has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+    ):
         delete_commit_message_artifacts(workspace_scope.root)
         return EarlySkipCommitEffect()
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
@@ -278,9 +344,13 @@ def _commit_phase_effect(
     )
 
 
-def _should_early_skip_commit(workspace_root: Path) -> bool:
+def _should_early_skip_commit(
+    workspace_root: Path,
+    *,
+    has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
+) -> bool:
     try:
-        return not has_uncommitted_changes(workspace_root)
+        return not has_uncommitted_changes_fn(workspace_root)
     except Exception:
         return False
 

@@ -25,7 +25,7 @@ class TestRebuildHistoryIndex:
         # no error and no index created
         assert not history_index_path(artifact_dir, "plan").exists()
 
-    def test_deletes_index_when_no_json_files(self, tmp_path: Path) -> None:
+    def test_deletes_index_when_no_markdown_files(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         hist_dir = history_dir_for_artifact(artifact_dir, "plan")
         hist_dir.mkdir(parents=True)
@@ -40,7 +40,7 @@ class TestRebuildHistoryIndex:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         hist_dir = history_dir_for_artifact(artifact_dir, "plan")
         hist_dir.mkdir(parents=True)
-        (hist_dir / "20260506T120000_plan.json").write_text("{}", encoding="utf-8")
+        (hist_dir / "20260506T120000_plan.md").write_text("# Plan", encoding="utf-8")
 
         rebuild_history_index(artifact_dir, "plan")
 
@@ -48,14 +48,14 @@ class TestRebuildHistoryIndex:
         assert index.exists()
         content = index.read_text(encoding="utf-8")
         assert "20260506T120000" in content
-        assert "20260506T120000_plan.json" in content
+        assert "20260506T120000_plan.md" in content
 
     def test_index_includes_markdown_when_present(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         hist_dir = history_dir_for_artifact(artifact_dir, "plan")
         hist_dir.mkdir(parents=True)
-        (hist_dir / "20260506T120000_plan.json").write_text("{}", encoding="utf-8")
         (hist_dir / "20260506T120000_plan.md").write_text("# Plan", encoding="utf-8")
+        (hist_dir / "20260506T120000_1_plan.md").write_text("# Plan handoff", encoding="utf-8")
 
         rebuild_history_index(artifact_dir, "plan")
 

@@ -56,10 +56,9 @@ Two e2e tests live here:
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -86,9 +85,9 @@ from ralph.workspace.scope import WorkspaceScope
 from tests.integration._commit_cleanup_always_loopback_invoker import (
     CommitCleanupAlwaysLoopbackInvoker,
 )
+from tests.plan_fixtures import commit_cleanup_markdown, commit_message_markdown
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     from pytest import MonkeyPatch
 
@@ -121,41 +120,23 @@ EXPECTED_GIT_EXCLUDE_FRAGMENTS: tuple[str, ...] = (
 )
 
 
-def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict) -> None:
+def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict[str, object]) -> None:
     """Write a commit_cleanup artifact to the workspace."""
-    artifact = {
-        "name": "commit_cleanup",
-        "type": "commit_cleanup",
-        "content": content,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z",
-    }
-    path = Path(workspace.root) / ".agent" / "artifacts" / "commit_cleanup.json"
+    raw_actions = content["actions"]
+    actions = [
+        (action["action"], action.get("path", action.get("pattern", "")))
+        for action in raw_actions
+    ]
+    path = Path(workspace.root) / ".agent" / "artifacts" / "commit_cleanup.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(artifact), encoding="utf-8")
+    path.write_text(commit_cleanup_markdown(actions), encoding="utf-8")
 
 
 def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
-    """Write a valid commit_message artifact pair so execute_commit_effect can run.
-
-    The canonical ``execute_commit_effect`` reads ``.agent/tmp/commit_message.json``
-    (structured payload) AND ``.agent/tmp/commit-message.txt`` (rendered mirror).
-    Both must be present and valid. Without these, the real commit effect returns
-    COMMIT_FAILURE because the message file is empty / unreadable.
-    """
-    artifact_path = repo_root / ".agent" / "tmp" / "commit_message.json"
-    text_path = repo_root / ".agent" / "tmp" / "commit-message.txt"
+    """Write the canonical commit-message Markdown artifact."""
+    artifact_path = repo_root / ".agent" / "artifacts" / "commit_message.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_payload = {
-        "name": "commit_message",
-        "type": "commit_message",
-        "content": {"type": "commit", "subject": subject},
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z",
-        "metadata": {},
-    }
-    artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
-    text_path.write_text(subject, encoding="utf-8")
+    artifact_path.write_text(commit_message_markdown(subject), encoding="utf-8")
 
 
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
@@ -332,10 +313,7 @@ def test_pipeline_cleanup_to_commit_end_to_end(
             )
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
-        commit_event_for = cast(
-            "Callable[[str], PipelineEvent] | None",
-            getattr(invoker, "commit_event_for", None),
-        )
+        commit_event_for = getattr(invoker, "commit_event_for", None),
         if commit_event_for is not None:
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
@@ -524,10 +502,7 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
             )
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
-        commit_event_for = cast(
-            "Callable[[str], PipelineEvent] | None",
-            getattr(invoker, "commit_event_for", None),
-        )
+        commit_event_for = getattr(invoker, "commit_event_for", None),
         if commit_event_for is not None:
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS

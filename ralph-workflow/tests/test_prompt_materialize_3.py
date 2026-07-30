@@ -41,84 +41,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-PLANNING_EDIT_GET_DRAFT_TEXT = (
-    "Use `ralph_get_plan_draft` to inspect the current finalized plan "
-    "or staged draft before editing."
-)
-PLANNING_EDIT_DEFECT_SCOPE_TEXT = (
-    "Before revising any section, classify the feedback scope as one of:"
-)
-PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT = (
-    "If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, "
-    "narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan"
-)
-PLANNING_EDIT_FINALIZE_TEXT = (
-    "Use `ralph_finalize_plan` after revising the affected sections so "
-    "the updated plan replaces the prior finalized plan."
-)
-PLANNING_EDIT_SELF_AUDIT_TEXT = "Before `ralph_finalize_plan`, perform this self-audit:"
-PLANNING_EDIT_RISK_COVERAGE_TEXT = (
-    "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
-)
-PLANNING_EDIT_PARALLELIZATION_TEXT = (
-    "- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant"
-)
-PLANNING_EDIT_MAINTAINABILITY_TEXT = (
-    "- Maintainability and handoff quality: the plan stays concise, "
-    "non-redundant, and explicit for development handoff"
-)
-PLANNING_EDIT_SCOPE_INVALIDATION_TEXT = (
-    "If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan "
-    "narrowed scope before running repository-wide discovery"
-)
-PLANNING_EDIT_DISCOVERY_FIRST_TEXT = (
-    "replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery"
-)
-PLANNING_EDIT_SCOPE_DERIVATION_TEXT = (
-    "- Scope derivation: when the task is repo-wide, implementation scope comes from an "
-    "explicit repo-wide discovery step rather than a guessed subsystem"
-)
-PLANNING_EDIT_PASS_TARGET_TEXT = (
-    "Your target is to submit the strongest revised plan you can so the next planning-analysis pass"
-)
-PLANNING_EDIT_NO_KNOWN_GAPS_TEXT = (
-    "Do not finalize a draft that still has any known unresolved analyzer finding"
-)
-PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT = (
-    "If fixing one section changes the truth of another section, replace every dependent section"
-)
-PLANNING_EDIT_NEXT_ANALYZER_TEXT = (
-    "Before finalizing, proactively search for any additional repo-grounded failure"
-)
-PLANNING_EDIT_SURFACED_BLOCKER_TEXT = (
-    "If a canonical verification command or repo-wide audit already surfaces a blocker "
-    "during replanning"
-)
-PLANNING_EDIT_RULE_CATEGORY_TEXT = (
-    "When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory"
-)
-PLANNING_EDIT_NO_EXCEPTION_TEXT = (
-    "Do not preserve prompt-violating tests, files, or workflows as justified exceptions"
-)
-PLANNING_EDIT_STARTING_POINT_TEXT = (
-    "Treat the planning-analysis feedback as a starting point, not as the full list of issues"
-)
-PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT = (
-    "Do not localize your revision pass to only the sections explicitly cited by the analyzer"
-)
-PLANNING_EDIT_SELF_ANALYSIS_TEXT = (
-    "You must perform your own repo-grounded analysis before finalizing"
-)
-PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
-    "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
-)
-PLANNING_ANALYSIS_MCP_REMEDIATION_TEXT = (
-    "When describing remediation, target the planner's MCP revision workflow"
-)
-PLANNING_ANALYSIS_SECTION_RESUBMIT_TEXT = (
-    "Exact plan sections to resubmit via the MCP plan-edit tools."
-)
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -324,49 +246,18 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
 def test_development_analysis_prompt_renders_without_development_result(
     tmp_path: Path,
 ) -> None:
-    """development_analysis prompt must render even when development_result.json is absent.
+    """development_analysis prompt must render even when development_result is absent.
 
     development_result is required by default policy, but prompt generation must not
     crash when the artifact is absent on disk. This test exercises template rendering
     only, not artifact validation — the analysis agent must still receive a complete
-    prompt even when development_result.json is missing.
+    prompt even when the development_result markdown artifact is missing.
     """
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "implement the feature")
-    workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "ctx",
-                        "scope_items": [
-                            {"text": "item one"},
-                            {"text": "item two"},
-                            {"text": "item three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "step", "content": "do it"}],
-                    "critical_files": {"primary_files": [{"path": "src/a.py", "action": "modify"}]},
-                    "risks_mitigations": [{"risk": "r", "mitigation": "m"}],
-                    "verification_strategy": [{"method": "run tests", "expected_outcome": "pass"}],
-                    "work_units": [
-                        {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
-                    ],
-                },
-            }
-        ),
-    )
-    # Intentionally do NOT write development_result.json
+    _write_plan_handoff(workspace)
+    # Intentionally do NOT write a development_result artifact
 
     with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
         prompt_path = materialize_prompt_for_phase(
@@ -385,8 +276,8 @@ def test_development_analysis_prompt_renders_without_development_result(
     rendered = workspace.read(prompt_path)
     assert rendered, "Prompt must not be empty"
     # render_payload_path emits a file reference, not inlined content — check the path appears
-    assert str(tmp_path / ".agent" / "CURRENT_PROMPT.md") in rendered, (
-        "Prompt must reference the CURRENT_PROMPT path"
+    assert str(tmp_path / ".agent" / "PRODUCT_CRITERIA.md") in rendered, (
+        "Prompt must reference the PRODUCT_CRITERIA path"
     )
     # Plan is referenced via its Markdown handoff (.agent/PLAN.md), not the JSON artifact path
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered, (
@@ -407,15 +298,15 @@ def test_fresh_planning_clears_all_artifact_history_on_entry(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_plan_json = plan_hist_dir / "20260506T120000_plan.json"
-    archived_plan_json.write_text('{"type":"plan"}', encoding="utf-8")
+    archived_plan_md = plan_hist_dir / "20260506T120000_plan.md"
+    archived_plan_md.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index_file = history_index_path(artifact_dir, "plan")
     plan_index_file.write_text("# History", encoding="utf-8")
 
     development_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     development_hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_development_json = development_hist_dir / "20260506T120000_development_result.json"
-    archived_development_json.write_text('{"type":"development_result"}', encoding="utf-8")
+    archived_development_md = development_hist_dir / "20260506T120000_development_result.md"
+    archived_development_md.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     development_index_file = history_index_path(artifact_dir, "development_result")
     development_index_file.write_text("# History", encoding="utf-8")
 
@@ -433,14 +324,12 @@ def test_fresh_planning_clears_all_artifact_history_on_entry(
         ),
     )
 
-    assert not archived_plan_json.exists(), (
-        "plan archive json must be removed on fresh planning entry"
-    )
+    assert not archived_plan_md.exists(), "plan archive must be removed on fresh planning entry"
     assert not plan_index_file.exists(), (
         "plan history index must be removed on fresh planning entry"
     )
-    assert not archived_development_json.exists(), (
-        "development archive json must be removed on fresh planning entry"
+    assert not archived_development_md.exists(), (
+        "development archive must be removed on fresh planning entry"
     )
     assert not development_index_file.exists(), (
         "development history index must be removed on fresh planning entry"
@@ -476,64 +365,22 @@ def test_planning_loopback_from_analysis_preserves_history(
     workspace.write("PROMPT.md", "Plan the new feature")
 
     # Write plan + analysis feedback so the loopback prompt can render
-    plan_artifact = {
-        "type": "plan",
-        "content": {
-            "summary": {
-                "context": "ctx",
-                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
-            },
-            "skills_mcp": {
-                "skills": [
-                    "test-driven-development",
-                    "verification-before-completion",
-                ],
-                "mcps": [],
-            },
-            "steps": [
-                {
-                    "number": 1,
-                    "title": "t",
-                    "content": "c",
-                    "step_type": "file_change",
-                    "priority": "high",
-                    "targets": [{"path": "f.py", "action": "modify"}],
-                    "depends_on": [],
-                }
-            ],
-            "critical_files": {
-                "primary_files": [{"path": "f.py", "action": "modify"}],
-                "reference_files": [],
-            },
-            "risks_mitigations": [{"risk": "r", "mitigation": "m", "severity": "low"}],
-            "verification_strategy": [{"method": "make test", "expected_outcome": "green"}],
-        },
-    }
-    analysis_artifact = {
-        "type": "planning_analysis_decision",
-        "content": {
-            "status": "request_changes",
-            "summary": "Revise the plan.",
-            "what_came_up_short": ["Verification is weak."],
-            "how_to_fix": ["Add exact commands."],
-        },
-    }
-
-    workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(plan_artifact),
+    _write_plan_handoff(workspace)
+    feedback_doc = (
+        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Revise the plan.\n"
+        "## What Came Up Short\n- [PA-1] Verification is underspecified.\n"
+        "## How To Fix\n- [PA-1] Add exact verification evidence.\n"
     )
-    workspace.write(
-        ".agent/artifacts/planning_analysis_decision.json",
-        json.dumps(analysis_artifact),
-    )
+    workspace.write(".agent/artifacts/planning_analysis_decision.md", feedback_doc)
+    workspace.write(".agent/PLANNING_ANALYSIS_DECISION.md", feedback_doc)
 
     # Create history files on disk (bypass MemoryWorkspace)
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_json = hist_dir / "20260506T120000_plan.json"
-    archived_json.write_text('{"type":"plan"}', encoding="utf-8")
+    archived_md = hist_dir / "20260506T120000_plan.md"
+    archived_md.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     index_file = history_index_path(artifact_dir, "plan")
     index_file.write_text("# History", encoding="utf-8")
 
@@ -552,7 +399,7 @@ def test_planning_loopback_from_analysis_preserves_history(
             ),
         )
 
-    assert archived_json.exists(), "archive json must be preserved on planning loopback"
+    assert archived_md.exists(), "archive must be preserved on planning loopback"
     assert index_file.exists(), "history index must be preserved on planning loopback"
 
 

@@ -48,7 +48,7 @@ class _RecipeRuntimeResolver(RuntimeResolver):
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
         return ResolvedInvocationRuntime(

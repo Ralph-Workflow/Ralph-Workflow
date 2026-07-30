@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,16 +26,15 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
-from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import (
     PipelineStateSnapshot,
     SnapshotRegistry,
     build_pipeline_state_snapshot,
 )
 from ralph.recovery.controller import RecoveryController
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     from ralph.config.models import UnifiedConfig
 
@@ -77,7 +76,6 @@ def _fake_bundle() -> PolicyBundle:
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
             )
         }
     )
@@ -99,7 +97,7 @@ def _build_config() -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _load_run_loop() -> object:
@@ -278,11 +276,20 @@ def test_run_loop_publishes_snapshot_on_each_reduce_step(
     )
     _patch_runner_dependencies(monkeypatch, tmp_path, initial_state, bundle)
     _install_display_context(monkeypatch, run_loop_module)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
 
     config = _build_config()
-    hooks = ProPipelineHooks(snapshot_registry=registry)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
-        config, initial_state=initial_state, pro_hooks=hooks
+    pipeline_deps = make_test_pipeline_deps(
+        make_display_context(),
+        policy_bundle=bundle,
+        snapshot_registry=registry,
+    )
+    exit_code = run_loop_module.run(
+        config, initial_state=initial_state, pipeline_deps=pipeline_deps
     )
     assert exit_code == 0
     assert publish_calls, "snapshot was never published"

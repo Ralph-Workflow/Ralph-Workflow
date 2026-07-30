@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"text","text":"Claude Interactive checks the display."},{"type":"tool_use","id":"toolu_read","name":"Read","input":{"path":"ralph/display/parallel_display.py"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_read","content":[{"type":"text","text":"display source"}]}]}}

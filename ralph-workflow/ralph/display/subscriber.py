@@ -12,6 +12,7 @@ from loguru import logger
 
 from ralph.display.artifact_reader import (
     PlanSummary,
+    plan_artifact_path,
     read_latest_analysis_decision,
     read_plan_artifact,
 )
@@ -32,6 +33,9 @@ if TYPE_CHECKING:
 _DECISION_LOG_MAX = 16
 
 
+_logger = logger
+
+
 @dataclass
 class _VisibleActivityState:
     active_agent: str | None = None
@@ -50,8 +54,14 @@ class _WaitingEventLike(Protocol):
     cumulative_seconds: float
     ceiling_seconds: float
     current_run_seconds: float
+    # wt-047-stall-label: the watchdog's stall-state transitions
+    # carry the actual idle-elapsed value here; STALLED / STALL_RESUMED
+    # render this (NOT ``current_run_seconds``, which is the
+    # waiting-run time and is 0.0 on a watchdog stall transition).
+    idle_elapsed_seconds: float
     diagnostic: dict[str, object]
     subagent_activity: str | None
+    stall_active: bool
     kind: _WaitingKindLike
 
 
@@ -62,6 +72,8 @@ class _WaitingKindLike(Protocol):
     HARD_STOP: object
     EXITED: object
     SUBAGENT_PROGRESS: object
+    STALLED: object
+    STALL_RESUMED: object
     name: str
 
 
@@ -75,12 +87,15 @@ def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKind
     """
     from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 
-    return cast("type[_WaitingEventLike]", WaitingStatusEvent), cast(
-        "type[_WaitingKindLike]", WaitingStatusKind
+    return (
+        cast("type[_WaitingEventLike]", WaitingStatusEvent),
+        cast(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            "type[_WaitingKindLike]", WaitingStatusKind
+        ),
     )
 
 
-def _format_waiting_status_line(event: object) -> str:
+def _format_waiting_status_line(event: object) -> str:  # noqa: PLR0911 - 8 distinct WaitingStatusKind branches (ENTERED/PROGRESS/SUSPECTED_FROZEN/EXITED/SUBAGENT_PROGRESS/STALLED/STALL_RESUMED/HARD_STOP fallback)
     """Build the human-readable line for a WaitingStatusEvent."""
     waiting_event_cls, waiting_kind_cls = _resolve_waiting_types()
     assert isinstance(event, waiting_event_cls)
@@ -89,9 +104,10 @@ def _format_waiting_status_line(event: object) -> str:
     ceil = f"{cast_event.ceiling_seconds:.0f}"
     run = f"{cast_event.current_run_seconds:.0f}"
     subagent_part = _format_subagent_activity_suffix(cast_event.subagent_activity)
-    if cast_event.kind == waiting_kind_cls.ENTERED:
+    kind = cast_event.kind
+    if kind == waiting_kind_cls.ENTERED:
         return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
-    if cast_event.kind == waiting_kind_cls.PROGRESS:
+    if kind == waiting_kind_cls.PROGRESS:
         delta = cast_event.diagnostic.get("workspace_event_delta")
         alive_by = cast_event.diagnostic.get("alive_by")
         parts = [f"run={run}s", f"cumulative={cum}s", f"ceiling={ceil}s"]
@@ -101,7 +117,7 @@ def _format_waiting_status_line(event: object) -> str:
             parts.append(f"alive_by={alive_by}")
         base = f"Background child work still active ({', '.join(parts)})"
         return base + subagent_part
-    if cast_event.kind == waiting_kind_cls.SUSPECTED_FROZEN:
+    if kind == waiting_kind_cls.SUSPECTED_FROZEN:
         evidence = str(cast_event.diagnostic.get("evidence", "unknown"))
         alive_by = cast_event.diagnostic.get("alive_by")
         suffix = f", alive_by={alive_by}" if alive_by is not None else ""
@@ -110,9 +126,9 @@ def _format_waiting_status_line(event: object) -> str:
             f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
         )
         return base + subagent_part
-    if cast_event.kind == waiting_kind_cls.EXITED:
+    if kind == waiting_kind_cls.EXITED:
         return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
-    if cast_event.kind == waiting_kind_cls.SUBAGENT_PROGRESS:
+    if kind == waiting_kind_cls.SUBAGENT_PROGRESS:
         # Real-time subagent progress (R5, Trustworthy Idle Watchdog spec).
         # This is an in-progress signal -- a live subagent is producing
         # activity, NOT a hard ceiling / stuck signal.  Rendering it as
@@ -127,18 +143,32 @@ def _format_waiting_status_line(event: object) -> str:
         # sees the latest progress description (``tool_use:Read`` etc.)
         # the watchdog recorded via ``record_subagent_work``.
         live_count = cast_event.diagnostic.get("live_subagent_count", 0)
-        live_label = (
-            f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
-        )
+        live_label = f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
         base = (
             f"Background child work: subagent progress"
             f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
         )
         return base + subagent_part
+    # wt-047-stall-label: explicit text for the two new stall-state
+    # transitions. NEVER fall through to the ``hit hard ceiling``
+    # template below for STALLED / STALL_RESUMED -- the line is
+    # semantically distinct from a ceiling-crossing event. Render
+    # ``idle_elapsed_seconds`` (NOT ``current_run_seconds``): the
+    # watchdog emits STALLED / STALL_RESUMED with
+    # ``current_run_seconds=0.0`` because the run was never
+    # WAITING_ON_CHILD at the moment of the stall; the only
+    # operator-truthful elapsed value is the watchdog's own
+    # idle-elapsed measurement (``IdleWatchdog._set_stall``).
+    if kind == waiting_kind_cls.STALLED:
+        idle_secs = f"{cast_event.idle_elapsed_seconds:.0f}"
+        return f"Agent stalled (idle_elapsed={idle_secs}s, watchdog assessment)"
+    if kind == waiting_kind_cls.STALL_RESUMED:
+        idle_secs = f"{cast_event.idle_elapsed_seconds:.0f}"
+        return f"Agent resumed after stall (idle_elapsed={idle_secs}s)"
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
-        f", oldest_child_seconds={float(cast('int | float', oldest_val)):.0f}s"
+        f", oldest_child_seconds={float(cast('int | float', oldest_val)):.0f}s"  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if oldest_val is not None
         else ""
     )
@@ -151,14 +181,21 @@ def _format_waiting_status_line(event: object) -> str:
 
 
 _SUBAGENT_ACTIVITY_MAX = 80
+#: Maximum byte length of the ``subagent=`` suffix body. Mirrors the
+#: legacy 80-char contract that operators learned to recognize; the
+#: cell-aware truncation in :mod:`ralph.display.content_condenser`
+#: owns the long-content overflow path separately so this stays as a
+#: fixed cap on the inline suffix.
+_SUBAGENT_ACTIVITY_TRUNCATE_CELL_WIDTH: int = _SUBAGENT_ACTIVITY_MAX
 
 
 def _format_subagent_activity_suffix(text: str | None) -> str:
     """Return a ``subagent=<truncated>`` suffix when ``text`` is non-empty.
 
-    Truncates to 80 chars plus an ellipsis when longer. Returns an empty
-    string when ``text`` is ``None`` or whitespace-only so callers can
-    append the result unconditionally without producing empty parens.
+    Truncates to ``_SUBAGENT_ACTIVITY_MAX`` chars plus an ellipsis when
+    longer. Returns an empty string when ``text`` is ``None`` or
+    whitespace-only so callers can append the result unconditionally
+    without producing empty parens.
 
     Used by ``_format_waiting_status_line`` for the PROGRESS,
     SUSPECTED_FROZEN, and HARD_STOP event kinds. ENTERED and EXITED are
@@ -205,8 +242,12 @@ class PipelineSubscriber:
         workspace_root: Path,
         run_id: str,
         _prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
+        _prompt_path_finder: Callable[[Path], Path | None] = find_prompt_path,
+        _plan_reader: Callable[[Path], PlanSummary | None] = read_plan_artifact,
+        _plan_marker_reader: Callable[[Path], int | None] | None = None,
         on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
         pipeline_policy: PipelinePolicy | None = None,
+        watchdog_attention_sink: Callable[[str | None], None] | None = None,
     ) -> None:
         self._queue = queue
         self._run_id = run_id
@@ -215,14 +256,33 @@ class PipelineSubscriber:
         self._lock = threading.Lock()
         self._on_snapshot = on_snapshot
         self._pipeline_policy: PipelinePolicy | None = pipeline_policy
+        self._plan_reader = _plan_reader
+        self._plan_marker_reader = _plan_marker_reader
+        # wt-047-stall-label: the sink mirrors every watchdog event's
+        # authoritative ``stall_active`` assessment to the Status Bar host.
+        # The display owns no independent stall latch. The sink is wrapped
+        # defensively in ``record_waiting_status`` so a misbehaving
+        # host does not break the snapshot path.
+        self._watchdog_attention_sink: Callable[[str | None], None] | None = (
+            watchdog_attention_sink
+        )
+        # wt-047-stall-label: dedicated lock for late-binding the
+        # sink from a host that already holds a subscriber
+        # reference (the ``subscriber=`` injected path on
+        # :class:`ralph.display.parallel_display.ParallelDisplay`).
+        # The constructor path binds the sink before any event is
+        # emitted so a lock is unnecessary there; the lock guards
+        # :meth:`set_watchdog_attention_sink` against a concurrent
+        # ``record_waiting_status`` read.
+        self._watchdog_attention_sink_lock = threading.Lock()
 
-        prompt_path = find_prompt_path(workspace_root)
+        prompt_path = _prompt_path_finder(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
         self._prompt_preview: tuple[str, ...] = (
             _prompt_reader(prompt_path) if prompt_path is not None else ()
         )
 
-        plan = read_plan_artifact(workspace_root) or PlanSummary()
+        plan = self._plan_reader(workspace_root) or PlanSummary()
         self._plan_summary: str | None = plan.summary
         self._plan_scope_items: tuple[str, ...] = plan.scope_items
         self._plan_total_steps: int = plan.total_steps
@@ -437,6 +497,7 @@ class PipelineSubscriber:
             return
         cast_event = event
         snapshots_to_publish: list[PipelineSnapshot] = []
+        sink_value: str | None = None
         with self._lock:
             self._invalidate_snapshot_cache_locked()
             if unit_id is not None:
@@ -454,6 +515,9 @@ class PipelineSubscriber:
                     decision=cast_event.kind.name,
                     reason=line,
                 )
+            # Mirror the watchdog's assessment on every event; the display
+            # owns no independent stall latch.
+            sink_value = "stalled" if cast_event.stall_active else None
             snapshot = self._build_snapshot_locked(self._last_state)
             if snapshot is not None:
                 snapshots_to_publish.append(snapshot)
@@ -462,8 +526,42 @@ class PipelineSubscriber:
                 cleared = self._build_snapshot_locked(self._last_state)
                 if cleared is not None:
                     snapshots_to_publish.append(cleared)
+        # Sink call is wrapped defensively outside the lock so a
+        # misbehaving host does not break the snapshot path.
+        if self._watchdog_attention_sink is not None:
+            try:
+                self._watchdog_attention_sink(sink_value)
+            except Exception as exc:
+                _logger.warning(
+                    f"watchdog attention sink raised: snapshot path remains intact ({exc!r})"
+                )
         for s in snapshots_to_publish:
             self._publish(s)
+
+    def set_watchdog_attention_sink(
+        self, sink: Callable[[str | None], None] | None
+    ) -> None:
+        """Bind (or clear) the watchdog-attention sink after construction.
+
+        wt-047-stall-label (DA-001): the supported ``subscriber=``
+        argument on :class:`ralph.display.parallel_display.ParallelDisplay`
+        lets a test / advanced caller supply a fully-constructed
+        :class:`PipelineSubscriber`. Without this binder the supplied
+        subscriber's ``watchdog_attention_sink`` slot stays unset and
+        per-event stall assessment never reaches the host
+        ``watchdog_attention`` surface -- the public constructor
+        path would silently fail to render ``STALLED``.
+
+        The constructor ``watchdog_attention_sink=`` parameter is
+        still the preferred seam for production callers (binding at
+        construction time, not after the first event); this method
+        exists for the injected-subscriber path. ``None`` clears the
+        sink. The binding is guarded by a dedicated lock so a
+        concurrent ``record_waiting_status`` call sees a stable
+        sink reference.
+        """
+        with self._watchdog_attention_sink_lock:
+            self._watchdog_attention_sink = sink
 
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""
@@ -568,7 +666,7 @@ class PipelineSubscriber:
         if marker == self._last_plan_refresh_marker:
             return
         self._invalidate_snapshot_cache_locked()
-        plan = read_plan_artifact(self._workspace_root) or PlanSummary()
+        plan = self._plan_reader(self._workspace_root) or PlanSummary()
         self._plan_summary = plan.summary
         self._plan_scope_items = plan.scope_items
         self._plan_total_steps = plan.total_steps
@@ -578,7 +676,9 @@ class PipelineSubscriber:
         self._snapshot_cache = None
 
     def _plan_refresh_marker(self) -> int | None:
-        plan_path = self._workspace_root / ".agent" / "artifacts" / "plan.json"
+        if self._plan_marker_reader is not None:
+            return self._plan_marker_reader(self._workspace_root)
+        plan_path = plan_artifact_path(self._workspace_root)
         try:
             return plan_path.stat().st_mtime_ns
         except OSError:

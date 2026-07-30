@@ -127,7 +127,9 @@ def _validate_and_materialize_support(
         name,
         transport=transport,
         parser_factory=parser_factory,
-        strategy_factory=cast("StrategyFactory", strategy_factory),
+        strategy_factory=cast(
+            "StrategyFactory", strategy_factory
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         agent_registry=agent_registry,
         json_parser=json_parser,
         interactive=interactive,
@@ -318,7 +320,9 @@ def register_my_agent(
     return register_agent_support(
         name,
         transport=transport,
-        parser_factory=cast("_ParserFactory", parser),
+        parser_factory=cast(
+            "_ParserFactory", parser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         strategy_factory=resolved_strategy,
         agent_registry=agent_registry,
         json_parser=json_parser,

@@ -36,6 +36,13 @@ ralph.logging
    :members:
    :show-inheritance:
 
+ralph.syntax_theme
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.syntax_theme
+   :members:
+   :show-inheritance:
+
 ralph.onboarding
 ~~~~~~~~~~~~~~~~
 
@@ -91,6 +98,61 @@ ralph.platform.operating_system
    :members:
    :show-inheritance:
 
+ralph.contrib
+~~~~~~~~~~~~~
+
+.. automodule:: ralph.contrib
+   :no-members:
+
+ralph.contrib.cla
+~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.contrib.cla
+   :members:
+   :show-inheritance:
+
+ralph.update_check
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check
+   :members:
+   :show-inheritance:
+
+ralph.update_check.compare
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.compare
+   :members:
+   :show-inheritance:
+
+ralph.update_check.environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.environment
+   :members:
+   :show-inheritance:
+
+ralph.update_check.gating
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.gating
+   :members:
+   :show-inheritance:
+
+ralph.update_check.pypi
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.pypi
+   :members:
+   :show-inheritance:
+
+ralph.update_check.state
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.state
+   :members:
+   :show-inheritance:
+
 ralph.verify
 ~~~~~~~~~~~~
 
@@ -134,6 +196,13 @@ ralph.project_urls
 ~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.project_urls
+   :members:
+   :show-inheritance:
+
+ralph.checked_accessors
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.checked_accessors
    :members:
    :show-inheritance:
 
@@ -335,6 +404,20 @@ ralph.config.bootstrap
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.config.bootstrap
+   :members:
+   :show-inheritance:
+
+ralph.config.agent_detection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.agent_detection
+   :members:
+   :show-inheritance:
+
+ralph.config.config_error_messages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.config_error_messages
    :members:
    :show-inheritance:
 
@@ -729,6 +812,13 @@ ralph.pipeline.events.analysis_decision_event
    :members:
    :show-inheritance:
 
+ralph.pipeline.events.execution_result_event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.events.execution_result_event
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.events.phase_failure_event
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -865,6 +955,211 @@ ralph.pipeline.reducer
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.reducer
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_backup_refs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_backup_refs
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_recovery_terminal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_terminal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_terminal
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_backoff
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_backoff
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_boundary_refresh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_boundary_refresh
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.graph
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.graph
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.prompt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.prompt
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.status
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.session
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.session
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.driver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.driver
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.rebase_loop
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.rebase_loop
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_conflict_budget
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_conflict_budget
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_budget_seam
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_budget_seam
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_context
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_context
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_catchup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_catchup
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_ff
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_ff
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_outcome
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_rebase_merge
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_rebase_merge
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_record
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_record
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_resolve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_resolve
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_agent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_agent
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_recovery
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_recovery
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_recovery_terminal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
+   :members:
+   :no-index:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_refresh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_refresh
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_remote_sync
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_remote_sync
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_terminal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_terminal
+   :members:
+   :no-index:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_sync
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_sync
    :members:
    :show-inheritance:
 
@@ -1016,13 +1311,6 @@ ralph.pipeline.exhausted_analysis_skip
    :members:
    :show-inheritance:
 
-ralph.pipeline.frozen_work_unit_model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.frozen_work_unit_model
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.state_models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1090,6 +1378,13 @@ ralph.git.commit_cleanup
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.commit_cleanup
+   :members:
+   :show-inheritance:
+
+ralph.git.scoped_auto_commit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.scoped_auto_commit
    :members:
    :show-inheritance:
 
@@ -1305,6 +1600,13 @@ ralph.agents.availability
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.availability
+   :members:
+   :show-inheritance:
+
+ralph.agents.agent_install_links
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.agent_install_links
    :members:
    :show-inheritance:
 
@@ -1601,7 +1903,7 @@ ralph.mcp
 ralph.mcp.artifacts
 ~~~~~~~~~~~~~~~~~~~
 
-.. Note: ralph.mcp.artifacts re-exports from ralph.mcp.artifacts.store;
+.. Note: ralph.mcp.artifacts re-exports from its submodules;
    using :no-members: avoids duplicate object warnings.
 
 .. automodule:: ralph.mcp.artifacts
@@ -1611,13 +1913,6 @@ ralph.mcp.artifacts.audit_adapter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.audit_adapter
-   :members:
-   :show-inheritance:
-
-ralph.mcp.artifacts.bridge
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.artifacts.bridge
    :members:
    :show-inheritance:
 
@@ -1663,6 +1958,13 @@ ralph.mcp.artifacts.format_docs
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.idempotent_write
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.idempotent_write
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.handoffs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1674,6 +1976,13 @@ ralph.mcp.artifacts.history
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.history
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.md_draft_io
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.md_draft_io
    :members:
    :show-inheritance:
 
@@ -1697,13 +2006,6 @@ ralph.mcp.artifacts.policy_outcomes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.policy_outcomes
-   :members:
-   :show-inheritance:
-
-ralph.mcp.artifacts.store
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.artifacts.store
    :members:
    :show-inheritance:
 
@@ -1734,6 +2036,51 @@ ralph.mcp.artifacts.state_db
 .. automodule:: ralph.mcp.artifacts.state_db
    :members:
    :show-inheritance:
+
+ralph.mcp.artifacts.markdown
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.markdown
+   :no-members:
+
+ralph.mcp.artifacts.markdown.registry
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.markdown.registry
+   :members:
+
+ralph.mcp.artifacts.markdown.specs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs
+   :no-members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.analysis_decision
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.commit_cleanup
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.commit_message
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.development_result
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.fix_result
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.issues
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.plan
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.product_spec
+   :members:
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.smoke_test_result
+   :members:
 
 ralph.mcp.protocol
 ~~~~~~~~~~~~~~~~~~
@@ -1899,10 +2246,10 @@ ralph.mcp.tools.artifact
    :members:
    :show-inheritance:
 
-ralph.mcp.tools.plan_draft_edit
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.mcp.tools.md_artifact
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.mcp.tools.plan_draft_edit
+.. automodule:: ralph.mcp.tools.md_artifact
    :members:
    :show-inheritance:
 
@@ -2001,10 +2348,10 @@ ralph.mcp.tools.invalid_params_error
    :members:
    :show-inheritance:
 
-ralph.mcp.tools.json_repair
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.mcp.tools.text_edits
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.mcp.tools.json_repair
+.. automodule:: ralph.mcp.tools.text_edits
    :members:
    :show-inheritance:
 
@@ -2243,6 +2590,105 @@ ralph.mcp.websearch.secrets
    :members:
    :show-inheritance:
 
+ralph.mcp.explore
+~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore
+   :members:
+   :show-inheritance:
+   :no-index:
+
+ralph.mcp.explore.audit_register
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.audit_register
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.family_baseline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.family_baseline
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.bench
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.bench
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.deferred_phases
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.deferred_phases
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.dirty_paths
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.dirty_paths
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.graph
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.graph
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.path_filter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.path_filter
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.structure
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.handlers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.handlers
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.lifecycle
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.pipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.pipeline
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.ranking
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.ranking
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.store
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.store
+   :members:
+   :show-inheritance:
+
 Git
 ---
 
@@ -2264,6 +2710,13 @@ ralph.git.operations
 ~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.operations
+   :members:
+   :show-inheritance:
+
+ralph.git.merge
+~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.merge
    :members:
    :show-inheritance:
 
@@ -2322,6 +2775,13 @@ ralph.git.subprocess_runner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.subprocess_runner
+   :members:
+   :show-inheritance:
+
+ralph.git.remote_push
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.remote_push
    :members:
    :show-inheritance:
 
@@ -2760,10 +3220,24 @@ ralph.display.activity_router
    :members:
    :show-inheritance:
 
+ralph.display.agent_event_renderer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.agent_event_renderer
+   :members:
+   :show-inheritance:
+
 ralph.display.artifact_reader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.artifact_reader
+   :members:
+   :show-inheritance:
+
+ralph.display.auto_integrate_message
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.auto_integrate_message
    :members:
    :show-inheritance:
 
@@ -2788,6 +3262,27 @@ ralph.display.content_condenser
    :members:
    :show-inheritance:
 
+ralph.display.edit_preview
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.edit_preview
+   :members:
+   :show-inheritance:
+
+ralph.display.preview_payload
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.preview_payload
+   :members:
+   :show-inheritance:
+
+ralph.display.language_inference
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.language_inference
+   :members:
+   :show-inheritance:
+
 ralph.display.lifecycle_filter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2799,6 +3294,13 @@ ralph.display.line_sanitizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.line_sanitizer
+   :members:
+   :show-inheritance:
+
+ralph.display.log_sink
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.log_sink
    :members:
    :show-inheritance:
 
@@ -2851,10 +3353,24 @@ ralph.display.prompt_reader
    :members:
    :show-inheritance:
 
+ralph.display.presented_entry
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.presented_entry
+   :members:
+   :show-inheritance:
+
 ralph.display.raw_overflow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.raw_overflow
+   :members:
+   :show-inheritance:
+
+ralph.display.record_writer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.record_writer
    :members:
    :show-inheritance:
 
@@ -3097,6 +3613,172 @@ ralph.language_detector.signatures
 
 ----
 
+Project Policy
+--------------
+
+This group owns the project-policy-readiness preflight: the versioned,
+machine-checkable schema (markers, required headings, RALPH-FACT /
+RALPH-COMMAND / RALPH-LANG / RALPH-INAPPLICABLE field markers), the
+shared readiness-evidence inventory the validator and the cache share,
+the deterministic validator, the change-aware READY cache, the AGENTS.md
+/ CLAUDE.md idempotent bootstrap, the bundled starter policies, the
+deterministic preflight orchestrator, and the synchronous, bounded,
+out-of-graph remediation driver.
+
+ralph.project_policy
+~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.project_policy re-exports the public preflight API and the
+   submodules; using :no-members: avoids duplicate cross-reference warnings.
+
+.. automodule:: ralph.project_policy
+   :no-members:
+
+ralph.project_policy.markers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.markers
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.schema_state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.schema_state
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.models
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.evidence
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.evidence
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.agents_md
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.agents_md
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.validators
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.validators
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.cache
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.cache
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.preflight
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.preflight
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.remediation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.remediation
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.analysis
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.analysis_decision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.analysis_decision
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_route
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_route
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_phase
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_phase
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_graph
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_graph
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_driver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_driver
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.policy_mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.policy_mode
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.reset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.reset
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.cli_integration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.cli_integration
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.status_bar
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.status_bar
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.starters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.project_policy.starters exposes the bundled starter-policy
+   bundle; using :no-members: avoids duplicate cross-reference warnings
+   because the bundled markdown content is data, not Python API surface.
+
+.. automodule:: ralph.project_policy.starters
+   :no-members:
+
+----
+
 Prompts
 -------
 
@@ -3156,10 +3838,10 @@ ralph.prompts.reviewer
    :members:
    :show-inheritance:
 
-ralph.prompts.system_prompt
+ralph.prompts.master_prompt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.prompts.system_prompt
+.. automodule:: ralph.prompts.master_prompt
    :members:
    :show-inheritance:
 
@@ -3177,10 +3859,10 @@ ralph.prompts.template_engine
    :members:
    :show-inheritance:
 
-ralph.prompts.template_parsing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.prompts.template_rendering_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.prompts.template_parsing
+.. automodule:: ralph.prompts.template_rendering_error
    :members:
    :show-inheritance:
 
@@ -3204,13 +3886,6 @@ ralph.prompts.types
    :members:
    :show-inheritance:
    :exclude-members: CapabilitySet,PolicyFlag,PolicyFlagSet
-
-ralph.prompts.plan_format
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.prompts.plan_format
-   :members:
-   :show-inheritance:
 
 Testing
 -------
@@ -3255,6 +3930,27 @@ ralph.testing.audit_di_seam
    :members:
    :show-inheritance:
 
+ralph.testing.audit_cast_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_cast_policy
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_fenced_artifact_examples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_fenced_artifact_examples
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_idempotent_write_adoption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_idempotent_write_adoption
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_parallelization_dormant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3266,6 +3962,20 @@ ralph.testing.audit_resource_lifecycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_resource_lifecycle
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_template_render_integrity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_template_render_integrity
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_terminal_escape_containment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_terminal_escape_containment
    :members:
    :show-inheritance:
 
@@ -3361,4 +4071,3 @@ ralph.pro_support.state_query
 .. automodule:: ralph.pro_support.state_query
    :members:
    :show-inheritance:
-

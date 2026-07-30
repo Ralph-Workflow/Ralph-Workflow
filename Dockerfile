@@ -41,7 +41,7 @@ FROM python:${PYTHON_VERSION}-slim
 LABEL org.opencontainers.image.title="Ralph Workflow"
 LABEL org.opencontainers.image.description="Vendor-neutral AI coding workflow orchestration with unattended execution, recovery, and verification."
 LABEL org.opencontainers.image.url="https://ralphworkflow.com"
-LABEL org.opencontainers.image.source="https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+LABEL org.opencontainers.image.source="https://github.com/Ralph-Workflow/Ralph-Workflow"
 LABEL org.opencontainers.image.vendor="RalphWorkflow"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 

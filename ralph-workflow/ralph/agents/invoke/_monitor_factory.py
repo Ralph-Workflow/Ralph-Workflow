@@ -70,10 +70,7 @@ def _discovery_strategy_for_config(
         subagent output log path always receive
         :class:`NullDiscoveryStrategy`.
     """
-    if (
-        config.transport == AgentTransport.OPENCODE
-        and registry is not None
-    ):
+    if config.transport == AgentTransport.OPENCODE and registry is not None:
         return OpenCodeRegistryDiscoveryStrategy(registry, scope_prefix)
     return NullDiscoveryStrategy()
 
@@ -112,6 +109,4 @@ def _make_discovery_strategy(
     """Construct a discovery strategy when the policy enables output capture."""
     if not policy.subagent_output_capture_enabled:
         return None
-    return _discovery_strategy_for_config(
-        config, registry=registry, scope_prefix=scope_prefix
-    )
+    return _discovery_strategy_for_config(config, registry=registry, scope_prefix=scope_prefix)

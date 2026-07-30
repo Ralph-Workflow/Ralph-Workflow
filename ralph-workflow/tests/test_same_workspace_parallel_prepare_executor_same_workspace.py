@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
-    ResolvedCapabilityProfile,
     resolve_capability_profile,
 )
 from ralph.pipeline.parallel.coordinator import prepare_executor
@@ -41,7 +40,7 @@ class TestPrepareExecutorSameWorkspace:
         _executor, bundle, worker_namespace = prepare_executor(unit, mock_executor, ctx)
 
         # injected factory must be used, not a new one
-        assert cast("MagicMock", ctx.mcp_factory.build).called
+        assert ctx.mcp_factory.build.called
         assert bundle is not None
         assert worker_namespace is not None
 
@@ -186,12 +185,12 @@ def _make_same_workspace_context(
         session_contract.capabilities if session_contract is not None else frozenset()
     )
     session_model_identity = (
-        cast("MultimodalModelIdentity | None", session_contract.model_identity)
+        session_contract.model_identity
         if session_contract is not None
         else None
     )
     session_capability_profile = (
-        cast("ResolvedCapabilityProfile | None", session_contract.capability_profile)
+        session_contract.capability_profile
         if session_contract is not None
         else None
     )

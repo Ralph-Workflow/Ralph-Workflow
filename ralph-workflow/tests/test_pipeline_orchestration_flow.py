@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
+import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-
-if TYPE_CHECKING:
-    import pytest
+from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -26,6 +24,20 @@ from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, Re
 from ralph.policy.loader import load_policy
 
 _EXPECTED_RECOVERY_DETERMINE_CALLS = 2
+
+# ``test_pipeline_orchestration_flow.py`` exercises the full
+# policy-driven ``runner.run`` loop with MagicMock-heavy state
+# setup (resolve_workspace_scope, load_policy_or_die,
+# AgentRegistry, FsWorkspace, materialize_*_prompt_if_needed,
+# execute_effect, ckpt.save). Under parallel xdist CPU
+# contention the mock construction + ``runner.run`` invocation
+# has been observed to intermittently exceed the 1s default test
+# timeout. 5s is the documented minimum for non-trivial tests
+# (see ``ralph/verify_timeout.py``) and is well under the 60s
+# combined ``make verify`` budget. The 1s default policy is
+# preserved globally; this module-level marker only relaxes the
+# cap for the orchestration-flow tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _install_runner_display_context(monkeypatch: pytest.MonkeyPatch) -> Console:
@@ -60,7 +72,7 @@ def _make_initial_state() -> PipelineState:
 
 def _apply(state: PipelineState, event: str) -> PipelineState:
     bundle = _load_default_bundle()
-    next_state, _ = reduce(state, cast("PipelineEvent", event), bundle.pipeline)
+    next_state, _ = reduce(state, event, bundle.pipeline)
     return next_state
 
 
@@ -73,14 +85,10 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
         determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect
     )
 
+    # The default planning_analysis loop counter is 0, so a successful
+    # planning phase routes straight into development with no
+    # planning-analysis pass in between.
     state = _apply(state, PipelineEvent.AGENT_SUCCESS)
-    visited_phases.append(state.phase)
-    assert state.phase == "planning_analysis"
-    effect = determine_next_effect(state, bundle.pipeline, bundle.agents)
-    assert isinstance(effect, PreparePromptEffect)
-    assert effect.phase == "planning_analysis"
-
-    state = _apply(state, PipelineEvent.ANALYSIS_SUCCESS)
     visited_phases.append(state.phase)
     assert state.phase == "development"
     assert isinstance(
@@ -132,7 +140,6 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
     assert determine_next_effect(state, bundle.pipeline, bundle.agents) == ExitSuccessEffect()
     assert visited_phases == [
         "planning",
-        "planning_analysis",
         "development",
         "development_commit_cleanup",
         "development_commit",
@@ -220,6 +227,11 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
         lambda _effect, _config, _workspace_scope: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+    monkeypatch.setattr(
+        run_loop_module,
+        "_apply_connectivity_check",
+        lambda current_state, _monitor: current_state,
+    )
     _install_runner_display_context(monkeypatch)
 
     result = runner_module.run(config, initial_state=state)

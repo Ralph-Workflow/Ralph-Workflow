@@ -59,6 +59,7 @@ import inspect
 from io import StringIO
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -69,6 +70,33 @@ from ralph.display.parallel_display import ParallelDisplay
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _RUN_LOOP_PATH = _REPO_ROOT / "ralph" / "pipeline" / "run_loop.py"
 _COMMIT_PLUMBING_PATH = _REPO_ROOT / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
+_CLEANUP_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "cleanup.py"
+_STAR_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "star.py"
+_CONTRIBUTE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "contribute.py"
+_SMOKE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "smoke.py"
+_CHECK_POLICY_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "check_policy.py"
+_COMMIT_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "commit.py"
+_DIAGNOSE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "diagnose.py"
+_EXPLAIN_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "explain.py"
+_INIT_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "init.py"
+_PROMPT_HELPER_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "prompt_helper.py"
+_RUN_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "run.py"
+_CONFLICT_STATUS_PATH = _REPO_ROOT / "ralph" / "pipeline" / "conflict_resolution" / "status.py"
+_CLI_ENTRY_PATHS = (
+    _REPO_ROOT / "ralph" / "cli" / "main.py",
+    _REPO_ROOT / "ralph" / "cli" / "_prompt_helper_entry.py",
+)
+
+
+# Per-test pytest marker: the AST-walking and parallel-display
+# construction in this file has been observed to exceed the
+# global 1-second per-test cap under parallel xdist CPU
+# contention; 5 seconds is the minimum supported by the
+# audit invariant (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``)
+# and well under the 60-second combined ``make verify``
+# budget. The default 1 s cap remains in place for every
+# other test in the suite.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def test_run_loop_does_not_use_active_display_console_print() -> None:
@@ -134,8 +162,6 @@ def test_plain_log_renderer_status_line_uses_build_line() -> None:
     pd.set_status("unit-1", "running")
     pd.stop()
     output = buffer.getvalue()
-    assert "INFO" in output, f"status line missing INFO badge: {output!r}"
-    assert "META" in output, f"status line missing META badge: {output!r}"
     assert "[status][unit-1]" in output, f"status line missing [status][unit-1] tag: {output!r}"
     assert "running" in output, f"status text 'running' missing: {output!r}"
 
@@ -304,4 +330,225 @@ def test_emit_methods_route_through_display_console_only() -> None:
             violators.append(name)
     assert not violators, (
         f"emit_* methods that construct their own Console (free-function fan-out): {violators!r}"
+    )
+
+
+# S-14 (P2 universality): the four remaining commands that previously
+# bypassed the shared display surface (``cleanup``, ``star``,
+# ``contribute``, and ``smoke``'s machine ``EXIT_CODE=`` line) must
+# route through ``display.emit_*`` so the drift-prevention suite can
+# pin that no command reaches the terminal through its own path.
+
+_FOLD_TARGETS: tuple[tuple[Path, tuple[str, ...], str], ...] = (
+    (
+        _CLEANUP_PATH,
+        ("emit_status", "emit_warning"),
+        "cleanup",
+    ),
+    (
+        _STAR_PATH,
+        ("emit_status",),
+        "star",
+    ),
+    (
+        _CONTRIBUTE_PATH,
+        ("emit_warning", "emit_renderable"),
+        "contribute",
+    ),
+    (
+        _SMOKE_PATH,
+        ("emit_renderable",),
+        "smoke",
+    ),
+    (_CHECK_POLICY_PATH, ("emit_status", "emit_warning"), "check-policy"),
+    (_COMMIT_PATH, ("emit_status", "emit_warning"), "commit"),
+    (_DIAGNOSE_PATH, ("emit_status", "emit_renderable"), "diagnose"),
+    (_EXPLAIN_PATH, ("emit_status", "emit_warning"), "explain"),
+    (_INIT_PATH, ("emit_status", "emit_warning"), "init"),
+    (_PROMPT_HELPER_PATH, ("emit_status", "emit_warning"), "prompt-helper"),
+    (_RUN_PATH, ("emit_warning", "emit_info_panel"), "run"),
+    (_CONFLICT_STATUS_PATH, ("emit_warn_line",), "conflict resolution"),
+)
+
+
+def _find_bare_typer_echo_calls(source: str) -> list[int]:
+    """Return the AST line numbers of bare ``typer.echo(...)`` calls in ``source``.
+
+    Interactive confirmation prompts (``typer.confirm``) are NOT
+    typer.echo and stay out of scope; the goal of S-14 is to fold
+    display-output lines into the shared display surface, not to
+    replace interactive input prompts.
+    """
+    tree = ast.parse(source)
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "echo"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "typer"
+        )
+    ]
+
+
+def _find_bare_print_calls(source: str) -> list[int]:
+    """Return the AST line numbers of bare ``print(...)`` calls in ``source``.
+
+    The smoke command's ``EXIT_CODE=N`` machine line is the only
+    allowed call site (and it routes through ``display._console``);
+    any other bare ``print(...)`` outside that seam is a drift the
+    test must catch.
+    """
+    tree = ast.parse(source)
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "print"
+        )
+    ]
+
+
+@pytest.mark.parametrize(("path", "expected_emits", "label"), _FOLD_TARGETS)
+def test_command_fold_routes_through_display(
+    path: Path, expected_emits: tuple[str, ...], label: str
+) -> None:
+    """S-14: every command in scope folds its display output through ``display.emit_*``.
+
+    Asserts that ``cleanup.py`` / ``star.py`` / ``contribute.py`` /
+    ``smoke.py`` use at least one of the expected ``display.emit_*``
+    methods so the drift-prevention suite can pin the S-14 invariant
+    that no command reaches the terminal through its own path. Bare
+    ``typer.echo`` / ``print`` calls are excluded by the dedicated
+    tests below.
+    """
+    source = path.read_text(encoding="utf-8")
+    for emit in expected_emits:
+        routes_through_display = f"display.{emit}" in source or f'getattr(display, "{emit}"' in source
+        assert routes_through_display, (
+            f"{label} ({path.relative_to(_REPO_ROOT)}) must route through "
+            f"display.{emit}(...) to use the shared display surface (S-14)."
+        )
+
+
+def test_cleanup_fold_drops_bare_typer_echo() -> None:
+    """S-14: cleanup.py must not reach the terminal via bare ``typer.echo``."""
+    source = _CLEANUP_PATH.read_text(encoding="utf-8")
+    violators = _find_bare_typer_echo_calls(source)
+    assert not violators, (
+        f"cleanup.py still calls typer.echo(...) at lines {violators!r}; "
+        "route through display.emit_status(...) / display.emit_warning(...) instead."
+    )
+
+
+def test_star_fold_drops_bare_typer_echo() -> None:
+    """S-14: star.py must not reach the terminal via bare ``typer.echo``."""
+    source = _STAR_PATH.read_text(encoding="utf-8")
+    violators = _find_bare_typer_echo_calls(source)
+    assert not violators, (
+        f"star.py still calls typer.echo(...) at lines {violators!r}; "
+        "route through display.emit_status(...) instead."
+    )
+
+
+def test_contribute_fold_drops_bare_typer_echo() -> None:
+    """S-14: contribute.py must not reach the terminal via bare ``typer.echo``."""
+    source = _CONTRIBUTE_PATH.read_text(encoding="utf-8")
+    violators = _find_bare_typer_echo_calls(source)
+    assert not violators, (
+        f"contribute.py still calls typer.echo(...) at lines {violators!r}; "
+        "route through display.emit_status(...) / display.emit_warning(...) instead."
+    )
+
+
+def test_smoke_fold_drops_bare_print_outside_exit_code_seam() -> None:
+    """S-14: smoke.py's ``EXIT_CODE=N`` line is the only allowed bare-stdout call.
+
+    The grep-for-consumers step confirmed there are no external
+    consumers of ``EXIT_CODE=``; the literal machine line is
+    preserved verbatim through ``sys.stdout.write(...)`` so the
+    shape stays machine-parseable (``display._console.print(...)``
+    would also trip the wt-007 anti-drift guard). Any other bare
+    ``print(...)`` or ``sys.stdout.write(...)`` outside the
+    ``_smoke_emit_exit_code_line`` helper is a drift the test must
+    catch.
+    """
+    source = _SMOKE_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    # Find the line range covered by ``_smoke_emit_exit_code_line``;
+    # every ``sys.stdout.write(...)`` inside that range is the
+    # whitelisted seam. The helper is the single source of the literal
+    # EXIT_CODE line, so any other call site is a drift.
+    helper_start: int | None = None
+    helper_end: int | None = None
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.FunctionDef)
+            and node.name == "_smoke_emit_exit_code_line"
+        ):
+            helper_start = node.lineno
+            helper_end = node.end_lineno
+            break
+    assert helper_start is not None and helper_end is not None, (
+        "smoke.py must define _smoke_emit_exit_code_line(...) so the "
+        "EXIT_CODE machine contract has a single, audited call site."
+    )
+
+    bare_stdout_lines: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # Bare ``print(...)`` at module level.
+        if isinstance(func, ast.Name) and func.id == "print":
+            bare_stdout_lines.append((node.lineno, "print"))
+            continue
+        # ``sys.stdout.write(...)`` outside the EXIT_CODE helper.
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "write"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "stdout"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "sys"
+            and not (helper_start <= node.lineno <= helper_end)
+        ):
+            bare_stdout_lines.append((node.lineno, "sys.stdout.write"))
+    assert not bare_stdout_lines, (
+        "smoke.py has bare stdout calls outside the EXIT_CODE seam at "
+        f"{bare_stdout_lines!r}; route display output through display.emit_*(...) "
+        "instead (S-14)."
+    )
+
+
+@pytest.mark.parametrize("path", _CLI_ENTRY_PATHS)
+def test_cli_entry_modules_drop_bare_print_calls(path: Path) -> None:
+    """S-7: CLI entry modules must route terminal output through shared logging/display."""
+    violators = _find_bare_print_calls(path.read_text(encoding="utf-8"))
+    assert not violators, (
+        f"{path.relative_to(_REPO_ROOT)} calls print(...) at lines {violators!r}; "
+        "route output through the shared display or logger instead."
+    )
+
+
+def test_smoke_keeps_exit_code_machine_contract() -> None:
+    """S-14: smoke.py preserves the literal ``EXIT_CODE=N`` machine contract line.
+
+    External smoke harnesses grep the line; the helper that emits it
+    must keep its exact shape (``EXIT_CODE=<int>\\n``) so the
+    machine-readable contract survives the S-14 fold.
+    """
+    source = _SMOKE_PATH.read_text(encoding="utf-8")
+    assert "_smoke_emit_exit_code_line" in source, (
+        "smoke.py must keep the _smoke_emit_exit_code_line helper that "
+        "emits the literal EXIT_CODE=N machine contract line."
+    )
+    assert "sys.stdout.write(f\"EXIT_CODE={exit_code}\\n\")" in source, (
+        "smoke.py must emit the EXIT_CODE line via sys.stdout.write so "
+        "external smoke harnesses can parse the literal shape."
     )

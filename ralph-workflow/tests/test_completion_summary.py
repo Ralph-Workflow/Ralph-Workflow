@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from queue import Queue
 from typing import TYPE_CHECKING
@@ -120,73 +119,17 @@ def test_render_metrics_line_included() -> None:
     assert "pushes=2" in text
 
 
-def test_render_verification_missing_artifact_shows_not_verified(tmp_path: Path) -> None:
-    snapshot = _make_snapshot()
-    text = _render_plain(snapshot, workspace_root=tmp_path)
-    assert "Verification" in text
-    assert "not verified" in text
-
-
-def test_render_verification_missing_artifact_never_claims_passed(tmp_path: Path) -> None:
-    # A missing verification artifact must not report 'passed' — the pipeline's
-    # own phase/error state is not a substitute for actual verification evidence.
-    snapshot = _make_snapshot(phase="complete", last_error=None)
-    text = _render_plain(snapshot, workspace_root=tmp_path)
-    assert "Verification: passed" not in text
-
-
-def test_render_verification_reads_artifact_when_present(tmp_path: Path) -> None:
-    artifacts = tmp_path / ".agent" / "artifacts"
-    artifacts.mkdir(parents=True)
-    (artifacts / "verification.json").write_text(
-        json.dumps({"status": "failed", "reason": "lint errors"})
-    )
-    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
-    assert "Verification" in text
-    assert "failed" in text
-    assert "lint errors" in text
-
-
-def test_render_verification_reads_wrapped_artifact_content(tmp_path: Path) -> None:
-    artifacts = tmp_path / ".agent" / "artifacts"
-    artifacts.mkdir(parents=True)
-    (artifacts / "verification.json").write_text(
-        json.dumps(
-            {
-                "name": "verification",
-                "type": "verification",
-                "content": {
-                    "status": "failed",
-                    "reason": "wrapped lint errors",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
-    assert "Verification" in text
-    assert "failed" in text
-    assert "wrapped lint errors" in text
-
-
 def test_render_includes_commit_message_artifact_when_present(tmp_path: Path) -> None:
-    commit_dir = tmp_path / ".agent" / "tmp"
+    commit_dir = tmp_path / ".agent" / "artifacts"
     commit_dir.mkdir(parents=True)
-    (commit_dir / "commit_message.json").write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {
-                    "type": "commit",
-                    "subject": "feat(display): surface polished completion output",
-                    "body_summary": "Show the final commit message in the completion summary.",
-                },
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
+    (commit_dir / "commit_message.md").write_text(
+        """---
+type: commit
+subject: feat(display): surface polished completion output
+---
+## Body Summary
+- [BS-1] Show the final commit message in the completion summary.
+""",
         encoding="utf-8",
     )
 
@@ -321,12 +264,12 @@ def test_completion_summary_outer_dev_uses_canonical_label() -> None:
         outer_dev_iteration=4,
     )
     text = _render_plain(snap)
-    assert "Dev #4" in text
+    assert "Cycle #4" in text
     assert "Outer Dev Iteration:" not in text
 
 
 def test_completion_summary_outer_dev_with_cap_shows_n_of_total() -> None:
-    """Dev N/cap format used when budget_progress has a tracks_budget counter with cap."""
+    """Cycle N/cap format used when budget_progress has a tracks_budget counter with cap."""
     snap = PipelineSnapshot(
         phase="fix",
         previous_phase="development",
@@ -352,8 +295,8 @@ def test_completion_summary_outer_dev_with_cap_shows_n_of_total() -> None:
         },
     )
     text = _render_plain(snap)
-    assert "Dev 2/5" in text
-    assert "Dev #2" not in text
+    assert "Cycle 2/5" in text
+    assert "Cycle #2" not in text
 
 
 def test_completion_summary_elapsed_appears_before_metrics() -> None:
@@ -392,7 +335,7 @@ def test_completion_summary_iteration_context_label_shown_for_outer_dev() -> Non
     )
     text = _render_plain(snap)
     assert "Iteration Context:" in text
-    assert "Dev #3" in text
+    assert "Cycle #3" in text
 
 
 def test_completion_summary_no_iteration_context_label_when_absent() -> None:

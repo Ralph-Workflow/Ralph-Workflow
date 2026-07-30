@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
-    ToolContent,
     ToolError,
 )
 from ralph.mcp.tools.workspace import (
@@ -29,7 +27,7 @@ class TestHandleReadFile:
         ws.read.return_value = "file contents"
 
         result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
-        assert "file contents" in cast("ToolContent", result.content[0]).text
+        assert "file contents" in result.content[0].text
         assert result.is_error is False
 
     def test_missing_capability_raises(self) -> None:

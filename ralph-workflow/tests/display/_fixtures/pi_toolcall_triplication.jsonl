@@ -1,0 +1,5 @@
+{"kind":"tool_use","provider":"pi","content":"read_file","metadata":{"tool_call_id":"call-pi-1"}}
+{"kind":"tool_use","provider":"pi","content":"read_file","metadata":{"toolCall":{"id":"call-pi-1"}}}
+{"kind":"tool_use","provider":"pi","content":"read_file","metadata":{"toolCallId":"call-pi-1","input":{"path":"ralph/display/status_bar.py"}}}
+{"kind":"tool_result","provider":"pi","content":"payload from tool","metadata":{"tool_call_id":"call-pi-1","tool_name":"read_file"}}
+{"kind":"text","provider":"pi","content":"payload from tool","metadata":{"tool_call_id":"call-pi-1"}}

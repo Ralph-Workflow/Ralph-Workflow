@@ -1,4 +1,4 @@
-<!-- PMF Survey template (Codeberg/Gitea). Sister file in .github/ISSUE_TEMPLATE/ for GitHub. -->
+<!-- PMF Survey template for the Codeberg mirror. Sister file in .github/ISSUE_TEMPLATE/ is for GitHub primary. -->
 <!-- Sean Ellis test: one question. Help us know if Ralph is a marketing problem or a product problem. -->
 ---
 name: PMF Survey (60 seconds)

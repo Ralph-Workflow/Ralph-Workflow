@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+import pytest
 from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.main import (
     app,
 )
 from ralph.display.context import DisplayContext, make_display_context
+from tests._support.typed_accessors import must_mapping
 
 if TYPE_CHECKING:
-    import pytest
     from rich.console import Console
 
 CliRunner = TyperCliRunner
@@ -30,6 +31,9 @@ def _make_display_context_for_console(console: Console) -> DisplayContext:
     return make_display_context(console=console, env={})
 
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
+
 class TestQuickModeSemantics:
     """Tests for --quick/-Q flag behavior."""
 
@@ -42,14 +46,14 @@ class TestQuickModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-Q", "--prompt", "do a task", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
-        general = cast("dict[str, object]", cli_overrides["general"])
+        cli_overrides = must_mapping(captured.get("request").cli_overrides)
+        general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == 1
 
     def test_quick_overrides_developer_iters_when_both_supplied(
@@ -63,7 +67,7 @@ class TestQuickModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
@@ -73,8 +77,8 @@ class TestQuickModeSemantics:
             catch_exceptions=False,
         )
 
-        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
-        general = cast("dict[str, object]", cli_overrides["general"])
+        cli_overrides = must_mapping(captured.get("request").cli_overrides)
+        general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == 1
 
     def test_quick_mode_positional_text_is_passed_as_inline_prompt(
@@ -88,7 +92,7 @@ class TestQuickModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()

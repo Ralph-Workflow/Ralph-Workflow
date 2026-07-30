@@ -417,7 +417,7 @@ def test_subprocess_reader_captured_session_id_wins_over_expected(
 def test_subprocess_reader_session_resume_safe_only_for_resume_eligible_reasons(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    patched_waiting_strategy: None,
+    patched_waiting_strategy: object,
     label: str,
     expected_reason: WatchdogFireReason,
     expected_safe: bool,

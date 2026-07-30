@@ -7,6 +7,7 @@ import re
 import unicodedata
 from typing import cast
 
+from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, BoundedTextBuffer
 from ralph.display.vt_normalizer import normalize_vt_text
 
 from .interactive_transcript_event import InteractiveTranscriptEvent
@@ -16,6 +17,20 @@ _SESSION_ID_PATTERNS = (
     re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
 )
 _TOOL_USE_PATTERN = re.compile(r"^claude tool:\s*\S", re.IGNORECASE)
+_PROVIDER_FAILURE_PATTERN = re.compile(
+    r"^(?:"
+    r"(?:api|authentication|authorization|credential|oauth|billing|quota|"
+    r"rate[\s_-]*limit|network|connection|provider|request)\s+"
+    r"(?:error|failure|failed|unavailable)\b"
+    r"|service\s+unavailable\b"
+    r"|(?:4(?:00|01|03|08|09|13|22|23|24|29)|5\d\d)\s+"
+    r"(?:bad\s+request|unauthorized|forbidden|request\s+timeout|conflict|"
+    r"payload\s+too\s+large|unprocessable\s+(?:content|entity)|locked|"
+    r"failed\s+dependency|too\s+many\s+requests|internal\s+server\s+error|"
+    r"bad\s+gateway|service\s+unavailable|gateway\s+timeout)\b"
+    r")",
+    re.IGNORECASE,
+)
 _MIN_MEANINGFUL_LEN = 3
 _PURE_COUNTER_RE = re.compile(r"^\s*\d+\s*$")
 _TUI_STATUSBAR_RE = re.compile(
@@ -78,6 +93,12 @@ _TUI_CHROME_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*⏵⏵"),
     re.compile(r"^\s*(shift\+tab|ctrl\+[cd]|esc)\s+to\s+(cycle|interrupt|cancel)", re.IGNORECASE),
     re.compile(r"^\s*[⬆↑]\s*[/\w-]+\s*│", re.UNICODE),
+    # Exit banner (Claude Code >= 2.1.x prints the resume hint on two lines;
+    # the id-carrying second line is matched by _SESSION_ID_PATTERNS first,
+    # so this only ever drops the bare banner line).
+    re.compile(r"^\s*Resume this session\b", re.IGNORECASE),
+    # PTY echo of a typed slash command (e.g. the auto-exit "/exit").
+    re.compile(r"^\s*/[A-Za-z][A-Za-z0-9_-]{0,30}\s*$"),
 )
 
 _BOX_DRAWING_STRUCTURAL_RATIO = 0.6
@@ -97,7 +118,7 @@ def _count_box_drawing(text: str) -> int:
     )
 
 
-def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
+def _is_tui_chrome(text: str) -> bool:
     """Return True when *text* is terminal-render surface noise.
 
     Detects box-drawing borders, splash screens, spinners, status bars, and
@@ -105,12 +126,8 @@ def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
     Platform-agnostic: operates on Unicode character properties, not
     terminal-specific escape sequences (those are handled by the VT normalizer).
     """
-    if not text:
+    if not text or any(pattern.search(text) for pattern in _TUI_CHROME_PATTERNS):
         return True
-
-    for pattern in _TUI_CHROME_PATTERNS:
-        if pattern.search(text):
-            return True
 
     if not any("\u2500" <= ch <= "\u259f" for ch in text):
         return False
@@ -156,6 +173,8 @@ def _extract_message_text(value: object) -> str:
 
 
 def _extract_error_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
     if isinstance(value, dict):
         error = value.get("message")
         if isinstance(error, str) and error.strip():
@@ -164,6 +183,30 @@ def _extract_error_text(value: object) -> str:
         if isinstance(error_type, str) and error_type.strip():
             return error_type.strip()
     return ""
+
+
+def _tool_result_event(item: dict[str, object]) -> InteractiveTranscriptEvent | None:
+    """Build a tool_result event from a content block, or None if empty.
+
+    Honors the wire-format ``is_error`` flag (matching the headless Claude,
+    Cursor, Pi, and Generic parsers) by carrying it in metadata so the
+    downstream parser can surface a failed tool call as an error instead of
+    a routine result.
+    """
+    text = _extract_message_text(item.get("content")).strip()
+    if not text:
+        return None
+    metadata: dict[str, object] = {}
+    tool_use_id = item.get("tool_use_id")
+    if isinstance(tool_use_id, str) and tool_use_id:
+        metadata["tool_use_id"] = tool_use_id
+    if bool(item.get("is_error")):
+        metadata["is_error"] = True
+    return InteractiveTranscriptEvent(
+        kind="tool_result",
+        text=f"claude result: {text}",
+        metadata=metadata,
+    )
 
 
 _IDLE_SINGLE_WORD_MAX_LEN = 15
@@ -188,29 +231,31 @@ class ClaudeInteractiveTranscriptParser:
     thinking-status variant needed a dedicated pattern.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS) -> None:
         self.session_id: str | None = None
-        self._last_emitted_signature: tuple[str, str] | None = None
-        self._buffer = ""
+        self._last_emitted_signature: tuple[str, str, object] | None = None
+        self._buffer = BoundedTextBuffer(
+            max_chars=max_buffer_chars, label="claude_interactive_transcript"
+        )
         self._current_content_mode: str | None = None
 
     def feed(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
         json_events = self._events_from_json(raw_text)
         if json_events is not None:
             return json_events
-        self._buffer += raw_text
-        if "\n" not in self._buffer:
+        self._buffer.append(raw_text)
+        if "\n" not in self._buffer.value:
             return []
-        normalized = normalize_vt_text(self._buffer)
+        normalized = normalize_vt_text(self._buffer.value)
         lines = normalized.split("\n")
         if not lines:
             return []
         if not normalized.endswith("\n"):
-            self._buffer = lines.pop()
+            self._buffer.replace(lines.pop())
             if not lines:
                 return []
         else:
-            self._buffer = ""
+            self._buffer.clear()
         events: list[InteractiveTranscriptEvent] = []
         for line in lines:
             text = line.strip()
@@ -227,7 +272,10 @@ class ClaudeInteractiveTranscriptParser:
     def _append_if_new(
         self, events: list[InteractiveTranscriptEvent], event: InteractiveTranscriptEvent
     ) -> None:
-        signature = (event.kind, event.text)
+        # tool_use_id participates in the signature so parallel same-tool
+        # calls (and identical result texts from distinct calls) all emit;
+        # only a literal re-read of the same transcript line is suppressed.
+        signature = (event.kind, event.text, event.metadata.get("tool_use_id"))
         if signature == self._last_emitted_signature:
             return
         events.append(event)
@@ -240,9 +288,25 @@ class ClaudeInteractiveTranscriptParser:
         result: list[InteractiveTranscriptEvent] = []
         if item_type == "tool_use":
             self._current_content_mode = "tool_use"
-            tool_name = str(item.get("name", "tool"))
+            raw_tool_name = item.get("name")
+            tool_name = (
+                raw_tool_name.strip()
+                if isinstance(raw_tool_name, str) and raw_tool_name.strip()
+                else "tool"
+            )
+            metadata: dict[str, object] = {"tool": tool_name}
+            tool_use_id = item.get("id")
+            if isinstance(tool_use_id, str) and tool_use_id:
+                metadata["tool_use_id"] = tool_use_id
+            tool_input = item.get("input")
+            if isinstance(tool_input, dict):
+                metadata["input"] = dict(cast("dict[str, object]", tool_input))
             result.append(
-                InteractiveTranscriptEvent(kind="tool_use", text=f"claude tool: {tool_name}")
+                InteractiveTranscriptEvent(
+                    kind="tool_use",
+                    text=f"claude tool: {tool_name}",
+                    metadata=metadata,
+                )
             )
         elif item_type == "thinking":
             self._current_content_mode = "thinking"
@@ -250,11 +314,9 @@ class ClaudeInteractiveTranscriptParser:
             if text and not self._is_tui_thinking_garbage(text):
                 result.append(InteractiveTranscriptEvent(kind="thinking", text=text))
         elif item_type == "tool_result":
-            text = _extract_message_text(item.get("content")).strip()
-            if text:
-                result.append(
-                    InteractiveTranscriptEvent(kind="tool_result", text=f"claude result: {text}")
-                )
+            event = _tool_result_event(item)
+            if event is not None:
+                result.append(event)
         elif item_type == "text":
             self._current_content_mode = "output"
             text = str(item.get("text", "")).strip()
@@ -268,6 +330,15 @@ class ClaudeInteractiveTranscriptParser:
         if not isinstance(message, dict):
             return []
         content = message.get("content")
+        if isinstance(content, str):
+            # Defensive future-proofing: assistant text delivered as a plain
+            # string instead of a content-block list is still agent output.
+            text = content.strip()
+            if not text:
+                return []
+            self._current_content_mode = "output"
+            event = self._event_for_text(text)
+            return [event] if event is not None else []
         if not isinstance(content, list):
             return []
         events: list[InteractiveTranscriptEvent] = []
@@ -289,11 +360,9 @@ class ClaudeInteractiveTranscriptParser:
             item_dict = cast("dict[str, object]", item)
             if item_dict.get("type") != "tool_result":
                 continue
-            text = _extract_message_text(item_dict.get("content")).strip()
-            if text:
-                events.append(
-                    InteractiveTranscriptEvent(kind="tool_result", text=f"claude result: {text}")
-                )
+            event = _tool_result_event(item_dict)
+            if event is not None:
+                events.append(event)
         return events
 
     def _events_from_json(self, raw_text: str) -> list[InteractiveTranscriptEvent] | None:
@@ -307,7 +376,7 @@ class ClaudeInteractiveTranscriptParser:
         event_type = str(obj.get("type", ""))
         events: list[InteractiveTranscriptEvent] = []
         session_id = obj.get("sessionId") or obj.get("session_id")
-        if isinstance(session_id, str) and session_id:
+        if isinstance(session_id, str) and session_id and session_id != self.session_id:
             self.session_id = session_id
             self._append_if_new(events, InteractiveTranscriptEvent(kind="session", text=session_id))
         if event_type == "assistant":
@@ -327,8 +396,14 @@ class ClaudeInteractiveTranscriptParser:
 
     def _match_known_pattern(self, text: str) -> InteractiveTranscriptEvent | None:
         """Match text against known regex/prefix patterns, returning event or None."""
-        result: InteractiveTranscriptEvent | None = None
+        result = (
+            InteractiveTranscriptEvent(kind="error", text=text)
+            if _PROVIDER_FAILURE_PATTERN.match(text)
+            else None
+        )
         for pattern in _SESSION_ID_PATTERNS:
+            if result is not None:
+                break
             match = pattern.search(text)
             if match is not None:
                 self.session_id = match.group(1)
@@ -347,22 +422,32 @@ class ClaudeInteractiveTranscriptParser:
         return result
 
     @staticmethod
-    def _detect_thinking_idle(text: str) -> InteractiveTranscriptEvent | None:
-        """Detect thinking content in idle mode — always None.
-
-        In idle mode (before JSON sets content mode), there is no legitimate
-        thinking content.  All real thinking arrives via JSON ``"type":"thinking"``
-        items that set ``_current_content_mode``.  The ``"ends with thinking"``
-        heuristic would only catch TUI status-bar counter fragments.
-        """
-        return None
-
-    @staticmethod
     def _is_tui_thinking_garbage(text: str) -> bool:
         """Return True if *text* is TUI spinner/status garbage, not real content."""
         return bool(_THINKING_STATUS_RE.search(text)) or any(c in _TUI_GLYPH_CHARS for c in text)
 
-    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911,PLR0912
+    def _event_for_active_mode(self, text: str) -> InteractiveTranscriptEvent | None:
+        """Classify text after a structured content block established its mode."""
+        if self._current_content_mode == "thinking":
+            if self._is_tui_thinking_garbage(text):
+                return None
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if self._current_content_mode == "output":
+            return InteractiveTranscriptEvent(kind="output", text=text)
+        return None
+
+    @staticmethod
+    def _is_idle_tui_fragment(text: str) -> bool:
+        """Return whether idle-mode text is terminal status chrome."""
+        return (
+            bool(_THINKING_STATUS_RE.search(text))
+            or (len(text) < _IDLE_SINGLE_WORD_MAX_LEN and " " not in text)
+            or ("…" in text and len(text) < _IDLE_ELLIPSIS_MAX_LEN)
+            or (len(text) < _IDLE_TUI_GLYPH_MAX_LEN and any(c in _TUI_GLYPH_CHARS for c in text))
+            or _contains_thinking_keyword(text)
+        )
+
+    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:
         if _PURE_COUNTER_RE.match(text) or _TUI_STATUSBAR_RE.search(text):
             return None
         known = self._match_known_pattern(text)
@@ -370,30 +455,8 @@ class ClaudeInteractiveTranscriptParser:
             return known
         if _is_tui_chrome(text):
             return None
-        if self._current_content_mode == "thinking":
-            if _THINKING_STATUS_RE.search(text):
-                return None
-            if any(c in _TUI_GLYPH_CHARS for c in text):
-                return None
-            return InteractiveTranscriptEvent(kind="thinking", text=text)
-        if self._current_content_mode == "tool_use":
-            return None
-        if self._current_content_mode == "output":
-            return InteractiveTranscriptEvent(kind="output", text=text)
-        if self._current_content_mode is None:
-            if _THINKING_STATUS_RE.search(text):
-                return None
-            if len(text) < _IDLE_SINGLE_WORD_MAX_LEN and " " not in text:
-                return None
-            if "…" in text and len(text) < _IDLE_ELLIPSIS_MAX_LEN:
-                return None
-            if len(text) < _IDLE_TUI_GLYPH_MAX_LEN and any(c in _TUI_GLYPH_CHARS for c in text):
-                return None
-            if _contains_thinking_keyword(text):
-                return None
-        thinking = self._detect_thinking_idle(text)
-        if thinking is not None:
-            return thinking
-        if len(text) <= _MIN_OUTPUT_LEN:
+        if self._current_content_mode is not None:
+            return self._event_for_active_mode(text)
+        if self._is_idle_tui_fragment(text) or len(text) <= _MIN_OUTPUT_LEN:
             return None
         return InteractiveTranscriptEvent(kind="output", text=text)

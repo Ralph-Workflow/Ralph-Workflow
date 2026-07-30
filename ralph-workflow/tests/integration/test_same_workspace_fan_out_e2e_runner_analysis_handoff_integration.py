@@ -12,15 +12,13 @@ All workers use FakeAgentExecutor (no subprocess, no real MCP).
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     import pytest
 
-    from ralph.display.parallel_display import ParallelDisplay
 
 
 from ralph.pipeline import checkpoint as ckpt
@@ -33,6 +31,7 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
 from tests.integration._fake_display_fanout import _FakeDisplay
+from tests.plan_fixtures import development_result_markdown
 
 _DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
@@ -40,17 +39,9 @@ _DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" /
 def _seed_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "development_result.json").write_text(
-        json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": f"Worker {unit_id} done", "changes": []},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "development_result.md").write_text(
+        development_result_markdown(unit_id),
+        encoding="utf-8",
     )
 
 
@@ -126,7 +117,7 @@ class TestRunnerAnalysisHandoffIntegration:
         runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=bundle,
             workspace_scope=scope,
         )
@@ -181,7 +172,7 @@ class TestRunnerAnalysisHandoffIntegration:
         runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=bundle,
             workspace_scope=scope,
         )

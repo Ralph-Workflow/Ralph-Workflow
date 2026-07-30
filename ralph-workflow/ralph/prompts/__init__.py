@@ -1,8 +1,8 @@
-"""Prompt template utilities: capability variables, flag sets, and template parsing.
+"""Prompt capability variables, flag sets, and rendering support.
 
-This package provides the public surface for building prompt template variables and
-parsing prompt template files. It is used by phase handlers to materialise
-agent-facing prompts from Jinja2 templates stored under ``ralph/prompts/templates/``.
+This package exposes the capability types and variable builders used by phase
+handlers when they materialize agent-facing Jinja templates from
+``ralph/prompts/templates/``.
 
 Main entry points:
 
@@ -19,16 +19,13 @@ Main entry points:
   policy-flag resolution.
 - ``SessionCapabilities`` — the per-session capability snapshot passed in from the MCP
   server startup.
-- ``template_parsing`` — module-level re-export of ``ralph.prompts.template_parsing``;
-  provides ``parse_template_file`` and related helpers.
 
-For full template rendering (Jinja2 engine, context building, payload materialisation),
+For template rendering, context building, and payload materialization,
 see ``ralph.prompts.materialize`` and ``ralph.prompts.template_engine``.
 """
 
 from __future__ import annotations
 
-from . import template_parsing as _template_parsing
 from .template_variables import (
     CapabilitySet,
     PolicyFlag,
@@ -48,8 +45,5 @@ __all__ = [
     "capability_template_variables",
     "capability_template_variables_from_session",
     "default_caps_and_flags_for_drain",
-    "template_parsing",
     "visible_mcp_tool_names",
 ]
-
-template_parsing = _template_parsing

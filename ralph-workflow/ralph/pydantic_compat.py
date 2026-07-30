@@ -57,8 +57,6 @@ if TYPE_CHECKING:
             cls,
             *,
             by_alias: bool = True,
-            ref_template: str = "#/$defs/{model}",
-            schema_generator: object = ...,
             mode: Literal["validation", "serialization"] = "validation",
         ) -> dict[str, object]: ...
 

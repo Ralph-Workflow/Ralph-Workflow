@@ -8,7 +8,7 @@ event storm, and the files accumulated without bound.
 
 Scope rule: ONLY machine-only state belongs here. Anything an agent or
 a human reads through workspace file tools (PLAN.md, prompts, artifact
-JSON, exec spills) stays a plain file.
+Markdown, exec spills) stays a plain file.
 
 Concurrency: the MCP server process writes while the engine process
 reads. WAL mode plus a busy timeout covers that on a local filesystem.
@@ -44,6 +44,10 @@ MISSING: Final = _Missing()
 #: marker because the read path treats it as "not completed" and the
 #: HMAC secret is owned by the broker, not the agent.
 CLEARED_SENTINEL_HMAC: Final[str] = "__ralph_internal_cleared__"
+
+# Any change to _SCHEMA MUST bump _SCHEMA_VERSION so existing databases run
+# the new DDL instead of silently treating the old schema as current.
+_SCHEMA_VERSION: Final[int] = 1
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS receipts (
@@ -87,8 +91,16 @@ class RunStateDB:
         self._conn = sqlite3.connect(str(db_path), timeout=5.0)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+        version_row: object = self._conn.execute("PRAGMA user_version").fetchone()
+        if not isinstance(version_row, tuple) or not version_row:
+            raise RuntimeError("SQLite PRAGMA user_version returned no version")
+        version_value: object = version_row[0]
+        if not isinstance(version_value, int):
+            raise RuntimeError("SQLite PRAGMA user_version returned a non-integer version")
+        if version_value < _SCHEMA_VERSION:
+            self._conn.executescript(_SCHEMA)
+            self._conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+            self._conn.commit()
         self._closed: bool = False
 
     @classmethod
@@ -151,9 +163,7 @@ class RunStateDB:
 
     def delete_completion_sentinel(self, run_id: str) -> None:
         with self._conn:
-            self._conn.execute(
-                "DELETE FROM completion_sentinels WHERE run_id = ?", (run_id,)
-            )
+            self._conn.execute("DELETE FROM completion_sentinels WHERE run_id = ?", (run_id,))
 
     def mark_completion_sentinel_cleared(self, run_id: str) -> None:
         """Write a tombstone marker so the reader honours the cleared state.
@@ -165,8 +175,8 @@ class RunStateDB:
         inherit a previous run's "completed" verdict.
 
         ``_db_sentinel_lookup`` recognises ``CLEARED_SENTINEL_HMAC`` and
-        returns ``(False, None)`` so ``_check_completion_sentinel``
-        falls through to the legacy-file path. A successful upsert
+        returns ``(False, None)`` so ``_check_completion_sentinel`` rejects
+        completion without consulting a stale legacy file. A successful upsert
         here replaces any existing row (including a valid HMAC row),
         so even if a future retry of ``delete_completion_sentinel``
         fails the cleared state remains authoritative.

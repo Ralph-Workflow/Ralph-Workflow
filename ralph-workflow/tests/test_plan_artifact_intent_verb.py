@@ -1,9 +1,9 @@
-"""Tiny dedicated test surface for the cheap-model intent_verb shortcut.
+"""Tiny dedicated test surface for the descriptive intent_verb hint.
 
 The full set of intent / intent_verb tests lives in
 ``tests/test_plan_artifact.py``; this file is a focused regression set for the
-closed-enum forgiveness + lowercasing + empty-string rejection triad that
-matters most when the cheapest possible model is asked to declare a verb.
+normalization + free-form vocabulary + empty-string rejection triad that
+matters when a planner declares a verb.
 """
 
 from __future__ import annotations
@@ -45,10 +45,12 @@ def test_intent_verb_lowercased_before_validation() -> None:
     assert summary["intent_verb"] == "add"
 
 
-def test_intent_verb_rejects_unknown_value() -> None:
-    """Closed enum: anything outside the 9-value set raises ValueError with the bad value."""
-    with pytest.raises(PlanArtifactValidationError, match="ship_it"):
-        normalize_plan_artifact_content(_plan_with_intent_verb("ship_it"))
+def test_intent_verb_accepts_project_specific_value() -> None:
+    """The descriptive hint has no runtime consumer and accepts new vocabulary."""
+    normalized = normalize_plan_artifact_content(_plan_with_intent_verb("SHIP_IT"))
+    summary = normalized["summary"]
+    assert isinstance(summary, dict)
+    assert summary["intent_verb"] == "ship_it"
 
 
 def test_intent_verb_rejects_empty_string() -> None:

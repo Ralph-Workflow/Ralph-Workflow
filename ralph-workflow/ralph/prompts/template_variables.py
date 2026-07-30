@@ -9,30 +9,6 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
 from ralph.mcp.tools.names import (
-    COORDINATE_TOOL,
-    DECLARE_COMPLETE_TOOL,
-    DISCARD_PLAN_DRAFT_TOOL,
-    EXEC_TOOL,
-    FINALIZE_PLAN_TOOL,
-    GET_PLAN_DRAFT_TOOL,
-    GIT_DIFF_TOOL,
-    GIT_LOG_TOOL,
-    GIT_SHOW_TOOL,
-    GIT_STATUS_TOOL,
-    INSERT_PLAN_STEP_TOOL,
-    LIST_DIRECTORY_RECURSIVE_TOOL,
-    LIST_DIRECTORY_TOOL,
-    MOVE_PLAN_STEP_TOOL,
-    PATCH_PLAN_STEP_TOOL,
-    REMOVE_PLAN_STEP_TOOL,
-    REPLACE_PLAN_STEP_TOOL,
-    REPORT_PROGRESS_TOOL,
-    SEARCH_FILES_TOOL,
-    SUBMIT_ARTIFACT_TOOL,
-    SUBMIT_PLAN_SECTION_TOOL,
-    SUBMIT_PLAN_SECTIONS_TOOL,
-    VALIDATE_PLAN_DRAFT_TOOL,
-    WRITE_FILE_TOOL,
     RalphToolName,
     prefix_tool_name,
     prefix_tool_names,
@@ -155,278 +131,10 @@ def capability_template_variables(
         ("HAS_MCP_GIT", bool_to_string(has_mcp_git)),
     ]
 
-    mcp_tool_name_vars: Sequence[tuple[str, str]] = [
-        tool_name_var(
-            visible_tools,
-            "SUBMIT_ARTIFACT_TOOL_NAME",
-            SUBMIT_ARTIFACT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "SUBMIT_PLAN_SECTION_TOOL_NAME",
-            SUBMIT_PLAN_SECTION_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "FINALIZE_PLAN_TOOL_NAME",
-            FINALIZE_PLAN_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "GET_PLAN_DRAFT_TOOL_NAME",
-            GET_PLAN_DRAFT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "DISCARD_PLAN_DRAFT_TOOL_NAME",
-            DISCARD_PLAN_DRAFT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "INSERT_PLAN_STEP_TOOL_NAME",
-            INSERT_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "REPLACE_PLAN_STEP_TOOL_NAME",
-            REPLACE_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "REMOVE_PLAN_STEP_TOOL_NAME",
-            REMOVE_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "MOVE_PLAN_STEP_TOOL_NAME",
-            MOVE_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "PATCH_PLAN_STEP_TOOL_NAME",
-            PATCH_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "SUBMIT_PLAN_SECTIONS_TOOL_NAME",
-            SUBMIT_PLAN_SECTIONS_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "VALIDATE_PLAN_DRAFT_TOOL_NAME",
-            VALIDATE_PLAN_DRAFT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "DECLARE_COMPLETE_TOOL_NAME",
-            DECLARE_COMPLETE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "COORDINATE_TOOL_NAME",
-            COORDINATE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "REPORT_PROGRESS_TOOL_NAME",
-            REPORT_PROGRESS_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "WRITE_FILE_TOOL_NAME",
-            WRITE_FILE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "LIST_DIRECTORY_TOOL_NAME",
-            LIST_DIRECTORY_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "LIST_DIRECTORY_RECURSIVE_TOOL_NAME",
-            LIST_DIRECTORY_RECURSIVE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "SEARCH_FILES_TOOL_NAME",
-            SEARCH_FILES_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "EXEC_TOOL_NAME",
-            EXEC_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "GIT_STATUS_TOOL_NAME",
-            GIT_STATUS_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "GIT_DIFF_TOOL_NAME",
-            GIT_DIFF_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "GIT_LOG_TOOL_NAME",
-            GIT_LOG_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_var(
-            visible_tools,
-            "GIT_SHOW_TOOL_NAME",
-            GIT_SHOW_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "SUBMIT_ARTIFACT_TOOL_REFERENCE",
-            SUBMIT_ARTIFACT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "SUBMIT_PLAN_SECTION_TOOL_REFERENCE",
-            SUBMIT_PLAN_SECTION_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "FINALIZE_PLAN_TOOL_REFERENCE",
-            FINALIZE_PLAN_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "GET_PLAN_DRAFT_TOOL_REFERENCE",
-            GET_PLAN_DRAFT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "DISCARD_PLAN_DRAFT_TOOL_REFERENCE",
-            DISCARD_PLAN_DRAFT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "INSERT_PLAN_STEP_TOOL_REFERENCE",
-            INSERT_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "REPLACE_PLAN_STEP_TOOL_REFERENCE",
-            REPLACE_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "REMOVE_PLAN_STEP_TOOL_REFERENCE",
-            REMOVE_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "MOVE_PLAN_STEP_TOOL_REFERENCE",
-            MOVE_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "PATCH_PLAN_STEP_TOOL_REFERENCE",
-            PATCH_PLAN_STEP_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE",
-            SUBMIT_PLAN_SECTIONS_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "VALIDATE_PLAN_DRAFT_TOOL_REFERENCE",
-            VALIDATE_PLAN_DRAFT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "DECLARE_COMPLETE_TOOL_REFERENCE",
-            DECLARE_COMPLETE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "COORDINATE_TOOL_REFERENCE",
-            COORDINATE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "REPORT_PROGRESS_TOOL_REFERENCE",
-            REPORT_PROGRESS_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "WRITE_FILE_TOOL_REFERENCE",
-            WRITE_FILE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "LIST_DIRECTORY_TOOL_REFERENCE",
-            LIST_DIRECTORY_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE",
-            LIST_DIRECTORY_RECURSIVE_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "SEARCH_FILES_TOOL_REFERENCE",
-            SEARCH_FILES_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        tool_name_reference_var(
-            visible_tools,
-            "EXEC_TOOL_REFERENCE",
-            EXEC_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-        bare_tool_hint_var(
-            visible_tools,
-            "SUBMIT_ARTIFACT_BARE_HINT",
-            SUBMIT_ARTIFACT_TOOL,
-            tool_name_prefix=tool_name_prefix,
-        ),
-    ]
+    mcp_tool_name_vars = _tool_variable_items(
+        visible_tools,
+        tool_name_prefix=tool_name_prefix,
+    )
 
     summary_var = (
         "CAPABILITY_SUMMARY",
@@ -469,6 +177,39 @@ def format_mcp_tools_list(tool_names: Sequence[str]) -> str:
     return ", ".join(tool_names)
 
 
+def _tool_variable_items(
+    visible_tools: Sequence[str],
+    *,
+    tool_name_prefix: str,
+) -> tuple[tuple[str, str], ...]:
+    """Return the NAME and REFERENCE variables for every MCP tool that exists.
+
+    Derived from :class:`RalphToolName` rather than a hand-maintained list
+    so a newly added tool cannot ship a template reference without the
+    variable that fills it — the desync that made a mid-run upgrade render
+    ``'GIT_STATUS_TOOL_REFERENCE' is undefined`` and terminate the run.
+    """
+    items: list[tuple[str, str]] = []
+    for tool in RalphToolName:
+        items.append(
+            tool_name_var(
+                visible_tools,
+                f"{tool.name}_TOOL_NAME",
+                tool,
+                tool_name_prefix=tool_name_prefix,
+            )
+        )
+        items.append(
+            tool_name_reference_var(
+                visible_tools,
+                f"{tool.name}_TOOL_REFERENCE",
+                tool,
+                tool_name_prefix=tool_name_prefix,
+            )
+        )
+    return tuple(items)
+
+
 def tool_name_var(
     visible_tools: Sequence[str],
     variable_name: str,
@@ -494,22 +235,6 @@ def tool_name_reference_var(
     if tool_name.value not in visible_tools:
         return (variable_name, "")
     return (variable_name, tool_name.prompt_reference(tool_name_prefix=tool_name_prefix))
-
-
-def bare_tool_hint_var(
-    visible_tools: Sequence[str],
-    variable_name: str,
-    tool_name: RalphToolName,
-    *,
-    tool_name_prefix: str = "",
-) -> tuple[str, str]:
-    """Return (variable_name, hint) for the bare-name fallback when visible."""
-    if tool_name.value not in visible_tools or not tool_name_prefix:
-        return (variable_name, "")
-    return (
-        variable_name,
-        f"If your client exposes bare MCP names, use `{tool_name.value}` for the same call.",
-    )
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:

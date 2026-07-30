@@ -22,14 +22,104 @@ Have these ready before you start:
 
 ## Exact steps
 
-The canonical six-step install → init → diagnose → spec → run → review
-sequence lives in the repository root
-[`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md#start-your-first-run).
-Run those commands from a human-operated shell outside any Ralph-managed
-agent session. For deeper operator configuration, open
-[Configuration Reference](configuration.md). For docs grouped by use
-case instead of by document type, open
-[End-User Stories](agent-compatibility.md).
+The canonical install → init → diagnose → spec → run sequence is inlined
+below so a non-developer can copy-paste without bouncing between files.
+Run every command from a human-operated shell **outside any Ralph-managed
+agent session**.
+
+### 1. Install Ralph Workflow
+
+Install the bundled command and its baseline skills in one step:
+
+```bash
+pipx install ralph-workflow
+```
+
+Ralph Workflow needs Python 3.12 or newer. If you do not have `pipx`,
+install it with `pip install --user pipx && pipx ensurepath` and restart
+your shell.
+
+### 2. Install and authenticate at least one agent CLI
+
+Ralph Workflow orchestrates one of the agent CLIs you already trust. Pick
+one and follow its native install + auth flow:
+
+- **Claude Code** (`claude`): <https://docs.claude.com/claude-code>
+- **Codex CLI** (`codex`): <https://codex.openai.com>
+- **OpenCode** (`opencode`): <https://opencode.ai>
+- **Nanocoder** (`nanocoder`), **Google Anti Gravity** (`agy`),
+  **Pi** (`pi`), **Cursor** (`agent`): see the per-agent install pages in
+  [Agent Compatibility](agent-compatibility.md).
+
+Verify the binary is on `PATH` before continuing:
+
+```bash
+claude --version     # or: codex --version / opencode --version / etc.
+```
+
+### 3. Initialize the project
+
+From inside the git repo you want Ralph Workflow to operate on, run
+`ralph --init`. The command:
+
+1. Detects which agent CLIs are on `PATH` and enables them.
+2. Materialises the user-global config (`~/.config/ralph-workflow.toml`)
+   and the policy defaults.
+3. Writes a starter `PROMPT.md` (with a sentinel comment marking it as
+   the starter template — Ralph Workflow refuses to run until you replace it).
+
+```bash
+ralph --init
+```
+
+`ralph --init` is safe to re-run; it is idempotent and re-checks
+detected agents on every run.
+
+### 4. Confirm the agent is wired up
+
+Run `ralph --list-agents` (or `ralph --diagnose` for the full picture)
+and confirm the agent you authenticated in step 2 shows up. If it does
+not, the agent binary is not on `PATH` for the shell you launched
+`ralph` from.
+
+### 5. Run the pre-flight diagnostic
+
+```bash
+ralph --diagnose
+```
+
+Every line should be green before you spend a real run on it. If a
+line is red, fix that line before continuing.
+
+### 6. Edit `PROMPT.md`
+
+Open the `PROMPT.md` file the init step created in your repo root and
+replace the example content with your task. Remove the
+`<!-- ralph:starter-prompt ... -->` sentinel comment at the top —
+Ralph Workflow refuses to run with the starter template in place.
+
+A small focused task fits four criteria (full guidance in
+**Pick the right first task** below):
+
+- **Clear boundary** — one sentence describes "done".
+- **Clear correctness check** — tests, a script, or a recognisable diff.
+- **Real but not critical** — a backlog item you would merge, not production.
+- **2-6 hours of work**.
+
+### 7. Start the run
+
+```bash
+ralph
+```
+
+The run walks planning → development → commit. The terminal transcript
+is the live observability surface; the on-disk artifacts under
+`.agent/artifacts/` are the durable record.
+
+For deeper operator configuration, open
+[Configuration Reference](configuration.md). For per-agent CLI, transport,
+and model-string details, open the
+[Agent Compatibility Guide](agent-compatibility.md).
 
 ## Pick the right first task
 
@@ -58,7 +148,7 @@ needs credentials the agent cannot reach.
 For a worked reference of a small feature slice with a visible
 endpoint, see the
 [example-api proof page](../../../docs/examples/example-api.md) -- it
-is the canonical Ralph starter task (a Flask `/health` endpoint) and is
+is the canonical Ralph Workflow starter task (a Flask `/health` endpoint) and is
 the smallest possible end-to-end result the loop can produce.
 
 ## Write the spec in five minutes
@@ -99,13 +189,13 @@ protected things stayed intact.
 
 `PROMPT.md` at the workspace root is the run specification you author.
 The engine materializes its own consumption copy at
-`.agent/CURRENT_PROMPT.md`; you never edit the materialised file.
+`.agent/PRODUCT_CRITERIA.md`; you never edit the materialised file.
 Override the spec location through `PROMPT_PATH`. See
 [Configuration Reference](configuration.md) for prompt-engine tuning.
 
 ### Picking the right depth preset
 
-Depth presets (`-Q` quick, default standard, `-T` thorough) live in
+Depth presets (`-Q` quick, default standard, `-L` long, `-T` thorough) live in
 [CLI Reference](cli.md). Most first-run tasks fit the default.
 
 ## First-task prompt templates
@@ -200,9 +290,9 @@ terminal behavior all come from `pipeline.toml`. Older assumptions
 about implicit phase names, loop counters, and pseudo-phase recovery
 aliases are no longer valid. To migrate an existing
 `.agent/pipeline.toml`, run the config-regenerate flag and diff
-against your existing file. Full migration details are in
-[Configuration Reference](configuration.md) under "Policy migration
-reference".
+against your existing file. The full reference for every config
+table, its fields, and the override precedence is in
+[Configuration Reference](configuration.md).
 
 ## Proof: what a run leaves you
 
@@ -231,10 +321,10 @@ test coverage for empty and whitespace-only input.
 ```
 
 The live, inspectable example bundle sits at
-[`examples/first-review-bundle/`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle).
+[`examples/first-review-bundle/`](https://github.com/Ralph-Workflow/Ralph-Workflow/tree/main/examples/first-review-bundle).
 Open the `PROMPT.md`, the `DEVELOPMENT_RESULT.md`, the
-`ISSUES.md`, the `FIX_RESULT.md`, and the JSON artifacts to see the
-machine-readable trail. The receipt tells you what changed, what
+`ISSUES.md`, the `FIX_RESULT.md`, and the Markdown artifacts to see the
+validated trail. The receipt tells you what changed, what
 checks ran, and what to inspect — without reconstructing the run.
 
 ## Expected result / success check
@@ -260,6 +350,6 @@ branch, ask for changes, revert, rerun, or discard the result.
 ## Next step
 
 - Configuration answers → [Configuration Reference](configuration.md).
-- Docs grouped by use case → [End-User Stories](agent-compatibility.md).
+- Per-agent CLI/model-string reference → [Agent Compatibility Guide](agent-compatibility.md).
 - Underlying concepts → [Concepts](concepts.md).
 - First run goes sideways → [Troubleshooting](troubleshooting.md).

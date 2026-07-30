@@ -16,9 +16,9 @@ class DetectionResults:
     """Accumulator for detected frameworks, test frameworks, and package managers."""
 
     def __init__(self) -> None:
-        self.frameworks: list[str] = []
-        self.test_frameworks: list[str] = []
-        self.package_managers: list[str] = []
+        self.frameworks: list[str] = []  # bounded-accumulator-ok: request-scoped detection results; not retained past finish()
+        self.test_frameworks: list[str] = []  # bounded-accumulator-ok: request-scoped detection results; not retained past finish()
+        self.package_managers: list[str] = []  # bounded-accumulator-ok: request-scoped detection results; not retained past finish()
 
     def with_framework(self, value: str) -> DetectionResults:
         if value not in self.frameworks:

@@ -1,9 +1,10 @@
 """Run-start retention sweep for machine-only ``.agent`` bookkeeping.
 
 Long-lived workspaces accumulate one ``completion_seen_<run_id>.json``
-per agent session, one ``receipts/<run_id>/`` directory per run, and
-``agent_retry_*`` scratch per retry — hundreds of files over multi-day
-runs. Nothing reads them after their run ends. The sweep deletes
+per agent session, one ``receipts/<run_id>/`` directory per run,
+``agent_retry_*`` scratch per retry, crashed-run ``tmp/codex-home-*``
+directories, and crashed MCP session JSON files — hundreds of files over
+multi-day runs. Nothing reads them after their run ends. The sweep deletes
 entries older than ``max_age_seconds`` (default 7 days), always keeping
 the current run's entries regardless of age.
 
@@ -96,6 +97,40 @@ def _sweep_receipt_dirs(
     return removed
 
 
+def _sweep_codex_home_dirs(tmp_dir: Path, *, cutoff: float) -> int:
+    """Remove aged Codex-home directories using their own metadata (never raises)."""
+    if not tmp_dir.is_dir():
+        return 0
+    removed = 0
+    for home in tmp_dir.glob("codex-home-*"):
+        try:
+            is_aged_dir = home.is_dir() and home.lstat().st_mtime < cutoff
+        except OSError:
+            continue
+        if not is_aged_dir:
+            continue
+        try:
+            shutil.rmtree(home)
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def _sweep_session_files(agent_dir: Path, *, cutoff: float) -> int:
+    """Remove aged MCP session metadata files (never raises)."""
+    removed = 0
+    for session_file in agent_dir.glob("ralph-mcp-session-*.json"):
+        if not _older_than(session_file, cutoff):
+            continue
+        try:
+            session_file.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def _sweep_scratch_files(tmp_dir: Path, *, cutoff: float) -> int:
     """Remove aged ``agent_retry_*`` scratch files (never raises)."""
     if not tmp_dir.is_dir():
@@ -158,7 +193,9 @@ def sweep_agent_dir(
     """Delete aged machine-only bookkeeping under ``<workspace>/.agent``.
 
     The file-glob sweep covers ``completion_seen_*.json``, ``receipts/``,
-    and ``tmp/agent_retry_*.md``. When ``.agent/state.db`` is present
+    ``tmp/agent_retry_*.md``, ``tmp/codex-home-*`` (using the directory's
+    own mtime so mirrored symlinks cannot keep orphans fresh), and
+    ``ralph-mcp-session-*.json``. When ``.agent/state.db`` is present
     (RFC-013 P3) the sweep also calls ``RunStateDB.prune_older_than`` so
     aged DB rows do not accumulate either. Both passes are best-effort.
 
@@ -175,9 +212,7 @@ def sweep_agent_dir(
     if not agent_dir.is_dir():
         return 0
     cutoff = now() - max_age_seconds
-    keep_sentinel = (
-        f"completion_seen_{keep_run_id}.json" if keep_run_id is not None else None
-    )
+    keep_sentinel = f"completion_seen_{keep_run_id}.json" if keep_run_id is not None else None
     removed = _sweep_completion_sentinels(
         agent_dir,
         cutoff=cutoff,
@@ -188,10 +223,11 @@ def sweep_agent_dir(
         cutoff=cutoff,
         keep_run_id=keep_run_id,
     )
-    removed += _sweep_scratch_files(agent_dir / "tmp", cutoff=cutoff)
-    removed += _sweep_run_state_db_rows(
-        workspace_root, cutoff=cutoff, keep_run_id=keep_run_id
-    )
+    tmp_dir = agent_dir / "tmp"
+    removed += _sweep_scratch_files(tmp_dir, cutoff=cutoff)
+    removed += _sweep_codex_home_dirs(tmp_dir, cutoff=cutoff)
+    removed += _sweep_session_files(agent_dir, cutoff=cutoff)
+    removed += _sweep_run_state_db_rows(workspace_root, cutoff=cutoff, keep_run_id=keep_run_id)
     return removed
 
 

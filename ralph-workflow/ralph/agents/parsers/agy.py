@@ -1,4 +1,4 @@
-"""Parser for the AGY v1.0.8 --print wire format.
+"""Parser for the AGY v1.0.8 --print wire format (v1.1.8 re-measurement pending).
 
 Source of truth: ``ralph-workflow/tmp/agy-source-of-truth.txt``.
 
@@ -19,8 +19,9 @@ safe default for any future AGY --json flag.
 The ``[plain] tool: NAME`` convention from :class:`GenericParser` is
 intentionally NOT classified as ``tool_use`` here. That convention is a
 GenericParser convention, not an AGY wire-format fact documented in the
-source of truth. AGY tool activity is reported via the persisted
-``smoke_test_result`` artifact (see ``smoke_plumbing._agy_tool_activity_seen``).
+source of truth. The smoke harness instead treats the expected workspace file
+write as authoritative AGY tool activity; model-authored artifact claims are
+never trusted for that check.
 
 Behaviour specifics:
 
@@ -29,10 +30,9 @@ Behaviour specifics:
     ``text`` event. This coalesces consecutive short lines into one
     coherent text block matching the GenericParser coalescing semantics.
   * The ``Task declared complete:`` marker is treated as plain text (not
-    a structured completion signal). The smoke detector at
-    ``smoke_plumbing._explicit_completion_seen`` scans the raw transcript
-    for the substring, so the marker must pass through as a regular
-    ``text`` event rather than being filtered as ``raw``.
+    a structured completion signal). The smoke detector requires the durable
+    run-scoped sentinel written by ``declare_complete``, so transcript text
+    cannot spoof completion.
   * Empty input (the documented quota-exhausted failure mode in
     ``agy-source-of-truth.txt``) yields zero events, allowing the smoke
     plumbing to surface the empty-stdout diagnostic for the live case.
@@ -59,7 +59,7 @@ __all__ = ["AgyParser"]
 
 
 class AgyParser(NdjsonParserBase):
-    """Plain-text parser for AGY v1.0.8 --print output.
+    """Plain-text parser for AGY v1.0.8 --print output (v1.1.8 pending).
 
     Inherits the NDJSON state machine from :class:`NdjsonParserBase` (SSE
     strip, ``[DONE]`` short-circuit, lifecycle suppression, error

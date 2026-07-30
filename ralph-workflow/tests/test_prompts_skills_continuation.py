@@ -13,9 +13,9 @@ from ralph.workspace.memory import MemoryWorkspace
 
 SHIPPED_SKILLS_DISCOVERY_HINTS = (
     "## SHIPPED SKILLS",
-    "discovers them automatically",
-    "Do not Read",
-    "Skills and MCPs section",
+    "runtimes that support\nskill discovery",
+    "Read a selected `SKILL.md`",
+    "When the execution plan names skills",
 )
 
 DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (

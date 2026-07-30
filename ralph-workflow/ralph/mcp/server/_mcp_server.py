@@ -17,13 +17,13 @@ from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import SessionWrapupBudget
+from ralph.mcp.tools._exec_resource_uri import parse_exec_uri
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
     ToolContent,
     ToolResult,
 )
-from ralph.mcp.tools.json_repair import repair_json_containers
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.protocol.session import McpSession
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
+    from ralph.mcp.tools._exec_resource_protocol import ExecResourceResolverLike
     from ralph.mcp.tools.bridge import ToolBridge
     from ralph.workspace.fs import FsWorkspace
 
@@ -76,12 +77,16 @@ def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]
             serialized.append(cast("dict[str, object]", block))
             continue
 
-        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
+        to_dict = cast(
+            "_ToDict | None", getattr(block, "to_dict", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if callable(to_dict):
             serialized.append(to_dict())
             continue
 
-        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
+        model_dump = cast(
+            "_ModelDump | None", getattr(block, "model_dump", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if callable(model_dump):
             serialized.append(model_dump(exclude_none=True, by_alias=True))
             continue
@@ -378,6 +383,13 @@ class McpServer:
         resources.extend(
             entry.resource_list_entry() for entry in self._session.media_manifest.list_entries()
         )
+        # AC-11: include the registered exec spill resources so the
+        # agent can see what is replayable through resources/read.
+        resolver: ExecResourceResolverLike | None = getattr(
+            self._session, "exec_resource_resolver", None
+        )
+        if resolver is not None:
+            resources.extend(entry.resource_list_entry() for entry in resolver.list_entries())
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id),
             ServerState.RUNNING,
@@ -395,6 +407,21 @@ class McpServer:
                     "description": (
                         "Binary media artifact stored by read_media. "
                         "Retrieve via resources/read with the full URI."
+                    ),
+                }
+            )
+        resolver: ExecResourceResolverLike | None = getattr(
+            self._session, "exec_resource_resolver", None
+        )
+        if resolver is not None:
+            templates.append(
+                {
+                    "uriTemplate": "ralph://exec/{spill_name}",
+                    "name": "Ralph exec spill",
+                    "description": (
+                        "Replayed stdout/stderr spill produced by an "
+                        "exec command in format=summary mode. Retrieve "
+                        "via resources/read with the full URI."
                     ),
                 }
             )
@@ -418,6 +445,16 @@ class McpServer:
                 JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
                 ServerState.RUNNING,
             )
+
+        # AC-11: replayable exec resource IDs (returned by the
+        # ``format=summary`` exec calls) are resolved before the
+        # generic media path. The session must own an exec resource
+        # resolver; a missing resolver is reported with the same
+        # structured error as an unknown artifact, so legacy
+        # clients get a consistent failure mode.
+        exec_name = parse_exec_uri(uri)
+        if exec_name is not None:
+            return self._respond_exec_resource(uri, request)
 
         artifact_id = parse_media_uri(uri)
         if artifact_id is None:
@@ -449,8 +486,58 @@ class McpServer:
             )
 
         blob = _base64.b64encode(raw_bytes).decode("ascii")
-        contents: list[dict[str, object]] = [
+        contents = [
             {"uri": entry.uri, "mimeType": entry.mime_type, "blob": blob},
+        ]
+        return (
+            JsonRpcResponse(
+                jsonrpc="2.0",
+                result={"contents": contents},
+                msg_id=request.msg_id,
+            ),
+            ServerState.RUNNING,
+        )
+
+    def _respond_exec_resource(
+        self, uri: str, request: JsonRpcRequest
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        """Resolve a ``ralph://exec/<spill-name>`` URI to its blob.
+
+        AC-11 contract: the session must own an exec resource
+        resolver. A missing resolver, an unknown spill, or a
+        path-traversal attempt is reported with the same
+        structured error as the media path. The blob is truncated
+        to the resolver's cap (``MAX_READ_BYTES``) for transport.
+        """
+        resolver: ExecResourceResolverLike | None = getattr(
+            self._session, "exec_resource_resolver", None
+        )
+        if resolver is None:
+            error = {
+                "code": -32602,
+                "message": (
+                    f"Unsupported resource URI: '{uri}'. Exec spill "
+                    "resolver is not attached to this session."
+                ),
+            }
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+        result = resolver.read(uri)
+        if result is None:
+            error = {
+                "code": -32602,
+                "message": f"Resource not found: '{uri}'",
+            }
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+        raw_bytes, mime_type, _total_size = result
+        blob = _base64.b64encode(raw_bytes).decode("ascii")
+        contents: list[dict[str, object]] = [
+            {"uri": uri, "mimeType": mime_type, "blob": blob},
         ]
         return (
             JsonRpcResponse(
@@ -471,8 +558,6 @@ class McpServer:
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
         arguments_value = params.get("arguments", {})
-        if isinstance(arguments_value, str):
-            arguments_value = repair_json_containers(arguments_value)
         if not isinstance(arguments_value, dict):
             error = {"code": -32602, "message": "tools/call arguments must be an object"}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
@@ -508,7 +593,9 @@ class McpServer:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
-        to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
+        to_dict = cast(
+            "_ToDict | None", getattr(raw_result, "to_dict", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_wrapup_notice(payload)

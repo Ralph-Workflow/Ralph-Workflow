@@ -18,10 +18,13 @@ from ralph.diagnostics import (
     DiagnosticReport,
     SystemInfo,
 )
+from tests._diagnostics_git_probe import stub_git_probe
 
-# SystemInfo.gather() executes real git subprocesses (rev-parse, branch,
-# status). Wall-clock cost under parallel xdist load is regularly > 1 s
-# on busy machines, so the default 1-second per-test ceiling is unsafe.
+# SystemInfo.gather() shells out to git (rev-parse, branch, status)
+# unless a probe is injected. This test asserts on DiagnosticReport's
+# fields, not on git, so it injects ``stub_git_probe``. Real-probe
+# coverage lives in
+# ``tests/test_diagnostics_system_info.py::TestSystemInfo``.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 MULTI_AGENT_COUNT = 2
@@ -32,7 +35,7 @@ class TestDiagnosticReport:
 
     def test_diagnostic_report_has_system_and_agents(self) -> None:
         """Test that DiagnosticReport contains system and agents fields."""
-        system_info = SystemInfo.gather()
+        system_info = SystemInfo.gather(git_probe=stub_git_probe)
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
         agent_diag = AgentDiagnostics.test(mock_registry)

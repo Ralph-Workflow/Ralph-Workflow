@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import StringIO
-from typing import Any
+from typing import Any, Final
 
 from rich.console import Console
 
@@ -22,40 +22,40 @@ from ralph.policy.models import (
     RecoveryPolicy,
 )
 
-
-def _make_custom_pipeline_policy() -> PipelinePolicy:
-    """Custom PipelinePolicy: design (execution), sign_off (commit), done/failed (terminal)."""
-    return PipelinePolicy(
-        entry_phase="design",
-        terminal_phase="done",
-        phases={
-            "design": PhaseDefinition(
-                drain="design",
-                role="execution",
-                transitions=PhaseTransition(on_success="sign_off"),
+# The policy is immutable and identical for every assertion in this module.
+# Build it at collection time so repeated Pydantic validation cannot consume a test's
+# one-second execution budget when the full xdist suite is under CPU contention.
+_CUSTOM_PIPELINE_POLICY: Final = PipelinePolicy(
+    entry_phase="design",
+    terminal_phase="done",
+    phases={
+        "design": PhaseDefinition(
+            drain="design",
+            role="execution",
+            transitions=PhaseTransition(on_success="sign_off"),
+        ),
+        "sign_off": PhaseDefinition(
+            drain="sign_off",
+            role="commit",
+            transitions=PhaseTransition(on_success="done", on_loopback="sign_off"),
+        ),
+        "failed_terminal": PhaseDefinition(
+            drain="failed_terminal",
+            role="terminal",
+            terminal_outcome="failure",
+            transitions=PhaseTransition(
+                on_success="failed_terminal", on_loopback="failed_terminal"
             ),
-            "sign_off": PhaseDefinition(
-                drain="sign_off",
-                role="commit",
-                transitions=PhaseTransition(on_success="done", on_loopback="sign_off"),
-            ),
-            "failed_terminal": PhaseDefinition(
-                drain="failed_terminal",
-                role="terminal",
-                terminal_outcome="failure",
-                transitions=PhaseTransition(
-                    on_success="failed_terminal", on_loopback="failed_terminal"
-                ),
-            ),
-            "done": PhaseDefinition(
-                drain="done",
-                role="terminal",
-                terminal_outcome="success",
-                transitions=PhaseTransition(on_success="done", on_loopback="done"),
-            ),
-        },
-        recovery=RecoveryPolicy(failed_route="failed_terminal"),
-    )
+        ),
+        "done": PhaseDefinition(
+            drain="done",
+            role="terminal",
+            terminal_outcome="success",
+            transitions=PhaseTransition(on_success="done", on_loopback="done"),
+        ),
+    },
+    recovery=RecoveryPolicy(failed_route="failed_terminal"),
+)
 
 
 def _minimal_snapshot(**kwargs: object) -> PipelineSnapshot:
@@ -101,23 +101,23 @@ class TestPhaseStyleIsRoleDriven:
     """_phase_style returns role-derived style when pipeline_policy is provided."""
 
     def test_custom_execution_phase_gets_execution_style(self) -> None:
-        policy = _make_custom_pipeline_policy()
+        policy = _CUSTOM_PIPELINE_POLICY
         style = phase_style("design", policy)
         # execution role maps to "theme.phase.development"
         assert style == "theme.phase.development"
 
     def test_custom_commit_phase_gets_commit_style(self) -> None:
-        policy = _make_custom_pipeline_policy()
+        policy = _CUSTOM_PIPELINE_POLICY
         style = phase_style("sign_off", policy)
         assert style == "theme.phase.commit"
 
     def test_custom_terminal_failure_phase_gets_failed_style(self) -> None:
-        policy = _make_custom_pipeline_policy()
+        policy = _CUSTOM_PIPELINE_POLICY
         style = phase_style("failed_terminal", policy)
         assert style == "theme.phase.failed"
 
     def test_custom_terminal_success_phase_gets_complete_style(self) -> None:
-        policy = _make_custom_pipeline_policy()
+        policy = _CUSTOM_PIPELINE_POLICY
         style = phase_style("done", policy)
         assert style == "theme.phase.complete"
 

@@ -1,47 +1,187 @@
-"""Canonical artifact submission entry point.
-
-``submit_artifact_canonical`` is the single public entry point for producing a
-run-scoped completion receipt and the completion sentinel for single-shot types.
-"""
+"""Canonical Markdown artifact submission and completion evidence."""
 
 from __future__ import annotations
 
-import json
 import sqlite3
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING
 
 import pytest
 
 import ralph.mcp.artifacts as artifacts_package
+from ralph.agents import completion_signals as completion_signals_module
 from ralph.agents.completion_signals import (
     CompletionSignals,
     _check_completion_sentinel,
+    completion_signals_terminal,
+    evaluate_completion,
     is_artifact_submitted,
 )
-from ralph.agents.execution_state._helpers import _check_signals_terminal
 from ralph.mcp.artifacts import SubmitResult, submit_artifact_canonical
-from ralph.mcp.artifacts import state_db as state_db_module
+from ralph.mcp.artifacts import canonical_submit as canonical_submit_module
 from ralph.mcp.artifacts.completion_receipts import (
-    ReceiptPersistenceError,
     artifact_receipt_present,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
-from ralph.mcp.tools import artifact as artifact_module
+from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from ralph.mcp.tools.coordination import CompletionSentinelPersistenceError
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
+from ralph.phases.required_artifacts import RequiredArtifact
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-_GRANTED: frozenset[str] = frozenset({"artifact.submit"})
+
+COMMIT_MESSAGE = """\
+---
+type: commit
+subject: feat: test markdown submission
+---
+
+## Body Summary
+
+- [BS-1] Exercise canonical Markdown submission.
+
+## Body Details
+
+- [BD-1] Persist the validated document and completion evidence.
+
+## Files
+
+- [F-1] tests/test_canonical_artifact_submit.py
+"""
+
+DEVELOPMENT_RESULT = """\
+---
+type: development_result
+status: completed
+---
+
+## Summary
+
+- [SUM-1] Completed the Markdown migration.
+
+## Files Changed
+
+- [F-1] tests/test_canonical_artifact_submit.py
+
+## Plan Items Proven
+
+- [S-1] The focused canonical submission tests pass.
+
+## Analysis Items Addressed
+
+- [FIX-1] Replaced JSON fixtures with validated Markdown.
+"""
+
+PLAN = """\
+---
+type: plan
+schema_version: 1
+---
+
+## Summary
+Test canonical plan submission.
+
+Intent: Preserve plan receipts without a completion sentinel.
+Coverage: submission
+
+## Scope
+- [SC-1] Submit a valid plan
+  Category: test
+- [SC-2] Persist its run-scoped receipt
+  Category: submission
+- [SC-3] Omit the single-shot completion sentinel
+  Category: completion
+
+## Skills MCP
+Skills: test-driven-development
+
+## Steps
+
+### [S-1] Submit the plan
+Submit this validated Markdown document.
+
+Type: file_change
+Files:
+- modify tests/test_canonical_artifact_submit.py
+Satisfies: AC-01
+
+## Critical Files
+- [CF-1] tests/test_canonical_artifact_submit.py
+  Action: modify
+  Changes: migrate canonical submission coverage
+
+## Constraints
+Must not break:
+- run-scoped receipt behavior
+
+## Design
+Exercise the public Markdown submission path.
+
+Outcome: The plan is persisted without a completion sentinel.
+
+## Acceptance Criteria
+- [AC-01] A valid plan receives a run-scoped receipt
+  Satisfied by: S-1
+  Verify: pytest tests/test_canonical_artifact_submit.py -q
+  Expect: the focused test file reports all tests passed
+
+## Risks
+- [R-1] Stale JSON assumptions survive
+  Severity: medium
+  Mitigation: Assert only canonical Markdown paths.
+
+## Verification
+- [V-1] pytest tests/test_canonical_artifact_submit.py -q
+  Expect: the focused file passes
+"""
+
+SMOKE_TEST_RESULT = """\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/smoke.log
+---
+
+## Summary
+
+- [SUM-1] The smoke check passed.
+
+## Observed Working
+
+- [OK-1] Canonical Markdown promotion completed.
+
+## Observed Breaks
+
+- [BR-1] None observed.
+
+## Headless Guide Checks
+
+- [HG-1] completion signal — receipt persisted
+"""
 
 
 def _backend() -> MemoryBackend:
     return MemoryBackend()
+
+
+@dataclass
+class _Session:
+    run_id: str
+    session_id: str = "test-session"
+    drain: str = "development"
+    broker_secret: str | None = None
+    worker_artifact_dir: Path | None = None
+    worker_namespace: Path | None = None
+
+    def check_capability(self, capability: str) -> bool:
+        return capability == "artifact.submit"
 
 
 def _workspace(tmp_path: Path) -> MockWorkspace:
@@ -50,6 +190,30 @@ def _workspace(tmp_path: Path) -> MockWorkspace:
 
 def _deps(backend: MemoryBackend) -> ArtifactHandlerDeps:
     return ArtifactHandlerDeps(backend=backend)
+
+
+def _parsed(artifact_type: str, markdown: str) -> dict[str, object]:
+    parsed, diagnostics = parse_and_validate(markdown, get_spec(artifact_type))
+    assert not [item for item in diagnostics if item.severity == "error"]
+    return dict(parsed)
+
+
+def _submit(
+    tmp_path: Path,
+    artifact_type: str,
+    markdown: str,
+    *,
+    backend: MemoryBackend,
+    run_id: str = "run-1",
+) -> SubmitResult:
+    return submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type=artifact_type,
+        parsed_content=_parsed(artifact_type, markdown),
+        markdown=markdown,
+        deps=_deps(backend),
+        run_id=run_id,
+    )
 
 
 @pytest.fixture
@@ -73,782 +237,546 @@ def test_canonical_submit_symbols_exported_from_artifacts_package() -> None:
     assert hasattr(artifacts_package, "promote_fallback_artifact")
 
 
-def test_submit_artifact_canonical_exists_and_returns_frozen_result(
+def test_submit_artifact_canonical_returns_result_and_writes_markdown(
     tmp_path: Path,
     backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
 ) -> None:
-    result = submit_artifact_canonical(
-        workspace_root=tmp_path,
-        artifact_type="commit_message",
-        parsed_content={"type": "commit", "subject": "feat: test"},
-        deps=deps,
-        run_id="run-1",
-    )
+    result = _submit(tmp_path, "commit_message", COMMIT_MESSAGE, backend=backend)
 
     assert isinstance(result, SubmitResult)
     assert result.artifact_type == "commit_message"
     assert result.run_id == "run-1"
+    assert result.artifact_path == tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    assert backend.read_text(result.artifact_path) == COMMIT_MESSAGE
     for field in fields(SubmitResult):
         assert hasattr(result, field.name)
 
 
-def test_submit_artifact_canonical_writes_artifact_receipt_sentinel_and_handoff(
+def test_submit_artifact_canonical_writes_receipt_without_declaring_completion(
     tmp_path: Path,
     backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
 ) -> None:
-    result = submit_artifact_canonical(
-        workspace_root=tmp_path,
-        artifact_type="commit_message",
-        parsed_content={"type": "commit", "subject": "feat: test"},
-        deps=deps,
-        run_id="run-1",
-    )
+    result = _submit(tmp_path, "commit_message", COMMIT_MESSAGE, backend=backend)
 
-    assert result.artifact_path is not None
-    assert backend.exists(result.artifact_path)
-
-    # RFC-013 P3: receipt and sentinel are DB-backed (canonical paths are
-    # still returned for callers that expect them, but production does
-    # NOT write legacy files). Verify via the DB-backed read API.
-    assert result.receipt_path is not None
+    assert result.receipt_path == tmp_path / ".agent" / "state.db"
     assert artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
-
-    assert result.sentinel_path is not None
-    db = RunStateDB(tmp_path)
-    try:
-        assert db.get_completion_sentinel_hmac("run-1") is not MISSING
-    finally:
-        db.close()
-    assert _check_completion_sentinel(tmp_path, "run-1") is True
-
-    assert result.handoff_path is None
-
-
-def test_submit_artifact_canonical_writes_handoff_for_handoff_types(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    result = submit_artifact_canonical(
-        workspace_root=tmp_path,
-        artifact_type="development_result",
-        parsed_content={
-            "status": "completed",
-            "summary": "done",
-            "files_changed": "- x.py",
-        },
-        deps=deps,
-        run_id="run-1",
-    )
-
-    assert result.handoff_path is not None
-    assert backend.exists(result.handoff_path)
-
-
-def test_submit_artifact_canonical_does_not_write_sentinel_for_plan(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    result = submit_artifact_canonical(
-        workspace_root=tmp_path,
-        artifact_type="plan",
-        parsed_content={
-            "summary": {
-                "context": "Test plan submission",
-                "scope_items": [
-                    {"text": "Implement feature"},
-                    {"text": "Write tests"},
-                    {"text": "Verify"},
-                ],
-            },
-            "skills_mcp": {
-                "skills": [
-                    "test-driven-development",
-                    "verification-before-completion",
-                ],
-                "mcps": [],
-            },
-            "steps": [{"number": 1, "title": "Step 1", "content": "Do the work"}],
-            "critical_files": {"primary_files": [{"path": "x.py", "action": "modify"}]},
-            "risks_mitigations": [{"risk": "Regression", "mitigation": "Tests"}],
-            "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-        },
-        deps=deps,
-        run_id="run-1",
-    )
-
-    assert result.artifact_path is not None
-    assert backend.exists(result.artifact_path)
-    # RFC-013 P3: receipt is DB-backed; legacy file is no longer written.
-    assert result.receipt_path is not None
-    assert artifact_receipt_present(tmp_path, "run-1", "plan", backend=backend)
-    assert result.sentinel_path is None
-    assert result.handoff_path is not None
-
-
-def test_submit_artifact_canonical_rolls_back_on_failure(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # RFC-013 P3: receipts are DB-backed, so the canonical submit's
-    # receipt op writes through ``RunStateDB.upsert_receipt``. Patch
-    # that method to simulate a write failure.
-    def _raise(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("receipt write failed")
-
-    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
-
-    deps = ArtifactHandlerDeps(backend=backend)
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="commit_message",
-            parsed_content={"type": "commit", "subject": "feat: test"},
-            deps=deps,
-            run_id="run-1",
-        )
-
-    assert not artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
-    # Sentinel must also be absent (no DB row was inserted because the
-    # earlier receipt op failure triggered the rollback).
     db = RunStateDB(tmp_path)
     try:
         assert db.get_completion_sentinel_hmac("run-1") is MISSING
     finally:
         db.close()
+    assert not _check_completion_sentinel(tmp_path, "run-1")
+    assert result.handoff_path is None
 
 
-def test_submit_artifact_canonical_rolls_back_named_artifact_on_failure(
+def test_submit_artifact_canonical_writes_byte_identical_handoff(
+    tmp_path: Path,
+    backend: MemoryBackend,
+) -> None:
+    result = _submit(
+        tmp_path,
+        "development_result",
+        DEVELOPMENT_RESULT,
+        backend=backend,
+    )
+
+    assert result.handoff_path is not None
+    assert backend.read_text(result.handoff_path) == DEVELOPMENT_RESULT
+    assert result.artifact_path is not None
+    assert backend.read_text(result.artifact_path) == DEVELOPMENT_RESULT
+
+
+def test_worker_submission_keeps_artifact_and_handoff_inside_worker_namespace(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    session = _Session(
+        run_id="run-worker",
+        worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
+    )
+
+    result = handle_submit_md_artifact(
+        session,
+        workspace,
+        {
+            "artifact_type": "development_result",
+            "content": DEVELOPMENT_RESULT,
+        },
+        deps=_deps(backend),
+    )
+
+    assert result.is_error is False
+    assert (
+        backend.read_text(worker_namespace / "artifacts" / "development_result.md")
+        == DEVELOPMENT_RESULT
+    )
+    assert (
+        backend.read_text(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md")
+        == DEVELOPMENT_RESULT
+    )
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.md")
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+    assert artifact_receipt_present(
+        tmp_path,
+        "run-worker",
+        "development_result",
+        backend=backend,
+    )
+
+
+def test_two_worker_handoffs_do_not_overwrite_each_other(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    first_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    second_namespace = tmp_path / ".agent" / "workers" / "unit-web"
+    first_result = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed unit-api.",
+    )
+    second_result = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed unit-web.",
+    )
+
+    for run_id, namespace, content in (
+        ("run-api", first_namespace, first_result),
+        ("run-web", second_namespace, second_result),
+    ):
+        submitted = handle_submit_md_artifact(
+            _Session(
+                run_id=run_id,
+                worker_artifact_dir=namespace / "artifacts",
+                worker_namespace=namespace,
+            ),
+            workspace,
+            {"artifact_type": "development_result", "content": content},
+            deps=_deps(backend),
+        )
+        assert submitted.is_error is False
+
+    assert backend.read_text(first_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") == first_result
+    assert (
+        backend.read_text(second_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") == second_result
+    )
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+
+
+def test_repeated_worker_submission_does_not_archive_shared_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    shared_handoff = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+    backend.write_text(shared_handoff, "coordinator-owned handoff")
+    session = _Session(
+        run_id="run-worker",
+        worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
+    )
+    updated_result = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed unit-api after a second pass.",
+    )
+    deps = ArtifactHandlerDeps(
+        backend=backend,
+        now_iso=lambda: "2026-07-24T00:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        "ralph.mcp.tools.md_artifact._resolve_history_enabled",
+        lambda *_args: True,
+    )
+
+    for content in (DEVELOPMENT_RESULT, updated_result):
+        submitted = handle_submit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "development_result", "content": content},
+            deps=deps,
+        )
+        assert submitted.is_error is False
+
+    assert (
+        backend.read_text(worker_namespace / "artifacts" / "development_result.md")
+        == updated_result
+    )
+    assert backend.read_text(shared_handoff) == "coordinator-owned handoff"
+    worker_history_dir = worker_namespace / "artifacts" / "history" / "development_result"
+    assert not backend.exists(worker_history_dir / "20260724T000000_development_result.md")
+    assert not backend.exists(worker_history_dir / "20260724T000000_1_development_result.md")
+
+
+def test_worker_fallback_promotion_uses_worker_artifact_and_handoff_paths(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    fallback = worker_namespace / "tmp" / "development_result.md"
+    artifact_path = worker_namespace / "artifacts" / "development_result.md"
+    backend.write_text(fallback, DEVELOPMENT_RESULT)
+
+    assert is_artifact_submitted(
+        tmp_path,
+        "run-worker-fallback",
+        "development_result",
+        deps=deps,
+        artifact_path=str(artifact_path),
+    )
+
+    assert backend.read_text(artifact_path) == DEVELOPMENT_RESULT
+    assert (
+        backend.read_text(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md")
+        == DEVELOPMENT_RESULT
+    )
+    assert not backend.exists(fallback)
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.md")
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+
+
+def test_completion_evaluation_passes_required_artifact_path_to_submission_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def _raise(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("receipt write failed")
+    artifact_path = ".agent/workers/unit-api/artifacts/development_result.md"
+    observed: dict[str, object] = {}
 
-    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
-
-    failing_backend = MemoryBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="commit_message",
-            parsed_content={"type": "commit", "subject": "feat: test"},
-            deps=deps,
-            run_id="run-named",
-            name="custom-name",
+    def _submitted(
+        workspace_root: Path,
+        run_id: str,
+        artifact_type: str,
+        *,
+        deps: ArtifactHandlerDeps | None = None,
+        receipt_secret: str | None = None,
+        artifact_path: str | None = None,
+    ) -> bool:
+        del deps, receipt_secret
+        observed.update(
+            workspace_root=workspace_root,
+            run_id=run_id,
+            artifact_type=artifact_type,
+            artifact_path=artifact_path,
         )
+        return True
 
-    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "custom-name.json")
-    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.json")
-    assert not artifact_receipt_present(
-        tmp_path, "run-named", "commit_message", backend=failing_backend
+    monkeypatch.setattr(completion_signals_module, "is_artifact_submitted", _submitted)
+
+    signals = evaluate_completion(
+        tmp_path,
+        required_artifact=RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=artifact_path,
+            markdown_path=None,
+            normalizer=None,
+        ),
+        run_id="run-worker",
     )
 
+    assert signals.required_artifact_present is True
+    assert observed["artifact_path"] == artifact_path
 
-def test_fallback_promotion_stamps_receipt_from_tmp_file(
+
+def test_submit_artifact_canonical_plan_has_receipt_without_sentinel(
+    tmp_path: Path,
+    backend: MemoryBackend,
+) -> None:
+    result = _submit(tmp_path, "plan", PLAN, backend=backend)
+
+    assert result.artifact_path == tmp_path / ".agent" / "artifacts" / "plan.md"
+    assert artifact_receipt_present(tmp_path, "run-1", "plan", backend=backend)
+    assert result.handoff_path is not None
+    assert backend.read_text(result.handoff_path) == PLAN
+
+
+def test_fallback_promotion_stamps_receipt_and_removes_tmp_markdown(
     tmp_path: Path,
     backend: MemoryBackend,
     deps: ArtifactHandlerDeps,
 ) -> None:
-    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
-    backend.write_text(
-        fallback,
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "output_file": "tmp/todo-list.js",
-                    "observed_working": ["created todo-list.js"],
-                    "observed_breaks": [],
-                    "headless_guide_checks": ["tool activity"],
-                    "summary": "Smoke test passed",
-                },
-            }
-        ),
-    )
+    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
+    backend.write_text(fallback, SMOKE_TEST_RESULT)
 
     assert is_artifact_submitted(tmp_path, "run-1", "smoke_test_result", deps=deps)
     assert artifact_receipt_present(tmp_path, "run-1", "smoke_test_result", backend=backend)
+    canonical = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
+    assert backend.read_text(canonical) == SMOKE_TEST_RESULT
+    assert not backend.exists(fallback)
 
 
-def test_fallback_promotion_handles_bare_payload(
+def test_fallback_promotion_regression_commit_message_stamps_receipt_and_removes_tmp_markdown(
     tmp_path: Path,
     backend: MemoryBackend,
     deps: ArtifactHandlerDeps,
 ) -> None:
-    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
-    backend.write_text(
-        fallback,
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/todo-list.js",
-                "observed_working": ["created todo-list.js"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "Smoke test passed",
-            }
-        ),
-    )
+    """DA-003: commit artifacts must receive the same fallback promotion as every stage."""
+    fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
+    backend.write_text(fallback, COMMIT_MESSAGE)
 
-    assert is_artifact_submitted(tmp_path, "run-2", "smoke_test_result", deps=deps)
-    assert artifact_receipt_present(tmp_path, "run-2", "smoke_test_result", backend=backend)
-
-
-def test_fallback_promotion_returns_false_on_malformed_json(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
-    backend.write_text(fallback, "not valid json")
-
-    assert not is_artifact_submitted(tmp_path, "run-3", "smoke_test_result", deps=deps)
-
-
-def test_fallback_promotion_prefers_tmp_over_artifacts(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    tmp_fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
-    backend.write_text(
-        tmp_fallback,
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/todo-list.js",
-                "observed_working": ["from tmp"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "from tmp",
-            }
-        ),
-    )
-
-    artifacts_fallback = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    backend.write_text(
-        artifacts_fallback,
-        json.dumps(
-            {
-                "status": "failed",
-                "output_file": "tmp/todo-list.js",
-                "observed_working": [],
-                "observed_breaks": ["from artifacts"],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "from artifacts",
-            }
-        ),
-    )
-
-    assert is_artifact_submitted(tmp_path, "run-4", "smoke_test_result", deps=deps)
-    artifact = backend.read_text(tmp_path / ".agent" / "artifacts" / "smoke_test_result.json")
-    assert "from tmp" in artifact
-
-
-def test_default_backend_is_used_when_deps_is_none(
-    tmp_path: Path,
-) -> None:
-    result = submit_artifact_canonical(
-        workspace_root=tmp_path,
-        artifact_type="commit_message",
-        parsed_content={"type": "commit", "subject": "feat: test"},
+    result = canonical_submit_module.promote_fallback_artifact(
+        tmp_path,
+        "commit_message",
+        deps=deps,
         run_id="run-1",
     )
 
-    # RFC-013 P3: receipt is DB-backed. The artifact file (always
-    # written through the backend) is the canonical artifact target.
+    assert result is not None
+    assert backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.md")
+    assert not backend.exists(fallback)
+    assert artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
+    assert is_artifact_submitted(tmp_path, "run-1", "commit_message", deps=deps)
+
+
+def test_fallback_promotion_regression_malformed_commit_message_stamps_no_receipt(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    """DA-003: malformed commit fallback documents must not pass commit-stage validation."""
+    fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
+    backend.write_text(fallback, "not a markdown artifact")
+
+    assert (
+        canonical_submit_module.promote_fallback_artifact(
+            tmp_path,
+            "commit_message",
+            deps=deps,
+            run_id="run-2",
+        )
+        is None
+    )
+    assert backend.exists(fallback)
+    assert not artifact_receipt_present(tmp_path, "run-2", "commit_message", backend=backend)
+
+
+def test_fallback_promotion_rejects_malformed_markdown(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
+    backend.write_text(fallback, "not a markdown artifact")
+
+    assert not is_artifact_submitted(tmp_path, "run-2", "smoke_test_result", deps=deps)
+    assert backend.exists(fallback)
+    assert not artifact_receipt_present(tmp_path, "run-2", "smoke_test_result", backend=backend)
+
+
+def test_new_run_clears_markdown_fallbacks_without_cleaning_unrelated_json(
+    tmp_path: Path,
+    backend: MemoryBackend,
+) -> None:
+    markdown_fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
+    unrelated_state = tmp_path / ".agent" / "tmp" / "worker-state.json"
+    backend.write_text(markdown_fallback, COMMIT_MESSAGE)
+    backend.write_text(unrelated_state, "opaque internal state")
+
+    canonical_submit_module._clear_fallback_artifacts(
+        tmp_path,
+        "run-1",
+        backend=backend,
+    )
+
+    assert not backend.exists(markdown_fallback)
+    assert backend.read_text(unrelated_state) == "opaque internal state"
+
+
+def test_new_worker_run_clears_only_its_namespaced_output_documents(
+    tmp_path: Path,
+    backend: MemoryBackend,
+) -> None:
+    worker_tmp = tmp_path / ".agent" / "workers" / "unit-api" / "tmp"
+    worker_fallback = worker_tmp / "development_result.md"
+    sibling_fallback = (
+        tmp_path / ".agent" / "workers" / "unit-web" / "tmp" / "development_result.md"
+    )
+    shared_fallback = tmp_path / ".agent" / "tmp" / "development_result.md"
+    worker_artifact = (
+        tmp_path / ".agent" / "workers" / "unit-api" / "artifacts" / "development_result.md"
+    )
+    worker_handoff = (
+        tmp_path / ".agent" / "workers" / "unit-api" / "handoffs" / "DEVELOPMENT_RESULT.md"
+    )
+    sibling_artifact = (
+        tmp_path / ".agent" / "workers" / "unit-web" / "artifacts" / "development_result.md"
+    )
+    backend.write_text(worker_fallback, DEVELOPMENT_RESULT)
+    backend.write_text(sibling_fallback, DEVELOPMENT_RESULT)
+    backend.write_text(shared_fallback, DEVELOPMENT_RESULT)
+    backend.write_text(worker_artifact, DEVELOPMENT_RESULT)
+    backend.write_text(worker_handoff, DEVELOPMENT_RESULT)
+    backend.write_text(sibling_artifact, DEVELOPMENT_RESULT)
+
+    canonical_submit_module._clear_worker_artifacts(
+        tmp_path,
+        "run-worker",
+        worker_namespace=worker_tmp.parent,
+        backend=backend,
+    )
+
+    assert not backend.exists(worker_fallback)
+    assert not backend.exists(worker_artifact)
+    assert not backend.exists(worker_handoff)
+    assert backend.exists(sibling_fallback)
+    assert backend.exists(sibling_artifact)
+    assert backend.exists(shared_fallback)
+
+
+def test_default_backend_is_used_when_deps_is_none(tmp_path: Path) -> None:
+    result = submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type="commit_message",
+        parsed_content=_parsed("commit_message", COMMIT_MESSAGE),
+        markdown=COMMIT_MESSAGE,
+        run_id="run-1",
+    )
+
     assert result.artifact_path is not None
-    assert DEFAULT_FILE_BACKEND.exists(result.artifact_path)
-    assert result.receipt_path is not None
+    assert DEFAULT_FILE_BACKEND.read_text(result.artifact_path) == COMMIT_MESSAGE
     assert artifact_receipt_present(
-        tmp_path, "run-1", "commit_message", backend=DEFAULT_FILE_BACKEND
+        tmp_path,
+        "run-1",
+        "commit_message",
+        backend=DEFAULT_FILE_BACKEND,
     )
 
 
-def test_fallback_promotion_returns_false_on_schema_invalid_payload(
+def test_invalid_markdown_submission_preserves_last_valid_canonical_state(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    _submit(
+        tmp_path,
+        "development_result",
+        DEVELOPMENT_RESULT,
+        backend=backend,
+        run_id="run-old",
+    )
+    canonical = tmp_path / ".agent" / "artifacts" / "development_result.md"
+
+    result = handle_submit_md_artifact(
+        _Session(run_id="run-new"),
+        workspace,
+        {"artifact_type": "development_result", "content": "# truncated"},
+        deps=_deps(backend),
+    )
+
+    assert result.is_error
+    assert backend.read_text(canonical) == DEVELOPMENT_RESULT
+    assert not artifact_receipt_present(
+        tmp_path,
+        "run-new",
+        "development_result",
+        backend=backend,
+    )
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_completion_sentinel_hmac("run-new") is MISSING
+    finally:
+        db.close()
+
+
+def test_completion_sentinel_returns_false_when_db_and_file_writes_fail(
+    tmp_path: Path,
+    workspace: MockWorkspace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_sqlite_open(*_args: object, **_kwargs: object) -> RunStateDB:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr("ralph.mcp.tools.coordination.RunStateDB", _raise_sqlite_open)
+    monkeypatch.setattr(
+        "ralph.mcp.tools.coordination._write_legacy_sentinel_fallback",
+        lambda *_args, **_kwargs: False,
+    )
+
+    assert not coordination_module._write_completion_sentinel(workspace, "run-x")
+
+
+def test_completion_sentinel_uses_legacy_fallback_when_db_fails(
+    tmp_path: Path,
+    workspace: MockWorkspace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_sqlite_open(*_args: object, **_kwargs: object) -> RunStateDB:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr("ralph.mcp.tools.coordination.RunStateDB", _raise_sqlite_open)
+
+    assert coordination_module._write_completion_sentinel(workspace, "run-y")
+    assert _check_completion_sentinel(tmp_path, "run-y")
+
+
+def test_stale_canonical_markdown_is_not_promoted_for_fresh_run(
     tmp_path: Path,
     backend: MemoryBackend,
     deps: ArtifactHandlerDeps,
 ) -> None:
-    """A schema-invalid fallback payload must not stamp a receipt or artifact."""
-    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
-    backend.write_text(
-        fallback,
-        json.dumps({"bogus": "value"}),
+    _submit(
+        tmp_path,
+        "development_result",
+        DEVELOPMENT_RESULT,
+        backend=backend,
+        run_id="run-old",
     )
 
-    assert not is_artifact_submitted(tmp_path, "run-x", "smoke_test_result", deps=deps)
-    assert not artifact_receipt_present(tmp_path, "run-x", "smoke_test_result", backend=backend)
-    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "smoke_test_result.json")
-
-
-def test_fallback_promotion_continues_after_malformed_tmp_file(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    tmp_fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
-    backend.write_text(tmp_fallback, "not valid json")
-
-    artifacts_fallback = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    backend.write_text(
-        artifacts_fallback,
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/todo-list.js",
-                "observed_working": ["from artifacts"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "from artifacts",
-            }
-        ),
-    )
-
-    assert is_artifact_submitted(tmp_path, "run-5", "smoke_test_result", deps=deps)
-    assert artifact_receipt_present(tmp_path, "run-5", "smoke_test_result", backend=backend)
+    assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
+    assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)
 
 
 def test_explicit_completion_marker_alone_is_not_terminal() -> None:
-
     signals = CompletionSignals(
         explicit_complete=True,
         required_artifact_present=False,
         artifact_types=(),
     )
-    assert _check_signals_terminal(signals) is False
+    assert not completion_signals_terminal(signals)
 
 
-def test_explicit_completion_with_sentinel_is_terminal() -> None:
-
+def test_completion_sentinel_is_terminal_without_artifact_contract() -> None:
     signals = CompletionSignals(
-        explicit_complete=True,
+        explicit_complete=False,
         required_artifact_present=False,
         artifact_types=(),
         completion_sentinel_present=True,
     )
-    assert _check_signals_terminal(signals) is True
+    assert completion_signals_terminal(signals)
 
 
-def test_atomic_rollback_when_artifact_write_fails(
-    tmp_path: Path,
-) -> None:
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/artifacts/" in str(path):
-                raise RuntimeError("artifact write failed")
-            super().write_text(path, content, encoding=encoding)
-
-    failing_backend = _FailingBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="development_result",
-            parsed_content={
-                "status": "completed",
-                "summary": "done",
-                "files_changed": "- x.py",
-            },
-            deps=deps,
-            run_id="run-1",
-        )
-
-    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
+def test_required_artifact_receipt_without_completion_sentinel_is_not_terminal() -> None:
+    signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=True,
+        artifact_types=("development_result",),
+        artifact_required=True,
     )
-    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+    assert not completion_signals_terminal(signals)
 
 
-def test_atomic_rollback_when_handoff_sync_fails(
-    tmp_path: Path,
-) -> None:
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/DEVELOPMENT_RESULT.md" in str(path):
-                raise RuntimeError("handoff write failed")
-            super().write_text(path, content, encoding=encoding)
-
-    failing_backend = _FailingBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="development_result",
-            parsed_content={
-                "status": "completed",
-                "summary": "done",
-                "files_changed": "- x.py",
-            },
-            deps=deps,
-            run_id="run-1",
-        )
-
-    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
-    assert not failing_backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
+def test_completion_sentinel_without_required_artifact_receipt_is_not_terminal() -> None:
+    signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=False,
+        artifact_types=(),
+        completion_sentinel_present=True,
+        artifact_required=True,
     )
-    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+    assert not completion_signals_terminal(signals)
 
 
-def test_atomic_rollback_when_receipt_write_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # RFC-013 P3: receipt writes go through RunStateDB.upsert_receipt.
-    # Patch that to simulate a write failure and confirm the rest of
-    # the submit ops roll back (no artifact file, no sentinel row).
-    def _raise(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("receipt write failed")
-
-    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
-
-    backend = MemoryBackend()
-    deps = ArtifactHandlerDeps(backend=backend)
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="development_result",
-            parsed_content={
-                "status": "completed",
-                "summary": "done",
-                "files_changed": "- x.py",
-            },
-            deps=deps,
-            run_id="run-1",
-        )
-
-    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
-    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
-    # No receipt row in DB (upsert raised before commit)
-    db = RunStateDB(tmp_path)
-    try:
-        assert db.get_receipt_hmac("run-1", "development_result") is MISSING
-        # Sentinel op must have rolled back too
-        assert db.get_completion_sentinel_hmac("run-1") is MISSING
-    finally:
-        db.close()
-
-
-def test_atomic_rollback_when_sentinel_write_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # RFC-013 P3: sentinel writes go through RunStateDB.upsert_completion_sentinel.
-    # Patch that to simulate a write failure; earlier receipt op must roll back.
-    def _raise(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("sentinel write failed")
-
-    monkeypatch.setattr(
-        state_db_module.RunStateDB,
-        "upsert_completion_sentinel",
-        _raise,
-        raising=True,
+def test_required_artifact_receipt_and_completion_sentinel_are_terminal() -> None:
+    signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=True,
+        artifact_types=("development_result",),
+        completion_sentinel_present=True,
+        artifact_required=True,
     )
-
-    backend = MemoryBackend()
-    deps = ArtifactHandlerDeps(backend=backend)
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="development_result",
-            parsed_content={
-                "status": "completed",
-                "summary": "done",
-                "files_changed": "- x.py",
-            },
-            deps=deps,
-            run_id="run-1",
-        )
-
-    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
-    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
-    # The earlier receipt op succeeded (it is the sentinel that failed),
-    # but the rollback undoes it too. Confirm both DB rows are absent.
-    db = RunStateDB(tmp_path)
-    try:
-        assert db.get_receipt_hmac("run-1", "development_result") is MISSING
-        assert db.get_completion_sentinel_hmac("run-1") is MISSING
-    finally:
-        db.close()
-
-
-def test_atomic_rollback_preserves_artifact_dir_state(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-
-    def _raise(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("receipt write failed")
-
-    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
-
-    backend = MemoryBackend()
-    deps = ArtifactHandlerDeps(backend=backend)
-
-    pre_submit_files = set(backend.glob(artifact_dir, "*.json"))
-
-    with pytest.raises(RuntimeError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="development_result",
-            parsed_content={
-                "status": "completed",
-                "summary": "done",
-                "files_changed": "- x.py",
-            },
-            deps=deps,
-            run_id="run-1",
-        )
-
-    post_failure_files = set(backend.glob(artifact_dir, "*.json"))
-    assert post_failure_files == pre_submit_files
-
-
-def test_stale_fallback_not_promoted_for_fresh_run(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    """Test that stale fallback artifacts from previous runs are not promoted to fresh runs.
-
-    Scenario:
-    - Previous run (run-old) successfully submitted a development_result artifact
-    - Current run (run-new) has no completed artifacts
-    - Fallback artifact exists from run-old in .agent/artifacts/
-    - Fallback artifact should NOT be promoted to run-new because it's stale
-
-    This ensures artifact isolation between runs and prevents cross-contamination.
-    """
-    # Create receipt from previous run to indicate it was successfully submitted
-    receipt_dir = tmp_path / ".agent" / "receipts" / "run-old"
-    backend.write_text(
-        receipt_dir / "development_result.json",
-        json.dumps(
-            {
-                "artifact_type": "development_result",
-                "run_id": "run-old",
-                "timestamp": "2025-01-01T00:00:00Z",
-            }
-        ),
-    )
-
-    # Create stale fallback artifact from previous run
-    backend.write_text(
-        tmp_path / ".agent" / "artifacts" / "development_result.json",
-        json.dumps(
-            {
-                "status": "completed",
-                "summary": "from old run",
-                "files_changed": "- x.py",
-            }
-        ),
-    )
-
-    # Current run should not see stale artifact as submitted
-    assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
-    assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)
-
-
-def test_stale_fallback_not_promoted_when_other_run_has_db_receipt(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    """RFC-013 P3: stale-artifact guard must consult ``RunStateDB`` rows.
-
-    Production writes receipts to ``.agent/state.db`` (RFC-013 P3), so
-    the stale-artifact guard inside ``promote_fallback_artifact`` must
-    scan DB rows for OTHER run_ids, not only legacy
-    ``.agent/receipts/<run>/<type>.json`` files. A canonical artifact
-    with only a DB-backed receipt from another run must NOT be promoted
-    for the fresh run.
-    """
-    # Seed a receipt row in the DB for the previous run (no legacy file).
-    db = RunStateDB(tmp_path)
-    db.upsert_receipt("run-old", "development_result", "sig-old")
-    db.close()
-
-    # Create stale fallback artifact from previous run under .agent/artifacts/.
-    backend.write_text(
-        tmp_path / ".agent" / "artifacts" / "development_result.json",
-        json.dumps(
-            {
-                "status": "completed",
-                "summary": "from old run",
-                "files_changed": "- x.py",
-            }
-        ),
-    )
-
-    # Current run must NOT see the stale artifact as submitted.
-    assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
-    assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)
-
-
-# ----------------------------------------------------------------------------
-# RFC-013 P3 fail-closed regression: ``ReceiptPersistenceError`` raised
-# by ``write_artifact_receipt`` MUST propagate through ``submit_artifact_canonical``
-# so the entire submit (artifact, handoff, implicit completion sentinel)
-# is unwound atomically. Without this, the agent could falsely claim the
-# run is complete against a missing receipt.
-# ----------------------------------------------------------------------------
-
-
-def test_submit_artifact_canonical_rolls_back_when_no_durable_receipt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Fail-closed integration: when ``write_artifact_receipt`` cannot
-    persist the receipt through EITHER the DB OR the legacy-file path,
-    ``submit_artifact_canonical`` MUST raise ``ReceiptPersistenceError``
-    and roll back every previous op (artifact file, handoff)."""
-
-    def _raise_persistence(*_args: object, **_kwargs: object) -> None:
-        raise ReceiptPersistenceError(
-            "Both DB and legacy paths failed to persist receipt for "
-            "run_id='run-1' artifact_type='commit_message'"
-        )
-
-    monkeypatch.setattr(
-        "ralph.mcp.tools.artifact.write_artifact_receipt",
-        _raise_persistence,
-    )
-
-    backend = MemoryBackend()
-    deps = ArtifactHandlerDeps(backend=backend)
-
-    with pytest.raises(ReceiptPersistenceError):
-        submit_artifact_canonical(
-            workspace_root=tmp_path,
-            artifact_type="commit_message",
-            parsed_content={"type": "commit", "subject": "feat: test"},
-            deps=deps,
-            run_id="run-1",
-        )
-
-    # Atomic rollback: artifact file is gone.
-    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.json")
-    # No receipt row leaked into the DB.
-    db = RunStateDB(tmp_path)
-    try:
-        assert db.get_receipt_hmac("run-1", "commit_message") is MISSING
-    finally:
-        db.close()
-
-
-def test_submit_artifact_canonical_succeeds_when_db_upsert_fails_but_legacy_writes(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Regression guard for the dual-read window: when the DB upsert
-    raises ``sqlite3.Error`` BUT the legacy-file backend succeeds, the
-    submit MUST complete normally. The fail-closed ``ReceiptPersistenceError``
-    tightening must NOT regress callers that depend on the legacy
-    fallback during the P3 rollout window."""
-
-    def _raise_sqlite(*_args: object, **_kwargs: object) -> None:
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise_sqlite, raising=True)
-
-    backend = MemoryBackend()
-    deps = ArtifactHandlerDeps(backend=backend)
-
-    # Default backend writes the legacy fallback file successfully.
-    submit_artifact_canonical(
-        workspace_root=tmp_path,
-        artifact_type="commit_message",
-        parsed_content={"type": "commit", "subject": "feat: dual-read"},
-        deps=deps,
-        run_id="run-1",
-    )
-
-    # Legacy file path holds the receipt in the in-memory backend.
-    legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
-    assert backend.exists(legacy)
-
-
-# ---------------------------------------------------------------------------
-# RFC-013 P3 fail-closed regression: ``_run_write_implicit_completion_sentinel``
-# MUST raise ``CompletionSentinelPersistenceError`` when BOTH the RunStateDB
-# write AND the legacy-file write fail. Pre-fix the function suppressed the
-# final OSError so single-shot artifact submission could falsely report
-# success against no durable sentinel evidence.
-# ---------------------------------------------------------------------------
-
-
-def test_run_write_implicit_completion_sentinel_raises_when_both_targets_fail(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Fail-closed regression: when ``RunStateDB`` raises on open AND the
-    legacy ``.agent/completion_seen_<run_id>.json`` ``OSError``s on
-    ``Path.write_text``, the implicit sentinel helper MUST raise
-    ``CompletionSentinelPersistenceError`` so the caller can refuse to
-    report a successful completion.
-
-    Pre-fix the helper wrapped the ``Path.write_text`` call in
-    ``with suppress(OSError):`` and returned ``None`` on failure, so
-    callers could falsely report success with no durable sentinel.
-    """
-
-    def _raise_sqlite_open(*_args: object, **_kwargs: object) -> RunStateDB:
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(artifact_module, "RunStateDB", _raise_sqlite_open)
-    # Force the legacy-file path to OSError at write_text; mkdir succeeds
-    # so the test reaches the write_text branch deterministically.
-    monkeypatch.setattr(
-        "pathlib.Path.write_text",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
-    )
-
-    with pytest.raises(CompletionSentinelPersistenceError):
-        artifact_module._run_write_implicit_completion_sentinel(
-            workspace_root=tmp_path, run_id="run-x"
-        )
-
-
-def test_run_write_implicit_completion_sentinel_succeeds_via_legacy_when_db_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Regression guard for the dual-read window: when the RunStateDB
-    open raises ``sqlite3.Error`` BUT the legacy ``.agent/completion_seen_<run_id>.json``
-    file path writes successfully, the helper MUST return ``None``
-    without raising. The fail-closed ``CompletionSentinelPersistenceError``
-    tightening must NOT regress callers that depend on the legacy
-    fallback during the P3 rollout window."""
-
-    def _raise_sqlite_open(*_args: object, **_kwargs: object) -> RunStateDB:
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(artifact_module, "RunStateDB", _raise_sqlite_open)
-
-    artifact_module._run_write_implicit_completion_sentinel(workspace_root=tmp_path, run_id="run-y")
-
-    # The legacy ``.agent/completion_seen_run-y.json`` file was written
-    # using the real (default) backend, so it lives at the literal
-    # workspace_root-relative path.
-    legacy = tmp_path / ".agent" / "completion_seen_run-y.json"
-    assert legacy.exists(), "legacy fallback file MUST be written when DB open fails"
-    payload = json.loads(legacy.read_text(encoding="utf-8"))
-    assert payload == {"run_id": "run-y"}
+    assert completion_signals_terminal(signals)

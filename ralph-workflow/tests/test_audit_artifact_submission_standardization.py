@@ -1,9 +1,9 @@
 """Audit: every single-shot artifact template uses the shared submission macro.
 
 A single-shot artifact template is one that submits exactly one
-``artifact_type`` via ``ralph_submit_artifact`` (or its alias) in a
-single round-trip. The planning multi-step flow (submit_plan_section +
-finalize_plan) is explicitly excluded — its staging protocol lives
+``artifact_type`` via ``ralph_submit_md_artifact`` (or its alias) in a
+single round-trip. The planning staged-document flow is explicitly excluded —
+its markdown staging and finalization protocol lives
 in planning.jinja.
 
 The shared macro ``shared/_artifact_submission.jinja`` is the single
@@ -12,9 +12,8 @@ source of truth for:
 - the canonical submit tool alias,
 - the ``artifact_type`` value,
 - the format index reference,
-- the MCP argument shape (``content`` is a native JSON object/array or a
-  JSON-serialized string),
-- the ``.agent/tmp/<artifact_type>.json`` fallback.
+- the MCP argument shape (``content`` is the complete markdown document),
+- the ``.agent/tmp/<artifact_type>.md`` fallback.
 
 Without this audit, the per-template prose can drift (and historically
 has — the 3 inconsistent tool-name variables and the ad-hoc
@@ -29,18 +28,19 @@ from pathlib import Path
 
 TEMPLATES_DIR = Path("ralph/prompts/templates")
 
-# Single-shot templates: submit exactly one artifact_type via ralph_submit_artifact.
-# Planning multi-step templates (planning.jinja, planning_fallback.jinja,
+# Single-shot templates: submit exactly one artifact_type via ralph_submit_md_artifact.
+# Planning document templates (planning.jinja, planning_fallback.jinja,
 # planning_edit.jinja, planning_edit_fallback.jinja) are excluded — they use
-# the submit_plan_section / finalize_plan staging flow, which is a different
-# protocol. planning_analysis.jinja is also a single-shot analysis template
+# canonical markdown stage/edit/get/finalize or direct verify/submit flows,
+# which differ from this single-shot macro. planning_analysis.jinja is also a
+# single-shot analysis template
 # (it submits a planning_analysis_decision artifact), so it IS included.
 # ``developer_iteration_fallback.jinja`` is the minimal-broken-prompt
 # variant emitted when MCP wiring is unavailable; it deliberately omits
 # the shared macro because its tests assert no ``content_path`` /
 # ``development_result`` references — the agent is being told the
-# canonical submit path is broken, so the contract is "use the legacy
-# write_file fallback" (handled in :mod:`ralph.agents.developer`).
+# canonical submit path is broken, so the contract uses the validated markdown
+# write-file fallback (handled in :mod:`ralph.agents.developer`).
 SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
     "commit_cleanup.jinja",
     "commit_message.jinja",
@@ -101,11 +101,11 @@ def test_every_single_shot_template_includes_shared_macro() -> None:
 
 
 def test_no_planning_multistep_template_uses_shared_macro() -> None:
-    """Planning multi-step (submit_plan_section / finalize_plan) MUST NOT use the macro.
+    """Planning document stage/edit/finalize flows MUST NOT use the macro.
 
     The macro is for single-shot artifacts. The planning multi-step flow
-    stages sections incrementally and finalizes; its instructions live in
-    planning.jinja and must not be replaced by the single-shot block.
+    stages or edits a complete markdown draft and finalizes it; its instructions
+    live in planning.jinja and must not be replaced by the single-shot block.
     """
     for excluded_name in (
         "planning.jinja",
@@ -116,9 +116,9 @@ def test_no_planning_multistep_template_uses_shared_macro() -> None:
         content = _read_template(excluded_name)
         assert "shared/_artifact_submission" not in content, (
             f"{excluded_name} is a multi-step planning template; it must NOT "
-            f"include the single-shot shared macro. It uses submit_plan_section "
-            f"and finalize_plan — those instructions live in the planning.jinja "
-            f"protocol, not in the shared macro."
+            f"include the single-shot shared macro. It uses "
+            f"ralph_stage_md_artifact and ralph_finalize_md_artifact — those "
+            f"instructions live in the planning protocol, not in the shared macro."
         )
 
 
@@ -150,7 +150,7 @@ def test_shared_macro_renders_canonical_tool_name() -> None:
     """The shared macro must accept the submit tool reference and use it verbatim.
 
     This pins the contract that ``submit_tool_reference`` is the rendered
-    tool alias the runtime exposes (e.g. ``ralph_submit_artifact``), not
+    tool alias the runtime exposes (e.g. ``ralph_submit_md_artifact``), not
     a free-form string the template can lie about.
     """
     macro = (TEMPLATES_DIR / "shared" / "_artifact_submission.j2").read_text(encoding="utf-8")

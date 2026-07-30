@@ -92,14 +92,24 @@ def test_emit_snapshot_renders_phase_line() -> None:
     assert "development" in output, f"snapshot missing 'development' phase name: {output!r}"
 
 
-def test_emit_snapshot_emits_info_meta_badge() -> None:
-    """The standard INFO/META badge appears somewhere in the rendered snapshot."""
+def test_emit_snapshot_emits_no_level_badge() -> None:
+    """The rendered snapshot carries no retired INFO/META chrome (S-4).
+
+    Pre-S-4 the snapshot line was stamped with an INFO LEVEL and a
+    META category badge in the chrome prefix; wt-028-display S-4
+    retired that vocabulary. The contract is now: the snapshot
+    line carries the [phase] tag and the phase name, nothing
+    else in the chrome.
+    """
     pd, buf = _make_display()
     pd.emit_snapshot(_make_snapshot())
     pd.stop()
     output = buf.getvalue()
-    assert "INFO" in output, f"snapshot missing INFO badge: {output!r}"
-    assert "META" in output, f"snapshot missing META badge: {output!r}"
+    for forbidden in ("INFO", "WARN", "ERROR", "MILESTONE", "META", "OUT"):
+        assert forbidden not in output, (
+            f"wt-028-display S-4: snapshot must not leak {forbidden!r} "
+            f"chrome; got: {output!r}"
+        )
 
 
 def test_emit_snapshot_renders_plan_summary_when_present() -> None:

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import builtins
+import concurrent.futures
 import os
 import sys
 import threading
+from collections.abc import Callable
 from importlib import import_module
 from types import ModuleType
-from typing import Any, cast
 
 import pytest
 from _pytest.mark import Mark, MarkDecorator
@@ -47,7 +48,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
                 ]
             }
 
-    fake_module = cast("Any", ModuleType("tavily"))
+    fake_module = ModuleType("tavily")
     fake_module.TavilyClient = FakeClient
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
 
@@ -72,7 +73,7 @@ def test_401_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
         def search(self, query: str, *, max_results: int) -> dict[str, object]:
             raise RuntimeError(f"401 unauthorized api_key={self.api_key} query={query}")
 
-    fake_module = cast("Any", ModuleType("tavily"))
+    fake_module = ModuleType("tavily")
     fake_module.TavilyClient = BrokenClient
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
 
@@ -121,8 +122,10 @@ def test_live_search_returns_results() -> None:
 def test_tavily_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     tavily_backend = _import_tavily_module()
     bounded = import_module("ralph.mcp.websearch._bounded_sdk_call")
-    bounded.reset_default()
     event = threading.Event()
+    executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="test-tavily-timeout"
+    )
 
     class HangingTavily:
         def __init__(self, *, api_key: str) -> None:
@@ -132,15 +135,19 @@ def test_tavily_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch)
             event.wait(timeout=10.0)
             return {"results": []}
 
-    fake_module = cast("Any", ModuleType("tavily"))
+    def _with_timeout[T](callable_: Callable[[], T], timeout: float, *, label: str) -> T:
+        return bounded.with_timeout(callable_, timeout, label=label, _executor=executor)
+
+    fake_module = ModuleType("tavily")
     fake_module.TavilyClient = HangingTavily
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
+    monkeypatch.setattr(tavily_backend, "with_timeout", _with_timeout)
     try:
         backend = tavily_backend.TavilyBackend(api_key=API_KEY, timeout_seconds=0.05)
         with pytest.raises(bounded.WebSearchError) as exc_info:
             backend.search("q")
     finally:
         event.set()
-        bounded.reset_default()
+        executor.shutdown(wait=True)
     assert "tavily" in str(exc_info.value)
     assert "0.05" in str(exc_info.value)

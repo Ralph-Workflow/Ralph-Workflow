@@ -31,11 +31,12 @@ class InvokeRuntimeOptions:
     extra_env: dict[str, str] | None = None
     pure: bool = False
     session_id: str | None = None
-    system_prompt_file: str | None = None
+    master_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
+    requires_completion_evidence: bool = True
     # Live pipeline signals that the watchdog consults on every
     # evaluate() call so the StuckClassifier gate can return
     # DUPLICATE_KILL (when the pipeline is already in a wait state)
@@ -60,11 +61,12 @@ def build_invoke_options_from_config(
         unsafe_mode=general_config.workflow.unsafe_mode,
         pure=rt.pure,
         session_id=rt.session_id,
-        system_prompt_file=rt.system_prompt_file,
+        master_prompt_file=rt.master_prompt_file,
         waiting_listener=rt.waiting_listener,
         pre_output_listener=rt.pre_output_listener,
         permission_prompt_listener=rt.permission_prompt_listener,
         required_artifact=rt.required_artifact,
+        requires_completion_evidence=rt.requires_completion_evidence,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
         max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
@@ -105,7 +107,9 @@ def build_invoke_options_from_config(
 def _get_os_descendant_field(value: float | None | object, fallback: float | None) -> float | None:
     if value is _INVOKE_OPTS_UNSET:
         return fallback
-    return cast("float | None", value)
+    return cast(
+        "float | None", value
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
@@ -278,10 +282,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         # get the 600s sub-ceiling default.
         stuck_job_sub_ceiling_seconds=(
             STUCK_JOB_SUB_CEILING_SECONDS
-            if (
-                _effective_max is not None
-                and _effective_max >= STUCK_JOB_SUB_CEILING_SECONDS
-            )
+            if (_effective_max is not None and _effective_max >= STUCK_JOB_SUB_CEILING_SECONDS)
             else None
         ),
     )

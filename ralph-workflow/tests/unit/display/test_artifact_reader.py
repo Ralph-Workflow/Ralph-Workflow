@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.display.artifact_reader import (
@@ -12,53 +12,110 @@ from ralph.display.artifact_reader import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
 EXPECTED_TOTAL_STEPS = 2
 
 
-def _write_plan(workspace: Path, content: dict[str, object]) -> None:
-    artifacts = workspace / ".agent" / "artifacts"
-    artifacts.mkdir(parents=True, exist_ok=True)
-    (artifacts / "plan.json").write_text(json.dumps(content))
+def _plan_document() -> str:
+    return """---
+type: plan
+schema_version: 1
+intent_verb: add
+---
+## Summary
+Improve the dashboard
+
+Intent: Show the current execution plan.
+Coverage: feature, test
+
+## Scope
+- [SC-1] Item A
+  Category: feature
+- [SC-2] Item B
+  Category: feature
+- [SC-3] Item C
+  Category: test
+
+## Skills MCP
+Skills: test-driven-development, verification-before-completion
+
+## Steps
+
+### [S-1] Render the plan
+Project the Markdown plan into the display summary.
+
+Type: file_change
+Priority: high
+Files:
+- modify ralph/display/artifact_reader.py
+
+### [S-2] Verify the display
+Run the focused display tests.
+
+Type: verify
+Depends on: S-1
+Verify: pytest tests/unit/display -q
+Expect: the display unit tests pass with exit code 0
+
+## Critical Files
+- [CF-1] ralph/display/artifact_reader.py
+  Action: modify
+  Changes: load the canonical Markdown plan
+
+## Risks
+- [R-1] timeout
+  Severity: medium
+  Mitigation: Keep transcript output plain-text safe.
+- [R-2] manual cleanup may be required
+  Severity: low
+  Mitigation: Preserve the tolerant missing-artifact behavior.
+
+## Verification
+- [V-1] pytest tests/unit/display -q
+  Expect: focused tests pass
+  Timeout: 10
+"""
 
 
-def test_read_plan_artifact_missing_returns_none(tmp_path: Path) -> None:
-    assert read_plan_artifact(tmp_path) is None
+def _text_loader(content: str | None) -> Callable[[Path], str | None]:
+    return lambda _path: content
 
 
-def test_read_plan_artifact_malformed_returns_none(tmp_path: Path) -> None:
-    artifacts = tmp_path / ".agent" / "artifacts"
-    artifacts.mkdir(parents=True)
-    (artifacts / "plan.json").write_text("not json")
-    assert read_plan_artifact(tmp_path) is None
+def _analysis_decision_document(
+    artifact_type: str,
+    *,
+    status: str,
+    summary: str,
+) -> str:
+    return f"""---
+type: {artifact_type}
+status: {status}
+---
+
+## Summary
+
+- [SUM-1] {summary}
+"""
 
 
-def test_read_plan_artifact_projects_context_and_scope(tmp_path: Path) -> None:
-    _write_plan(
-        tmp_path,
-        {
-            "content": {
-                "summary": {
-                    "context": "Improve the dashboard",
-                    "scope_items": ["Item A", "Item B", "Item C"],
-                },
-                "skills_mcp": {
-                    "skills": [
-                        "test-driven-development",
-                        "verification-before-completion",
-                    ],
-                    "mcps": [],
-                },
-                "steps": [{"id": 1}, {"id": 2}],
-                "risks_mitigations": [
-                    {"risk": "timeout"},
-                    "manual cleanup may be required",
-                ],
-            }
-        },
+def test_read_plan_artifact_missing_returns_none() -> None:
+    assert read_plan_artifact(Path("/workspace"), _text_loader=_text_loader(None)) is None
+
+
+def test_read_plan_artifact_malformed_returns_none() -> None:
+    result = read_plan_artifact(
+        Path("/workspace"),
+        _text_loader=_text_loader("not a plan artifact"),
     )
-    result = read_plan_artifact(tmp_path)
+    assert result is None
+
+
+def test_read_plan_artifact_projects_context_and_scope() -> None:
+    result = read_plan_artifact(
+        Path("/workspace"),
+        _text_loader=_text_loader(_plan_document()),
+    )
     assert isinstance(result, PlanSummary)
     assert result.summary == "Improve the dashboard"
     assert result.scope_items == ("Item A", "Item B", "Item C")
@@ -67,58 +124,62 @@ def test_read_plan_artifact_projects_context_and_scope(tmp_path: Path) -> None:
     assert "manual cleanup may be required" in result.risks_mitigations
 
 
-def test_read_plan_artifact_without_content_wrapper(tmp_path: Path) -> None:
-    _write_plan(
-        tmp_path,
-        {
-            "summary": {"context": "direct", "scope_items": ["only"]},
-            "steps": [{"id": 1}],
-        },
-    )
-    result = read_plan_artifact(tmp_path)
-    assert isinstance(result, PlanSummary)
-    assert result.summary == "direct"
-    assert result.scope_items == ("only",)
-    assert result.total_steps == 1
-
-
 def test_read_latest_analysis_decision_missing_returns_none(tmp_path: Path) -> None:
     assert read_latest_analysis_decision(tmp_path, "development_analysis") is None
 
 
-def test_read_latest_analysis_decision_prefers_canonical_name(tmp_path: Path) -> None:
+def test_read_latest_analysis_decision_loads_canonical_markdown(tmp_path: Path) -> None:
     artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True)
-    (artifacts / "development_analysis_decision.json").write_text(
-        json.dumps(
-            {
-                "content": {
-                    "decision": "proceed",
-                    "reason": "all tests passed",
-                }
-            }
-        )
+    (artifacts / "development_analysis_decision.md").write_text(
+        _analysis_decision_document(
+            "development_analysis_decision",
+            status="completed",
+            summary="All tests passed",
+        ),
+        encoding="utf-8",
     )
+
     result = read_latest_analysis_decision(tmp_path, "development_analysis")
+
     assert result is not None
-    assert result.decision == "proceed"
-    assert result.reason == "all tests passed"
+    assert result.decision == "completed"
+    assert result.reason == "All tests passed"
 
 
-def test_read_latest_analysis_decision_falls_back_to_drain_json(tmp_path: Path) -> None:
+def test_read_latest_analysis_decision_prefers_markdown_over_old_state(tmp_path: Path) -> None:
     artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True)
-    (artifacts / "review_analysis.json").write_text(
-        json.dumps(
-            {
-                "content": {
-                    "decision": "revise",
-                    "reason": "needs more tests",
-                }
-            }
-        )
+    (artifacts / "review_analysis_decision.md").write_text(
+        _analysis_decision_document(
+            "review_analysis_decision",
+            status="completed",
+            summary="Canonical decision",
+        ),
+        encoding="utf-8",
     )
+    (artifacts / "review_analysis_decision.json").write_text(
+        "this must never be parsed",
+        encoding="utf-8",
+    )
+
     result = read_latest_analysis_decision(tmp_path, "review_analysis")
+
     assert result is not None
-    assert result.decision == "revise"
-    assert result.reason == "needs more tests"
+    assert result.decision == "completed"
+    assert result.reason == "Canonical decision"
+
+
+def test_read_latest_analysis_decision_rejects_json_only_state(tmp_path: Path) -> None:
+    artifacts = tmp_path / ".agent" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "review_analysis_decision.json").write_text(
+        '{"type":"review_analysis_decision","content":{"decision":"completed"}}',
+        encoding="utf-8",
+    )
+    (artifacts / "review_analysis.json").write_text(
+        '{"type":"review_analysis_decision","content":{"decision":"completed"}}',
+        encoding="utf-8",
+    )
+
+    assert read_latest_analysis_decision(tmp_path, "review_analysis") is None

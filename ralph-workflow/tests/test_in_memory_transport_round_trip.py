@@ -10,7 +10,7 @@ completes in well under 1 second).
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import _fallback_http_handler
@@ -22,6 +22,11 @@ from ralph.mcp.server._in_memory_transport import (
 )
 from ralph.mcp.server.runtime import McpServer, ServerState, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+    must_str,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,10 +59,10 @@ def test_tools_list_returns_single_sse_frame_with_tools_array(tmp_path: Path) ->
     assert headers.get("content-type") == "text/event-stream"
     payload = parse_sse_data(body)
     assert payload.get("jsonrpc") == "2.0"
-    result = cast("dict[str, object]", payload.get("result", {}))
-    tools = cast("list[dict[str, object]]", result.get("tools", []))
+    result = must_mapping(payload.get("result", {}))
+    tools = must_dict_list(result.get("tools", []))
     assert tools, "expected at least one tool registered"
-    names = {cast("str", entry["name"]) for entry in tools}
+    names = {must_str(entry["name"]) for entry in tools}
     assert "read_file" in names
 
 
@@ -134,9 +139,9 @@ def test_invalid_json_returns_parse_error_frame(tmp_path: Path) -> None:
     if headers.get("content-type", "").startswith("text/event-stream"):
         payload = parse_sse_data(body)
     else:
-        payload = cast("dict[str, object]", json.loads(body))
+        payload = must_mapping(json.loads(body))
     assert payload.get("jsonrpc") == "2.0"
-    error = cast("dict[str, object]", payload.get("error", {}))
+    error = must_mapping(payload.get("error", {}))
     assert error.get("code") == -32700
 
 

@@ -9,13 +9,14 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
 from ralph.config.enums import Verbosity
 from ralph.display._run_start_orientation import RunStartOrientation
+from ralph.display.artifact_reader import plan_artifact_path
 from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
@@ -25,11 +26,22 @@ from ralph.display.parallel_display import (
 )
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_on_phase_transition,
+    recovery_retained_record,
+)
+from ralph.pipeline.auto_integrate_agent import (
+    build_agent_conflict_resolver,
+    build_agent_rebase_stop_resolver,
+    emit_integration_warn_line,
+)
+from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
     emit_final_summary,
 )
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -47,6 +59,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -121,12 +134,17 @@ class _LoopContext:
     controller: RecoveryController
     config_path: Path | None
     cli_overrides: dict[str, object]
-    monitor_stop: Callable[[], None] | None
+    monitor_stop: Callable[[], None] | None | None
     connectivity_monitor: _ConnectivityMonitorLike
     sleep: Callable[[float], None]
     is_quiet: bool
     heartbeat_client: ProHeartbeatClient | None = None
     pro_watcher: ProMarkerWatcher | None = None
+    # Background catch-up fast-forward worker (see
+    # ``ralph.pipeline.auto_integrate_catchup``). Started at run start
+    # when auto-integration is enabled; stopped in ``_cleanup_pipeline``
+    # on every exit path.
+    catchup_worker: AutoIntegrateCatchupWorker | None = None
     snapshot_registry: SnapshotRegistry | None = None
     pipeline_deps: PipelineDeps | None = None
     last_waiting_state_phase: str | None = None
@@ -162,6 +180,40 @@ def _signal_if_now_online(monitor: _ConnectivityMonitorLike, wake: threading.Eve
         wake.set()
 
 
+#: Re-poll interval for the offline pause. The pause is normally released by
+#: the monitor's ONLINE transition event; the poll only covers the case where
+#: no event can arrive any more.
+_OFFLINE_REPOLL_INTERVAL_SECONDS: Final[float] = 5.0
+
+#: How often the offline pause reports that it is still waiting. Without this
+#: the run looks identical to a hang: one warning line, then silence.
+_OFFLINE_HEARTBEAT_INTERVAL_SECONDS: Final[float] = 60.0
+
+
+def _wait_for_connectivity(monitor: _ConnectivityMonitorLike, wake: threading.Event) -> None:
+    """Block until connectivity returns, re-polling instead of waiting forever.
+
+    An unbounded ``wake.wait()`` here is a silent-hang vector: the pause is
+    released only by an ONLINE transition event, so if the connectivity
+    monitor thread dies or its probe wedges, no event can ever arrive and the
+    pipeline blocks forever behind a single "Pipeline paused" warning — no
+    timeout, no watchdog, no further output. Polling the monitor's own state
+    on each wake-up makes the pause self-healing, and the periodic heartbeat
+    keeps a legitimately long outage distinguishable from a wedge.
+    """
+    waited = 0.0
+    next_heartbeat = _OFFLINE_HEARTBEAT_INTERVAL_SECONDS
+    while not wake.wait(timeout=_OFFLINE_REPOLL_INTERVAL_SECONDS):
+        if monitor.current_state != ConnectivityState.OFFLINE:
+            return
+        waited += _OFFLINE_REPOLL_INTERVAL_SECONDS
+        if waited >= next_heartbeat:
+            next_heartbeat += _OFFLINE_HEARTBEAT_INTERVAL_SECONDS
+            logger.bind(recovery=True).warning(
+                "Pipeline still paused: network offline for {}s, still waiting", int(waited)
+            )
+
+
 def _apply_connectivity_check(
     state: PipelineState, monitor: _ConnectivityMonitorLike
 ) -> PipelineState:
@@ -184,8 +236,7 @@ def _apply_connectivity_check(
     unsub = monitor.add_listener(_on_transition)
     try:
         _signal_if_now_online(monitor, wake)
-        if not wake.is_set():
-            wake.wait()
+        _wait_for_connectivity(monitor, wake)
     finally:
         unsub()
 
@@ -265,7 +316,8 @@ def _setup_active_display(
         _stop = _runner_module.install_width_refresher(
             ctx_holder,
             on_refresh=lambda ctx: _sync_live_display_context(
-                cast("_DisplayContextOwner", active), ctx
+                cast("_DisplayContextOwner", active),
+                ctx,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
         )
 
@@ -287,7 +339,9 @@ def _emit_run_start(
         return
     with suppress(Exception):
         _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
-        _prompt_path: str | None = cast("str | None", _prompt_path_raw)
+        _prompt_path: str | None = cast(
+            "str | None", _prompt_path_raw
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         _dev_para = next(
             (
                 p.parallelization
@@ -299,7 +353,7 @@ def _emit_run_start(
         _parallel_max_workers: int | None = (
             _dev_para.max_parallel_workers if _dev_para is not None else None
         )
-        _plan_present = (ctx.workspace_scope.root / ".agent" / "artifacts" / "plan.json").exists()
+        _plan_present = plan_artifact_path(ctx.workspace_scope.root).exists()
         _dev_agent_raw: object = getattr(ctx.config, "developer_agent", None)
         _dev_model_raw: object = getattr(ctx.config, "developer_model", None)
         verbosity_str = (
@@ -309,8 +363,12 @@ def _emit_run_start(
         )
         _orientation = RunStartOrientation(
             prompt_path=_prompt_path,
-            developer_agent=cast("str | None", _dev_agent_raw),
-            developer_model=cast("str | None", _dev_model_raw),
+            developer_agent=cast(
+                "str | None", _dev_agent_raw
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            developer_model=cast(
+                "str | None", _dev_model_raw
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             developer_iters=ctx.config.general.developer_iters,
             parallel_max_workers=_parallel_max_workers,
             plan_present=_plan_present,
@@ -379,6 +437,10 @@ def _build_status_bar_model(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
+    *,
+    elapsed_seconds: float | None = None,
+    run_started_monotonic: float | None = None,
+    attention: str | None = None,
 ) -> StatusBarModel:
     """Build a :class:`StatusBarModel` from the live pipeline state.
 
@@ -389,11 +451,25 @@ def _build_status_bar_model(
     ``AnalysisLoopCounter.display_iteration``. The status bar at the bottom
     of the terminal reads from this model so operators can see the active
     working directory, phase, and applicable cycle counts without scrolling.
+
+    P0 (wt-028-display AC-01): ``run_started_monotonic`` is the
+    ``time.monotonic`` anchor captured when the run started. When
+    present, the renderer recomputes elapsed on every Live tick so
+    the bar keeps ticking during quiet agent turns without a model
+    re-push. ``None`` keeps the existing snapshot-elapsed contract.
+
+    wt-047-stall-label: the ``last_activity_monotonic`` parameter was
+    removed (zero dead code). The watchdog is the sole owner of the
+    STALLED label and surfaces its state via the host's
+    ``watchdog_attention`` slot (``StatusBar._model_with_live_attention``);
+    a separate display-side 30s gap derivation is no longer needed.
+    ``attention`` carries the explicit attention state (``waiting`` /
+    ``retrying`` / ``terminated``) so a run-end or operator-pushed
+    state can take precedence over the watchdog-sourced stall.
     """
-    entry = build_phase_entry_model_from_state(
-        state.phase, state, policy_bundle.pipeline
-    )
+    entry = build_phase_entry_model_from_state(state.phase, state, policy_bundle.pipeline)
     phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
+    entry_agent_name: object = getattr(entry, "agent_name", None)
     return StatusBarModel(
         workspace_root=str(workspace_root),
         phase_label=entry.human_label(),
@@ -402,7 +478,72 @@ def _build_status_bar_model(
         outer_dev_cap=entry.outer_dev_cap,
         inner_analysis=entry.inner_analysis,
         inner_analysis_cap=entry.inner_analysis_cap,
+        integration_alert=_integration_alert_for_state(state),
+        elapsed_seconds=elapsed_seconds,
+        agent_name=entry_agent_name if isinstance(entry_agent_name, str) else None,
+        run_started_monotonic=run_started_monotonic,
+        attention=attention,
     )
+
+
+def _integration_alert_for_state(state: PipelineState) -> str | None:
+    """Alert text while the last auto-integrate outcome is a conflict.
+
+    Defensive ``getattr`` access so a fake / legacy state object without
+    a ``rebase`` slot can never break the status bar push.
+    """
+    rebase: object = getattr(state, "rebase", None)
+    last_action: object = getattr(rebase, "last_action", None)
+    if last_action != "conflict":
+        return None
+    reason_raw: object = getattr(rebase, "last_reason", None)
+    reason = reason_raw if isinstance(reason_raw, str) and reason_raw else "unresolved"
+    return f"integration conflict ({reason}) — resolution required"
+
+
+def _attention_state_for_state(state: PipelineState) -> str | None:
+    """Return the explicit attention state to push to the Status Bar.
+
+    P0 (wt-028-display S-2 / AC-01): the run loop owns the truth
+    about whether the run is healthy, waiting, retrying, or has
+    terminated. Here we report operator-pushed states that must
+    take precedence over the watchdog-sourced stall: a pushed
+    ``waiting`` / ``retrying`` / ``terminated`` always wins so a
+    run-end or operator-visible state can override the watchdog
+    signal. ``None`` leaves the attention slot empty so the Status
+    Bar host can substitute the watchdog-sourced attention in
+    (see :func:`_build_status_bar_model` and
+    :meth:`ralph.display.status_bar.StatusBar._model_with_live_attention`).
+    There is NO display-side activity-gap derivation -- the
+    watchdog is the single source of truth for ``stalled`` and
+    surfaces it through the host's ``watchdog_attention`` slot.
+
+    The mapping is read defensively from ``state`` so a fake /
+    legacy state object without the new slots never breaks the
+    status bar push.
+    """
+    run_outcome: object = getattr(state, "run_outcome", None)
+    outcome_attention = {
+        "failed": "failed",
+        "error": "failed",
+        "cancelled": "cancelled",
+        "completed": "completed",
+        # The final run-loop push uses this phase-neutral outcome; it must
+        # occupy the terminal attention slot even for failed_terminal.
+        "terminated": "terminated",
+    }
+    if isinstance(run_outcome, str) and run_outcome in outcome_attention:
+        return outcome_attention[run_outcome]
+    run_phase: object = getattr(state, "phase", None)
+    if isinstance(run_phase, str):
+        if run_phase.startswith("waiting"):
+            return "waiting"
+        if run_phase in ("complete", "failed", "failed_terminal", "cancelled"):
+            return "terminated"
+        if run_phase in ("", "starting", "startup"):
+            return "starting"
+    retrying: object = getattr(state, "retrying", None)
+    return "retrying" if isinstance(retrying, bool) and retrying else None
 
 
 def _push_status_bar_if_changed(
@@ -410,21 +551,577 @@ def _push_status_bar_if_changed(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
-    last_sig: tuple[str, int | None, int | None] | None,
-) -> tuple[str, int | None, int | None] | None:
-    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle) signature changes.
+    last_sig: tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None,
+) -> tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None:
+    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert, label) signature changes.
 
-    Returns the new signature so the caller's closure-local ``last_status_sig``
-    stays current. Defensive: any failure is swallowed. Pass ``last_sig=None``
-    for an unconditional initial push.
+    The integration alert participates in the signature so the bar
+    repushes the moment a conflict appears or clears, not only on the
+    next phase change. ``outer_label`` is in the signature too so a
+    label transition (e.g. ``Cycle`` -> ``Remediation`` -> ``Round``)
+    forces a repaint instead of silently inheriting the previous label.
+    Returns the new signature so the caller's closure-local
+    ``last_status_sig`` stays current. Defensive: any failure is
+    swallowed. Pass ``last_sig=None`` for an unconditional initial push.
     """
     with suppress(Exception):
-        model = _build_status_bar_model(state, policy_bundle, workspace_root)
-        signature = (state.phase, model.outer_dev_iteration, model.inner_analysis)
+        elapsed_seconds = (
+            active_display.run_elapsed_seconds
+            if isinstance(active_display, ParallelDisplay)
+            else None
+        )
+        run_started_monotonic = (
+            active_display.run_started_monotonic
+            if isinstance(active_display, ParallelDisplay)
+            else None
+        )
+        # wt-047-stall-label: forward the watchdog-sourced attention
+        # via the host's ``watchdog_attention`` slot only (the
+        # display-side ``last_activity_monotonic`` plumbing is gone,
+        # zero dead code). ``attention`` carries the explicit
+        # operator-pushed state when the run loop pushes one
+        # (waiting / retrying / terminated); ``None`` keeps the
+        # existing snapshot-only contract for pushed attention and
+        # lets the host's ``_model_with_live_attention`` substitute
+        # the watchdog-sourced value on each Live tick.
+        attention = _attention_state_for_state(state)
+        model = _build_status_bar_model(
+            state,
+            policy_bundle,
+            workspace_root,
+            elapsed_seconds=elapsed_seconds,
+            run_started_monotonic=run_started_monotonic,
+            attention=attention,
+        )
+        signature = (
+            state.phase,
+            model.outer_dev_iteration,
+            model.inner_analysis,
+            model.integration_alert,
+            model.outer_label,
+            model.agent_name,
+            model.attention,
+        )
         if signature != last_sig and hasattr(active_display, "update_status_bar"):
             active_display.update_status_bar(model)
             return signature
     return last_sig
+
+
+def _run_auto_integrate_recovery_preamble(
+    workspace_scope: WorkspaceScope, config: UnifiedConfig | None = None
+) -> RebaseState | None:
+    """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
+
+    Called from :func:`_run_inner_loop` BEFORE the pipeline starts.
+    The recover function aborts any owned engine rebase / merge,
+    then either restores the feature branch to its pre-integration
+    SHA (phase='integrating') or safely continues the unfinished
+    fast-forward (phase='integrated'). It must never abort startup
+    -- a defensive try/except keeps any unexpected failure from
+    blocking the run.
+
+    Returns the recovery :class:`RebaseState` (or ``None`` when no
+    record existed / the recovery was a no-op) so the caller can
+    thread the outcome into ``state.copy_with(rebase=recovered)``
+    and persist it via the existing checkpoint path. Discarding the
+    recovery outcome here would mean the resume run continues with
+    the pre-crash ``PipelineState.rebase`` and the operator never
+    sees the recovered / skipped / restored verdict in the next
+    receipt.
+    """
+    try:
+        from ralph.pipeline.auto_integrate import recover_incomplete_integration
+
+        recovered = recover_incomplete_integration(workspace_scope, config=config)
+    except Exception as recover_exc:  # pragma: no cover -- defensive
+        logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
+        return None
+    if recovered is not None:
+        logger.debug("auto_integrate recovery preamble: {}", recovered.last_action)
+    return recovered
+
+
+def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
+    """Integrate the branch onto the target BEFORE the first phase runs.
+
+    A run started (or resumed) on a stale branch must not plan or
+    develop against old code: the same clean-worktree boundary hook
+    used at phase transitions runs once at startup so the feature
+    branch begins from the current target tip. Silent no-op when the
+    worktree is dirty, the feature is disabled, or nothing moved.
+    Never raises.
+    """
+    try:
+        resolver = build_agent_conflict_resolver(
+            policy_bundle=ctx.policy_bundle,
+            registry=ctx.registry,
+            display=ctx.active_display,
+            config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            workspace_scope=ctx.workspace_scope,
+            display_context=ctx.display_context,
+        )
+        outcome = auto_integrate_on_phase_transition(
+            ctx.config,
+            ctx.workspace_scope,
+            RebaseState(),
+            conflict_resolver=resolver,
+            rebase_stop_resolver=build_agent_rebase_stop_resolver(
+                policy_bundle=ctx.policy_bundle,
+                registry=ctx.registry,
+                display=ctx.active_display,
+                config=ctx.config,
+                pipeline_deps=ctx.pipeline_deps,
+                workspace_scope=ctx.workspace_scope,
+                display_context=ctx.display_context,
+            ),
+            display=ctx.active_display,
+        )
+    except Exception as startup_exc:  # pragma: no cover -- defensive
+        logger.warning("startup auto-integrate failed: {}", startup_exc)
+        return None
+    with suppress(Exception):
+        if outcome is not None:
+            _runner_module._log_auto_integrate_outcome(ctx.active_display, outcome)
+        else:
+            # The startup check must never be invisible: even the
+            # nothing-to-do outcome prints one line so an operator can
+            # tell the sync ran (vs. silently not existing).
+            ctx.active_display.emit(
+                "run",
+                "[cyan]auto-integrate:[/cyan] startup check: nothing to"
+                " integrate (branch in sync with target, worktree busy,"
+                " or not a git checkout)",
+            )
+    return outcome
+
+
+def _save_recovered_rebase_checkpoint(
+    state: PipelineState,
+    ctx: _LoopContext,
+) -> None:
+    """Persist the recovery-threaded ``state`` to the same checkpoint path the runner uses.
+
+    The recovery preamble in :func:`_run_auto_integrate_recovery_preamble`
+    can return a :class:`RebaseState` that must be persisted before
+    the main loop starts -- otherwise the resume run continues with
+    the pre-crash ``state.rebase`` and the recovered verdict is
+    dropped on the floor. The runner's
+    ``_save_checkpoint_or_log(next_state, ...)`` is the canonical
+    writer; we delegate through ``_runner_module`` so the same
+    formatting / fallback / path-resolution behavior is reused. The
+    failure mode (log + continue) mirrors the runner's contract: a
+    failed save must never abort the run.
+    """
+    try:
+        _runner_module.save_checkpoint_or_log(
+            state,
+            message=("Checkpoint save failed while persisting auto-integrate recovery: {err}"),
+            path=_runner_module._checkpoint_path(ctx.workspace_scope),
+        )
+    except Exception as save_exc:  # pragma: no cover -- defensive
+        logger.warning("auto_integrate recovery checkpoint save failed: {}", save_exc)
+
+
+@dataclass(frozen=True)
+class _RunCollaborators:
+    """Resolved collaborators for :func:`run`.
+
+    Bundles the dependency-injection output of
+    :func:`_resolve_run_collaborators` so :func:`run` stays narrow
+    -- the precedence cascade (pipeline_deps > pro_hooks > defaults
+    vs the legacy factory kwargs) is the bulk of the function's
+    complexity and lives in the helper.
+    """
+
+    policy_bundle: PolicyBundle
+    registry: _RegistryLike
+    state: PipelineState
+    effective_verbosity: Verbosity
+    is_quiet: bool
+    sleep: Callable[[float], None]
+    connectivity_monitor: _ConnectivityMonitorLike
+    monitor_stop: Callable[[], None] | None
+    controller: RecoveryController
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None
+    snapshot_registry: SnapshotRegistry | None
+
+
+def _resolve_policy_bundle(
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    policy_bundle_factory: Callable[[WorkspaceScope, UnifiedConfig], PolicyBundle] | None,
+) -> PolicyBundle:
+    """Resolve the :class:`PolicyBundle` with the standard DI precedence.
+
+    Precedence: ``pipeline_deps.policy_bundle`` (or its factory) >
+    ``pro_hooks.policy_bundle_override`` (or its factory) > legacy
+    ``policy_bundle_factory`` kwarg > production default.
+    """
+    if pipeline_deps is not None:
+        if pipeline_deps.policy_bundle is not None:
+            return pipeline_deps.policy_bundle
+        if pipeline_deps.policy_bundle_factory is not None:
+            return pipeline_deps.policy_bundle_factory(workspace_scope, config)
+    if pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
+        return pro_hooks.policy_bundle_override
+    if pro_hooks is not None and pro_hooks.policy_bundle_factory is not None:
+        return pro_hooks.policy_bundle_factory(workspace_scope, config)
+    if policy_bundle_factory is not None:
+        return policy_bundle_factory(workspace_scope, config)
+    return _runner_module.load_policy_bundle_for_run(workspace_scope, config)
+
+
+def _resolve_registry(
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
+) -> _RegistryLike:
+    """Resolve the agent registry with the standard DI precedence."""
+    if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
+        return cast(
+            "_RegistryLike", pipeline_deps.registry_factory(config)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    if pro_hooks is not None and pro_hooks.registry_factory is not None:
+        return cast(
+            "_RegistryLike", pro_hooks.registry_factory(config)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    if registry_factory is not None:
+        return registry_factory(config)
+    return _runner_module.AgentRegistry.from_config(config)
+
+
+def _resolve_initial_state(
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    initial_state: PipelineState | None,
+    counter_overrides: dict[str, int] | None,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    state_factory: Callable[
+        [UnifiedConfig, AgentsPolicy, PipelinePolicy, dict[str, int] | None],
+        PipelineState,
+    ]
+    | None,
+) -> PipelineState:
+    """Resolve the initial :class:`PipelineState` with the standard DI precedence."""
+    if initial_state is not None:
+        return initial_state
+    if pipeline_deps is not None and pipeline_deps.state_factory is not None:
+        return pipeline_deps.state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    if pro_hooks is not None and pro_hooks.state_factory is not None:
+        return pro_hooks.state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    if state_factory is not None:
+        return state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    return _runner_module.create_initial_state(
+        config,
+        agents_policy=policy_bundle.agents,
+        pipeline_policy=policy_bundle.pipeline,
+        counter_overrides=counter_overrides,
+    )
+
+
+def _resolve_recovery_sleep(
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    recovery_sleep_kwarg: Callable[[float], None] | None,
+) -> Callable[[float], None]:
+    """Resolve the recovery-sleep callable with the standard DI precedence."""
+    if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
+        return pipeline_deps.recovery_sleep
+    if pro_hooks is not None and pro_hooks.recovery_sleep is not None:
+        return pro_hooks.recovery_sleep
+    if recovery_sleep_kwarg is not None:
+        return recovery_sleep_kwarg
+    return time.sleep
+
+
+def _resolve_recovery_controller(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    recovery_controller_factory: Callable[
+        [PipelineState, PolicyBundle, UnifiedConfig],
+        tuple[RecoveryController, int],
+    ]
+    | None,
+) -> RecoveryController:
+    """Resolve the :class:`RecoveryController` with the standard DI precedence."""
+    if pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
+        controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
+        return controller
+    if pro_hooks is not None and pro_hooks.recovery_controller_factory is not None:
+        controller, _ = pro_hooks.recovery_controller_factory(state, policy_bundle, config)
+        return controller
+    if recovery_controller_factory is not None:
+        controller, _ = recovery_controller_factory(state, policy_bundle, config)
+        return controller
+    controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    return controller
+
+
+def _resolve_marker_watcher_factory(
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None,
+) -> Callable[[Path], ProMarkerWatcher] | None:
+    """Resolve the marker-watcher factory with the standard DI precedence."""
+    if pipeline_deps is not None:
+        return pipeline_deps.marker_watcher_factory
+    if pro_hooks is not None and pro_hooks.marker_watcher_factory is not None:
+        return pro_hooks.marker_watcher_factory
+    return marker_watcher_factory
+
+
+def _resolve_snapshot_registry(
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    snapshot_registry: SnapshotRegistry | None,
+) -> SnapshotRegistry | None:
+    """Resolve the snapshot registry with the standard DI precedence."""
+    if pipeline_deps is not None:
+        return pipeline_deps.snapshot_registry
+    if pro_hooks is not None and pro_hooks.snapshot_registry is not None:
+        return pro_hooks.snapshot_registry
+    return snapshot_registry
+
+
+def _resolve_run_collaborators(
+    *,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    initial_state: PipelineState | None,
+    counter_overrides: dict[str, int] | None,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    policy_bundle_factory: Callable[[WorkspaceScope, UnifiedConfig], PolicyBundle] | None,
+    registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
+    state_factory: Callable[
+        [UnifiedConfig, AgentsPolicy, PipelinePolicy, dict[str, int] | None],
+        PipelineState,
+    ]
+    | None,
+    recovery_controller_factory: Callable[
+        [PipelineState, PolicyBundle, UnifiedConfig],
+        tuple[RecoveryController, int],
+    ]
+    | None,
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None,
+    snapshot_registry: SnapshotRegistry | None,
+    _recovery_sleep: Callable[[float], None] | None,
+    verbosity: Verbosity | None = None,
+    connectivity_monitor: _ConnectivityMonitorLike | None = None,
+) -> _RunCollaborators:
+    """Resolve every run-loop collaborator via the standard DI precedence cascade.
+
+    Extracted from :func:`run` so the entrypoint's branch / statement
+    count stays sensible while keeping the precedence table in one
+    auditable place.
+    """
+    policy_bundle = _resolve_policy_bundle(
+        workspace_scope, config, pipeline_deps, pro_hooks, policy_bundle_factory
+    )
+    registry = _resolve_registry(config, pipeline_deps, pro_hooks, registry_factory)
+    state = _resolve_initial_state(
+        config,
+        policy_bundle,
+        initial_state,
+        counter_overrides,
+        pipeline_deps,
+        pro_hooks,
+        state_factory,
+    )
+    effective_verbosity = _normalize_run_verbosity(config, verbosity=verbosity)
+    is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
+    sleep = _resolve_recovery_sleep(pipeline_deps, pro_hooks, _recovery_sleep)
+    injected_monitor = (
+        pipeline_deps.connectivity_monitor
+        if pipeline_deps is not None and pipeline_deps.connectivity_monitor is not None
+        else connectivity_monitor
+    )
+    resolved_monitor, monitor_stop = _setup_connectivity_monitor(injected_monitor)
+    controller = _resolve_recovery_controller(
+        state,
+        policy_bundle,
+        config,
+        pipeline_deps,
+        pro_hooks,
+        recovery_controller_factory,
+    )
+    return _RunCollaborators(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        state=state,
+        effective_verbosity=effective_verbosity,
+        is_quiet=is_quiet,
+        sleep=sleep,
+        connectivity_monitor=resolved_monitor,
+        monitor_stop=monitor_stop,
+        controller=controller,
+        marker_watcher_factory=_resolve_marker_watcher_factory(
+            pipeline_deps, pro_hooks, marker_watcher_factory
+        ),
+        snapshot_registry=_resolve_snapshot_registry(pipeline_deps, pro_hooks, snapshot_registry),
+    )
+
+
+def _normalize_run_verbosity(
+    config: UnifiedConfig,
+    *,
+    verbosity: Verbosity | None,
+) -> Verbosity:
+    """Normalize the verbosity for :func:`run`.
+
+    Honours the explicit ``verbosity`` kwarg when supplied; otherwise
+    reads ``config.general.verbosity``. ``normalize_verbosity`` accepts
+    both ``Verbosity`` enums and integer ranks and returns the
+    canonical ``Verbosity`` instance.
+    """
+    if verbosity is not None:
+        return normalize_verbosity(verbosity)
+    return normalize_verbosity(config.general.verbosity)
+
+
+def _apply_legacy_heartbeat_override(
+    workspace_root: Path,
+    default_client: ProHeartbeatClient | None,
+) -> ProHeartbeatClient | None:
+    """Apply the monkey-patch override of ``_start_pro_heartbeat_if_active``.
+
+    The legacy public helper is monkey-patched in many tests to inject
+    a recording heartbeat. When the test replaced it, honour that
+    override so the run loop's heartbeat_client matches what the test
+    observed when the monkey-patch was applied. The watcher above is
+    kept running so late-marker adoption still works when no override
+    is supplied.
+    """
+    _module_legacy_obj: object
+    _self_dict: dict[str, object] = sys.modules[__name__].__dict__
+    try:
+        _module_legacy_obj = _self_dict["_start_pro_heartbeat_if_active"]
+    except KeyError:
+        return default_client
+    if _module_legacy_obj is _start_pro_marker_watcher or not callable(_module_legacy_obj):
+        return default_client
+    _module_legacy = cast(
+        "Callable[[Path], ProHeartbeatClient | None]",
+        _module_legacy_obj,
+    )
+    patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_root)
+    return patched_heartbeat if patched_heartbeat is not None else default_client
+
+
+def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
+    """Resolve the recovery-display interval from config (fallback to default)."""
+    raw: object = getattr(
+        config.general,
+        "agent_waiting_status_interval_seconds",
+        WAITING_STATUS_INTERVAL_SECONDS,
+    )
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and float(raw) > 0.0:
+        return float(raw)
+    return WAITING_STATUS_INTERVAL_SECONDS
+
+
+def _announce_deferred_startup_integration(ctx: _LoopContext, recovered: RebaseState) -> None:
+    """Tell the operator why the startup catch-up was skipped this run.
+
+    A deferral that only appeared in the log file would read exactly
+    like the reported "auto rebase silently does nothing", so the
+    retained-record reason goes to the transcript through the same
+    duck-typed warn seam every other integration decline uses. Never
+    raises: a display that cannot take the line must not abort startup.
+    """
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            "startup catch-up deferred: crash recovery still owns the"
+            f" durable integration record ({recovered.last_reason})",
+        )
+
+
+def _apply_startup_rebase_outcomes(
+    state: PipelineState,
+    ctx: _LoopContext,
+) -> PipelineState:
+    """Run crash recovery + startup integration; thread outcomes into state.
+
+    The recovery outcome is threaded into the persisted checkpoint
+    BEFORE the loop starts, mirroring the post-commit auto-integrate
+    wiring in ``runner._run_pipeline_step`` — otherwise a resume run
+    continues with the pre-crash ``state.rebase`` and the operator
+    never sees the recovered verdict in the next receipt. The startup
+    catch-up then integrates a stale branch onto the target BEFORE the
+    first phase so planning never reads old code.
+
+    The catch-up is SKIPPED when recovery came back still owning the
+    durable integration record
+    (:func:`~ralph.pipeline.auto_integrate_recovery.recovery_retained_record`).
+    Integrating there would write a fresh
+    ``IntegrationRecord(phase='integrating', ...)`` over the retained
+    one before any git mutation, destroying the pre-integration feature
+    SHA the next recovery attempt needs.
+
+    That skip is scoped to THIS seam only. The in-run seams -- the
+    commit seam and the phase boundaries -- are deliberately not gated
+    on it: gating them would disable auto-integration for the whole run
+    over a transient recovery fault and strand this agent off the
+    shared mainline, which is the failure auto-integration exists to
+    prevent. The retained record is retried by recovery at the next
+    process startup.
+    """
+    from ralph.pipeline.factory import PipelineDeps
+
+    try:
+        candidate_deps = ctx.pipeline_deps
+    except AttributeError:
+        candidate_deps = None
+    pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
+    if pipeline_deps is not None and pipeline_deps.startup_rebase_resolver is not None:
+        injected_rebase = pipeline_deps.startup_rebase_resolver(ctx.config, ctx.workspace_scope)
+        return state if injected_rebase is None else state.copy_with(rebase=injected_rebase)
+
+    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope, ctx.config)
+    if recovered_rebase is not None:
+        state = state.copy_with(rebase=recovered_rebase)
+        _save_recovered_rebase_checkpoint(state, ctx)
+        if recovery_retained_record(recovered_rebase):
+            # Recovery could not reconcile the interrupted integration
+            # and left its durable record on disk for the next startup.
+            # That record is still the only description of the
+            # interrupted operation, and the startup catch-up below
+            # would overwrite it with a record of its OWN before
+            # touching git. Hand this startup back to recovery instead;
+            # the checkpoint already carries the retained outcome.
+            _announce_deferred_startup_integration(ctx, recovered_rebase)
+            return state
+    startup_rebase = _run_startup_integration(ctx)
+    if startup_rebase is not None:
+        state = state.copy_with(rebase=startup_rebase)
+        if startup_rebase.last_action != "skipped":
+            _save_recovered_rebase_checkpoint(state, ctx)
+    return state
 
 
 def _run_inner_loop(
@@ -433,6 +1130,7 @@ def _run_inner_loop(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
+    state = _apply_startup_rebase_outcomes(state, ctx)
     # State holder so the providers captured by run_pipeline_step can
     # read the LIVE PipelineState / ConnectivityMonitor on every agent
     # invocation. The list is rebound every loop iteration so the
@@ -446,7 +1144,9 @@ def _run_inner_loop(
     def _live_is_waiting() -> bool:
         return bool(state_holder[0].is_waiting_state)
 
-    last_status_sig: tuple[str, int | None, int | None] | None = None
+    last_status_sig: (
+        tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None
+    ) = None
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
@@ -462,7 +1162,9 @@ def _run_inner_loop(
             )
         else:
             iter_pipeline_deps = ctx.pipeline_deps
-        runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
+        runner_step = cast(
+            "_RunPipelineStepFn", _runner_module.run_pipeline_step
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         step_result = runner_step(
             state=state,
             policy_bundle=ctx.policy_bundle,
@@ -494,7 +1196,7 @@ def _run_inner_loop(
             last_status_sig,
         )
         if ctx.snapshot_registry is not None:
-            from ralph.pro_support.state_query import (  # noqa: PLC0415
+            from ralph.pro_support.state_query import (
                 build_pipeline_state_snapshot,
             )
 
@@ -579,7 +1281,9 @@ def _run_inner_loop(
         )
         if hasattr(ctx.active_display, "begin_phase"):
             with suppress(Exception):
-                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(state.phase)
+                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(
+                    state.phase
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return state, prev_phase, None
 
 
@@ -593,7 +1297,9 @@ def _emit_post_loop_result(
     """Emit run-end summary after the pipeline loop finishes."""
     if not is_quiet and hasattr(active_display, "emit_run_end"):
         with suppress(Exception):
-            total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
+            total_agent_calls = cast(
+                "int", getattr(state.metrics, "total_agent_calls", 0)
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
                 (
@@ -603,7 +1309,9 @@ def _emit_post_loop_result(
                 ),
                 None,
             )
-            cast("_RunEndDisplay", active_display).emit_run_end(
+            cast(
+                "_RunEndDisplay", active_display
+            ).emit_run_end(  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 phase=state.phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=state.pr_url,
@@ -751,8 +1459,7 @@ def _subscribe_recovery_display(
                     now_ts,
                     build=lambda: status_text(
                         "RECOVERING",
-                        f"falling over from {evt.from_agent} to "
-                        f"{evt.to_agent} ({evt.reason})",
+                        f"falling over from {evt.from_agent} to {evt.to_agent} ({evt.reason})",
                         "yellow",
                     ),
                 )
@@ -766,10 +1473,7 @@ def _subscribe_recovery_display(
                             f"{evt.reason or 'no detail'})"
                         )
                     else:
-                        value = (
-                            f"chain exhausted ({evt.category}: "
-                            f"{evt.reason or 'no detail'})"
-                        )
+                        value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
                     style = "red"
                     tag = "terminal"
                 elif evt.watchdog_reason is not None:
@@ -834,6 +1538,24 @@ def _handle_keyboard_interrupt(
     return 130
 
 
+def _run_cleanup_step(resource: str, stage: str, action: Callable[[], None]) -> None:
+    """Run one cleanup action; log and continue on failure.
+
+    A reclamation failure must not discard the run outcome or abort
+    sibling cleanup. The diagnostic log is the only runtime channel
+    for recording what could not be reclaimed (resource identity +
+    reclamation stage).
+    """
+    try:
+        action()
+    except Exception:
+        logger.exception(
+            "pipeline cleanup failed resource={} stage={}",
+            resource,
+            stage,
+        )
+
+
 def _cleanup_pipeline(
     loop_ctx: _LoopContext,
     unsubscribe_bus: Callable[[], None],
@@ -846,33 +1568,51 @@ def _cleanup_pipeline(
     The session-wide ``process_teardown`` (defaulting to
     ``get_process_manager().shutdown_all``) runs LAST so every
     spawned child is reaped on every exit (normal, error, SIGINT,
-    SIGTERM). It is wrapped in ``suppress(Exception)`` so a
-    refusing-to-die process cannot break the suite.
+    SIGTERM). Each step is isolated: a failure is logged to the
+    diagnostic channel and sibling cleanup continues so a
+    refusing-to-die process cannot discard the run outcome.
     """
-    with suppress(Exception):
-        unsubscribe_bus()
-    with suppress(Exception):
-        unsubscribe_display()
-    with suppress(Exception):
-        display_stop()
+    _run_cleanup_step("unsubscribe_bus", "unsubscribe", unsubscribe_bus)
+    _run_cleanup_step("unsubscribe_display", "unsubscribe", unsubscribe_display)
+    # wt-047-stall-label: clear the host's watchdog attention at
+    # run cleanup so a stale ``stalled`` value never outlives the
+    # run. The pushed ``terminated`` state already wins during
+    # shutdown rendering, so clearing the watchdog attention here
+    # is the safest cleanup step (no leaked state across runs).
+    active_display_obj = loop_ctx.active_display
+    if active_display_obj is not None and hasattr(active_display_obj, "set_watchdog_attention"):
+
+        def _clear_watchdog_attention() -> None:
+            active_display_obj.set_watchdog_attention(None)
+
+        _run_cleanup_step("watchdog_attention", "clear", _clear_watchdog_attention)
+    _run_cleanup_step("display", "stop", display_stop)
     if loop_ctx.monitor_stop is not None:
-        with suppress(Exception):
-            loop_ctx.monitor_stop()
+        _run_cleanup_step("connectivity_monitor", "stop", loop_ctx.monitor_stop)
     if loop_ctx.pro_watcher is not None:
-        with suppress(Exception):
-            loop_ctx.pro_watcher.stop()
+        _run_cleanup_step("pro_watcher", "stop", loop_ctx.pro_watcher.stop)
     if loop_ctx.heartbeat_client is not None:
-        with suppress(Exception):
-            loop_ctx.heartbeat_client.stop()
-    emit_final_summary(
-        state,
-        loop_ctx.workspace_scope.root,
-        subscriber=cast("PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber),
-        display=loop_ctx.active_display,
-        display_context=loop_ctx.display_context,
+        _run_cleanup_step("heartbeat_client", "stop", loop_ctx.heartbeat_client.stop)
+    if loop_ctx.catchup_worker is not None:
+        _run_cleanup_step("catchup_worker", "stop", loop_ctx.catchup_worker.stop)
+
+    def _emit_summary() -> None:
+        emit_final_summary(
+            state,
+            loop_ctx.workspace_scope.root,
+            subscriber=cast(
+                "PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            display=loop_ctx.active_display,
+            display_context=loop_ctx.display_context,
+        )
+
+    _run_cleanup_step("final_summary", "emit", _emit_summary)
+    _run_cleanup_step(
+        "cycle_baseline",
+        "clear",
+        lambda: _runner_module.clear_cycle_baseline(loop_ctx.workspace_scope.root),
     )
-    with suppress(Exception):
-        _runner_module.clear_cycle_baseline(loop_ctx.workspace_scope.root)
     # Session-wide process teardown: run last so non-phase-labeled
     # children (invoke:/agent:) are reaped on every exit path. The
     # teardown is wired through ``loop_ctx.process_teardown`` so
@@ -881,10 +1621,34 @@ def _cleanup_pipeline(
     # behavior is unchanged.
     teardown = loop_ctx.process_teardown
     if teardown is None:
+
         def teardown() -> None:
             get_process_manager().shutdown_all(grace_period_s=0.5)
-    with suppress(Exception):
-        teardown()
+
+    _run_cleanup_step("process_teardown", "teardown", teardown)
+
+
+def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+    """Record a final unpublished remote result without retrying or waiting."""
+    pending_status = state.rebase.last_push_status
+    if pending_status in (None, "pushed", "created"):
+        return state
+    from ralph.pipeline.auto_integrate import resolve_integration_target
+
+    target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
+    if target is None:
+        return state
+    remote = state.rebase.last_remote or "origin"
+    reason = state.rebase.last_reason or state.rebase.last_push or pending_status
+    return state.copy_with(
+        rebase=state.rebase.model_copy(
+            update={
+                "last_reason": (
+                    f"local work landed on {target}; not published to {remote}: {reason}"
+                )
+            }
+        )
+    )
 
 
 def _execute_with_cleanup(
@@ -903,7 +1667,9 @@ def _execute_with_cleanup(
             _emit_run_start(loop_ctx, state)
             if hasattr(loop_ctx.active_display, "begin_phase"):
                 with suppress(Exception):
-                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
+                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(
+                        state.phase
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             # Seed the persistent bottom Status Bar with the active directory +
             # phase + iteration context for the initial phase. Defensive push
             # (matches _emit_run_start / emit_activity_line precedent). Pass
@@ -923,6 +1689,10 @@ def _execute_with_cleanup(
             except KeyboardInterrupt:
                 return _handle_keyboard_interrupt(state, loop_ctx)
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
+                try:
+                    state = _report_pending_remote_publication(state, loop_ctx)
+                except KeyboardInterrupt:
+                    return _handle_keyboard_interrupt(state, loop_ctx)
                 loop_ctx.active_display.emit(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
@@ -936,12 +1706,20 @@ def _execute_with_cleanup(
             _emit_post_loop_result(
                 state, loop_ctx.active_display, loop_ctx.is_quiet, exit_code, loop_ctx.policy_bundle
             )
+            final_status_state = state.copy_with(run_outcome="terminated")
+            _push_status_bar_if_changed(
+                loop_ctx.active_display,
+                final_status_state,
+                loop_ctx.policy_bundle,
+                loop_ctx.workspace_scope.root,
+                last_sig=None,
+            )
     finally:
         _cleanup_pipeline(loop_ctx, unsubscribe_bus, unsubscribe_display, display_stop, state)
     return exit_code
 
 
-def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
+def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
@@ -1036,104 +1814,34 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     if pipeline_deps is not None and display_context is None:
         display_context = pipeline_deps.display_context
 
-    # Resolve collaborators with precedence: pipeline_deps > pro_hooks > defaults.
-    # When pipeline_deps is provided it is the authoritative composed bundle;
-    # deprecated factory kwargs are rejected above, so the two injection paths
-    # are never mixed.
-    if pipeline_deps is not None:
-        if pipeline_deps.policy_bundle is not None:
-            policy_bundle = pipeline_deps.policy_bundle
-        elif pipeline_deps.policy_bundle_factory is not None:
-            policy_bundle = pipeline_deps.policy_bundle_factory(workspace_scope, config)
-        else:
-            policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
-    elif pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
-        policy_bundle = pro_hooks.policy_bundle_override
-    elif pro_hooks is not None and pro_hooks.policy_bundle_factory is not None:
-        policy_bundle = pro_hooks.policy_bundle_factory(workspace_scope, config)
-    elif policy_bundle_factory is not None:
-        policy_bundle = policy_bundle_factory(workspace_scope, config)
-    else:
-        policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
-    _runner_module.register_role_handlers(policy_bundle.pipeline)
-
-    registry: _RegistryLike
-    if pipeline_deps is not None:
-        if pipeline_deps.registry_factory is not None:
-            registry = cast("_RegistryLike", pipeline_deps.registry_factory(config))
-        else:
-            registry = _runner_module.AgentRegistry.from_config(config)
-    elif pro_hooks is not None and pro_hooks.registry_factory is not None:
-        registry = cast("_RegistryLike", pro_hooks.registry_factory(config))
-    elif registry_factory is not None:
-        registry = registry_factory(config)
-    else:
-        registry = _runner_module.AgentRegistry.from_config(config)
-
-    if initial_state is not None:
-        state = initial_state
-    elif pipeline_deps is not None:
-        if pipeline_deps.state_factory is not None:
-            state = pipeline_deps.state_factory(
-                config,
-                policy_bundle.agents,
-                policy_bundle.pipeline,
-                counter_overrides,
-            )
-        else:
-            state = _runner_module.create_initial_state(
-                config,
-                agents_policy=policy_bundle.agents,
-                pipeline_policy=policy_bundle.pipeline,
-                counter_overrides=counter_overrides,
-            )
-    elif pro_hooks is not None and pro_hooks.state_factory is not None:
-        state = pro_hooks.state_factory(
-            config,
-            policy_bundle.agents,
-            policy_bundle.pipeline,
-            counter_overrides,
-        )
-    elif state_factory is not None:
-        state = state_factory(
-            config,
-            policy_bundle.agents,
-            policy_bundle.pipeline,
-            counter_overrides,
-        )
-    else:
-        state = _runner_module.create_initial_state(
-            config,
-            agents_policy=policy_bundle.agents,
-            pipeline_policy=policy_bundle.pipeline,
-            counter_overrides=counter_overrides,
-        )
-
-    effective_verbosity = normalize_verbosity(
-        verbosity if verbosity is not None else config.general.verbosity
+    collaborators = _resolve_run_collaborators(
+        config=config,
+        workspace_scope=workspace_scope,
+        initial_state=initial_state,
+        counter_overrides=counter_overrides,
+        pipeline_deps=pipeline_deps,
+        pro_hooks=pro_hooks,
+        policy_bundle_factory=policy_bundle_factory,
+        registry_factory=registry_factory,
+        state_factory=state_factory,
+        recovery_controller_factory=recovery_controller_factory,
+        marker_watcher_factory=marker_watcher_factory,
+        snapshot_registry=snapshot_registry,
+        _recovery_sleep=_recovery_sleep,
+        verbosity=verbosity,
+        connectivity_monitor=connectivity_monitor,
     )
-    is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
-    if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
-        _sleep = pipeline_deps.recovery_sleep
-    elif pro_hooks is not None and pro_hooks.recovery_sleep is not None:
-        _sleep = pro_hooks.recovery_sleep
-    elif _recovery_sleep is not None:
-        _sleep = _recovery_sleep
-    else:
-        _sleep = time.sleep
-    connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
+    policy_bundle = collaborators.policy_bundle
+    registry = collaborators.registry
+    state = collaborators.state
+    effective_verbosity = collaborators.effective_verbosity
+    is_quiet = collaborators.is_quiet
+    _sleep = collaborators.sleep
+    connectivity_monitor = collaborators.connectivity_monitor
+    _monitor_stop = collaborators.monitor_stop
+    _controller = collaborators.controller
 
-    if pipeline_deps is not None:
-        if pipeline_deps.recovery_controller_factory is not None:
-            _controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
-        else:
-            _controller, _ = _build_recovery_controller(state, policy_bundle, config)
-    elif pro_hooks is not None and pro_hooks.recovery_controller_factory is not None:
-        _controller, _ = pro_hooks.recovery_controller_factory(state, policy_bundle, config)
-    elif recovery_controller_factory is not None:
-        _controller, _ = recovery_controller_factory(state, policy_bundle, config)
-    else:
-        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    _runner_module.register_role_handlers(policy_bundle.pipeline)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
     logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
     if pipeline_subscriber is None:
@@ -1145,47 +1853,24 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         dashboard_subscriber, pipeline_subscriber, active_display
     )
 
-    _effective_marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None
-    if pipeline_deps is not None:
-        _effective_marker_watcher_factory = pipeline_deps.marker_watcher_factory
-    elif pro_hooks is not None and pro_hooks.marker_watcher_factory is not None:
-        _effective_marker_watcher_factory = pro_hooks.marker_watcher_factory
-    else:
-        _effective_marker_watcher_factory = marker_watcher_factory
-
-    _effective_snapshot_registry: SnapshotRegistry | None = None
-    if pipeline_deps is not None:
-        _effective_snapshot_registry = pipeline_deps.snapshot_registry
-    elif pro_hooks is not None and pro_hooks.snapshot_registry is not None:
-        _effective_snapshot_registry = pro_hooks.snapshot_registry
-    else:
-        _effective_snapshot_registry = snapshot_registry
     _pro_watcher, _heartbeat_client = _start_pro_marker_watcher(
         workspace_scope.root,
-        watcher_factory=_effective_marker_watcher_factory,
+        watcher_factory=collaborators.marker_watcher_factory,
     )
-    # The legacy public helper ``_start_pro_heartbeat_if_active`` is
-    # monkey-patched in many tests to inject a recording heartbeat.
-    # If the user (or a test) replaced it, honour that override here
-    # so the run loop's heartbeat_client matches what the test
-    # observed when the monkey-patch was applied. The watcher above
-    # is kept running so late-marker adoption still works when no
-    # override is supplied.
-    _module_legacy_obj: object
-    _self_module = sys.modules[__name__]
-    _self_dict: dict[str, object] = _self_module.__dict__
-    try:
-        _module_legacy_obj = _self_dict["_start_pro_heartbeat_if_active"]
-    except KeyError:
-        _module_legacy_obj = _start_pro_marker_watcher
-    if _module_legacy_obj is not _start_pro_marker_watcher and callable(_module_legacy_obj):
-        _module_legacy = cast(
-            "Callable[[Path], ProHeartbeatClient | None]",
-            _module_legacy_obj,
-        )
-        _patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_scope.root)
-        if _patched_heartbeat is not None:
-            _heartbeat_client = _patched_heartbeat
+    _heartbeat_client = _apply_legacy_heartbeat_override(workspace_scope.root, _heartbeat_client)
+    _unsubscribe_display = _subscribe_recovery_display(
+        _controller,
+        active_display,
+        _resolve_recovery_display_interval(config),
+        now=time.monotonic,
+    )
+    # The catch-up worker starts as the LAST setup step, inside the
+    # _LoopContext construction that feeds straight into
+    # _execute_with_cleanup's try/finally -- nothing may run between
+    # the worker starting and the cleanup guarantee attaching, or a
+    # setup exception would strand the ticking thread (it is daemonic,
+    # so the process could still exit, but the guarantee should not
+    # have gaps).
     loop_ctx = _LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
@@ -1204,27 +1889,14 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         is_quiet=is_quiet,
         heartbeat_client=_heartbeat_client,
         pro_watcher=_pro_watcher,
-        snapshot_registry=_effective_snapshot_registry,
+        snapshot_registry=collaborators.snapshot_registry,
         pipeline_deps=pipeline_deps,
+        catchup_worker=(
+            pipeline_deps.catchup_worker_factory(config, workspace_scope.root)
+            if pipeline_deps is not None and pipeline_deps.catchup_worker_factory is not None
+            else start_catchup_worker_if_enabled(config, workspace_scope.root)
+        ),
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
-    )
-    _recovery_display_interval: float
-    _recovery_display_interval_raw: object = getattr(
-        config.general, "agent_waiting_status_interval_seconds", WAITING_STATUS_INTERVAL_SECONDS
-    )
-    if (
-        isinstance(_recovery_display_interval_raw, (int, float))
-        and not isinstance(_recovery_display_interval_raw, bool)
-        and float(_recovery_display_interval_raw) > 0.0
-    ):
-        _recovery_display_interval = float(_recovery_display_interval_raw)
-    else:
-        _recovery_display_interval = WAITING_STATUS_INTERVAL_SECONDS
-    _unsubscribe_display = _subscribe_recovery_display(
-        _controller,
-        active_display,
-        _recovery_display_interval,
-        now=time.monotonic,
     )
     return _execute_with_cleanup(
         state,
@@ -1255,7 +1927,7 @@ def _start_pro_marker_watcher(
     loop cannot race the heartbeat), then the heartbeat client
     (so its daemon drain completes).
     """
-    from ralph.pro_support.watcher import ProMarkerWatcher  # noqa: PLC0415
+    from ralph.pro_support.watcher import ProMarkerWatcher
 
     def _default_factory(ws_root: Path) -> ProMarkerWatcher:
         return ProMarkerWatcher(workspace_root=ws_root)

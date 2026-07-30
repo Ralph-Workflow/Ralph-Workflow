@@ -27,7 +27,7 @@ unavailability state instead of poking private tracker attributes.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
@@ -117,7 +117,7 @@ def _build_loop_context_and_state(
         effective_verbosity=0,
         registry=MagicMock(),
         effective_pipeline_subscriber=None,
-        controller=cast("Any", mock_controller),
+        controller=mock_controller,
         config_path=None,
         cli_overrides={},
         monitor_stop=None,

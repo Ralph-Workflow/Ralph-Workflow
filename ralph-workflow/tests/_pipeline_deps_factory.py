@@ -4,22 +4,25 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
+from collections import deque
 from contextlib import nullcontext
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.startup import HeartbeatPolicy
 from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import (
     ArtifactRequirementsResolverFn,
     CheckMcpBridgeHealthFn,
     HeartbeatPolicyFromEnvFn,
-    MaterializeSystemPromptFn,
+    MaterializeMasterPromptFn,
     McpSupervisorFactoryFn,
     PhasePromptMaterializerFn,
     PipelineDeps,
 )
+from ralph.recovery.testing import FakeConnectivityMonitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,11 +60,24 @@ class _FakeBridge:
         pass
 
 
-class _RecordingBridgeFactory:
-    """Bridge factory that records every call and returns a configured bridge."""
+_DEFAULT_BRIDGE_CALL_HISTORY_LIMIT = 64
 
-    def __init__(self, bridge: object | None = None) -> None:
-        self.calls: list[dict[str, object]] = []
+
+class _RecordingBridgeFactory:
+    """Bridge factory that records every call and returns a configured bridge.
+
+    ``calls`` is a FIFO-capped deque so a multi-cycle memory harness cannot
+    retain unbounded per-invocation argument dicts through the test helper.
+    Callers that need longer history inject ``call_history_limit``.
+    """
+
+    def __init__(
+        self,
+        bridge: object | None = None,
+        *,
+        call_history_limit: int = _DEFAULT_BRIDGE_CALL_HISTORY_LIMIT,
+    ) -> None:
+        self.calls: deque[dict[str, object]] = deque(maxlen=call_history_limit)
         self._bridge = bridge
 
     def __call__(
@@ -128,9 +144,7 @@ def _artifact_requirements_resolver_impl(
     return None
 
 
-_artifact_requirements_resolver: ArtifactRequirementsResolverFn = cast(
-    "ArtifactRequirementsResolverFn", _artifact_requirements_resolver_impl
-)
+_artifact_requirements_resolver: ArtifactRequirementsResolverFn = _artifact_requirements_resolver_impl
 
 
 def _phase_prompt_materializer_impl(
@@ -147,26 +161,24 @@ def _phase_prompt_materializer_impl(
     return ".agent/tmp/development_prompt.md"
 
 
-_phase_prompt_materializer: PhasePromptMaterializerFn = cast(
-    "PhasePromptMaterializerFn", _phase_prompt_materializer_impl
-)
+_phase_prompt_materializer: PhasePromptMaterializerFn = _phase_prompt_materializer_impl
 
 
-def _system_prompt_materializer_impl(
+def _master_prompt_materializer_impl(
     workspace_root: Path,
     name: str,
-    default_current_prompt: str | None = None,
+    default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
 ) -> str:
-    del default_current_prompt
+    del default_product_criteria
     root = worker_namespace if worker_namespace is not None else workspace_root
-    path = Path(root) / ".agent" / "tmp" / f"system_prompt_{name}.md"
+    path = Path(root) / ".agent" / "tmp" / f"master_prompt_{name}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("system prompt", encoding="utf-8")
+    path.write_text("master prompt", encoding="utf-8")
     return str(path)
 
 
-_system_prompt_materializer: MaterializeSystemPromptFn = _system_prompt_materializer_impl
+_master_prompt_materializer: MaterializeMasterPromptFn = _master_prompt_materializer_impl
 
 
 def _mcp_supervisor_factory(
@@ -192,7 +204,7 @@ def make_test_pipeline_deps(
     *,
     bridge: object | None = None,
     bridge_factory: BridgeFactory | None = None,
-    system_prompt_materializer: MaterializeSystemPromptFn | None = None,
+    master_prompt_materializer: MaterializeMasterPromptFn | None = None,
     phase_prompt_materializer: PhasePromptMaterializerFn | None = None,
     artifact_requirements_resolver: ArtifactRequirementsResolverFn | None = None,
     registry_factory: Callable[[UnifiedConfig], object] | None = None,
@@ -213,18 +225,22 @@ def make_test_pipeline_deps(
         display_context=display_context,
         model_identity=model_identity,
         registry_factory=registry_factory,
-        system_prompt_materializer=(system_prompt_materializer or _system_prompt_materializer),
+        master_prompt_materializer=(master_prompt_materializer or _master_prompt_materializer),
         phase_prompt_materializer=(phase_prompt_materializer or _phase_prompt_materializer),
         artifact_requirements_resolver=(
             artifact_requirements_resolver or _artifact_requirements_resolver
         ),
-        bridge_factory=cast(
-            "BridgeFactory",
-            bridge_factory or _RecordingBridgeFactory(bridge),
-        ),
+        bridge_factory=bridge_factory or _RecordingBridgeFactory(bridge),
         mcp_supervisor_factory=mcp_supervisor_factory or _mcp_supervisor_factory,
         heartbeat_policy_from_env_fn=heartbeat_policy_from_env_fn or _heartbeat_policy_from_env,
         check_mcp_bridge_health_fn=check_mcp_bridge_health_fn or _check_mcp_bridge_health,
+        connectivity_monitor=FakeConnectivityMonitor(),
+        catchup_worker_factory=lambda _config, _workspace_root: None,
+        startup_rebase_resolver=lambda _config, _workspace_scope: None,
+        auto_integrate_resolver=lambda _config, _workspace_scope, _rebase: None,
+        commit_effect_executor=lambda _effect, _workspace_root: PipelineEvent.COMMIT_SKIPPED,
+        has_uncommitted_changes=lambda _workspace_root: True,
+        process_teardown=process_teardown or (lambda: None),
     )
     if policy_bundle is not None:
         deps = dataclasses.replace(deps, policy_bundle=policy_bundle)
@@ -238,8 +254,6 @@ def make_test_pipeline_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=marker_watcher_factory)
     if snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=snapshot_registry)
-    if process_teardown is not None:
-        deps = dataclasses.replace(deps, process_teardown=process_teardown)
     return deps
 
 

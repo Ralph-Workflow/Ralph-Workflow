@@ -22,11 +22,15 @@ def file_list_specs() -> list[ToolSpec]:
                 name=LIST_DIRECTORY_TOOL,
                 description=(
                     "List entries in a directory. Required param: path (string). "
-                    "Optional param: recursive (boolean, default false). "
+                    "Optional params: recursive (boolean, default false), "
+                    "view ('raw'|'compact'|'ranked'|'outline', default 'raw'), "
+                    "include_counts (bool), include_symbols (bool), "
+                    "changed_only (bool), limit_children (integer), "
+                    "use_index ('auto'|'always'|'never', default 'auto'). "
                     "Returns an array of entries, each with type ('file' or 'dir'), "
-                    "name, and relative path. "
-                    'Example: {"path": "ralph-workflow/ralph", "recursive": false} '
-                    "lists files and folders in the ralph directory without recursion."
+                    "name, and relative path. Indexed views add counts/symbols when "
+                    "requested; raw+never preserve legacy behavior. "
+                    'Example: {"path": "ralph-workflow/ralph", "view": "outline"}.'
                 ),
                 input_schema={
                     "type": "object",
@@ -46,6 +50,49 @@ def file_list_specs() -> list[ToolSpec]:
                                 "(example values: false, true)."
                             ),
                             "default": False,
+                        },
+                        "view": {
+                            "type": "string",
+                            "enum": ["raw", "compact", "ranked", "outline"],
+                            "description": (
+                                "Listing view. ``raw`` is the legacy shape; "
+                                "``compact`` includes counts; ``ranked`` ranks by "
+                                "symbol count; ``outline`` includes top-level "
+                                "symbols/headings."
+                            ),
+                            "default": "raw",
+                        },
+                        "include_counts": {
+                            "type": "boolean",
+                            "description": "Include indexed file counts by language/kind.",
+                            "default": False,
+                        },
+                        "include_symbols": {
+                            "type": "boolean",
+                            "description": "Include top-level symbols/headings per child.",
+                            "default": False,
+                        },
+                        "changed_only": {
+                            "type": "boolean",
+                            "description": "Filter or prioritize changed/stale paths.",
+                            "default": False,
+                        },
+                        "limit_children": {
+                            "type": "integer",
+                            "description": "Cap the number of entries returned.",
+                            "default": 100,
+                            "minimum": 1,
+                        },
+                        "use_index": {
+                            "type": "string",
+                            "enum": ["auto", "always", "never"],
+                            "description": (
+                                "Indexed selector. ``auto`` uses the index when "
+                                "available and falls back to live listing; "
+                                "``always`` fails closed when counts/symbols "
+                                "cannot be supplied; ``never`` preserves legacy."
+                            ),
+                            "default": "auto",
                         },
                     },
                     "required": ["path"],
@@ -94,6 +141,51 @@ def file_list_specs() -> list[ToolSpec]:
                             "type": "integer",
                             "description": "Maximum number of results to return (default 1000).",
                             "default": 1000,
+                        },
+                        "ranked": {
+                            "type": "boolean",
+                            "description": (
+                                "Rank matched paths by deterministic score "
+                                "components (path basename, role, "
+                                "git-changed, generated-penalty, and indexed "
+                                "symbol/graph bonuses when the explore index "
+                                "has them)."
+                            ),
+                            "default": False,
+                        },
+                        "role": {
+                            "type": "string",
+                            "enum": ["source", "test", "docs", "config", "generated", "any"],
+                            "description": (
+                                "Restrict matches by path role heuristic. "
+                                "'source' keeps .py/.md/.json/.yaml/.toml; "
+                                "'test' keeps tests/. The 'any' value disables "
+                                "the filter."
+                            ),
+                            "default": "any",
+                        },
+                        "contains_symbol": {
+                            "type": "string",
+                            "description": (
+                                "Indexed selector: only paths defining or "
+                                "referencing the named symbol survive. Returns "
+                                "live glob results when the explore index has "
+                                "no match for the symbol."
+                            ),
+                        },
+                        "changed_only": {
+                            "type": "boolean",
+                            "description": (
+                                "Restrict matches to git-changed paths. Uses "
+                                "the explore index dirty-path queue when "
+                                "available and falls back to live git_status."
+                            ),
+                            "default": False,
+                        },
+                        "return_evidence_ids": {
+                            "type": "boolean",
+                            "description": ("Attach evidence_id handles to matched paths."),
+                            "default": False,
                         },
                     },
                     "required": ["pattern", "path"],
@@ -172,6 +264,64 @@ def file_list_specs() -> list[ToolSpec]:
                             "description": "Skip files larger than this (default 5_000_000).",
                             "default": 5000000,
                         },
+                        "use_index": {
+                            "type": "string",
+                            "enum": ["auto", "always", "never"],
+                            "description": (
+                                "Indexed search selector. 'auto' uses FTS5 for "
+                                "eligible patterns and falls back to live grep; "
+                                "'always' fails closed for non-eligible patterns; "
+                                "'never' is the legacy live grep behavior."
+                            ),
+                            "default": "auto",
+                        },
+                        "rank_by": {
+                            "type": "string",
+                            "enum": ["match", "symbol", "graph", "changed", "hybrid"],
+                            "description": (
+                                "Ranking strategy. 'match' is the baseline; "
+                                "'symbol' adds a bonus when the match is inside "
+                                "a definition body; 'graph' adds a bonus for "
+                                "caller/importer/test neighbors; 'changed' adds "
+                                "the git-changed bonus; 'hybrid' combines them "
+                                "with explicit score-reason lines."
+                            ),
+                            "default": "match",
+                        },
+                        "return_evidence_ids": {
+                            "type": "boolean",
+                            "description": (
+                                "Attach evidence_id handles to each match so the "
+                                "caller can resolve the exact span with "
+                                "read_file(evidence_id=...)."
+                            ),
+                            "default": False,
+                        },
+                        "max_snippet_lines": {
+                            "type": "integer",
+                            "description": (
+                                "Cap the snippet length per indexed match. "
+                                "Default 8 lines; set 0 to disable."
+                            ),
+                            "default": 8,
+                        },
+                        "dedupe_by_symbol": {
+                            "type": "boolean",
+                            "description": (
+                                "Collapse repeated hits inside the same chunk/"
+                                "evidence span when symbol context is available."
+                            ),
+                            "default": False,
+                        },
+                        "include_graph_context": {
+                            "type": "boolean",
+                            "description": (
+                                "Include caller/importer/test hints in the "
+                                "response when the explore index has "
+                                "symbol/graph rows for the matched paths."
+                            ),
+                            "default": False,
+                        },
                     },
                     "required": ["pattern", "path"],
                 },
@@ -214,10 +364,14 @@ def file_list_specs() -> list[ToolSpec]:
                 description=(
                     "Return a structured JSON directory tree. Required param: path (string). "
                     "Optional params: max_depth (integer, unlimited if None), "
-                    "exclude_patterns (list of glob patterns to exclude). "
-                    "Returns a nested dict with name, type ('dir'|'file'), and children key "
-                    "for directories only. "
-                    'Example: {"path": ".", "max_depth": 2} returns a 2-level JSON tree.'
+                    "exclude_patterns (list of glob patterns to exclude), "
+                    "view ('raw'|'compact'|'ranked'|'outline', default 'raw'), "
+                    "include_counts (bool), include_symbols (bool), "
+                    "changed_only (bool, default false), limit_children (integer), "
+                    "use_index ('auto'|'always'|'never'). "
+                    "Indexed views surface symbol counts and headings; raw + never "
+                    "preserve the legacy tree shape. "
+                    'Example: {"path": ".", "max_depth": 2, "view": "ranked"}.'
                 ),
                 input_schema={
                     "type": "object",
@@ -238,6 +392,49 @@ def file_list_specs() -> list[ToolSpec]:
                             "type": "array",
                             "items": {"type": "string"},
                             "description": "Glob patterns to exclude from the tree.",
+                        },
+                        "view": {
+                            "type": "string",
+                            "enum": ["raw", "compact", "ranked", "outline"],
+                            "description": (
+                                "Tree view. ``raw`` is the legacy shape; ``compact`` "
+                                "adds counts; ``ranked`` ranks by symbol count; "
+                                "``outline`` includes headings/symbols."
+                            ),
+                            "default": "raw",
+                        },
+                        "include_counts": {
+                            "type": "boolean",
+                            "description": "Include indexed file/symbol counts per dir.",
+                            "default": False,
+                        },
+                        "include_symbols": {
+                            "type": "boolean",
+                            "description": "Include top-level symbols/headings per entry.",
+                            "default": False,
+                        },
+                        "changed_only": {
+                            "type": "boolean",
+                            "description": (
+                                "Filter the tree to subtrees that contain at least one "
+                                "dirty (mutated) descendant. ``use_index='never'`` "
+                                "disables the filter. ``use_index='always'`` fails "
+                                "closed with reason 'no_explore_index_handle' when no "
+                                "index is attached."
+                            ),
+                            "default": False,
+                        },
+                        "limit_children": {
+                            "type": "integer",
+                            "description": "Cap entries per directory.",
+                            "default": 100,
+                            "minimum": 1,
+                        },
+                        "use_index": {
+                            "type": "string",
+                            "enum": ["auto", "always", "never"],
+                            "description": ("Indexed selector for outline/counts metadata."),
+                            "default": "auto",
                         },
                     },
                     "required": ["path"],

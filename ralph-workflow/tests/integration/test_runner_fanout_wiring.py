@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never
 from unittest.mock import MagicMock
 
 import ralph.prompts.materialize
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.pipeline.events import Event
-    from ralph.pipeline.parallel.coordinator import WorkerContext
     from ralph.policy.models import PipelinePolicy
 
 
@@ -36,11 +35,12 @@ def _legacy_display() -> runner_module.ParallelDisplay:
     return runner_module.ParallelDisplay(make_display_context())
 
 
-def _make_work_unit(unit_id: str) -> WorkUnit:
+def _make_work_unit(unit_id: str, *, step_ids: tuple[str, ...] = ()) -> WorkUnit:
     return WorkUnit(
         unit_id=unit_id,
         description=f"Work unit {unit_id}",
         allowed_directories=[f"src/{unit_id}"],
+        step_ids=list(step_ids),
     )
 
 
@@ -157,7 +157,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
         def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             executor_calls.append(
                 {
-                    "command": tuple(cast("tuple[str, ...]", command)),
+                    "command": tuple(command),
                     "signal_bridge": signal_bridge,
                 }
             )
@@ -191,7 +191,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert len(executor_calls) == 1
     assert executor_calls[0]["signal_bridge"] is install_calls[0][2]
     assert mcp_factory_calls
-    ctx = cast("WorkerContext", coordinator_calls[0]["ctx"])
+    ctx = coordinator_calls[0]["ctx"]
     assert ctx.same_workspace is not None
     # Verify session contract fields are properly threaded from the runner's
     # _build_session_mcp_plan_for_phase into SameWorkspaceContext.
@@ -219,7 +219,7 @@ def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    unit = _make_work_unit("unit-a")
+    unit = _make_work_unit("unit-a", step_ids=("S-7", "S-8"))
     effect = FanOutEffect(work_units=(unit,), max_workers=1, phase="parallel-dev")
     state = PipelineState(
         phase="parallel-dev",
@@ -263,13 +263,15 @@ def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_
         workspace_scope=workspace_scope,
     )
 
-    ctx = cast("WorkerContext", coordinator_calls[0]["ctx"])
+    ctx = coordinator_calls[0]["ctx"]
     same_workspace = ctx.same_workspace
     assert same_workspace is not None
     manifest_path = same_workspace.worker_manifest_paths[unit.unit_id]
     manifest = ParallelWorkerManifest.load(manifest_path)
     assert manifest.phase == "parallel-dev"
     assert manifest.drain == "development"
+    assert manifest.step_ids == ["S-7", "S-8"]
+    assert manifest.to_work_unit().step_ids == ["S-7", "S-8"]
     assert manifest.worker_namespace == str(tmp_path / ".agent" / "workers" / unit.unit_id)
 
 

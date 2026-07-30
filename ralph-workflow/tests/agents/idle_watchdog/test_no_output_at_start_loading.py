@@ -37,14 +37,12 @@ network.
 
 from __future__ import annotations
 
-import typing
 from dataclasses import dataclass
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
-    WaitingCorroborator,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -102,16 +100,12 @@ def _make_watchdog(
         IdleWatchdog(
             policy,
             clock,
-            corroborator=cast(WaitingCorroborator, _StubCorroborator(alive_by)),
+            corroborator=_StubCorroborator(alive_by),
             process_monitor=_NoProcessMonitor(),
         ),
         clock,
     )
 
-
-def cast(tp: type[object], obj: object) -> object:
-    """Local cast helper to avoid shadowing typing.cast at module scope."""
-    return typing.cast("type[object]", obj)
 
 
 def test_no_output_at_start_fires_at_threshold_with_stale_alive_by() -> None:

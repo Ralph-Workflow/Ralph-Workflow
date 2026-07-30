@@ -133,6 +133,7 @@ def test_no_module_level_console_globals_in_ralph_source() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_module_level_console_walk_finds_expected_files() -> None:
     """The walk above must cover the ralph source tree (no I/O, no sleep).
 

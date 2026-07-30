@@ -6,7 +6,7 @@ These tests verify correction-phase routing at the analysis cap.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -31,8 +31,8 @@ def _reduce(
     policy: PolicyBundle | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if policy is not None:
-        return reducer_reduce(state, cast("Any", event), policy.pipeline)
-    return reducer_reduce(state, cast("Any", event), None)
+        return reducer_reduce(state, event, policy.pipeline)
+    return reducer_reduce(state, event, None)
 
 
 def _load_default_policy() -> PolicyBundle:

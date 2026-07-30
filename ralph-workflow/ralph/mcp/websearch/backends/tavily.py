@@ -76,10 +76,14 @@ def _load_tavily_client_type() -> _TavilyClientType:
         raise WebSearchError(
             "backend 'tavily' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
-    client_type = cast("object | None", getattr(module, "TavilyClient", None))
+    client_type = cast(
+        "object | None", getattr(module, "TavilyClient", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if client_type is None:
         raise WebSearchError("tavily backend is unavailable")
-    return cast("_TavilyClientType", client_type)
+    return cast(
+        "_TavilyClientType", client_type
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _normalize_results(payload: Mapping[str, object]) -> list[SearchResult]:

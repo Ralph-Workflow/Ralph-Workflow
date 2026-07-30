@@ -28,7 +28,7 @@ def _display() -> tuple[ParallelDisplay, StringIO]:
     console = Console(
         file=buf,
         force_terminal=False,
-        width=120,
+        width=240,
         color_system=None,
         theme=RALPH_THEME,
     )
@@ -57,6 +57,16 @@ def test_emit_capability_summary_renders_baseline_capabilities_header() -> None:
     assert "Baseline Capabilities" in output, (
         f"expected 'Baseline Capabilities' title in output: {output!r}"
     )
+
+
+def test_emit_capability_summary_marks_missing_docs_mcp_as_optional() -> None:
+    """Docs MCP setup is optional and init cannot install it."""
+    pd, buf = _display()
+    pd.emit_capability_summary(_healthy_state())
+    pd.stop()
+    output = buf.getvalue()
+    assert "Optional — configure and start a docs MCP server when you need library lookup" in output
+    assert "run `ralph --init` or check config" not in output
 
 
 def test_emit_capability_summary_quiet_mode_emits_nothing() -> None:

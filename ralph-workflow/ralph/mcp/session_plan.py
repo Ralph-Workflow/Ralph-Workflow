@@ -7,6 +7,7 @@ into the Ralph MCP subprocess for that session.
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +42,32 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "review": frozenset({"run.report_progress"}),
     "analysis": frozenset({"run.report_progress"}),
     "commit": frozenset({"run.report_progress", "workspace.write_ephemeral"}),
+}
+
+#: Capabilities withheld from named drains AFTER their class grant, keyed by
+#: drain name. A drain class describes the drain's write surface; it cannot
+#: express "this drain produces no artifact at all", which is exactly the
+#: out-of-graph ``policy_remediation`` drain: it takes its task from a
+#: materialized prompt and is judged solely by the deterministic validator
+#: that re-runs after it exits, so its prompt never asks the agent to submit
+#: an artifact, read a plan draft, or declare completion. Granting those
+#: capabilities would advertise the matching MCP tools in ``tools/list`` (and
+#: in the Claude ``--allowedTools`` allowlist discovered from it) with nothing
+#: on the other end to read what the agent submitted.
+#:
+#: Its analysis counterpart keeps ``artifact.submit`` and ``artifact.plan_read``:
+#: the latter exposes the read-only Markdown verifier used before submitting its
+#: routing decision. There is no startup plan for it to read, but capability
+#: filtering groups that verifier with the plan-read surface. Note what the
+#: ``analysis`` class does NOT grant: any workspace-write tool. It does grant
+#: ``process.exec_bounded`` (the reviewer must RUN the declared gates to check
+#: they resolve), and a shell can redirect -- so the no-write property is a
+#: strong default here, not a sandbox.
+#: What actually guarantees a review cannot approve its way past a failing
+#: validator is the deterministic re-validation in
+#: ``ralph.project_policy.pipeline_driver._finish``.
+_DRAIN_CAPABILITY_DENIALS: dict[str, frozenset[str]] = {
+    "policy_remediation": frozenset({"artifact.submit", "artifact.plan_read"}),
 }
 
 if TYPE_CHECKING:
@@ -78,9 +105,15 @@ def resolve_model_identity(
     provider_map: dict[AgentTransport, str] = {
         AgentTransport.CLAUDE: "claude",
         AgentTransport.CLAUDE_INTERACTIVE: "claude",
-        AgentTransport.CODEX: "openai",
         AgentTransport.AGY: "gemini",
     }
+
+    if transport == AgentTransport.CODEX:
+        return MultimodalModelIdentity(
+            provider="openai",
+            model_id=_codex_model_id(model_flag),
+            transport=transport.value,
+        )
 
     if transport in provider_map:
         return MultimodalModelIdentity(
@@ -111,6 +144,17 @@ def resolve_model_identity(
         model_id=model_flag,
         transport=transport.value,
     )
+
+
+def _codex_model_id(model_flag: str | None) -> str | None:
+    """Extract Codex's selected model from a forwarded CLI flag string."""
+    if model_flag is None:
+        return None
+    parts = shlex.split(model_flag)
+    for index, part in enumerate(parts[:-1]):
+        if part in {"--model", "-m"}:
+            return parts[index + 1]
+    return model_flag
 
 
 def resolve_effective_session_mcp_plan(
@@ -218,6 +262,8 @@ def build_session_mcp_plan(
         mcp_config_enabled_media=mcp_config.media.enabled,
         has_upstreams=bool(upstreams),
     )
+
+    capabilities -= _DRAIN_CAPABILITY_DENIALS.get(drain, frozenset())
 
     _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:

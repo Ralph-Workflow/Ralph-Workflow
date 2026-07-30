@@ -10,11 +10,11 @@ Exported surface:
   while it is still working. The text response is suffixed with
   ``PROGRESS_PIPELINE_MARKER`` so the idle watchdog can key on it.
 - ``handle_declare_complete`` — finalizes the run with an
-  ``artifact.submit``-gated completion sentinel. Writes
-  ``.agent/completion_seen_<run_id>.json`` (HMAC-signed when the broker
-  secret is provided) so the failure classifier / recovery controller
-  can verify the completion signal even if the MCP JSON-RPC envelope is
-  lost.
+  ``artifact.submit``-gated completion sentinel. Persists it in
+  ``.agent/state.db`` or the durable
+  ``.agent/completion_seen_<run_id>.json`` fallback (HMAC-signed when the
+  broker secret is provided) so the failure classifier / recovery
+  controller can verify completion even if the MCP JSON-RPC envelope is lost.
 - ``handle_coordinate`` — ``artifact.plan_write``-gated workspace
   coordination: planning-drain agents publish actions / work-unit
   payloads that the parent process observes. The text response is
@@ -35,10 +35,10 @@ declared by the agent session. The four capability strings
 contract between the agent's session declaration and the handler-side
 default-deny check.
 
-Side effects: ``handle_declare_complete`` writes a completion sentinel
-to ``.agent/``; the other handlers are pure with respect to the
-workspace and only emit pipeline events. No subprocess is spawned, no
-network call is made.
+Side effects: ``handle_declare_complete`` persists a completion sentinel
+under ``.agent/``; the other handlers are pure with respect to the workspace
+and only emit pipeline events. No subprocess is spawned, no network call is
+made.
 """
 
 from __future__ import annotations
@@ -94,18 +94,6 @@ _BROKER_SECRET_ENV_NAMES: frozenset[str] = frozenset({"RALPH_BROKER_SECRET"})
 _BROKER_SECRET_DENIED_TEXT = "[redacted: broker-owned secret]"
 
 
-class CompletionSentinelPersistenceError(RuntimeError):
-    """Raised when ``handle_declare_complete`` cannot persist a durable sentinel.
-
-    The completion gate reads ``.agent/completion_seen_<run_id>.json`` (or
-    the DB-backed equivalent) to verify that the run actually finished; if
-    neither the RunStateDB row nor the legacy sentinel file is written, the
-    agent may falsely claim "done" against a sentinel the completion gate
-    cannot see. This exception is the fail-closed signal that
-    ``handle_declare_complete`` converts into a ``ToolResult(is_error=True)``.
-    """
-
-
 def _timestamp() -> int:
     """Return the current UNIX timestamp in seconds."""
     return int(time.time())
@@ -139,7 +127,7 @@ def _write_completion_sentinel(
     _write_fn: Callable[[str, str], None] | None = None,
     sentinel_hmac: str | None = None,
 ) -> bool:
-    """Write a run-scoped completion sentinel as best-effort evidence.
+    """Write a run-scoped completion sentinel with durable fallback.
 
     When ``sentinel_hmac`` is provided the sentinel payload includes
     an ``hmac`` field binding the run id to a broker-owned secret so a
@@ -150,16 +138,17 @@ def _write_completion_sentinel(
 
     Storage (RFC-013 P3): sentinels are written to ``.agent/state.db``
     via ``RunStateDB`` (one row per ``run_id``). The legacy ``.agent/
-    completion_seen_<run_id>.json`` file path is preserved as a
-    read-fallback during the dual-read rollout window.
+    completion_seen_<run_id>.json`` file path is preserved as a read
+    fallback during migration and as the durable write fallback when
+    database persistence fails.
 
-    Durable-fallback: when ``RunStateDB`` raises ``sqlite3.Error`` or
-    ``OSError`` (locked / corrupt / unsupported WAL / disk full), this
-    function falls back to writing the legacy file path so the
-    completion gate always has durable evidence. The HMAC is included
-    in both stores when ``sentinel_hmac`` is provided. When ``_write_fn``
-    is provided the test seam captures the payload without performing
-    any disk or DB I/O.
+    Durable-fallback: when ``RunStateDB`` raises ``OSError``,
+    ``RuntimeError``, or ``sqlite3.Error`` (locked / corrupt /
+    unsupported WAL / disk full), this function falls back to writing
+    the legacy file path so the completion gate always has durable
+    evidence. The HMAC is included in both stores when ``sentinel_hmac``
+    is provided. When ``_write_fn`` is provided the test seam captures
+    the payload without performing any disk or DB I/O.
 
     Returns:
         ``True`` when a durable sentinel was persisted (DB row,
@@ -207,7 +196,7 @@ def _write_completion_sentinel(
             hmac_hex_value: str | None = sentinel_payload.get("hmac")
             db.upsert_completion_sentinel(run_id, hmac_hex_value)
             db_written = True
-        except sqlite3.Error:
+        except (OSError, RuntimeError, sqlite3.Error):
             pass  # Will fall through to legacy-file durable fallback below.
         finally:
             with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
@@ -219,9 +208,7 @@ def _write_completion_sentinel(
     return _write_legacy_sentinel_fallback(root_value, run_id, payload)
 
 
-def _write_legacy_sentinel_fallback(
-    workspace_root: Path, run_id: str, payload: str
-) -> bool:
+def _write_legacy_sentinel_fallback(workspace_root: Path, run_id: str, payload: str) -> bool:
     """Write the legacy ``.agent/completion_seen_<run_id>.json`` fallback.
 
     Used by ``_write_completion_sentinel`` only when the RunStateDB write
@@ -237,15 +224,21 @@ def _write_legacy_sentinel_fallback(
         propagates upward so the caller can refuse to declare the
         run complete without a durable sentinel.
     """
-    sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(
-        run_id=run_id
-    )
+    sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     try:
         sentinel_path.parent.mkdir(parents=True, exist_ok=True)
         sentinel_path.write_text(payload, encoding="utf-8")
     except OSError:
-        return False  # Both DB and legacy paths failed - nothing durable to write.
+        # Some filesystems can report a late write error after the complete
+        # payload became visible. Resolve that uncertain outcome by reading
+        # back the exact broker-authored bytes: success and gate evidence must
+        # agree, while a missing or partial file still fails closed.
+        try:
+            return sentinel_path.read_text(encoding="utf-8") == payload
+        except (OSError, UnicodeDecodeError):
+            return False
     return True
+
 
 #: Stable machine-readable marker appended to every progress report. The idle
 #: watchdog's activity classifier keys on this to route repeated progress reports
@@ -341,12 +334,11 @@ def handle_declare_complete(
             ``artifact.submit``.
 
     Side effects:
-        Writes ``.agent/completion_seen_<run_id>.json`` (HMAC-signed
-        when the broker secret is provided) so the failure classifier /
-        recovery controller can verify the completion signal even if
-        the MCP JSON-RPC envelope is lost. ``OSError`` from the sentinel
-        write is suppressed (best-effort) so a transient filesystem
-        issue cannot mask the completion event.
+        Persists the run-scoped sentinel in ``.agent/state.db`` or, when
+        database persistence fails, the legacy
+        ``.agent/completion_seen_<run_id>.json`` fallback. If neither
+        store succeeds, the handler returns ``ToolResult(is_error=True)``
+        and does not claim completion.
     """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
@@ -517,7 +509,6 @@ __all__ = [
     "PROGRESS_PIPELINE_MARKER",
     "RUN_REPORT_PROGRESS_CAPABILITY",
     "CapabilityDeniedError",
-    "CompletionSentinelPersistenceError",
     "ContentBlock",
     "CoordinationSessionLike",
     "ImageContent",

@@ -16,6 +16,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from ralph.display._decision_labels import DECISION_BADGE_MAP as _DECISION_LABELS
+from ralph.display.auto_integrate_message import format_auto_integrate_message
 from ralph.display.completion_summary import (
     _analysis_decision_summary,
     _children_persist_diagnostic_line,
@@ -26,7 +27,6 @@ from ralph.display.completion_summary import (
     _has_iteration_context,
     _iteration_context_lines,
     _review_summary_line,
-    _verification_line,
     analysis_decision_badge,
     make_badge_text,
     style_for_role,
@@ -187,13 +187,34 @@ def _commit_section(
     has_pr = pr_url is not None
     if not commit_lines and not has_pr:
         return []
-    items: list[Text | Rule] = [
-        Rule("Commit", style=style_for_role("terminal", pipeline_policy))
-    ]
+    items: list[Text | Rule] = [Rule("Commit", style=style_for_role("terminal", pipeline_policy))]
     items.extend(Text(f"  {line}") for line in commit_lines)
     if has_pr:
         items.append(Text(f"  PR: {pr_url}"))
     return items
+
+
+def _auto_integrate_items(snapshot: PipelineSnapshot) -> list[Text]:
+    """Render the auto-integration outcome line for the group receipt.
+
+    Returns ``[]`` when no integration ran (``auto_integrate_action`` is
+    ``None`` on the disabled / never-ran path, preserving the prompt's
+    AC-01 byte-identical no-op for that run shape). ``fast_forwarded``
+    is passed explicitly so a refused land exposes its recorded reason
+    instead of rendering identically to a success.
+    """
+    if snapshot.auto_integrate_action is None:
+        return []
+    phrase = format_auto_integrate_message(
+        snapshot.auto_integrate_action,
+        snapshot.auto_integrate_target,
+        snapshot.auto_integrate_reason,
+        fast_forwarded=snapshot.auto_integrate_fast_forwarded,
+        push=snapshot.auto_integrate_push,
+        remote_sync=snapshot.auto_integrate_remote_sync,
+        remote=snapshot.auto_integrate_remote,
+    )
+    return [Text(f"  auto-integrate: {phrase}")]
 
 
 def render_completion_summary_group(
@@ -238,11 +259,10 @@ def render_completion_summary_group(
         renderables.extend(Text(f"  {line}") for line in _iteration_context_lines(snapshot))
 
     renderables.extend(_activity_section(snapshot, options, style))
-    renderables.append(Rule("Verification", style=style))
-    renderables.append(Text(f"  {_verification_line(options.workspace_root)}"))
     renderables.extend(
         _commit_section(options.workspace_root, options.pipeline_policy, snapshot.pr_url)
     )
+    renderables.extend(_auto_integrate_items(snapshot))
     renderables.extend(
         _tail_items(
             snapshot,

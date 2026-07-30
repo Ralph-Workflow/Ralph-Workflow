@@ -14,8 +14,8 @@ import pytest
 
 from ralph.display.context import DisplayContext
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.pipeline.activity_stream import ArtifactHandoffContext, render_phase_artifact_handoff
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.phase_agent_handler import render_phase_artifact_handoff
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -132,9 +132,9 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                ArtifactHandoffContext(
-                    display_context=ctx, drain="audit", policy_bundle=custom_bundle
-                ),
+                display_context=ctx,
+                drain="audit",
+                policy_bundle=custom_bundle,
             )
 
     def test_execution_role_phase_without_contract_skips_all_renderers(
@@ -154,9 +154,9 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                ArtifactHandoffContext(
-                    display_context=ctx, drain="design", policy_bundle=custom_bundle
-                ),
+                display_context=ctx,
+                drain="design",
+                policy_bundle=custom_bundle,
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()
@@ -179,9 +179,9 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                ArtifactHandoffContext(
-                    display_context=ctx, drain="build", policy_bundle=custom_bundle
-                ),
+                display_context=ctx,
+                drain="build",
+                policy_bundle=custom_bundle,
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()
@@ -200,9 +200,9 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
                 PipelineEvent.ANALYSIS_LOOPBACK,
                 tmp_workspace,
                 None,
-                ArtifactHandoffContext(
-                    display_context=ctx, drain="design", policy_bundle=custom_bundle
-                ),
+                display_context=ctx,
+                drain="design",
+                policy_bundle=custom_bundle,
             )
         mock_render.assert_not_called()
 
@@ -222,7 +222,9 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                ArtifactHandoffContext(display_context=ctx, drain="planning", policy_bundle=None),
+                display_context=ctx,
+                drain="planning",
+                policy_bundle=None,
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()

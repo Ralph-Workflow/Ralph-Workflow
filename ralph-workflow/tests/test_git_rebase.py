@@ -16,6 +16,7 @@ from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseNoOp,
     RebaseOperationError,
+    RebaseSuccess,
     SubprocessExecutor,
     abort_rebase,
     continue_rebase,
@@ -46,7 +47,15 @@ from ralph.process.manager import ProcessStatus, get_process_manager, reset_proc
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-pytestmark = pytest.mark.subprocess_e2e
+# File-level markers. ``subprocess_e2e`` excludes this file from ``make test``
+# (the budget-tracked 60 s step) because several tests here drive a real ``git``
+# subprocess, which cannot reliably finish inside the default 1 s per-test
+# budget once the suite runs in parallel. ``timeout_seconds(5)`` sizes the budget
+# for a real process spawn, matching the convention in
+# tests/test_audit_artifact_submission_canonical_path.py. This does not weaken
+# any cap: the file stays out of the 60 s combined budget and inside the 60 s
+# per-suite cap on ``make test-subprocess-e2e``.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 class FakeProcessExecutor(ProcessExecutor):
@@ -126,21 +135,96 @@ def test_continue_rebase_executes_cli_when_ready(
 
 
 def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> None:
+    """An up-to-date feature branch is a no-op against a DISTINCT upstream.
+
+    The upstream is deliberately a different branch from the checked-out
+    one: rebasing a branch onto itself is a separate no-op path (the
+    self-rebase identity guard), and conflating the two hid which check
+    actually fired.
+    """
     with Repo(tmp_git_repo) as repo:
-        branch_name = "feature-noop"
-        repo.git.checkout("-b", branch_name)
+        upstream = repo.active_branch.name
+        repo.git.checkout("-b", "feature-noop")
     responses = {
-        ("git", ("merge-base", "--is-ancestor", branch_name, "HEAD")): _mk_result(returncode=0),
+        ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")): _mk_result(
+            returncode=0
+        ),
     }
     executor = FakeProcessExecutor(responses)
 
-    result = rebase_onto(upstream_branch=branch_name, repo_root=tmp_git_repo, executor=executor)
+    result = rebase_onto(upstream_branch=upstream, repo_root=tmp_git_repo, executor=executor)
 
     assert isinstance(result, RebaseNoOp)
     assert "up-to-date" in result.reason
+    # The ``--`` terminator is part of the contract: without it a target
+    # whose name begins with '-' is parsed by git as an option.
     assert executor.calls == [
-        ("git", ("merge-base", "--is-ancestor", branch_name, "HEAD")),
+        ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")),
     ]
+
+
+def test_rebase_rename_limit_warning_retries_once_with_raised_limit(
+    tmp_git_repo: Path,
+) -> None:
+    """C12 regression: a skipped rename scan is aborted and retried once."""
+    with Repo(tmp_git_repo) as repo:
+        base_branch = repo.active_branch.name
+        repo.git.checkout("-b", "feature-rename-limit")
+    initial = (
+        "rebase",
+        "--no-autostash",
+        "--no-autosquash",
+        "--no-update-refs",
+        "--empty=drop",
+        "--",
+        base_branch,
+        "feature-rename-limit",
+    )
+    retry = ("-c", "merge.renameLimit=0", *initial)
+    executor = FakeProcessExecutor(
+        {
+            ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(1),
+            ("git", initial): _mk_result(
+                1, stderr="warning: inexact rename detection was skipped"
+            ),
+            ("git", ("rebase", "--abort")): _mk_result(),
+            ("git", retry): _mk_result(),
+        }
+    )
+
+    assert isinstance(rebase_onto(base_branch, repo_root=tmp_git_repo, executor=executor), RebaseSuccess)
+    assert executor.calls.count(("git", retry)) == 1
+
+
+def test_rebase_rename_limit_retry_conflict_is_classified_without_loop(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    """C12 regression: a retry that still conflicts reaches normal resolution."""
+    with Repo(tmp_git_repo) as repo:
+        base_branch = repo.active_branch.name
+        repo.git.checkout("-b", "feature-rename-limit-conflict")
+    initial = (
+        "rebase", "--no-autostash", "--no-autosquash", "--no-update-refs", "--empty=drop", "--",
+        base_branch, "feature-rename-limit-conflict",
+    )
+    retry = ("-c", "merge.renameLimit=0", *initial)
+    executor = FakeProcessExecutor(
+        {
+            ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(1),
+            ("git", initial): _mk_result(1, stderr="you may want to set your merge.renameLimit"),
+            ("git", ("rebase", "--abort")): _mk_result(),
+            ("git", retry): _mk_result(1, stderr="CONFLICT (content): Merge conflict"),
+        }
+    )
+    monkeypatch.setattr("ralph.git.rebase.rebase.rebase_in_progress", lambda _path: True)
+    monkeypatch.setattr(
+        "ralph.git.rebase.rebase.get_conflicted_files", lambda **_kwargs: ["README.md"]
+    )
+
+    result = rebase_onto(base_branch, repo_root=tmp_git_repo, executor=executor)
+
+    assert isinstance(result, RebaseConflicts)
+    assert executor.calls.count(("git", retry)) == 1
 
 
 def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path) -> None:
@@ -149,8 +233,22 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
         base_branch = current
         repo.git.checkout("-b", "feature-conflict")
     responses = {
-        ("git", ("merge-base", "--is-ancestor", base_branch, "HEAD")): _mk_result(returncode=1),
-        ("git", ("rebase", base_branch)): _mk_result(
+        ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(
+            returncode=1
+        ),
+        (
+            "git",
+            (
+                "rebase",
+                "--no-autostash",
+                "--no-autosquash",
+                "--no-update-refs",
+                "--empty=drop",
+                "--",
+                base_branch,
+                "feature-conflict",
+            ),
+        ): _mk_result(
             returncode=1,
             stderr="CONFLICT (content): Merge conflict in README.md",
         ),
@@ -326,7 +424,15 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
             get_process_manager().shutdown_all(grace_period_s=0)
         reset_process_manager()
 
-    _assert_full_lifecycle(events, "git-rebase:")
+    # get_conflicted_files now routes through the NUL-delimited
+    # hardening helper (ralph.git.hardening.porcelain_z) so the
+    # ProcessManager event label is the hardening label, not the
+    # old SubprocessExecutor ``git-rebase:`` label. The executor
+    # argument is retained for signature compatibility; the helper
+    # uses the hardened run_git path so the per-invocation pin
+    # and non-interactive env are exactly what the rest of the
+    # auto-integration pipeline uses.
+    _assert_full_lifecycle(events, "hardening:porcelain-z")
 
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:

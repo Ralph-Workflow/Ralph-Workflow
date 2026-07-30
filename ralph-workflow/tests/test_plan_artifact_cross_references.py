@@ -7,13 +7,15 @@ two-link consistency contract between steps and acceptance criteria.
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 
 from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     normalize_plan_artifact_content,
+)
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
 )
 
 
@@ -50,7 +52,7 @@ def _valid_plan_with_ac() -> dict[str, object]:
 
 def test_cross_section_rejects_orphan_satisfies_id() -> None:
     plan = _valid_plan_with_ac()
-    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps = must_dict_list(plan["steps"])
     steps[0]["satisfies"] = ["AC-99"]
     with pytest.raises(PlanArtifactValidationError, match="unknown acceptance criterion"):
         normalize_plan_artifact_content(plan)
@@ -58,9 +60,9 @@ def test_cross_section_rejects_orphan_satisfies_id() -> None:
 
 def test_cross_section_rejects_orphan_satisfied_by_steps_number() -> None:
     plan = _valid_plan_with_ac()
-    design = cast("dict[str, object]", plan["design"])
-    ac = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    design = must_mapping(plan["design"])
+    ac = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(ac["criteria"])
     criteria[0]["satisfied_by_steps"] = [99]
     with pytest.raises(PlanArtifactValidationError, match="unknown step number"):
         normalize_plan_artifact_content(plan)
@@ -68,11 +70,11 @@ def test_cross_section_rejects_orphan_satisfied_by_steps_number() -> None:
 
 def test_cross_section_accepts_consistent_links() -> None:
     plan = _valid_plan_with_ac()
-    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps = must_dict_list(plan["steps"])
     steps[0]["satisfies"] = ["AC-01"]
-    design = cast("dict[str, object]", plan["design"])
-    ac = cast("dict[str, object]", design["acceptance_criteria"])
-    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    design = must_mapping(plan["design"])
+    ac = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(ac["criteria"])
     criteria[0]["satisfied_by_steps"] = [1]
     normalized = normalize_plan_artifact_content(plan)
     assert "design" in normalized

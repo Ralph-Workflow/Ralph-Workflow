@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import types
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import TimeoutPolicy
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
@@ -50,7 +49,7 @@ def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
 
         def _gen() -> Iterator[str]:
             yield "output line"
-            fake_handle = cast("ManagedProcess", types.SimpleNamespace(returncode=0))
+            fake_handle = types.SimpleNamespace(returncode=0)
             check_process_result(
                 fake_handle,
                 "agy",
@@ -111,7 +110,7 @@ def test_agy_completion_evidenced_run_does_not_fail(tmp_path: Path) -> None:
 
         def _gen() -> Iterator[str]:
             yield declare_line
-            fake_handle = cast("ManagedProcess", types.SimpleNamespace(returncode=0))
+            fake_handle = types.SimpleNamespace(returncode=0)
             check_process_result(
                 fake_handle,
                 "agy",

@@ -84,11 +84,23 @@ Do not rely on Codex for environments that require strict tool isolation. Ralph 
 
 Reference: https://platform.openai.com/docs/codex
 
-### Google Anti Gravity - Full Enforcement (Global-Config-Injection-Based)
+### Google Anti Gravity
 
-Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. Ralph Workflow automatically injects the run-scoped Ralph Workflow MCP endpoint into AGY's global `~/.gemini/antigravity-cli/mcp_config.json` before AGY launches using the `agy_workspace_mcp_endpoint` context manager, and restores the file after the run. Measured behaviour shows AGY's headless `--print` mode only initialises its MCP client when this global config file exists; the workspace-level `.agents/mcp_config.json` is not sufficient. The provider-visible config written by this context manager contains only the Ralph Workflow MCP server entry, matching Ralph Workflow's strict-authority-mode contract. No manual pre-configuration of the Ralph Workflow endpoint is required. Ralph Workflow still discovers user-configured AGY upstream servers from `~/.gemini/antigravity-cli/mcp_config.json` and workspace `.agents/mcp_config.json` for the upstream proxy.
+The latest v1.1.8 live smoke exited 0 after AGY created its requested file and
+showed parser/tool activity without a permission prompt. It wrote a valid fallback
+`smoke_test_result`; Ralph Workflow validated and promoted it to the canonical
+artifact at `.agent/artifacts/smoke_test_result.md`, recorded its receipt in
+`.agent/state.db`, and wrote host-owned durable completion evidence because AGY
+missed the MCP completion call. Direct MCP submission and fallback promotion use
+the same validation and canonical receipt transaction.
 
-AGY participates fully in Ralph Workflow's upstream proxy model, capability-gated MCP model, and completion contract. This is a setup difference, not a capability limitation.
+The same fallback-promotion path remains available if an agent cannot call the
+submission tool: write `.agent/tmp/<type>.md`, then
+`promote_fallback_artifact` validates and promotes it to the identical canonical
+receipt. See [Markdown fallback promotion](../agents/artifact-submission-contract.md#markdown-fallback-promotion).
+
+Run the manual paid diagnostic deliberately after an AGY update and record the
+result in `tmp/agy-source-of-truth.txt`.
 
 ## 3. Known Bugs and Limitations
 

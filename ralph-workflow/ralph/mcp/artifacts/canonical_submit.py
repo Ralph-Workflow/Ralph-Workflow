@@ -1,82 +1,38 @@
-"""Canonical artifact submission entry point.
-
-This module is the single public writer of run-scoped completion receipts and
-completion sentinels for canonical artifact types. Every artifact submission
-that needs to satisfy the completion gate must route through
-:func:`submit_artifact_canonical` so the receipt, sentinel, artifact file, and
-Markdown handoff are written atomically (or rolled back together).
-"""
+"""Canonical persistence for markdown artifact documents."""
 
 from __future__ import annotations
 
-import contextlib
-import dataclasses
-import importlib
-import json
-import sqlite3
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from dataclasses import dataclass, replace
+from importlib import import_module
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.artifacts.completion_receipts import (
+    artifact_receipt_present,
+    delete_artifact_receipt,
+    write_artifact_receipt,
+)
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
-from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
-from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT, InvalidParamsError
+from ralph.mcp.artifacts.history import (
+    history_dir_for_artifact,
+    rebuild_history_index,
+    snapshot_current_artifact,
+)
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
+from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from ralph.mcp.artifacts.file_backend import FileBackend
-    from ralph.mcp.tools._submit_op import SubmitOp
     from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-
-
-class _ToolsArtifactModule(Protocol):
-    DEFAULT_ARTIFACT_HANDLER_DEPS: ArtifactHandlerDeps
-
-    def _submit_ops_for_artifact_with_options(
-        self,
-        artifact_type: str,
-        workspace_root: Path,
-        artifact_dir: Path,
-        parsed_content: dict[str, object],
-        *,
-        deps: ArtifactHandlerDeps,
-        run_id: str | None = ...,
-        name: str | None = ...,
-        overwrite: bool = ...,
-        metadata: dict[str, object] | None = ...,
-    ) -> list[SubmitOp]: ...
-
-    def execute_ops_with_rollback(self, ops: list[SubmitOp]) -> None: ...
-
-    def _normalize_artifact_payload(
-        self,
-        artifact_type: str,
-        parsed_content: dict[str, object],
-        *,
-        workspace_root: Path | None = ...,
-        backend: object = ...,
-    ) -> dict[str, object]: ...
 
 
 @dataclass(frozen=True)
 class SubmitResult:
-    """Paths written by a canonical artifact submission.
-
-    Attributes:
-        artifact_path: Path to the canonical artifact JSON file, if written.
-        receipt_path: Path to the run-scoped receipt, if written.
-        sentinel_path: Path to the completion sentinel, if written for a
-            single-shot artifact type.
-        handoff_path: Path to the Markdown handoff, if one is configured for
-            the artifact type.
-        artifact_type: The canonical artifact type that was submitted.
-        run_id: The run id used as the receipt/sentinel key.
-    """
+    """Locations produced by one canonical markdown submission."""
 
     artifact_path: Path | None
     receipt_path: Path | None
-    sentinel_path: Path | None
     handoff_path: Path | None
     artifact_type: str
     run_id: str | None
@@ -86,62 +42,99 @@ def _artifact_dir(workspace_root: Path) -> Path:
     return workspace_root / ".agent" / "artifacts"
 
 
-def _receipt_path(workspace_root: Path, run_id: str, artifact_type: str) -> Path:
-    return workspace_root / ".agent" / "receipts" / run_id / f"{artifact_type}.json"
+def _capture_file_state(
+    backend: FileBackend,
+    path: Path,
+) -> tuple[bool, str]:
+    """Capture enough state to restore one markdown file after a failed submit."""
+    if not backend.exists(path):
+        return False, ""
+    return True, backend.read_text(path, encoding="utf-8")
 
 
-def _sentinel_path(workspace_root: Path, run_id: str) -> Path:
-    return workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
-
-
-def _tools_artifact() -> _ToolsArtifactModule:
-    """Return the ``ralph.mcp.tools.artifact`` module lazily to avoid cycles."""
-    return cast("_ToolsArtifactModule", importlib.import_module("ralph.mcp.tools.artifact"))
-
-
-def _clear_fallback_artifacts(
-    workspace_root: Path,
-    run_id: str,
-    *,
-    backend: FileBackend = DEFAULT_FILE_BACKEND,
+def _restore_file_state(
+    backend: FileBackend,
+    path: Path,
+    state: tuple[bool, str],
 ) -> None:
-    """Clear fallback artifacts that could be promoted for this run.
-
-    Prevents a fresh run from inheriting stale fallback artifacts from a
-    previous run. Removes .agent/tmp/<artifact_type>.json files, which are
-    always fallback files written by agents.
-
-    Note: This does NOT clear .agent/artifacts/<artifact_type>.json, which is
-    the canonical artifact location and is managed separately by receipt-based
-    validation.
-
-    Args:
-        workspace_root: Root of the workspace.
-        run_id: The run ID being cleared (used only for documentation; tmp
-            directory is shared across runs).
-        backend: File backend for I/O operations.
-    """
-    tmp_dir = workspace_root / ".agent" / "tmp"
-    if backend.exists(tmp_dir):
-        for path in backend.glob(tmp_dir, "*.json"):
-            backend.unlink(path, missing_ok=True)
+    """Restore a captured file or remove a file created by the failed submit."""
+    existed, content = state
+    if existed:
+        atomic_write_text_if_changed(
+            backend,
+            path,
+            content,
+            tmp_path=path.with_suffix(".md.tmp"),
+            encoding="utf-8",
+        )
+        return
+    backend.unlink(path, missing_ok=True)
 
 
-def _read_fallback_payload(path: Path, backend: FileBackend) -> dict[str, object] | None:
-    """Parse a fallback file, tolerating both bare payload and outer envelope."""
+def _rollback_submission(
+    *,
+    workspace_root: Path,
+    backend: FileBackend,
+    artifact_path: Path,
+    artifact_state: tuple[bool, str],
+    handoff_path: Path | None,
+    handoff_state: tuple[bool, str] | None,
+    history_paths: list[Path],
+    history_dir: Path | None,
+    history_paths_before: frozenset[Path],
+    artifact_dir: Path,
+    artifact_type: str,
+    run_id: str | None,
+    restorable_receipt_preexisting: bool,
+) -> None:
+    """Restore canonical files and remove history created by a failed submit."""
+    rollback_errors: list[Exception] = []
+    if handoff_path is not None and handoff_state is not None:
+        try:
+            _restore_file_state(backend, handoff_path, handoff_state)
+        except Exception as exc:
+            rollback_errors.append(exc)
     try:
-        raw = backend.read_text(path, encoding="utf-8")
-        parsed = cast("object", json.loads(raw))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-    if not isinstance(parsed, dict):
-        return None
-
-    content = parsed.get("content")
-    if isinstance(content, dict):
-        return cast("dict[str, object]", content)
-    return cast("dict[str, object]", parsed)
+        _restore_file_state(backend, artifact_path, artifact_state)
+    except Exception as exc:
+        rollback_errors.append(exc)
+    rollback_history_paths = set(history_paths)
+    if history_dir is not None:
+        try:
+            rollback_history_paths.update(
+                set(backend.glob(history_dir, "*.md")) - history_paths_before
+            )
+        except Exception as exc:
+            rollback_errors.append(exc)
+    for history_path in sorted(rollback_history_paths):
+        try:
+            backend.unlink(history_path, missing_ok=True)
+        except Exception as exc:
+            rollback_errors.append(exc)
+    if rollback_history_paths:
+        try:
+            rebuild_history_index(
+                artifact_dir,
+                artifact_type,
+                backend=backend,
+            )
+        except Exception as exc:
+            rollback_errors.append(exc)
+    if run_id is not None and not restorable_receipt_preexisting:
+        try:
+            delete_artifact_receipt(
+                workspace_root,
+                run_id,
+                artifact_type,
+                backend=backend,
+            )
+        except Exception as exc:
+            rollback_errors.append(exc)
+    if rollback_errors:
+        raise ExceptionGroup(
+            "Canonical artifact submission rollback was incomplete",
+            rollback_errors,
+        )
 
 
 def submit_artifact_canonical(
@@ -149,178 +142,194 @@ def submit_artifact_canonical(
     artifact_type: str,
     parsed_content: dict[str, object],
     *,
+    markdown: str | None = None,
     deps: ArtifactHandlerDeps | None = None,
     run_id: str | None = None,
     artifact_dir: Path | None = None,
-    name: str | None = None,
-    overwrite: bool = True,
-    metadata: dict[str, object] | None = None,
+    handoff_dir: Path | None = None,
 ) -> SubmitResult:
-    """Submit an artifact through the canonical, receipt-stamping path.
+    """Persist validated markdown, handoff, and receipt as one logical transaction.
 
-    The submission is atomic: the artifact file, run-scoped receipt, single-shot
-    completion sentinel, and Markdown handoff are written inside a single
-    rollback-protected operation sequence. If any step fails, all completed steps
-    are undone.
-
-    Args:
-        workspace_root: Root of the workspace where artifacts/receipts live.
-        artifact_type: Canonical artifact type to submit.
-        parsed_content: Normalized artifact payload dictionary.
-        deps: Injectable dependencies; defaults to ``DEFAULT_ARTIFACT_HANDLER_DEPS``.
-        run_id: Run identifier used as the receipt/sentinel key.
-        artifact_dir: Directory for the artifact JSON file; defaults to
-            ``workspace_root / '.agent' / 'artifacts'``.
-        name: Optional artifact filename stem; defaults to ``artifact_type``.
-        overwrite: Whether to overwrite an existing artifact file.
-        metadata: Optional metadata dictionary for the artifact envelope.
-
-    Returns:
-        A frozen :class:`SubmitResult` describing the files that were written.
+    ``parsed_content`` is retained only for callers that need to validate before
+    persistence; the stored artifact is always ``.md`` and never a JSON envelope.
+    If receipt persistence fails, canonical files and any history snapshot are
+    restored to their pre-submit state before the persistence error propagates.
+    Phase completion remains a separate explicit ``declare_complete`` operation.
     """
-    tools_artifact = _tools_artifact()
-    resolved_deps = deps or tools_artifact.DEFAULT_ARTIFACT_HANDLER_DEPS
-    resolved_artifact_dir = (
-        artifact_dir if artifact_dir is not None else _artifact_dir(workspace_root)
-    )
-
-    resolved_backend = cast("object", resolved_deps.backend)
-    parsed_content = tools_artifact._normalize_artifact_payload(
-        artifact_type,
-        parsed_content,
-        workspace_root=workspace_root,
-        backend=resolved_backend,
-    )
-
-    ops = tools_artifact._submit_ops_for_artifact_with_options(
-        artifact_type,
-        workspace_root,
-        resolved_artifact_dir,
-        parsed_content,
-        deps=resolved_deps,
-        run_id=run_id,
-        name=name,
-        overwrite=overwrite,
-        metadata=metadata,
-    )
-    tools_artifact.execute_ops_with_rollback(ops)
-
-    backend = resolved_deps.backend
-    candidate_artifact = resolved_artifact_dir / f"{name or artifact_type}.json"
-    artifact_path: Path | None = candidate_artifact if backend.exists(candidate_artifact) else None
-
-    receipt_path: Path | None = None
-    if run_id is not None:
-        candidate_receipt = _receipt_path(workspace_root, run_id, artifact_type)
-        # RFC-013 P3: receipts may be DB-backed (no file) OR legacy-file-backed.
-        # Return the receipt path when EITHER store has the row so callers see a
-        # canonical Path regardless of which storage backend was used.
-        try:
-            db = RunStateDB(workspace_root)
-            try:
-                hmac_value = db.get_receipt_hmac(run_id, artifact_type)
-            finally:
-                db.close()
-        except (OSError, RuntimeError, sqlite3.Error):
-            hmac_value = MISSING
-        if hmac_value is not MISSING or backend.exists(candidate_receipt):
-            receipt_path = candidate_receipt
-
-    sentinel_path: Path | None = None
-    if run_id is not None:
-        candidate_sentinel = _sentinel_path(workspace_root, run_id)
-        # RFC-013 P3: completion sentinel may be DB-backed (no file).
-        # Set the canonical path when EITHER the DB row exists OR the
-        # legacy file path exists so callers see a sentinel_path for
-        # either storage backend.
-        sentinel_in_db = False
-        try:
-            db = RunStateDB(workspace_root)
-            try:
-                sentinel_in_db = db.get_completion_sentinel_hmac(run_id) is not MISSING
-            finally:
-                db.close()
-        except (OSError, RuntimeError, sqlite3.Error):
-            sentinel_in_db = False
-        if sentinel_in_db or backend.exists(candidate_sentinel):
-            sentinel_path = candidate_sentinel
-
-    handoff_path: Path | None = None
+    del parsed_content
+    if markdown is None:
+        raise ValueError("markdown source is required for migrated artifacts")
+    if deps is None:
+        deps = cast(
+            "ArtifactHandlerDeps",
+            import_module("ralph.mcp.tools.artifact").DEFAULT_ARTIFACT_HANDLER_DEPS,
+        )
+    backend = deps.backend
+    directory = artifact_dir or _artifact_dir(workspace_root)
+    artifact_path = directory / f"{artifact_type}.md"
     handoff_relative = handoff_path_for_artifact(artifact_type)
-    if handoff_relative is not None:
-        candidate_handoff = workspace_root / handoff_relative
-        if backend.exists(candidate_handoff):
-            handoff_path = candidate_handoff
+    handoff_path = (
+        (
+            handoff_dir / Path(handoff_relative).name
+            if handoff_dir is not None
+            else workspace_root / handoff_relative
+        )
+        if handoff_relative is not None
+        else None
+    )
+    if handoff_path == artifact_path:
+        handoff_path = None
+
+    artifact_state = _capture_file_state(backend, artifact_path)
+    handoff_state = _capture_file_state(backend, handoff_path) if handoff_path is not None else None
+    history_paths: list[Path] = []
+    history_enabled = deps.history_enabled and handoff_dir is None and artifact_state[0]
+    history_dir = history_dir_for_artifact(directory, artifact_type) if history_enabled else None
+    history_paths_before = (
+        frozenset(backend.glob(history_dir, "*.md"))
+        if history_dir is not None and backend.exists(history_dir)
+        else frozenset()
+    )
+    receipt_path: Path | None = None
+    restorable_receipt_preexisting = artifact_state[0] and (
+        artifact_receipt_present(
+            workspace_root,
+            run_id,
+            artifact_type,
+            backend=backend,
+            receipt_secret=deps.receipt_secret,
+        )
+        if run_id is not None
+        else False
+    )
+    try:
+        backend.mkdir(directory, parents=True, exist_ok=True)
+        # Worker-local submissions carry their own handoff directory and are
+        # replaced between isolated attempts. Shared artifact history would look
+        # up the coordinator handoff and leak it into the worker namespace.
+        if history_enabled:
+            history_paths = snapshot_current_artifact(
+                directory,
+                workspace_root,
+                artifact_type,
+                backend=backend,
+                now_iso=deps.now_iso,
+            )
+        atomic_write_text_if_changed(
+            backend,
+            artifact_path,
+            markdown,
+            tmp_path=artifact_path.with_suffix(".md.tmp"),
+            encoding="utf-8",
+            sync_directory=artifact_type == "plan",
+        )
+        if backend.read_text(artifact_path, encoding="utf-8") != markdown:
+            raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
+
+        if handoff_path is not None:
+            backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
+            atomic_write_text_if_changed(
+                backend,
+                handoff_path,
+                markdown,
+                tmp_path=handoff_path.with_suffix(".md.tmp"),
+                encoding="utf-8",
+                sync_directory=artifact_type == "plan",
+            )
+            if backend.read_text(handoff_path, encoding="utf-8") != markdown:
+                raise OSError(f"canonical handoff write was corrupt: {handoff_path}")
+
+        if run_id is not None:
+            receipt_path = write_artifact_receipt(
+                workspace_root,
+                run_id,
+                artifact_type,
+                backend=backend,
+                receipt_secret=deps.receipt_secret,
+            )
+    except Exception as submission_error:
+        try:
+            _rollback_submission(
+                workspace_root=workspace_root,
+                backend=backend,
+                artifact_path=artifact_path,
+                artifact_state=artifact_state,
+                handoff_path=handoff_path,
+                handoff_state=handoff_state,
+                history_paths=history_paths,
+                history_dir=history_dir,
+                history_paths_before=history_paths_before,
+                artifact_dir=directory,
+                artifact_type=artifact_type,
+                run_id=run_id,
+                restorable_receipt_preexisting=restorable_receipt_preexisting,
+            )
+        except Exception as rollback_error:
+            raise ExceptionGroup(
+                "Canonical artifact submission failed and rollback was incomplete",
+                [submission_error, rollback_error],
+            ) from None
+        raise
 
     return SubmitResult(
         artifact_path=artifact_path,
         receipt_path=receipt_path,
-        sentinel_path=sentinel_path,
         handoff_path=handoff_path,
         artifact_type=artifact_type,
         run_id=run_id,
     )
 
 
-def _has_other_run_receipt(
+def _registered_markdown_types() -> tuple[str, ...]:
+    """Return the artifact types with a registered markdown spec."""
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    return tuple(spec.artifact_type for spec in registered_specs())
+
+
+def _fallback_path(workspace_root: Path, artifact_type: str) -> Path:
+    return workspace_root / ".agent" / "tmp" / f"{artifact_type}.md"
+
+
+def _clear_fallback_artifacts(
     workspace_root: Path,
-    artifact_type: str,
     run_id: str,
     *,
-    backend: FileBackend,
-) -> bool:
-    """RFC-013 P3: stale-artifact guard for ``promote_fallback_artifact``.
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    fallback_dir: Path | None = None,
+) -> None:
+    """Clear stale Markdown fallback files from a newly started run."""
+    del run_id
+    tmp = fallback_dir or workspace_root / ".agent" / "tmp"
+    if not backend.exists(tmp):
+        return
+    for artifact_type in _registered_markdown_types():
+        backend.unlink(tmp / f"{artifact_type}.md", missing_ok=True)
 
-    Returns True when a receipt for ``artifact_type`` already exists under
-    a *different* ``run_id`` in either ``.agent/state.db`` (the new
-    canonical store) or the legacy ``.agent/receipts/<run>/`` directory
-    tree (the pre-upgrade read-only fallback). The DB-first lookup honors
-    a freshly-issued receipt whose legacy file may not yet exist; the
-    legacy-file scan catches receipts left behind by pre-upgrade runs
-    that never wrote a DB row.
 
-    Best-effort: ``sqlite3.Error`` is in the catch tuple so a locked /
-    corrupt / unsupported SQLite state does not block promotion — the
-    legacy file scan still runs in that case.
-
-    Extracted from ``promote_fallback_artifact`` to keep its branch count
-    under the PLR0912 cap.
-    """
-    try:
-        db = RunStateDB(workspace_root)
-    except (OSError, RuntimeError, sqlite3.Error):
-        db = None
-    if db is not None:
-        other_receipts_present = False
-        try:
-            try:
-                cursor = db._conn.execute(
-                    "SELECT run_id FROM receipts "
-                    "WHERE artifact_type = ? AND run_id != ?",
-                    (artifact_type, run_id),
-                )
-                row: object = cursor.fetchone()
-                if row is not None:
-                    other_receipts_present = True
-            except (OSError, RuntimeError, sqlite3.Error):
-                other_receipts_present = False
-        finally:
-            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
-                db.close()
-        if other_receipts_present:
-            return True
-    receipts_dir = workspace_root / ".agent" / "receipts"
-    if not backend.exists(receipts_dir):
-        return False
-    for receipt_path in backend.glob(receipts_dir, "*/*.json"):
-        parts = receipt_path.relative_to(receipts_dir).parts
-        if len(parts) < len(["run_id", "artifact_type.json"]):
-            continue
-        receipt_run_id = parts[0]
-        receipt_artifact_type = receipt_path.stem
-        if receipt_artifact_type == artifact_type and receipt_run_id != run_id:
-            return True
-    return False
+def _clear_worker_artifacts(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    worker_namespace: Path,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Clear stale canonical, handoff, and fallback documents for one worker."""
+    artifact_dir = worker_namespace / "artifacts"
+    handoff_dir = worker_namespace / "handoffs"
+    _clear_fallback_artifacts(
+        workspace_root,
+        run_id,
+        backend=backend,
+        fallback_dir=worker_namespace / "tmp",
+    )
+    for artifact_type in _registered_markdown_types():
+        backend.unlink(artifact_dir / f"{artifact_type}.md", missing_ok=True)
+        relative_handoff = handoff_path_for_artifact(artifact_type)
+        if relative_handoff is not None:
+            backend.unlink(
+                handoff_dir / Path(relative_handoff).name,
+                missing_ok=True,
+            )
 
 
 def promote_fallback_artifact(
@@ -330,87 +339,61 @@ def promote_fallback_artifact(
     deps: ArtifactHandlerDeps | None = None,
     run_id: str | None = None,
     receipt_secret: str | None = None,
+    fallback_path: Path | None = None,
+    artifact_dir: Path | None = None,
+    handoff_dir: Path | None = None,
 ) -> SubmitResult | None:
-    """Promote an agent-written fallback file to a canonical submission.
+    """Promote an agent-written ``.agent/tmp/<type>.md`` fallback through canonical submit.
 
-    Scans ``.agent/tmp/<artifact_type>.json`` then
-    ``.agent/artifacts/<artifact_type>.json``. For the first existing file, parse
-    it (tolerating both the bare inner payload and the outer ``{name,type,content}``
-    envelope) and route it through :func:`submit_artifact_canonical` so a receipt
-    is stamped.
-
-    Does NOT promote canonical artifacts from ``.agent/artifacts/`` that already
-    have a receipt for ANY run_id (including the current one), preventing stale
-    artifacts from previous runs from being promoted to a new receipt.
-
-    Args:
-        receipt_secret: Optional broker-owned secret to thread into the
-            resolved :class:`ArtifactHandlerDeps`. When provided, the
-            promoted receipt carries the HMAC binding ``(run_id, artifact_type)``
-            to the secret so the verifier accepts it under the same secret
-            and rejects it under any other. Without this, promotion writes
-            a no-HMAC receipt which the verifier rejects under HMAC enforcement.
-
-    Returns:
-        The :class:`SubmitResult` from the canonical submit, or ``None`` when no
-        fallback file exists or parsing fails.
+    Returns ``None`` when no fallback document exists, the artifact type has
+    no registered markdown spec, or the document fails markdown validation —
+    an invalid fallback must not stamp a submission receipt.
     """
-    tools_artifact = _tools_artifact()
-    resolved_deps = deps or tools_artifact.DEFAULT_ARTIFACT_HANDLER_DEPS
-    if receipt_secret is not None and resolved_deps.receipt_secret is None:
-        # ``dataclasses.replace`` builds a new ``ArtifactHandlerDeps``
-        # without re-importing the artifact module, which sidesteps the
-        # canonical_submit <-> artifact.py import cycle.
-        resolved_deps = dataclasses.replace(
-            resolved_deps, receipt_secret=receipt_secret
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    try:
+        spec = get_spec(artifact_type)
+    except ValueError:
+        return None
+    resolved_deps = deps
+    if resolved_deps is None:
+        resolved_deps = cast(
+            "ArtifactHandlerDeps",
+            import_module("ralph.mcp.tools.artifact").DEFAULT_ARTIFACT_HANDLER_DEPS,
         )
+    if receipt_secret is not None:
+        resolved_deps = replace(resolved_deps, receipt_secret=receipt_secret)
     backend = resolved_deps.backend
-
-    tmp_fallback = workspace_root / ".agent" / "tmp" / f"{artifact_type}.json"
-    artifact_fallback = _artifact_dir(workspace_root) / f"{artifact_type}.json"
-
-    for path in (tmp_fallback, artifact_fallback):
-        if not backend.exists(path):
-            continue
-
-        # For canonical artifacts (not tmp files), check if this is a stale
-        # artifact from a previous run. If a receipt exists for ANY other run_id
-        # (but not the current run), this artifact was already submitted through
-        # the canonical path and should not be promoted again. This prevents a
-        # fresh run from inheriting stale artifacts from previous runs.
-        if (
-            path != tmp_fallback
-            and run_id is not None
-            and _has_other_run_receipt(
-                workspace_root, artifact_type, run_id, backend=backend
-            )
-        ):
-            return None
-
-        parsed = _read_fallback_payload(path, backend)
-        if parsed is None:
-            # A malformed file at this location does not preclude a valid
-            # fallback at the next location; continue scanning.
-            continue
-        try:
-            return submit_artifact_canonical(
-                workspace_root,
-                artifact_type,
-                parsed,
-                deps=resolved_deps,
-                run_id=run_id,
-            )
-        except InvalidParamsError:
-            # Schema-invalid fallback content means no promotion; continue
-            # scanning in case a valid copy exists at the next location.
-            continue
-
-    return None
+    fallback = fallback_path or _fallback_path(workspace_root, artifact_type)
+    if not backend.exists(fallback):
+        return None
+    try:
+        markdown = backend.read_text(fallback, encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        parsed_content, diagnostics = parse_and_validate(markdown, spec)
+    except (ValueError, MarkdownArtifactError):
+        return None
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
+    result = submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=artifact_type,
+        parsed_content=dict(parsed_content),
+        markdown=markdown,
+        deps=resolved_deps,
+        run_id=run_id,
+        artifact_dir=artifact_dir,
+        handoff_dir=handoff_dir,
+    )
+    backend.unlink(fallback, missing_ok=True)
+    return result
 
 
 __all__ = [
     "SubmitResult",
     "_clear_fallback_artifacts",
+    "_clear_worker_artifacts",
     "promote_fallback_artifact",
     "submit_artifact_canonical",
 ]

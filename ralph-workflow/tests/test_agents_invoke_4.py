@@ -7,7 +7,7 @@ import json
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Literal
 
 import pytest
 from loguru import logger
@@ -38,10 +38,10 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
 
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
@@ -52,21 +52,21 @@ def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _json_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(raw))
+    return must_mapping(json.loads(raw))
 
 
 def _toml_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", tomllib.loads(raw))
+    return must_mapping(tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(cast("Iterable[str]", args[0]))
+    return list(args[0])
 
 
 def _run_agy_transport_proxy_payload_check(
@@ -82,7 +82,7 @@ def _run_agy_transport_proxy_payload_check(
 
     def fake_run_pty_agy(cmd: object, ctx: object, extras: object = None) -> object:
         del cmd, extras
-        seen_envs["agy"] = cast("dict[str, str]", cast("Any", ctx).extra_env)
+        seen_envs["agy"] = must_str_dict(ctx.extra_env)
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_agy)
@@ -203,9 +203,9 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
     parsed = _toml_object(seen_config[0])
-    mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
+    mcp_servers = must_mapping(parsed["mcp_servers"])
     assert list(mcp_servers.keys()) == [RALPH_MCP_SERVER_NAME]
-    ralph_server = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
+    ralph_server = must_mapping(mcp_servers[RALPH_MCP_SERVER_NAME])
     assert ralph_server["url"] == "http://127.0.0.1:9999/mcp"
     assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
         UpstreamMcpServer(
@@ -293,7 +293,7 @@ def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:
             "http://localhost:0/mcp",
             workspace_path=tmp_path,
             existing_home=str(fake_home),
-            system_prompt_file=None,
+            master_prompt_file=None,
         )
 
 
@@ -308,7 +308,7 @@ def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=str(fake_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
@@ -321,11 +321,11 @@ def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> No
         None,
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file="/tmp/sp.md",
+        master_prompt_file="/tmp/sp.md",
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
-    features = cast("dict[str, object]", parsed["features"]) if "features" in parsed else {}
+    features = must_mapping(parsed["features"]) if "features" in parsed else {}
     assert "shell_tool" not in features, "No features disable without endpoint"
 
 
@@ -363,7 +363,7 @@ def test_codex_logs_best_effort_warning_when_mcp_endpoint_wired(tmp_path: Path) 
             "http://localhost:0/mcp",
             workspace_path=tmp_path,
             existing_home=None,
-            system_prompt_file=None,
+            master_prompt_file=None,
         )
         output = buf.getvalue()
         assert "best-effort" in output, f"Expected 'best-effort' in warning, got: {output!r}"
@@ -381,7 +381,7 @@ def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
             None,
             workspace_path=tmp_path,
             existing_home=None,
-            system_prompt_file="/tmp/sp.md",
+            master_prompt_file="/tmp/sp.md",
         )
         assert "best-effort" not in buf.getvalue(), "No warning when endpoint is None"
     finally:
@@ -465,6 +465,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -473,13 +474,13 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     cmd = seen_cmds[0]
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    servers = must_mapping(config_payload["mcpServers"])
     # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
     assert list(servers.keys()) == [RALPH_MCP_SERVER_NAME], (
         f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible MCP config, "
         f"got: {list(servers.keys())}"
     )
-    ralph_entry = cast("dict[str, object]", servers[RALPH_MCP_SERVER_NAME])
+    ralph_entry = must_mapping(servers[RALPH_MCP_SERVER_NAME])
     assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
 
 
@@ -565,13 +566,13 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
     )
 
     parsed = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
-    mcp_config = cast("dict[str, object]", parsed["mcp"])
+    mcp_config = must_mapping(parsed["mcp"])
     # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
     assert list(mcp_config.keys()) == [RALPH_MCP_SERVER_NAME], (
         f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible OpenCode MCP config, "
         f"got: {list(mcp_config.keys())}"
     )
-    ralph_entry = cast("dict[str, object]", mcp_config[RALPH_MCP_SERVER_NAME])
+    ralph_entry = must_mapping(mcp_config[RALPH_MCP_SERVER_NAME])
     assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
 
 
@@ -652,13 +653,13 @@ def test_codex_strict_mode_only_exposes_ralph_server(
     )
 
     parsed = _toml_object(seen_config[0])
-    mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
+    mcp_servers = must_mapping(parsed["mcp_servers"])
     # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
     assert list(mcp_servers.keys()) == [RALPH_MCP_SERVER_NAME], (
         f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible Codex mcp_servers, "
         f"got: {list(mcp_servers.keys())}"
     )
-    ralph_entry = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
+    ralph_entry = must_mapping(mcp_servers[RALPH_MCP_SERVER_NAME])
     assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
 
 
@@ -888,6 +889,34 @@ def test_nanocoder_command_for_log_redacts_run_prompt_text(tmp_path: Path) -> No
 
     assert log_line == f"nanocoder --mode yolo --no-plain run {prompt_file}"
     assert "Build the feature." not in log_line
+
+
+@pytest.mark.parametrize(
+    ("transport", "command"),
+    (
+        (AgentTransport.PI, "pi"),
+        (AgentTransport.CURSOR, "agent"),
+        (AgentTransport.GENERIC, "custom-agent"),
+    ),
+)
+def test_command_for_log_redacts_inline_prompt_for_every_remaining_positional_transport(
+    tmp_path: Path,
+    transport: AgentTransport,
+    command: str,
+) -> None:
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text("operator secret", encoding="utf-8")
+    config = AgentConfig(cmd=command, transport=transport)
+
+    log_line = command_for_log(
+        config,
+        [command, "durable secret\n\noperator secret"],
+        str(prompt_file),
+    )
+
+    assert log_line == f"{command} {prompt_file}"
+    assert "durable secret" not in log_line
+    assert "operator secret" not in log_line
 
 
 def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:

@@ -88,11 +88,45 @@ _IO_ALLOWLIST: set[str] = {
     "test_no_hardcoded_phase_names_register_role_handlers_is_generic",
     "test_no_hardcoded_phase_names_runner_artifact_handoff_is_generic",
     "test_no_hardcoded_phase_names_runner_has_no_canonical_phase_names",
+    # Static analysis test that reads agent_event_renderer.py to enforce
+    # the no-literal-hex invariant (the renderer must reference
+    # STATUS_STYLES, not inline hex colours). The read target IS the
+    # subject under test — replacing with mocked content would defeat
+    # the purpose.
+    "test_agent_event_renderer_has_no_literal_hex_outside_theme",
+    # Production-caller AST inspection tests that read production source files
+    # (activity_stream.py, parallel_display.py, activity_model.py) to enforce
+    # that the canonical render_event + typed-normalizer contract is wired
+    # in at every ingestion site. The read target IS the subject under test
+    # -- replacing with mocked content would defeat the regression guard.
+    "test_production_callers_use_typed_event_api",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
     "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
+    # AC-08 silent-skip audit that reads auto_integrate.py source to
+    # enforce that the AC-01 disabled-path and the
+    # phase-transition-pre-check surface both remain byte-identical
+    # (the production source IS the subject under test; a tmp_path
+    # copy would defeat the structural invariant the test pins).
+    "test_auto_integrate_no_silent_skip",
+    # Agent spawn site guard that drives the (sync) invoke reader and
+    # the (async) SubprocessAgentExecutor.run() paths RUNTIME via
+    # recording sync/async fake factories on a real ``ProcessManager``.
+    # The factories use ``FakePopen`` /
+    # ``FakeControllableAsyncProcess`` from ``ralph.testing.fake_process``
+    # so no real OS process is created and no ``subprocess.run`` /
+    # ``Popen`` / ``create_subprocess_exec`` is invoked. Listed here
+    # so the audit does not flag the ``ProcessManager`` /
+    # ``FakePopen`` / ``FakeControllableAsyncProcess`` imports as
+    # test policy violations; the runtime seam itself does no real I/O.
+    "test_agent_spawn_detaches_tty",
+    # Spawn-entry containment test reads the package's script declarations and
+    # guarded production modules. Those files are the subject under test: a
+    # mocked filesystem could not detect a newly added entry point that skips
+    # inherited malloc-debug cleanup.
+    "test_spawn_env_containment",
     # Artifact-submission prompt audits that read the packaged Jinja
     # templates (production source) to enforce that every single-shot
     # template embeds the shared ``_artifact_submission.j2`` macro with
@@ -149,21 +183,29 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # measurement IS the correctness assertion in both cases.
     "test_no_anti_drift_regression",
     "test_no_anti_drift_recovery_invariants",
+    # Default-gate endpoint sweep wall-clock budget pin (per AC-05,
+    # AC-06). The sweep must complete well inside the immutable
+    # 60-second combined test budget; the per-tool and per-suite
+    # 5s/10s budgets are the correctness assertion, so the test
+    # uses ``time.monotonic()`` to measure real elapsed time.
+    # Production code paths still inject FakeClock for any
+    # timeout-driven flow; the wall-clock measurement here is a
+    # single-point budget pin that cannot be expressed with a
+    # fake clock. The ``test_mcp_endpoint_functional_sweep`` file
+    # is the surviving single sweep after the zero-dead-code
+    # consolidation (the legacy
+    # ``tests/integration/test_mcp_endpoint_sweep.py`` was deleted
+    # and its unique wall-clock assertions ported here).
+    "test_mcp_endpoint_functional_sweep",
+    # Realistic-codebase fixture wall-clock budget pin (per AC-02,
+    # AC-06). ``test_indexed_search_completes_under_5s`` measures
+    # the index + grep cycle over a ~50-file synthetic workspace
+    # so a regression that triples the indexed search wall time
+    # cannot slip past the default gate. The wall-clock
+    # measurement IS the assertion; production paths inside the
+    # cycle still use FakeClock for any timeout contract.
+    "test_explore_real_codebase",
 }
-
-# Files that legitimately use step_type='test' / 'tests' / 'check' / 'run'
-# as a literal value (e.g. the test that locks the alias coercion itself
-# in test_plan_artifact.py). The step-type-alias audit rule skips these
-# files so the rule does not flag its own test fixture.
-_STEP_TYPE_AUDIT_ALLOWLIST: set[str] = {
-    "test_plan_artifact",  # contains the step_type coercion regression tests
-}
-
-# Closed set of step_type values that the alias audit rule flags. The
-# values map to "verify" in ralph.mcp.artifacts.plan._plan_step
-# ._STEP_TYPE_ALIASES; the audit rule enforces the structural shape so a
-# future commit that removes the alias coercion would fail the audit.
-_STEP_TYPE_ALIAS_VALUES: frozenset[str] = frozenset({"test", "tests", "check", "run"})
 
 # Path I/O methods that indicate real filesystem access.
 _PATH_IO_METHODS: frozenset[str] = frozenset(
@@ -540,31 +582,6 @@ def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
     )
 
 
-def _extract_step_type_aliases(tree: ast.Module) -> list[tuple[int, str]]:
-    """Walk the AST and collect (lineno, value) tuples for every step_type kwarg
-    or step_type dict-key value in the module.
-
-    Returns a list of (line, value) pairs where value is the raw string. The
-    caller filters for the known alias values {'test', 'tests', 'check', 'run'}
-    so this helper stays a thin AST walker with no domain knowledge.
-    """
-    matches: list[tuple[int, str]] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg == "step_type":
-            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                matches.append((node.lineno, node.value.value))
-        elif isinstance(node, ast.Dict):
-            for key_node, value_node in zip(node.keys, node.values, strict=False):
-                if (
-                    isinstance(key_node, ast.Constant)
-                    and key_node.value == "step_type"
-                    and isinstance(value_node, ast.Constant)
-                    and isinstance(value_node.value, str)
-                ):
-                    matches.append((value_node.lineno, value_node.value))
-    return matches
-
-
 def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0911
     """Audit a single test file for policy violations.
 
@@ -598,10 +615,6 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
     if file_stem in _WALL_CLOCK_ALLOWLIST:
         return []
 
-    # Skip files in the step-type-alias allowlist (the rule's own test fixture).
-    if file_stem in _STEP_TYPE_AUDIT_ALLOWLIST:
-        return []
-
     try:
         tree = ast.parse(source, filename=str(file_path))
     except SyntaxError:
@@ -611,20 +624,7 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
     auditor = TestPolicyAuditor(str(file_path), source)
     auditor.visit(tree)
 
-    # PA-NEW-05 fix: separate top-down AST pass for the step-type-alias rule.
-    alias_violations: list[TestPolicyViolation] = []
-    for lineno, raw_value in _extract_step_type_aliases(tree):
-        if raw_value in _STEP_TYPE_ALIAS_VALUES:
-            alias_violations.append(
-                TestPolicyViolation(
-                    file_path=str(file_path),
-                    line=lineno,
-                    category="step-type-alias",
-                    detail=(f"step_type={raw_value!r} is a known alias; use 'verify' instead."),
-                )
-            )
-
-    return [*auditor.violations, *alias_violations]
+    return auditor.violations
 
 
 def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], int]:

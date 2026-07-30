@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time as _time_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +36,6 @@ from tests.fake_handle import _FakeHandle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.process.manager import ManagedProcess
 
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
@@ -95,7 +94,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -105,7 +104,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     required_artifact=RequiredArtifact(
                         phase="development",
                         artifact_type="development_result",
-                        json_path=".agent/artifacts/development_result.json",
+                        artifact_path=".agent/artifacts/development_result.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -151,7 +150,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -161,7 +160,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     required_artifact=RequiredArtifact(
                         phase="development",
                         artifact_type="development_result",
-                        json_path=".agent/artifacts/development_result.json",
+                        artifact_path=".agent/artifacts/development_result.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -223,7 +222,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
             result = wait_for_descendants_then_recheck(
-                cast("ManagedProcess", handle),
+                handle,
                 CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
@@ -277,12 +276,18 @@ class TestCheckProcessResultWaitsForLiveChildren:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # Simulate artifact appearing between polls 1 and 2
-                return CompletionSignals(False, True, ("development_result",))
+                return CompletionSignals(
+                    False,
+                    True,
+                    ("development_result",),
+                    completion_sentinel_present=True,
+                    artifact_required=True,
+                )
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -333,7 +338,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -388,12 +393,18 @@ class TestCheckProcessResultWaitsForLiveChildren:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # After descendants finish, artifact appears
-                return CompletionSignals(False, True, ("development_result",))
+                return CompletionSignals(
+                    False,
+                    True,
+                    ("development_result",),
+                    completion_sentinel_present=True,
+                    artifact_required=True,
+                )
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -436,7 +447,13 @@ class TestCheckProcessResultWaitsForLiveChildren:
             # First poll (inside wait loop): no completion
             # Second call (final recheck after deadline): completion appears!
             if call_count[0] >= _artifact_appears_on:
-                return CompletionSignals(False, True, ("development_result",))
+                return CompletionSignals(
+                    False,
+                    True,
+                    ("development_result",),
+                    completion_sentinel_present=True,
+                    artifact_required=True,
+                )
             return CompletionSignals(False, False, ())
 
         # t[0]=0.0: deadline = 0.5; t[1]=0.0: loop check True -> poll (call 1, no signals);
@@ -451,7 +468,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
             result = wait_for_descendants_then_recheck(
-                cast("ManagedProcess", handle),
+                handle,
                 CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
@@ -496,7 +513,13 @@ class TestCheckProcessResultWaitsForLiveChildren:
             call_count[0] += 1
             if call_count[0] == 1:
                 return CompletionSignals(False, False, ())
-            return CompletionSignals(False, True, ("development_result",))
+            return CompletionSignals(
+                False,
+                True,
+                ("development_result",),
+                completion_sentinel_present=True,
+                artifact_required=True,
+            )
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
@@ -508,7 +531,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -555,7 +578,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -565,7 +588,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     required_artifact=RequiredArtifact(
                         phase="development",
                         artifact_type="development_result",
-                        json_path=".agent/artifacts/development_result.json",
+                        artifact_path=".agent/artifacts/development_result.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -638,7 +661,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             pytest.raises(OpenCodeResumableExitError),
         ):
             _check_process_result(
-                cast("ManagedProcess", handle),
+                handle,
                 "opencode",
                 [],
                 _CompletionCheckOptions(
@@ -648,7 +671,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     required_artifact=RequiredArtifact(
                         phase="development",
                         artifact_type="development_result",
-                        json_path=".agent/artifacts/development_result.json",
+                        artifact_path=".agent/artifacts/development_result.md",
                         markdown_path=None,
                         normalizer=None,
                     ),
@@ -669,27 +692,42 @@ class TestCheckProcessResultWaitsForLiveChildren:
             f"Expected >2 probe calls proving descendant wait engaged; got {probe.call_count}"
         )
 
-    def test_artifact_present_at_exit_with_live_children_is_terminal(self, tmp_path: Path) -> None:
-        """Current-run receipt at exit time is TERMINAL_COMPLETE even with live children.
+    def test_completed_artifact_at_exit_with_live_children_is_terminal(
+        self, tmp_path: Path
+    ) -> None:
+        """Receipt plus sentinel take precedence over live-child evidence.
 
         Regression for wt-97: an agent that exits rc=0 with children still alive must not
-        be retried when the required artifact is already on disk at exit time.
-        signals.required_artifact_present=True takes priority over live-child evidence.
+        be retried when the required artifact receipt and completion sentinel
+        are already durable at exit time.
 
         The legacy on-disk ``.agent/artifacts/<type>.json``-only fallback
         was removed (analysis how_to_fix item 3): a stale canonical
         artifact from a previous run can no longer satisfy the current
         run's completion gate. The hardened contract requires a
-        current-run receipt at ``.agent/receipts/<run_id>/<type>.json``.
+        current-run receipt at ``.agent/receipts/<run_id>/<type>.json`` plus
+        the run-scoped completion sentinel.
         """
         run_id = "seam-waits-on-disk-run-id"
-        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text('{"summary": "done"}')
+        artifact_path.write_text(
+            "---\n"
+            "type: development_result\n"
+            "status: completed\n"
+            "---\n\n"
+            "## Summary\n\n- [SUM-1] done\n\n"
+            "## Files Changed\n\n- [F-1] src/x.py\n",
+            encoding="utf-8",
+        )
         receipt_dir = tmp_path / ".agent" / "receipts" / run_id
         receipt_dir.mkdir(parents=True, exist_ok=True)
         (receipt_dir / "development_result.json").write_text(
             f'{{"run_id": "{run_id}", "artifact_type": "development_result"}}',
+            encoding="utf-8",
+        )
+        (tmp_path / ".agent" / f"completion_seen_{run_id}.json").write_text(
+            f'{{"run_id": "{run_id}"}}',
             encoding="utf-8",
         )
 
@@ -698,7 +736,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         probe = FakeLivenessProbe(active=True)  # children still running
 
         _check_process_result(
-            cast("ManagedProcess", handle),
+            handle,
             "opencode",
             [],
             _CompletionCheckOptions(
@@ -709,7 +747,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 required_artifact=RequiredArtifact(
                     phase="development",
                     artifact_type="development_result",
-                    json_path=".agent/artifacts/development_result.json",
+                    artifact_path=".agent/artifacts/development_result.md",
                     markdown_path=None,
                     normalizer=None,
                 ),

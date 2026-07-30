@@ -16,7 +16,7 @@ class _BuildCommandOptions:
     mcp_endpoint: str | None = None
     allowed_mcp_tool_names: tuple[str, ...] = ()
     unsafe_mode: bool = False
-    system_prompt_file: str | None = None
+    master_prompt_file: str | None = None
     workspace_path: Path | None = None
     initial_session_id: str | None = None
     settings_json: str | None = None

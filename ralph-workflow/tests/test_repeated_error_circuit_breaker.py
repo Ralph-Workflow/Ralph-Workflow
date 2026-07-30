@@ -5,7 +5,8 @@ timed out`` every ~34s for ~5 hours and nothing aborted it, because each error
 line was treated as ordinary output that reset the idle timer. These tests pin
 the fixed behavior: the watchdog fires ``REPEATED_ERROR_LOOP`` when an agent
 repeats the same error without forward progress, error lines no longer mask the
-idle deadline, and genuine output resets the streak.
+idle deadline, and genuine output resets the CONSECUTIVE streak while a
+sustained error rate still trips the independent window rule.
 
 All timing uses an injected ``FakeClock`` — no real waits.
 """
@@ -62,15 +63,50 @@ def test_consecutive_identical_errors_fire_repeated_error_loop() -> None:
     assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_ERROR_LOOP
 
 
-def test_real_output_between_errors_prevents_repeated_error_fire() -> None:
+def test_real_output_between_errors_prevents_consecutive_repeated_error_fire() -> None:
+    """Interleaved output breaks the CONSECUTIVE streak, so that rule stays quiet.
+
+    The window rule is disabled here so this isolates the consecutive rule.
+    Sustained error RATE despite interleaved output is the window rule's job
+    and is pinned by the companion test below -- with both rules enabled this
+    scenario is a window-rule fire, not a CONTINUE.
+    """
     clock = FakeClock()
-    watchdog = IdleWatchdog(_policy(consecutive=5), clock)
+    watchdog = IdleWatchdog(
+        _policy(consecutive=5, window_count=None, window_seconds=None),
+        clock,
+    )
     for _ in range(10):
         watchdog.record_error_activity(_TIMEOUT_ERROR)
         clock.advance(10.0)
         watchdog.record_activity()  # genuine forward progress resets the streak
         clock.advance(10.0)
         assert _evaluate(watchdog) == WatchdogVerdict.CONTINUE
+
+
+def test_sustained_error_rate_fires_even_when_output_interleaves() -> None:
+    """Interleaved output must NOT grant immunity from the WINDOW rule.
+
+    Regression for the production wedge: a provider outage where the agent
+    emitted a content block between every identical error ran ~2.7h without the
+    breaker ever firing, because forward progress cleared the window deque.
+    That left the window rule strictly dominated by the consecutive rule -- it
+    could never fire on the very loop it exists to catch.
+    """
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        _policy(consecutive=None, window_count=8, window_seconds=600.0),
+        clock,
+    )
+    for _ in range(7):
+        watchdog.record_error_activity(_TIMEOUT_ERROR)
+        watchdog.record_activity()  # ordinary output between each error
+        clock.advance(20.0)
+        assert _evaluate(watchdog) == WatchdogVerdict.CONTINUE
+    watchdog.record_error_activity(_TIMEOUT_ERROR)
+
+    assert _evaluate(watchdog) == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_ERROR_LOOP
 
 
 def test_error_lines_do_not_reset_the_idle_deadline() -> None:

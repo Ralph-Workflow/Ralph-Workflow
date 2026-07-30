@@ -1,0 +1,145 @@
+def _staged_full_reindex(
+    store: ExploreStore,
+    workspace_root: Path,
+    *,
+    options: ReindexOptions,
+    now_fn: Callable[[], float],
+    state: _ReindexState,
+    cancel: Callable[[], bool] | None,
+) -> ReindexResult:
+    """Run ``mode='full'`` in a staging database and atomically swap.
+
+    AC-02/AC-05: cancellation/timeout must preserve the prior
+    committed generation and reader-visible rows. The live
+    store is never partially modified; all work happens in a
+    separate ``ExploreStore`` rooted at
+    ``store.index_dir/.staging-full-{uuid}/``. The main store
+    is replaced at the file level only after the staging
+    reindex returns ``ok``.
+
+    The staging path is generated once per call and is removed
+    in the ``finally`` block regardless of outcome. A cancel
+    that fires during the staging build simply abandons the
+    staging directory; the main store continues to serve the
+    prior generation.
+
+    AC-05: the outer absolute deadline and cancellation token
+    are forwarded into the swap step. The swap is skipped
+    without publishing the staged state when no time remains
+    or the caller has cancelled, even if the staging build
+    itself returned ``ok``. The previously committed
+    generation remains queryable through the swap refusal.
+
+    The function finalizes its own result and returns the
+    ``ReindexResult`` directly; the caller does not call
+    ``_finalize`` again on top of this.
+    """
+    staging_dir = store.index_dir / f".staging-full-{uuid.uuid4().hex}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        staging = ExploreStore(staging_dir)
+        try:
+            # The staging database starts empty, so a
+            # ``changed`` rebuild on it is equivalent to a full
+            # rebuild. The cancel callable and deadline are
+            # forwarded so the staging build can also fail
+            # closed when the caller is no longer interested.
+            # AC-05: the staging build's ``timeout_ms`` is the
+            # remaining budget from the outer call. Reading
+            # ``now_fn()`` gives the elapsed time used by the
+            # outer dispatch; subtracting it from
+            # ``options.timeout_ms`` gives the remaining budget.
+            # A non-positive result is clamped to 1 ms so the
+            # staging build raises ``timed_out`` instead of
+            # looping on a zero budget.
+            elapsed_ms = max(0, int((now_fn() - state.started_at) * 1000))
+            remaining_ms = max(1, options.timeout_ms - elapsed_ms)
+            inner_opts = ReindexOptions(
+                mode="changed",
+                timeout_ms=remaining_ms,
+                path_scope=options.path_scope,
+                clock=options.clock,
+            )
+            inner_result = reindex(
+                staging,
+                workspace_root,
+                options=inner_opts,
+                cancel=cancel,
+            )
+        finally:
+            staging.close()
+        if inner_result.status == "cancelled":
+            return _finalize(store, state, status="cancelled", now_fn=now_fn)
+        if inner_result.status == "timed_out":
+            return _finalize(store, state, status="timed_out", now_fn=now_fn)
+        if inner_result.status != "ok":
+            return _finalize(
+                store,
+                state,
+                status="failed",
+                now_fn=now_fn,
+                error_summary=inner_result.error_summary
+                or f"staged full reindex returned {inner_result.status}",
+            )
+        # Carry the staged counters into the main state so
+        # ``_finalize`` reports truthful parse_count and
+        # changed_paths.
+        state.parse_count += inner_result.parse_count
+        state.changed_paths.extend(inner_result.changed_files)
+        state.failed_paths.extend(inner_result.failed_files)
+        # AC-05: propagate the outer absolute deadline and
+        # cancellation token into the swap work. The
+        # ``_swap_staged_index`` helper checks both signals
+        # before and during the swap so a deadline expiry or
+        # cancel that fires between staging completion and
+        # swap completion refuses the swap without publishing
+        # the staged state. The previously committed
+        # generation remains queryable.
+        if (now_fn() - state.started_at) * 1000 > state.deadline_ms:
+            state.timed_out = True
+            return _finalize(
+                store,
+                state,
+                status="timed_out",
+                now_fn=now_fn,
+                error_summary="swap skipped: outer deadline exceeded",
+            )
+        if cancel is not None and cancel():
+            return _finalize(
+                store,
+                state,
+                status="cancelled",
+                now_fn=now_fn,
+                error_summary="swap skipped: cancellation requested",
+            )
+        try:
+            _swap_staged_index(
+                store,
+                staging_dir,
+                started_at=state.started_at,
+                deadline_ms=state.deadline_ms,
+                now_fn=now_fn,
+                cancel=cancel,
+            )
+        except _ReindexTimeoutError:
+            return _finalize(
+                store,
+                state,
+                status="timed_out",
+                now_fn=now_fn,
+                error_summary="swap timed out before completion",
+            )
+        except _ReindexCancelledError:
+            return _finalize(
+                store,
+                state,
+                status="cancelled",
+                now_fn=now_fn,
+                error_summary="swap cancelled before completion",
+            )
+        return _finalize(store, state, status="ok", now_fn=now_fn)
+    finally:
+        # Always remove the staging directory; it is
+        # disposable and must not be committed.
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)

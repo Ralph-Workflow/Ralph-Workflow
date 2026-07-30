@@ -52,6 +52,11 @@ class _AccessDeniedPsutil(FakePsutil):
         return super().process_from_pid(pid)
 
 
+class _PermissionDeniedPsutil(FakePsutil):
+    def process_from_pid(self, pid: int) -> FakePsutilProcess:
+        raise PermissionError(pid)
+
+
 def test_root_only_force_kill_failure_marks_record_failed() -> None:
     """No-psutil termination failure must not be recorded as KILLED."""
 
@@ -170,6 +175,25 @@ def test_escalate_termination_sync_access_denied_marks_record_failed() -> None:
         sync_process_factory=sync_factory,
         async_process_factory=make_async_process_factory(itertools.count(100)),
         psutil=_AccessDeniedPsutil({1}),
+    )
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+
+    with pytest.raises(ProcessTerminationError):
+        handle.terminate(grace_period_s=0.01)
+
+    assert handle.record.status == ProcessStatus.FAILED
+    assert handle.record.cause == "termination_failed"
+    assert handle.record.failure_message == "Access denied while terminating process"
+    assert pm.list_active() == []
+
+
+def test_process_termination_regression_permission_error_marks_record_failed() -> None:
+    """Regression: macOS psutil PermissionError must fail closed."""
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=None),
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+        psutil=_PermissionDeniedPsutil(),
     )
     handle = pm.spawn([sys.executable, "-c", "pass"])
 

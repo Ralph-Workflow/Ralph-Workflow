@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from _pytest.unraisableexception import gc_collect_iterations_key
 from git import Repo
 from typer.testing import CliRunner
 
@@ -35,10 +36,49 @@ from ralph.runtime import (
     TEST_TIMEOUT_ENV,
     timeout_seconds_from_env,
 )
+from ralph.test_suites import (
+    REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+)
 from ralph.workspace.memory import MemoryWorkspace
 from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
+_REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+
+
+@pytest.fixture(autouse=True)
+def _fake_agy_models_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep default tests independent of the locally installed AGY binary."""
+    from ralph.agents import registry
+
+    monkeypatch.setattr(
+        registry,
+        "_default_agy_models_probe",
+        lambda: "\n".join(registry._AGY_MODELS),
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable pytest's unraisableexception teardown gc passes.
+
+    The unraisableexception plugin runs ``gc_collect_harder(5)`` (five full
+    ``gc.collect`` passes) in every xdist worker at session teardown. On this
+    ~12k-test suite that was measured at 5.7s+ per worker, accounting for
+    ~11.5s of the 48.87s baseline ``make test`` wall-clock. Setting the
+    plugin's stash key to 0 keeps the unraisable hook fully active while
+    skipping only those end-of-session gc passes.
+    """
+    config.stash[gc_collect_iterations_key] = 0
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Select the explicit required auto-integrate files for verification."""
+    for item in items:
+        relative_path = item.path.relative_to(Path.cwd()).as_posix()
+        if relative_path in _REQUIRED_AUTO_INTEGRATE_E2E_PATHS:
+            item.add_marker("required_auto_integrate_e2e")
+
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -61,8 +101,21 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     else:
         timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
 
+    # ``_completed`` is mutated by ``_handle_timeout`` and by the ``finally``
+    # block below to make the per-test SIGALRM contract race-safe. Once the
+    # test body returns, the handler must not raise even if a SIGALRM was
+    # already pending in the kernel queue while we tried to cancel the
+    # ITIMER_REAL timer. Storing the flag in a single-element list keeps the
+    # closure scoped to this test invocation; a plain ``bool`` would capture
+    # by value and could not be mutated from the nested handler.
+    _completed = [False]
+
     def _handle_timeout(signum: int, frame: FrameType | None) -> None:
         del signum, frame
+        # Race-safe: if cleanup already flipped ``_completed`` to ``True``,
+        # the SIGALRM is from a just-cancelled timer and must be swallowed.
+        if _completed[0]:
+            return
         raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
 
     previous_handler = signal.getsignal(signal.SIGALRM)
@@ -71,8 +124,39 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     try:
         yield
     finally:
+        # Block SIGALRM FIRST so a SIGALRM that was already queued in the
+        # kernel cannot fire ``_handle_timeout`` during cleanup. ``sigwait``
+        # semantics on POSIX deliver the pending signal as soon as we
+        # unblock, so we then point the handler at ``SIG_IGN`` to drain it,
+        # and only then restore the previous handler. ``signal.SIG_IGN``
+        # discards the pending signal but does not terminate the worker,
+        # which is what we want for the spurious-timeout race under heavy
+        # pytest-xdist load. ``pthread_sigmask`` is a POSIX-only call; on
+        # Windows the per-test SIGALRM enforcement is delegated to the
+        # test-timeout plugin and the cleanup path here degrades to a
+        # best-effort cancel without the mask, which is the same behaviour
+        # the previous implementation provided.
+        _completed[0] = True
         signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
+        if hasattr(signal, "pthread_sigmask"):
+            # Block SIGALRM so any pending signal cannot fire
+            # ``_handle_timeout`` during cleanup. ``pthread_sigmask`` queues
+            # the pending signal while the mask blocks it.
+            signal.pthread_sigmask(signal.SIG_BLOCK, [signal.SIGALRM])
+            # Point the handler at SIG_IGN BEFORE unblocking so the queued
+            # SIGALRM is discarded at delivery time instead of falling
+            # through to ``previous_handler``. The default SIGALRM action
+            # (``SIG_DFL``) terminates the worker process, so a stray
+            # pending signal must not be allowed to reach it.
+            signal.signal(signal.SIGALRM, signal.SIG_IGN)
+            # Unblock: any pending SIGALRM is delivered to SIG_IGN and
+            # silently discarded.
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, [signal.SIGALRM])
+            # Now safe to restore the real previous handler for any
+            # subsequent SIGALRMs (none expected after timer cancellation).
+            signal.signal(signal.SIGALRM, previous_handler)
+        else:  # pragma: no cover - non-POSIX fallback
+            signal.signal(signal.SIGALRM, previous_handler)
 
 
 @pytest.fixture(autouse=True)
@@ -135,17 +219,27 @@ def _materialized_format_docs() -> Path:
 
     This session-scope fixture writes every bundled format doc into
     ``ralph-workflow/.agent/artifact-formats/`` once per pytest session so the
-    on-disk copy always matches the bundled source. The fixture is side-effect
-    free beyond the local ``.agent/`` directory (which is gitignored), runs in
-    well under one second on the bundled set, and is skipped when the directory
-    is already populated to avoid redundant writes.
+    on-disk copy always matches the bundled source. The fixture always invokes
+    the idempotent materializer so a partially populated or stale generated
+    tree is refreshed while byte-identical files avoid physical rewrites. It is
+    side-effect free beyond the local ``.agent/`` directory (which is
+    gitignored) and runs in well under one second on the bundled set.
     """
     workspace_root = Path(__file__).resolve().parent.parent
-    artifact_dir = workspace_root / ".agent" / "artifact-formats"
-    plan_doc = artifact_dir / "plan.md"
-    if not plan_doc.exists():
-        materialize_all_format_docs(workspace_root)
+    materialize_all_format_docs(workspace_root)
     return workspace_root
+
+
+@pytest.fixture
+def materialized_format_doc_contents(
+    _materialized_format_docs: Path,
+) -> dict[str, str]:
+    """Return the live agent-facing format-doc tree as plain text values."""
+    formats_root = _materialized_format_docs / ".agent" / "artifact-formats"
+    return {
+        str(path.relative_to(_materialized_format_docs)): path.read_text(encoding="utf-8")
+        for path in formats_root.rglob("*.md")
+    }
 
 
 def _configure_repo_identity(repo: object) -> None:

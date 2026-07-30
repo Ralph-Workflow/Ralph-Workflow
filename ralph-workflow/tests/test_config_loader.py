@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,13 +11,18 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from loguru import logger
+
 from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.config.config_error_messages import format_config_validation_error
 from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
+    ConfigTomlError,
     deep_merge,
     load_config,
+    load_toml,
 )
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.timeout_defaults import (
@@ -74,6 +80,288 @@ def _assert_validation_error(action: Callable[[], object]) -> None:
         action()
 
     assert exc_info.type.__name__ == "ValidationError"
+
+
+def test_load_toml_malformed_config_names_file_and_fix(tmp_path: Path) -> None:
+    """A malformed user config must not silently fall back to defaults."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[general\nverbosity = 2\n", encoding="utf-8")
+
+    with pytest.raises(ConfigTomlError) as exc_info:
+        load_toml(config_path)
+
+    message = str(exc_info.value)
+    assert config_path.name in message
+    assert "What failed:" in message
+    assert "Why it matters:" in message
+    assert "Fix:" in message
+
+
+def test_load_config_unknown_field_warns_with_field_and_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A misspelled config field must be visible instead of being silently ignored."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[general]\nverbosuty = 1\n", encoding="utf-8")
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        config = load_config(config_path=config_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert config.general.verbosity == DEFAULT_VERBOSITY
+    warning = "\n".join(records)
+    assert "verbosuty" in warning
+    assert str(config_path) in warning
+
+
+def test_collect_unknown_config_fields_names_nested_typo_with_suggestion() -> None:
+    """``collect_unknown_config_fields`` must name nested-subtable typos AND suggest the canonical name.
+
+    AC-01: typo'd keys in nested subtables like ``general.wrokflow`` or
+    ``general.workflow.checkpont_enabled`` must be surfaced with a
+    ``did you mean`` suggestion. Agent chain names like ``[agent_chains.planning]``
+    are USER-DEFINED and must NOT be warned about.
+    """
+    from pathlib import Path
+
+    from ralph.config.loader import collect_unknown_config_fields
+
+    data = {
+        "general": {
+            "workflow": {"checkpont_enabled": True},  # typo of checkpoint_enabled
+            "wrokflow": {"checkpoint_enabled": True},  # typo of workflow
+        },
+        "agent_chains": {
+            "planning": ["claude"],  # user-defined name; must NOT be warned
+            "custom_chain_name": ["claude"],  # also user-defined; must NOT be warned
+        },
+    }
+    lines = collect_unknown_config_fields(data, Path("ralph-workflow.toml"))
+
+    # Nested typos must be surfaced with the dotted path.
+    assert any("general.workflow.checkpont_enabled" in line for line in lines), (
+        f"Expected nested typo 'general.workflow.checkpont_enabled' in "
+        f"unknown-field findings, got: {lines}"
+    )
+    assert any("general.wrokflow" in line for line in lines), (
+        f"Expected nested typo 'general.wrokflow' in unknown-field findings, got: {lines}"
+    )
+    # Each finding must include a 'did you mean' suggestion pointing at
+    # the canonical field name.
+    for line in lines:
+        if "general.wrokflow" in line:
+            assert "workflow" in line, (
+                f"Expected canonical suggestion 'workflow' in line {line!r} (did-you-mean path)"
+            )
+    # User-defined chain names must NOT be warned about.
+    assert not any("agent_chains.planning" in line for line in lines), (
+        f"User-defined agent chain names must not be warned about; got: {lines}"
+    )
+    assert not any("custom_chain_name" in line for line in lines), (
+        f"User-defined agent chain names must not be warned about; got: {lines}"
+    )
+
+
+def test_collect_unknown_config_fields_warns_on_unknown_agents_subkey() -> None:
+    """A typo INSIDE an agent block must be detected.
+
+    ``[agents.claude].yolo_flg`` is a leaf-typo (real field is ``yolo_flag``);
+    a single-character typo must surface with a suggestion.
+    """
+    from pathlib import Path
+
+    from ralph.config.loader import collect_unknown_config_fields
+
+    data = {
+        "agents": {
+            "claude": {"yolo_flg": "--dangerously-skip-permissions"},
+        },
+    }
+    lines = collect_unknown_config_fields(data, Path("ralph-workflow.toml"))
+    assert any("agents.claude.yolo_flg" in line for line in lines), (
+        f"Expected leaf typo 'agents.claude.yolo_flg' to surface, got: {lines}"
+    )
+    # And the suggestion should be the canonical field name.
+    for line in lines:
+        if "yolo_flg" in line:
+            assert "yolo_flag" in line, (
+                f"Expected canonical suggestion 'yolo_flag' in line {line!r}, got: {line!r}"
+            )
+
+
+def test_collect_unknown_config_fields_clean_when_schema_matches() -> None:
+    """A clean config yields zero unknown-field findings."""
+    from pathlib import Path
+
+    from ralph.config.loader import collect_unknown_config_fields
+
+    lines = collect_unknown_config_fields({}, Path("ralph-workflow.toml"))
+    assert lines == [], f"Empty config should produce zero unknown-field findings, got: {lines}"
+
+
+def test_load_config_warns_on_unknown_field_in_propagated_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A typo in an inherited (propagated) ancestor config must surface too.
+
+    AC-01 follow-up: ``load_config`` merges every
+    ``workspace_scope.propagated_config_paths`` file into the effective
+    configuration but must call ``warn_unknown_fields`` for each
+    inherited source path, not only for global + local. An unknown key
+    in an effective ancestor config must therefore be visible in the
+    loader warning, not silently ignored.
+    """
+    from ralph.workspace.scope import WorkspaceScope
+
+    propagated_path = tmp_path / "parent" / ".agent" / "ralph-workflow.toml"
+    propagated_path.parent.mkdir(parents=True)
+    propagated_path.write_text(
+        "[general]\nwrokflow = { checkpoint_enabled = true }\n",
+        encoding="utf-8",
+    )
+    local_path = tmp_path / "child" / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        load_config(
+            workspace_scope=WorkspaceScope(
+                root=tmp_path / "child",
+                local_config_path=local_path,
+                propagated_config_paths=(propagated_path,),
+            )
+        )
+    finally:
+        logger.remove(sink_id)
+
+    warning = "\n".join(records)
+    assert "general.wrokflow" in warning, (
+        f"Expected the propagated-ancestor typo 'general.wrokflow' in the "
+        f"loader warning, got: {warning!r}"
+    )
+    assert str(propagated_path) in warning, (
+        f"Expected the propagated-ancestor path to be named in the loader warning, got: {warning!r}"
+    )
+    # The fix-it suggestion must include the canonical field name.
+    assert "workflow" in warning, (
+        f"Expected canonical 'workflow' suggestion in propagated-ancestor warning, got: {warning!r}"
+    )
+
+
+def test_invalid_value_message_names_rejected_and_allowed() -> None:
+    """A Pydantic ValidationError must surface the rejected value and allowed enum set.
+
+    AC-02: a config validation error must name the rejected value (so the
+    operator can paste it back from the message) AND the allowed values
+    (so they do not need to consult the Pydantic docs).
+    """
+    from pydantic import ValidationError
+
+    from ralph.config.models import UnifiedConfig
+
+    # json_parser is a closed enum; pass an out-of-set value.
+    try:
+        UnifiedConfig.model_validate({"agents": {"bad": {"cmd": "x", "json_parser": "NOTREAL"}}})
+    except ValidationError as exc:
+        message = format_config_validation_error(exc, Path("ralph-workflow.toml"))
+        # The message must name the rejected value.
+        assert "NOTREAL" in message, (
+            f"Expected the rejected value 'NOTREAL' to be named in the "
+            f"config-error message, got: {message!r}"
+        )
+        # The message must list the allowed enum values.
+        assert "'claude'" in message and "'codex'" in message, (
+            f"Expected the allowed json_parser enum values to be listed in "
+            f"the config-error message, got: {message!r}"
+        )
+        # The message must keep the what/why/fix envelope.
+        for marker in ("What failed:", "Why it matters:", "Fix:"):
+            assert marker in message, (
+                f"Expected {marker!r} in the config-error envelope, got: {message!r}"
+            )
+
+
+def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Missing required agent fields must show a file, field, and concrete fix."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[agents.broken]\n", encoding="utf-8")
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR", format="{message}")
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(config_path=config_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert exc_info.value.code == 1
+    message = "\n".join(records)
+    assert "What failed:" in message
+    assert "Why it matters:" in message
+    assert "Fix:" in message
+    assert str(config_path) in message
+    assert "agents.broken.cmd" in message
+    # The per-field line lists the rejected value and the docstring anchor
+    # for what to set, so the operator gets both the why and a concrete fix.
+    assert "Field required" in message
+    assert "--check-config" in message
+    assert "For further information" not in message
+
+
+def test_load_config_validation_error_names_global_file_when_only_global_has_bad_value(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-7: bad value lives ONLY in the user-global file -> message names that file.
+
+    Before the fix ``load_config`` always named the project-local
+    ``.agent/ralph-workflow.toml`` in the envelope, which misdirected
+    operators at a problem that lived in their ``~/.config/`` file.
+    After the fix the failing field's layer is attributed, and when
+    that layer is the user-global file the message names the global
+    path -- not the project-local one.
+    """
+    # The autouse conftest sets ``XDG_CONFIG_HOME`` to an isolated tmp
+    # path; writing the global config there mirrors the real
+    # ``~/.config/ralph-workflow.toml`` shape without leaking outside the
+    # sandbox.
+    xdg_root = Path(os.environ["XDG_CONFIG_HOME"])
+    global_path = xdg_root / "ralph-workflow.toml"
+    global_path.parent.mkdir(parents=True, exist_ok=True)
+    global_path.write_text(
+        '[general]\nverbosity = "not_an_int"\n',
+        encoding="utf-8",
+    )
+    # Project-local is empty (so the bad value comes ONLY from global).
+    project_local = tmp_path / "agent-ralph-workflow.toml"
+    project_local.write_text("", encoding="utf-8")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR", format="{message}")
+    try:
+        with pytest.raises(SystemExit):
+            load_config(config_path=project_local)
+    finally:
+        logger.remove(sink_id)
+
+    message = "\n".join(records)
+    assert str(global_path) in message, (
+        f"Validation envelope MUST name the user-global file when the bad "
+        f"value lives only there; got: {message!r}"
+    )
+    # The envelope must NOT misdirect the operator at the empty
+    # project-local file when the bad value did not come from it.
+    assert "agent-ralph-workflow.toml" not in message, (
+        f"Validation envelope MUST NOT name an empty project-local file "
+        f"as the offender when the bad value came from the user-global "
+        f"file; got: {message!r}"
+    )
 
 
 def test_deep_merge_simple() -> None:
@@ -254,6 +542,107 @@ def test_general_config_does_not_expose_removed_force_universal_prompt() -> None
         "strict_validation",
     ):
         assert field_name not in GeneralConfig.model_fields
+
+
+def test_general_config_provider_fallback_is_labeled_reserved() -> None:
+    """``general.provider_fallback`` is reserved dead knob; carry an explicit maintainer comment.
+
+    The field is NOT consumed by any runtime code; agent fallback is provided
+    exclusively by [agent_chains] in ralph-workflow.toml. We keep the field
+    only so a legacy user-global config carrying ``provider_fallback = {...}``
+    does not trip the unknown-field detector. The accompanying Python
+    comment on the field is the "make it real, remove it, or label it"
+    label this knob needed. The plan Step 6 constraint requires the label
+    to remain a maintainer comment and forbids changing the Pydantic
+    model (no Field(description=...) and no type/default change).
+    """
+    import inspect
+
+    assert "provider_fallback" in GeneralConfig.model_fields
+    field = GeneralConfig.model_fields["provider_fallback"]
+    # Constraint from the accepted plan: no Field(description=...) exposing
+    # the dead knob through Pydantic JSON schema. The label lives in the
+    # Python comment, not the Pydantic field metadata.
+    assert field.description in (None, ""), (
+        "provider_fallback must not carry a Field(description=...) that would "
+        "expose the dead knob through Pydantic JSON schema; the label belongs "
+        "in a maintainer comment. Got description: "
+        f"{field.description!r}"
+    )
+    # Default value must be an empty dict (via default_factory=dict), so
+    # legacy configs that already carry the field still validate against
+    # the bundled defaults.
+    default_factory = field.default_factory
+    assert default_factory is dict, (
+        "provider_fallback must default to an empty dict via default_factory=dict; "
+        f"got default_factory={default_factory!r}"
+    )
+    # The label must be in a maintainer comment on the field declaration.
+    source = inspect.getsource(GeneralConfig)
+    source_lines = source.splitlines()
+    field_idx = next(i for i, line in enumerate(source_lines) if "provider_fallback:" in line)
+    provider_fallback_line = source_lines[field_idx].strip()
+    assert (
+        provider_fallback_line
+        == "provider_fallback: dict[str, list[str]] = Field(default_factory=dict)"
+    ), (
+        "provider_fallback must keep its original Field(default_factory=dict) shape; "
+        "the plan explicitly forbids adding Field(description=...) and changing the "
+        f"type/default. Got: {provider_fallback_line!r}"
+    )
+    comment_block = "\n".join(
+        line.lstrip()
+        for line in source_lines[max(0, field_idx - 20) : field_idx]
+        if line.strip().startswith("#")
+    )
+    assert "RESERVED" in comment_block.upper(), (
+        "provider_fallback must carry a 'RESERVED' maintainer comment to "
+        "satisfy principle 7 (label the dead knob). Got comment block: "
+        f"{comment_block!r}"
+    )
+    assert "provider_fallback is NOT consumed" in comment_block, (
+        "provider_fallback comment must explain that the field is not "
+        "consumed by any runtime code. Got: "
+        f"{comment_block!r}"
+    )
+
+
+def test_provider_fallback_absent_from_bundled_tomls(tmp_path: Path) -> None:
+    """``provider_fallback`` MUST NOT appear in any bundled ``ralph/policy/defaults/*.toml``.
+
+    The bundled defaults are what ``ralph --init`` materialises into user-global
+    and project-local config. A stray ``provider_fallback = ...`` line there
+    would re-introduce the dead knob as a "documented-but-does-nothing"
+    documented option and violate principle 7.
+
+    The schema keeps the field for backward compatibility with legacy
+    user-global configs that already carry it; the bundled defaults must not.
+
+    The bundled TOML files are staged into ``tmp_path`` before reading so
+    the test honors the test-policy audit's real-I/O rule.
+    """
+    import re
+    import shutil
+    import tomllib
+
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    for toml_path in sorted(defaults_dir.glob("*.toml")):
+        staged = tmp_path / toml_path.name
+        shutil.copy2(toml_path, staged)
+        content = staged.read_text(encoding="utf-8")
+        # A literal ``provider_fallback = ...`` or ``provider_fallback = {...}``
+        # is the only shape that would actually populate the field. Whitespace
+        # and quote styles vary; a tolerant regex matches all of them.
+        if re.search(r"^\s*provider_fallback\s*=", content, re.MULTILINE):
+            raise AssertionError(
+                f"{toml_path} declares `provider_fallback`, which is a "
+                "reserved dead knob. Agent fallback is provided by "
+                "[agent_chains]; do not re-introduce the dead knob as a "
+                "documented-but-does-nothing option."
+            )
+        # The bundled file SHOULD still parse as TOML even when the field is
+        # absent. A parse failure here would mask the regression in CI.
+        tomllib.loads(content)
 
 
 def test_verbosity_enum() -> None:

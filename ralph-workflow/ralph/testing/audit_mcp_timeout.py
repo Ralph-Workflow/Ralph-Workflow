@@ -21,6 +21,9 @@ Flagged (a contract violation that fails ``make verify``):
     IS the timeout, so ``.wait(5)`` and ``.wait(timeout=5)`` are both fine).
     Both ``.wait()`` (no arg) and explicit ``.wait(None)`` / ``.wait(timeout=None)``
     are flagged.
+  - ``<future>.result(...)`` without a bounded ``timeout=`` when ``future``
+    was bound by ``.submit(...)`` in the same function scope. This deliberately
+    excludes other ``.result()`` receivers such as ``asyncio.Task``.
   - network calls (``httpx.*`` / ``requests.*`` request methods + clients,
     ``urllib.request.urlopen``, ``socket.create_connection``) without
     ``timeout=`` (also resolved through import aliases). An explicit
@@ -115,9 +118,8 @@ def _is_none_expr(node: ast.expr) -> bool:
     bounded" and is out of scope (dataflow tracking would be required to prove
     the variable resolves to ``None``).
     """
-    return (
-        (isinstance(node, ast.Constant) and node.value is None)
-        or (isinstance(node, ast.Name) and node.id == "None")
+    return (isinstance(node, ast.Constant) and node.value is None) or (
+        isinstance(node, ast.Name) and node.id == "None"
     )
 
 
@@ -131,9 +133,7 @@ def _has_bounded_timeout_keyword(node: ast.Call) -> bool:
     ``None`` literals — a variable that resolves to ``None`` at runtime is out
     of scope and would require dataflow tracking.
     """
-    return any(
-        kw.arg == "timeout" and not _is_none_expr(kw.value) for kw in node.keywords
-    )
+    return any(kw.arg == "timeout" and not _is_none_expr(kw.value) for kw in node.keywords)
 
 
 def _first_positional_is_bounded_timeout(node: ast.Call) -> bool:
@@ -215,6 +215,7 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         self.violations: list[McpTimeoutViolation] = []
         self._module_aliases = module_aliases or {}
         self._from_imports = from_imports or {}
+        self._function_scopes: list[set[str]] = []
 
     def _canonical_name(self, name: str | None) -> str | None:
         """Resolve a dotted call name through the module's import aliases so
@@ -246,6 +247,31 @@ class McpTimeoutAuditor(ast.NodeVisitor):
             )
         )
 
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self._function_scopes.append(set())
+        try:
+            self.generic_visit(node)
+        finally:
+            self._function_scopes.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if (
+            self._function_scopes
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "submit"
+        ):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self._function_scopes[-1].add(target.id)
+        self.generic_visit(node)
+
     def visit_For(self, node: ast.For) -> None:
         # A ``for line in <proc>.stdout:`` (or .stderr) is a blocking, unbounded
         # line read over a live pipe — it cannot be interrupted by a timeout and
@@ -272,12 +298,19 @@ class McpTimeoutAuditor(ast.NodeVisitor):
                 # ``wait()``'s first positional IS the timeout, so we accept
                 # either a non-None first positional OR a non-None ``timeout=``
                 # keyword. Both ``.wait()`` and ``.wait(None)`` are flagged.
-                bounded = (
-                    _first_positional_is_bounded_timeout(node)
-                    or _has_bounded_timeout_keyword(node)
-                )
+                bounded = _first_positional_is_bounded_timeout(
+                    node
+                ) or _has_bounded_timeout_keyword(node)
                 if not bounded:
                     self._add(node, "wait", ".wait() without a bounded timeout")
+            elif (
+                attr == "result"
+                and isinstance(node.func.value, ast.Name)
+                and self._function_scopes
+                and node.func.value.id in self._function_scopes[-1]
+                and not _has_bounded_timeout_keyword(node)
+            ):
+                self._add(node, "future_result", ".result() on submit-bound Future without bounded timeout=")
 
         name = self._canonical_name(_dotted_name(node))
         if name in _ALWAYS_UNBOUNDED:
@@ -329,10 +362,11 @@ def _default_roots() -> list[Path]:
     into synchronously, including ``ProcessManager`` and the rest of the
     tree), ``ralph/executor`` (the sync + async process runners
     ``run_process`` / ``run_process_async``), ``ralph/agents`` (the
-    subprocess agent executor), and ``ralph/pro_support`` (the bounded
-    Pro heartbeat client that performs network I/O). An unbounded call
-    in any of these can hang the agent just as badly, so all are held
-    to the same bounded-subprocess contract.
+    subprocess agent executor), ``ralph/pro_support`` (the bounded Pro
+    heartbeat client), and the API, update-check, and contrib packages.
+    ``ralph/recovery`` is deliberately excluded until event waits can be
+    distinguished from subprocess waits. An unbounded call in any covered
+    root can hang the agent, so all are held to the same contract.
     """
     package_root = Path(__file__).parent.parent
     return [
@@ -342,6 +376,9 @@ def _default_roots() -> list[Path]:
         package_root / "executor",
         package_root / "agents",
         package_root / "pro_support",
+        package_root / "api",
+        package_root / "update_check",
+        package_root / "contrib",
     ]
 
 

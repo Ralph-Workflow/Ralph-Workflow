@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, cast
 
@@ -42,7 +43,9 @@ FULL_READ_DEFAULT_MAX_BYTES = 5_000_000
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    return cast("object | None", getattr(obj, attribute_name, default))
+    return cast(
+        "object | None", getattr(obj, attribute_name, default)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def required_string_param(params: dict[str, object], name: str) -> str:
@@ -53,8 +56,14 @@ def required_string_param(params: dict[str, object], name: str) -> str:
     return value
 
 
-def _tool_json(data: dict[str, object]) -> str:
+def _tool_json(data: Mapping[str, object]) -> str:
     """Serialize a result dict to a JSON string for ToolResult content."""
+    payload: dict[str, object] = dict(data)
+    return json.dumps(payload)
+
+
+def _tool_json_object(data: object) -> str:
+    """Serialize any JSON-compatible object to a JSON string."""
     return json.dumps(data)
 
 

@@ -304,9 +304,7 @@ class TimeoutPolicy:
     # many seconds while WAITING_ON_CHILD deferral is active. The 30s
     # default matches the existing PROGRESS cadence so the new event does
     # not introduce additional churn. Must be > 0.
-    watchdog_subagent_progress_interval_seconds: float = (
-        WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS
-    )
+    watchdog_subagent_progress_interval_seconds: float = WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS
 
     # Stuck-job sub-ceiling. When set, the watchdog fires
     # ``CHILDREN_PERSIST_TOO_LONG`` when the cumulative ``WAITING_ON_CHILD``
@@ -591,10 +589,7 @@ class TimeoutPolicy:
         # outer cumulative ceilings, so the relevant upper bound is
         # the outer ceiling itself.
         if self.no_progress_quiet_strictly_stuck_seconds > self.max_waiting_on_child_seconds:
-            msg = (
-                "no_progress_quiet_strictly_stuck_seconds must be <="
-                " max_waiting_on_child_seconds"
-            )
+            msg = "no_progress_quiet_strictly_stuck_seconds must be <= max_waiting_on_child_seconds"
             raise ValueError(msg)
 
     def _validate_no_progress_quiet_heartbeat_ceiling_seconds(self) -> None:
@@ -613,8 +608,7 @@ class TimeoutPolicy:
         # for heartbeat-only subagents) would be silently defeated.
         if (
             self.no_progress_quiet_seconds is not None
-            and self.no_progress_quiet_heartbeat_ceiling_seconds
-            > self.no_progress_quiet_seconds
+            and self.no_progress_quiet_heartbeat_ceiling_seconds > self.no_progress_quiet_seconds
         ):
             msg = (
                 "no_progress_quiet_heartbeat_ceiling_seconds must be <="
@@ -647,8 +641,5 @@ class TimeoutPolicy:
             msg = "stuck_job_sub_ceiling_seconds must be positive when set"
             raise ValueError(msg)
         if self.stuck_job_sub_ceiling_seconds > self.max_waiting_on_child_seconds:
-            msg = (
-                "stuck_job_sub_ceiling_seconds must be <="
-                " max_waiting_on_child_seconds"
-            )
+            msg = "stuck_job_sub_ceiling_seconds must be <= max_waiting_on_child_seconds"
             raise ValueError(msg)

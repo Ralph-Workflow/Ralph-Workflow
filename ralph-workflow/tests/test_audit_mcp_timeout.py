@@ -185,6 +185,42 @@ def test_socket_socket_is_not_flagged(tmp_path: Path) -> None:
     assert not _audit(tmp_path, "import socket\nsocket.socket(socket.AF_INET)\n")
 
 
+# --- Future.result() on submit-bound futures --------------------------------
+
+
+def test_submit_future_result_without_timeout_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "def run(ex, cb):\n    f = ex.submit(cb)\n    f.result()\n")
+    assert len(v) == 1
+    assert v[0].category == "future_result"
+
+
+def test_submit_future_result_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(
+        tmp_path,
+        "def run(ex, cb):\n    f = ex.submit(cb)\n    f.result(timeout=None)\n",
+    )
+    assert len(v) == 1
+    assert v[0].category == "future_result"
+
+
+def test_submit_future_result_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(
+        tmp_path,
+        "def run(ex, cb):\n    f = ex.submit(cb)\n    f.result(timeout=5.0)\n",
+    )
+
+
+def test_result_on_non_submit_name_is_not_flagged(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "def run(value):\n    return value.result()\n")
+
+
+def test_submit_future_result_marker_suppresses_violation(tmp_path: Path) -> None:
+    assert not _audit(
+        tmp_path,
+        "def run(ex, cb):\n    f = ex.submit(cb)\n    f.result()  # mcp-timeout-ok: bounded by the outer request deadline\n",
+    )
+
+
 # --- inline allowlist marker ------------------------------------------------
 
 
@@ -348,6 +384,12 @@ def test_default_roots_includes_pro_support() -> None:
     assert any(str(r).endswith("ralph/pro_support") for r in roots), (
         f"_default_roots() must include ralph/pro_support; got {roots}"
     )
+
+
+def test_default_roots_cover_api_update_check_and_contrib() -> None:
+    """API-facing packages remain under the bounded-I/O timeout contract."""
+    root_names = {root.name for root in _default_roots()}
+    assert {"api", "update_check", "contrib"} <= root_names
 
 
 def test_default_roots_cover_executor_agents_process() -> None:

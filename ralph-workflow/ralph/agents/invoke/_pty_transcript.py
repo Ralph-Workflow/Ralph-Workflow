@@ -21,7 +21,8 @@ def _path_name(path: Path) -> str:
 
 
 def _project_transcript_root(project_path: Path) -> Path:
-    return Path.home() / ".claude" / "projects" / str(project_path.resolve()).replace("/", "-")
+    project_key = str(project_path.resolve()).replace("/", "-").replace(" ", "-")
+    return Path.home() / ".claude" / "projects" / project_key
 
 
 def _path_mtime(path: Path) -> float:
@@ -75,21 +76,20 @@ def transcript_lines_from_event(
     raw_line: str,
     parser: ClaudeInteractiveTranscriptParser | None = None,
 ) -> list[str]:
-    """Convert one Claude transcript event into semantic PTY lines.
+    """Convert one Claude transcript event into lossless activity lines.
 
-    Route transcript events through the same interactive parser used elsewhere so
-    the PTY bridge stays aligned with Claude event semantics instead of drifting.
+    Route transcript events through the same interactive parser used elsewhere to
+    decide whether the envelope carries activity. Structured activity keeps its
+    original JSON envelope so tool IDs, names, inputs, and result correlation
+    survive the PTY bridge. A session-only event retains the compact legacy line.
     """
 
     event_parser = parser or ClaudeInteractiveTranscriptParser()
-    lines: list[str] = []
-    for event in event_parser.feed(raw_line):
-        if event.kind == "session":
-            text = event.text.strip()
-            if text:
-                lines.append(f"Session ID: {text}\n")
-            continue
+    events = event_parser.feed(raw_line)
+    if any(event.kind != "session" for event in events):
+        return [raw_line if raw_line.endswith("\n") else f"{raw_line}\n"]
+    for event in events:
         text = event.text.strip()
-        if text:
-            lines.append(f"{text}\n")
-    return lines
+        if event.kind == "session" and text:
+            return [f"Session ID: {text}\n"]
+    return []

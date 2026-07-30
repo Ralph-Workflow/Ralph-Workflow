@@ -44,8 +44,17 @@ def test_force_width_overrides_console_width() -> None:
 
 
 def test_columns_env_overrides_console_width() -> None:
-    console = Console(width=120, force_terminal=True)
-    ctx = make_display_context(console=console, env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
+    """Env ``COLUMNS`` overrides the default console width when Ralph built the console.
+
+    When the caller does NOT pass an explicit ``console=`` argument,
+    ``injected_console`` is False and ``COLUMNS`` wins over the
+    console's default width. When the caller DOES pass an explicit
+    ``console=`` argument, the console's own width is AUTHORITATIVE
+    (see ``_compute_width_uncached`` -- ``test_force_width_overrides_console_width``
+    pins the explicit-console case); mixing the two would silently
+    widen a 40-column test fixture under a host ``COLUMNS=200``.
+    """
+    ctx = make_display_context(env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
     assert ctx.width == _NARROW_TEST_WIDTH
 
 
@@ -117,3 +126,57 @@ def test_console_passed_in_is_used() -> None:
 def test_display_context_exported_from_display_package() -> None:
     assert DisplayContextExport is DisplayContext
     assert make_display_context_export is make_display_context
+
+
+# --- wt-028-display S-5 / AC-04: wide-terminal measure cap. ----------------
+# The measure cap keeps prose and log body text at a comfortable
+# column count on very wide terminals (e.g. 250 cols) so the
+# operator's eye does not have to track a 250-character line. Rules,
+# tables, and aligned columns continue to use the full ``width``;
+# the cap only applies to prose-shaped content.
+
+
+def test_body_measure_caps_at_measure_cap_on_wide_terminal() -> None:
+    """S-5: 250-column console → body measure is the 100-column cap, not 250."""
+    from ralph.display._mode_adaptive_limits import BODY_MEASURE_CAP
+
+    ctx = make_display_context(console=Console(width=250, force_terminal=True), env={})
+    assert ctx.width == 250
+    assert ctx.body_measure_cap == BODY_MEASURE_CAP
+    assert ctx.body_measure() == BODY_MEASURE_CAP, (
+        f"body_measure() on 250-col console must cap at {BODY_MEASURE_CAP}, "
+        f"got {ctx.body_measure()}"
+    )
+
+
+def test_body_measure_returns_full_width_when_narrower_than_cap() -> None:
+    """S-5: 80-column console → body measure is the full 80 (cap is a no-op)."""
+    ctx = make_display_context(console=Console(width=80, force_terminal=True), env={})
+    assert ctx.width == 80
+    assert ctx.body_measure() == 80
+
+
+def test_body_measure_handles_very_wide_terminal() -> None:
+    """S-5: 500-column console → body measure still capped (does not grow)."""
+    from ralph.display._mode_adaptive_limits import BODY_MEASURE_CAP
+
+    ctx = make_display_context(console=Console(width=500, force_terminal=True), env={})
+    assert ctx.body_measure() == BODY_MEASURE_CAP
+
+
+def test_body_measure_floor_at_40_columns() -> None:
+    """S-5: 30-column console → body measure floors at 40 (token wrap contract)."""
+    ctx = make_display_context(console=Console(width=30, force_terminal=True), env={})
+    assert ctx.body_measure() == 40, (
+        f"body_measure() must floor at 40 columns, got {ctx.body_measure()}"
+    )
+
+
+def test_body_measure_survives_refreshed() -> None:
+    """S-5: ``refreshed()`` preserves the cap on the new context."""
+    from ralph.display._mode_adaptive_limits import BODY_MEASURE_CAP
+
+    ctx = make_display_context(console=Console(width=250, force_terminal=True), env={})
+    refreshed = ctx.refreshed()
+    assert refreshed.body_measure_cap == ctx.body_measure_cap == BODY_MEASURE_CAP
+    assert refreshed.body_measure() == BODY_MEASURE_CAP

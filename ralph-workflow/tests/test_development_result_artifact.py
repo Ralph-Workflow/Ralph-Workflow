@@ -92,13 +92,44 @@ def test_normalize_development_result_accepts_completed_payload() -> None:
     assert normalized["status"] == "completed"
 
 
-def test_normalize_development_result_rejects_partial_without_continuation() -> None:
-    with pytest.raises(DevelopmentResultValidationError, match="continuation"):
+def test_normalize_development_result_accepts_partial_without_continuation() -> None:
+    normalized = normalize_development_result_content(
+        {
+            "status": "partial",
+            "summary": "Half complete.",
+            "files_changed": "- ralph/mcp/tool_bridge.py",
+            "next_steps": "Finish the remaining test updates.",
+        }
+    )
+
+    assert normalized["status"] == "partial"
+    assert "continuation" not in normalized
+
+
+def test_normalize_development_result_accepts_bare_partial_status() -> None:
+    normalized = normalize_development_result_content({"status": "partial"})
+
+    assert normalized == {
+        "status": "partial",
+        "summary": "",
+        "files_changed": "",
+        "plan_items_proven": [],
+        "analysis_items_addressed": [],
+    }
+
+
+def test_normalize_development_result_rejects_completed_without_summary() -> None:
+    with pytest.raises(DevelopmentResultValidationError, match="summary"):
         normalize_development_result_content(
-            {
-                "status": "partial",
-                "summary": "Half complete.",
-                "files_changed": "- ralph/mcp/tool_bridge.py",
-                "next_steps": "Finish the remaining test updates.",
-            }
+            {"status": "completed", "files_changed": "- ralph/mcp/tool_bridge.py"}
         )
+
+
+def test_normalize_development_result_rejects_completed_without_files_changed() -> None:
+    with pytest.raises(DevelopmentResultValidationError, match="files_changed"):
+        normalize_development_result_content({"status": "completed", "summary": "Done."})
+
+
+def test_normalize_development_result_still_rejects_unknown_status() -> None:
+    with pytest.raises(DevelopmentResultValidationError, match="completed"):
+        normalize_development_result_content({"status": "done", "summary": "Done."})

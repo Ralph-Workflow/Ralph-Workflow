@@ -88,7 +88,9 @@ def _normalize_fallover_history_for_cap(
     records = tuple(
         FalloverRecord.model_validate(item)
         if isinstance(item, dict)
-        else cast("FalloverRecord", item)
+        else cast(
+            "FalloverRecord", item
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         for item in history
     )
     cap = _resolved_recovery_cycle_cap(recovery_cycle_cap)
@@ -145,6 +147,7 @@ class PipelineState(_FrozenPipelineStateModel):
     policy_entry_phase: PipelinePhase = _UNSET_PHASE
     policy_format_version: int | None = None
     current_drain: str | None = None
+    post_commit_phase_override: PipelinePhase | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)
@@ -236,8 +239,12 @@ class PipelineState(_FrozenPipelineStateModel):
                 and _counter not in outer_progress_data
                 and _counter in budget_caps_data
             ):
-                _cap = int(cast("int", budget_caps_data[_counter]))
-                _rem = int(cast("int", _scalar_br))
+                _cap = int(
+                    cast("int", budget_caps_data[_counter])
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                _rem = int(
+                    cast("int", _scalar_br)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 outer_progress_data[_counter] = max(0, _cap - _rem)
 
         # Migrate legacy budget_remaining dict into outer_progress via progress = cap - remaining
@@ -246,8 +253,12 @@ class PipelineState(_FrozenPipelineStateModel):
             legacy_br = cast("dict[str, object]", _raw_br)
             for counter, remaining_val in legacy_br.items():
                 if counter not in outer_progress_data and counter in budget_caps_data:
-                    cap = int(cast("int", budget_caps_data[counter]))
-                    remaining = int(cast("int", remaining_val))
+                    cap = int(
+                        cast("int", budget_caps_data[counter])
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    remaining = int(
+                        cast("int", remaining_val)
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     outer_progress_data[counter] = max(0, cap - remaining)
 
         d["budget_caps"] = budget_caps_data
@@ -305,7 +316,9 @@ class PipelineState(_FrozenPipelineStateModel):
             return {
                 str(key): AgentChainState.model_validate(value)
                 if isinstance(value, dict)
-                else cast("AgentChainState", value)
+                else cast(
+                    "AgentChainState", value
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 for key, value in v.items()
             }
         raise TypeError(f"Expected dict for phase_chains, got {type(v).__name__!r}")

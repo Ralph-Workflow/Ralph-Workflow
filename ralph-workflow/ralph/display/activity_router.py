@@ -34,6 +34,7 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
         ClaudeInteractiveParser,
         ClaudeParser,
         CodexParser,
+        CursorParser,
         GeminiParser,
         GenericParser,
         NanocoderParser,
@@ -44,15 +45,20 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     return {
         ActivityProvider.AGY: AgyParser,
         ActivityProvider.CLAUDE: ClaudeParser,
-        ActivityProvider.CLAUDE_INTERACTIVE: cast(
-            "type[AgentParser]", ClaudeInteractiveParser
-        ),
+        ActivityProvider.CLAUDE_INTERACTIVE: cast("type[AgentParser]", ClaudeInteractiveParser),
         ActivityProvider.OPENCODE: OpenCodeParser,
         ActivityProvider.CODEX: CodexParser,
+        ActivityProvider.CURSOR: CursorParser,
         ActivityProvider.GEMINI: GeminiParser,
-        ActivityProvider.NANOCODER: cast("type[AgentParser]", NanocoderParser),
-        ActivityProvider.PI: cast("type[AgentParser]", PiParser),
-        ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
+        ActivityProvider.NANOCODER: cast(
+            "type[AgentParser]", NanocoderParser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ActivityProvider.PI: cast(
+            "type[AgentParser]", PiParser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        ActivityProvider.GENERIC: cast(
+            "type[AgentParser]", GenericParser
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     }
 
 
@@ -63,7 +69,9 @@ def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
     if parser_cls is None:
         from ralph.agents.parsers import GenericParser
 
-        parser_cls = cast("type[AgentParser]", GenericParser)
+        parser_cls = cast(
+            "type[AgentParser]", GenericParser
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return parser_cls()
 
 
@@ -86,6 +94,7 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
         ("claude", ActivityProvider.CLAUDE),
         ("opencode", ActivityProvider.OPENCODE),
         ("nanocoder", ActivityProvider.NANOCODER),
+        ("cursor", ActivityProvider.CURSOR),
         ("codex", ActivityProvider.CODEX),
         ("aider", ActivityProvider.CODEX),
         ("gemini", ActivityProvider.GEMINI),
@@ -111,6 +120,22 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
         "status": ActivityEventKind.STATUS,
         "lifecycle": ActivityEventKind.LIFECYCLE,
         "subagent_progress": ActivityEventKind.SUBAGENT_PROGRESS,
+        # Transport lifecycle / retry-ladder types. Without these
+        # entries they fall through to ``UNKNOWN``, whose renderer
+        # (``agent_event_renderer._render_unknown_event``) paints a
+        # ``WARN`` banner -- and because these lines carry little or no
+        # body, the operator sees a wall of bodiless
+        # "WARN <agent>" lines that hides any real error alongside them.
+        # ``UNKNOWN`` stays reserved for types nobody has classified.
+        "stop": ActivityEventKind.LIFECYCLE,
+        "session": ActivityEventKind.LIFECYCLE,
+        "auto_retry_end": ActivityEventKind.LIFECYCLE,
+        # Forward-compat: not a member of pi's documented 15-event
+        # AgentSessionEvent union, but emitted by real pi builds as the
+        # final line of a run (see ``ralph.agents.parsers.pi``).
+        "agent_settled": ActivityEventKind.LIFECYCLE,
+        # An in-progress retry is live status, not a completed step.
+        "auto_retry_start": ActivityEventKind.STATUS,
     }
     return mapping.get(parser_type, ActivityEventKind.UNKNOWN)
 

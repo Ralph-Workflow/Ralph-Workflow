@@ -2,31 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import ConfigDict, Field
 
 from ralph.pydantic_compat import RalphBaseModel
 
-ForbiddenInTest = Literal[
-    "time.sleep",
-    "subprocess.run-no-timeout",
-    "real-file-IO",
-    "real-network",
-    "global-mutation",
-    "monkeypatch-of-prod",
-    "unknown",
-]
-
-TestLayer = Literal[
-    "unit",
-    "integration",
-    "subprocess_e2e",
-    "property",
-    "snapshot",
-    "contract",
-    "unknown",
-]
+type ForbiddenInTest = str
+type TestLayer = str
 
 
 class Testability(RalphBaseModel):
@@ -39,12 +20,12 @@ class Testability(RalphBaseModel):
     forbidden_in_tests: list[ForbiddenInTest] = Field(
         default_factory=list,
         max_length=50,
-        description="ForbiddenInTest enum list (max 50); see ForbiddenInTest literal.",
+        description="Free-form forbidden-test-pattern hints (max 50).",
     )
     required_test_layers: list[TestLayer] = Field(
         default_factory=list,
         max_length=20,
-        description="TestLayer enum list (max 20); see TestLayer literal.",
+        description="Free-form required test-layer hints (max 20).",
     )
     clock_injection_required: bool | None = Field(
         default=None,

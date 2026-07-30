@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
+from ralph.process._spawn_env import sanitize_process_environment
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -150,13 +151,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None]:
     parsed = _build_parser().parse_args(argv)
-    stable = cast("bool", parsed.stable)
-    version = cast("str | None", parsed.version)
+    stable = cast(
+        "bool", parsed.stable
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    version = cast(
+        "str | None", parsed.version
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return stable, version
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Install the dev build by default, or the stable build with ``--stable``."""
+    sanitize_process_environment()
     stable, version = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 from collections import Counter
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+import pytest
 
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import fan_out as _fan_out_module
@@ -14,14 +15,24 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
-    from ralph.display.parallel_display import ParallelDisplay
 from tests.integration.test_parallel_resume_helper__fakedisplay import _FakeDisplay
+
+# Per-test pytest marker: the fan-out resume tests in this
+# file exercise the production ``execute_fan_out_sync`` path
+# with synthetic work units, which has been observed to
+# exceed the global 1-second per-test cap under parallel
+# xdist CPU contention. 5 seconds is the minimum supported
+# by the audit invariant
+# (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``) and well under
+# the 60-second combined ``make verify`` budget. The default
+# 1 s cap remains in place for every other test in the
+# suite.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 RESUMED_WORKER_COUNT = 3
 
@@ -46,18 +57,7 @@ def _fake_executor_for(unit_ids: list[str]) -> FakeAgentExecutor:
 def _seed_worker_artifact(worker_namespace_root: Path, unit_id: str) -> None:
     artifact_dir = worker_namespace_root / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
-    )
+    (artifact_dir / "plan.md").write_text(MINIMAL_PLAN_MARKDOWN, encoding="utf-8")
 
 
 def _setup_patches(
@@ -125,7 +125,7 @@ class TestParallelResume:
         execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -172,7 +172,7 @@ class TestParallelResume:
         execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -214,7 +214,7 @@ class TestParallelResume:
         final_state = execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=cast("ParallelDisplay", _FakeDisplay()),
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -223,14 +223,11 @@ class TestParallelResume:
         launched_ids = {u.unit_id for u in fake_executor.calls}
         assert launched_ids == {"unit-2", "unit-3", "unit-4"}
 
-        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
-        assert summary_path.exists(), "fan-out must write parallel_development_summary.json"
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        statuses = {w["unit_id"]: w["status"] for w in summary["workers"]}
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
+        assert summary_path.exists(), "fan-out must write parallel_development_summary.md"
+        summary = summary_path.read_text(encoding="utf-8")
         for i in range(5):
             uid = f"unit-{i}"
-            assert statuses.get(uid) == "succeeded", (
-                f"{uid} expected succeeded in summary, got {statuses.get(uid)!r}"
-            )
+            assert f"- **{uid}**: succeeded" in summary
         assert final_state.work_units == (), "fully successful wave must clear work_units"
         assert final_state.worker_states == {}, "fully successful wave must clear worker tracking"

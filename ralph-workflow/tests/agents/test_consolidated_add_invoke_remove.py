@@ -271,7 +271,11 @@ def test_consolidated_interactive_flow(monkeypatch: pytest.MonkeyPatch, tmp_path
         agent_registry=default_registry,
         interactive=True,
     )
-    options = InvokeOptions(workspace_path=tmp_path, show_progress=False)
+    options = InvokeOptions(
+        workspace_path=tmp_path,
+        show_progress=False,
+        workspace_monitor_factory=lambda _path, _classifier: None,
+    )
     res = list(invoke_agent(support.config, str(prompt_file), options=options))
     assert "pty line" in res
     assert len(pty_called) == 1

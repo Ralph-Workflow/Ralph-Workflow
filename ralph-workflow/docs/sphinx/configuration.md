@@ -37,7 +37,8 @@ Ralph Workflow manages a standard config set across two scopes.
 
 | File | Purpose |
 |------|---------|
-| `~/.config/ralph-workflow.toml` | Global defaults: agent selection, iteration counts, verbosity |
+| `~/.config/ralph-workflow.toml` | Global defaults: agent chains and drains, iteration counts, verbosity |
+| `~/.config/ralph-workflow-agents.toml` | Agent CLI definitions: binary, flags, and output parser per coding-agent CLI |
 | `~/.config/ralph-workflow-mcp.toml` | MCP server definitions shared across projects |
 | `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults when a workspace has no local pipeline override |
 | `~/.config/ralph-workflow-artifacts.toml` | Global artifact defaults when a workspace has no local artifact override |
@@ -51,7 +52,7 @@ Ralph Workflow manages a standard config set across two scopes.
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
 | `.agent/ralph-workflow.toml` | Optional project-specific overrides for agents, chains, drains, and main settings |
 
-Run `ralph --init` to create the standard project-local support files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
+`ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create project-local config files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
 
 ## Advanced config map
 
@@ -143,6 +144,13 @@ These timeout variables are set by the test harness; they do **not** extend the 
 
 The main config file is `~/.config/ralph-workflow.toml`, with optional project-level overrides in `.agent/ralph-workflow.toml`.
 
+Telemetry identity is stored separately at `~/.config/ralph-workflow-user.ini`.
+That path is intentionally independent of `XDG_CONFIG_HOME`, so terminal
+applications that use different XDG environments still share one persistent
+random identifier. If an older `$XDG_CONFIG_HOME/ralph-workflow-user.ini`
+exists, Ralph Workflow migrates its valid identifier to the canonical path on
+first use. The file contains no name, email, host, repository, or prompt data.
+
 ### `[general]`
 
 Core workflow settings: verbosity, git identity, retry behavior, and liveness limits. See `ralph/policy/defaults/ralph-workflow.toml` for the canonical defaults and inline `# comment` lines documenting the semantics of each key.
@@ -153,6 +161,10 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
+| `auto_integrate_enabled` | `true` | Local integration is on by default. Set to `false` for byte-identical manual git behavior: no rebase, merge, ref movement, fetch, or push from this feature. |
+| `auto_integrate_target` | `"main"` | Local mainline branch used verbatim. It must be non-empty; if the branch is absent, the step records a skip. |
+| `auto_integrate_remote_enabled` | `false` | The single opt-in for remote synchronization. When `false`, this feature issues no `git fetch` or `git push`; when `true`, it may fetch, reconcile, and publish a successful local landing. |
+| `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a skip while local integration continues. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
@@ -162,22 +174,20 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
 
-### `[general.workflow]`
+## Auto-integration
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
-| `unsafe_mode` | `false` | Merge Ralph Workflow MCP into the agent's existing MCP config instead of overwriting it. Mirrors the `--unsafe-mode` CLI flag. |
+Auto-integration keeps a feature branch and its configured local mainline in
+lockstep. It runs at five seams: startup, commit, phase boundary, parallel
+worker startup/boundary, and the Ralph-managed parallel fan-out join.
 
-### `[prompt_helper]`
+It never force-moves a ref, force-pushes, pushes a feature branch, leaves a
+rebase or merge in progress, or fails a run because remote synchronization
+fails. Local integration is on by default; remote synchronization is opt-in.
+Setting `auto_integrate_enabled = false` guarantees byte-identical manual git
+behavior from this feature: no rebase, merge, ref movement, fetch, or push.
 
-Configuration for the interactive prompt-refinement helper launched by `ralph --prompt-helper` or `ralph-prompt`.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `agent` | _(none)_ | Agent name to use for the prompt-helper session. Omitting this setting causes Ralph Workflow to use the first configured agent in `[agents.*]`. An explicitly named but unavailable agent raises an error instead of silently falling back. |
-
-The helper does not expose drain configuration, fallback chains, or agent chains — it uses a single interactive agent with an internal standalone session only. See the [CLI Reference](cli.md) for usage.
+The four `[general]` keys above are the complete configuration surface, in the
+same order used by the bundled templates.
 
 ## Agent chains and drains
 
@@ -190,8 +200,8 @@ retry_delay_ms = 1000
 
 [agent_chains]
 planning = ["claude/opus"]
-development = ["agy", "opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
-analysis = ["opencode/openai/gpt-5.4"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
 commit = ["claude/haiku"]
 
 [agent_drains]
@@ -202,7 +212,10 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-Valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, and `cursor`. Cursor supports the same `<agent>/<model>` dynamic-alias syntax as the other model-addressable agents (e.g. `cursor/auto`, `cursor/gpt-5.3-codex-high`, `cursor/claude-sonnet-5-thinking`); the full id after `cursor/` is preserved verbatim in the `--model` flag, including bracket parameterization. Nanocoder supports the same direct-agent syntax for provider/model routing (e.g. `nanocoder/ollama/llama3.1`).
+Valid agent names include `claude`, `claude-headless`, `codex`, `opencode`,
+`nanocoder`, `agy`, `pi`, and `cursor`. Each agent's model alias has its own
+syntax; see the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
+for all eight aliases, examples, and the literal CLI flags Ralph Workflow emits.
 
 In practice: **chains** define fallback order for one kind of work; **drains** map workflow steps to those chains. Multiple drains can point at the same chain, which lets you change agent policy without rewriting the workflow itself.
 
@@ -288,7 +301,7 @@ Each phase can declare a `display_style` override to control its banner colour. 
 
 ## `artifacts.toml` in plain language
 
-`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`, `artifact_json_path`). See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
+`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`). Canonical artifacts are validated markdown documents stored at `.agent/artifacts/<artifact_type>.md`. See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
 
 ## `mcp.toml` in plain language
 
@@ -348,7 +361,8 @@ Every routing decision the pipeline makes traces back to a single declared field
 - [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
 - [Developer Reference](developer-internals.md) — implementation-oriented detail
-- [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
+- [Agent Compatibility Guide](agent-compatibility.md) — per-agent CLI, transport, and model-string reference
+
 ## Type checking and tooling
 
 The maintained Python package enforces strict mypy on every supported
@@ -374,6 +388,6 @@ first-party typed helpers and adapters instead) and the strict flags
 Run `cd ralph-workflow && make verify` for the canonical gate. The gate
 runs the docs build, ruff, mypy --strict, the 60-second-capped
 pytest suite, and the audit scripts. See
-[docs/agents/verification.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/agents/verification.md)
+[docs/agents/verification.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/verification.md)
 for the full ordered step list, the combined test budget, and the
 non-circumvention rules.

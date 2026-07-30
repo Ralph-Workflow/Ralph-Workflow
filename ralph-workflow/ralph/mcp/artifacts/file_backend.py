@@ -36,6 +36,10 @@ class FileBackend(Protocol):
         """Atomically move `source` to `destination`, replacing any existing file."""
         ...
 
+    def sync_directory(self, path: Path) -> None:
+        """Synchronize a directory after publishing a renamed file."""
+        ...
+
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         """Remove the file at `path`; if `missing_ok`, do not raise when the file is absent."""
         ...

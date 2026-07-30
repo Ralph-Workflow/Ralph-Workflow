@@ -91,13 +91,28 @@ def _make_cursor_strategy(
     """
 
     class CursorExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
-        pass
+        def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+            signal = _classify_cursor_activity(line)
+            if signal is not None:
+                return signal
+            return super().classify_activity_line(line)
 
     return CursorExecutionStrategy(
         label_scope=label_scope,
         registry=registry,
         subagent_pid_source=subagent_pid_source,
     )
+
+
+def _classify_cursor_activity(line: str) -> AgentActivitySignal | None:
+    """Classify Cursor stream-json tool events for watchdog control."""
+    obj = _parse_json_object(line)
+    if obj is None or obj.get("type") != "tool_call":
+        return None
+    subtype = obj.get("subtype")
+    if subtype == "completed":
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
+    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
 
 
 def _make_pi_strategy(
@@ -166,7 +181,12 @@ def _classify_pi_assistant_event(
         return None
     assistant_obj = cast("dict[str, object]", assistant_event)
     if assistant_obj.get("type") == "toolcall_end":
-        return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
+        # ``toolcall_end`` CLOSES the call that ``tool_execution_start``
+        # already opened -- verified against real captures, where both events
+        # carry the same ``callID``. Classifying both as TOOL_USE fed the
+        # tool-call repetition breaker twice per call, so four legitimate
+        # identical calls hit a window rule sized for eight.
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
     if assistant_obj.get("type") == "error":
         reason = assistant_obj.get("reason", "error")
         return AgentActivitySignal(AgentActivityKind.ERROR_LINE, raw=str(reason))
@@ -245,8 +265,11 @@ def strategy_for_transport(
     subagent_pid_source: SubagentPidSource | None = None,
 ) -> BaseExecutionStrategy:
     """Return the appropriate ExecutionStrategy for an agent transport."""
-    factory = _view("_STRATEGY_DISPATCH").get(
-        cast("AgentTransport", transport), GenericExecutionStrategy
+    factory = _view(
+        "_STRATEGY_DISPATCH"
+    ).get(
+        cast("AgentTransport", transport),
+        GenericExecutionStrategy,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     return factory(
         label_scope=label_scope,

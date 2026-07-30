@@ -7,18 +7,41 @@ from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
+from loguru import logger
 
+from ralph.git.merge import (
+    WORKTREE_FOUND,
+    WORKTREE_QUERY_FAILED,
+    worktree_lookup,
+)
 from ralph.git.rebase._concurrent_operation import _ConcurrentOperation
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from git.config import GitConfigParser
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
 _LOCK_FILES = ("index.lock", "packed-refs.lock", "HEAD.lock")
+
+#: Files whose presence proves a real in-progress operation. Closed set:
+#: git may add new bookkeeping filenames at any time, so an unknown
+#: entry must never be treated as a blocking operation.
+_IN_PROGRESS_MARKER_FILES: tuple[tuple[str, str], ...] = (
+    ("MERGE_HEAD", "merge"),
+    ("CHERRY_PICK_HEAD", "cherry-pick"),
+    ("REVERT_HEAD", "revert"),
+    ("REBASE_HEAD", "rebase"),
+)
+
+#: Bookkeeping files git leaves behind AFTER an operation finishes or is
+#: aborted. ``AUTO_MERGE`` is written by the ``ort`` strategy on every
+#: conflicted merge and survives ``merge --abort``; treating it as an
+#: in-progress operation permanently disabled auto-integration in any
+#: worktree that had ever hit a conflict.
+_BENIGN_LEFTOVER_ENTRIES: frozenset[str] = frozenset(
+    {"AUTO_MERGE", "MERGE_MSG", "MERGE_MODE", "MERGE_RR", "SQUASH_MSG", "ORIG_HEAD"}
+)
 
 
 class RebasePreconditionError(Exception):
@@ -27,6 +50,14 @@ class RebasePreconditionError(Exception):
 
 def check_rebase_preconditions(repo_root: Path | str) -> None:
     """Ensure the git repository is ready to start a rebase.
+
+    Only a closed set of authoritative markers blocks a rebase: the
+    ``rebase-merge``/``rebase-apply`` directories, the in-progress
+    marker files in :data:`_IN_PROGRESS_MARKER_FILES`, the bisect
+    state files and the git lock files. Any other git-dir entry --
+    including bookkeeping git leaves behind after an operation ends,
+    such as ``AUTO_MERGE`` -- is observed at DEBUG level but never
+    blocks.
 
     Args:
         repo_root: Path to the git repository.
@@ -49,7 +80,6 @@ def check_rebase_preconditions(repo_root: Path | str) -> None:
         _check_shallow_clone(repo)
         _ensure_clean_worktree(repo)
         _check_worktree_conflicts(repo)
-        _check_submodule_state(repo)
         _check_sparse_checkout_state(repo)
     finally:
         repo.close()
@@ -82,17 +112,10 @@ def _validate_git_state(repo: Repo) -> None:
 
 def _detect_concurrent_operation(repo: Repo) -> _ConcurrentOperation | None:
     git_dir = _git_dir(repo)
-
     if (git_dir / REBASE_MERGE_DIR).exists() or (git_dir / REBASE_APPLY_DIR).exists():
         return _ConcurrentOperation("rebase", "rebase")
 
-    checks: Sequence[tuple[str, str]] = (
-        ("MERGE_HEAD", "merge"),
-        ("CHERRY_PICK_HEAD", "cherry-pick"),
-        ("REVERT_HEAD", "revert"),
-    )
-
-    for filename, label in checks:
+    for filename, label in _IN_PROGRESS_MARKER_FILES:
         if (git_dir / filename).exists():
             return _ConcurrentOperation(label, label)
 
@@ -103,10 +126,17 @@ def _detect_concurrent_operation(repo: Repo) -> _ConcurrentOperation | None:
     if any((git_dir / lock_file).exists() for lock_file in _LOCK_FILES):
         return _ConcurrentOperation("lock", "another Git process")
 
-    for entry in git_dir.iterdir():
-        name = entry.name
-        if any(keyword in name for keyword in ("REBASE", "MERGE", "CHERRY")):
-            return _ConcurrentOperation("unknown", f"unknown operation: {name}")
+    unknown = sorted(
+        entry.name
+        for entry in git_dir.iterdir()
+        if any(k in entry.name for k in ("REBASE", "MERGE", "CHERRY"))
+        and entry.name not in _BENIGN_LEFTOVER_ENTRIES
+    )
+    if unknown:
+        logger.debug(
+            "rebase preconditions: ignoring unrecognized git-dir entries {}",
+            unknown,
+        )
 
     return None
 
@@ -125,9 +155,30 @@ def _ensure_git_identity(repo: Repo) -> None:
 
 
 def _ensure_clean_worktree(repo: Repo) -> None:
+    """Block only on uncommitted TRACKED modifications.
+
+    Untracked files and submodule-pointer drift are deliberately
+    tolerated, because ``git rebase`` and ``git merge`` tolerate them
+    too: git refuses non-destructively, and only for the specific
+    untracked path that would actually be overwritten. That refusal
+    surfaces as ``RebaseFailed``, which
+    :func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
+    already
+    routes into the endpoint-merge fallback. Blocking up front instead
+    turned a per-file, git-detectable hazard into a run-wide outage:
+    one scratch file left by a phase disabled integration for every
+    later commit seam.
+
+    ``ralph.git.operations.is_repo_clean`` is the existing precedent
+    for the ``--untracked-files=no`` definition of "clean".
+    """
     worktree = _worktree(repo)
     try:
-        result = run_git(("status", "--porcelain"), cwd=worktree, label="rebase-preflight-status")
+        result = run_git(
+            ("status", "--porcelain", "--untracked-files=no"),
+            cwd=worktree,
+            label="rebase-preflight-status",
+        )
         if result.returncode == 0 and result.stdout.splitlines():
             raise RebasePreconditionError(
                 "Working tree is not clean. Please commit or stash changes before rebasing."
@@ -137,14 +188,16 @@ def _ensure_clean_worktree(repo: Repo) -> None:
     except OSError:
         pass
 
-    if repo.is_dirty(untracked_files=True, submodules=True):
+    if repo.is_dirty(untracked_files=False, submodules=False):
         raise RebasePreconditionError(
             "Working tree is not clean. Please commit or stash changes before rebasing."
         )
 
 
 def _check_shallow_clone(repo: Repo) -> None:
-    shallow = _git_dir(repo) / "shallow"
+    # The shallow marker is shared repository state: it lives in the
+    # common git dir, never in a linked worktree's private git dir.
+    shallow = _common_git_dir(repo) / "shallow"
     if shallow.exists():
         try:
             content = shallow.read_text()
@@ -168,59 +221,85 @@ def _check_worktree_conflicts(repo: Repo) -> None:
     except (TypeError, GitCommandError):
         return
 
-    worktrees_dir = _git_dir(repo) / "worktrees"
-    if not worktrees_dir.is_dir():
+    # ONE source of truth for "who has this branch checked out":
+    # ``git worktree list --porcelain``, via the same ``worktree_lookup``
+    # the fast-forward side already trusts. The previous implementation
+    # walked ``<common_dir>/worktrees/*/HEAD``, which has no entry for the
+    # PRIMARY worktree -- so a branch checked out in the primary checkout
+    # was invisible here while being plainly visible to the landing path.
+    # Two answers to one question is a divergence waiting to strand a
+    # rebase; asking git directly removes it.
+    if not _has_linked_worktrees(repo):
+        # Provably equivalent fast path: with no LINKED worktrees the only
+        # checkout in the repository is this one, so no other worktree can
+        # be holding the branch. Worth special-casing because the general
+        # answer costs a git subprocess and single-worktree repositories
+        # are the overwhelmingly common case -- paying ~40 ms on every
+        # integration to re-learn "there is only one checkout" is real
+        # time against a hard test budget.
         return
 
-    target_ref = f"refs/heads/{branch_name}"
-    for entry in worktrees_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        head_file = entry / "HEAD"
-        if not head_file.exists():
-            continue
-
-        try:
-            content = head_file.read_text()
-        except OSError:
-            continue
-
-        if target_ref in content:
-            raise RebasePreconditionError(
-                f"Branch '{branch_name}' is already checked out in worktree '{entry.name}'. "
-                "Use 'git worktree add' to create a new worktree for this branch."
-            )
-
-
-def _check_submodule_state(repo: Repo) -> None:
-    workdir = _worktree(repo)
-    gitmodules = workdir / ".gitmodules"
-    if not gitmodules.exists():
-        return
-
-    modules_dir = _git_dir(repo) / "modules"
-    if not modules_dir.exists():
+    repo_root = _repo_root_for_worktree_query(repo)
+    verdict, holder = worktree_lookup(repo_root, branch_name)
+    if verdict == WORKTREE_QUERY_FAILED:
+        # Fail CLOSED, matching ``_TARGET_WORKTREE_QUERY_FAILED`` on the
+        # fast-forward side: an unanswerable query is not evidence that
+        # nobody holds the branch, and rebasing a branch another checkout
+        # is sitting on corrupts that checkout's index.
         raise RebasePreconditionError(
-            "Submodules are not initialized. Run: git submodule update --init --recursive"
+            f"Could not determine whether branch '{branch_name}' is checked "
+            "out in another worktree."
         )
-
-    content = gitmodules.read_text()
-    if "path =" not in content:
+    if verdict != WORKTREE_FOUND or holder is None:
         return
+    if _is_same_worktree(holder, repo_root):
+        # The branch being rebased is by construction checked out HERE.
+        # Without this self-skip every rebase would fail its own
+        # precondition.
+        return
+    raise RebasePreconditionError(
+        f"Branch '{branch_name}' is already checked out in worktree '{holder.name}'. "
+        "Use 'git worktree add' to create a new worktree for this branch."
+    )
 
-    for line in content.splitlines():
-        if "path =" not in line:
-            continue
-        _, _, remainder = line.partition("path =")
-        path_value = remainder.strip()
-        if not path_value:
-            continue
-        submodule_path = workdir / path_value
-        if not submodule_path.exists():
-            raise RebasePreconditionError(
-                f"Submodule '{path_value}' is not initialized. Run: "
-                "git submodule update --init --recursive"
-            )
+
+def _has_linked_worktrees(repo: Repo) -> bool:
+    """Whether the repository has any worktree beyond the primary one.
+
+    Pure filesystem check against the registration directory in the
+    common git dir. Unlike the scan this replaced, the directory's
+    CONTENTS are never interpreted -- only its emptiness -- so the fact
+    that it has no entry for the primary worktree cannot cause a wrong
+    answer here: an empty directory means the primary is the only
+    checkout, which is exactly the conclusion drawn.
+    """
+    worktrees_dir = _common_git_dir(repo) / "worktrees"
+    try:
+        return worktrees_dir.is_dir() and any(worktrees_dir.iterdir())
+    except OSError:
+        # Unreadable: fall through to the authoritative git query rather
+        # than assuming a single checkout.
+        return True
+
+
+def _repo_root_for_worktree_query(repo: Repo) -> Path:
+    """Working-tree root to run ``git worktree list`` from."""
+    if repo.working_tree_dir:
+        return Path(repo.working_tree_dir)
+    return _git_dir(repo).parent
+
+
+def _is_same_worktree(candidate: Path, repo_root: Path) -> bool:
+    """Whether two worktree paths denote the same checkout.
+
+    Resolved before comparing so a symlinked or ``/private``-prefixed
+    temporary directory -- the normal shape of a macOS test fixture --
+    does not read as a second worktree holding the branch.
+    """
+    try:
+        return candidate.resolve() == repo_root.resolve()
+    except OSError:
+        return candidate == repo_root
 
 
 def _check_sparse_checkout_state(repo: Repo) -> None:
@@ -270,7 +349,47 @@ def _git_dir(repo: Repo) -> Path:
     return Path(git_dir)
 
 
+def _common_git_dir(repo: Repo) -> Path:
+    """Resolve the git directory shared by every worktree of the repository.
+
+    ``repo.git_dir`` for a linked worktree is its private
+    ``.git/worktrees/<name>`` directory; state shared across worktrees
+    (the ``shallow`` marker, the ``worktrees/`` registry) lives only in
+    the common directory. For a primary checkout both are the same path.
+    """
+    common: object = getattr(repo, "common_dir", None)
+    if isinstance(common, str) and common:
+        return Path(common)
+    return _git_dir(repo)
+
+
 def _worktree(repo: Repo) -> Path:
     if repo.working_tree_dir:
         return Path(repo.working_tree_dir)
     return _git_dir(repo).parent
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: A7
+# ladder rung: 4
+# AC-14 rationale: A8
+# ladder rung: 1
+# AC-14 rationale: D10
+# ladder rung: 1
+# AC-14 rationale: D7
+# ladder rung: 4
+# AC-14 rationale: H1
+# ladder rung: 4
+# AC-14 rationale: H2
+# ladder rung: 4
+# AC-14 rationale: H3
+# ladder rung: 4
+# AC-14 rationale: H5
+# ladder rung: 4
+# ----- end AC-14 catalog evidence -----

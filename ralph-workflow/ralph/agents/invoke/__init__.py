@@ -46,6 +46,7 @@ from ralph.agents.invoke._errors import (
     InteractivePermissionPromptError,
     OpenCodeResumableExitError,
     PiContextExhaustedExitError,
+    PiProviderFailureExitError,
     UnsupportedMcpTransportError,
     _IdleStreamTimeoutError,
 )
@@ -366,7 +367,7 @@ def invoke_agent(
         config,
         base_opts.extra_env,
         base_opts.workspace_path,
-        system_prompt_file=base_opts.system_prompt_file,
+        master_prompt_file=base_opts.master_prompt_file,
         unsafe_mode=base_opts.unsafe_mode,
     )
     # The try/finally boundary starts IMMEDIATELY after
@@ -405,7 +406,7 @@ def invoke_agent(
                 mcp_endpoint=mcp_endpoint,
                 allowed_mcp_tool_names=allowed_mcp_tool_names,
                 unsafe_mode=opts.unsafe_mode,
-                system_prompt_file=opts.system_prompt_file,
+                master_prompt_file=opts.master_prompt_file,
                 workspace_path=opts.workspace_path,
                 initial_session_id=opts.initial_session_id,
                 settings_json=opts.settings_json,
@@ -485,10 +486,12 @@ def invoke_agent(
             policy=policy,
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
+            process_teardown=opts.process_teardown,
             waiting_listener=opts.waiting_listener,
             pre_output_listener=opts.pre_output_listener,
             monitor=monitor,
             required_artifact=opts.required_artifact,
+            requires_completion_evidence=opts.requires_completion_evidence,
             clock=_clock,
             evaluate_completion_fn=evaluate_completion,
             connectivity_state_provider=opts.connectivity_state_provider,
@@ -498,9 +501,9 @@ def invoke_agent(
 
         transport = _agent_transport(config)
         support = default_catalog().get(config.cmd)
-        requires_pty = False
+        requires_pty = transport == AgentTransport.AGY
         if support is not None and isinstance(support.spec, AgentSpec):
-            requires_pty = support.spec.requires_pty
+            requires_pty = requires_pty or support.spec.requires_pty
 
         if requires_pty:
             if transport in {
@@ -583,7 +586,7 @@ def resolve_invocation_runtime(
     workspace_path: Path | None,
     *,
     _base_env: Mapping[str, str] | None = None,
-    system_prompt_file: str | None = None,
+    master_prompt_file: str | None = None,
     unsafe_mode: bool = False,
 ) -> ResolvedInvocationRuntime:
     """Build the runtime configuration needed to launch an agent.
@@ -599,7 +602,7 @@ def resolve_invocation_runtime(
         extra_env,
         workspace_path,
         base_env=_base_env,
-        system_prompt_file=system_prompt_file,
+        master_prompt_file=master_prompt_file,
         unsafe_mode=unsafe_mode,
     )
 
@@ -692,6 +695,7 @@ __all__ = [
     "InvokeRuntimeOptions",
     "OpenCodeResumableExitError",
     "PiContextExhaustedExitError",
+    "PiProviderFailureExitError",
     "ProcessReaderCtx",
     "ResolvedInvocationRuntime",
     "UnsupportedMcpTransportError",

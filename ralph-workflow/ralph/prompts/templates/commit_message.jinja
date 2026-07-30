@@ -8,98 +8,138 @@ Read the diff silently. Do not write an analysis.
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
+
 ---
-## COMMIT MESSAGE FORMAT
-<type>[optional scope][!]: subject
+## HOW TO WRITE THE SUBJECT — follow these four steps once, in order
 
-Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. Use `chore` only for repo maintenance, tooling, or admin-only changes; do not default to `chore` for meaningful product or code changes. Keep the subject <= 50 chars and write it in lowercase imperative mood.
+Do not generate candidate subjects and compare them. Do not revise a subject
+that already satisfies step 4. One pass through these steps produces the
+subject; then move on to the body.
 
-## WHEN TO USE A BODY
+**Step 1 — pick the kind.** Take the FIRST row that matches the diff:
 
-Most commits need a body. A body provides context, rationale, and impact that the subject alone cannot convey.
+| The diff mainly... | kind |
+|---|---|
+| changes only repo maintenance, tooling, config, or dependencies | chore |
+| changes only CI/workflow files | ci |
+| changes only build scripts or packaging | build |
+| changes only documentation or comments | docs |
+| changes only tests | test |
+| changes only formatting, with no behavior change | style |
+| fixes wrong behavior | fix |
+| adds behavior that did not exist | feat |
+| restructures code with no behavior change | refactor |
+| changes code to make it faster | perf |
 
-**Include a body when the change is non-trivial:**
-- Multi-file changes or changes affecting multiple subsystems
-- New behavior, removed behavior, or behavior modifications
-- Refactors that change public APIs, data structures, or contracts
-- Changes requiring migration notes, deprecation warnings, or compatibility concerns
-- Any change where the *why* is not immediately obvious from reading the diff
+**Step 2 — pick the scope.** If one directory or subsystem owns most of the
+diff, use its name. Otherwise omit the scope and the parentheses entirely.
+Do not deliberate between two candidate scopes: if it is not obvious in one
+look, omit it.
 
-**One-liner subjects (no body) are only acceptable for:**
-- Trivial typo fixes or single-character corrections
-- Single-file cosmetic changes (formatting, imports, comments) with obvious intent
-- Truly obvious micro-changes where subject fully captures the entire change
+**Step 3 — write the description.** Say what the change does, in one clause,
+in lowercase imperative mood. Do not say that files changed. Do not use
+"update", "misc", "stuff", or file counts. There is no length limit; stop at
+the end of the clause.
 
-## BODY STRUCTURE: WHEN TO USE SIMPLE VS DETAILED
+**Step 4 — check the grammar, then stop.** The subject must match exactly:
 
-For commits requiring a body, choose the right structure:
+```
+<kind>(<scope>)?!?: <description>
+```
 
-**Use `body` (single string) when:**
-- The explanation is concise and self-contained (1-2 paragraphs)
-- The rationale is straightforward and doesn't need separation
+- `<kind>` is lowercase and from the table above.
+- `<scope>`, if present, is lowercase letters, digits, `/`, `_`, `-` only —
+  no dots, no uppercase.
+- `!` before the colon marks a breaking change.
+- Exactly one space follows the colon.
+- `<description>` starts with a lowercase letter or digit.
+- Write the value unquoted in frontmatter. Quotes become part of the subject
+  and are rejected.
 
-**Use detailed body fields when the change is complex:**
-- `body_summary`: What changed and why in 1-2 sentences
-- `body_details`: Deep dive — edge cases handled, design decisions, alternatives considered, behavioral notes
-- `body_footer`: Breaking changes, migration steps, deprecation warnings, "Fixes #123", "Closes #456"
+If it matches, the subject is finished. Do not look for a better one.
 
-Complex refactors, architecture changes, new features with non-obvious behavior, and any change affecting multiple subsystems should use the detailed structure.
+## HOW TO WRITE THE BODY
 
-## QUALITY RULES
-- Match the repo's conventional-commit style. Prefer the narrowest stable scope when one subsystem clearly owns most of the diff.
-- Omit the scope when the change spans multiple subsystems or no single scope would be honest.
-- The subject must say what changed, not that files changed. Avoid filler like "update", "misc", "stuff", or file-count summaries.
-- Body text should explain impact and rationale, not restate which files changed or re-summarize the diff.
-- When in doubt, include a body. An extra explanatory paragraph is almost never wrong.
+Omit the body only for a one-line typo, formatting, or comment change whose
+subject already states the whole change. Every other commit gets a body.
 
-## COMMON MISTAKES TO AVOID
-- Bad: chore: update files
-  Counterexample: feat(mcp): add structured commit retries
-  Body: Explains what structured retries solve and how they work.
-- Bad: fix: stuff
-  Counterexample: fix(parser): preserve prefixed transcript lines
-  Body: Explains why prefixed lines were being dropped and the edge case that triggered it.
-- Bad: refactor: rename files
-  Counterexample: refactor(auth): extract token validation to dedicated module
-  Body: Explains the architectural reason and what callers must do differently.
-- Bad: feat: add validation
-  Counterexample: feat(api): add query filter validation for export endpoint
-  Body: Explains which invalid inputs were causing problems and what happens now.
+Pick the structure with this rule, and do not reconsider it:
+
+- Default: one `## Body` item explaining WHY the change was needed and what
+  it affects.
+- Use `## Body Summary` + `## Body Details` + `## Body Footer` instead, never
+  alongside `## Body`, only when the change has migration steps, breaking
+  changes, or issue references to record in the footer.
+
+Body text explains rationale and impact. It does not list files or restate
+the diff.
+
+## WORKED EXAMPLES
+- Bad: `chore: update files` → `feat(mcp): add structured commit retries`,
+  with a body explaining what structured retries solve.
+- Bad: `fix: stuff` → `fix(parser): preserve prefixed transcript lines`,
+  with a body explaining the edge case that dropped them.
+- Bad: `refactor: rename files` →
+  `refactor(auth): extract token validation to dedicated module`,
+  with a body explaining what callers must do differently.
 
 ## OUTPUT RULES
-After submitting the MCP artifact, you may echo only the commit subject line as plain text.
-Do not output any additional explanation, markdown formatting, bullets, or prose after the subject line.
-Do not wrap JSON or the subject in code fences.
+Do not output additional explanation, markdown, bullets, or prose after the
+completion action.
 Do not ask the user for confirmation or write "Would you like me to..." questions.
 Submit the artifact now, not as a proposal for later approval.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
-Do not call Bash. Do not use `content_path` for this task.
+Do not call Bash.
 
 MCP REQUIREMENT:
-The only state-changing tools you may call for this task are {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
-If {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
-You MUST submit the final result through the documented artifact path: call {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} when it is available, or use the documented write-file fallback only when that tool is unavailable and your tool list exposes {{ WRITE_FILE_TOOL_REFERENCE }}. The inner payload must match one of these shapes:
-{"type": "commit", "subject": "fix(auth): prevent token expiry race"}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "body": "Optional multi-line body"}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]}
-{"type": "skip", "reason": "Reason why no commit is needed"}.
+The only state-changing tools you may call for this task are {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
+If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
 
-Submit the MCP arguments in this shape:
-{"artifact_type":"commit_message","content":"{\"type\":\"commit\",\"subject\":\"fix(auth): prevent token expiry race\"}"}
+DOCUMENT SHAPE:
+The artifact is a markdown document. Frontmatter carries the decision; optional `##` sections carry the body. Valid shapes:
 
-Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope. `files` must be an array of strings. `excluded_files` must be an array of objects with exactly `path` and `reason` fields. Valid `excluded_files.reason` values: internal_ignore, not_task_related, sensitive, deferred.
+- Commit (frontmatter `type: commit` plus `subject:`), with optional sections `## Body` (one item, concise self-contained explanation) OR the detailed trio `## Body Summary` / `## Body Details` / `## Body Footer` (one item each; include only the sections that apply — never combine `Body` with the trio), plus optional `## Files` (one item per file to include) and `## Excluded Files` (one item per exclusion, text `path | reason`; valid reasons: internal_ignore, not_task_related, sensitive, deferred):
 
-Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
+```markdown
+---
+type: commit
+subject: fix(auth): prevent token expiry race
+---
 
-{{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"type":"commit","subject":"fix(auth): prevent token expiry race"}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## Body Summary
+- [BS-1] Prevents a race where refreshed tokens could expire mid-request.
+
+## Body Details
+- [BD-1] The expiry check now happens after refresh; covers the concurrent-refresh edge case.
+
+## Excluded Files
+- [X-1] notes/todo.md | not_task_related
+```
+
+- Skip (no commit needed):
+
+```markdown
+---
+type: skip
+reason: Only generated artifacts changed; nothing to commit.
+---
+```
+
+Read the diff and decide whether the correct result is a commit document or a skip document. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
+
+{% set commit_message_example %}
+---
+type: commit
+subject: fix(auth): prevent token expiry race
+---
+
+## Body
+- [B-1] Explains the expiry race and why the check moved after refresh.
+{% endset %}
+{{ render_artifact_submission('commit_message', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_message_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 
-{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
-
-After the MCP submission, you may optionally echo the same single-line subject as plain text,
-but the MCP artifact is the authoritative output. Do not emit markdown, bullets, or explanations
-as the final answer. The artifact submission procedure above is authoritative for the
-completion contract; this template does NOT duplicate it.
+The artifact submission procedure above is authoritative for the completion contract;
+this template does NOT duplicate it.

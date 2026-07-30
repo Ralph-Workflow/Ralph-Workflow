@@ -1,15 +1,16 @@
 """Phase-entry drain clearing for fresh phase entries.
 
-This module handles the clearing of drain artifact files (JSON + Markdown handoff)
-when a pipeline phase is genuinely entered fresh — on program start, cross-phase
-transition, or last-commit re-entry — as opposed to same-phase retry or analysis
-loopback where the existing context should be preserved.
+This module clears canonical Markdown artifacts, Markdown handoffs, and stale
+legacy JSON artifacts when a pipeline phase is genuinely entered fresh — on
+program start, cross-phase transition, or last-commit re-entry — as opposed to
+same-phase retry or analysis loopback where the existing context is preserved.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.md_draft_io import md_draft_workspace_path, seeded_draft_workspace_path
 from ralph.phases.required_artifacts import build_required_artifacts
 
 if TYPE_CHECKING:
@@ -67,7 +68,7 @@ def _clear_drain(
     drain_name: str,
     artifacts_policy: ArtifactsPolicy,
 ) -> None:
-    """Clear the primary artifact files (JSON + Markdown) for a single drain.
+    """Clear canonical, handoff, and stale legacy files for a single drain.
 
     Uses the same path resolution as phase_output_artifact_paths in commit_executor.py.
 
@@ -81,14 +82,70 @@ def _clear_drain(
     if required_artifact is None:
         return
 
-    # Clear the primary JSON artifact
-    if workspace.exists(required_artifact.json_path):
-        workspace.remove(required_artifact.json_path)
+    # Remove the canonical Markdown artifact before the drain starts.
+    if workspace.exists(required_artifact.artifact_path):
+        workspace.remove(required_artifact.artifact_path)
 
-    # Clear the Markdown handoff if one exists
+    # Explicit legacy cleanup prevents pre-migration state surviving fresh entry.
+    legacy_path = f".agent/artifacts/{required_artifact.artifact_type}.json"
+    if workspace.exists(legacy_path):
+        workspace.remove(legacy_path)
+
+    # Clear the Markdown handoff if one exists.
     md_path = required_artifact.markdown_path
     if md_path is not None and workspace.exists(md_path):
         workspace.remove(md_path)
+
+
+def _clear_all_drafts(workspace: Workspace, artifacts_policy: ArtifactsPolicy) -> None:
+    """Remove every retained markdown draft.
+
+    Submission retains the submitted document as that artifact's draft so it
+    can be repaired in place with ``ralph_edit_md_artifact``. A draft is scoped
+    to one phase attempt: same-phase retry and analysis loopback resume from
+    it, but a genuine fresh entry must not.
+
+    Clearing is deliberately independent of ``clear_drains_on_fresh_entry``.
+    Canonical artifacts legitimately outlive their producing phase — entering
+    ``development`` must not delete ``plan.md`` — but the *draft* behind them
+    must not, or an agent would repair the previous phase's text.
+    """
+    for required_artifact in build_required_artifacts(artifacts_policy).values():
+        artifact_type = required_artifact.artifact_type
+        draft_path = md_draft_workspace_path(artifact_type)
+        if workspace.exists(draft_path):
+            workspace.remove(draft_path)
+        seeded_path = seeded_draft_workspace_path(artifact_type)
+        if workspace.exists(seeded_path):
+            workspace.remove(seeded_path)
+
+
+def _seed_drafts_from_canonical(workspace: Workspace, artifacts_policy: ArtifactsPolicy) -> None:
+    """Refill missing drafts from the canonical artifact on a resumed attempt.
+
+    A retry or analysis loopback re-enters to revise work that was already
+    submitted — most commonly a plan that planning-analysis sent back for
+    changes. The agent should find that rejected document already loaded as
+    the draft, ready to repair with ``ralph_edit_md_artifact``, rather than
+    having to re-transcribe it.
+
+    Normally submission already left the draft in place. This seeding covers
+    the paths that did not: a run resumed from a checkpoint, a document
+    promoted from the ``.agent/tmp`` markdown fallback, or an artifact
+    submitted before drafts were retained.
+
+    An existing draft always wins — it may hold in-progress repairs that are
+    deliberately ahead of the canonical artifact.
+    """
+    for required_artifact in build_required_artifacts(artifacts_policy).values():
+        draft_path = md_draft_workspace_path(required_artifact.artifact_type)
+        if workspace.exists(draft_path):
+            continue
+        artifact_path = required_artifact.artifact_path
+        if not workspace.exists(artifact_path):
+            continue
+        workspace.write(draft_path, workspace.read(artifact_path))
+        workspace.write(seeded_draft_workspace_path(required_artifact.artifact_type), "")
 
 
 def clear_phase_entry_drains(
@@ -100,9 +157,11 @@ def clear_phase_entry_drains(
 ) -> None:
     """Clear declared drain artifacts on genuine fresh phase entry.
 
-    Clears the primary JSON and Markdown handoff for each drain listed in
+    Clears the canonical Markdown artifact and handoff for each drain listed in
     the phase's clear_drains_on_fresh_entry field, but only when
-    is_fresh_phase_entry returns True.
+    is_fresh_phase_entry returns True. Retained markdown drafts are cleared on
+    the same signal but across every artifact type, not just declared drains —
+    see :func:`_clear_all_drafts`.
 
     Args:
         workspace: The workspace to operate on.
@@ -116,7 +175,12 @@ def clear_phase_entry_drains(
         return
 
     if not is_fresh_phase_entry(phase_name, previous_phase, pipeline_policy):
+        # Retry / loopback: the attempt continues, so nothing is cleared and
+        # the rejected document is loaded back as the editable draft.
+        _seed_drafts_from_canonical(workspace, artifacts_policy)
         return
 
     for drain in phase_def.clear_drains_on_fresh_entry:
         _clear_drain(workspace, drain, artifacts_policy)
+
+    _clear_all_drafts(workspace, artifacts_policy)

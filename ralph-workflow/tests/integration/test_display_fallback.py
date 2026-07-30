@@ -71,6 +71,6 @@ def test_prefixed_lines_format() -> None:
 
     lines = _lines(buffer)
     assert len(lines) == EXPECTED_LINE_COUNT
-    assert "[content][unit-1] alpha" in lines[0]
-    assert "[content][unit-2] beta" in lines[1]
-    assert "[content][unit-1] gamma" in lines[2]
+    assert "[output][unit-1] alpha" in lines[0]
+    assert "[output][unit-2] beta" in lines[1]
+    assert "[output][unit-1] gamma" in lines[2]

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -10,7 +11,7 @@ from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -18,11 +19,15 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str,
+)
 
 if TYPE_CHECKING:
+
     from pytest import MonkeyPatch
 
-    from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PhasePromptMaterializerFn, PipelineDeps
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
@@ -44,7 +49,7 @@ class _FakePipelineFactory:
     ) -> PipelineDeps:
         del config, kwargs
         return make_test_pipeline_deps(
-            cast("DisplayContext", display_context),
+            display_context,
             phase_prompt_materializer=self._phase_prompt_materializer,
         )
 
@@ -67,7 +72,7 @@ class _RecordingPipelineFactory:
         del config, kwargs
         self._captured["model_identity"] = model_identity
         self._captured["pro_hooks"] = pro_hooks
-        return make_test_pipeline_deps(cast("DisplayContext", display_context))
+        return make_test_pipeline_deps(display_context)
 
 
 def _no_agent_registry_class() -> object:
@@ -102,9 +107,9 @@ def test_worker_runtime_paths_are_namespaced(tmp_path: Path) -> None:
     )
 
     assert runtime.checkpoint_path == worker_ns / "tmp" / "checkpoint.json"
-    assert runtime.current_prompt_path == worker_ns / "tmp" / "CURRENT_PROMPT.md"
+    assert runtime.product_criteria_path == worker_ns / "tmp" / "PRODUCT_CRITERIA.md"
     assert runtime.prompt_dump_path == worker_ns / "tmp" / "development_prompt.md"
-    assert runtime.system_prompt_path == worker_ns / "tmp" / "development_system_prompt.md"
+    assert runtime.master_prompt_path == worker_ns / "tmp" / "development_master_prompt.md"
     assert runtime.multimodal_sidecar_path == (
         worker_ns / "tmp" / "development_multimodal_handoff.json"
     )
@@ -114,20 +119,20 @@ def test_worker_prompt_helpers_are_namespaced(tmp_path: Path) -> None:
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
 
     debug_dump_module = importlib.import_module("ralph.prompts.debug_dump")
-    system_prompt_module = importlib.import_module("ralph.prompts.system_prompt")
+    master_prompt_module = importlib.import_module("ralph.prompts.master_prompt")
 
     worker_prompt_dump_path = getattr(debug_dump_module, "worker_prompt_dump_path", None)
     worker_multimodal_sidecar_path = getattr(
         debug_dump_module, "worker_multimodal_sidecar_path", None
     )
-    worker_current_prompt_path = getattr(system_prompt_module, "worker_current_prompt_path", None)
-    worker_system_prompt_path = getattr(system_prompt_module, "worker_system_prompt_path", None)
+    worker_product_criteria_path = getattr(master_prompt_module, "worker_product_criteria_path", None)
+    worker_master_prompt_path = getattr(master_prompt_module, "worker_master_prompt_path", None)
 
     if (
         worker_prompt_dump_path is None
         or worker_multimodal_sidecar_path is None
-        or worker_current_prompt_path is None
-        or worker_system_prompt_path is None
+        or worker_product_criteria_path is None
+        or worker_master_prompt_path is None
     ):
         pytest.fail(
             "Expected worker-specific prompt/system path helpers to be exposed for parallel "
@@ -141,9 +146,9 @@ def test_worker_prompt_helpers_are_namespaced(tmp_path: Path) -> None:
     assert worker_multimodal_sidecar_path(worker_ns, "development") == (
         worker_ns / "tmp" / "development_multimodal_handoff.json"
     )
-    assert worker_current_prompt_path(worker_ns) == worker_ns / "tmp" / "CURRENT_PROMPT.md"
-    assert worker_system_prompt_path(worker_ns, "development") == (
-        worker_ns / "tmp" / "development_system_prompt.md"
+    assert worker_product_criteria_path(worker_ns) == worker_ns / "tmp" / "PRODUCT_CRITERIA.md"
+    assert worker_master_prompt_path(worker_ns, "development") == (
+        worker_ns / "tmp" / "development_master_prompt.md"
     )
 
 
@@ -229,17 +234,19 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         lambda *args, **kwargs: PipelineState(phase="development"),
         raising=False,
     )
-    monkeypatch.setattr(
-        module,
-        "determine_effect_from_policy",
-        lambda *args, **kwargs: InvokeAgentEffect(
+    def expected_agy_agents_probe() -> str:
+        return "Available agents:\n- reviewer"
+
+    def _router(*_args: object, **kwargs: object) -> InvokeAgentEffect:
+        captured["agy_agents_probe"] = kwargs.get("agy_agents_probe")
+        return InvokeAgentEffect(
             agent_name="developer",
             phase="development",
             prompt_file="ignored.md",
             drain="development",
-        ),
-        raising=False,
-    )
+        )
+
+    monkeypatch.setattr(module, "determine_effect_from_policy", _router, raising=False)
     monkeypatch.setattr(
         module,
         "DefaultPipelineFactory",
@@ -255,10 +262,33 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         _fake_execute_agent_effect,
         raising=False,
     )
+
+    def _fake_handle_execution_phase(
+        effect: object,
+        context: object,
+        *,
+        output_artifact_path: str | None = None,
+        assigned_work_unit_id: str | None = None,
+    ) -> list[ExecutionResultEvent]:
+        del effect, context
+        captured["output_artifact_path"] = output_artifact_path
+        captured["assigned_work_unit_id"] = assigned_work_unit_id
+        return [ExecutionResultEvent(phase="development", status="completed")]
+
+    def _fake_phase_event_after_agent_run(**kwargs: object) -> ExecutionResultEvent:
+        handle_phase_fn = kwargs.get("handle_phase_fn")
+        return handle_phase_fn(object(), object())[0]
+
+    monkeypatch.setattr(
+        module,
+        "handle_execution_phase",
+        _fake_handle_execution_phase,
+        raising=False,
+    )
     monkeypatch.setattr(
         module,
         "phase_event_after_agent_run",
-        lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
+        _fake_phase_event_after_agent_run,
         raising=False,
     )
     monkeypatch.setattr(module, "invoke_agent", object(), raising=False)
@@ -270,12 +300,21 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         raising=False,
     )
 
+    pipeline_deps = dataclasses.replace(
+        _FakePipelineFactory(phase_prompt_materializer=_fake_materialize_prompt_for_phase).build(
+            object(),
+            object(),
+        ),
+        agy_agents_probe=expected_agy_agents_probe,
+    )
     exit_code = module.run_parallel_worker_from_manifest(
         manifest_path=manifest_path,
         display_context=object(),
+        pipeline_deps=pipeline_deps,
     )
 
     assert exit_code == 0
+    assert captured["agy_agents_probe"] is expected_agy_agents_probe
     assert captured["read_path"] == shared_prompt
     assert manifest.config_path is not None
     assert captured["config_path"] == Path(manifest.config_path)
@@ -287,6 +326,10 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     effect = captured["effect"]
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.prompt_file == str(worker_ns / "tmp" / "development_prompt.md")
+    assert captured["output_artifact_path"] == str(
+        worker_ns / "artifacts" / "development_result.md"
+    )
+    assert captured["assigned_work_unit_id"] == "unit-a"
 
 
 def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_agent_effect(
@@ -386,7 +429,7 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
     )
 
     assert exit_code == 0
-    kwargs = cast("dict[str, object]", captured["kwargs"])
+    kwargs = must_mapping(captured["kwargs"])
     assert kwargs["worker_namespace"] == worker_ns
     assert kwargs["worker_artifact_dir"] == worker_ns / "artifacts"
     assert kwargs["parallel_worker"] is True
@@ -504,7 +547,7 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
     assert exit_code == 0
     session_caps = captured["session_caps"]
     assert hasattr(session_caps, "tool_name_prefix")
-    assert cast("str", object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"
+    assert must_str(object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"
 
 
 def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_without_resume_support(
@@ -810,4 +853,4 @@ def test_materialize_prepared_prompt_preserves_transport_tool_prefix_from_agent_
 
     session_caps = captured["session_caps"]
     assert hasattr(session_caps, "tool_name_prefix")
-    assert cast("str", object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"
+    assert must_str(object.__getattribute__(session_caps, "tool_name_prefix")) == "mcp__ralph__"

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
@@ -18,10 +17,8 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
-from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
 if TYPE_CHECKING:
@@ -32,7 +29,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.pipeline.effects import Effect
+    from ralph.pipeline.effects import Effect, InvokeAgentEffect
     from ralph.pipeline.events import Event
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
@@ -58,12 +55,16 @@ if TYPE_CHECKING:
 
 
 def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
-    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    module = cast(
+        "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.read_latest_analysis_decision
 
 
 def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
-    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    module = cast(
+        "_ArtifactReaderModule", import_module("ralph.display.artifact_reader")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.read_plan_artifact
 
 
@@ -240,7 +241,9 @@ def _render_success_artifact(
     def _emit_close(produced: str) -> None:
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(produced)
+                cast("ParallelDisplay", display).record_artifact_outcome(
+                    produced
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     if artifact_type == "plan":
         _emit_via_display(display_context, "emit_plan_artifact", workspace_root)
@@ -258,7 +261,9 @@ def _render_success_artifact(
     if artifact_type == "development_result":
         _emit_via_display(display_context, "emit_development_artifact", workspace_root)
         produced = (
-            "result produced" if (workspace_root / ra.json_path).exists() else "no result artifact"
+            "result produced"
+            if (workspace_root / ra.artifact_path).exists()
+            else "no result artifact"
         )
         _emit_close(produced)
         return
@@ -267,25 +272,21 @@ def _render_success_artifact(
         _emit_via_display(display_context, "emit_review_artifact", workspace_root)
         with suppress(Exception):
             issue_count = 0
-            issues_path = workspace_root / ra.json_path
+            issues_path = workspace_root / ra.artifact_path
             if issues_path.exists():
-                try:
-                    issues_text = issues_path.read_text(encoding="utf-8")
-                    issues_data = cast("object", json.loads(issues_text))
-                    content_obj = (
-                        cast("dict[str, object]", issues_data).get("content")
-                        if isinstance(issues_data, dict)
-                        else issues_data
+                with suppress(Exception):
+                    from ralph.mcp.artifacts.markdown import parse_and_validate
+                    from ralph.mcp.artifacts.markdown.registry import get_spec
+
+                    import_module("ralph.mcp.artifacts.markdown.specs")
+                    content, diagnostics = parse_and_validate(
+                        issues_path.read_text(encoding="utf-8"),
+                        get_spec("issues"),
                     )
-                    issues_list = (
-                        cast("dict[str, object]", content_obj).get("issues")
-                        if isinstance(content_obj, dict)
-                        else content_obj
-                    )
-                    if isinstance(issues_list, list):
-                        issue_count = len(issues_list)
-                except Exception:
-                    pass
+                    if not any(item.severity == "error" for item in diagnostics):
+                        issues_list = content.get("issues")
+                        if isinstance(issues_list, list):
+                            issue_count = len(issues_list)
             _emit_close(f"{issue_count} issue(s)")
         return
 
@@ -294,10 +295,6 @@ def _render_success_artifact(
         _emit_close("applied")
 
 
-def _commit_effect(workspace_root: Path) -> CommitEffect:
-    return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
-
-
 phase_event_after_agent_run = _phase_event_after_agent_run
 render_phase_artifact_handoff = _render_phase_artifact_handoff
-commit_effect = _commit_effect
+render_success_artifact = _render_success_artifact

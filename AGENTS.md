@@ -2,12 +2,13 @@
 
 ## Scope
 
-This repository’s maintained implementation is the Python package in `ralph-workflow/`.
+This repository's maintained implementation is the Python package in `ralph-workflow/`.
 Treat older Rust-oriented material elsewhere in the repo as legacy background unless a document explicitly says it was refreshed for Python.
 
 ## Source of truth
 
 Use these first, in this order:
+
 1. `PROMPT.md` (root — the canonical documentation rubric / brief for the project)
 2. `ralph-workflow/CONTRIBUTING.md`
 3. `docs/agents/verification.md`
@@ -22,6 +23,13 @@ your project by `ralph --init` — do not conflate the two.
 
 If instructions conflict, follow the stricter one.
 
+The canonical quality policies — testing, type-checking, linting,
+dependency, verification, agent, clean-code, documentation, and
+security — live under `docs/ralph-workflow-policy/` and are the
+single source of truth for those domains. AI agents reading this
+file MUST consult `docs/ralph-workflow-policy/` before changing
+the project.
+
 ## Priorities
 
 1. Fix surfaced issues immediately.
@@ -30,6 +38,41 @@ If instructions conflict, follow the stricter one.
 4. Keep documentation and commands aligned with actual behavior.
 
 ## Non-negotiables
+
+### ═══ NO UNRELATED-FAILURE EXEMPTION — YOU FIND IT, YOU FIX IT ═══
+
+`make verify` MUST pass **in full**. There is NO exemption for a failure your
+change did not cause.
+
+These are NOT acceptable outcomes, and NOT acceptable things to say:
+
+- "It was already failing on `main`."
+- "That failure is unrelated to my change."
+- "That gate isn't run by `make test`, so it doesn't count."
+- "I didn't touch that code."
+
+A red gate is a red gate. **Whoever next observes it owns fixing it.**
+
+**Do not investigate WHO caused it.** Stashing your changes, bisecting, or
+re-running against a clean tree to prove a failure is "pre-existing" is almost
+NEVER useful work — the answer does not change what you must do next, which is
+fix it. Provenance is worth chasing ONLY when it is genuinely diagnostic (the
+triggering change tells you what the bug IS), never to decide whether the
+failure is yours to own. It is always yours to own. Read the failure, find the
+root cause, repair it.
+
+**Preventing regressions outranks completing the task in hand.** If a
+pre-existing failure blocks you, fix the failure FIRST and finish your original
+task afterwards. Never report your own work as verified while any gate is red.
+If a repair is genuinely out of scope, STOP and surface it as an active
+blocker — do not route around it, do not weaken the gate, do not proceed.
+
+**Corollary — every check MUST be wired into `make verify`.** A check that runs
+only in an opt-in suite the default gate excludes WILL rot unnoticed: either
+wire it into `_VERIFY_STEPS`, or delete it. `ralph/testing/audit_repo_structure.py`
+exists because its rules previously lived only in a `subprocess_e2e`-marked test
+that `make verify` never ran — the repo-structure policy decayed silently while
+the gate stayed green.
 
 ### ═══ FABRICATION GUARD (ABSOLUTE — 3 levels, zero bypass) ═══
 
@@ -122,7 +165,7 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
   - Renaming test targets or adding new test-related `_VERIFY_STEPS` entries without also adding to `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS`
   - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` in the Makefile
   - Setting environment variables (`RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`, `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`)
-  - Raising `_TOTAL_TEST_BUDGET_SECONDS` or modifying `_BUDGET_TRACKED_STEPS` in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`)
+  - Raising `_TOTAL_TEST_BUDGET_SECONDS`, or narrowing `_BUDGET_TRACKED_STEPS` / `_KNOWN_TEST_STEP_LABELS` so a step that runs a test suite stops being charged, in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`). EVERY `_VERIFY_STEPS` entry that runs tests belongs in both sets. The current `make test` profile includes the registered real-git auto-integration files through the `required_auto_integrate_e2e` marker even when they also carry `subprocess_e2e`; any future separate test step must be tracked too.
   - Emptying `_KNOWN_TEST_STEP_LABELS` to hide test steps from budget tracking (blocked by import-time non-empty RuntimeError check)
   - Emptying `_BUDGET_TRACKED_STEPS` to disable budget enforcement (blocked by import-time non-empty RuntimeError check)
   - Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` to silently exclude the primary test step (blocked by import-time containment RuntimeError check)
@@ -158,10 +201,21 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
 
 ## Absolutely Zero Dead code
 
-Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on 
+Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on
 than it is to leave dead code around. If in doubt, **REMOVE IT**.
 
+<!-- ralph-workflow-policy:begin v1 -->
+Quality policies for testing, type-checking, linting, dependency,
+verification, agent, clean-code, documentation, and security live
+under `docs/ralph-workflow-policy/`. AI agents (Claude, Codex,
+Cursor, opencode, and any other) MUST read and follow those policies
+before changing the project; this file's source-of-truth and
+non-negotiables sections remain authoritative for agent behaviour.
+<!-- ralph-workflow-policy:end -->
+
 ## Verification
+
+<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/verification-policy.md -->
 
 Before completion, run the required checks from `docs/agents/verification.md`:
 

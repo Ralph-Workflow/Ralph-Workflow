@@ -61,3 +61,15 @@ def test_all_ralph_tools_includes_raw_exec_tool() -> None:
 
 def test_all_ralph_tools_matches_enum_members_exactly() -> None:
     assert tuple(str(member) for member in RalphToolName) == ALL_RALPH_TOOLS
+
+
+def test_prompt_aliases_use_only_the_provider_visible_prefixed_name() -> None:
+    aliases = RalphToolName.SUBMIT_MD_ARTIFACT.prompt_aliases(tool_name_prefix="mcp__ralph__")
+
+    assert aliases == ("mcp__ralph__ralph_submit_md_artifact",)
+
+
+def test_prompt_reference_never_advertises_an_unavailable_bare_alias() -> None:
+    reference = RalphToolName.DECLARE_COMPLETE.prompt_reference(tool_name_prefix="mcp__ralph__")
+
+    assert reference == "`mcp__ralph__declare_complete`"

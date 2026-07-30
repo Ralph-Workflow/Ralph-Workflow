@@ -6,7 +6,7 @@ import json
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal
 
 import pytest
 
@@ -35,10 +35,10 @@ from ralph.mcp.upstream.config import (
     load_upstream_mcp_servers,
 )
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str_dict,
+)
 
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
@@ -49,21 +49,21 @@ def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _json_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(raw))
+    return must_mapping(json.loads(raw))
 
 
 def _toml_object(raw: str) -> dict[str, object]:
-    return cast("dict[str, object]", tomllib.loads(raw))
+    return must_mapping(tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
-    return cast("dict[str, str]", env_obj)
+    return must_str_dict(env_obj)
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(cast("Iterable[str]", args[0]))
+    return list(args[0])
 
 
 def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
@@ -213,9 +213,9 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
 
     assert seen_env
     config_content = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
-    mcp_config = cast("dict[str, object]", config_content["mcp"])
-    ralph_config = cast("dict[str, object]", mcp_config["ralph"])
-    permission_config = cast("dict[str, object]", config_content["permission"])
+    mcp_config = must_mapping(config_content["mcp"])
+    ralph_config = must_mapping(mcp_config["ralph"])
+    permission_config = must_mapping(config_content["permission"])
     assert config_content["$schema"] == "https://opencode.ai/config.json"
     assert ralph_config["type"] == "remote"
     assert ralph_config["url"] == "http://127.0.0.1:9999/mcp"
@@ -326,8 +326,8 @@ def test_invoke_agent_merges_existing_opencode_config_content(
 
     assert seen_env
     config_content = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
-    mcp_config = cast("dict[str, object]", config_content["mcp"])
-    ralph_config = cast("dict[str, object]", mcp_config["ralph"])
+    mcp_config = must_mapping(config_content["mcp"])
+    ralph_config = must_mapping(mcp_config["ralph"])
     assert config_content["model"] == "anthropic/test"
     assert ralph_config["url"] == "http://127.0.0.1:9999/mcp"
 
@@ -399,7 +399,7 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
 def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
     result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    tools = cast("dict[str, object]", parsed["tools"])
+    tools = must_mapping(parsed["tools"])
     for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
         assert tools[name] is False, f"Expected {name} to be False"
 
@@ -407,8 +407,8 @@ def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
 def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> None:
     result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    tools = cast("dict[str, object]", parsed["tools"])
-    permission = cast("dict[str, object]", parsed["permission"])
+    tools = must_mapping(parsed["tools"])
+    permission = must_mapping(parsed["permission"])
     for name in ("task", "skill", "todowrite", "webfetch", "websearch"):
         assert name in OPENCODE_NATIVE_TOOLS_TO_KEEP
         assert name not in OPENCODE_NATIVE_TOOLS_TO_DISABLE
@@ -424,7 +424,7 @@ def test_opencode_config_tools_disable_overrides_user_enables() -> None:
     existing = '{"tools": {"bash": true}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    tools = cast("dict[str, object]", parsed["tools"])
+    tools = must_mapping(parsed["tools"])
     assert tools["bash"] is False, "MCP policy must override user enable"
 
 
@@ -432,8 +432,8 @@ def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     existing = '{"tools": {"custom_plugin_tool": true}, "ui": {"theme": "dark"}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    tools = cast("dict[str, object]", parsed["tools"])
-    ui = cast("dict[str, object]", parsed["ui"])
+    tools = must_mapping(parsed["tools"])
+    ui = must_mapping(parsed["ui"])
     assert tools["custom_plugin_tool"] is True
     for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
         assert tools[name] is False
@@ -521,8 +521,8 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
     parsed = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
-    mcp_config = cast("dict[str, object]", parsed["mcp"])
-    ralph_server = cast("dict[str, object]", mcp_config["ralph"])
+    mcp_config = must_mapping(parsed["mcp"])
+    ralph_server = must_mapping(mcp_config["ralph"])
     # The client timeout must exceed the longest server-side tool (exec); assert
     # that property rather than a brittle literal so it cannot silently regress.
     assert isinstance(ralph_server["timeout"], int)
@@ -553,7 +553,7 @@ def test_opencode_config_preserves_unrelated_permission_entries() -> None:
     existing = '{"permission": {"bash": "ask", "custom_tool": "allow"}}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    permission = cast("dict[str, object]", parsed["permission"])
+    permission = must_mapping(parsed["permission"])
     assert permission["bash"] == "ask"
     assert permission["custom_tool"] == "allow"
     assert permission["ralph_*"] == "allow"
@@ -562,7 +562,7 @@ def test_opencode_config_preserves_unrelated_permission_entries() -> None:
 def test_opencode_config_allows_all_bare_ralph_mcp_tool_names() -> None:
     result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    permission = cast("dict[str, object]", parsed["permission"])
+    permission = must_mapping(parsed["permission"])
 
     for tool_name in ALL_RALPH_TOOLS:
         assert permission[str(tool_name)] == "allow"
@@ -572,9 +572,9 @@ def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:
     existing = '{"mcp": "invalid", "permission": "invalid", "tools": "invalid"}'
     result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
-    mcp_config = cast("dict[str, object]", parsed["mcp"])
-    permission = cast("dict[str, object]", parsed["permission"])
-    tools = cast("dict[str, object]", parsed["tools"])
+    mcp_config = must_mapping(parsed["mcp"])
+    permission = must_mapping(parsed["permission"])
+    tools = must_mapping(parsed["tools"])
     assert mcp_config["ralph"]
     assert permission["ralph_*"] == "allow"
     for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
@@ -717,13 +717,13 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     assert expected_server in seen_config[0]
 
 
-def test_invoke_agent_injects_codex_system_prompt_file_via_config(
+def test_invoke_agent_injects_codex_master_prompt_file_via_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
-    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
-    system_prompt_file.write_text("unattended mode", encoding="utf-8")
+    master_prompt_file = tmp_path / "MASTER_PROMPT.md"
+    master_prompt_file.write_text("unattended mode", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
     seen_config: list[str] = []
 
@@ -775,7 +775,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                system_prompt_file=str(system_prompt_file),
+                master_prompt_file=str(master_prompt_file),
             ),
             _clock=FakeClock(),
         )
@@ -783,19 +783,19 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
 
     assert len(seen_config) == 1
     parsed = _toml_object(seen_config[0])
-    assert parsed["model_instructions_file"] == str(system_prompt_file)
-    features = cast("dict[str, object] | None", parsed.get("features"))
+    assert parsed["model_instructions_file"] == str(master_prompt_file)
+    features = parsed.get("features")
     if features is not None:
         assert "model_instructions_file" not in features
 
 
-def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
+def test_invoke_agent_prepends_master_prompt_for_opencode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
-    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
-    system_prompt_file.write_text("unattended mode", encoding="utf-8")
+    master_prompt_file = tmp_path / "MASTER_PROMPT.md"
+    master_prompt_file.write_text("unattended mode", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_cmds: list[list[str]] = []
 
@@ -843,13 +843,15 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
             str(prompt_file),
             options=InvokeOptions(
                 show_progress=False,
-                system_prompt_file=str(system_prompt_file),
+                master_prompt_file=str(master_prompt_file),
             ),
             _clock=FakeClock(),
         )
     )
 
-    assert seen_cmds == [["opencode", "run", "--format", "json", "hello"]]
+    assert seen_cmds == [
+        ["opencode", "run", "--format", "json", "unattended mode\n\nhello"]
+    ]
 
 
 def test_invoke_agent_preserves_existing_codex_home_state(
@@ -927,14 +929,14 @@ def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Pa
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
-    features = cast("dict[str, object]", parsed["features"])
+    features = must_mapping(parsed["features"])
     for key, value in CODEX_NATIVE_FEATURE_OVERRIDES:
         section, subkey = key.split(".", 1)
-        nested = cast("dict[str, object]", parsed[section])
+        nested = must_mapping(parsed[section])
         assert nested[subkey] is (value == "true"), f"Expected {key} = {value}"
     assert features["multi_agent"] is True, "Sub-agents must stay enabled"
     assert "web_search" not in parsed, "web_search must not be force-disabled"
@@ -942,17 +944,17 @@ def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Pa
 
 
 def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: Path) -> None:
-    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
-    system_prompt_file.write_text("system", encoding="utf-8")
+    master_prompt_file = tmp_path / "MASTER_PROMPT.md"
+    master_prompt_file.write_text("system", encoding="utf-8")
     home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file=str(system_prompt_file),
+        master_prompt_file=str(master_prompt_file),
     )
     parsed = _toml_object((Path(home) / "config.toml").read_text(encoding="utf-8"))
-    assert parsed["model_instructions_file"] == str(system_prompt_file)
-    features = cast("dict[str, object]", parsed["features"])
+    assert parsed["model_instructions_file"] == str(master_prompt_file)
+    features = must_mapping(parsed["features"])
     assert "model_instructions_file" not in features
 
 
@@ -967,11 +969,11 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=str(fake_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
-    features = cast("dict[str, object]", parsed["features"])
+    features = must_mapping(parsed["features"])
     assert features["foo"] is True, "Existing feature should be preserved"
     assert features["shell_tool"] is False
     assert features["multi_agent"] is True

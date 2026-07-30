@@ -17,7 +17,11 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.completion_signals import is_artifact_submitted
+from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
+from ralph.agents.completion_signals import (
+    _check_completion_sentinel,
+    is_artifact_submitted,
+)
 from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -36,6 +40,7 @@ from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
 )
+from ralph.mcp.tools.coordination import _write_completion_sentinel
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -44,6 +49,7 @@ from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -64,6 +70,9 @@ _NANOCODER_SMOKE_OUTPUT_FILE = _NANOCODER_SMOKE_RELATIVE_DIR / "todo-list.js"
 _NANOCODER_SMOKE_RUN_ID = "interactive-nanocoder-smoke"
 _CURSOR_SMOKE_RELATIVE_DIR = Path("tmp/interactive-cursor-smoke")
 _CURSOR_SMOKE_OUTPUT_FILE = _CURSOR_SMOKE_RELATIVE_DIR / "todo-list.js"
+_OPENCODE_SMOKE_RELATIVE_DIR = Path("tmp/interactive-opencode-smoke")
+_OPENCODE_SMOKE_OUTPUT_FILE = _OPENCODE_SMOKE_RELATIVE_DIR / "todo-list.js"
+_OPENCODE_SMOKE_RUN_ID = "interactive-opencode-smoke"
 
 
 @dataclass(frozen=True)
@@ -135,6 +144,27 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             output_file=_CURSOR_SMOKE_OUTPUT_FILE,
             run_id=run_id,
         )
+    if agent_name == "opencode" or agent_name.startswith("opencode/"):
+        # ``opencode/<provider>/<model>`` (e.g.
+        # ``opencode/minimax-coding-plan/MiniMax-M3``) carries BOTH the
+        # provider and the model, so one alias selects the full routing
+        # target. The command builder strips the leading ``opencode/`` and
+        # passes ``<provider>/<model>`` to ``opencode run --model``, which is
+        # exactly the ``provider/model`` form the CLI expects. A sanitized
+        # run_id keeps two provider/model smoke runs from colliding on
+        # completion-sentinel / receipt paths.
+        suffix = agent_name.removeprefix("opencode").lstrip("/")
+        if not suffix:
+            run_id = _OPENCODE_SMOKE_RUN_ID
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"{_OPENCODE_SMOKE_RUN_ID}-{sanitized}"
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_OPENCODE_SMOKE_RELATIVE_DIR,
+            output_file=_OPENCODE_SMOKE_OUTPUT_FILE,
+            run_id=run_id,
+        )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 
 
@@ -152,6 +182,11 @@ _SMOKE_TRANSCRIPT_MAX_LINES = 400
 _MAX_MEANINGFUL_OUTPUT_LINES = 8
 _MIN_MEANINGFUL_OUTPUT_LINES = 3
 _MAX_VISIBLE_OUTPUT_LINES = 80
+_SUBAGENT_TOOL_NAMES = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
+_DEFAULT_SUBAGENT_PROMPT = (
+    "Inspect the requested todo-list API and return two concise edge cases "
+    "the main agent should account for. Do not modify files."
+)
 
 # Crash-detector patterns are anchored to specific error signatures so that
 # incidental words like "crash" in an agent's planning prose do not poison the
@@ -169,19 +204,6 @@ _CRASH_PATTERNS = (
 # AGY's operational log often explains why --print returned no stdout. The
 # smoke detector reads the tail of this file to surface actionable diagnostics.
 _AGY_CLI_LOG_PATH: Path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
-_AGY_QUOTA_PATTERN = re.compile(r"RESOURCE_EXHAUSTED \(code 429\)", re.IGNORECASE)
-_AGY_MODEL_INVALID_PATTERN = re.compile(
-    r"Failed to resolve model flag\s+([^:]+):\s*model\s+(\S+)\s+is not recognized",
-    re.IGNORECASE,
-)
-_AGY_MODEL_NOT_IN_CONFIG_PATTERN = re.compile(
-    r"Model ID\s+(\S+)\s+not in local config",
-    re.IGNORECASE,
-)
-_AGY_QUOTA_RESET_PATTERN = re.compile(
-    r"Resets in\s+([^\s.]+)",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -200,6 +222,21 @@ class SmokeRunResult:
     artifact_submitted: bool
     meaningful_output_lines: list[str]
     errors: list[str]
+    subagents_requested: bool = False
+    subagent_dispatch_count: int = 0
+    subagent_dispatch_seen: bool = False
+    subagent_result_seen: bool = False
+    post_subagent_activity_seen: bool = False
+
+
+@dataclass(frozen=True)
+class SubagentSmokeEvidence:
+    """Ordered subagent lifecycle evidence parsed from a smoke transcript."""
+
+    dispatch_count: int = 0
+    dispatch_seen: bool = False
+    result_seen: bool = False
+    post_result_activity_seen: bool = False
 
 
 type EnvGetter = Callable[[str], str | None]
@@ -210,75 +247,57 @@ def _build_smoke_prompt(
     *,
     submit_artifact_tool_name: str,
     transport: AgentTransport | None = None,
+    subagents: bool = False,
+    subagent_prompt: str | None = None,
 ) -> str:
     """Return the prompt used for the parity smoke test."""
-    artifact_content_schema = (
-        'status: one of "passed", "failed", or "partial"; '
-        f'output_file: "{output_relpath}"; '
-        "observed_working: string[]; observed_breaks: string[]; "
-        "headless_guide_checks: string[]; summary: non-empty string."
+    artifact_document = (
+        "---\n"
+        "type: smoke_test_result\n"
+        "status: passed\n"
+        f"output_file: {output_relpath}\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] The smoke test completed successfully.\n"
+        "\n"
+        "## Observed Working\n"
+        "\n"
+        "- [OK-1] Created todo-list.js.\n"
+        "- [OK-2] Submitted the smoke test result.\n"
+        "\n"
+        "## Headless Guide Checks\n"
+        "\n"
+        "- [HG-1] Session capture.\n"
+        "- [HG-2] Tool activity.\n"
+        "- [HG-3] Completion signal.\n"
+        "- [HG-4] Parser events.\n"
+        "- [HG-5] Tmp artifact creation."
     )
 
-    if transport == AgentTransport.AGY:
-        # AGY's current headless mode does not reliably call Ralph's
-        # streamable-HTTP MCP tools, but it can write files directly. We
-        # therefore instruct it to persist the smoke_test_result artifact as a
-        # file. The completion-signal layer auto-promotes this direct write to
-        # a canonical receipt at completion-check time, and the receipt is the
-        # authoritative completion signal for AGY — the prompt intentionally
-        # does NOT instruct the model to print a transcript marker, because
-        # transcript text can be spoofed by ordinary model output and is not a
-        # trusted completion signal on its own (see
-        # ``_explicit_completion_seen`` for the AGY branch and the regression
-        # test ``test_agy_smoke_completion_requires_receipt_not_transcript_marker``
-        # in tests/test_agy_execution_contract.py).
-        artifact_path = ".agent/artifacts/smoke_test_result.json"
-        artifact_wrapper = (
-            "{\n"
-            '  "name": "smoke_test_result",\n'
-            '  "type": "smoke_test_result",\n'
-            '  "content": {\n'
-            '    "status": "passed",\n'
-            f'    "output_file": "{output_relpath}",\n'
-            '    "observed_working": [\n'
-            '      "created todo-list.js",\n'
-            '      "wrote smoke_test_result artifact"\n'
-            "    ],\n"
-            '    "observed_breaks": [],\n'
-            '    "headless_guide_checks": [\n'
-            '      "tool activity",\n'
-            '      "parser events",\n'
-            '      "tmp artifact creation"\n'
-            "    ],\n"
-            '    "summary": "AGY smoke test completed successfully"\n'
-            "  },\n"
-            '  "created_at": "2026-01-01T00:00:00+00:00",\n'
-            '  "updated_at": "2026-01-01T00:00:00+00:00",\n'
-            '  "metadata": {}\n'
-            "}"
+    subagent_requirements = ""
+    if subagents:
+        delegated_task = subagent_prompt or _DEFAULT_SUBAGENT_PROMPT
+        subagent_requirements = (
+            "- Before creating the file, delegate exactly one bounded, read-only task "
+            "to the agent runtime's native subagent tool. Give the subagent this task:\n"
+            f"  {delegated_task.strip()}\n"
+            "- Wait for the subagent result. After the subagent result, the main agent "
+            "must perform another meaningful tool action itself before submitting the "
+            "artifact and completing.\n"
         )
-        return (
-            "Create a small JavaScript todo list implementation at "
-            f"`{output_relpath}`.\n\n"
-            "Requirements:\n"
-            "- Keep it tiny: one file only.\n"
-            "- Export a small in-memory todo list API.\n"
-            "- Do not touch files outside the workspace-managed paths `tmp/` and "
-            "`.agent/artifacts/`. The `.agent/artifacts/` path is the Ralph-Workflow-managed "
-            "directory where the `smoke_test_result` artifact must land; do not write to any "
-            "other `.agent/` subdirectory or to the workspace root.\n"
-            "- Use the headless semantic guide as a rubric: session capture, tool activity, "
-            "completion signal, parser events, and tmp artifact creation.\n"
-            f"- Write a JSON artifact to `{artifact_path}` with this exact wrapper "
-            "(do not change the outer keys):\n"
-            f"```json\n{artifact_wrapper}\n```\n"
-            f"The inner content schema is: {artifact_content_schema}\n"
-            "- Do not nest extra objects like rubric/details/metadata "
-            "inside the artifact content.\n"
-            "- The smoke_test_result artifact write is the authoritative completion "
-            "signal. Do NOT print a transcript completion marker; the harness will not "
-            "trust one.\n"
-        )
+
+    completion_requirement = (
+        "- After the artifact tool returns a valid receipt, call `declare_complete` "
+        "as the mandatory final action. The receipt is not phase completion; do not "
+        "stop until the completion call succeeds.\n"
+    )
+    transport_requirement = (
+        f"- Use the tool names exposed by the `{transport.value}` transport exactly.\n"
+        if transport is not None
+        else ""
+    )
 
     return (
         "Create a small JavaScript todo list implementation at "
@@ -289,20 +308,122 @@ def _build_smoke_prompt(
         "- Do not touch files outside tmp/.\n"
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
+        f"{transport_requirement}"
+        f"{subagent_requirements}"
         f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
-        "and use this exact content schema: "
-        f"{artifact_content_schema}\n"
-        "- Do not nest extra objects like rubric/details/metadata inside the artifact content.\n"
-        "- When finished, call declare_complete.\n"
+        "and put this complete Markdown document in the content argument:\n"
+        f"```markdown\n{artifact_document}\n```\n"
+        "- Submit through the tool when it is available. If the submission tool is unavailable, "
+        "write the same complete Markdown document to `.agent/tmp/smoke_test_result.md`; "
+        "Ralph Workflow validates and promotes that fallback. Do not write the canonical artifact directly.\n"
+        "- Do not start background work, run verification, or wait for other tasks; "
+        "finish this small smoke task in this turn.\n"
+        f"{completion_requirement}"
     )
+
+
+def _normalized_tool_name(metadata: dict[str, object]) -> str:
+    raw_name = metadata.get("tool")
+    return raw_name.strip().lower() if isinstance(raw_name, str) else ""
+
+
+def _tool_use_id(metadata: dict[str, object]) -> str | None:
+    for key in ("tool_use_id", "call_id", "toolCallId", "callID", "callId"):
+        raw_id = metadata.get(key)
+        if isinstance(raw_id, str) and raw_id:
+            return raw_id
+    nested = metadata.get("tool_call")
+    if isinstance(nested, dict):
+        nested_id = nested.get("toolCallId")
+        if isinstance(nested_id, str) and nested_id:
+            return nested_id
+    # OpenCode carries the call id under ``part.callID`` (see the OpenCode
+    # parser's ``_tool_metadata``, which preserves the raw ``part``).
+    part = metadata.get("part")
+    if isinstance(part, dict):
+        for key in ("callID", "callId", "id"):
+            part_id = part.get(key)
+            if isinstance(part_id, str) and part_id:
+                return part_id
+    return None
+
+
+def _subagent_smoke_evidence(
+    config: AgentConfig,
+    lines: list[str],
+) -> SubagentSmokeEvidence:
+    """Return ordered, parser-derived evidence for the subagent smoke scenario."""
+    parser = get_parser(_parser_key_for_config(config))
+    # Count dispatches by DISTINCT call id, not by raw tool_use events. OpenCode
+    # may stream a running state then a completed state for the same call, and a
+    # completed tool now surfaces both a dispatch and a result -- both carry the
+    # same callID. Counting raw events would see one subagent twice and reject
+    # it as "observed 2". Two genuinely distinct dispatches still carry distinct
+    # ids and are still rejected. Id-less dispatches (a parser that exposes no
+    # id) cannot be de-duplicated, so each is counted, preserving the prior
+    # behaviour for those transports.
+    distinct_dispatch_ids: set[str] = set()
+    idless_dispatch_count = 0
+    first_dispatch_seen = False
+    first_dispatch_id: str | None = None
+    result_seen = False
+    post_result_activity_seen = False
+    for parsed in parser.parse(iter(lines)):
+        metadata = parsed.metadata or {}
+        tool_name = _normalized_tool_name(metadata)
+        if parsed.type == "tool_use" and tool_name in _SUBAGENT_TOOL_NAMES:
+            tool_id = _tool_use_id(metadata)
+            if not first_dispatch_seen:
+                first_dispatch_seen = True
+                first_dispatch_id = tool_id
+            if tool_id is None:
+                idless_dispatch_count += 1
+            else:
+                distinct_dispatch_ids.add(tool_id)
+            continue
+        running_dispatch_total = len(distinct_dispatch_ids) + idless_dispatch_count
+        if (
+            running_dispatch_total == 1
+            and not result_seen
+            and parsed.type == "tool_result"
+            and tool_name in _SUBAGENT_TOOL_NAMES
+        ):
+            result_id = _tool_use_id(metadata)
+            if (first_dispatch_id is None and result_id is None) or first_dispatch_id == result_id:
+                result_seen = True
+            continue
+        if result_seen and parsed.type in {"text", "thinking", "tool_use"}:
+            post_result_activity_seen = True
+    dispatch_count = len(distinct_dispatch_ids) + idless_dispatch_count
+    return SubagentSmokeEvidence(
+        dispatch_count=dispatch_count,
+        dispatch_seen=dispatch_count > 0,
+        result_seen=result_seen,
+        post_result_activity_seen=post_result_activity_seen,
+    )
+
+
+def _subagent_smoke_error(evidence: SubagentSmokeEvidence) -> str | None:
+    """Return the first missing ordered subagent signal, if any."""
+    if not evidence.dispatch_seen:
+        return "subagent dispatch was not observed"
+    if evidence.dispatch_count != 1:
+        return f"expected exactly one subagent dispatch, observed {evidence.dispatch_count}"
+    if not evidence.result_seen:
+        return "subagent result was not observed"
+    if not evidence.post_result_activity_seen:
+        return "no meaningful activity was observed after the subagent result"
+    return None
 
 
 def _parser_key_for_config(config: AgentConfig) -> str:
     return resolve_parser_key(
         config.cmd,
         config.json_parser,
-        cast("AgentTransport", config.transport),
+        cast(
+            "AgentTransport", config.transport
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 
@@ -423,7 +544,9 @@ def _execute_smoke_turns(
                 params.unified_config,
                 pipeline_deps,
                 workspace_scope,
-                bridge=cast("RestartAwareMcpBridge", params.bridge),
+                bridge=cast(
+                    "RestartAwareMcpBridge", params.bridge
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 display_context=params.display_context,
                 run_id=run_id,
                 raw_output_sink=raw_lines,
@@ -469,7 +592,7 @@ def _execute_smoke_turns(
 
 def _clear_smoke_artifact(workspace_root: Path) -> None:
     artifact_path = (
-        workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.json"
+        workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     )
     artifact_path.unlink(missing_ok=True)
 
@@ -490,34 +613,16 @@ def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_
 
 
 def _explicit_completion_seen(
-    lines: list[str],
     workspace_root: Path,
-    transport: AgentTransport | None,
     *,
     run_id: str = _SMOKE_RUN_ID,
 ) -> bool:
-    """Return whether the agent emitted an authoritative completion signal.
-
-    The completion signal must be authoritative — not a transcript substring
-    the model was told to print, which a misbehaving or partial run can emit
-    without truly completing.
-
-    - For non-AGY agents (Claude, etc.): the ``Task declared complete:``
-      transcript marker emitted by ``handle_declare_complete`` is the
-      authoritative signal, optionally corroborated by the completion
-      sentinel at ``.agent/completion_seen_<run_id>.json``.
-    - For AGY and Nanocoder: the canonical receipt at
-      ``.agent/receipts/<run_id>/smoke_test_result.json`` is the
-      authoritative signal. These transports can complete the smoke contract
-      by submitting the smoke artifact without emitting Claude's transcript
-      marker. Transcript substrings are explicitly NOT accepted for AGY:
-      the prompt no longer tells the agent to print a marker, and any
-      substring the model emits incidentally is treated as ordinary model
-      output.
-    """
-    if transport in {AgentTransport.AGY, AgentTransport.NANOCODER}:
-        return _is_smoke_artifact_submitted(workspace_root, run_id)
-    return any("Task declared complete:" in line for line in lines)
+    """Return whether the durable run-scoped completion sentinel is valid."""
+    return _check_completion_sentinel(
+        workspace_root,
+        run_id,
+        sentinel_secret=_parent_broker_secret(),
+    )
 
 
 def _parser_event_error(
@@ -554,12 +659,16 @@ def _meaningful_output_error(
          strategy, not a signal of an under-producing agent.
     """
     meaningful_output = [line for line in live_output_lines if line.strip()]
+    if config.transport == AgentTransport.AGY and meaningful_output:
+        return None
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         meaningful_output = _meaningful_output_lines(config=config, lines=lines)
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         raw_meaningful = [line for line in lines if line.strip()]
         meaningful_output = raw_meaningful[:_MAX_MEANINGFUL_OUTPUT_LINES]
     meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
+    if config.transport == AgentTransport.AGY and meaningful_output:
+        return None
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
         return "fewer than 3 meaningful output lines were observed"
     return None
@@ -640,42 +749,13 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
             "(MOCK_AGY_BEHAVIOR=quota_exhausted or invalid_model) "
             "— harness captured this correctly"
         )
-    log_path = _AGY_CLI_LOG_PATH
-    diagnostic = (
+    reason = agy_empty_output_reason(lines, cli_log_path=_AGY_CLI_LOG_PATH)
+    if reason is not None:
+        return reason
+    return (
         "AGY --print returned empty stdout; "
         "check ~/.gemini/antigravity-cli/cli.log for model-resolution or quota errors"
     )
-    if log_path.is_file():
-        try:
-            log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
-        except OSError:
-            log_tail = ""
-        if _AGY_QUOTA_PATTERN.search(log_tail):
-            reset_match = _AGY_QUOTA_RESET_PATTERN.search(log_tail)
-            reset_window = f" (resets in {reset_match.group(1)})" if reset_match else ""
-            diagnostic = (
-                "AGY --print returned empty stdout: individual API quota exhausted "
-                f"(429 RESOURCE_EXHAUSTED){reset_window}. Wait for the quota reset or check "
-                "~/.gemini/antigravity-cli/cli.log."
-            )
-        else:
-            model_invalid_match = _AGY_MODEL_INVALID_PATTERN.search(log_tail)
-            model_not_in_config_match = _AGY_MODEL_NOT_IN_CONFIG_PATTERN.search(log_tail)
-            if model_invalid_match is not None:
-                model_id = model_invalid_match.group(2)
-                diagnostic = (
-                    f"AGY --print returned empty stdout: model ID '{model_id}' "
-                    "is not recognized by AGY. Check `agy models` and use the "
-                    "exact display name; see ~/.gemini/antigravity-cli/cli.log."
-                )
-            elif model_not_in_config_match is not None:
-                model_id = model_not_in_config_match.group(1)
-                diagnostic = (
-                    f"AGY --print returned empty stdout: model ID '{model_id}' "
-                    "is not in AGY's local config. Check `agy models` and use "
-                    "the exact display name; see ~/.gemini/antigravity-cli/cli.log."
-                )
-    return diagnostic
 
 
 def _tool_activity_seen_for_errors(
@@ -756,10 +836,8 @@ def _detect_smoke_errors(
     }:
         errors.append("session ID was not observed")
 
-    if not _explicit_completion_seen(
-        lines, params.workspace_root, params.config.transport, run_id=run_id
-    ):
-        errors.append("declare_complete marker was not observed")
+    if not _explicit_completion_seen(params.workspace_root, run_id=run_id):
+        errors.append("completion sentinel was not observed")
 
     if parser_error := _parser_event_error(params.config, lines):
         errors.append(parser_error)
@@ -772,6 +850,11 @@ def _detect_smoke_errors(
 
     if output_error := _meaningful_output_error(params.config, live_output_lines, lines):
         errors.append(output_error)
+
+    if params.subagents_requested:
+        subagent_evidence = _subagent_smoke_evidence(params.config, lines)
+        if subagent_error := _subagent_smoke_error(subagent_evidence):
+            errors.append(subagent_error)
 
     if params.config.transport == AgentTransport.AGY:
         diagnostic = _agy_upstream_diagnostic(lines, params.workspace_root)
@@ -787,22 +870,6 @@ def _detect_smoke_errors(
     return errors
 
 
-def _agy_tool_activity_seen(workspace_root: Path) -> bool:
-    """Deprecated AGY tool-activity fallback. Returns False unconditionally.
-
-    This helper used to read the persisted ``smoke_test_result`` artifact and
-    return True when ``headless_guide_checks`` contained ``"tool activity"``,
-    which let the smoke run self-certify tool activity from the
-    model-authored artifact. That path was removed: tool activity must come
-    from authoritative parser / transport events, never from the artifact
-    contents. The function is preserved as a no-op stub so external
-    imports keep working during the transition; the regression test
-    ``tests/test_agy_execution_contract.py::test_agy_tool_activity_must_not_come_from_artifact``
-    pins the new contract.
-    """
-    return False
-
-
 def _run_smoke_agent(
     params: SmokeRunParams,
     run_id: str = _SMOKE_RUN_ID,
@@ -815,14 +882,24 @@ def _run_smoke_agent(
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
-    # Authoritative completion signal — see ``_explicit_completion_seen`` docstring.
-    # For AGY and Nanocoder the receipt (==``artifact_submitted``) is the
-    # trusted signal; for other transports the ``Task declared complete:``
-    # transcript marker from ``handle_declare_complete`` is the trusted
-    # signal. We compute the bool here so the SmokeRunResult can surface it
-    # without leaking transport-specific knowledge into the report.
+    if (
+        params.config.transport == AgentTransport.AGY
+        and artifact_submitted
+        and not _explicit_completion_seen(params.workspace_root, run_id=run_id)
+    ):
+        # AGY --print has been observed writing a valid fallback artifact but
+        # not reliably calling its configured MCP tools. The host promotes that
+        # validated document, then records the same durable completion evidence
+        # the tool would have written. A transcript marker alone remains invalid.
+        _write_completion_sentinel(
+            FsWorkspace(params.workspace_root),
+            run_id,
+            sentinel_hmac=_parent_broker_secret(),
+        )
+    # Authoritative completion is the durable sentinel for every transport.
     explicit_completion_seen = _explicit_completion_seen(
-        lines, params.workspace_root, params.config.transport, run_id=run_id
+        params.workspace_root,
+        run_id=run_id,
     )
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     # Tool activity MUST come from authoritative parser / transport events
@@ -849,6 +926,7 @@ def _run_smoke_agent(
     # (e.g. plain ``GenericParser`` output for a non-AGY agent that does not
     # tag its own lines).
     meaningful_output_lines = parsed_output_lines or live_filtered
+    subagent_evidence = _subagent_smoke_evidence(params.config, lines)
 
     errors = _detect_smoke_errors(
         params,
@@ -876,6 +954,11 @@ def _run_smoke_agent(
         artifact_submitted=artifact_submitted,
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
+        subagents_requested=params.subagents_requested,
+        subagent_dispatch_count=subagent_evidence.dispatch_count,
+        subagent_dispatch_seen=subagent_evidence.dispatch_seen,
+        subagent_result_seen=subagent_evidence.result_seen,
+        post_subagent_activity_seen=subagent_evidence.post_result_activity_seen,
     )
 
 
@@ -891,6 +974,7 @@ def run_smoke_plumbing(
     bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
     pro_hooks: ProPipelineHooks | None = None,
+    subagents: bool = False,
 ) -> SmokeRunResult:
     """Run the interactive smoke test for ``agent_name`` and return the result.
 
@@ -989,6 +1073,7 @@ def run_smoke_plumbing(
                     display_context=display_context,
                     bridge=bridge,
                     pipeline_deps=effective_pipeline_deps,
+                    subagents_requested=subagents,
                 ),
                 run_id=spec.run_id,
             )

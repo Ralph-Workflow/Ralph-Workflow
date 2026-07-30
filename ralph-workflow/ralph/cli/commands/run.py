@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
@@ -26,6 +26,8 @@ from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
@@ -41,6 +43,7 @@ from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
     PolicyValidationError,
     validate_agent_chains_satisfiable,
+    validate_chain_agents_on_path,
     validate_checkpoint_against_policy,
     validate_drain_contracts,
     validate_policy_completeness,
@@ -48,6 +51,7 @@ from ralph.policy.validation import (
     validate_required_inputs,
 )
 from ralph.pro_support.prompt import resolve_effective_prompt_path
+from ralph.project_policy.policy_mode import PolicyMode
 from ralph.skills._installer import (
     _project_skills_need_install,
     install_project_baseline_skills,
@@ -58,6 +62,8 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
@@ -66,6 +72,8 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.project_policy.analysis import InvokePolicyAgent
+    from ralph.workspace.protocol import Workspace
 
 if TYPE_CHECKING:
 
@@ -95,10 +103,14 @@ def _get_run_func() -> _RunnerFunc | None:
     repeated calls do not retry the import after a failure.
     """
     if _state.run_func is not _RUN_FUNC_UNSET:
-        return cast("_RunnerFunc | None", _state.run_func)
+        return cast(
+            "_RunnerFunc | None", _state.run_func
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     try:
-        module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
+        module = cast(
+            "_RunnerModule", import_module("ralph.pipeline.runner")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     except ImportError:
         _state.run_func = None
         return None
@@ -127,14 +139,16 @@ _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     module = import_module("ralph.pipeline.runner")
-    return cast("int", module.validate_custom_mcp_servers(workspace_root))
+    return cast(
+        "int", module.validate_custom_mcp_servers(workspace_root)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 validate_custom_mcp_servers = _validate_custom_mcp_servers
 
 
 _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
-    "CURRENT_PROMPT.md",
+    "PRODUCT_CRITERIA.md",
     "PLAN.md",
     "ISSUES.md",
     "DEVELOPMENT_RESULT.md",
@@ -162,6 +176,7 @@ class RunPipelineRequest(NamedTuple):
     parallel_worker_manifest: Path | None = None
     pro_hooks: ProPipelineHooks | None = None
     model_identity: MultimodalModelIdentity | None = None
+    policy_mode: PolicyMode = PolicyMode.NORMAL
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
@@ -170,15 +185,15 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
     The operator-visible prompt is resolved through
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so
     the ``PROMPT_PATH`` env var is honoured in Pro mode. The
-    materialised ``.agent/CURRENT_PROMPT.md`` remains engine-owned
+    materialised ``.agent/PRODUCT_CRITERIA.md`` remains engine-owned
     and is the second operand of the comparison.
     """
     prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    if not prompt_path.exists() or not current_prompt_path.exists():
+    product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
+    if not prompt_path.exists() or not product_criteria_path.exists():
         return False
     try:
-        return prompt_path.read_text(encoding="utf-8") != current_prompt_path.read_text(
+        return prompt_path.read_text(encoding="utf-8") != product_criteria_path.read_text(
             encoding="utf-8"
         )
     except OSError:
@@ -200,6 +215,33 @@ def _invalidate_pipeline_state_if_prompt_changed(workspace_root: Path) -> bool:
     return True
 
 
+def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None) -> None:
+    """Attach the agent-config snapshot and policy-schema state to Sentry.
+
+    Runs at the single pipeline config-load chokepoint: ``_init_telemetry()``
+    initializes Sentry before any config exists, so this is the earliest point
+    the resolved agent table can be forwarded. Fail-soft — telemetry must never
+    break the run.
+    """
+    try:
+        from ralph.project_policy.schema_state import policy_schema_state
+        from ralph.telemetry._sentry import (
+            is_telemetry_active,
+            set_agent_config_context,
+            set_policy_schema_context,
+        )
+
+        if not is_telemetry_active():
+            return
+        set_agent_config_context(config.agents)
+        if workspace_root is not None:
+            # Derived only when telemetry is live: it stats and reads every
+            # policy file, and the result feeds nothing else.
+            set_policy_schema_context(policy_schema_state(workspace_root))
+    except Exception:
+        return
+
+
 def _load_configuration(
     config_path: Path | None,
     cli_overrides: ConfigOverrides,
@@ -216,10 +258,20 @@ def _load_configuration(
     display = resolve_active_display(None, display_context)
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        config = load_config(
+            config_path,
+            cli_overrides,
+            workspace_scope=workspace_scope,
+            unknown_field_warning=display.emit_warning,
+        )
     except Exception as e:
         logger.error("Failed to load configuration: {}", e)
         return _EXIT_CONFIG_ERROR
+
+    _record_config_telemetry(
+        config,
+        workspace_scope.root if workspace_scope is not None else None,
+    )
 
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None
@@ -285,6 +337,11 @@ def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
     validate_drain_contracts(policy_bundle)
 
 
+def _warn_missing_chain_fallback(message: str) -> None:
+    """Log a non-fatal missing fallback without disrupting the preflight."""
+    logger.warning(message)
+
+
 def _run_policy_preflight_checks(
     request: _PolicyPreflightRequest,
     *,
@@ -295,6 +352,7 @@ def _run_policy_preflight_checks(
     try:
         agent_registry = AgentRegistry.from_config(request.config)
         validate_agent_chains_satisfiable(request.policy_bundle, agent_registry)
+        validate_chain_agents_on_path(request.policy_bundle.agents, warn=_warn_missing_chain_fallback)
     except PolicyValidationError as e:
         display.emit_warning(_preflight_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
@@ -362,7 +420,9 @@ def _run_preflight_checks(
 
     # Only run policy-based validations if we have a loaded policy bundle.
     if request.policy_bundle is not None:
-        loaded_policy_bundle = cast("PolicyBundle", request.policy_bundle)
+        loaded_policy_bundle = cast(
+            "PolicyBundle", request.policy_bundle
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         try:
             validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
@@ -576,7 +636,16 @@ def _sync_shipped_skills_on_pipeline_run(
     try:
         update_available = SkillManager().check_skills_for_updates()
     except Exception as exc:  # user-global check is best-effort; must not break the pipeline
-        logger.debug("User-global skill update check failed (non-fatal): {}", exc)
+        # Non-fatal: surface as a visible warning so a broken user-global
+        # skill root (read-only $XDG_CONFIG_HOME, corrupted JSON, missing
+        # index) is not silently swallowed at default log level. The run
+        # continues; the operator can repair via
+        # ``ralph --force-init-skills``.
+        _emit_setup_warning(
+            f"User-global skill update check failed (non-fatal): {exc}. "
+            "Run `ralph --force-init-skills` to repair, or "
+            "`ralph --diagnose` for details.",
+        )
     if update_available:
         _print_user_global_update_hint()
     try:
@@ -585,7 +654,11 @@ def _sync_shipped_skills_on_pipeline_run(
             if failures:
                 _print_project_skill_conflict_hint(failures)
     except Exception as exc:  # project-scope install is best-effort; must not break the pipeline
-        logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Project-scope skill install failed (non-fatal): {exc}. "
+            "Run `ralph --force-init-skills` to retry, or "
+            "check file permissions on .agent/skills/.",
+        )
     try:
         from ralph.config.bootstrap import (
             auto_seed_default_git_exclude,
@@ -595,7 +668,11 @@ def _sync_shipped_skills_on_pipeline_run(
         auto_seed_default_gitignore(target_root)
         auto_seed_default_git_exclude(target_root)
     except Exception as exc:  # gitignore / git exclude auto-seed is best-effort
-        logger.debug("Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Project .gitignore/.git/info/exclude auto-seed failed "
+            f"(non-fatal): {exc}. Re-run `ralph` or check file permissions "
+            "on .gitignore and .git/info/exclude.",
+        )
     # Deterministic skill-update auto-commit (wt-025): runs AFTER the
     # project-scope install AND the gitignore/exclude auto-seed so the
     # auto-commit diff is purely skill content (no gitignore noise).
@@ -608,7 +685,18 @@ def _sync_shipped_skills_on_pipeline_run(
         if sha:
             logger.info("Auto-committed skill updates: {}", sha[:8])
     except Exception as exc:  # auto-commit is best-effort; never break the pipeline
+        # The literal ``Skill auto-commit failed (non-fatal): {}`` is
+        # required by ``ralph.testing.audit_skill_auto_commit`` (plan
+        # step 12) to pin the failure-path contract -- a refactor that
+        # silently drops the handler is caught at audit time. It's
+        # emitted at debug level so the operator still sees a visible
+        # warning via ``_emit_setup_warning`` below.
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Skill auto-commit failed (non-fatal): {exc}. The run "
+            "continues with the new skill content uncommitted; commit "
+            "manually or re-run to retry.",
+        )
     # RFC-013 P2: run-start retention sweep deletes aged bookkeeping
     # under ``.agent`` (completion sentinels, receipt dirs, retry scratch)
     # so long multi-instance runs do not accumulate one-file-per-event
@@ -619,14 +707,75 @@ def _sync_shipped_skills_on_pipeline_run(
 
         removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id)
         if removed:
-            logger.debug(
-                "Retention sweep removed {} stale .agent entries", removed
-            )
+            logger.debug("Retention sweep removed {} stale .agent entries", removed)
     except Exception as exc:  # sweep is best-effort; never break the pipeline
-        logger.debug("Retention sweep failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Retention sweep failed (non-fatal): {exc}. The run "
+            "continues without cleanup; check .agent/ permissions.",
+        )
+
+
+def _emit_setup_warning(message: str) -> None:
+    """Emit a setup-time non-fatal warning via the active display, falling back to loguru.
+
+    The display is resolved lazily (the function may be invoked before
+    the CLI display context is fully ready), and a loguru warning is
+    always emitted so the message reaches the operator's log stream
+    even when the display sink is not attached.
+    """
+    logger.warning(message)
+    with suppress(Exception):  # pragma: no cover - defensive: best-effort warning path
+        display = resolve_active_display(None, make_display_context())
+    with suppress(Exception):  # pragma: no cover - defensive: best-effort warning path
+        display.emit_warning(message)
 
 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run
+
+
+def _run_project_policy_readiness(
+    *,
+    load_result: _LoadResult,
+    display_context: DisplayContext,
+    mode: PolicyMode = PolicyMode.NORMAL,
+    workspace_factory: Callable[[], Workspace] | None = None,
+    emit_factory: Callable[[str], None] | None = None,
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None = None,
+) -> int:
+    """Run the project-policy-readiness preflight at run_pipeline startup.
+
+    Thin wrapper that delegates to the orchestrator in
+    :mod:`ralph.project_policy.cli_integration`. Exists at this layer so
+    tests can monkey-patch ``run_module._run_project_policy_readiness``
+    to stub the preflight without invoking the real orchestrator.
+
+    The IMPORT itself is inside the try: the orchestrator is a fault boundary, but
+    it cannot catch a failure that happens while importing the module that defines
+    it. A broken optional dependency somewhere under ``ralph.project_policy``
+    would otherwise take down the whole run -- which is exactly what the boundary
+    exists to prevent. Policy never blocks the run, including when policy cannot
+    even be loaded.
+    """
+    try:
+        from ralph.project_policy.cli_integration import (
+            run_project_policy_readiness as _orchestrator,
+        )
+
+        return _orchestrator(
+            load_result=load_result,
+            display_context=display_context,
+            mode=mode,
+            workspace_factory=workspace_factory,
+            emit_factory=emit_factory,
+            invoke_remediation_agent_factory=invoke_remediation_agent_factory,
+        )
+    except Exception:
+        logger.opt(exception=True).warning(
+            "project-policy preflight could not run; continuing the development run"
+        )
+        # An --*-only invocation has no development run to fall through to, so it
+        # must still report the failure through its exit code.
+        return _EXIT_PREFLIGHT if mode.exits_after() else _EXIT_SUCCESS
 
 
 def _detail_text(label: str, detail: str) -> Text:
@@ -700,9 +849,14 @@ def run_pipeline(
 
     if effective_request.inline_prompt is not None:
         workspace_scope = resolve_workspace_scope()
-        current_prompt_path = workspace_scope.root / ".agent" / "CURRENT_PROMPT.md"
-        current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-        current_prompt_path.write_text(effective_request.inline_prompt, encoding="utf-8")
+        product_criteria_path = workspace_scope.root / ".agent" / "PRODUCT_CRITERIA.md"
+        product_criteria_path.parent.mkdir(parents=True, exist_ok=True)
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            product_criteria_path,
+            effective_request.inline_prompt,
+            encoding="utf-8",
+        )
 
     # Phase 1: Load configuration
     load_result = _load_configuration(
@@ -746,6 +900,34 @@ def run_pipeline(
             keep_run_id=sweep_keep_run_id,
         )
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
+
+    # Phase 2c: project-policy preflight (deterministic validator, opt-out
+    # honored, change-aware cache, then the bounded remediation/analysis
+    # pipeline). Runs only for non-inline, non-parallel-worker startup
+    # invocations so parallel-worker sub-runs never reach this code path.
+    #
+    # POLICY NEVER BLOCKS THE RUN. The orchestrator is a fault boundary that
+    # swallows every failure -- including its own bugs -- and returns
+    # _EXIT_SUCCESS, so a policy problem cannot cost the user their development
+    # run. The ONLY non-zero it can return is for an --*-only mode, which has no
+    # development run to proceed to. That is what this branch checks: we return
+    # early because the user asked for policy work ONLY, not because policy
+    # failed.
+    if load_result.workspace_scope is not None and effective_request.inline_prompt is None:
+        policy_readiness_result = _run_project_policy_readiness(
+            load_result=load_result,
+            display_context=ctx,
+            mode=effective_request.policy_mode,
+        )
+        if effective_request.policy_mode.exits_after():
+            return policy_readiness_result
+        # Defence in depth: a normal run continues regardless of what the
+        # preflight returned. Nothing about policy may abort the pipeline.
+        if policy_readiness_result != _EXIT_SUCCESS:
+            logger.warning(
+                "project-policy preflight returned {}; continuing the run anyway",
+                policy_readiness_result,
+            )
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:

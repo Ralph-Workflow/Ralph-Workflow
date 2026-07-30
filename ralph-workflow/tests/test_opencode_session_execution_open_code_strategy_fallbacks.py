@@ -6,8 +6,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
-
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -18,9 +16,6 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from tests.fake_handle import _FakeHandle
-
-if TYPE_CHECKING:
-    from ralph.process.liveness import FakeLivenessProbe
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -41,7 +36,7 @@ class TestOpenCodeStrategyFallbacks:
         strategy = OpenCodeExecutionStrategy(label_scope="run-scope")
         handle = _FakeHandle(has_descendants=True)
 
-        state = strategy.classify_quiet(handle, cast("FakeLivenessProbe", _RaisingProbe()))
+        state = strategy.classify_quiet(handle, _RaisingProbe())
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
 
@@ -58,7 +53,7 @@ class TestOpenCodeStrategyFallbacks:
         state = strategy.classify_exit(
             handle,
             signals,
-            liveness_probe=cast("FakeLivenessProbe", _RaisingProbe()),
+            liveness_probe=_RaisingProbe(),
         )
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
@@ -76,7 +71,7 @@ class TestOpenCodeStrategyFallbacks:
         state = strategy.classify_exit(
             handle,
             signals,
-            liveness_probe=cast("FakeLivenessProbe", _RaisingProbe()),
+            liveness_probe=_RaisingProbe(),
         )
 
         assert state == AgentExecutionState.RESUMABLE_CONTINUE

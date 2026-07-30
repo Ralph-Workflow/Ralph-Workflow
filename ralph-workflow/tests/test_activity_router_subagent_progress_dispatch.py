@@ -432,6 +432,7 @@ def test_provider_for_transport_round_trips_supported_transports() -> None:
     assert provider_for_transport("claude") is ActivityProvider.CLAUDE
     assert provider_for_transport("claude_interactive") is ActivityProvider.CLAUDE_INTERACTIVE
     assert provider_for_transport("codex") is ActivityProvider.CODEX
+    assert provider_for_transport("cursor") is ActivityProvider.CURSOR
     assert provider_for_transport("opencode") is ActivityProvider.OPENCODE
     assert provider_for_transport("gemini") is ActivityProvider.GEMINI
     assert provider_for_transport("agy") is ActivityProvider.AGY
@@ -563,9 +564,9 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
 # watchdog's per-task subagent sink sees per-tool evidence and the
 # operator-visible transcript shows a ``SUBAGENT_PROGRESS`` event.
 #
-# The test parametrizes over the 8 supported providers
+# The test parametrizes over the 9 supported providers
 # (CLAUDE / CLAUDE_INTERACTIVE / CODEX / OPENCODE / GEMINI / PI /
-# AGY / GENERIC) and drives ONE representative tool_use line per
+# AGY / CURSOR / GENERIC) and drives ONE representative tool_use line per
 # provider through ``ActivityRouter.push_raw_line``. Each case MUST
 # produce at least one ``SUBAGENT_PROGRESS`` event whose content
 # starts with ``tool_use:``. If a provider's parser does not route
@@ -598,6 +599,21 @@ _PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
             "name": "exec",
             "call_id": "call_1",
             "arguments": {"cmd": "pwd"},
+        }
+    ),
+    ActivityProvider.CURSOR: json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "tool_call": {
+                "mcpToolCall": {
+                    "args": {
+                        "toolName": "mcp__ralph__create_directory",
+                        "args": {"path": "tmp/interactive-cursor-smoke"},
+                    }
+                },
+                "toolCallId": "tool-1",
+            },
         }
     ),
     ActivityProvider.OPENCODE: json.dumps(

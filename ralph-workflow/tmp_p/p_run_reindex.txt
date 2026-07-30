@@ -1,0 +1,217 @@
+def _run_reindex(
+    store: ExploreStore,
+    workspace_root: Path,
+    *,
+    options: ReindexOptions,
+    now_fn: Callable[[], float],
+    state: _ReindexState,
+    cancel: Callable[[], bool] | None = None,
+) -> str:
+    """Inner reindex logic. Returns a status string (without finalize)."""
+    # AC-05: bounded cancel contract. Polled at the file-loop
+    # boundary, at the FTS commit, and at the row-insert boundary
+    # so cancellation latency is bounded by the duration of one
+    # phase. The prior committed generation is preserved.
+    def _check_cancel() -> None:
+        if cancel is not None and cancel():
+            raise _ReindexCancelledError("cancelled by caller")
+
+    # ``_run_reindex`` runs in ``changed`` mode only. The public
+    # ``reindex()`` entry point dispatches ``mode='full'`` to
+    # ``_staged_full_reindex`` so the live store is never
+    # partially modified. The change-replay path always
+    # increments the generation so the prior committed state
+    # is visibly distinct from the new one.
+    current_generation = _current_generation(store)
+    target_generation = current_generation + 1 if current_generation else 1
+
+    dirty_paths = store.peek_dirty_paths()
+    state.dirty_paths_count = len(dirty_paths)
+    path_scope = set(options.path_scope)
+
+    manifest_rows = collect_workspace_files(workspace_root)
+    next_manifest: dict[str, tuple[int, int]] = {}
+    for relative_path, size_bytes, mtime_ns in manifest_rows:
+        if path_scope and relative_path not in path_scope:
+            continue
+        next_manifest[relative_path] = (size_bytes, mtime_ns)
+
+    seen_paths: set[str] = set()
+
+    for relative_path, (size_bytes, mtime_ns) in sorted(next_manifest.items()):
+        _ensure_deadline(state, now_fn)
+        _check_cancel()
+        seen_paths.add(relative_path)
+        # Ponytail: size+mtime prefilter first. The content hash is
+        # authoritative, but skipping the read+hash for unchanged
+        # files keeps warm no-op refresh work-proportional to the
+        # manifest, not to the workspace bytes.
+        previous = store.get_file(relative_path)
+        if (
+            previous is not None
+            and previous.size_bytes == size_bytes
+            and previous.mtime_ns == mtime_ns
+            and not _dirty_paths_contain(store, relative_path)
+        ):
+            _update_manifest(
+                store,
+                relative_path,
+                content_hash=previous.content_hash,
+                size_bytes=size_bytes,
+                mtime_ns=mtime_ns,
+                last_seen_generation=target_generation,
+            )
+            continue
+
+        try:
+            content_hash, actual_size, actual_mtime = hash_workspace_file(
+                workspace_root, relative_path
+            )
+        except (FileNotFoundError, ValueError):
+            state.failed_paths.append(relative_path)
+            continue
+        except OSError as exc:
+            state.failed_paths.append(relative_path)
+            state.error_summary = f"hash_failed: {exc}"
+            continue
+
+        if (
+            previous is not None
+            and previous.content_hash == content_hash
+            and not previous.is_deleted
+        ):
+            # No-op reuse; the manifest rows stay.
+            _update_manifest(
+                store,
+                relative_path,
+                content_hash=content_hash,
+                size_bytes=actual_size,
+                mtime_ns=actual_mtime,
+                last_seen_generation=target_generation,
+            )
+            continue
+
+        # Either new file or content changed. Phase 1 supports diff
+        # content with same path (the deletion happens before the
+        # insert in upsert_chunks_for_file).
+        try:
+            _re_extract_path(
+                store,
+                workspace_root=workspace_root,
+                relative_path=relative_path,
+                content_hash=content_hash,
+                size_bytes=actual_size,
+                mtime_ns=actual_mtime,
+                generation=target_generation,
+            )
+        except PythonExtractionError as exc:
+            # PA-001 / AC-02: the typed structure-extraction failure
+            # is translated to the same per-path failure path as
+            # any other FileReadError. Prior lexical/structure
+            # rows are preserved (the preflight refused to write),
+            # the path stays dirty, and the loop continues.
+            state.failed_paths.append(relative_path)
+            state.error_summary = f"extract_failed:python_syntax: {exc}"
+            continue
+        except FileReadError as exc:
+            state.failed_paths.append(relative_path)
+            state.error_summary = f"extract_failed: {exc}"
+            continue
+        state.parse_count += 1
+        state.changed_paths.append(relative_path)
+        _update_manifest(
+            store,
+            relative_path,
+            content_hash=content_hash,
+            size_bytes=actual_size,
+            mtime_ns=actual_mtime,
+            last_seen_generation=target_generation,
+        )
+
+    # Mark deleted paths. AC-05/AC-06: a removed file must drop its
+    # chunks, FTS rows, evidence, spans, symbols, and edges so graph
+    # queries and indexed text search cannot return facts about
+    # files that no longer exist in the workspace. We tombstone the
+    # path-level evidence before deletion (same contract as the
+    # change-replacement path) and then physically delete the
+    # per-path rows. The file row is recorded as is_deleted=1 for
+    # diagnostics; a subsequent reindex that finds the file again
+    # will replace the rows and clear the is_deleted flag.
+    for existing in list(store.iter_files()):
+        _ensure_deadline(state, now_fn)
+        if existing.path not in seen_paths and existing.path not in path_scope:
+            # File is no longer on disk.
+            store.record_tombstone(
+                evidence_id=derive_evidence_id(
+                    path=existing.path,
+                    content_hash=existing.content_hash,
+                    start_line=0,
+                    end_line=0,
+                    kind="path_tombstone",
+                    extractor_version=EXTRACTOR_VERSION,
+                ),
+                path=existing.path,
+                start_line=0,
+                end_line=0,
+                content_hash=existing.content_hash,
+                generation=existing.indexed_generation,
+                stale_reason="file_deleted",
+                stale_at=now_fn(),
+                replacement_evidence_id=None,
+            )
+            store.delete_chunks_for_path(existing.path)
+            # delete_file_rows removes files/chunks/chunks_fts/evidence
+            # for the path; we still need to drop structure rows
+            # (spans, symbols, edges) and re-mark the file row as
+            # is_deleted for diagnostics.
+            store.replace_structure_rows(
+                path=existing.path,
+                spans=(),
+                symbols=(),
+                edges=(),
+            )
+            store.delete_file_rows(existing.path)
+            store.upsert_file(
+                FileRow(
+                    path=existing.path,
+                    content_hash=existing.content_hash,
+                    size_bytes=existing.size_bytes,
+                    mtime_ns=existing.mtime_ns,
+                    language=existing.language,
+                    indexed_generation=target_generation,
+                    indexed_at=now_fn(),
+                    is_deleted=True,
+                )
+            )
+
+    store.set_setting("current_generation", str(target_generation))
+    # AC-05/AC-06: persist the schema/extractor versions so a future
+    # open can detect a mismatched persisted index and force a safe
+    # cold rebuild. The keys are stable across reindex calls.
+    from ralph.mcp.explore.store import SCHEMA_VERSION as _SCHEMA_VERSION
+    from ralph.mcp.explore.structure import (
+        EXTRACTOR_VERSION as _STRUCTURE_EXTRACTOR_VERSION,
+    )
+
+    store.set_setting("schema_version", _SCHEMA_VERSION)
+    store.set_setting("extractor_version", EXTRACTOR_VERSION)
+    store.set_setting("structure_extractor_version", _STRUCTURE_EXTRACTOR_VERSION)
+    # AC-05 dirty-path safety: only consume dirty paths that were
+    # actually processed (visited during this reindex pass) and that
+    # are not in the failed set. Out-of-scope manual refreshes
+    # consume their own paths so the queue does not grow over
+    # repeated partial reindexes. Failed paths stay in the queue so
+    # the next reindex retries them.
+    out_of_scope: set[str] = set()
+    if path_scope:
+        dirty = store.peek_dirty_paths()
+        for p in dirty:
+            if not _path_in_scope(p, list(path_scope)):
+                out_of_scope.add(p)
+    failed_set = set(state.failed_paths)
+    survivors = (seen_paths | out_of_scope) - failed_set
+    for p in sorted(survivors):
+        store._remove_dirty_path(p)
+    if state.parse_count == 0 and not state.failed_paths:
+        return "skipped_no_changes"
+    return "ok"

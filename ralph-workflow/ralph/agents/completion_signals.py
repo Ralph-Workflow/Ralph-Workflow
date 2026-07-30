@@ -1,21 +1,10 @@
-"""Completion signal evaluation for OpenCode agent exits.
+"""Durable completion-signal evaluation shared by every agent transport.
 
-evaluate_completion() inspects the workspace artifacts directory and the raw
-NDJSON output to determine whether an OpenCode agent run produced the required
-phase artifact or explicitly declared completion via the declare_complete MCP
-tool. Explicit completion and artifact presence are separate signals; the
-explicit-complete flag is never auto-set just because a phase has no required
-artifact entry.
-
-Phases whose pipeline definition marks the output artifact optional
-(`artifact_required=False`) are treated as terminal on a clean exit even when no
-artifact is produced and no explicit declare_complete call is made. The artifact
-provides context only; its absence does not gate phase success. A present optional
-artifact is still fully validated.
-
-Phases without any artifact contract return required_artifact_present=False.
-OpenCode agents running such phases must still call declare_complete explicitly
-rather than relying on implicit success.
+Required-artifact phases complete only when two independent, run-scoped facts
+exist: a canonical artifact receipt and the sentinel written by
+``declare_complete``. Optional-artifact and artifact-free phases still require
+the sentinel, but do not require a receipt. Plain transcript markers are useful
+for diagnostics only and never replace durable evidence.
 """
 
 from __future__ import annotations
@@ -26,15 +15,16 @@ import hmac
 import json
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.md_draft_io import unsubmitted_draft_divergence
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from ralph.mcp.tools.artifact import ArtifactHandlerDeps
     from ralph.phases.required_artifacts import RequiredArtifact
@@ -56,38 +46,53 @@ class CompletionSignals:
             on disk. False when the phase has no registered required artifact or
             the artifact file does not yet exist.
         artifact_types: Tuple of artifact type names found.
-        terminal_ack_seen: True when a child_terminal lifecycle ACK was received
-            from the OpenCode transport.
-        artifact_optional: True when the phase marks its output artifact optional
-            (artifact_required=False). A clean exit is terminal even without the
-            artifact or an explicit declare_complete call.
         completion_sentinel_present: True when the run-scoped completion sentinel
             written by handle_declare_complete exists on disk. This is the
             authoritative proof that the agent actually invoked the
             declare_complete MCP tool; the plain-text marker alone can be
             spoofed by agent output.
+        artifact_required: True when policy requires a receipt for the phase's
+            artifact before the durable completion sentinel can terminate the
+            run.
+        unsubmitted_draft_present: True when a retained draft differs from the
+            canonical artifact, proving authored content was not submitted.
     """
 
     explicit_complete: bool
     required_artifact_present: bool
     artifact_types: tuple[str, ...]
-    terminal_ack_seen: bool = False
-    artifact_optional: bool = False
     completion_sentinel_present: bool = False
+    artifact_required: bool = False
+    unsubmitted_draft_present: bool = False
+
+
+def completion_signals_terminal(signals: CompletionSignals) -> bool:
+    """Return whether durable evidence satisfies the phase completion contract.
+
+    ``declare_complete`` is mandatory for every completion-enforced phase, so a
+    valid sentinel is always required. Required-artifact phases additionally
+    require their canonical submission receipt. Optional-artifact and
+    artifact-free phases require no receipt.
+    """
+    if not signals.completion_sentinel_present or signals.unsubmitted_draft_present:
+        return False
+    if signals.artifact_required:
+        return signals.required_artifact_present
+    return True
 
 
 def extract_explicit_completion(raw_output: list[str]) -> bool:
-    """Return True if raw NDJSON output contains a successful declare_complete call.
+    """Return True if raw output contains the completion-response marker.
 
-    Detects the unique marker produced by handle_declare_complete() in
-    ralph/mcp/tools/coordination.py. The marker string only appears in the
-    output when the agent successfully calls the declare_complete MCP tool.
+    This transcript signal is diagnostic only: model-authored output can echo
+    the marker. Terminal decisions must use the independently persisted
+    completion sentinel through ``completion_signals_terminal``.
 
     Args:
         raw_output: Raw NDJSON lines from the agent subprocess stdout.
 
     Returns:
-        True if the declare_complete marker is found in any output line.
+        True if the completion-response marker is found in any output line.
     """
     return any(_EXPLICIT_COMPLETION_MARKER in line for line in raw_output)
 
@@ -209,9 +214,7 @@ def _check_completion_sentinel(
             return True
         if db_value is None:
             return False
-        expected = hmac.new(
-            sentinel_secret.encode(), run_id.encode(), hashlib.sha256
-        ).hexdigest()
+        expected = hmac.new(sentinel_secret.encode(), run_id.encode(), hashlib.sha256).hexdigest()
         return hmac.compare_digest(db_value, expected)
 
     # 1b) DB tombstone (CLEARED_SENTINEL_HMAC) — the cleared state is
@@ -232,18 +235,6 @@ def _check_completion_sentinel(
     )
 
 
-def _artifact_is_schema_valid(artifact_path: Path) -> bool:
-    """Return True when the artifact file exists, parses as JSON, and is a non-empty dict."""
-    if not artifact_path.exists():
-        return False
-    try:
-        content = artifact_path.read_text(encoding="utf-8")
-        parsed = cast("object", json.loads(content))
-        return isinstance(parsed, dict) and len(parsed) > 0
-    except (OSError, json.JSONDecodeError, ValueError):
-        return False
-
-
 def is_artifact_submitted(
     workspace: Path,
     run_id: str,
@@ -251,13 +242,14 @@ def is_artifact_submitted(
     *,
     deps: ArtifactHandlerDeps | None = None,
     receipt_secret: str | None = None,
+    artifact_path: str | None = None,
 ) -> bool:
     """Return True when a canonical receipt exists or can be promoted from fallback.
 
     This is the completion-signal layer's single entry point for artifact
     presence. It first checks for a receipt; if none exists it attempts to
-    promote a fallback file written by the agent (``.agent/tmp/<type>.json`` or
-    ``.agent/artifacts/<type>.json``) through the canonical submit path so a
+    promote a fallback markdown document written by the agent
+    (``.agent/tmp/<type>.md``) through the canonical submit path so a
     receipt is stamped.
 
     Args:
@@ -268,14 +260,48 @@ def is_artifact_submitted(
     if artifact_receipt_present(workspace, run_id, artifact_type, receipt_secret=receipt_secret):
         return True
 
+    fallback_path, artifact_dir, handoff_dir = _worker_submission_paths(
+        workspace,
+        artifact_type,
+        artifact_path,
+    )
     result = promote_fallback_artifact(
         workspace,
         artifact_type,
         deps=deps,
         run_id=run_id,
         receipt_secret=receipt_secret,
+        fallback_path=fallback_path,
+        artifact_dir=artifact_dir,
+        handoff_dir=handoff_dir,
     )
     return result is not None and result.receipt_path is not None
+
+
+def _worker_submission_paths(
+    workspace: Path,
+    artifact_type: str,
+    artifact_path: str | None,
+) -> tuple[Path | None, Path | None, Path | None]:
+    """Resolve worker-local fallback destinations from a scoped artifact path."""
+    if artifact_path is None:
+        return None, None, None
+    candidate = Path(artifact_path)
+    absolute = candidate if candidate.is_absolute() else workspace / candidate
+    resolved = absolute.resolve(strict=False)
+    workers_root = (workspace / ".agent" / "workers").resolve(strict=False)
+    try:
+        resolved.relative_to(workers_root)
+    except ValueError:
+        return None, None, None
+    if resolved.name != f"{artifact_type}.md" or resolved.parent.name != "artifacts":
+        return None, None, None
+    worker_namespace = resolved.parent.parent
+    return (
+        worker_namespace / "tmp" / f"{artifact_type}.md",
+        resolved.parent,
+        worker_namespace / "handoffs",
+    )
 
 
 def evaluate_completion(
@@ -287,15 +313,14 @@ def evaluate_completion(
     sentinel_secret: str | None = None,
     receipt_secret: str | None = None,
 ) -> CompletionSignals:
-    """Check whether the agent run produced a required artifact or explicit completion.
+    """Collect durable artifact and completion evidence for one agent run.
 
     explicit_complete is set from scanning raw_output for the declare_complete
-    MCP tool marker, independently of artifact presence. required_artifact_present
-    is True only when the artifact file exists on disk, parses as valid JSON,
-    and contains a non-empty dict for phases that have a registered required artifact.
-    Phases without a registered required artifact always return
-    required_artifact_present=False so OpenCode agents cannot implicitly succeed
-    — they must call declare_complete explicitly.
+    MCP tool marker for diagnostics, independently of artifact presence.
+    required_artifact_present is True only when a run-scoped canonical
+    submission receipt exists. completion_sentinel_present is the authoritative
+    declaration signal. Call ``completion_signals_terminal`` to apply the
+    required receipt-plus-sentinel conjunction.
 
     Args:
         workspace: Workspace root path.
@@ -315,8 +340,8 @@ def evaluate_completion(
             pre-P3 contract (no HMAC verification). Threading a secret through
             this parameter stops a model with workspace write capabilities from
             forging a receipt — the matching write side must also thread the
-            same secret (see ``handle_submit_artifact`` in
-            ``ralph.mcp.tools.artifact``).
+            same secret (see ``handle_submit_md_artifact`` in
+            ``ralph.mcp.tools.md_artifact``).
 
     Returns:
         CompletionSignals reflecting current artifact state and explicit completion.
@@ -335,37 +360,42 @@ def evaluate_completion(
             artifact_types=(),
             completion_sentinel_present=sentinel_present,
         )
-    # A run-scoped submission receipt is the SOLE authoritative proof that
-    # the artifact was persisted for this run. The legacy on-disk
-    # ``_artifact_is_schema_valid(artifact_path)`` fallback was removed
-    # because a stale canonical artifact from a previous run can satisfy
-    # the schema-validity check and falsely mark the current run as
-    # complete (see tests/test_agy_completion_adversarial.py for the
-    # negative-path test that pins this contract). When ``run_id`` is
-    # not threaded, completion cannot be determined from the artifact
-    # alone; callers that need a fallback must thread ``run_id``.
+    # A run-scoped submission receipt is the authoritative proof that the
+    # artifact was persisted for this run. A raw canonical artifact file
+    # is unsafe because a stale document
+    # from a previous run could falsely mark the current run complete (see
+    # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
+    # cannot be determined from the artifact alone.
+    artifact_path = workspace / ra.artifact_path
     present = (
-        is_artifact_submitted(workspace, run_id, ra.artifact_type, receipt_secret=receipt_secret)
+        is_artifact_submitted(
+            workspace,
+            run_id,
+            ra.artifact_type,
+            receipt_secret=receipt_secret,
+            artifact_path=ra.artifact_path,
+        )
         if (run_id is not None)
         else False
     )
-    optional = not ra.artifact_required
-    sentinel_present = (
-        _check_completion_sentinel(workspace, run_id, sentinel_secret=sentinel_secret)
-        if run_id is not None
-        else False
+    divergence = unsubmitted_draft_divergence(
+        artifact_path.parent,
+        ra.artifact_type,
+        artifact_path,
     )
     return CompletionSignals(
         explicit_complete=explicit,
         required_artifact_present=present,
         artifact_types=(ra.artifact_type,) if present else (),
-        artifact_optional=optional,
         completion_sentinel_present=sentinel_present,
+        artifact_required=ra.artifact_required,
+        unsubmitted_draft_present=divergence is not None,
     )
 
 
 __all__ = [
     "CompletionSignals",
+    "completion_signals_terminal",
     "evaluate_completion",
     "extract_explicit_completion",
     "is_artifact_submitted",

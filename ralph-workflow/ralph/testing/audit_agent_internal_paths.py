@@ -544,8 +544,8 @@ def _check_best_effort_invariants() -> list[str]:
 
 # Accept set: every canonical Ralph runtime artifact.
 _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
-    # Top-level basenames under .agent/ (14 total per AGENT_INTERNAL_TOP_LEVEL_BASENAMES).
-    ".agent/CURRENT_PROMPT.md",
+    # Top-level basenames under .agent/ (15 total per AGENT_INTERNAL_TOP_LEVEL_BASENAMES).
+    ".agent/PRODUCT_CRITERIA.md",
     ".agent/PLAN.md",
     ".agent/ISSUES.md",
     ".agent/DEVELOPMENT_RESULT.md",
@@ -556,6 +556,7 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     ".agent/checkpoint.json",
     ".agent/rebase_checkpoint.json",
     ".agent/rebase_checkpoint.json.bak",
+    ".agent/auto_integrate_in_progress.json",
     ".agent/rebase.lock",
     ".agent/start_commit",
     ".agent/mcp.toml",
@@ -563,7 +564,7 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     # extension per ``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``).
     ".agent/raw/opencode.log",
     ".agent/tmp/mcp-server.log",
-    ".agent/artifacts/x.json",
+    ".agent/artifacts/plan.md",
     ".agent/workers/unit-a/tmp/checkpoint.json",
     ".agent/receipts/run-1/commit_cleanup.json",
     ".agent/prompt_history/x.json",
@@ -634,7 +635,9 @@ def _load_is_agent_internal_path() -> Callable[[str], bool]:
     # public signature so downstream ``is_agent_internal_path(path)`` calls and
     # the ``result is not True`` / ``result is not False`` checks type-check
     # cleanly. The runtime contract is exactly the same callable.
-    return cast("Callable[[str], bool]", module.is_agent_internal_path)
+    return cast(
+        "Callable[[str], bool]", module.is_agent_internal_path
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _behavioral_invariants() -> list[str]:

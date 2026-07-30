@@ -24,7 +24,7 @@ The point is that the handoff should be easy to review.
 1. Open [`PROMPT.md`](./PROMPT.md).
 2. Read [`.agent/DEVELOPMENT_RESULT.md`](./.agent/DEVELOPMENT_RESULT.md).
 3. Read [`.agent/ISSUES.md`](./.agent/ISSUES.md) and [`.agent/FIX_RESULT.md`](./.agent/FIX_RESULT.md).
-4. Glance at the small JSON artifacts under [`.agent/artifacts/`](./.agent/artifacts/).
+4. Glance at the validated Markdown artifacts under [`.agent/artifacts/`](./.agent/artifacts/).
 5. Ask one question: **would I merge this?**
 
 If that path feels clear and fast, the handoff is doing its job.

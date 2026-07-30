@@ -30,6 +30,7 @@ def _make_snapshot(
     plan_risks: tuple[str, ...] = (),
     is_terminal_success: bool = True,
     is_terminal_failure: bool = False,
+    auto_integrate_remote_sync: str | None = None,
 ) -> PipelineSnapshot:
     return PipelineSnapshot(
         phase=phase,
@@ -56,6 +57,10 @@ def _make_snapshot(
         decision_log=decision_log,
         is_terminal_success=is_terminal_success,
         is_terminal_failure=is_terminal_failure,
+        auto_integrate_action="rebased" if auto_integrate_remote_sync else None,
+        auto_integrate_target="main" if auto_integrate_remote_sync else None,
+        auto_integrate_fast_forwarded=auto_integrate_remote_sync is not None,
+        auto_integrate_remote_sync=auto_integrate_remote_sync,
     )
 
 
@@ -156,11 +161,6 @@ def test_group_decision_badges_warn() -> None:
     assert "[WARN]" in out
 
 
-def test_group_contains_verification_section() -> None:
-    out = _render_group(_make_snapshot())
-    assert "Verification" in out
-
-
 def test_group_no_decisions_shows_none_recorded() -> None:
     out = _render_group(_make_snapshot(decision_log=()))
     assert "none recorded" in out
@@ -178,11 +178,11 @@ def test_group_sections_appear_in_order() -> None:
         "Pipeline Complete": out.index("Pipeline Complete"),
         "Metrics": out.index("Metrics"),
         "Decisions": out.index("Decisions"),
-        "Verification": out.index("Verification"),
+        "Activity": out.index("Activity"),
     }
     assert positions["Pipeline Complete"] < positions["Metrics"]
     assert positions["Metrics"] < positions["Decisions"]
-    assert positions["Decisions"] < positions["Verification"]
+    assert positions["Decisions"] < positions["Activity"]
 
 
 def test_emit_completion_summary_uses_group_format() -> None:
@@ -193,6 +193,13 @@ def test_emit_completion_summary_uses_group_format() -> None:
     out = buf.getvalue()
     assert "Pipeline Complete" in out
     assert "Decisions" in out
+
+
+def test_group_renders_remote_sync_outcome() -> None:
+    """S-7: the completion renderer exposes the same remote outcome as live activity."""
+    out = _render_group(_make_snapshot(auto_integrate_remote_sync="pushed"))
+    assert "auto-integrate:" in out
+    assert "remote: pushed" in out
 
 
 def test_group_no_markup_tags_in_output() -> None:
@@ -229,11 +236,6 @@ def test_group_activity_summary_shows_overflow_path_when_provided() -> None:
 def test_group_activity_summary_no_overflow_path_when_none() -> None:
     out = _render_group(_make_snapshot(), overflow_path=None)
     assert "raw_overflow=" not in out
-
-
-def test_group_activity_summary_appears_before_verification() -> None:
-    out = _render_group(_make_snapshot())
-    assert out.index("Activity") < out.index("Verification")
 
 
 def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:
@@ -354,7 +356,7 @@ def test_iteration_context_section_appears_with_outer_dev() -> None:
     """Default mode shows an 'Iteration Context' section when outer_dev_iteration is set."""
     out = _render_group_full(_make_snapshot_with_outer_dev(outer_dev_iteration=3))
     assert "Iteration Context" in out
-    assert "Dev #3" in out
+    assert "Cycle #3" in out
 
 
 def test_iteration_context_section_absent_without_context() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from ralph.mcp.tools.artifact import _KNOWN_ARTIFACT_TYPES
+from ralph.mcp.tools.artifact import KNOWN_ARTIFACT_TYPES
 from ralph.testing.audit_artifact_submission_canonical_path import (
     _CANONICAL_TYPES,
     _FORBIDDEN_PATH_PATTERNS,
@@ -10,11 +10,11 @@ from ralph.testing.audit_artifact_submission_canonical_path import (
 
 
 def test_canonical_types_equals_known_artifact_types() -> None:
-    assert _CANONICAL_TYPES == _KNOWN_ARTIFACT_TYPES
+    assert _CANONICAL_TYPES == KNOWN_ARTIFACT_TYPES
 
 
 def test_known_artifact_types_is_non_empty() -> None:
-    assert _KNOWN_ARTIFACT_TYPES
+    assert KNOWN_ARTIFACT_TYPES
 
 
 def test_canonical_types_contains_commit_message_and_plan() -> None:
@@ -22,9 +22,11 @@ def test_canonical_types_contains_commit_message_and_plan() -> None:
     assert "plan" in _CANONICAL_TYPES
 
 
-def test_review_and_verification_types_are_canonical() -> None:
-    assert "review" in _CANONICAL_TYPES
-    assert "verification" in _CANONICAL_TYPES
+def test_analysis_decision_types_are_canonical() -> None:
+    assert "planning_analysis_decision" in _CANONICAL_TYPES
+    assert "development_analysis_decision" in _CANONICAL_TYPES
+    assert "review_analysis_decision" in _CANONICAL_TYPES
+    assert "policy_remediation_analysis_decision" in _CANONICAL_TYPES
 
 
 def test_canonical_types_used_in_forbidden_path_patterns() -> None:

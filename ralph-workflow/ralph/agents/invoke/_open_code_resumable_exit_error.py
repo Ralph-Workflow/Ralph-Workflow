@@ -5,8 +5,8 @@ exits are diagnosed, classified deterministically, and handled. The
 ambiguous case this module owns:
 
     The agent subprocess exits cleanly (rc=0) BUT the session did
-    not produce a completion artifact AND did not call
-    ``declare_complete``. The legacy
+    not satisfy the durable completion contract: the ``declare_complete``
+    sentinel was missing, or a required artifact receipt was missing. The legacy
     ``FailureClassifier.classify`` path would surface this as an
     ambiguous warning (the log line
     ``[flagged_for_review=true]`` was observed in the wild before
@@ -97,7 +97,8 @@ R7 root-cause diagnostic surface (NEW):
 
         ``OpenCodeResumableExitError: Agent 'opencode' failed
         with code 0: agent session exited without required
-        completion evidence (no artifact, no declare_complete)
+        completion evidence (completion sentinel missing, or
+        required artifact receipt missing)
         [last_tool_call=read_file, elapsed=420.0s]``
 
     The ``[last_tool_call=..., elapsed=...]`` suffix is omitted when
@@ -170,7 +171,7 @@ class OpenCodeResumableExitError(AgentInvocationError):
         self.transcript_tail = transcript_tail
         base_message = (
             "agent session exited without required completion evidence "
-            "(no artifact, no declare_complete)"
+            "(completion sentinel missing, or required artifact receipt missing)"
         )
         diagnostic_suffix_parts: list[str] = []
         if last_observed_tool_call is not None:

@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+import pytest
 
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
@@ -53,8 +55,6 @@ from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pytest
 
     from ralph.config.models import UnifiedConfig
 
@@ -105,7 +105,6 @@ def _fake_bundle() -> PolicyBundle:
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
             )
         }
     )
@@ -128,7 +127,7 @@ def _build_config() -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _patch_runner_dependencies(
@@ -226,6 +225,15 @@ class _LateMarkerWatcher:
         self._stopped = True
 
 
+# ``test_pro_invocation_end_to_end_satisfies_all_three_bullets`` exercises a
+# single ``run()`` invocation across three pro_support bullets (heartbeat,
+# state observability, custom pipeline DI). Under parallel xdist load the
+# full ``run()`` path can exceed the 1s default test timeout even though
+# the test itself is correct. 5s is the documented minimum for non-trivial
+# tests (see ``ralph/verify_timeout.py``) and is well under the 60s
+# combined ``make verify`` budget. The 1s default policy is preserved
+# globally; this marker only relaxes the cap for this specific test.
+@pytest.mark.timeout_seconds(5)
 def test_pro_invocation_end_to_end_satisfies_all_three_bullets(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -304,7 +312,7 @@ def test_pro_invocation_end_to_end_satisfies_all_three_bullets(
         snapshot_registry=registry,
         policy_bundle_override=override_bundle,
     )
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config,
         initial_state=state,
         pro_hooks=hooks,

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult, ProcessRunOptions, run_process
+from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
 DEFAULT_TEST_TIMEOUT_SECONDS: Final = 1.0
@@ -35,6 +36,22 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "YOU MUST fix the slow test(s). Do NOT raise the limit. Do NOT skip or\n"
     "quarantine to hide the problem. A slow test is a design defect.\n"
+    "\n"
+    "WHY THIS LIMIT EXISTS\n"
+    "---------------------\n"
+    "A PERFORMANCE failure is a HARD failure — and it is at least as serious\n"
+    "as a functional one, often MORE so. A functional failure is one broken\n"
+    "behavior; a slow or hanging suite is normally a broken ARCHITECTURE that\n"
+    "will keep producing bugs.\n"
+    "\n"
+    "The usual root cause is a MISSING SEAM: production code that cannot be\n"
+    "exercised without real I/O, a real subprocess, a real sleep, a real\n"
+    "network, or a real agent. That is the signature of a test bound to\n"
+    "internals instead of driving the system as a BLACK BOX through its\n"
+    "injectable seams. A test that must reach through to the real world is\n"
+    "telling you the design has no seam there — ADD THE SEAM.\n"
+    "\n"
+    "AI agents block on this gate, so one unbounded test hangs an entire run.\n"
     "\n"
     "Limits:\n"
     "  Per-test                         : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
@@ -219,8 +236,12 @@ def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:
     parser.add_argument("--suite-timeout", type=float, default=DEFAULT_SUITE_TIMEOUT_SECONDS)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     parsed = parser.parse_args(list(argv))
-    suite_timeout = cast("float", parsed.suite_timeout)
-    command = cast("list[str]", parsed.command)
+    suite_timeout = cast(
+        "float", parsed.suite_timeout
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    command = cast(
+        "list[str]", parsed.command
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if command and command[0] == "--":
         command = command[1:]
     if not command:
@@ -234,6 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns the subprocess returncode, or 124 on ``SuiteTimeoutError``
     (matching the conventional ``timeout(1)`` exit code).
     """
+    sanitize_process_environment()
     suite_timeout_seconds, command = _parse_args(argv or sys.argv[1:])
     test_timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
     env = build_timeout_env(

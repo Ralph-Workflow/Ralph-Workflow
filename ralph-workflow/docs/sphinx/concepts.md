@@ -23,7 +23,7 @@ The terms below help explain how Ralph Workflow does that.
 - **Agent chain** — an ordered fallback list of agents for one kind of work. If the first agent fails or exhausts its retries, Ralph Workflow can move to the next one instead of stopping immediately.
 - **Drain** — the routing label between a phase and an agent chain. The practical takeaway: a phase is not hard-wired to one specific agent. You can change routing in config without rewriting the workflow.
 - **Policy** — the configuration that defines how Ralph Workflow behaves. The main files live under `.agent/`: `.agent/pipeline.toml` (workflow phases and routing), `.agent/artifacts.toml` (artifact expectations), `.agent/ralph-workflow.toml` (optional project-local overrides for agent chains and main settings), `.agent/mcp.toml` (MCP server configuration).
-- **Artifact** — a structured output produced during a phase. JSON artifacts help Ralph Workflow decide what to do next; Markdown handoff files are easier for humans and downstream agents to inspect.
+- **Artifact** — a structured output produced during a phase. Each artifact is a validated markdown document — the same readable file Ralph Workflow routes on is the file you inspect; handoff copies under `.agent/` (like `.agent/PLAN.md`) put the latest artifact at a stable path for humans and downstream agents.
 - **Review output** — Ralph Workflow can record review output during the run, depending on the active policy. The important distinction: **agents** can review work while the run is in progress; **humans** inspect the completed work, logs, and artifacts afterward in their normal git workflow.
 - **MCP** — **Model Context Protocol**. In day-to-day use, this is the tool layer Ralph Workflow exposes to agents so they can read files, write outputs, submit artifacts, and use other approved capabilities.
 - **Checkpoint** — Ralph Workflow's saved resume state. From the human operator shell: `ralph --inspect-checkpoint` shows what would be resumed; `ralph --no-resume` ignores the saved checkpoint and starts fresh.
@@ -194,19 +194,19 @@ An **artifact** is the durable evidence a phase produces. Ralph Workflow's artif
 
 A chat transcript shows what the agent *said*. An artifact shows what the agent *did*. For unattended runs that you review in the morning, the artifact is what you actually inspect. Ralph Workflow's policy declares an **artifact contract** per phase. The runtime validates the contract before accepting the phase as `done`. If the contract is missing, the phase returns `fix-needed` or `blocked`, not `done`.
 
-### The artifact schema
+### The artifact format
 
-Every artifact in Ralph Workflow is a JSON document that matches the artifact submission contract:
+Every artifact in Ralph Workflow is a markdown document — the artifact file **is** the readable source of truth, validated against a closed per-type grammar:
 
-- `ralph/mcp/artifacts/format_docs/<type>.md` — per-type schema docs
-- `ralph/mcp/artifacts/canonical_submit.py` — the canonical submission path
-- `ralph/mcp/artifacts/contract.py` — the Pydantic models that enforce the schema
+- `ralph/mcp/artifacts/format_docs/<type>.md` — per-type format docs
+- `ralph/mcp/artifacts/canonical_submit.py` — the canonical persistence path
+- `ralph/mcp/artifacts/markdown/specs/` — the per-type markdown specs that enforce the grammar
 
-The submission contract is verified by `tests/test_artifact_submission_canonical_path.py` and audited by `ralph.testing.audit_artifact_submission_canonical_path`.
+The submission contract is verified by `tests/test_audit_artifact_submission_canonical_path.py` and audited by `ralph.testing.audit_artifact_submission_canonical_path`.
 
 ### The submission path
 
-Every artifact is submitted via `submit_artifact_canonical` in `ralph/mcp/artifacts/canonical_submit.py`. This is the **only** supported submission path; ad-hoc writes to the artifact store are not permitted. The path: validates the artifact against the per-type Pydantic model, writes the artifact to `.agent/artifacts/<run-id>/<type>.json`, emits an artifact-submitted event into the reducer stream, returns the artifact path to the calling phase.
+Every artifact is submitted via the `ralph_submit_md_artifact` MCP tool, which validates the markdown against its registered spec and persists it through `submit_artifact_canonical` in `ralph/mcp/artifacts/canonical_submit.py`. This is the **only** supported submission path; ad-hoc writes to the artifact store are not permitted. The path: validates the document against the per-type markdown spec (line-anchored diagnostics; any error rejects it), writes the artifact to `.agent/artifacts/<type>.md`, writes the matching handoff copy under `.agent/` when the type has one, and stamps a submission receipt keyed on the run ID.
 
 The runtime then consults the artifact contract for the current phase and decides whether the artifact satisfies it.
 
@@ -229,19 +229,19 @@ Each type's contract lives at `ralph/mcp/artifacts/format_docs/<type>.md`.
 
 ### Completion detection
 
-A phase is `done` when **all** of: the agent invocation returned (no timeout, no crash); the artifact submitted via `submit_artifact_canonical`; the artifact satisfies the phase's declared contract; the reducer for the artifact type advances the pipeline state.
+A phase is `done` when **all** of: the agent invocation returned (no timeout, no crash); the artifact was submitted through the canonical path; the artifact satisfies the phase's declared contract; the reducer for the artifact type advances the pipeline state.
 
 If any step fails, the phase is not `done`. The reducer typically returns `fix-needed` (artifact missing or malformed) or `blocked` (a precondition failed) instead of advancing.
 
 ### The `declare_complete` terminal
 
-When the final reducer decides the run is at a terminal state, the runtime calls `ralph_declare_complete`. The terminal is the single, structured handoff the user reviews: `done` (the development_result is the review surface), `blocked` (the issues artifact explains what blocked), `budget-exceeded` (the most recent artifact shows what was achieved), `regression` (the verification artifact shows what failed).
+When the final reducer decides the run is at a terminal state, the runtime calls `declare_complete`. The terminal is the single, structured handoff the user reviews: `done` (the development_result is the review surface), `blocked` (the issues artifact explains what blocked), `budget-exceeded` (the most recent artifact shows what was achieved), `regression` (the verification artifact shows what failed).
 
 The terminal is the **only** signal the runtime hands back. There is no "trust the transcript" path. If the terminal is `done`, the run is done.
 
 ### Why the canonical path matters
 
-The canonical submission path is audited because ad-hoc artifact writes are an attack surface: a bad artifact could advance the pipeline past verification. By making the canonical path the only supported write, the runtime guarantees every artifact is validated against its Pydantic model, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass schema validation.
+The canonical submission path is audited because ad-hoc artifact writes are an attack surface: a bad artifact could advance the pipeline past verification. By making the canonical path the only supported write, the runtime guarantees every artifact is validated against its registered markdown spec, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass validation.
 
 ---
 

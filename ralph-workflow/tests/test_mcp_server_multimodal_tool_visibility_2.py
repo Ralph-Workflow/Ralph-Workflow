@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,6 +15,11 @@ from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
 )
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+    must_str,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -98,9 +103,9 @@ class TestMultimodalToolVisibility:
         )
 
         assert tools_response is not None
-        tools_result = cast("dict[str, object]", tools_response.result)
+        tools_result = must_mapping(tools_response.result)
         tool_names = {
-            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
         }
         assert "read_image" not in tool_names
 
@@ -135,9 +140,9 @@ class TestMultimodalToolVisibility:
         )
 
         assert tools_response is not None
-        tools_result = cast("dict[str, object]", tools_response.result)
+        tools_result = must_mapping(tools_response.result)
         tool_names = {
-            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
         }
         # Text-only client should NOT see read_image even when media is enabled on server
         assert "read_image" not in tool_names
@@ -176,9 +181,9 @@ class TestMultimodalToolVisibility:
         )
 
         assert tools_response is not None
-        tools_result = cast("dict[str, object]", tools_response.result)
+        tools_result = must_mapping(tools_response.result)
         tool_names = {
-            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
         }
         # Multimodal-capable client SHOULD see read_image
         assert "read_image" in tool_names
@@ -249,14 +254,14 @@ class TestMultimodalToolVisibility:
         assert tools_response1 is not None
         assert tools_response2 is not None
 
-        result1 = cast("dict[str, object]", tools_response1.result)
-        result2 = cast("dict[str, object]", tools_response2.result)
+        result1 = must_mapping(tools_response1.result)
+        result2 = must_mapping(tools_response2.result)
 
-        tools1 = cast("list[dict[str, object]]", result1["tools"])
-        tools2 = cast("list[dict[str, object]]", result2["tools"])
+        tools1 = must_dict_list(result1["tools"])
+        tools2 = must_dict_list(result2["tools"])
 
-        names1 = {cast("str", t["name"]) for t in tools1}
-        names2 = {cast("str", t["name"]) for t in tools2}
+        names1 = {must_str(t["name"]) for t in tools1}
+        names2 = {must_str(t["name"]) for t in tools2}
 
         # read_file should be in both
         assert "read_file" in names1
@@ -300,9 +305,9 @@ class TestMultimodalToolVisibility:
         )
 
         assert tools_response is not None
-        tools_result = cast("dict[str, object]", tools_response.result)
+        tools_result = must_mapping(tools_response.result)
         tool_names = {
-            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
         }
         # Multimodal-capable client SHOULD see read_image with default config
         assert "read_image" in tool_names
@@ -337,9 +342,9 @@ class TestMultimodalToolVisibility:
         )
 
         assert tools_response is not None
-        tools_result = cast("dict[str, object]", tools_response.result)
+        tools_result = must_mapping(tools_response.result)
         tool_names = {
-            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
         }
         # Text-only client should NOT see read_image even with default media config
         assert "read_image" not in tool_names
@@ -380,9 +385,9 @@ class TestMultimodalToolVisibility:
         )
 
         assert tools_response is not None
-        tools_result = cast("dict[str, object]", tools_response.result)
+        tools_result = must_mapping(tools_response.result)
         tool_names = {
-            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
         }
         # Multimodal-capable client should NOT see read_image when media is explicitly disabled
         assert "read_image" not in tool_names

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import _in_memory_transport
@@ -127,7 +127,7 @@ def test_health_probe_outcome_counter_increments(tmp_path: Path) -> None:
     status, _headers, _body = drive_request(mcp_server, b"", path="/health", method="GET")
     assert status == 503
     snapshot = metrics.snapshot()
-    outcomes = cast("dict[str, int]", snapshot["health_probe_outcomes"])
+    outcomes = snapshot["health_probe_outcomes"]
     assert outcomes["failure"] == 1
 
 
@@ -151,7 +151,7 @@ def test_health_probe_success_increments_success_counter(tmp_path: Path) -> None
     status, _headers, _body = drive_request(mcp_server, b"", path="/health", method="GET")
     assert status == 200
     snapshot = metrics.snapshot()
-    outcomes = cast("dict[str, int]", snapshot["health_probe_outcomes"])
+    outcomes = snapshot["health_probe_outcomes"]
     assert outcomes["success"] == 1
 
 
@@ -202,7 +202,7 @@ def test_mcp_metrics_constructible_with_no_io() -> None:
     snap = metrics.snapshot()
     assert snap["post_header_failures"] == 1
     assert snap["terminal_frame_emissions"] == 1
-    outcomes = cast("dict[str, int]", snap["health_probe_outcomes"])
+    outcomes = snap["health_probe_outcomes"]
     assert outcomes["success"] == 1
     assert outcomes["failure"] == 1
 

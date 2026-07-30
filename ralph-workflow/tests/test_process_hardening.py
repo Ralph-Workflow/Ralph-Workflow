@@ -15,7 +15,7 @@ import itertools
 import os
 import sys
 import threading
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -49,7 +49,6 @@ if TYPE_CHECKING:
     from ralph.process.manager._process_event import ProcessEvent
     from ralph.process.manager._process_record import ProcessRecord
     from ralph.testing.fake_process import SyncFactoryCallable
-    from tests.test_process_manager_pty_helper__fakeprocess import _FakePtyProcess
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.1,
@@ -1056,7 +1055,7 @@ def test_shutdown_all_dispatches_to_pty_proc() -> None:
         psutil=psutil_mod,
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd="/tmp"))
-    proc = cast("_FakePtyProcess", handle._proc)
+    proc = handle._proc
     assert proc.closed is False
 
     pm.shutdown_all(grace_period_s=0.0)

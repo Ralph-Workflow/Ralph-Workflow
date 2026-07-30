@@ -62,9 +62,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
             )
         elif _opts.reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL:
             tool_name = _opts.diagnostic.get("tool_name", "tool") if _opts.diagnostic else "tool"
-            args_preview = (
-                _opts.diagnostic.get("tool_args_preview") if _opts.diagnostic else None
-            )
+            args_preview = _opts.diagnostic.get("tool_args_preview") if _opts.diagnostic else None
             detail = f" args={args_preview}" if args_preview else ""
             stderr_msg = (
                 f"Agent repeated the same {tool_name} tool call{detail} without making"

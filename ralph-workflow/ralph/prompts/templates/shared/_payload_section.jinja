@@ -1,16 +1,27 @@
 {#
+  _render_payload_file_reference: shared file-reference litany used by both
+  public macros below so the wording cannot drift between them.
+#}
+{% macro _render_payload_file_reference(label, path) -%}
+Read the complete {{ label|lower }} from file at `{{ path }}` before continuing.
+This file is the authoritative source for {{ label|lower }} in this prompt.
+Do not ask the user to paste it again, and do not claim the {{ label|lower }} is missing.
+{%- endmacro %}
+
+{#
   render_payload_section: Use for PRIMARY context that may need to be inlined
   (e.g. LATEST_ARTIFACT, ISSUES, FIX_RESULT, DIFF). Inlines content when path
-  is absent; uses a file reference when path is present.
+  is absent; uses a file reference when path is present. Inline content is
+  fenced with BEGIN/END delimiters so it cannot bleed into adjacent sections.
 #}
 {% macro render_payload_section(label, content, path) -%}
 {{ label }}:
 {% if path %}
-Read the complete {{ label|lower }} from file at `{{ path }}` before continuing.
-This file is the authoritative source for {{ label|lower }} in this prompt.
-Do not ask the user to paste it again, and do not claim the {{ label|lower }} is missing.
+{{ _render_payload_file_reference(label, path) }}
 {% else %}
+{{ label }} BEGIN
 {{ content }}
+{{ label }} END
 {% endif %}
 {%- endmacro %}
 
@@ -22,7 +33,5 @@ Do not ask the user to paste it again, and do not claim the {{ label|lower }} is
 {% macro render_payload_path(label, path) -%}
 {% if not path %}{{ raise_error("render_payload_path: path must not be empty for label=" ~ label) }}{% endif %}
 {{ label }}:
-Read the complete {{ label|lower }} from file at `{{ path }}` before continuing.
-This file is the authoritative source for {{ label|lower }} in this prompt.
-Do not ask the user to paste it again, and do not claim the {{ label|lower }} is missing.
+{{ _render_payload_file_reference(label, path) }}
 {%- endmacro %}

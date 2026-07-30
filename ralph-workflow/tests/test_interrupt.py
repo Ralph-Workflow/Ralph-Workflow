@@ -13,7 +13,7 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 import pytest
 
@@ -48,7 +48,7 @@ ACTIVE_AGENT_DRAINS = {
 def _install_test_dependency_stubs() -> None:
     if "loguru" not in sys.modules:
         loguru_module = types.ModuleType("loguru")
-        cast("Any", loguru_module).logger = types.SimpleNamespace(
+        loguru_module.logger = types.SimpleNamespace(
             info=lambda *args, **kwargs: None,
             warning=lambda *args, **kwargs: None,
             error=lambda *args, **kwargs: None,
@@ -64,8 +64,8 @@ def _install_test_dependency_stubs() -> None:
             def print(self, *args: object, **kwargs: object) -> None:
                 return None
 
-        cast("Any", console_module).Console = Console
-        cast("Any", rich_module).console = console_module
+        console_module.Console = Console
+        rich_module.console = console_module
         sys.modules["rich.console"] = console_module
 
 
@@ -121,7 +121,7 @@ def _load_run_command_module() -> RunCommandModule:
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast("RunCommandModule", module)
+    return module
 
 
 run_command_module = _load_run_command_module()
@@ -191,6 +191,14 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     )
     monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
     monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)
+    # Phase 2c runs the real project-policy-readiness preflight. Against this
+    # empty tmp_path workspace it finds the project unready and invokes a REAL
+    # remediation agent (a `claude` subprocess plus an MCP server), which never
+    # returns — hanging the whole suite. Stub the documented seam: the subject
+    # here is KeyboardInterrupt checkpointing, not policy readiness.
+    monkeypatch.setattr(
+        run_command_module, "_run_project_policy_readiness", lambda **_kwargs: 0
+    )
 
     def raise_keyboard_interrupt(
         config: UnifiedConfig,

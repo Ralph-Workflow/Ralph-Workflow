@@ -73,6 +73,10 @@ def test_detect_provider_from_command_codex() -> None:
     assert detect_provider_from_command(["codex"]) == ActivityProvider.CODEX
 
 
+def test_detect_provider_from_command_cursor_wrapper() -> None:
+    assert detect_provider_from_command(["cursor-agent"]) == ActivityProvider.CURSOR
+
+
 def test_detect_provider_from_command_aider() -> None:
     assert detect_provider_from_command(["aider"]) == ActivityProvider.CODEX
 

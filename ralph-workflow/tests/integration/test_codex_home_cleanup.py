@@ -6,12 +6,10 @@ removed. The fix tracks allocated dirs in ``_allocated_codex_homes``
 and removes them via the standalone ``cleanup_codex_homes()`` (registered
 with ``atexit``).
 
-wt-024 memory-perf round 3: ``cleanup_codex_homes`` must reap every
-home this process ever allocated, including FIFO-evicted homes whose
-bookkeeping entry was dropped from the bounded deque. The fix tracks
-every allocation in ``_all_allocated_codex_homes`` (a separate set
-that outlives the bounded deque) so the atexit net can find
-FIFO-evicted orphans.
+wt-024 memory-perf round 3: ``cleanup_codex_homes`` reaps homes still
+registered for atexit cleanup. The lifetime registry is independently
+hard-capped, so paths evicted from it remain on disk for their owner to
+release (or the branch-appropriate runtime cleanup to reclaim).
 
 These tests exercise ``_allocate_codex_home_dir`` + ``cleanup_codex_homes``
 DIRECTLY (NOT ``prepare_codex_home_with_upstreams``, which reads and
@@ -97,60 +95,50 @@ def test_cleanup_codex_homes_robust_to_missing_dirs(tmp_path: Path) -> None:
     assert _all_allocated_codex_homes == set()
 
 
-def test_cleanup_codex_homes_reaps_fifo_evicted_orphans(tmp_path: Path) -> None:
-    """Regression for analysis-feedback wt-024 round 3:
-
-    After ``_allocate_codex_home_dir`` evicts the oldest entry from the
-    bounded deque (FIFO overflow), ``cleanup_codex_homes`` MUST still
-    rmtree the evicted on-disk directory. The eviction only drops the
-    bookkeeping entry from ``_allocated_codex_homes``; the home remains
-    in ``_all_allocated_codex_homes`` so the atexit net can find it.
-
-    Scenario: shrink the deque cap to 2 via module-swap, allocate 4
-    homes (forcing 2 evictions), then call ``cleanup_codex_homes``
-    directly. EVERY allocated path (including the 2 evicted ones)
-    must be rmtree'd. Without the fix, the 2 evicted homes survive
-    because ``cleanup_codex_homes`` only iterates the bounded deque.
-
-    Proof: after the fix the test fails if ``_all_allocated_codex_homes``
-    is not used (the 2 evicted homes would still be on disk).
-    """
+def test_cleanup_codex_homes_keeps_lifetime_cap_evictions_on_disk(tmp_path: Path) -> None:
+    """S-10: capped lifetime eviction must never delete an active home."""
     small_cap = 2
     original_deque = codex_module._allocated_codex_homes
     original_set = codex_module._all_allocated_codex_homes
+    original_cap = codex_module._ALL_CODEX_HOMES_CAP
     codex_module._allocated_codex_homes = collections.deque(maxlen=small_cap)
     codex_module._all_allocated_codex_homes = set()
+    codex_module._ALL_CODEX_HOMES_CAP = small_cap
     try:
-        # Allocate cap + 2 entries (two oldest will be evicted from
-        # the bookkeeping deque).
-        dirs: list = []
-        for _ in range(small_cap + 2):
-            d = _allocate_codex_home_dir(workspace_path=tmp_path)
-            dirs.append(d)
+        dirs = [_allocate_codex_home_dir(workspace_path=tmp_path) for _ in range(4)]
 
-        # Sanity: the bounded deque holds only the latest entries.
         assert len(codex_module._allocated_codex_homes) == small_cap
-        # Sanity: the lifetime set holds ALL allocations.
-        assert len(codex_module._all_allocated_codex_homes) == small_cap + 2
+        assert len(codex_module._all_allocated_codex_homes) == small_cap
+        assert all(directory.exists() for directory in dirs)
 
-        # The two oldest paths were FIFO-evicted from the deque but
-        # must STILL be tracked in the lifetime set so cleanup_codex_homes
-        # can find them.
-        assert str(dirs[0]) not in codex_module._allocated_codex_homes
-        assert str(dirs[1]) not in codex_module._allocated_codex_homes
-        assert str(dirs[0]) in codex_module._all_allocated_codex_homes
-        assert str(dirs[1]) in codex_module._all_allocated_codex_homes
-
-        # Cleanup must rmtree every allocated path (registry + set).
         cleanup_codex_homes()
 
-        for d in dirs:
-            assert not d.exists(), (
-                f"cleanup_codex_homes must rmtree FIFO-evicted home {d} (round 3 regression)"
-            )
+        assert sum(directory.exists() for directory in dirs) == small_cap
         assert list(codex_module._allocated_codex_homes) == []
         assert codex_module._all_allocated_codex_homes == set()
     finally:
-        # Restore the production deque + set
+        codex_module._allocated_codex_homes = original_deque
+        codex_module._all_allocated_codex_homes = original_set
+        codex_module._ALL_CODEX_HOMES_CAP = original_cap
+
+
+def test_cleanup_codex_homes_reaps_fifo_evicted_orphans(tmp_path: Path) -> None:
+    """DA-004: atexit cleanup must reap homes evicted from the FIFO registry."""
+    original_deque = codex_module._allocated_codex_homes
+    original_set = codex_module._all_allocated_codex_homes
+    codex_module._allocated_codex_homes = collections.deque(maxlen=2)
+    codex_module._all_allocated_codex_homes = set()
+    try:
+        dirs = [_allocate_codex_home_dir(workspace_path=tmp_path) for _ in range(4)]
+
+        assert len(codex_module._allocated_codex_homes) == 2
+        assert len(codex_module._all_allocated_codex_homes) == 4
+
+        cleanup_codex_homes()
+
+        assert all(not directory.exists() for directory in dirs)
+        assert list(codex_module._allocated_codex_homes) == []
+        assert codex_module._all_allocated_codex_homes == set()
+    finally:
         codex_module._allocated_codex_homes = original_deque
         codex_module._all_allocated_codex_homes = original_set

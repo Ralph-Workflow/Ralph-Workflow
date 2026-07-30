@@ -9,6 +9,7 @@ from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
 from ralph.agents.completion_signals import (
     CompletionSignals,
     _check_completion_sentinel,
@@ -20,6 +21,7 @@ from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityT
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
+from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
@@ -45,6 +47,11 @@ from ralph.recovery.failure_details import contains_casefolded_marker
 #: is appended so an operator can still see the truncation (AC-05).
 _MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
 _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
+#: ``message.stopReason`` pi sets when the model turn failed outright
+#: (unreachable provider, rejected model, transport fault). The turn
+#: produced NO content, so nothing else in the stream names the cause.
+_PI_PROVIDER_FAILURE_STOP_REASON = "error"
+_PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
 
 
 def _truncation_marker(capped_bytes: int) -> str:
@@ -111,7 +118,9 @@ def _teardown_subtree_if_pid_available(handle: object) -> None:
     Test fakes may not implement ``pid``; this helper ignores them so
     unit tests stay isolated from real process signals.
     """
-    pid = cast("int | None", getattr(handle, "pid", None))
+    pid = cast(
+        "int | None", getattr(handle, "pid", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if pid is not None:
         teardown_subtree(pid)
 
@@ -162,6 +171,92 @@ def _has_pi_context_exhaustion_signal(agent_name: str, output: list[str]) -> boo
     return any(_line_has_pi_context_exhaustion(line) for line in output)
 
 
+def _message_provider_failure_reason(message: object) -> str | None:
+    """Return the ``errorMessage`` of a message whose turn failed outright.
+
+    ``stopReason == 'error'`` is pi's report that the model turn did not
+    run at all -- an unreachable provider, a rejected model, a transport
+    fault. It is distinct from ``'length'`` (context exhaustion), which
+    :func:`_message_has_length_stop_reason` already covers.
+    """
+    if not isinstance(message, dict):
+        return None
+    message_dict = cast("dict[str, object]", message)
+    stop_reason = message_dict.get("stopReason")
+    if not isinstance(stop_reason, str):
+        return None
+    if stop_reason.casefold() != _PI_PROVIDER_FAILURE_STOP_REASON:
+        return None
+    error_message = message_dict.get("errorMessage")
+    if isinstance(error_message, str) and error_message.strip():
+        return error_message
+    return _PI_PROVIDER_FAILURE_FALLBACK_REASON
+
+
+def _exhausted_retry_ladder_reason(obj: dict[str, object]) -> str | None:
+    """Return the final error of an exhausted ``auto_retry_end`` ladder.
+
+    ``success=false`` means pi gave up after ``maxAttempts`` and will
+    exit rc=0 having done no work.
+    """
+    if obj.get("type") != "auto_retry_end" or obj.get("success") is not False:
+        return None
+    final_error = obj.get("finalError")
+    if isinstance(final_error, str) and final_error.strip():
+        return final_error
+    return _PI_PROVIDER_FAILURE_FALLBACK_REASON
+
+
+def _messages_provider_failure_reason(obj: dict[str, object]) -> str | None:
+    """Return the first provider failure across a line's message payloads.
+
+    ``message_end`` / ``turn_end`` carry a single ``message``;
+    ``agent_end`` carries a ``messages`` array.
+    """
+    reason = _message_provider_failure_reason(obj.get("message"))
+    if reason is not None:
+        return reason
+    messages = obj.get("messages")
+    if not isinstance(messages, list):
+        return None
+    for message in cast("list[object]", messages):
+        reason = _message_provider_failure_reason(message)
+        if reason is not None:
+            return reason
+    return None
+
+
+def _line_provider_failure_reason(line: str) -> str | None:
+    """Extract a provider-failure reason from one raw pi NDJSON line.
+
+    Checks the exhausted retry ladder first (it carries the most
+    authoritative ``finalError``), then the failed message payloads.
+    """
+    try:
+        parsed = cast("object", json.loads(line))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    obj = cast("dict[str, object]", parsed)
+    return _exhausted_retry_ladder_reason(obj) or _messages_provider_failure_reason(obj)
+
+
+def _pi_provider_failure_reason(agent_name: str, output: list[str]) -> str | None:
+    """Return why pi's provider failed, or ``None`` if it did not.
+
+    Only consulted for pi agents; other transports report their own
+    failures through their own channels.
+    """
+    if not _is_pi_agent(agent_name):
+        return None
+    for line in output:
+        reason = _line_provider_failure_reason(line)
+        if reason is not None:
+            return reason
+    return None
+
+
 @dataclass(frozen=True)
 class _CompletionCheckOptions:
     execution_strategy: BaseExecutionStrategy | None = None
@@ -169,6 +264,12 @@ class _CompletionCheckOptions:
     liveness_probe: LivenessProbe | None = None
     policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))
     required_artifact: RequiredArtifact | None = None
+    #: False only for a session that can leave no completion evidence: it has
+    #: no artifact contract AND is not granted ``artifact.submit``, so
+    #: ``declare_complete`` is not in its tool surface. Demanding evidence
+    #: there would fail every clean exit on the completion-enforcing
+    #: transports. See ``InvokeAgentEffect.requires_completion_evidence``.
+    requires_completion_evidence: bool = True
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
     completion_run_id: str | None = None
@@ -209,6 +310,7 @@ class _CompletionCheckOptions:
     #: ``evaluate_completion`` call so a forged receipt is rejected
     #: when the broker configures HMAC enforcement.
     receipt_secret: str | None = None
+    agy_cli_log_path: Path | None = None
 
 
 def _apply_sentinel_signal(
@@ -231,7 +333,9 @@ def _apply_sentinel_signal(
     entering the session-continuation / completion-enforcement
     branches that reach this helper).
     """
-    workspace: Path = cast("Path", opts.workspace_path)
+    workspace: Path = cast(
+        "Path", opts.workspace_path
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if opts._sentinel_check_fn is not None:
         sentinel_found = opts._sentinel_check_fn(
             workspace,
@@ -391,6 +495,10 @@ def _check_process_result(
     waits up to policy.descendant_wait_timeout_seconds for the tree to quiesce
     before re-evaluating completion signals.
 
+    A session that opts out via ``requires_completion_evidence=False`` skips both
+    checks: it holds neither an artifact contract nor the ``artifact.submit``
+    capability behind ``declare_complete``, so a clean exit is terminal.
+
     Args:
         handle: Completed managed process.
         agent_name: Name of the agent.
@@ -403,11 +511,11 @@ def _check_process_result(
     """
     returncode = int(handle.returncode or 0)
     if returncode != 0:
-        stderr_pipe = cast("IO[str] | None", getattr(handle, "stderr", None))
+        stderr_pipe = cast(
+            "IO[str] | None", getattr(handle, "stderr", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         stderr = (
-            _bounded_read(stderr_pipe)
-            if stderr_pipe is not None
-            else "(unable to read stderr)"
+            _bounded_read(stderr_pipe) if stderr_pipe is not None else "(unable to read stderr)"
         )
         exc = AgentInvocationError(
             agent_name,
@@ -425,6 +533,10 @@ def _check_process_result(
         raise exc
 
     opts = check_options
+    if opts is not None and not opts.requires_completion_evidence:
+        # The session had no way to leave completion evidence and no caller
+        # waiting to read it: a clean exit is the whole signal.
+        return
     if (
         opts is not None
         and opts.execution_strategy is not None
@@ -496,6 +608,13 @@ def _check_process_result(
                         break
             if _has_pi_context_exhaustion_signal(agent_name, bounded_output):
                 raise PiContextExhaustedExitError(agent_name)
+            # A dead provider is NOT a resumable session: resuming it
+            # relaunches the same agent against the same dead provider,
+            # which is the infinite-retry loop this guard exists to break.
+            provider_failure = _pi_provider_failure_reason(agent_name, bounded_output)
+            if provider_failure is not None:
+                _teardown_subtree_if_pid_available(handle)
+                raise PiProviderFailureExitError(agent_name, provider_failure)
             raise OpenCodeResumableExitError(
                 agent_name,
                 session_id=session_id,
@@ -537,12 +656,18 @@ def _check_process_result(
         )
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             _teardown_subtree_if_pid_available(handle)
+            diagnostic = (
+                agy_empty_output_reason(bounded_output, cli_log_path=opts.agy_cli_log_path)
+                if agent_name == "agy" or agent_name.startswith("agy/")
+                else None
+            )
             raise AgentInvocationError(
                 agent_name,
                 0,
-                (
+                diagnostic
+                or (
                     "agent exited without required completion evidence "
-                    "(no artifact, no declare_complete)"
+                    "(completion sentinel missing, or required artifact receipt missing)"
                 ),
             )
 

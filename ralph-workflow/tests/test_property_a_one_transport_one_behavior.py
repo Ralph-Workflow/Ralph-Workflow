@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
+from functools import cache
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -20,6 +21,7 @@ from ralph.mcp.server import _fallback_http_handler
 from ralph.mcp.server._in_memory_transport import drive_request, parse_sse_data
 from ralph.mcp.server.runtime import McpServer, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
+from tests._support.typed_accessors import must_mapping
 
 REPO = Path(__file__).resolve().parents[1]
 FORBIDDEN_TOKENS = (
@@ -36,17 +38,20 @@ FORBIDDEN_TOKEN_BYTES = tuple(token.encode("utf-8") for token in FORBIDDEN_TOKEN
 INCLUDED_SUFFIXES = (".py", ".md")
 
 
-def _iter_source_files(root: Path) -> list[Path]:
-    out: list[Path] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix not in INCLUDED_SUFFIXES:
-            continue
-        if any(part == "__pycache__" for part in path.parts):
-            continue
-        out.append(path)
-    return out
+@cache
+def _source_bytes(root: Path) -> tuple[tuple[Path, bytes], ...]:
+    sources: list[tuple[Path, bytes]] = []
+    for directory, directories, files in os.walk(root):
+        directories[:] = [
+            name for name in directories if name not in {"__pycache__", ".venv", "node_modules"}
+        ]
+        base = Path(directory)
+        sources.extend(
+            (base / name, (base / name).read_bytes())
+            for name in files
+            if (base / name).suffix in INCLUDED_SUFFIXES
+        )
+    return tuple(sources)
 
 
 def test_runtime_module_contains_no_fastmcp_symbols() -> None:
@@ -61,8 +66,7 @@ def test_runtime_module_contains_no_fastmcp_symbols() -> None:
 def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
     """The file-walk audit must find no hits in ralph/ outside the absence-asserting test."""
     hits: list[str] = []
-    for path in _iter_source_files(REPO / "ralph"):
-        content = path.read_bytes()
+    for path, content in _source_bytes(REPO / "ralph"):
         for token, token_bytes in zip(FORBIDDEN_TOKENS, FORBIDDEN_TOKEN_BYTES, strict=True):
             if token_bytes in content:
                 rel = path.relative_to(REPO)
@@ -98,7 +102,7 @@ def test_in_memory_transport_drives_dispatch_via_saturated_seam(
     assert status == 200
     assert seen, "the dispatch must run through the saturated-dispatch seam"
     data = parse_sse_data(body)
-    result = cast("dict[str, object]", data.get("result", {}))
+    result = must_mapping(data.get("result", {}))
     assert "tools" in result
 
 
@@ -189,11 +193,10 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
     """
     usage_hits: list[str] = []
     absent_files: list[str] = []
-    for path in _iter_source_files(REPO / "tests"):
+    for path, content in _source_bytes(REPO / "tests"):
         if path.suffix != ".py":
             continue
         rel = path.relative_to(REPO).as_posix()
-        content = path.read_bytes()
         if not any(token_bytes in content for token_bytes in FORBIDDEN_TOKEN_BYTES):
             continue
         text = content.decode("utf-8", errors="ignore")

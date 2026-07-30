@@ -377,31 +377,23 @@ def test_no_runtime_rich_console_import_in_cli_or_pipeline() -> None:
     )
 
 
-def test_no_console_print_in_main_py_except_version_path() -> None:
-    """Pin wt-007: only the --version early-exit may use direct c.print in main.py.
+def test_no_console_print_in_main_py() -> None:
+    """Pin wt-007 + wt-028-display S-7: zero direct ``console.print`` in main.py.
 
     AST-scans ralph/cli/main.py for ``console.print(``, ``c.print(``,
-    and ``ctx.console.print(`` calls. The ONLY remaining direct call
-    is the one inside ``version_callback`` — the --version early-exit
-    path that runs before any DisplayContext is built. A regression
-    that introduces a new direct c.print in main.py would be flagged
+    and ``ctx.console.print(`` calls. After wt-028-display S-7 the
+    ``version_callback`` early-exit was folded into the shared
+    ParallelDisplay / ``emit_welcome_banner`` path (the height-
+    constrained presentation prints "Ralph Workflow v<version>"
+    on a single row), so the prior exception is gone. A regression
+    that introduces any direct console.print in main.py -- including
+    a new direct path inside ``version_callback`` -- is flagged
     here.
     """
     main_path = _REPO_ROOT_FOR_TESTS / "ralph" / "cli" / "main.py"
     source = main_path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     lines = source.splitlines()
-
-    def _is_in_version_callback(lineno: int) -> bool:
-        """Return True when the given 1-based line is inside ``version_callback``."""
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef):
-                continue
-            if node.name != "version_callback":
-                continue
-            if node.lineno <= lineno <= node.end_lineno:
-                return True
-        return False
 
     violations: list[int] = []
     for node in ast.walk(tree):
@@ -423,20 +415,12 @@ def test_no_console_print_in_main_py_except_version_path() -> None:
             and node.func.value.value.id in {"ctx", "display_context"}
         ):
             violations.append(node.lineno)
-    non_version_violations = [
-        lineno for lineno in violations if not _is_in_version_callback(lineno)
-    ]
-    assert not non_version_violations, (
-        f"main.py must have zero direct console.print outside the "
-        f"version_callback function; found {non_version_violations!r}.\n"
-        f"Direct c.print/console.print/ctx.console.print call sites: {violations!r}\n"
+    assert not violations, (
+        f"main.py must have zero direct console.print calls (wt-007 "
+        f"+ wt-028-display S-7 folded the --version path into "
+        f"ParallelDisplay); found {violations!r}.\n"
         f"Context around the first violation:\n"
         f"{chr(10).join(lines[max(0, violations[0] - 3) : violations[0] + 2])}"
-    )
-    assert len(violations) >= 1, (
-        f"version_callback must keep its single direct c.print at line "
-        f"{lines.index('c.print(version_text)') + 1 if 'c.print(version_text)' in lines else '?'}; "
-        f"found no direct c.print/console.print calls in main.py at all."
     )
 
 

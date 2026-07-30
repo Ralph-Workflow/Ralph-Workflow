@@ -1,0 +1,4 @@
+{"kind": "text", "provider": "claude", "content": "Reading the test file.", "metadata": {}}
+{"kind": "tool_use", "provider": "claude", "content": "Read", "metadata": {"input": {"path": "ralph/display/agent_event_renderer.py"}}}
+{"kind": "tool_result", "provider": "claude", "content": "ok", "metadata": {"tool": "Read"}}
+{"kind": "text", "provider": "claude", "content": "Render path is correct.", "metadata": {}}

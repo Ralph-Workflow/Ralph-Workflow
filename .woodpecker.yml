@@ -1,10 +1,11 @@
 when:
-  - event: [push, pull_request]
+  - event: [push, pull_request, pull_request_metadata]
 
 steps:
   checks:
     image: python:3.12-bookworm
     commands:
+      - cd ralph-workflow && python -m ralph.contrib.cla
       - pip install --upgrade uv
       # Run the maintained Python verification suite via the canonical
       # `make verify` entry point. After step 8 of the docs plan this

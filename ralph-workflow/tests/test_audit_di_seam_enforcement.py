@@ -87,7 +87,7 @@ def test_pass1_strict_mode_fails_on_direct_environ_read_below_composition_root(
 def test_pass2_strict_mode_fails_on_cast_at_session_factory_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PASS 2: a fresh ``cast('McpSession', x)`` in a file named like the
+    """PASS 2: a fresh ``x`` in a file named like the
     session factory boundary module is reported as ``session_factory_cast``
     and the strict-mode audit returns exit code 1.
     """

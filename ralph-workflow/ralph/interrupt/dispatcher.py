@@ -103,8 +103,12 @@ if (
     )
 
 
-_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
-_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+_DEFAULT_SIGNAL_GETTER = cast(
+    "SignalGetter", signal.getsignal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+_DEFAULT_SIGNAL_SETTER = cast(
+    "SignalSetter", signal.signal
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 class _CpuTimes(Protocol):
@@ -123,7 +127,9 @@ class _PsutilModule(Protocol):
 def _psutil_pid_cpu_time(pid: int) -> float:
     """Return the cumulative CPU time for a PID, or 0.0 on any failure."""
     try:
-        psutil = cast("_PsutilModule", importlib.import_module("psutil"))
+        psutil = cast(
+            "_PsutilModule", importlib.import_module("psutil")
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     except Exception:
         return 0.0
     try:
@@ -184,14 +190,27 @@ def _records_show_no_progress(
     return no_progress
 
 
+def _signalable_pgid(record: ProcessRecord) -> int | None:
+    """Return the record's PGID when it is safe to signal.
+
+    ``killpg(0, ...)`` signals the CALLER's own group and PID 1 is init: a
+    record carrying either (``-1`` placeholders on a failed spawn, fabricated
+    PIDs from a fake process manager) must never reach ``os.killpg``.
+    """
+    pgid = record.pgid
+    return pgid if pgid > 1 else None
+
+
 def _kill_records(records: list[ProcessRecord]) -> None:
-    kill_method = os.killpg if hasattr(os, "killpg") else os.kill
+    use_killpg = hasattr(os, "killpg")
     for record in records:
         with suppress(ProcessLookupError, PermissionError):
-            if kill_method is os.killpg:
-                kill_method(record.pgid, signal.SIGKILL)
-            else:
-                kill_method(record.pid, signal.SIGKILL)
+            if use_killpg:
+                pgid = _signalable_pgid(record)
+                if pgid is not None:
+                    os.killpg(pgid, signal.SIGKILL)
+            elif record.pid > 1:
+                os.kill(record.pid, signal.SIGKILL)
 
 
 def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]) -> None:
@@ -205,8 +224,11 @@ def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]
     )
     if callable(kill_method):
         for record in records:
+            pgid = _signalable_pgid(record)
+            if pgid is None:
+                continue
             with suppress(ProcessLookupError, PermissionError):
-                kill_method(record.pgid, signal.SIGKILL)
+                kill_method(pgid, signal.SIGKILL)
         return
     _kill_records(records)
 
@@ -308,7 +330,9 @@ class InterruptDispatcher:
         compatibility; it is deprecated and emits a single loguru
         warning when used. New callers MUST pass ``bridge_pgids``.
         """
-        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        bridge_pids_legacy = cast(
+            "Iterable[int]", kwargs.pop("bridge_pids", ())
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)

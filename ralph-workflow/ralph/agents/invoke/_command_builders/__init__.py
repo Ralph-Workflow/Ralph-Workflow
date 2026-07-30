@@ -15,7 +15,10 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke._process_reader import _agent_command_name
 from ralph.config.enums import AgentTransport
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.tools.names import CLAUDE_NATIVE_TOOLS_TO_KEEP
+from ralph.mcp.transport.claude import claude_mcp_config
 from ralph.mcp.transport.pi import pi_mcp_extension_path
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
@@ -30,7 +33,9 @@ _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    return cast("AgentTransport", config.transport)
+    return cast(
+        "AgentTransport", config.transport
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
@@ -134,6 +139,50 @@ def _load_prompt_text(prompt_file: str, workspace_path: Path | None) -> str:
     return text
 
 
+def _load_prompt_with_master(
+    prompt_file: str,
+    workspace_path: Path | None,
+    master_prompt_file: str | None,
+) -> str:
+    """Prepend durable master instructions for transports without a system-file flag."""
+    prompt = _load_prompt_text(prompt_file, workspace_path)
+    if master_prompt_file is None:
+        return prompt
+    master_path = Path(master_prompt_file)
+    if not master_path.is_absolute() and workspace_path is not None:
+        master_path = workspace_path / master_path
+    master = master_path.read_text(encoding="utf-8")
+    return f"{master.rstrip()}\n\n{prompt}"
+
+
+def _materialize_generic_prompt_with_master(
+    prompt_file: str,
+    workspace_path: Path | None,
+    master_prompt_file: str,
+) -> str:
+    """Return a stable prompt-file path containing master and phase instructions."""
+    master_path = Path(master_prompt_file)
+    if not master_path.is_absolute() and workspace_path is not None:
+        master_path = workspace_path / master_path
+    prompt_path = _resolve_prompt_path(prompt_file, workspace_path)
+    combined_path = master_path.with_name(
+        f"{master_path.stem}_{prompt_path.stem}_generic_prompt.md"
+    )
+    combined_prompt = _load_prompt_with_master(
+        prompt_file,
+        workspace_path,
+        master_prompt_file,
+    )
+    DEFAULT_FILE_BACKEND.mkdir(combined_path.parent, parents=True, exist_ok=True)
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        combined_path,
+        combined_prompt,
+        encoding="utf-8",
+    )
+    return str(combined_path)
+
+
 def _split_optional_flag(flag: str | None) -> list[str]:
     if not flag:
         return []
@@ -223,8 +272,6 @@ def _extend_claude_transport_flags(
     transport: AgentTransport,
     build_options: _BuildCommandOptions,
 ) -> None:
-    from ralph.agents.invoke._commands import claude_mcp_config  # noqa: PLC0415
-
     if (
         transport not in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE)
         or build_options.mcp_endpoint is None
@@ -266,6 +313,15 @@ def _append_transport_prompt_arg(
         cmd.append("--")
         prompt_text = _load_prompt_text(prompt_file, build_options.workspace_path)
         cmd.append(prompt_text)
+        return
+    if transport == AgentTransport.GENERIC and build_options.master_prompt_file:
+        cmd.append(
+            _materialize_generic_prompt_with_master(
+                prompt_file,
+                build_options.workspace_path,
+                build_options.master_prompt_file,
+            )
+        )
         return
     cmd.append(prompt_file)
 
@@ -366,7 +422,7 @@ class ConfigurableCommandBuilder:
             formatted = self.spec.model_flag_template.format(effective_model)
             return formatted.split()
         if "codex" in self.spec.base_argv[0]:
-            return effective_model.split()
+            return shlex.split(effective_model)
         return shlex.split(effective_model)
 
     def build(
@@ -408,7 +464,15 @@ class ConfigurableCommandBuilder:
             cmd.append(print_flag)
 
         if self.spec.positional_prompt:
-            prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+            transport = _agent_transport(config)
+            master_prompt_file = (
+                None if transport == AgentTransport.CODEX else options.master_prompt_file
+            )
+            prompt_text = _load_prompt_with_master(
+                prompt_file,
+                options.workspace_path,
+                master_prompt_file,
+            )
             cmd.append(prompt_text)
 
         return cmd
@@ -487,8 +551,8 @@ class ClaudeInteractiveCommandBuilder:
             cmd.extend(_format_session_flag(config.session_flag, options.session_id))
         if options.settings_json is not None:
             cmd.extend(["--settings", options.settings_json])
-        if options.system_prompt_file:
-            cmd.extend(["--append-system-prompt-file", options.system_prompt_file])
+        if options.master_prompt_file:
+            cmd.extend(["--append-system-prompt-file", options.master_prompt_file])
         effective_model = options.model_flag or config.model_flag
         if effective_model:
             cmd.extend(effective_model.split())
@@ -604,7 +668,11 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
         if options.verbose and config.verbose_flag:
             cmd.append(config.verbose_flag)
         cmd.extend(self._build_model_flag(config, options))
-        prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+        prompt_text = _load_prompt_with_master(
+            prompt_file,
+            options.workspace_path,
+            options.master_prompt_file,
+        )
         cmd.append(prompt_text)
         return cmd
 
@@ -645,8 +713,8 @@ class DefaultCommandBuilder:
 
         _extend_claude_transport_flags(cmd, transport, options)
 
-        if transport == AgentTransport.CLAUDE and options.system_prompt_file:
-            cmd.extend(["--append-system-prompt-file", options.system_prompt_file])
+        if transport == AgentTransport.CLAUDE and options.master_prompt_file:
+            cmd.extend(["--append-system-prompt-file", options.master_prompt_file])
 
         effective_model = options.model_flag or config.model_flag
         if effective_model:

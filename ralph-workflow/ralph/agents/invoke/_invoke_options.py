@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import SubagentPidSource
+    from ralph.process.teardown import ProcessTeardown
 
 
 @dataclass(frozen=True)
@@ -30,9 +31,9 @@ class InvokeOptions:
     # enforced by ``tests/conftest.py``. The factory signature mirrors
     # :func:`ralph.agents.invoke._start_workspace_monitor` so callers
     # can pass a thin ``lambda *args, **kwargs: None`` shortcut.
-    workspace_monitor_factory: Callable[
-        [Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None
-    ] | None = None
+    workspace_monitor_factory: (
+        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
+    ) = None
 
     model_flag: str | None = None
     session_id: str | None = None
@@ -67,6 +68,7 @@ class InvokeOptions:
     activity_evidence_ttl_seconds: float | None = None
     workspace_change_weights: dict[str, float] | None = None
     process_monitor_enabled: bool | None = None
+    process_teardown: ProcessTeardown | None = None
     subagent_output_capture_enabled: bool | None = None
     subagent_output_poll_interval_seconds: float | None = None
     os_descendant_only_ceiling_seconds: float | None | object = _INVOKE_OPTS_UNSET
@@ -74,11 +76,12 @@ class InvokeOptions:
     cpu_idle_seconds: float | None | object = _INVOKE_OPTS_UNSET
     log_growth_seconds: float | None | object = _INVOKE_OPTS_UNSET
     pure: bool = False
-    system_prompt_file: str | None = None
+    master_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
+    requires_completion_evidence: bool = True
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
     initial_session_id: str | None = None

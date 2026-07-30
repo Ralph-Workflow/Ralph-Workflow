@@ -22,6 +22,7 @@ class ActivityProvider(StrEnum):
     CLAUDE = "claude"
     CLAUDE_INTERACTIVE = "claude_interactive"
     CODEX = "codex"
+    CURSOR = "cursor"
     OPENCODE = "opencode"
     NANOCODER = "nanocoder"
     GEMINI = "gemini"
@@ -34,6 +35,7 @@ _TRANSPORT_TO_PROVIDER: dict[str, ActivityProvider] = {
     "claude": ActivityProvider.CLAUDE,
     "claude_interactive": ActivityProvider.CLAUDE_INTERACTIVE,
     "codex": ActivityProvider.CODEX,
+    "cursor": ActivityProvider.CURSOR,
     "opencode": ActivityProvider.OPENCODE,
     "nanocoder": ActivityProvider.NANOCODER,
     "gemini": ActivityProvider.GEMINI,

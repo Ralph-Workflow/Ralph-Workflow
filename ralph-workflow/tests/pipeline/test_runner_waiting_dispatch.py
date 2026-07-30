@@ -33,6 +33,7 @@ def _event(
         ceiling_seconds=ceiling,
         suspect_threshold_seconds=600.0,
         diagnostic=diagnostic or {},
+        stall_active=False,
     )
 
 
@@ -120,6 +121,7 @@ def test_dispatch_preserves_subagent_activity_for_hard_stop(
         suspect_threshold_seconds=None,
         diagnostic={"scoped_child_active": True, "oldest_child_seconds": 200.0},
         subagent_activity="active task",
+        stall_active=False,
     )
     dispatch_waiting_event(event, subscriber=sub, unit_id="test-agent", agent_name="test-agent")
 

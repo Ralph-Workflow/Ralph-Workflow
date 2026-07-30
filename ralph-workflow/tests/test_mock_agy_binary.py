@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.smoke_test_result import SmokeTestResult
+
+import_module("ralph.mcp.artifacts.markdown.specs")
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,10 +45,10 @@ def _run_mock_agy(
 def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
     """Normal behavior emits stdout with a tool-use line and writes the artifact.
 
-    The mock no longer emits a transcript completion marker because the AGY
-    smoke prompt no longer asks the agent to print one. The authoritative
-    completion signal is the canonical receipt promoted from the artifact
-    write; the authoritative tool-activity signal is the
+    The mock never emits a spoofable transcript completion marker. In the
+    harness, ``RALPH_MCP_RUN_ID`` also makes it write the durable declaration
+    sentinel; this standalone call intentionally omits that run id. The
+    authoritative tool-activity signal is the
     ``[plain] tool: NAME`` line that the GenericParser classifies as
     ``type='tool_use'``.
     """
@@ -52,7 +56,7 @@ def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )
@@ -68,7 +72,7 @@ def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
         "not trust it"
     )
     assert any(line.startswith("Session ID: interactive-agy-smoke-") for line in lines)
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     assert artifact_path.exists()
 
 
@@ -78,7 +82,7 @@ def test_mock_quota_exhausted_returns_empty(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         behavior="quota_exhausted",
         artifact_dir=tmp_path,
@@ -93,7 +97,7 @@ def test_mock_invalid_model_returns_empty(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         behavior="invalid_model",
         artifact_dir=tmp_path,
@@ -107,7 +111,7 @@ def test_mock_missing_print_exits_2(tmp_path: Path) -> None:
     result = _run_mock_agy(
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )
@@ -116,34 +120,36 @@ def test_mock_missing_print_exits_2(tmp_path: Path) -> None:
 
 
 def test_mock_different_canonical_model_name(tmp_path: Path) -> None:
-    """The mock accepts any canonical display name from ``agy models``."""
+    """The mock accepts any published model ID from ``agy models``."""
     result = _run_mock_agy(
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Gemini 3.5 Flash (Low)",
+        "gemini-3.5-flash-low",
         "hello",
         artifact_dir=tmp_path,
     )
     assert result.returncode == 0
     assert "[plain] tool: createTodoList" in result.stdout
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     assert artifact_path.exists()
 
 
 def test_mock_artifact_schema_validates(tmp_path: Path) -> None:
-    """The written artifact parses through SmokeTestResult.model_validate."""
+    """The written Markdown document validates against the smoke_test_result spec."""
     _run_mock_agy(
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    raw = json.loads(artifact_path.read_text(encoding="utf-8"))
-    content = raw["content"]
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
+    markdown = artifact_path.read_text(encoding="utf-8")
+    content, diagnostics = parse_and_validate(markdown, get_spec("smoke_test_result"))
+    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    assert errors == [], f"Expected a spec-clean Markdown artifact, got: {errors}"
     validated = SmokeTestResult.model_validate(content)
     assert validated.status == "passed"
     assert validated.output_file == "tmp/interactive-agy-smoke/todo-list.js"
@@ -164,7 +170,7 @@ def test_mock_rejects_non_canonical_model(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert result.stdout == ""
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     assert not artifact_path.exists()
 
 
@@ -174,7 +180,7 @@ def test_mock_writes_todo_list_file(tmp_path: Path) -> None:
         "--print",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "claude-sonnet-4-6",
         "hello",
         artifact_dir=tmp_path,
     )

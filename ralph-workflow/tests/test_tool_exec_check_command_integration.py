@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from ralph.mcp.tools.exec import (
-    check_command,
-)
+from ralph.mcp.tools.exec import check_command
 
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5

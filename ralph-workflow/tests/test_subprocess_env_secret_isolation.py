@@ -43,7 +43,7 @@ def broker_secret_in_parent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(_BROKER_SECRET_KEY, _BROKER_SECRET_VALUE)
 
 
-def test_subprocess_env_strips_broker_secret(broker_secret_in_parent: None) -> None:
+def test_subprocess_env_strips_broker_secret(broker_secret_in_parent: object) -> None:
     """A plain call (no extra_env) must NOT include RALPH_BROKER_SECRET."""
     env = _subprocess_env(None)
     assert _BROKER_SECRET_KEY not in env, (
@@ -53,7 +53,7 @@ def test_subprocess_env_strips_broker_secret(broker_secret_in_parent: None) -> N
 
 
 def test_subprocess_env_strips_broker_secret_with_empty_extra_env(
-    broker_secret_in_parent: None,
+    broker_secret_in_parent: object,
 ) -> None:
     """An empty ``extra_env`` dict still must NOT include the broker secret."""
     env = _subprocess_env({})
@@ -61,7 +61,7 @@ def test_subprocess_env_strips_broker_secret_with_empty_extra_env(
 
 
 def test_subprocess_env_strips_broker_secret_with_unrelated_extra_env(
-    broker_secret_in_parent: None,
+    broker_secret_in_parent: object,
 ) -> None:
     """Unrelated ``extra_env`` keys are preserved; the broker secret is still stripped."""
     env = _subprocess_env({"FOO": "bar", "BAZ": "qux"})
@@ -71,7 +71,7 @@ def test_subprocess_env_strips_broker_secret_with_unrelated_extra_env(
 
 
 def test_subprocess_env_caller_cannot_override_strip(
-    broker_secret_in_parent: None,
+    broker_secret_in_parent: object,
 ) -> None:
     """A caller-supplied ``extra_env`` value for ``RALPH_BROKER_SECRET``
     MUST NOT survive the strip — the parent-side broker decision is
@@ -85,7 +85,7 @@ def test_subprocess_env_caller_cannot_override_strip(
 
 
 def test_subprocess_env_does_not_mutate_parent_environ(
-    broker_secret_in_parent: None,
+    broker_secret_in_parent: object,
 ) -> None:
     """The strip must not mutate ``os.environ`` itself — only the
     returned dict is sanitised."""

@@ -18,7 +18,7 @@ def test_okabe_ito_constants_match_canonical_hex() -> None:
     assert theme.SKY_BLUE == "#56B4E9"
     assert theme.BLUISH_GREEN == "#009E73"
     assert theme.YELLOW == "#F0E442"
-    assert theme.BLUE == "#0072B2"
+    assert theme.BLUE == "#0080CC"
     assert theme.VERMILLION == "#D55E00"
     assert theme.REDDISH_PURPLE == "#CC79A7"
     assert theme.BLACK == "#000000"
@@ -34,7 +34,7 @@ def test_status_styles_cover_expected_statuses() -> None:
         "pending",
         "info",
     }
-    assert theme.STATUS_STYLES["info"] == ("#0072B2", "\u2139", "INFO")
+    assert theme.STATUS_STYLES["info"] == ("#0080CC", "\u2139", "INFO")
 
 
 def test_format_status_returns_marked_up_label() -> None:

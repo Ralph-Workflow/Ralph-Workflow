@@ -62,6 +62,7 @@ class TestRunnerCycleStartUsesForceTrue:
             "Cycle-start path must always call write_cycle_baseline with force=True"
         )
 
+    @pytest.mark.timeout_seconds(5)
     def test_runner_does_not_overwrite_existing_baseline(self, git_repo: tuple[Path, Repo]) -> None:
         root, _ = git_repo
         with Repo(root) as _r:

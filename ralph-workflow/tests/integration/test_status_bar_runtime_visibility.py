@@ -52,7 +52,6 @@ Tests
 from __future__ import annotations
 
 import io
-from typing import cast
 
 import pytest
 from rich.console import Console
@@ -119,7 +118,7 @@ def test_status_bar_is_active_through_parallel_display_context_manager() -> None
     ``pd.status_bar`` (single-owner invariant).
     """
     pd, _buf = _make_parallel_display()
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     assert isinstance(sb, StatusBar)
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
@@ -170,7 +169,7 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
     pd.update_status_bar(model)
     captured_inside_active = False
     with pd:
-        captured_inside_active = cast("StatusBar", pd.status_bar).is_active
+        captured_inside_active = pd.status_bar.is_active
     out = buf.getvalue()
     assert captured_inside_active is True
     assert "/tmp/proj" in out, (
@@ -179,11 +178,11 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
     assert "Development" in out, (
         f"Live region must surface the phase label 'Development'; got {out!r}"
     )
-    assert "Dev 1/3" in out, (
-        f"Live region must surface the outer-dev iteration 'Dev 1/3'; got {out!r}"
+    assert "Cycle 1/3" in out, (
+        f"Live region must surface the outer-dev iteration 'Cycle 1/3'; got {out!r}"
     )
-    assert "Analysis 2/5" in out, (
-        f"Live region must surface the inner-analysis iteration 'Analysis 2/5'; got {out!r}"
+    assert "iter 2/5" in out, (
+        f"Live region must surface the inner-analysis iteration 'iter 2/5'; got {out!r}"
     )
 
 
@@ -211,7 +210,7 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
     pd.update_status_bar(model)
     captured_inside_active = False
     with pd:
-        captured_inside_active = cast("StatusBar", pd.status_bar).is_active
+        captured_inside_active = pd.status_bar.is_active
     out = buf.getvalue()
     assert captured_inside_active is True
     assert "Commit" in out, f"Live region must surface the phase label 'Commit'; got {out!r}"
@@ -219,7 +218,7 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
         f"Live region must omit the outer-dev iteration label when the "
         f"iteration is None; got {out!r}"
     )
-    assert "Analysis " not in out, (
+    assert "iter " not in out, (
         f"Live region must omit the inner-analysis iteration label when "
         f"the iteration is None; got {out!r}"
     )
@@ -240,36 +239,36 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
       by ``with pd:``) at terminal width 100 and asserts the captured
       live buffer contains the workspace path ``/tmp/ac01-workspace``,
       the phase label ``development``, and the literal iteration labels
-      ``Dev 1/3`` (outer-dev cycle 1 of 3) and ``Analysis 2/5`` (inner
+      ``Cycle 1/3`` (outer cycle 1 of 3) and ``iter 2/5`` (inner
       analysis cycle 2 of 5).
 
     - **AC-02**: when a phase does not track an outer-dev or inner
       analysis iteration, the field is omitted entirely (no ``--``
       placeholder). A second model with both iteration fields ``None``
       is pushed through the same production entry point and the
-      captured buffer is asserted to contain neither ``Dev --`` nor
-      ``Analysis --`` nor any ``--/--`` substring.
+      captured buffer is asserted to contain neither ``Cycle --`` nor
+      ``iter --`` nor any ``--/--`` substring.
 
     - **AC-03**: during development-related phases the outer-dev
-      iteration (``Dev N/cap``) is visible.
+      iteration (``Cycle N/cap``) is visible.
 
     - **AC-04**: during analysis phases the inner analysis iteration
-      (``Analysis N/cap``) is visible.
+      (``iter N/cap``) is visible.
 
     The test uses width 100 (a common external-monitor width) because
-    the canonical ``Dev 1/3`` / ``Analysis 2/5`` labels always render
+    the canonical ``Cycle 1/3`` / ``iter 2/5`` labels always render
     in full at widths ``>= _CANONICAL_FIT_THRESHOLD`` (40 cols).
     Reuses the existing ``_TtyLikeStringIO`` fake-console pattern so
     the StatusBar real-TTY gate passes without a real pseudo-tty.
     """
-    pd_full, buf_full = _make_parallel_display(width=100)
+    pd_full, buf_full = _make_parallel_display(width=120)
     assert pd_full._ctx.console.is_terminal is True
     assert pd_full._ctx.console.file.isatty() is True
-    assert pd_full._ctx.console.width == 100, (
-        f"AC-01: console width MUST be 100 for this focused test; "
+    assert pd_full._ctx.console.width == 120, (
+        f"AC-01: console width MUST be 120 for this focused test; "
         f"got {pd_full._ctx.console.width!r}"
     )
-    sb = cast("StatusBar", pd_full.status_bar)
+    sb = pd_full.status_bar
     full_model = StatusBarModel(
         workspace_root="/tmp/ac01-workspace",
         phase_label="development",
@@ -294,12 +293,12 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     assert "development" in full_out, (
         f"AC-01: Live region must surface the phase label 'development'; got {full_out!r}"
     )
-    assert "Dev 1/3" in full_out, (
-        f"AC-03: Live region must surface the outer-dev iteration 'Dev 1/3'; got {full_out!r}"
+    assert "Cycle 1/3" in full_out, (
+        f"AC-03: Live region must surface the outer-dev iteration 'Cycle 1/3'; got {full_out!r}"
     )
-    assert "Analysis 2/5" in full_out, (
+    assert "iter 2/5" in full_out, (
         f"AC-04: Live region must surface the inner-analysis iteration "
-        f"'Analysis 2/5'; got {full_out!r}"
+        f"'iter 2/5'; got {full_out!r}"
     )
 
     pd_none, buf_none = _make_parallel_display(width=100)
@@ -315,7 +314,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     pd_none.update_status_bar(none_model)
     captured_inside_none_active = False
     with pd_none:
-        captured_inside_none_active = cast("StatusBar", pd_none.status_bar).is_active
+        captured_inside_none_active = pd_none.status_bar.is_active
     none_out = buf_none.getvalue()
     assert captured_inside_none_active is True, (
         "StatusBar must be active inside the production context manager "
@@ -354,7 +353,7 @@ def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
     pd, buf = _make_parallel_display(is_quiet=True)
     assert pd._ctx.console.is_terminal is True
     assert pd._ctx.console.file.isatty() is True
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     model = StatusBarModel(
         workspace_root="/tmp/proj",
         phase_label="Development",
@@ -388,7 +387,7 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
     assert pd._ctx.console.file.isatty() is False, (
         "Plain StringIO is not a TTY (the isatty() conjunct gate check)."
     )
-    sb = cast("StatusBar", pd.status_bar)
+    sb = pd.status_bar
     model = StatusBarModel(
         workspace_root="/tmp/proj",
         phase_label="Development",

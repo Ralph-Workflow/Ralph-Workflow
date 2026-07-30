@@ -224,6 +224,7 @@ class _ProcessLineReader:
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
+        self._process_teardown = ctx.process_teardown
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
@@ -243,6 +244,7 @@ class _ProcessLineReader:
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             _agent_command_name(self._config),
+            model=self._config.model,
         )
         self._last_activity_kind = "none"
         # Captured transport-level session id from the most recent
@@ -475,7 +477,9 @@ class _ProcessLineReader:
         # typed ``scoped_child_count`` argument matches.
         scoped_count_int: int | None = scoped_count
         alive_by: AliveBy | None = None
-        reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
+        reg = cast(
+            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if reg is not None:
             try:
                 label_prefix = cast(
@@ -512,7 +516,9 @@ class _ProcessLineReader:
         )
 
     def _read_thread(self) -> None:
-        stdout_pipe = cast("IO[str] | None", self._handle.stdout)
+        stdout_pipe = cast(
+            "IO[str] | None", self._handle.stdout
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if stdout_pipe is None:
             with self._lines_lock:
                 self._reader_done[0] = True
@@ -598,9 +604,14 @@ class _ProcessLineReader:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
-        pid = cast("int | None", getattr(self._handle, "pid", None))
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if pid is not None:
-            teardown_subtree(pid)
+            if self._process_teardown is None:
+                teardown_subtree(pid)
+            else:
+                self._process_teardown.teardown_subtree(pid)
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         # Always merge the watchdog's per-channel evidence summary into
@@ -723,6 +734,13 @@ class _ProcessLineReader:
         self._last_activity_meaningful[0] = (
             activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
         )
+        if activity_signal.error_message is not None:
+            # A failed tool call is BOTH a call and an error. Feeding only the
+            # dimension its ``kind`` names left the other wedge invisible: a
+            # repeated failing command whose output text varies, or an
+            # MCP-timeout storm whose args vary. Feed the error dimension here
+            # and let the kind-specific branch below feed the other.
+            watchdog.record_error_activity(activity_signal.error_message)
         if activity_signal.kind == AgentActivityKind.ERROR_LINE:
             watchdog.record_error_activity(activity_signal.raw)
         elif activity_signal.kind == AgentActivityKind.PROGRESS_REPORT:
@@ -742,6 +760,15 @@ class _ProcessLineReader:
                 tool_name, tool_args = tool_call
                 watchdog.record_tool_call_activity(tool_name, tool_args)
             watchdog.record_tool_use_activity()
+        elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+            # Every non-PTY transport lands here (PTY serves only
+            # claude_interactive / agy / nanocoder), and this branch did not
+            # exist: a tool result fell through to ``record_activity()``, whose
+            # ``note_progress()`` wiped the tool-call repetition streak after
+            # every completed call, and ``record_tool_result_activity`` was
+            # never reached at all -- so STALLED_AFTER_TOOL_RESULT was
+            # unreachable on opencode, claude, pi, cursor, and codex alike.
+            watchdog.record_tool_result_activity()
         else:
             watchdog.record_activity()
 
@@ -859,6 +886,7 @@ class _ProcessLineReader:
 
             reader.join(timeout=10)
         finally:
+            watchdog.record_invocation_end()
             reset_active_sink(sink_token)
             reset_subagent_sink(subagent_token)
             if self._monitor is not None:
@@ -886,7 +914,7 @@ def _run_subprocess_and_read_lines(
         SpawnOptions(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            stdin=None,
+            stdin=subprocess.DEVNULL,
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
             start_new_session=True,
@@ -907,6 +935,7 @@ def _run_subprocess_and_read_lines(
             policy=ctx.policy,
             execution_strategy=ctx.execution_strategy,
             liveness_probe=ctx.liveness_probe,
+            process_teardown=ctx.process_teardown,
             waiting_listener=ctx.waiting_listener,
             pre_output_listener=ctx.pre_output_listener,
             monitor=ctx.monitor,
@@ -959,9 +988,14 @@ def _run_subprocess_and_read_lines(
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
-                exit_pid = cast("int | None", getattr(handle, "pid", None))
+                exit_pid = cast(
+                    "int | None", getattr(handle, "pid", None)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 if exit_pid is not None:
-                    teardown_subtree(exit_pid)
+                    if ctx.process_teardown is None:
+                        teardown_subtree(exit_pid)
+                    else:
+                        ctx.process_teardown.teardown_subtree(exit_pid)
                 raise _IdleStreamTimeoutError(
                     ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,
@@ -1004,6 +1038,7 @@ def _run_subprocess_and_read_lines(
                 liveness_probe=probe,
                 policy=ctx.policy,
                 required_artifact=ctx.required_artifact,
+                requires_completion_evidence=ctx.requires_completion_evidence,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
                 completion_run_id=completion_run_id_from_extra_env(ctx.extra_env),
@@ -1078,18 +1113,16 @@ def _collect_r7_diagnostic_fields(
     except Exception:
         evidence_summary_str = None
     try:
-        last_tool_call_obj: object = watchdog_for_diag.diagnostic_snapshot(
-            now=diag_now
-        ).get("current_subagent_tool_call")
+        last_tool_call_obj: object = watchdog_for_diag.diagnostic_snapshot(now=diag_now).get(
+            "current_subagent_tool_call"
+        )
         last_tool_call_str: str | None = (
             str(last_tool_call_obj) if last_tool_call_obj is not None else None
         )
     except Exception:
         last_tool_call_str = None
     try:
-        elapsed_value: float | None = round(
-            watchdog_for_diag.idle_elapsed_seconds(diag_now), 1
-        )
+        elapsed_value: float | None = round(watchdog_for_diag.idle_elapsed_seconds(diag_now), 1)
     except Exception:
         elapsed_value = None
     transcript_tail: tuple[str, ...] = tuple(list(parsed_output)[-10:])

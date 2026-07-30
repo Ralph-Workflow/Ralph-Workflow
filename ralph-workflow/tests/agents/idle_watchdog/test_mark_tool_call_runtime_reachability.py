@@ -39,7 +39,7 @@ import pytest
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.execution_state._factory import _make_pi_strategy
+from ralph.agents.execution_state._factory import _make_cursor_strategy, _make_pi_strategy
 from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
@@ -161,6 +161,36 @@ def test_extract_tool_call_from_pi_toolcall_end_envelope() -> None:
     assert tool_args == {"command": "pwd", "timeout_ms": 300000}
 
 
+def test_extract_tool_call_from_live_cursor_nested_tool_call_envelope() -> None:
+    """Cursor stream-json nests live tool calls under ``tool_call.<name>ToolCall``."""
+    line = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "call_id": "tool-1",
+            "tool_call": {
+                "editToolCall": {
+                    "args": {
+                        "path": "/tmp/probe/tool_probe.txt",
+                        "streamContent": "cursor parser probe",
+                    }
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    result = _extract_tool_call_from_activity_signal(line)
+
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "editToolCall"
+    assert tool_args == {
+        "path": "/tmp/probe/tool_probe.txt",
+        "streamContent": "cursor parser probe",
+    }
+
+
 def test_extract_tool_call_returns_none_for_non_tool_use_envelope() -> None:
     """A non-tool-use envelope (e.g. ``{"type": "text", ...}``) MUST
     return ``None`` so the breaker is NOT fed for irrelevant lines.
@@ -247,9 +277,12 @@ def test_pi_strategy_classifies_tool_execution_start_as_tool_use() -> None:
     assert signal.raw == line
 
 
-def test_pi_strategy_classifies_toolcall_end_as_tool_use() -> None:
-    """Pi message-update toolcall events must feed the same TOOL_USE
-    path as OpenCode tool calls.
+def test_pi_strategy_classifies_toolcall_end_as_tool_result() -> None:
+    """Pi's ``toolcall_end`` CLOSES a call ``tool_execution_start`` opened.
+
+    Real captures show both events carrying the same ``callID``, so counting
+    both as TOOL_USE fed the tool-call repetition breaker twice per call and
+    four legitimate identical calls hit a window rule sized for eight.
     """
     strategy = _make_pi_strategy()
     line = json.dumps(
@@ -265,7 +298,7 @@ def test_pi_strategy_classifies_toolcall_end_as_tool_use() -> None:
     signal = strategy.classify_activity_line(line)
 
     assert signal is not None
-    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.kind == AgentActivityKind.TOOL_RESULT
     assert signal.raw == line
 
 
@@ -310,6 +343,53 @@ def test_pi_strategy_classifies_tool_execution_error_as_error_line() -> None:
     assert signal is not None
     assert signal.kind == AgentActivityKind.ERROR_LINE
     assert signal.raw == "terminated"
+
+
+def test_cursor_strategy_classifies_live_tool_call_started_as_tool_use() -> None:
+    """Cursor live ``tool_call`` start events must feed the tool-use path."""
+    strategy = _make_cursor_strategy()
+    line = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "tool_call": {
+                "editToolCall": {
+                    "args": {"path": "/tmp/probe/tool_probe.txt"},
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.raw == line
+
+
+def test_cursor_strategy_classifies_live_tool_call_completed_as_tool_result() -> None:
+    """Cursor live ``tool_call`` completed events must close the post-tool window."""
+    strategy = _make_cursor_strategy()
+    line = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "completed",
+            "tool_call": {
+                "editToolCall": {
+                    "args": {"path": "/tmp/probe/tool_probe.txt"},
+                    "result": {"success": {"message": "ok"}},
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_RESULT
+    assert signal.raw == line
 
 
 # ---------------------------------------------------------------------------
@@ -736,3 +816,175 @@ def test_process_line_reader_silently_skips_unrecognised_tool_envelopes() -> Non
         f"Expected NO tool-call observations for invalid JSON; got"
         f" {watchdog.tool_call_observations}"
     )
+
+
+# ---------------------------------------------------------------------------
+# (5) A tool RESULT must not erase the tool-call repetition streak.
+# ---------------------------------------------------------------------------
+
+
+def test_identical_tool_calls_trip_even_when_each_result_arrives() -> None:
+    """A tool result must NOT reset the tool-call repetition streak.
+
+    Every tool call is followed by its result, so clearing the streak on the
+    result made ``REPEATED_IDENTICAL_TOOL_CALL`` unreachable in practice: the
+    dimension was wiped after each completed call, and an agent re-issuing one
+    identical call forever stayed invisible to the circuit breaker.
+    ``record_tool_use_activity`` already documents that a call is not proof of
+    forward progress; the result side must agree.
+    """
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=3,
+            repeated_error_window_count=None,
+            repeated_error_window_seconds=None,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(3):
+        watchdog.record_tool_call_activity("list_directory", {"path": "."})
+        watchdog.record_tool_result_activity()
+        clock.advance(1.0)
+
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+    assert verdict == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+
+
+# ---------------------------------------------------------------------------
+# (6) Claude: the COMPLETE call is in the assistant message, not the
+#     content_block_start placeholder.
+#
+#     Claude opens a tool call with "input": {} and streams the real arguments
+#     afterwards as input_json_delta frames. Fingerprinting the placeholder
+#     keyed every call of one tool to "<name>|{}", so five different Bash
+#     commands in a row looked like one identical call repeated five times and
+#     tripped REPEATED_IDENTICAL_TOOL_CALL on a healthy agent.
+# ---------------------------------------------------------------------------
+
+
+def _claude_assistant_tool_use_line(tool_input: dict[str, object]) -> str:
+    """Build the Claude stream-json assistant message carrying a complete call."""
+    return json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_01RCxFZpHAEB3yBAHn3nktG2",
+                        "name": "Bash",
+                        "input": tool_input,
+                    }
+                ]
+            },
+        }
+    )
+
+
+def test_extract_tool_call_from_claude_assistant_message() -> None:
+    """The assistant message carries the real arguments and MUST be used."""
+    line = _claude_assistant_tool_use_line({"command": "echo one"})
+
+    result = _extract_tool_call_from_activity_signal(line)
+
+    assert result == ("Bash", {"command": "echo one"})
+
+
+def test_claude_distinct_commands_produce_distinct_fingerprints() -> None:
+    """Two different Bash commands MUST NOT share one fingerprint."""
+    first = _extract_tool_call_from_activity_signal(
+        _claude_assistant_tool_use_line({"command": "echo one"})
+    )
+    second = _extract_tool_call_from_activity_signal(
+        _claude_assistant_tool_use_line({"command": "echo two"})
+    )
+
+    assert first != second
+
+
+def test_extract_tool_call_skips_claude_streaming_placeholder() -> None:
+    """``content_block_start`` arrives with ``input: {}`` before the deltas.
+
+    Feeding it to the breaker keys every call of one tool to ``<name>|{}``
+    regardless of the arguments it was actually invoked with.
+    """
+    line = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 1,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_01RCxFZpHAEB3yBAHn3nktG2",
+                    "name": "Bash",
+                    "input": {},
+                },
+            },
+        }
+    )
+
+    assert _extract_tool_call_from_activity_signal(line) is None
+
+
+def test_claude_strategy_distinct_commands_do_not_trip_the_breaker() -> None:
+    """Five DIFFERENT Bash commands MUST NOT trip the tool-call breaker."""
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+
+    for index in range(5):
+        line = _claude_assistant_tool_use_line({"command": f"echo {index}"})
+        extracted = _extract_tool_call_from_activity_signal(line)
+        assert extracted is not None
+        watchdog.record_tool_call_activity(*extracted)
+        clock.advance(1.0)
+
+    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) != (
+        WatchdogVerdict.FIRE
+    )
+
+
+def test_claude_identical_commands_still_trip_the_breaker() -> None:
+    """The breaker must stay REACHABLE on Claude: five identical calls fire."""
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+            activity_evidence_ttl_seconds=None,
+            post_tool_result_progression_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(5):
+        line = _claude_assistant_tool_use_line({"command": "pytest -q"})
+        extracted = _extract_tool_call_from_activity_signal(line)
+        assert extracted is not None
+        watchdog.record_tool_call_activity(*extracted)
+        clock.advance(1.0)
+
+    assert watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE) == (
+        WatchdogVerdict.FIRE
+    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+    assert watchdog.repetition_diagnostic().get("tool_name") == "Bash"

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.liveness import LivenessProbe
+    from ralph.process.teardown import ProcessTeardown
 
 if TYPE_CHECKING:
 
@@ -41,10 +42,12 @@ class _AgentRunCtx:
     policy: TimeoutPolicy
     execution_strategy: BaseExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None
+    process_teardown: ProcessTeardown | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None
     monitor: WorkspaceMonitor | None = None
     required_artifact: RequiredArtifact | None = None
+    requires_completion_evidence: bool = True
     clock: Clock | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
     expected_session_id: str | None = None

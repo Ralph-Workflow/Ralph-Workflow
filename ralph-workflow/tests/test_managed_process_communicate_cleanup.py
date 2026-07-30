@@ -6,8 +6,8 @@ import io
 import itertools
 import subprocess
 import sys
-import typing
-from typing import TYPE_CHECKING, cast
+import threading
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -79,7 +79,7 @@ def _make_handle(
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=returncode),
-        psutil=cast("typing.Any", fake_psutil),
+        psutil=fake_psutil,
     )
     return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
 
@@ -142,6 +142,85 @@ def test_missing_root_still_returns_output() -> None:
     assert stdout == b"ok"
     assert stderr == b"err"
     assert handle.record.status == ProcessStatus.EXITED
+
+
+# ponytail: observer-thread scheduling under xdist can exceed 1s; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
+def test_process_observer_regression_permission_error_does_not_escape_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: macOS sandbox denial must not escape the observer thread."""
+    attempted = threading.Event()
+
+    class PermissionDeniedRoot(TreeProcess):
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            del recursive
+            attempted.set()
+            raise PermissionError
+
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: PermissionDeniedRoot(pid=1)}
+    handle = _make_handle(fake_psutil=fake_psutil)
+    thread_errors: list[BaseException | None] = []
+    monkeypatch.setattr(
+        threading,
+        "excepthook",
+        lambda args: thread_errors.append(args.exc_value),
+    )
+
+    def communicate(
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        assert attempted.wait(timeout=0.5)
+        return b"ok", b""
+
+    handle._proc.communicate = communicate
+    stdout, stderr = handle.communicate_and_cleanup()
+
+    assert stdout == b"ok"
+    assert stderr == b""
+    assert thread_errors == []
+
+
+def test_process_observer_regression_keeps_child_seen_before_permission_error() -> None:
+    """Regression: a denied later scan must not discard an observed child."""
+    child = TreeProcess(pid=1001, stubborn=True)
+    observed = threading.Event()
+
+    class PermissionDeniedAfterObservationRoot(TreeProcess):
+        def __init__(self) -> None:
+            super().__init__(pid=1)
+            self._scan_count = 0
+
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            del recursive
+            self._scan_count += 1
+            if self._scan_count == 1:
+                observed.set()
+                return [child]
+            raise PermissionError
+
+    root = PermissionDeniedAfterObservationRoot()
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: root, child.pid: child}
+    handle = _make_handle(fake_psutil=fake_psutil)
+
+    def communicate(
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        assert observed.wait(timeout=0.5)
+        return b"ok", b""
+
+    handle._proc.communicate = communicate
+    stdout, stderr = handle.communicate_and_cleanup()
+
+    assert stdout == b"ok"
+    assert stderr == b""
+    assert child._killed is True
 
 
 def test_kills_root_late_spawn_descendants() -> None:
@@ -307,7 +386,7 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=lambda command, opts: StreamingFakePopen(),
-        psutil=cast("typing.Any", fake_psutil),
+        psutil=fake_psutil,
     )
     handle = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
 
@@ -471,3 +550,85 @@ def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)
 
     assert seen == [0.25]
+
+
+# ---------------------------------------------------------------------------
+# Cost contract: one synchronous process-tree scan per call
+# ---------------------------------------------------------------------------
+
+
+class _CountingTreeProcess(TreeProcess):
+    """A :class:`TreeProcess` that records every recursive-tree scan."""
+
+    def __init__(self, pid: int, scans: list[str], **kwargs: object) -> None:
+        super().__init__(pid, **kwargs)
+        self._scans = scans
+
+    def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+        if recursive:
+            self._scans.append("recursive-tree-scan")
+        return super().children(recursive=recursive)
+
+
+def test_successful_call_takes_exactly_one_recursive_tree_scan() -> None:
+    """A managed subprocess must cost ONE recursive process-tree scan, not two.
+
+    ``psutil.Process.children(recursive=True)`` walks every pid on the
+    machine to build a ppid map. Measured on a developer machine with
+    ~900 live processes it costs ~13 ms -- about the same as running a
+    whole short ``git`` command -- and it grows with the machine's total
+    process count, so it degrades precisely when several Ralph agents
+    run side by side. ``communicate_and_cleanup`` used to take a second
+    scan *before* handing control to the child; that scan ran
+    microseconds after ``spawn`` and so could only ever observe the tree
+    the trailing scan observes again. This test pins the cost contract
+    so the redundant scan cannot creep back in.
+    """
+    scans: list[str] = []
+    root = _CountingTreeProcess(pid=1, scans=scans)
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: root}
+    handle = _make_handle(fake_psutil=fake_psutil)
+    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
+
+    stdout, stderr = handle.communicate_and_cleanup()
+
+    assert stdout == b"ok"
+    assert stderr == b""
+    assert len(scans) == 1, (
+        f"expected exactly one recursive process-tree scan, got {len(scans)}; "
+        "each redundant scan costs roughly as much as the subprocess itself"
+    )
+
+
+def test_single_scan_still_reaps_a_descendant_spawned_while_running() -> None:
+    """The surviving trailing scan must still find and kill late descendants.
+
+    Guards the optimisation pinned by
+    :func:`test_successful_call_takes_exactly_one_recursive_tree_scan`
+    against becoming a correctness regression: dropping the pre-run scan
+    must not drop any reaping coverage.
+    """
+    scans: list[str] = []
+    late_spawn = TreeProcess(pid=2001, stubborn=True)
+    root = _CountingTreeProcess(pid=1, scans=scans)
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: root, 2001: late_spawn}
+    handle = _make_handle(fake_psutil=fake_psutil)
+
+    def communicate(
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        root._direct_children = [late_spawn]
+        root._recursive_children = [late_spawn]
+        return b"ok", b""
+
+    handle._proc.communicate = communicate
+
+    stdout, _stderr = handle.communicate_and_cleanup()
+
+    assert stdout == b"ok"
+    assert late_spawn._killed is True
+    assert len(scans) == 1

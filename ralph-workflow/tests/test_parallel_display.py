@@ -130,8 +130,11 @@ def test_parallel_display_set_status_writes_line() -> None:
     pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.set_status("unit-1", WorkerStatus.RUNNING)
     text = console.export_text()
-    assert "INFO" in text
-    assert "META" in text
+    # wt-028-display S-4: the chrome prefix no longer carries the
+    # INFO LEVEL or META category badge. The [status][unit-1] tag
+    # and the body are what the operator sees.
+    assert "INFO" not in text
+    assert "META" not in text
     assert "[status][unit-1]" in text
     assert "RUNNING" in text
 
@@ -143,7 +146,7 @@ def test_parallel_display_start_stop_do_not_raise() -> None:
     pd.stop()
 
 
-def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
+def test_parallel_display_default_mode_reduces_rich_markup_and_streams_copy_pasteable_lines() -> None:
     console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
 
@@ -155,13 +158,13 @@ def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
 
     rendered_text = console.export_text()
     assert "some output line" in rendered_text
-    assert "[green]" not in rendered_text
-    assert "[/green]" not in rendered_text
+    assert "[green]some output line[/green]" not in rendered_text
     assert "Agent Activity" not in rendered_text
 
 
-def test_strip_markup_removes_rich_tags() -> None:
+def test_strip_markup_strips_valid_markup_and_preserves_literal_brackets() -> None:
     assert strip_markup("[green]ok[/green]") == "ok"
+    assert strip_markup("[see foo/bar") == "[see foo/bar"
     assert strip_markup("plain text") == "plain text"
 
 
@@ -183,33 +186,117 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
     assert "A" * 100 in written
 
 
+def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: Path) -> None:
+    """Regression: TOOL_RESULT above soft_limit must capture the FULL payload in the overflow log.
+
+    The analysis feedback flagged this regression: pre-fix the
+    registry's ``_render_tool_result_event`` called an internal
+    ``_condense_for_display`` helper that truncated the body to
+    ``soft_limit`` characters BEFORE
+    ``ParallelDisplay._emit_activity_event`` ran its overflow-aware
+    condenser. A 1000-character tool result then landed in the
+    overflow log as ~400 chars instead of 1000, silently truncating
+    the audit trail.
+
+    The fix moves condensation out of the renderer and into the
+    delivery boundary (``_emit_activity_event``), so the overflow log
+    captures the FULL unabridged line. This test pins the contract:
+    every original character must appear in the on-disk overflow log.
+    """
+    console, buf = _make_wide_console()
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
+
+    original_payload = "Z" * 1000  # above soft_limit(400), below hard_limit(4000)
+    pd._emit_activity_event(
+        "unit-tool-result",
+        ActivityEventKind.TOOL_RESULT,
+        original_payload,
+        None,
+        {},
+    )
+    # The raw overflow log uses block buffering; flush via drop_unit.
+    pd.drop_unit("unit-tool-result")
+
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-tool-result.log"
+    assert overflow_log.exists(), (
+        f"overflow log should be created for the condensed tool result; "
+        f"expected at {overflow_log}"
+    )
+    written = overflow_log.read_text(encoding="utf-8")
+    z_count = written.count("Z")
+    assert z_count == 1000, (
+        f"overflow log must capture the FULL original tool result body; "
+        f"got {z_count} Z chars in the overflow log, expected 1000. "
+        f"Pre-fix regression: registry condenser truncated body to soft_limit "
+        f"before overflow tracking, losing ~60% of the audit trail."
+    )
+
+    # Visible line must include the overflow reference and the
+    # truncation marker so the operator knows where to find the
+    # unabridged payload.
+    rendered = buf.getvalue()
+    assert "unit-tool-result.log" in rendered, (
+        f"visible line must reference the overflow log path so the operator "
+        f"can locate the unabridged payload; got: {rendered!r}"
+    )
+    assert "(truncated" in rendered, (
+        f"visible line must carry the (truncated) marker; got: {rendered!r}"
+    )
+
+
 def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> None:
-    """Content between soft and hard limits includes overflow ref in condensed output."""
+    """S-7 / AC-06: the close path condenses the joined passage on its own schedule.
+
+    A 500-char single-fragment TEXT stream sits above the soft_limit (400)
+    so the condenser truncates head-only and the close line carries the
+    ``(truncated, see .agent/raw/<id>.log)`` marker with count + size +
+    destination (AC-06). The verbatim capture under .agent/raw/<id>.log
+    is the destination and remains complete.
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     # 500 chars: above soft_limit(400), below hard_limit(4000)
-    # renderer appends [see .agent/raw/unit-1.log] via condensed_ref
     soft_limit_content = "B" * 500
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
+    pd.stop()
 
     rendered = buf.getvalue()
-    assert "unit-1.log" in rendered
+    # Close line carries [output] tag and the joined passage is condensed.
+    assert "[output][unit-1]" in rendered
+    # S-7 / AC-06: condensation marker carries the destination.
+    assert "see .agent/raw/unit-1.log" in rendered
+    # The full 500 chars do NOT appear (condenser truncated head-only).
+    assert soft_limit_content not in rendered
+    # Exactly one close entry per block.
+    content_lines = [line for line in rendered.splitlines() if "[output][unit-1]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [output] entry, got {len(content_lines)}:\n{rendered}"
+    )
 
 
 def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:
-    """The overflow ref is added by PlainLogRenderer, not embedded in condenser output."""
+    """S-7 / AC-06: the close path applies the condenser (count+size+destination).
+
+    The marker shape is consistent across streaming and non-streaming
+    surfaces: count + size + destination (``see .agent/raw/<id>.log``).
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     soft_limit_content = "C" * 500
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
+    pd.stop()
 
     rendered = buf.getvalue()
-    # Renderer suffix uses [see ...] brackets
-    assert "[see .agent/raw/unit-1.log]" in rendered
-    # Condenser fallback "raw unavailable" should NOT appear since we don't pass overflow_ref
-    assert "raw unavailable" not in rendered
+    # S-7 / AC-06: the close path applies the condenser; the marker
+    # appears in the visible line and points at the verbatim destination.
+    assert "see .agent/raw/unit-1.log" in rendered
+    # Full content is condensed (head-only truncation kicks in at soft_limit).
+    assert soft_limit_content not in rendered
+    # The legacy ``[see ...]`` per-fragment marker format is retired;
+    # the condenser emits the ``(truncated, see ...)`` shape instead.
+    assert "[see .agent/raw/" not in rendered
 
 
 def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
@@ -224,6 +311,11 @@ def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
 
 
 def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
+    """S-7 (wt-028-display P1): ``stop()`` flushes open streaming blocks with one close line.
+
+    The close line carries ``[output]`` (not ``[content-end]``); the
+    ``-end`` suffix is part of the retired per-fragment vocabulary.
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
@@ -231,11 +323,15 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     pd.stop()
 
     rendered = buf.getvalue()
-    assert "[content-end]" in rendered
+    assert "[output][unit-1]" in rendered
 
 
 def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
+    """S-7 (wt-028-display P1): phase close flushes the open streaming block.
 
+    The flush emits one ``[output]`` close line (not ``[content-end]``);
+    the ``-end`` suffix is part of the retired per-fragment vocabulary.
+    """
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
@@ -249,7 +345,7 @@ def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
     pd.emit_phase_close_from_exit(exit_model)
 
     rendered = buf.getvalue()
-    assert "[content-end]" in rendered
+    assert "[output][unit-1]" in rendered
 
 
 # --- Drop reporting tests ---
@@ -275,7 +371,12 @@ def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
     rendered = buf.getvalue()
     assert "dropped" in rendered
     assert "unit-drop" in rendered
-    assert "WARN META [progress]" in rendered
+    # wt-028-display S-4: chrome prefix no longer carries the
+    # WARN LEVEL or META category badge. The [progress] tag and
+    # the body are what the operator sees.
+    assert "WARN META" not in rendered
+    assert "[progress]" in rendered
+    assert "dropped" in rendered
 
 
 def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:

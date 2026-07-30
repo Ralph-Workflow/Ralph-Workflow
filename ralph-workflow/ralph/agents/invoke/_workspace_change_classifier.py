@@ -15,7 +15,7 @@ enumerated in the docstring of that method. The ``.agent`` top-level
 directory is intentionally NOT in ``CACHE_PARENT_DIRS``; only its internal
 temp / raw / completion-sentinel sub-paths are CACHE, while the
 ``.agent/artifacts`` sub-path is ARTIFACT. This keeps
-``.agent/artifacts/plan.json`` as ARTIFACT and ``.agent/tmp/foo.log`` as
+``.agent/artifacts/plan.md`` as ARTIFACT and ``.agent/tmp/foo.log`` as
 CACHE.
 
 Weight semantics are BINARY: ``weight == 0.0`` means the change is
@@ -68,7 +68,7 @@ _ALLOWED_WEIGHTS: frozenset[float] = frozenset({0.0, 1.0})
 #: are listed so the ``.agent/artifacts`` sub-path can be classified as
 #: ARTIFACT (the rule order in ``classify`` checks CACHE first, then
 #: ARTIFACT, so ``.agent/tmp`` and ``.agent/raw`` are correctly CACHE
-#: while ``.agent/artifacts/plan.json`` is correctly ARTIFACT).
+#: while ``.agent/artifacts/plan.md`` is correctly ARTIFACT).
 CACHE_PARENT_DIRS: frozenset[str] = frozenset(
     {
         ".git",
@@ -93,9 +93,7 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
 #: ``/repo/src/state.db``, ``/repo/docs/state.db-wal``). The trio is
 #: matched by the path-scoped rule ``_is_agent_internal_state_db_path``
 #: instead, which requires the parent directory to be ``.agent``.
-CACHE_FILENAME_GLOBS: tuple[str, ...] = (
-    "completion_seen_*.json",
-)
+CACHE_FILENAME_GLOBS: tuple[str, ...] = ("completion_seen_*.json",)
 
 #: Exact basenames for the engine-internal ``.agent/state.db`` trio.
 #: Used only by ``_is_agent_internal_state_db_path`` to scope CACHE
@@ -308,7 +306,7 @@ class WorkspaceChangeClassifier:
             # CACHE; the multi-part match lets ``/repo/.agent/tmp/foo``
             # resolve to CACHE without putting the ``.agent`` top-level
             # itself into the CACHE set (which would have made
-            # ``.agent/artifacts/plan.json`` unreachable as ARTIFACT).
+            # ``.agent/artifacts/plan.md`` unreachable as ARTIFACT).
             (
                 _matches_parent_walk(parts, CACHE_PARENT_DIRS),
                 WorkspaceChangeKind.CACHE,
@@ -330,7 +328,7 @@ class WorkspaceChangeClassifier:
                 WorkspaceChangeKind.CACHE,
             ),
             # (4) ARTIFACT parent walk. Same windowed-match semantics as
-            # CACHE so ``.agent/artifacts/plan.json`` matches
+            # CACHE so ``.agent/artifacts/plan.md`` matches
             # ``.agent/artifacts`` (an explicit two-part entry).
             (
                 _matches_parent_walk(parts, ARTIFACT_PARENT_DIRS),
@@ -441,7 +439,7 @@ def _matches_parent_walk(
     resolve to CACHE; the multi-part match lets
     ``/repo/.agent/tmp/foo`` resolve to CACHE without putting the
     ``.agent`` top-level itself into the CACHE set (which would
-    have made ``.agent/artifacts/plan.json`` unreachable as
+    have made ``.agent/artifacts/plan.md`` unreachable as
     ARTIFACT).
     """
     for window_size in range(1, len(path_parts) + 1):

@@ -1,634 +1,179 @@
-"""Tests for the ralph_submit_plan_sections MCP tool (batched section submit).
-
-The tests cover:
-
-- Batch of valid [summary, skills_mcp, steps] entries returns submitted=[...] and the
-  draft has all 3 sections.
-- Batch with one invalid entry (e.g. unknown section name) returns
-  failed_at=<index> and the draft is UNCHANGED.
-- mode='append' on a list section works.
-- mode='append' on an object section returns InvalidParamsError.
-- Empty batch returns submitted=[] (no error).
-
-The tests use only in-memory Pydantic + the existing tool handlers
-(no real I/O, no real subprocess, no time.sleep). All tests are fully
-type-annotated.
-"""
+"""Incremental plan authoring through markdown staging tools."""
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import TypeAdapter
 
-from ralph.mcp.tools.artifact import (
-    handle_submit_plan_section,
-    handle_submit_plan_sections,
-    handle_validate_plan_draft,
-)
+from ralph.mcp.artifacts.md_draft_io import delete_md_draft
 from ralph.mcp.tools.coordination import InvalidParamsError
+from ralph.mcp.tools.md_artifact import (
+    handle_finalize_md_artifact,
+    handle_get_md_draft,
+    handle_stage_md_artifact,
+    handle_submit_md_artifact,
+)
+from ralph.mcp.tools.tool_content import ToolContent
+from ralph.pipeline.phase_entry_cleaner import clear_phase_entry_drains
+from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+from tests.mcp.test_md_plan_spec import _plan_document
 from tests.test_artifact_format_docs_mock_session import planning_session
 
+_JSON_OBJECT = TypeAdapter(dict[str, object])
+
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from ralph.mcp.tools.tool_content import ToolContent
-
-
-def _read_draft(tmp_path: Path) -> dict[str, object]:
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    return cast(
-        "dict[str, object]",
-        json.loads((artifact_dir / ".plan_draft.json").read_text(encoding="utf-8")),
-    )
+    from ralph.mcp.tools.coordination_session_like import CoordinationSessionLike
+    from ralph.mcp.tools.tool_result import ToolResult
 
 
-def _read_response_text(result: object) -> str:
-    content = cast("list[ToolContent]", result.content)
-    return cast("str", content[0].text)
+def _session() -> CoordinationSessionLike:
+    return planning_session()
 
 
-def test_submit_plan_sections_empty_batch_returns_empty_submitted(tmp_path: Path) -> None:
-    """An empty batch returns submitted=[] and a successful response."""
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(planning_session(), workspace, {"entries": []})
-    assert result.is_error is False
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == []
-    assert payload["staged_sections"] == []
-    assert payload["staged"] is True
-    assert payload["section_valid"] is True
-    assert payload["can_repair"] is False
+def _payload(result: ToolResult) -> dict[str, object]:
+    block = result.content[0]
+    assert isinstance(block, ToolContent)
+    return _JSON_OBJECT.validate_json(block.text)
 
 
-def test_submit_plan_section_empty_design_is_staged_with_warning(tmp_path: Path) -> None:
-    """Explicitly empty design can be repaired later, but agents should see a warning."""
-    workspace = FsWorkspace(tmp_path)
+def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) -> None:
+    """Two staging chunks that assemble a real plan must report a valid resume.
 
-    result = handle_submit_plan_section(
-        planning_session(),
-        workspace,
-        {"section": "design", "mode": "replace", "content": {}},
-    )
-
-    assert result.is_error is False, _read_response_text(result)
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == ["design"]
-    assert payload["staged"] is True
-    assert payload["section_valid"] is False
-    assert payload["can_repair"] is True
-    warnings = cast("list[str]", payload["validation_warnings"])
-    assert len(warnings) == 1
-    assert "empty design section" in warnings[0]
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    assert sections["design"] == {}
-
-
-def test_submit_plan_sections_accepts_entries_json_string(tmp_path: Path) -> None:
-    """Batched planning submit repairs JSON-string ``entries`` before validation."""
-    workspace = FsWorkspace(tmp_path)
-    entries = [
-        {
-            "section": "summary",
-            "content": {
-                "context": "ctx",
-                "scope_items": [
-                    {"text": "a", "category": "file_change"},
-                    {"text": "b", "category": "test"},
-                    {"text": "c", "category": "prompt"},
-                ],
-            },
-        },
-        {
-            "section": "skills_mcp",
-            "content": {"skills": '["writing-plans"]', "mcps": "[]"},
-        },
-        {
-            "section": "steps",
-            "content": [
-                {
-                    "number": 1,
-                    "title": "First",
-                    "content": "do it",
-                    "step_type": "file_change",
-                    "targets": '[{"path": "x.py", "action": "modify"}]',
-                    "depends_on": "[]",
-                    "expected_evidence": '[{"kind": "file", "ref": "x.py"}]',
-                }
-            ],
-        },
-    ]
-
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {"entries": json.dumps(entries)},
-    )
-
-    assert result.is_error is False, _read_response_text(result)
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == ["summary", "skills_mcp", "steps"]
-    assert payload["staged"] is True
-    assert payload["section_valid"] is True
-    assert payload["can_repair"] is False
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    step = cast("list[dict[str, object]]", sections["steps"])[0]
-    assert step["targets"] == [{"path": "x.py", "action": "modify"}]
-    assert step.get("depends_on", []) == []
-    assert step["expected_evidence"] == [{"kind": "file", "ref": "x.py"}]
-
-
-def test_submit_plan_sections_repairs_item_wrapped_entries_and_fields(
-    tmp_path: Path,
-) -> None:
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": {
-                "item": [
-                    {
-                        "section": "summary",
-                        "content": {
-                            "context": "Repair planner wrapper lists.",
-                            "scope_items": {
-                                "item": [
-                                    {"text": "Write a regression test", "category": "test"},
-                                    {"text": "Normalize item wrappers", "category": "bugfix"},
-                                    {"text": "Run focused MCP tests", "category": "test"},
-                                ]
-                            },
-                        },
-                    },
-                    {
-                        "section": "skills_mcp",
-                        "content": {
-                            "skills": {"item": "test-driven-development"},
-                            "mcps": {"item": []},
-                        },
-                    },
-                ]
-            }
-        },
-    )
-
-    assert result.is_error is False, _read_response_text(result)
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == ["summary", "skills_mcp"]
-    assert payload["validation_warnings"] == []
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    assert cast("dict[str, object]", sections["skills_mcp"])["skills"] == [
-        "test-driven-development"
-    ]
-
-
-def test_submit_plan_sections_repairs_repeated_item_wrapped_entries_and_fields(
-    tmp_path: Path,
-) -> None:
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": {
-                "item": {
-                    "item": [
-                        {
-                            "section": "skills_mcp",
-                            "content": {
-                                "skills": {"item": {"item": "test-driven-development"}},
-                                "mcps": {"item": {"item": []}},
-                            },
-                        }
-                    ]
-                }
-            }
-        },
-    )
-
-    assert result.is_error is False, _read_response_text(result)
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == ["skills_mcp"]
-    assert payload["validation_warnings"] == []
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    assert sections["skills_mcp"] == {"skills": ["test-driven-development"]}
-
-
-def test_submit_plan_sections_all_valid_sections_are_staged(tmp_path: Path) -> None:
-    """A batch of [summary, skills_mcp, steps] all valid returns submitted=[...] and the draft
-    has all 3 sections."""
-    workspace = FsWorkspace(tmp_path)
-    entries = [
-        {
-            "section": "summary",
-            "content": json.dumps(
-                {
-                    "context": "ctx",
-                    "scope_items": [
-                        {"text": "a", "category": "file_change"},
-                        {"text": "b", "category": "test"},
-                        {"text": "c", "category": "prompt"},
-                    ],
-                }
-            ),
-        },
-        {
-            "section": "skills_mcp",
-            "content": json.dumps({"skills": ["writing-plans"], "mcps": []}),
-        },
-        {
-            "section": "steps",
-            "content": json.dumps(
-                [
-                    {
-                        "number": 1,
-                        "title": "First",
-                        "content": "do it",
-                        "step_type": "verify",
-                        "verify_command": "pytest tests/test_x.py -q",
-                    }
-                ]
-            ),
-        },
-    ]
-    result = handle_submit_plan_sections(planning_session(), workspace, {"entries": entries})
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == ["summary", "skills_mcp", "steps"]
-    staged = cast("list[str]", payload["staged_sections"])
-    assert "summary" in staged
-    assert "skills_mcp" in staged
-    assert "steps" in staged
-    assert result.is_error is False
-
-    # Verify the draft was actually saved with all 3 sections
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    assert "summary" in sections
-    assert "skills_mcp" in sections
-    assert "steps" in sections
-
-
-def test_submit_plan_sections_one_invalid_section_rejects_entire_batch(tmp_path: Path) -> None:
-    """A batch with an unknown section name returns failed_at=<index> and the draft is UNCHANGED.
-
-    The all-or-nothing semantics is the contract: no partial commit when one entry fails.
+    Under the plan-scoped severity policy, a partial plan (head + tail)
+    that still produces a complete plan is valid: warnings are advisory.
+    The first chunk is incomplete and so reports invalid, the second
+    completes the document and reports valid. The resumed draft
+    contains the full plan text and the canonical section list.
     """
     workspace = FsWorkspace(tmp_path)
-    entries = [
-        {
-            "section": "summary",
-            "content": json.dumps(
-                {
-                    "context": "ctx",
-                    "scope_items": [
-                        {"text": "a"},
-                        {"text": "b"},
-                        {"text": "c"},
-                    ],
-                }
-            ),
-        },
-        {
-            "section": "nonexistent_section",
-            "content": json.dumps({"foo": "bar"}),
-        },
-    ]
-    result = handle_submit_plan_sections(planning_session(), workspace, {"entries": entries})
-    assert result.is_error is True
-    payload = json.loads(_read_response_text(result))
-    assert payload["submitted"] == []
-    assert payload["failed_at"] == 1
-    assert "Unknown plan section" in payload["error"] or "nonexistent_section" in payload["error"]
-    # Draft is unchanged (no on-disk draft should exist)
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    assert not (artifact_dir / ".plan_draft.json").exists()
+    document = _plan_document()
+    split_at = document.index("## Steps")
+    head, tail = document[:split_at], document[split_at:]
 
-
-def test_submit_plan_sections_mode_append_on_list_section_works(tmp_path: Path) -> None:
-    """mode='append' on a list section merges the new entries into the existing list."""
-    workspace = FsWorkspace(tmp_path)
-    first = handle_submit_plan_sections(
-        planning_session(),
+    first = handle_stage_md_artifact(
+        _session(),
         workspace,
-        {
-            "entries": [
-                {
-                    "section": "steps",
-                    "content": json.dumps(
-                        [
-                            {
-                                "number": 1,
-                                "title": "First",
-                                "content": "first",
-                                "step_type": "verify",
-                                "verify_command": "pytest tests/test_x.py -q",
-                            }
-                        ]
-                    ),
-                }
-            ]
-        },
+        {"artifact_type": "plan", "content": head},
     )
+    second = handle_stage_md_artifact(
+        _session(),
+        workspace,
+        {"artifact_type": "plan", "content": tail},
+    )
+    resumed = handle_get_md_draft(
+        _session(), workspace, {"artifact_type": "plan"}
+    )
+
     assert first.is_error is False
-    second = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": [
-                {
-                    "section": "steps",
-                    "content": json.dumps(
-                        [
-                            {
-                                "number": 2,
-                                "title": "Second",
-                                "content": "second",
-                                "step_type": "verify",
-                                "verify_command": "pytest tests/test_y.py -q",
-                            }
-                        ]
-                    ),
-                    "mode": "append",
-                }
-            ]
-        },
-    )
-    assert second.is_error is False
-    payload = json.loads(_read_response_text(second))
-    assert payload["submitted"] == ["steps"]
-    draft = _read_draft(tmp_path)
-    steps = cast("list[dict[str, object]]", cast("dict[str, object]", draft["sections"])["steps"])
-    titles = [cast("str", s["title"]) for s in steps]
-    assert "First" in titles
-    assert "Second" in titles
-
-
-def test_submit_plan_sections_mode_append_accepts_single_item_payload(tmp_path: Path) -> None:
-    """Batch append accepts the same single-item payload shape as single-section append."""
-    workspace = FsWorkspace(tmp_path)
-    first = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": [
-                {
-                    "section": "steps",
-                    "content": json.dumps(
-                        [
-                            {
-                                "number": 1,
-                                "title": "First",
-                                "content": "first",
-                                "step_type": "verify",
-                                "verify_command": "pytest tests/test_x.py -q",
-                            }
-                        ]
-                    ),
-                }
-            ]
-        },
-    )
-    assert first.is_error is False
-
-    second = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": [
-                {
-                    "section": "steps",
-                    "content": json.dumps(
-                        {
-                            "number": 2,
-                            "title": "Second",
-                            "content": "second",
-                            "step_type": "verify",
-                            "verify_command": "pytest tests/test_y.py -q",
-                        }
-                    ),
-                    "mode": "append",
-                }
-            ]
-        },
-    )
-
-    assert second.is_error is False
-    draft = _read_draft(tmp_path)
-    steps = cast("list[dict[str, object]]", cast("dict[str, object]", draft["sections"])["steps"])
-    assert [cast("str", step["title"]) for step in steps] == ["First", "Second"]
-
-
-def test_submit_plan_sections_rejects_empty_skills_even_when_design_is_staged(
-    tmp_path: Path,
-) -> None:
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": [
-                {
-                    "section": "summary",
-                    "content": json.dumps(
-                        {
-                            "context": "ctx",
-                            "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
-                        }
-                    ),
-                },
-                {
-                    "section": "skills_mcp",
-                    "content": json.dumps({"skills": [], "mcps": []}),
-                },
-                {
-                    "section": "steps",
-                    "content": json.dumps(
-                        [
-                            {
-                                "number": 1,
-                                "title": "First",
-                                "content": "do it",
-                                "step_type": "verify",
-                                "verify_command": "pytest tests/test_x.py -q",
-                            }
-                        ]
-                    ),
-                },
-                {
-                    "section": "critical_files",
-                    "content": json.dumps(
-                        {"primary_files": [{"path": "a.py", "action": "modify"}]}
-                    ),
-                },
-                {
-                    "section": "risks_mitigations",
-                    "content": json.dumps([{"risk": "r", "mitigation": "m"}]),
-                },
-                {
-                    "section": "verification_strategy",
-                    "content": json.dumps([{"method": "pytest", "expected_outcome": "passes"}]),
-                },
-                {
-                    "section": "design",
-                    "content": json.dumps({"planning_profile": "strict"}),
-                },
-            ]
-        },
-    )
-
-    assert result.is_error is False
-    payload = json.loads(_read_response_text(result))
-    warnings = cast("list[str]", payload["validation_warnings"])
-    assert any("skills_mcp.skills must contain at least one skill name" in w for w in warnings)
-    assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
-
-    validate_result = handle_validate_plan_draft(planning_session(), workspace, {})
-    assert validate_result.is_error is False
-    validate_payload = json.loads(_read_response_text(validate_result))
-    assert validate_payload["valid"] is False
-    assert "skills_mcp.skills must contain at least one skill name" in _read_response_text(
-        validate_result
-    )
-
-
-def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: Path) -> None:
-    """mode='append' on an object section is rejected (object sections accept only replace)."""
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": [
-                {
-                    "section": "summary",
-                    "content": json.dumps(
-                        {
-                            "context": "ctx",
-                            "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
-                        }
-                    ),
-                    "mode": "append",
-                }
-            ]
-        },
-    )
-    assert result.is_error is True
-    payload = json.loads(_read_response_text(result))
-    err = payload.get("error", "").lower()
-    assert "summary" in err or "replace" in err
-
-
-def test_submit_plan_sections_append_steps_stages_invalid_item_with_warning(
-    tmp_path: Path,
-) -> None:
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {"entries": [{"section": "steps", "content": json.dumps("bad"), "mode": "append"}]},
-    )
-
-    assert result.is_error is False
-    payload = json.loads(_read_response_text(result))
-    warnings = cast("list[str]", payload["validation_warnings"])
-    assert any("section 'steps' items must be JSON objects" in warning for warning in warnings)
-
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    assert sections["steps"] == ["bad"]
-
-
-def test_submit_plan_sections_append_risks_stages_invalid_item_with_warning(
-    tmp_path: Path,
-) -> None:
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
-        workspace,
-        {
-            "entries": [
-                {"section": "risks_mitigations", "content": json.dumps("bad"), "mode": "append"}
-            ]
-        },
-    )
-
-    assert result.is_error is False
-    payload = json.loads(_read_response_text(result))
-    warnings = cast("list[str]", payload["validation_warnings"])
+    # The head-only draft lacks step blocks, which is a PLAN022 warning
+    # under the plan-scoped severity policy. The chunk still validates
+    # as a plan (advisory demotion, not blocking). The tail chunk adds
+    # the step body and the assembled plan is valid.
+    assert _payload(first)["valid"] is True
+    first_diagnostics = _payload(first).get("diagnostics", [])
     assert any(
-        "section 'risks_mitigations' items must be JSON objects" in warning for warning in warnings
+        diagnostic.get("rule_id") == "PLAN022"
+        and diagnostic.get("severity") == "warning"
+        for diagnostic in first_diagnostics
+    )
+    assert second.is_error is False
+    assert _payload(second)["valid"] is True
+    assert _payload(resumed)["content"] == document
+    assert _payload(resumed)["sections"] == [
+        "Summary",
+        "Scope",
+        "Skills MCP",
+        "Steps",
+        "Critical Files",
+        "Constraints",
+        "Design",
+        "Acceptance Criteria",
+        "Risks",
+        "Verification",
+    ]
+
+
+def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> None:
+    """S-4: restored canonical plans cannot silently concatenate with a new draft."""
+    workspace = FsWorkspace(tmp_path)
+    session = _session()
+    plan_a = _plan_document()
+    submitted = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": plan_a}
+    )
+    assert submitted.is_error is False
+
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    assert delete_md_draft(artifact_dir, "plan") is True
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    artifacts_policy = load_policy(defaults).artifacts
+    pipeline_policy = load_policy(defaults).pipeline
+    clear_phase_entry_drains(
+        workspace,
+        "planning",
+        "planning_analysis",
+        pipeline_policy,
+        artifacts_policy,
     )
 
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    assert sections["risks_mitigations"] == ["bad"]
+    with pytest.raises(InvalidParamsError, match="replace_all"):
+        handle_stage_md_artifact(
+            session, workspace, {"artifact_type": "plan", "content": "new plan"}
+        )
+    assert _payload(handle_get_md_draft(session, workspace, {"artifact_type": "plan"}))["content"] == plan_a
 
 
-def test_submit_plan_sections_rejects_single_step_object_for_replace(tmp_path: Path) -> None:
-    """A single step object (not a list) is rejected with an
-    ``isError=True`` tool result for the ``steps`` section in
-    replace mode because the shape check requires a JSON array,
-    not a single object.
+def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:
+    """A warnings-only plan finalizes; a repaired replacement finalizes cleanly.
+
+    Under the plan-scoped severity policy, a dangling ``Depends on:``
+    is a PLAN021 warning, not a blocking error. The plan still finalizes
+    (the warning lives in the diagnostic list) and the replace_all
+    step repairs the warning before the second finalize.
     """
     workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
+    invalid = _plan_document().replace("Depends on: S-1", "Depends on: S-99")
+    handle_stage_md_artifact(
+        _session(),
         workspace,
-        {
-            "entries": [
-                {
-                    "section": "steps",
-                    "content": json.dumps(
-                        {
-                            "number": 1,
-                            "title": "One",
-                            "content": "single object instead of list",
-                        }
-                    ),
-                }
-            ]
-        },
+        {"artifact_type": "plan", "content": invalid},
     )
 
-    assert result.is_error is True
-    payload = json.loads(_read_response_text(result))
-    assert payload.get("submitted") == []
-    assert payload.get("failed_at") == 0
-    assert "section 'steps' with mode='replace' must be a JSON array" in payload.get("error", "")
-
-
-def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:
-    """Missing 'entries' array raises InvalidParamsError."""
-    workspace = FsWorkspace(tmp_path)
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_sections(planning_session(), workspace, {})
-
-    message = str(exc_info.value)
-    assert "Missing 'entries' array" in message
-    assert ".agent/artifact-formats/plan.md" in message
-    assert '{"entries":[{"section":"summary"' in message
-    assert "{'" not in message
-
-
-def test_submit_plan_sections_unknown_section_includes_fix_guidance(tmp_path: Path) -> None:
-    workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(),
+    rejected = handle_finalize_md_artifact(
+        _session(), workspace, {"artifact_type": "plan"}
+    )
+    kept = handle_get_md_draft(
+        _session(), workspace, {"artifact_type": "plan"}
+    )
+    handle_stage_md_artifact(
+        _session(),
         workspace,
-        {"entries": [{"section": "bogus", "content": json.dumps({})}]},
+        {"artifact_type": "plan", "content": _plan_document(), "mode": "replace_all"},
+    )
+    finalized = handle_finalize_md_artifact(
+        _session(), workspace, {"artifact_type": "plan"}
     )
 
-    assert result.is_error is True
-    payload = json.loads(_read_response_text(result))
-    error = cast("str", payload["error"])
-    assert ".agent/artifact-formats/plan.md" in error
-    assert "Unknown plan section 'bogus'" in error
-    assert '{"entries":[{"section":"summary"' in error
-    assert "{'" not in error
+    assert rejected.is_error is False
+    rejected_payload = _payload(rejected)
+    assert any(
+        diagnostic.get("rule_id") == "PLAN021"
+        and diagnostic.get("severity") == "warning"
+        for diagnostic in rejected_payload.get("diagnostics", [])
+    )
+    assert _payload(kept)["content"] == invalid
+    assert finalized.is_error is False
+    assert (tmp_path / ".agent" / "artifacts" / "plan.md").read_text(
+        encoding="utf-8"
+    ) == _plan_document()
+    # The finalized document is retained as the draft so it stays editable for
+    # an in-phase revision; only fresh phase entry clears it.
+    after = handle_get_md_draft(
+        _session(), workspace, {"artifact_type": "plan"}
+    )
+    assert _payload(after)["exists"] is True
+    assert _payload(after)["content"] == _plan_document()

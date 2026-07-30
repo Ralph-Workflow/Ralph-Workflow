@@ -1,18 +1,18 @@
 """Schema-hardening tests for the plan-artifact package.
 
-The 18 net-new tests in this module cover the four cross-section
+The tests in this module cover the four cross-section
 validators added to ``PlanArtifact``, the typed ``EvidenceRef`` /
 ``PlanConstraints`` sub-models, the new ``timeout_seconds`` / ``cwd``
-fields on ``VerificationStep``, and the renderer / format-doc
-synchronization. All tests are pure Pydantic round-trips with no
+fields on ``VerificationStep``, and format-doc synchronization.
+The retired dict-to-markdown renderer is intentionally not covered:
+native ``plan.md`` is now the source of truth. All tests are pure
+Pydantic round-trips with no
 ``time.sleep``, no real subprocess, and no real file I/O so the
 ``audit_test_policy`` guard accepts them and the 60-second combined
 test budget stays well within budget.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 
@@ -25,10 +25,12 @@ from ralph.mcp.artifacts.plan import (
     PlanConstraints,
     VerificationStep,
     normalize_plan_artifact_content,
-    render_plan_markdown,
     validate_plan_section,
 )
-from ralph.prompts.plan_format import format_plan_for_execution
+from tests._support.typed_accessors import (
+    must_dict_list,
+    must_mapping,
+)
 
 
 def _base_plan_dict() -> dict[str, object]:
@@ -117,20 +119,98 @@ def test_evidence_ref_max_length() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. test_evidence_ref_string_coercion
+# 4. test_evidence_ref_rejects_bare_string
 # ---------------------------------------------------------------------------
 
 
-def test_evidence_ref_string_coercion() -> None:
-    """EvidenceRef('foo.py') coerces a bare string to kind='file', ref='foo.py'.
+def test_evidence_ref_rejects_bare_string() -> None:
+    """Evidence entries require the structured shape emitted by the Markdown parser."""
+    with pytest.raises(ValueError):
+        EvidenceRef.model_validate("foo.py")
 
-    PA-001 regression test that the legacy string-typed fixture at
-    test_plan_artifact.py:1239 continues to work via the model-level
-    coercion path.
-    """
-    r = EvidenceRef("foo.py")
-    assert r.kind == "file"
-    assert r.ref == "foo.py"
+
+@pytest.mark.parametrize("alias", ["test", "tests", "check", "run"])
+def test_plan_step_preserves_project_specific_step_types(alias: str) -> None:
+    """Step types are descriptive unless they name a built-in contract."""
+    plan = _base_plan_dict()
+    steps = plan["steps"]
+    assert isinstance(steps, list)
+    step = steps[0]
+    assert isinstance(step, dict)
+    step["step_type"] = alias
+
+    normalized = normalize_plan_artifact_content(plan)
+
+    normalized_steps = must_dict_list(normalized["steps"])
+    assert normalized_steps[0]["step_type"] == alias
+
+
+def test_canonical_plan_rejects_duplicate_consumed_step_numbers() -> None:
+    """Direct canonical payloads share Markdown's document-wide step namespace."""
+    plan = _base_plan_dict()
+    steps = must_dict_list(plan["steps"])
+    steps.append(
+        {
+            "number": 1,
+            "title": "Duplicate",
+            "content": "This must not shadow the first consumed step.",
+        }
+    )
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"duplicate plan step number 1",
+    ):
+        normalize_plan_artifact_content(plan)
+
+
+def test_canonical_plan_rejects_dangling_step_dependencies() -> None:
+    """A canonical dependency must resolve just like a Markdown ``S-n`` edge."""
+    plan = _base_plan_dict()
+    steps = must_dict_list(plan["steps"])
+    steps[0]["depends_on"] = [99]
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"plan step 1 depends on unknown step 99",
+    ):
+        normalize_plan_artifact_content(plan)
+
+
+def test_canonical_step_command_requires_an_expected_outcome() -> None:
+    """The runtime model cannot bypass Markdown's command-plus-outcome pair."""
+    plan = _base_plan_dict()
+    steps = must_dict_list(plan["steps"])
+    steps[0]["verify_command"] = "pytest tests/test_x.py -q"
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"verify_command must declare expected_outcome",
+    ):
+        normalize_plan_artifact_content(plan)
+
+
+def test_canonical_acceptance_command_requires_an_expected_outcome() -> None:
+    """Acceptance commands retain the same evaluator contract after mapping."""
+    plan = _base_plan_dict()
+    plan["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {
+                    "id": "AC-01",
+                    "description": "The focused behavior is proven.",
+                    "verification_step": "pytest tests/test_x.py -q",
+                    "satisfied_by_steps": [1],
+                }
+            ]
+        }
+    }
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"verification_step must declare expected_outcome",
+    ):
+        normalize_plan_artifact_content(plan)
 
 
 # ---------------------------------------------------------------------------
@@ -184,27 +264,61 @@ def test_noop_field_on_plan_artifact() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9. test_intent_verb_scope_category_fix_incompatible_with_feature
+# 9. test_intent_verb_scope_categories_are_descriptive
 # ---------------------------------------------------------------------------
 
 
-def test_intent_verb_scope_category_fix_incompatible_with_feature() -> None:
-    """verb='fix' rejects scope_items with category='feature'; verb='add' rejects 'bugfix'."""
+def test_intent_verb_scope_categories_are_descriptive() -> None:
+    """Intent/category combinations do not control any runtime behavior."""
     plan = _base_plan_dict()
-    bad_summary = _cast_summary(
+    summary = _cast_summary(
         plan, intent_verb="fix", scope_categories=["feature", "bugfix", "unknown"]
     )
-    plan["summary"] = bad_summary
-    with pytest.raises(PlanArtifactValidationError, match="incompatible with intent_verb='fix'"):
-        normalize_plan_artifact_content(plan)
+    plan["summary"] = summary
+    normalized = normalize_plan_artifact_content(plan)
+    normalized_summary = must_mapping(normalized["summary"])
+    assert normalized_summary["intent_verb"] == "fix"
+    assert normalized_summary["scope_items"] == summary["scope_items"]
 
-    # verb='add' rejects 'bugfix'
-    bad_summary = _cast_summary(
+    summary = _cast_summary(
         plan, intent_verb="add", scope_categories=["bugfix", "feature", "infra"]
     )
-    plan["summary"] = bad_summary
-    with pytest.raises(PlanArtifactValidationError, match="incompatible with intent_verb='add'"):
-        normalize_plan_artifact_content(plan)
+    plan["summary"] = summary
+    normalized = normalize_plan_artifact_content(plan)
+    normalized_summary = must_mapping(normalized["summary"])
+    assert normalized_summary["intent_verb"] == "add"
+    assert normalized_summary["scope_items"] == summary["scope_items"]
+
+
+def test_all_unconsumed_plan_vocabularies_accept_project_specific_values() -> None:
+    """Descriptive metadata stays useful without becoming an execution gate."""
+    plan = _base_plan_dict()
+    plan["summary"] = {
+        "intent_verb": "ship_it",
+        "coverage_areas": ["operator-experience"],
+        "scope_items": [
+            {"text": "Refresh the operator flow", "category": "product-polish"}
+        ],
+    }
+    steps = must_dict_list(plan["steps"])
+    steps[0]["priority"] = "release-blocker"
+    risks = must_dict_list(plan["risks_mitigations"])
+    risks[0]["severity"] = "watch-carefully"
+
+    normalized = normalize_plan_artifact_content(plan)
+
+    summary = must_mapping(normalized["summary"])
+    assert summary["intent_verb"] == "ship_it"
+    assert summary["coverage_areas"] == ["operator-experience"]
+    assert must_dict_list(summary["scope_items"])[0][
+        "category"
+    ] == "product-polish"
+    assert must_dict_list(normalized["steps"])[0][
+        "priority"
+    ] == "release-blocker"
+    assert must_dict_list(normalized["risks_mitigations"])[0][
+        "severity"
+    ] == "watch-carefully"
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +384,87 @@ def test_parallel_plan_and_work_units_mutually_exclusive() -> None:
         normalize_plan_artifact_content(plan)
 
 
+@pytest.mark.parametrize(
+    ("work_units", "message"),
+    [
+        (
+            [
+                {"unit_id": "alpha", "description": "First"},
+                {"unit_id": "alpha", "description": "Second"},
+            ],
+            "duplicate work unit ID 'alpha'",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "dependencies": ["missing"],
+                }
+            ],
+            "references unknown dependency 'missing'",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "dependencies": ["beta"],
+                },
+                {
+                    "unit_id": "beta",
+                    "description": "Second",
+                    "dependencies": ["alpha"],
+                },
+            ],
+            "work unit dependency cycle",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "step_ids": ["S-99"],
+                }
+            ],
+            "owns unknown step ID 'S-99'",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "step_ids": ["S-1"],
+                },
+                {
+                    "unit_id": "beta",
+                    "description": "Second",
+                    "step_ids": ["S-1"],
+                },
+            ],
+            "is owned by work units 'alpha' and 'beta'",
+        ),
+    ],
+    ids=[
+        "duplicate-id",
+        "unknown-dependency",
+        "dependency-cycle",
+        "unknown-step",
+        "duplicate-step-owner",
+    ],
+)
+def test_canonical_work_unit_graph_and_ownership_are_strict(
+    work_units: list[dict[str, object]],
+    message: str,
+) -> None:
+    """Direct payloads retain every consumed fan-out graph invariant."""
+    plan = _base_plan_dict()
+    plan["work_units"] = work_units
+
+    with pytest.raises(PlanArtifactValidationError, match=message):
+        normalize_plan_artifact_content(plan)
+
+
 # ---------------------------------------------------------------------------
 # 12. test_verification_method_rejects_shell_invocation
 # ---------------------------------------------------------------------------
@@ -301,12 +496,12 @@ def test_verification_method_allows_legitimate_bash_invocation() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 14. test_research_step_cannot_satisfy_ac
+# 14. test_research_step_can_be_referenced_by_ac
 # ---------------------------------------------------------------------------
 
 
-def test_research_step_cannot_satisfy_ac() -> None:
-    """A satisfied_by_steps entry pointing at a research step is rejected."""
+def test_research_step_can_be_referenced_by_ac() -> None:
+    """A valid step reference remains valid regardless of descriptive step type."""
     plan = _base_plan_dict()
     plan["steps"].append(
         {
@@ -323,11 +518,11 @@ def test_research_step_cannot_satisfy_ac() -> None:
             ]
         }
     }
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match="satisfied_by_steps cannot reference a research or verify step",
-    ):
-        normalize_plan_artifact_content(plan)
+    normalized = normalize_plan_artifact_content(plan)
+    design = must_mapping(normalized["design"])
+    acceptance = must_mapping(design["acceptance_criteria"])
+    criteria = must_dict_list(acceptance["criteria"])
+    assert criteria[0]["satisfied_by_steps"] == [2]
 
 
 # ---------------------------------------------------------------------------
@@ -352,62 +547,16 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
     }
 
 
-# ---------------------------------------------------------------------------
-# 16. test_renderer_includes_project_constraints_section
-# ---------------------------------------------------------------------------
-
-
-def test_renderer_includes_project_constraints_section() -> None:
-    """render_plan_markdown emits ## Project Constraints between Critical Files and Risks."""
-    plan = _base_plan_dict()
-    plan["constraints"] = {"must_not_break": ["public API"]}
-    markdown = render_plan_markdown(plan)
-    constraints_idx = markdown.find("## Project Constraints")
-    critical_idx = markdown.find("## Critical Files")
-    risks_idx = markdown.find("## Risks and Mitigations")
-    assert critical_idx >= 0
-    assert constraints_idx >= 0
-    assert risks_idx >= 0
-    assert critical_idx < constraints_idx < risks_idx
-
-
-# ---------------------------------------------------------------------------
-# 17. test_format_plan_for_execution_surfaces_step_fields
-# ---------------------------------------------------------------------------
-
-
-def test_format_plan_for_execution_surfaces_step_fields() -> None:
-    """format_plan_for_execution surfaces step_type, expected_evidence, verify_command."""
-    plan = _base_plan_dict()
-    plan["steps"][0]["step_type"] = "file_change"
-    plan["steps"][0]["expected_evidence"] = [
-        {"kind": "file", "ref": "src/a.py"},
-        {"kind": "test_name", "ref": "tests/test_x.py::test_a"},
-    ]
-    plan["steps"][0]["verify_command"] = "pytest tests/test_x.py -q"
-    plan["constraints"] = {"must_not_break": ["public API"]}
-    rendered = format_plan_for_execution(json.dumps(plan))
-    assert "step_type: file_change" in rendered
-    assert "file: src/a.py" in rendered
-    assert "test_name: tests/test_x.py::test_a" in rendered
-    assert "verify_command: `pytest tests/test_x.py -q`" in rendered
-    assert "Project Constraints:" in rendered
-
-
-# ---------------------------------------------------------------------------
-# 18. test_format_doc_includes_new_sections
-# ---------------------------------------------------------------------------
-
-
-def test_format_doc_includes_new_sections() -> None:
-    """The bundled format_docs/plan.md mentions the new symbol names and renamed heading."""
+def test_format_doc_describes_the_advisory_plan_contract() -> None:
+    """The concise guide teaches the sole blocking rule and normal revision path."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for needle in (
-        "EvidenceRef",
-        "PlanConstraints",
-        "noop",
-        "timeout_seconds",
-        "SE-opinionated design surfaces",
+        "PLAN001",
+        "Validation Overrides",
+        "ralph_edit_md_artifact",
+        "ralph_stage_md_artifact",
+        "replace_all",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
+    assert "ralph_edit_md_plan_step" not in doc

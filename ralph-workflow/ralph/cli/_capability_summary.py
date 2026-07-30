@@ -27,6 +27,10 @@ from ralph.skills._agent_paths import (
 )
 from ralph.skills._content import BASELINE_SKILL_NAMES
 
+DOCS_MCP_NOT_INSTALLED_MESSAGE = (
+    "Optional — configure and start a docs MCP server when you need library lookup"
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -107,4 +111,8 @@ def print_capability_summary(
     display.emit_capability_summary(state, workspace_root=workspace_root)
 
 
-__all__ = ["collect_skill_root_rows", "print_capability_summary"]
+__all__ = [
+    "DOCS_MCP_NOT_INSTALLED_MESSAGE",
+    "collect_skill_root_rows",
+    "print_capability_summary",
+]

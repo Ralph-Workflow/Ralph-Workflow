@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, WRITE_FILE_TOOL
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL, WRITE_FILE_TOOL
 
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ..template_engine import render_template
@@ -31,7 +31,7 @@ class CommitPromptPayloadConfig:
 
 
 DEFAULT_COMMIT_TEMPLATE_NAME = "commit_message"
-DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME = "ralph_submit_artifact"
+DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME = str(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def prompt_commit_message(
@@ -39,7 +39,7 @@ def prompt_commit_message(
     *,
     template_registry: TemplateRegistry | None = None,
     partials: Mapping[str, str] | None = None,
-    submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME,),
+    submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,),
     payload_config: CommitPromptPayloadConfig | None = None,
 ) -> str:
     """Return the commit message prompt for the provided diff."""
@@ -50,13 +50,20 @@ def prompt_commit_message(
 
     template = _select_template(template_registry)
     submit_reference = _format_submit_artifact_tool_reference(submit_artifact_tool_names)
+    tool_name_prefix = _tool_name_prefix_from_submit_artifact_names(submit_artifact_tool_names)
+    declare_complete_tool_name = DECLARE_COMPLETE_TOOL.with_prefix(
+        tool_name_prefix=tool_name_prefix
+    )
     variables = {
-        "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
+        "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
             submit_artifact_tool_names
         ),
-        "SUBMIT_ARTIFACT_TOOL_REFERENCE": submit_reference,
-        "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
-        "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
+        "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": submit_reference,
+        "DECLARE_COMPLETE_TOOL_NAME": declare_complete_tool_name,
+        "DECLARE_COMPLETE_TOOL_REFERENCE": f"`{declare_complete_tool_name}`",
+        "WRITE_FILE_TOOL_REFERENCE": (
+            f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
+        ),
     }
     variables.update(
         _commit_payload_variables(
@@ -85,11 +92,18 @@ def prompt_commit_message_for_opencode(
     template = _packaged_template_cache.get(
         "commit_simplified.jinja", root=packaged_template_root()
     )
+    tool_name_prefix = _tool_name_prefix_from_submit_artifact_names((submit_artifact_tool_name,))
+    declare_complete_tool_name = DECLARE_COMPLETE_TOOL.with_prefix(
+        tool_name_prefix=tool_name_prefix
+    )
     variables = {
-        "SUBMIT_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
-        "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
-        "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
-        "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
+        "SUBMIT_MD_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
+        "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
+        "DECLARE_COMPLETE_TOOL_NAME": declare_complete_tool_name,
+        "DECLARE_COMPLETE_TOOL_REFERENCE": f"`{declare_complete_tool_name}`",
+        "WRITE_FILE_TOOL_REFERENCE": (
+            f"`{WRITE_FILE_TOOL.with_prefix(tool_name_prefix=tool_name_prefix)}`"
+        ),
     }
     variables.update(
         _commit_payload_variables(
@@ -112,9 +126,7 @@ def _select_template(template_registry: TemplateRegistry | None) -> str:
             return template_registry.get_template(DEFAULT_COMMIT_TEMPLATE_NAME)
         except TemplateNotFoundError:
             pass
-    return _packaged_template_cache.get(
-        "commit_message.jinja", root=packaged_template_root()
-    )
+    return _packaged_template_cache.get("commit_message.jinja", root=packaged_template_root())
 
 
 def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
@@ -124,7 +136,7 @@ def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
             unique_list.append(name)
     unique_names = tuple(unique_list)
     if not unique_names:
-        unique_names = (DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME,)
+        unique_names = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,)
     if len(unique_names) == 1:
         return f"the tool named `{unique_names[0]}`"
 
@@ -147,8 +159,20 @@ def _format_submit_artifact_tool_reference(tool_names: Sequence[str]) -> str:
         if name and name not in unique_list:
             unique_list.append(name)
     if not unique_list:
-        return f"`{DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME}`"
+        return f"`{DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME}`"
     return f"`{unique_list[0]}`"
+
+
+def _tool_name_prefix_from_submit_artifact_names(tool_names: Sequence[str]) -> str:
+    """Derive the active transport prefix from the first usable submit-tool name."""
+    suffix = str(SUBMIT_MD_ARTIFACT_TOOL)
+    for name in tool_names:
+        if not name:
+            continue
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+        return ""
+    return ""
 
 
 def _default_commit_partials() -> dict[str, str]:

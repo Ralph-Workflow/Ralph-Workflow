@@ -10,9 +10,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ralph import __version__
 from ralph.project_urls import (
-    CODEBERG_ISSUES_URL,
-    CODEBERG_REPOSITORY_URL,
-    GITHUB_MIRROR_URL,
+    CODEBERG_MIRROR_URL,
+    GITHUB_ISSUES_URL,
+    GITHUB_REPOSITORY_URL,
 )
 
 project = "Ralph Workflow"
@@ -78,15 +78,15 @@ pygments_style = "friendly"
 myst_enable_extensions = ["colon_fence", "deflist", "linkify", "substitution"]
 
 myst_substitutions = {
-    "codeberg_repository_url": CODEBERG_REPOSITORY_URL,
-    "github_mirror_url": GITHUB_MIRROR_URL,
-    "codeberg_issues_url": CODEBERG_ISSUES_URL,
+    "github_repository_url": GITHUB_REPOSITORY_URL,
+    "github_issues_url": GITHUB_ISSUES_URL,
+    "codeberg_mirror_url": CODEBERG_MIRROR_URL,
 }
 
 rst_epilog = f"""
-.. |codeberg_repository_url| replace:: {CODEBERG_REPOSITORY_URL}
-.. |github_mirror_url| replace:: {GITHUB_MIRROR_URL}
-.. |codeberg_issues_url| replace:: {CODEBERG_ISSUES_URL}
+.. |github_repository_url| replace:: {GITHUB_REPOSITORY_URL}
+.. |github_issues_url| replace:: {GITHUB_ISSUES_URL}
+.. |codeberg_mirror_url| replace:: {CODEBERG_MIRROR_URL}
 """
 
 suppress_warnings = [

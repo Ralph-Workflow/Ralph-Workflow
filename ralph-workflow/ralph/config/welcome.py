@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from rich.text import Text
 
 from ralph import __version__
+from ralph.agents.agent_install_links import AGENT_INSTALL_URLS
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.display.context import DisplayContext
 from ralph.onboarding import (
-    CODEBERG_STAR_CTA,
     ERROR_REPORTING_DISCLOSURE,
+    GITHUB_STAR_CTA,
     getting_started_pointer_sentence,
     welcome_panel_next_steps,
 )
@@ -21,13 +23,6 @@ if TYPE_CHECKING:
 
     from ralph.config.bootstrap import BootstrapResult
     from ralph.display.context import DisplayContext
-
-_KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
-    "claude": "https://docs.claude.com/claude-code",
-    "opencode": "https://opencode.ai",
-    "nanocoder": "https://docs.nanocollective.org/nanocoder/docs",
-    "agy": "https://github.com/google-antigravity/antigravity-cli",
-}
 
 
 def _build_agent_availability_content(
@@ -49,7 +44,7 @@ def _build_agent_availability_content(
                     t.append("on PATH", style="theme.status.success")
                     avail_lines.append(t)
                 elif status == "missing_on_path":
-                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(registry_name.lower())
+                    install_url = AGENT_INSTALL_URLS.get(registry_name.lower())
                     t = Text(f"  • {label}: ")
                     t.append("⚠ missing (not on PATH)", style="theme.status.warning")
                     if install_url:
@@ -63,8 +58,17 @@ def _build_agent_availability_content(
                 content.append(Text("Detected agents:", style="theme.banner.title"))
                 content.extend(avail_lines)
                 return content
-        except Exception:
-            pass
+        except Exception as exc:
+            # Non-fatal: the agent-availability check is best-effort so a
+            # broken agent registry or transient PATH scan failure does
+            # not block the welcome panel. Warn so the operator can
+            # investigate the failure without breaking the run.
+            logger.warning(
+                "Agent availability check failed (non-fatal): {}. "
+                "Falling back to the generic PATH hint; check the agent "
+                "registry and PATH to remove the warning.",
+                exc,
+            )
     content.append(
         Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`, `nanocoder`, `agy`)")
     )
@@ -127,6 +131,9 @@ def emit_first_run_welcome(
     results: list[BootstrapResult],
     *,
     agent_registry: HasListAgents | None = None,
+    newly_enabled: list[str] | None = None,
+    rewired: list[str] | None = None,
+    autowire_outcome: str | None = None,
     is_regenerate: bool = False,
     display_context: DisplayContext,
 ) -> None:
@@ -135,6 +142,9 @@ def emit_first_run_welcome(
     Args:
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
+        newly_enabled: Agents automatically enabled because their CLI was found on PATH.
+        rewired: Default chains replaced with a detected agent because Claude is absent.
+        autowire_outcome: Why safe autowiring deliberately left chains unchanged.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
         display_context: Display context for adaptive layout (required).
             The banner and panel are both emitted on ``display_context.console``.
@@ -157,6 +167,13 @@ def emit_first_run_welcome(
     intro.append("planning → development loop", style="theme.phase.planning")
     intro.append(" driven by your PROMPT.md.")
     content.append(intro)
+    content.append(
+        Text(
+            "Project setup: Ralph Workflow installed project skills. In a git repo, it also adds its "
+            "local-artifact rules to .gitignore.",
+            style="theme.text.muted",
+        )
+    )
 
     docs_line1 = Text(getting_started_pointer_sentence(), style="theme.text.muted")
     content.append(docs_line1)
@@ -179,7 +196,27 @@ def emit_first_run_welcome(
             content.append(summary)
             content.append(Text())  # blank line
 
-    if not is_regenerate:
+    if newly_enabled:
+        content.append(
+            Text(
+                "Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled),
+                style="theme.status.success",
+            )
+        )
+    if rewired:
+        content.append(
+            Text(
+                "Detected agent set for [agent_chains]; edit section 1 to change models.",
+                style="theme.status.success",
+            )
+        )
+    elif autowire_outcome == "kept-default-agent":
+        content.append(Text("kept claude (found on PATH)", style="theme.status.success"))
+    elif autowire_outcome == "chains-customized":
+        content.append(
+            Text("chains already customized — left unchanged", style="theme.status.success")
+        )
+    if not is_regenerate and not newly_enabled:
         content.extend(_build_agent_availability_content(agent_registry))
 
     global_files, local_files = _partition_config_files(results)
@@ -192,6 +229,6 @@ def emit_first_run_welcome(
 
     # Star CTA — highest-leverage conversion from install → repo adoption
     content.append(Text())  # blank line
-    content.append(Text(CODEBERG_STAR_CTA, style="theme.status.warning"))
+    content.append(Text(GITHUB_STAR_CTA, style="theme.status.warning"))
 
     display.emit_first_run_panel(content)

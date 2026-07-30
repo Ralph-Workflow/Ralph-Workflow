@@ -16,7 +16,7 @@ class SkillsMcp(RalphBaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    skills: list[str] = Field(..., min_length=1, max_length=100)
+    skills: list[str] = Field(default_factory=list, max_length=100)
     mcps: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("skills", mode="before")
@@ -34,9 +34,6 @@ class SkillsMcp(RalphBaseModel):
                 continue
             seen.add(stripped)
             deduped.append(stripped)
-        if not deduped:
-            msg = "skills_mcp.skills must contain at least one skill name"
-            raise ValueError(msg)
         return deduped
 
     @field_validator("mcps")

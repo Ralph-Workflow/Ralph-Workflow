@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import typer
 from rich.console import Console
 
 import ralph.cli.commands.run as run_module
@@ -87,8 +88,8 @@ class TestInjectedDisplayContextIsHonored:
         assert "Interrupted by user" in output
 
     @pytest.mark.timeout_seconds(3)
-    def test_init_command_warning_uses_injected_context(self, tmp_path: Path) -> None:
-        """Verify init_command uses injected display_context for deprecation warning."""
+    def test_init_command_unknown_template_uses_injected_context(self, tmp_path: Path) -> None:
+        """Verify an unknown template error uses the injected display context."""
         ctx = _make_display_context()
         skipped_result = BootstrapResult(path=tmp_path / "placeholder.toml", action="skipped")
 
@@ -108,18 +109,19 @@ class TestInjectedDisplayContextIsHonored:
                     "ralph.cli.commands.init.ensure_global_policy_configs",
                     return_value=[skipped_result, skipped_result],
                 ),
-                patch("ralph.cli.commands.init.ensure_local_support_configs", return_value=[]),
                 patch("ralph.cli.commands.init._print_fallback_next_steps"),
                 patch(
                     "ralph.cli.commands.init._ensure_baseline_capabilities",
                     return_value=(CapabilityState(), []),
                 ),
+                pytest.raises(typer.Exit) as excinfo,
             ):
                 init_command(template="legacy", display_context=ctx)
 
+            assert excinfo.value.exit_code == 1
             output = ctx.console.file.getvalue()
-            assert "deprecated" in output.lower() or "ignored" in output.lower(), (
-                f"Expected deprecation warning in output, got: {output}"
+            assert "valid templates" in output.lower(), (
+                f"Expected template guidance in output, got: {output}"
             )
         finally:
             os.chdir(original_cwd)

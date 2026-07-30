@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import (
     ArtifactContract,
     ArtifactHistoryPolicy,
@@ -35,17 +34,38 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) -> None:
+FIX_RESULT_DOC = """---
+type: fix_result
+---
+## Summary
+- [S1] Applied fixes
+## Files Changed
+- [F1] ralph/example.py
+"""
+
+
+def test_resolve_fix_result_content_reads_markdown_handoff(tmp_path: Path) -> None:
+    """The submitted handoff markdown is consumed directly — no JSON derivation."""
+    workspace = FsWorkspace(tmp_path)
+    handoff = tmp_path / ".agent" / "FIX_RESULT.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text(FIX_RESULT_DOC, encoding="utf-8")
+
+    content, path = resolve_fix_result_content(workspace)
+    assert content == FIX_RESULT_DOC
+    assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
+
+
+def test_resolve_fix_result_content_falls_back_to_markdown_artifact(tmp_path: Path) -> None:
+    """When the handoff copy is absent, the markdown artifact itself is the source."""
     workspace = FsWorkspace(tmp_path)
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    expected = '{"summary": "Applied fixes"}'
-    (artifact_dir / "fix_result.json").write_text(expected, encoding="utf-8")
+    (artifact_dir / "fix_result.md").write_text(FIX_RESULT_DOC, encoding="utf-8")
 
     content, path = resolve_fix_result_content(workspace)
-    assert "# Fix Result" in content
-    assert "Applied fixes" in content
-    assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
+    assert content == FIX_RESULT_DOC
+    assert path == str(artifact_dir / "fix_result.md")
 
 
 def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: Path) -> None:
@@ -70,7 +90,7 @@ def test_tool_name_prefix_for_opencode_matches_server_namespacing() -> None:
 def test_submit_artifact_tool_name_for_opencode_is_server_prefixed() -> None:
     assert (
         submit_artifact_tool_name_for_transport(AgentTransport.OPENCODE)
-        == f"ralph_{SUBMIT_ARTIFACT_TOOL}"
+        == f"ralph_{SUBMIT_MD_ARTIFACT_TOOL}"
     )
 
 
@@ -82,21 +102,21 @@ def test_tool_name_prefix_for_codex_uses_claude_style_namespacing() -> None:
 
 def test_submit_artifact_tool_name_for_codex_is_claude_namespaced() -> None:
     assert submit_artifact_tool_name_for_transport(AgentTransport.CODEX) == claude_tool_name(
-        SUBMIT_ARTIFACT_TOOL
+        SUBMIT_MD_ARTIFACT_TOOL
     )
 
 
 def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_claude() -> None:
     assert submit_artifact_tool_name_for_transport(AgentTransport.CLAUDE) == claude_tool_name(
-        SUBMIT_ARTIFACT_TOOL
+        SUBMIT_MD_ARTIFACT_TOOL
     )
     assert submit_artifact_tool_name_for_transport(
         AgentTransport.CLAUDE_INTERACTIVE
-    ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_agy() -> None:
-    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_ARTIFACT_TOOL
+    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_MD_ARTIFACT_TOOL
 
 
 class TestCursorToolNameMatchesClaudeStyle:
@@ -113,23 +133,22 @@ class TestCursorToolNameMatchesClaudeStyle:
         ``"mcp__ralph__"`` for ``AgentTransport.CURSOR`` (the prefix
         every prompt template uses to construct tool names).
       * :func:`submit_artifact_tool_name_for_transport` returns
-        ``claude_tool_name(SUBMIT_ARTIFACT_TOOL)`` (== ``mcp__ralph__submit_artifact``)
+        ``claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)`` (== ``mcp__ralph__submit_artifact``)
         for ``AgentTransport.CURSOR`` (the canonical submit-artifact
         tool name materialized into Cursor prompts).
     """
 
     def test_tool_name_prefix_for_cursor_is_claude_style(self) -> None:
-        assert (
-            tool_name_prefix_for_transport(AgentTransport.CURSOR) == "mcp__ralph__"
-        )
+        assert tool_name_prefix_for_transport(AgentTransport.CURSOR) == "mcp__ralph__"
 
     def test_submit_artifact_tool_name_for_cursor_is_claude_namespaced(self) -> None:
-        assert submit_artifact_tool_name_for_transport(
-            AgentTransport.CURSOR
-        ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+        assert submit_artifact_tool_name_for_transport(AgentTransport.CURSOR) == claude_tool_name(
+            SUBMIT_MD_ARTIFACT_TOOL
+        )
+
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
-    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_ARTIFACT_TOOL
+    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_MD_ARTIFACT_TOOL
 
 
 def test_development_analysis_loopback_preserves_development_artifact_history(
@@ -198,25 +217,18 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
     workspace.write("PROMPT.md", "Implement the feature")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
     workspace.write(
-        ".agent/artifacts/development_analysis_decision.json",
-        json.dumps(
-            {
-                "type": "development_analysis_decision",
-                "content": {
-                    "status": "request_changes",
-                    "summary": "Need more tests.",
-                    "what_came_up_short": ["Missing coverage."],
-                    "how_to_fix": ["Add tests."],
-                },
-            }
-        ),
+        ".agent/artifacts/development_analysis_decision.md",
+        "---\ntype: development_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Need more tests: coverage is missing, add tests.\n"
+        "## What Came Up Short\n- [DA-1] The changed path lacks coverage.\n"
+        "## How To Fix\n- [DA-1] Add and run focused regression coverage.\n",
     )
     # Create history files on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_json = hist_dir / "20260506T120000_development_result.json"
-    archived_json.write_text('{"type":"development_result"}', encoding="utf-8")
+    archived_md = hist_dir / "20260506T120000_development_result.md"
+    archived_md.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     index_file = history_index_path(artifact_dir, "development_result")
     index_file.write_text("# History", encoding="utf-8")
 
@@ -234,7 +246,7 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
         ),
     )
 
-    assert archived_json.exists(), "archive json must be preserved on development loopback"
+    assert archived_md.exists(), "archive must be preserved on development loopback"
     assert index_file.exists(), "history index must be preserved on development loopback"
 
 
@@ -373,16 +385,16 @@ def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
-    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: planning_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -479,24 +491,24 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
-    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: planning_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
 
@@ -622,23 +634,25 @@ def test_development_analysis_to_development_commit_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
     # Create development_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.json"
-    analysis_archived.write_text('{"type":"development_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.md"
+    analysis_archived.write_text(
+        "---\ntype: development_analysis_decision\n---\n", encoding="utf-8"
+    )
     analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -739,24 +753,24 @@ def test_planning_analysis_bypass_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
-    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: planning_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
 
@@ -885,24 +899,26 @@ def test_development_analysis_bypass_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
 
     # Create development_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.json"
-    analysis_archived.write_text('{"type":"development_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.md"
+    analysis_archived.write_text(
+        "---\ntype: development_analysis_decision\n---\n", encoding="utf-8"
+    )
     analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -976,4 +992,9 @@ def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> Non
             PromptPhaseOptions(artifacts_policy=ArtifactsPolicy(artifacts={}), previous_phase=None),
         )
     )
-    assert "ralph_submit_artifact" in rendered and "DIFF" in rendered
+    assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered
+    assert rendered.startswith(
+        "COMMIT CLEANUP MODE\n"
+        "You are a commit cleanup agent. Your only job is to keep unsafe or "
+        "machine-local files out of the pending commit."
+    )

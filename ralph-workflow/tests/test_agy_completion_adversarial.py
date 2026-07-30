@@ -14,7 +14,7 @@ completion gate without the canonical submit path:
 These tests pin the hardened contracts:
 
 - ``evaluate_completion`` no longer accepts the legacy
-  ``_artifact_is_schema_valid(artifact_path)`` fallback; only a
+  raw artifact-file fallback; only a
   current-run receipt-backed submission satisfies
   ``required_artifact_present`` (analysis how_to_fix item 3).
 - ``_check_completion_sentinel`` with a ``sentinel_secret`` rejects
@@ -89,7 +89,7 @@ def _required_artifact() -> RequiredArtifact:
     return RequiredArtifact(
         phase="smoke",
         artifact_type=ARTIFACT_TYPE,
-        json_path=f".agent/artifacts/{ARTIFACT_TYPE}.json",
+        artifact_path=f".agent/artifacts/{ARTIFACT_TYPE}.md",
         markdown_path=None,
         normalizer=None,
         artifact_required=True,
@@ -144,11 +144,11 @@ def test_broker_written_receipt_accepted_with_secret(workspace: Path) -> None:
 def test_evaluate_completion_rejects_stale_canonical_artifact(
     workspace: Path,
 ) -> None:
-    """A stale canonical artifact at ``.agent/artifacts/<type>.json``
+    """A stale legacy JSON artifact at ``.agent/artifacts/<type>.json``
     from a previous run does NOT satisfy ``required_artifact_present``
     for a new run that has no current-run receipt.
 
-    The legacy ``_artifact_is_schema_valid(artifact_path)`` fallback
+    The legacy raw artifact-file fallback
     was removed in commit feab44edb's follow-up; only a current-run
     receipt-backed submission satisfies the completion gate.
     """
@@ -270,9 +270,9 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     the DB row is authoritative. A valid DB HMAC is accepted; the legacy
     file alone (no DB row) is also accepted via the dual-read fallback.
 
-    This pins the rollout contract that the production code does NOT
-    continue writing legacy files; the read-path honors legacy files
-    written by the pre-upgrade release during the dual-read window.
+    This pins the migration contract: successful DB writes do not also
+    write legacy files, while the read path honors legacy files from an
+    older release or a current durable-fallback write.
     """
     digest = hmac.new(SENTINEL_SECRET.encode(), RUN_ID.encode(), hashlib.sha256).hexdigest()
 
@@ -290,7 +290,7 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     # Re-write the legacy file alone:
     sentinel.write_text(json.dumps({"run_id": RUN_ID}), encoding="utf-8")
     # DB still has the row from above — remove it to simulate a
-    # pre-upgrade receipt alone.
+    # legacy sentinel alone.
     db2 = RunStateDB(workspace)
     db2.delete_completion_sentinel(RUN_ID)
     db2.close()
@@ -315,22 +315,24 @@ def test_promote_fallback_thread_receipt_secret_to_promoted_receipt(
     """
     promotion_run_id = "adversarial-promotion-run"
 
-    # Seed a fallback artifact the orchestrator would promote. The
-    # smoke_test_result schema accepts a plain dict, so no extra
-    # envelope is required for promotion.
-    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.json"
+    # Seed the Markdown fallback accepted by the canonical submission gate.
+    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.md"
     fallback_path.parent.mkdir(parents=True, exist_ok=True)
     fallback_path.write_text(
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/promotion/sentinel.js",
-                "observed_working": ["promotion secret thread"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "Promoted fallback under broker secret.",
-            }
-        ),
+        """---
+type: smoke_test_result
+status: passed
+output_file: tmp/promotion/sentinel.js
+---
+## Summary
+- [SUM-1] Promoted fallback under broker secret.
+## Observed Working
+- [OK-1] promotion secret thread
+## Observed Breaks
+- [BR-1] none observed
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 
@@ -376,19 +378,23 @@ def test_promote_fallback_without_secret_keeps_legacy_no_hmac_contract(
     for the no-secret call site.
     """
     no_secret_run_id = "adversarial-no-secret-run"
-    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.json"
+    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.md"
     fallback_path.parent.mkdir(parents=True, exist_ok=True)
     fallback_path.write_text(
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/promotion/no-secret.js",
-                "observed_working": ["promotion without secret"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "Promoted fallback without broker secret.",
-            }
-        ),
+        """---
+type: smoke_test_result
+status: passed
+output_file: tmp/promotion/no-secret.js
+---
+## Summary
+- [SUM-1] Promoted fallback without broker secret.
+## Observed Working
+- [OK-1] promotion without secret
+## Observed Breaks
+- [BR-1] none observed
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 

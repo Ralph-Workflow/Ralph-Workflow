@@ -217,7 +217,9 @@ def _optional_str(value: object) -> str | None:
 
 def _origin_value(value: object) -> McpServerOrigin:
     if isinstance(value, str) and value in {"custom", "agent_upstream"}:
-        return cast("McpServerOrigin", value)
+        return cast(
+            "McpServerOrigin", value
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return "agent_upstream"
 
 

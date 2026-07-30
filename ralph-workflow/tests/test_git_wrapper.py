@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 import pytest
 from git import GitCommandError, Repo
@@ -13,6 +12,7 @@ from ralph.git import (
     end_agent_phase,
     start_agent_phase,
 )
+from tests._support.typed_accessors import must_str
 
 # All tests in this module exercise real git operations against the
 # ``tmp_git_repo`` fixture (per-test process-isolated git repository).
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.timeout_seconds(5)
 def read_hooks_path(repo: Repo) -> str:
     """Return the configured hooksPath value for the repository."""
 
-    return cast("str", repo.git.config("--local", "--get", "core.hooksPath")).strip()
+    return must_str(repo.git.config("--local", "--get", "core.hooksPath")).strip()
 
 
 def test_start_agent_phase_sets_hooks_path(tmp_git_repo: Path) -> None:

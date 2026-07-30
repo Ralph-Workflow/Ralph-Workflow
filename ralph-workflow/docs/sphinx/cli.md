@@ -37,7 +37,7 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Automatically install the bundled skill bundle into `~/.claude/skills/` and symlink it into the documented supported-agents sibling roots (currently Codex `~/.codex/skills/`, OpenCode `~/.config/opencode/skills/`, AGY `~/.gemini/antigravity-cli/skills/`; OpenCode's documented `~/.claude/skills/` fallback is covered by the Claude install; Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage> so no user-global install target is created). Adds a batteries-included `.gitignore` covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns. Idempotent — re-running on an initialized project re-checks skills (printing the full capability summary table) and refreshes missing gitignore entries. |
+| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. Labels: `feature-spec`, `guardrail` (or `bug-fix`), `refactor`, `test-coverage`, `docs`. It creates `.gitignore` only in a git repo. Use `--init-local-config` only when this repo needs project-local overrides. |
 | `--force-init-skills` | | `False` | Re-run baseline skill installation (user-global + project-scope) and exit. Pairs with `--init` for an explicit re-init; standalone forces the recheck path on a normal `ralph` run. |
 | `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
 | `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |
@@ -45,10 +45,10 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 ## What `--init` does on first run
 
 1. **Scaffolds `PROMPT.md`** at the project root using the starter template (the `<!-- ralph:starter-prompt: ... -->` sentinel marks it for validation).
-2. **Installs local configs** under `.agent/` (`mcp.toml`, `pipeline.toml`, `artifacts.toml`) plus the user-global set under `~/.config/` (`ralph-workflow.toml` and the policy files).
+2. **Creates the user-global set** under `~/.config/` (`ralph-workflow.toml` and policy files). It does not create project-local `.agent/` configuration unless you later run `ralph --init-local-config`.
 3. **Installs skills + symlinks siblings** by materializing the bundled skill bundle at `~/.claude/skills/` and symlinking it into the documented supported-agents sibling roots (Codex, OpenCode, AGY).
 4. **Wires Pi as a transport without a skill-fan-out target** — pi.dev is wired as a transport (so the `pi` BuiltinAgentSpec, `pi/<model>` resolver, and `PiCommandBuilder` are all available end-to-end) but pi.dev has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so no Pi user-global install target is created and no `.pi/skills/` directory is written. Skills loaded on the pi side use the per-invocation `--skill <path>` flag.
-5. **Seeds batteries-included `.gitignore`** with patterns for Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS files. Re-runs add any new patterns that have been added to the default set since the last init.
+5. **Seeds `.gitignore` only in a git repo** with common local-artifact patterns; it never creates one in a non-git directory. Re-runs add any new patterns that have been added to the default set since the last init.
 
 ## Quick mode
 
@@ -58,7 +58,7 @@ Run one developer iteration with an inline prompt:
 ralph -Q "do a quick change"
 ```
 
-`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph Workflow writes that inline prompt to `.agent/CURRENT_PROMPT.md` for the run.
+`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph Workflow writes that inline prompt to `.agent/PRODUCT_CRITERIA.md` for the run.
 
 ```bash
 ralph -Q "add a /healthz endpoint"
@@ -98,21 +98,33 @@ See [MCP Architecture](mcp-architecture.md) for the server internals.
 
 ## Thorough mode
 
+Use the long preset when the default two iterations are not enough:
+
+```bash
+ralph -L
+```
+
+`-L` / `--long` forces `developer_iters=5`.
+
 Use the thorough preset when you want a longer unattended run budget:
 
 ```bash
 ralph -T
 ```
 
-`-T` / `--thorough` forces `developer_iters=10`. It cannot be combined with `-Q`.
+`-T` / `--thorough` forces `developer_iters=10`.
+
+The three depth presets are mutually exclusive — `-Q`, `-L`, and `-T`
+cannot be combined with one another. Each one overrides an explicit `-D`.
 
 ## Pipeline tuning
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` |
-| `--developer-iters N` | `-D` | `5` | Maximum developer iterations per run |
+| `--developer-iters N` | `-D` | `2` | Maximum developer iterations per run |
 | `--quick` | `-Q` | `False` | Quick mode: one developer iteration with optional inline prompt |
+| `--long` | `-L` | `False` | Long mode: five developer iterations |
 | `--thorough` | `-T` | `False` | Thorough mode: ten developer iterations |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
 | `--developer-model <flag>` | | (from config) | Forward a model flag to the developer agent binary |
@@ -173,20 +185,20 @@ ralph cleanup --force       # remove without prompting for confirmation
 
 ### `ralph contribute`
 
-Open the canonical Ralph Workflow repository in your default browser so you can review contribution options. Codeberg is the primary repo (default); the GitHub mirror is available via `--source github`. No git repository, configuration, or authentication is required.
+Open the canonical Ralph Workflow repository in your default browser so you can review contribution options. GitHub is the primary repo (default); the Codeberg mirror remains available via `--source codeberg`. No git repository, configuration, or authentication is required. Pull requests on either forge must check the CLA box in the PR template.
 
 ```bash
-ralph contribute                         # open Codeberg (default)
-ralph contribute --source github         # open the GitHub mirror instead
-ralph contribute --source codeberg       # explicit form of the default
+ralph contribute                         # open GitHub (default)
+ralph contribute --source codeberg       # open the Codeberg mirror
+ralph contribute --source github         # explicit form of the default
 ```
 
 ### `ralph star`
 
-Open the Codeberg repository in your default browser so you can star Ralph Workflow. Use `--no-browser` to print the link without launching a browser.
+Open the GitHub repository in your default browser so you can star Ralph Workflow. Use `--no-browser` to print the link without launching a browser.
 
 ```bash
-ralph star                # open Codeberg in your browser
+ralph star                # open GitHub in your browser
 ralph star --no-browser   # print the link instead
 ```
 
@@ -198,18 +210,63 @@ Run the manual PTY/TUI smoke test for interactive Claude using `claude/haiku`. T
 python -m ralph smoke-interactive-claude
 ```
 
-### `ralph smoke-interactive-agy`
-
-Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Gemini 3.5 Flash (Medium)`; override it with `--agent agy/<model>`.
+All interactive smoke commands accept `--subagents` for diagnosing native
+subagent behavior. The scenario requires exactly one observed subagent dispatch,
+its correlated tool result, meaningful main-agent activity after that result, and the normal
+artifact and completion signals. A missing signal makes the command exit
+non-zero with a specific break in the parity report.
 
 ```bash
-python -m ralph smoke-interactive-agy                                  # default model
-python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'   # explicit override
+python -m ralph smoke-interactive-claude --subagents
+python -m ralph smoke-interactive-cursor --subagents
 ```
 
-Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
+Use `--subagent-prompt-file PATH` with `--subagents` to replace the default
+read-only child task while retaining the harness-owned ordering, artifact, and
+completion requirements. The file must be non-empty UTF-8 text inside the
+current workspace. This is useful
+for reproducing child silence, multi-tool work, delayed results, or other
+parser, activity-router, and watchdog edge cases without editing Ralph Workflow.
 
-Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
+```bash
+python -m ralph smoke-interactive-claude \
+  --subagents \
+  --subagent-prompt-file tmp/subagent-edge-case.txt
+```
+
+These scenarios consume live agent tokens or quota and remain manual
+diagnostics outside `make verify`. A transport without native subagent support
+fails the subagent check; the harness does not silently downgrade to the basic
+scenario.
+
+### `ralph smoke-interactive-agy`
+
+Run this manual, paid-usage diagnostic one at a time for Google Anti Gravity
+(AGY). It is not part of `make verify`. The default
+`agy/gemini-3.6-flash-low` is a conservative low-tier choice by name; AGY
+price ordering is unverified. Each invocation is one `agy --print` run for one
+smoke prompt, one at a time, with AGY's observed default 5-minute print timeout;
+a billed amount requires the unrun pricing probe.
+
+```bash
+python -m ralph smoke-interactive-agy
+```
+
+On v1.1.8, manual probes accepted `gemini-3.6-flash-low`, explicit
+`gemini-3.6-flash-high --effort high`, and stream-json `init`, `step_update`,
+and successful `result` events. Ralph Workflow therefore accepts
+`agy/<published-id>[:low|medium|high]` aliases. The latest live smoke exited 0
+after creating its requested file and showing parser/tool activity without a
+permission prompt. It wrote a valid fallback `smoke_test_result`; Ralph Workflow
+validated and promoted it, recorded the receipt, and wrote host-owned durable
+completion evidence after AGY missed the MCP completion call. Continuation remains disabled:
+`--continue` and `--conversation` accepted a prompt but did not expose proof
+that they resumed the intended conversation. See `tmp/agy-source-of-truth.txt`
+for verbatim observations before manually running a paid probe.
+
+Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic
+mock at `tests/_support/mock_agy.sh` for CI. The mock tests Ralph Workflow's harness;
+it is not live-AGY evidence.
 
 ### `ralph smoke-interactive-nanocoder`
 
@@ -252,17 +309,6 @@ Set `RALPH_CURSOR_BINARY` to use a custom `agent` executable (a real
 wrapper, alternate live binary, or an operator-wired test stub). There
 is no bundled mock for Cursor (unlike AGY); non-executable paths are
 ignored with a WARNING.
-
-The eight canonical `agy/<display-name>` aliases accepted by `--agent` (the override flag, default `agy/Gemini 3.5 Flash (Medium)`):
-
-- `agy/Gemini 3.5 Flash (Medium)`
-- `agy/Gemini 3.5 Flash (High)`
-- `agy/Gemini 3.5 Flash (Low)`
-- `agy/Gemini 3.1 Pro (Low)`
-- `agy/Gemini 3.1 Pro (High)`
-- `agy/Claude Sonnet 4.6 (Thinking)`
-- `agy/Claude Opus 4.6 (Thinking)`
-- `agy/GPT-OSS 120B (Medium)`
 
 ## Related pages
 

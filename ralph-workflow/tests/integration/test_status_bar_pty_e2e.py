@@ -36,7 +36,7 @@ Six assertions across four tests:
 
 - AC-01 (test 1 + 2 + 3): workspace_root basename + canonical phase
   label surface in the captured stream.
-- AC-03 (test 3): the outer-dev iteration ``Dev N/cap`` is visible in
+- AC-03 (test 3): the outer-cycle label ``Cycle N/cap`` is visible in
   the captured stream.
 - AC-02 (test 1): no ``--`` placeholder for omitted iteration fields.
 - AC-08 (test 4): no Status Bar frame content appears when the CLI is
@@ -362,7 +362,7 @@ def test_status_bar_pty_renders_workspace_phase_and_omits_dash_placeholder(
         f"stripped preview: {stripped[:300]!r}"
     )
 
-    forbidden_placeholders = ("Dev --", "D --", "Analysis --", "A --", "--/--")
+    forbidden_placeholders = ("Cycle --", "C --", "Analysis --", "A --", "--/--")
     for placeholder in forbidden_placeholders:
         assert placeholder not in stripped, (
             f"AC-02: placeholder {placeholder!r} must NOT appear in the "
@@ -465,11 +465,11 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     ralph_workflow_root: Path,
     python_executable: Path,
 ) -> None:
-    """AC-03: when the model has outer_dev_iteration set, ``Dev N/cap`` is visible.
+    """AC-03: when the model has outer_dev_iteration set, ``Cycle N/cap`` is visible.
 
     Drives a probe that pushes a StatusBarModel with outer_dev_iteration=1
     and outer_dev_cap=3 into the production entry point and asserts the
-    canonical ``Dev 1/3`` (or compact ``D1/3``) form appears in the
+    canonical ``Cycle 1/3`` (or compact ``C1/3``) form appears in the
     captured stream.
     """
     probe_body = _render_probe(
@@ -505,12 +505,12 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     stripped = _ANSI_ESCAPE_RE.sub("", stream_text)
 
     dev_iter_patterns = (
-        r"Dev\s+\d+/\d+",
-        r"D\s+\d+/\d+",
+        r"Cycle\s+\d+/\d+",
+        r"C\s+\d+/\d+",
     )
     assert any(re.search(pat, stripped) for pat in dev_iter_patterns), (
-        f"AC-03: outer-dev iteration label 'Dev 1/3' (or compact "
-        f"'D1/3') must appear in the captured PTY stream when "
+        f"AC-03: outer-dev iteration label 'Cycle 1/3' (or compact "
+        f"'C1/3') must appear in the captured PTY stream when "
         f"outer_dev_iteration is set; checked patterns: "
         f"{dev_iter_patterns!r}; stripped preview: {stripped[:300]!r}"
     )

@@ -99,7 +99,7 @@ _ALLOWLIST: list[tuple[str, str]] = [
     ("Ralph-Workflow/ralph-workflow", "codeberg repository path"),
     ("https://codeberg.org/RalphWorkflow/Ralph-Workflow", "codeberg repository URL"),
     ("https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new", "codeberg issue tracker URL"),
-    # GitHub mirror repo path — Ralph-Workflow is the repo name, not a project name usage
+    # GitHub primary repo path — Ralph-Workflow is the repo name, not a project name usage
     ("https://github.com/Ralph-Workflow/Ralph-Workflow", "github repository URL"),
     ("Ralph-Workflow/Ralph-Workflow", "github repository path"),
     # GitDB mirrors the GitHub repo path — Ralph-Workflow is the repo name, not a project name usage

@@ -44,26 +44,25 @@ The table below uses a few drain groupings:
 | `exec` | `process.exec_bounded` | write drains | Execute a bounded subprocess from the workspace root |
 | `unsafe_exec` | `process.exec_unbounded` | write drains | Execute an unrestricted shell command in the real workspace directory (use when `exec` sandbox overhead is too high) |
 | `raw_exec` | `process.exec_unbounded` | write drains | Alias for `unsafe_exec` — same handler, same permissions, unrestricted shell execution with no sandbox overhead |
-| `ralph_submit_artifact` | `artifact.submit` | all | Submit a structured artifact |
-| `ralph_submit_plan_section` | `artifact.plan_write` | planning | Submit one section of the plan draft |
-| `ralph_submit_plan_sections` | `artifact.plan_write` | planning | Submit multiple plan sections atomically in one batch |
-| `ralph_validate_draft` | `artifact.plan_read` | planning | Run the full read-only plan validator against the staged draft |
-| `ralph_insert_plan_step` | `artifact.plan_write` | planning | Insert one plan step and return the reindex echo payload |
-| `ralph_replace_plan_step` | `artifact.plan_write` | planning | Replace one plan step and return the reindex echo payload |
-| `ralph_remove_plan_step` | `artifact.plan_write` | planning | Remove one plan step and return the reindex echo payload |
-| `ralph_move_plan_step` | `artifact.plan_write` | planning | Move one plan step and return the reindex echo payload |
-| `ralph_patch_step` | `artifact.plan_write` | planning | Patch one plan step while preserving the other fields |
-| `ralph_finalize_plan` | `artifact.plan_write` | planning | Finalize and validate the plan draft |
-| `ralph_get_plan_draft` | `artifact.plan_read` | planning | Retrieve the current plan draft |
-| `ralph_discard_plan_draft` | `artifact.plan_write` | planning | Discard the current plan draft |
+| `ralph_submit_md_artifact` | `artifact.submit` | all | Validate and submit one complete markdown artifact document |
+| `ralph_verify_md_artifact` | `artifact.plan_read` | all | Check a markdown artifact without persisting it; diagnostics match submission |
+| `ralph_stage_md_artifact` | `artifact.submit` | all | Stage a large markdown artifact incrementally: append to (or replace) a persisted draft; returns section outline and non-gating diagnostics |
+| `ralph_edit_md_artifact` | `artifact.submit` | all | Edit a staged markdown artifact in place via `oldText`/`newText` pairs; the edit is itself a canonical submission |
+| `ralph_get_md_draft` | `artifact.plan_read` | all | Return the staged markdown draft and its current diagnostics (resume after interruption) |
+| `ralph_discard_md_draft` | `artifact.submit` | all | Discard the staged markdown draft for one artifact type |
+| `ralph_finalize_md_artifact` | `artifact.submit` | all | Validate the assembled draft with the submission gate and submit it canonically; on failure the draft is kept for repair |
+| `ralph_index_status` | `workspace.metadata_read` | all | Report the indexed exploration index health and freshness (lexical + Python/Markdown structure + graph) |
+| `ralph_reindex` | `workspace.read` | all | Run a bounded changed/full reindex of the indexed exploration index |
 | `report_progress` | `run.report_progress` | write drains, commit drains | Report progress to the pipeline |
 | `declare_complete` | `artifact.submit` | all | Declare that the agent has finished |
-| `coordinate` | `artifact.submit` | all | Parallel worker coordination |
+| `coordinate` | `artifact.plan_write` | planning | Parallel worker coordination |
 | `read_env` | `env.read` | write drains | Read an environment variable |
 | `web_search` | `web.search` | non-commit drains (default-enabled) | Search the web via configured backends |
 | `visit_url` | `web.visit` | non-commit drains (granted by default) | Fetch and extract text from a single URL |
+| `download_url` | `web.visit` | non-commit drains (granted by default) | Download a URL to a workspace path; bounded by `max_bytes`; same SSRF posture as `visit_url` |
 | `read_media` | `media.read` | all (default-on; opt-out via mcp.toml) | Read a media file — images, PDFs, documents, audio, video; inline or resource-reference delivery based on model capability |
 | `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Compatibility alias for `read_media` for image inputs; follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise) |
+| `ralph_graph` | `workspace.read` | all | Graph-native queries against the indexed substrate (`neighbors` / `path` / `impact` / `hubs` / `tests`) with bounded `timeout_ms` and cooperative `cancel`; see [Indexed exploration](#indexed-exploration) below |
 
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.
@@ -77,7 +76,7 @@ See `ralph.mcp.tools.names` for the canonical name constants.
 - `{"command": ["python", "-m", "pytest"]}`
 - `{"argv": ["python", "-m", "pytest"]}`
 
-Quoted arguments inside string forms are preserved, so values containing spaces stay as a single argument. Ralph Workflow still does **not** emulate a shell: control operators such as `|`, `&&`, `;`, `>`, and `<` are rejected instead of being interpreted. If you need file edits, git operations, or structured reads, prefer the dedicated MCP tools.
+Quoted arguments inside string forms are preserved, so values containing spaces stay as a single argument. When a command **string** carries an unquoted control operator (`|`, `&&`, `||`, `;`, `>`, `<`), `exec` runs it through `sh -c` so the pipeline is interpreted normally — but the command blacklist (privilege escalation, destructive system commands, external `curl`/`wget`, network tunnels, container escapes, bulk file operations) is enforced against **every** command in the pipeline first, so a blacklisted command hiding after a separator (`echo hi; sudo rm -rf /`) is still denied. An argv **array** (`{"command": ["ls", "|", "grep", "py"]}`) is always literal argv and is never shell-interpreted. If you need file edits, git operations, or structured reads, prefer the dedicated MCP tools.
 
 `exec` runs inside a private, resettable sandbox pool keyed by the absolute workspace path. The pool keeps the isolation contract strict while avoiding per-run overlay churn:
 
@@ -92,7 +91,7 @@ This pooling behavior is an internal optimization and concurrency contract, not 
 
 ### exec vs unsafe_exec / raw_exec
 
-When shell operators (`&&`, `|`, `||`, `;`) are needed, or when the sandbox pool overhead makes `exec` too slow for trivial commands, prefer `unsafe_exec` or its alias `raw_exec` instead. Both run the command directly in the real workspace directory with no sandbox isolation. Only version control commands (`git`, `hg`, `svn`) are blocked. Use with caution — there is no workspace isolation boundary.
+`exec` interprets shell operators (`&&`, `|`, `||`, `;`, `>`, `<`) in a command string, but keeps its command blacklist enforced against every command in the pipeline. Reach for `unsafe_exec` (or its alias `raw_exec`) only when you need a command the blacklist forbids on the bounded path — those tools run the command directly with **no** command blacklist (the only policy enforcement left is the VCS policy: `hg` / `svn` are NEVER allowed; `git` is allowed only for a fixed read-only subcommand whitelist — `status`, `diff`, `log`, `show`, `grep`, `blame`, `shortlog`, `describe`, `rev-parse`, `rev-list`, `ls-files`, `ls-tree`, `cat-file`, `whatchanged`, `name-rev`, `for-each-ref`, `show-ref`, `count-objects`, `var`; any state-mutating subcommand — `push`, `stash`, `checkout`, `commit`, `apply`, `tag`, ... — is denied) and require the separate `process.exec_unbounded` capability. For repository-state reads, prefer the dedicated `git_status`, `git_diff`, `git_log`, and `git_show` MCP tools regardless of which exec surface you choose. Use with caution.
 
 ### read_file response shapes
 
@@ -175,13 +174,39 @@ Capability grants follow these rules (implemented in `ralph.mcp.session_plan`):
 
 ## Artifact Submission
 
-Agents use `ralph_submit_artifact` to submit structured JSON payloads. Each type has a
-validated schema; an invalid payload is rejected and the error response points the agent
-to `.agent/artifact-formats/<type>.md` for payload-shape failures, or to
-`.agent/artifact-formats/artifact_formats_index.md` for artifact-type selection failures.
-For single-shot artifacts, the repair loop is: read the referenced file, rebuild the payload
-or artifact_type, and retry `ralph_submit_artifact`. For `plan`, repair the staged draft with
-the plan staging tools, then rerun `ralph_validate_draft` or `ralph_finalize_plan`.
+Agents use `ralph_submit_md_artifact` to submit one complete markdown document per
+artifact type (parameters: `artifact_type`, `content`). Each type has a registered
+markdown spec (`ralph/mcp/artifacts/markdown/specs/`); validation returns line-anchored
+diagnostics (`line`, `section`, `rule_id`, `message`, `severity`). Any `error`-severity
+diagnostic rejects the submission and nothing is persisted; `warning` diagnostics are
+reported but do not block. The repair loop is: fix the markdown the diagnostics point
+at (the format docs under `.agent/artifact-formats/` describe each type's expected
+shape), optionally re-check with `ralph_verify_md_artifact`, then retry
+`ralph_submit_md_artifact`. Because every submission stages its document as the
+artifact's draft, a rejected document can be repaired in place with
+`ralph_edit_md_artifact` (`oldText`/`newText` edits) — which is itself a submission:
+it is `ralph_submit_md_artifact` starting from the existing draft, and it persists the
+artifact canonically as soon as the edited draft validates, with no separate
+`ralph_finalize_md_artifact` call. Resending the whole document via
+`ralph_stage_md_artifact` (`mode="replace_all"`) is the wholesale-rewrite fallback.
+
+Large documents can be authored incrementally: `ralph_stage_md_artifact` accumulates
+markdown into a persisted per-type draft (reporting a section outline and non-gating
+diagnostics after each call), `ralph_get_md_draft` returns the draft for resumption
+after an interruption, `ralph_discard_md_draft` deletes it, and
+`ralph_finalize_md_artifact` runs the full submission gate over the assembled draft —
+submitting canonically on success and keeping the draft either way. `ralph_edit_md_artifact`
+applies `oldText`/`newText` edits to the draft with the same engine `edit_file` uses
+(sequential first-occurrence replacement, all-or-nothing on a miss, optional `dry_run`
+and `expected_content_hash`), then submits the result canonically whenever it validates;
+its response reports `submitted`, and a `dry_run` edit submits nothing. Submission is not
+phase completion — `declare_complete` stays separate — so a later edit within the same
+phase attempt simply resubmits. `ralph_discard_md_draft` is for a genuine wholesale
+restart only, never for validation-error recovery or a revision substantially similar to
+the draft. Drafts survive a same-phase retry or an analysis loopback
+and are cleared on genuine fresh phase entry; on a retry or loopback with no draft on
+disk, the canonical artifact is loaded back as the draft so a rejected document is
+immediately editable.
 
 | Artifact type | Submitted by | Description |
 |---------------|-------------|-------------|
@@ -243,9 +268,9 @@ callable. The capability strings are:
 | `workspace.edit` | `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file` |
 | `workspace.delete` | `delete_path` (distinct destructive capability) |
 | `process.exec_bounded` | `exec` (with command blacklist enforced) |
-| `artifact.submit` | `ralph_submit_artifact`, `declare_complete`, `coordinate` |
-| `artifact.plan_read` | `ralph_get_plan_draft`, `ralph_validate_draft` |
-| `artifact.plan_write` | `ralph_submit_plan_section`, `ralph_submit_plan_sections`, `ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`, `ralph_patch_step`, `ralph_finalize_plan`, `ralph_discard_plan_draft` |
+| `artifact.submit` | `ralph_submit_md_artifact`, `ralph_stage_md_artifact`, `ralph_finalize_md_artifact`, `ralph_discard_md_draft`, `declare_complete` |
+| `artifact.plan_read` | `ralph_verify_md_artifact`, `ralph_get_md_draft` |
+| `artifact.plan_write` | `coordinate` |
 | `run.report_progress` | `report_progress` |
 | `git.status_read` | `git_status`, `git_log`, `git_show` |
 | `git.diff_read` | `git_diff` |
@@ -261,6 +286,160 @@ Ralph-managed same-workspace parallel workers are dormant in the bundled default
 
 See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapping and
 `ralph-workflow/ralph/mcp/ARCHITECTURE.md` for the capability system design.
+
+## Indexed exploration
+
+Ralph Workflow maintains a deterministic SQLite+FTS5 indexed exploration
+substrate under `.agent/ralph-explore/` for the current workspace. The
+substrate is:
+
+* disposable — deleting `.agent/ralph-explore/` forces a cold rebuild and never affects source files or workflow artifacts;
+* git-ignored — the existing `.agent/` rule in `ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS` covers it (no new entry required);
+* fail-open — agents never block indefinitely on a refresh; tools return stale metadata instead of hanging.
+
+### Lifecycle
+
+Ralph Workflow refreshes the index deterministically:
+
+* before every development/fix agent invocation (bounded changed-file refresh);
+* after the agent invocation returns (bounded changed-file refresh);
+* on every successful workspace mutation (`write_file`, `edit_file`, `append_file`, `move_file`, `copy_file`, `delete_path`), which marks the affected paths dirty;
+* on demand via `ralph_reindex`.
+
+Agents do not need to call `ralph_reindex`; the lifecycle hooks keep the index fresh enough.
+
+### `ralph_index_status`
+
+Reports the live index health:
+
+```
+{
+  "enabled": true,
+  "index_exists": true,
+  "generation": 1,
+  "indexed_at": 1717000000.0,
+  "files_indexed": 12,
+  "files_stale": 0,
+  "last_job": {...},
+  "capabilities": ["evidence_lookup", "fts_search"],
+  "graph_backend": "sqlite",
+  "dirty_paths_count": 0,
+  "cold_index_required": false,
+  "last_refresh_kind": "changed",
+  "is_stale": false,
+  "stale_paths_count": 0,
+  "index_storage_bytes": 4096,
+  "gitignore_coverage": {"present": true, "rule": ".agent/"},
+  "managed_ignore_rule_present": true,
+  "managed_ignore_rule_repair": {
+    "required": false,
+    "action": "none",
+    "reason": "managed_ignore_rule_present"
+  }
+}
+```
+
+When the managed ignore rule is absent, `managed_ignore_rule_repair` carries
+the next Ralph Workflow seeding instruction so callers can repair the
+`.agent/ralph-explore/` coverage without guessing:
+
+```
+"managed_ignore_rule_repair": {
+  "required": true,
+  "action": "seed_default_gitignore",
+  "reason": "managed_ignore_rule_missing",
+  "target_file": "/path/to/.gitignore",
+  "patterns_to_append": [".agent/"],
+  "next_command": "ralph",
+  "description": "Run a normal `ralph` invocation (or `auto_seed_default_gitignore`) to seed the default .gitignore so .agent/ralph-explore/ stays a disposable cache and is not committed."
+}
+```
+
+The status handler never mutates the gitignore; the repair is a documented
+next step. The disabled payload (no handle) carries the same repair field so
+callers do not have to special-case the `enabled=False` path.
+
+### `ralph_reindex`
+
+Required param: `mode` in `changed | full`. Optional: `timeout_ms` (1-60000,
+default 5000; out-of-range or malformed values are rejected), `path_scope`
+(list of relative paths). Returns `job_status`, `generation`, `changed_files`,
+`failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`,
+`error_summary`. The handler enforces a maximum permissible `timeout_ms` so
+callers cannot extend the budget arbitrarily. `mode='full'` rebuilds into a
+temp generation and atomically swaps metadata only after success.
+
+### Indexed arguments on existing tools
+
+The shipped indexed exploration adds optional indexed arguments to existing read/search tools; the legacy behavior is preserved when the argument is absent or set to `use_index="never"`. `span_id`, `symbol`, `contains_symbol`, `return_evidence_ids`, `ranked`, `role`, and `changed_only` are backed by the live spans/symbols/edges tables and never return `disabled:phase2` for shipped capabilities:
+
+* `grep_files(use_index, rank_by, return_evidence_ids, max_snippet_lines, dedupe_by_symbol, include_graph_context)`. Eligibility: literal, whole-word literal, simple token, phrase. Non-eligible (regex, multiline, lookaround, backreferences, byte-oriented) falls back to live grep in `auto` and fails closed in `always`. `rank_by` accepts `match`, `symbol`, `graph`, `changed`, or `hybrid`. The symbol and graph components add their bonus only when the explore index has the relevant rows; when context is absent the reason line records `+0 component:no_indexed_data` so callers see why a component did not contribute.
+* `search_files(ranked, role, contains_symbol, changed_only, return_evidence_ids)`. `contains_symbol` awards the indexed `SEARCH_SYMBOL_MENTION` score component when the index has symbol rows; otherwise the rank degrades to deterministic path/role scoring with an explicit `+0 component:no_indexed_data` reason.
+* `read_file(evidence_id, span_id, symbol, context_lines, expected_content_hash, return_metadata)`. `span_id` and `symbol` resolve via the explore index when present; missing span/symbol lookups return `unknown_evidence` (or `ambiguous_symbol` when multiple candidates match). `expected_content_hash` fails closed before any mutation.
+* `read_multiple_files(items, per_item_max_bytes, return_metadata, fail_fast)`. Items may mix `{"path": ...}`, `{"path": ..., "line_start": ..., "line_end": ...}`, `{"evidence_id": ...}`, `{"span_id": ...}`, or `{"symbol": ...}`. Per-item metadata reports truncation, freshness, and fallback reason.
+
+### Indexed selection exclusivity
+
+`read_file` accepts exactly one of `path`, `evidence_id`, `span_id`, or `symbol`. Passing two or more selectors, or none, fails closed with a structured invalid-parameter error so the legacy wire shape is preserved while the indexed path is strictly exclusive. `read_multiple_files` accepts either a legacy `paths` list or an `items` list of mixed selectors; passing both, or neither, fails closed.
+
+### `ralph_graph`
+
+`ralph_graph` is registered alongside the read/search tools and answers graph-native questions. Shared inputs: `query_type` in `neighbors | path | impact | hubs | tests`, `target`, `relations`, `limit` (default 25, max 100), `freshness` in `required | prefer_fresh | allow_stale`, `timeout_ms` (1-30000, default 5000), `cancel` (bool, default false). Per-query inputs: `direction`/`depth` (neighbors); `target_b`/`max_paths`/`depth` (path); `change_kind` in `rename | signature | behavior | delete | unknown` (impact); `scope_path`/`relation`/`role` (hubs and tests). Every response includes `nodes`, `edges`, `paths`, `impacted_files`, `suggested_tests`, `confidence`, `provenance`, `evidence_ids`, `missing_data`, `index_generation`, `is_stale`, `truncated`, `cancelled`, `deadline_exceeded`. Graph output is evidence-backed and labels inferred or unknown data rather than claiming runtime certainty.
+
+**Bounded timeout and cancellation:** `timeout_ms` is a bounded per-call budget (1-30000). When the deadline elapses, the dispatcher returns a bounded, truthful incomplete result with `deadline_exceeded=true` and `missing_data=("deadline_exceeded",)`. `cancel=true` returns the same bounded contract with `cancelled=true` and `missing_data=("cancelled",)`. No mutable work is exposed to readers on either path.
+
+### `list_directory` and `directory_tree` indexed views
+
+`view` accepts `raw | compact | ranked | outline`. The raw view preserves the legacy plain-text/tree shape unless an explicit indexed selector is requested (for example `view=compact`, `include_counts=true`, `include_symbols=true`, `changed_only=true`, or `use_index=always`). `use_index` accepts `auto | always | never`; `never` is an unconditional bypass of the explore index. `changed_only` filters to entries with a dirty (mutated) descendant and respects the same dirty-path source as the mutation handlers. `directory_tree` decorates every node with a `path` field and decorates children before ranking, so `view=ranked` orders by indexed symbol counts.
+
+### `edit_file` indexed safety arguments
+
+`edit_file` accepts `expected_content_hash`, `target` (`evidence_id` / `span_id` / `symbol`), `match_strategy` in `exact | within_target | all_in_target`, `reindex` in `auto | skip | changed_blocking`, `impact_preview` (requires `dry_run=true`), and `return_evidence_updates`. Hash mismatches and stale evidence fail closed before any mutation. `impact_preview` runs a conservative `ralph_graph` impact query when the index has the target; otherwise it returns `impact_preview_unavailable` plus `impact_preview_unavailable_reason`.
+
+### Mutation freshness metadata
+
+Every successful `write_file`, `edit_file`, `append_file`, `move_file`, `copy_file`, and `delete_path` call returns a freshness block: `index_used`, `index_generation`, `is_stale`, `dirty_paths_count`, `stale_paths_count`, `reindex_in_progress`, and `changed_paths`. The block is omitted only when the explore index is disabled; the prompt never requires an agent to call `ralph_reindex` to keep the index current.
+
+### Indexed responses
+
+Every indexed response includes `index_used`, `index_generation`, `is_stale`, `stale_paths_count`, `dirty_paths_count`, `fallback_reason`. When `index_used=false`, the response came from live behavior; the caller can decide whether to retry.
+
+### Phase 1 / Phase 2 / Phase 3 / Phase 4 scope
+
+* Phase 1 is the lexical layer: FTS5 chunking + content hash + evidence handles. Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/`. The bootstrap seeder appends both the parent `.agent/` rule and the explicit `.agent/ralph-explore/` child rule so the disposable cache coverage is reported transparently in `.gitignore`.
+* Phase 2 ships Python AST and Markdown structure extraction in `ralph.mcp.explore.structure`. Spans, symbols, and edges live in the `spans`, `symbols`, and `edges` tables with `provenance` (`extracted` / `inferred` / `ambiguous`), `confidence`, and `extractor_version`. The relation set covers `contains`, `defines`, `imports`, `calls_syntax`, `references_text`, `inherits_syntax`, `tests`, and `mentions`. Malformed Python raises a typed `PythonExtractionError` that the reindex pipeline catches in its preflight so lexical/structure rows for the path remain queryable while the path is reported in `failed_files` and retried on the next pass. `ralph_graph` is the graph-native query surface (`neighbors`, `path`, `impact`, `hubs`, `tests`) with bounded per-call deadlines and cooperative cancellation.
+* Phase 3 wires `edit_file` safety arguments (`expected_content_hash`, `target`, `match_strategy`, `reindex`, `impact_preview`, `return_evidence_updates`) and the conservative impact preview through `ralph_graph`.
+* Phase 4 ships the compact/summary output modes for `git_status` (`format=compact`), `git_diff` (`format=summary`), and `exec` (`format=summary`). Phase 4 also ships `format=summary` for `git_log` and `git_show`, `format=summary` for `web_search` and `download_url`, `format=metadata` for `visit_url`, and `format=metadata` for `read_image` and `read_media`. The audit register records these as `add_argument` outcomes with a deterministic Phase 0 rationale; the per-tool `AuditCounters` are seeded in `ralph.mcp.explore._audit_seed_*` and can be overlaid by measured `run_benchmark` results via `refresh_audit_register(measurements)` (see `tests/test_explore_audit_register.py` for the deterministic overlay contract); `unsafe_exec` and its `raw_exec` alias are kept unchanged (`keep`) because the summary mode is intentionally only on the bounded exec path. The markdown artifact tools and the coordination tools are audited as `keep` because their existing structured behavior (bounded validation-diagnostic envelopes, bounded coordination payloads with structured marker suffixes) already matches the Phase-4 acceptance contract. No audited tool remains in an `audit found inefficient but no decision` state. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles of the form `ralph://exec/<spill-name>`; production sessions attach an `ExecResourceResolver` in `ralph.mcp.tools._exec_resource_uri` so those handles are replayable through `resources/read` (the resource template `ralph://exec/{spill_name}` is registered alongside `ralph://media/{artifact_id}`). Sessions without the resolver return a structured "resolver not attached" error so legacy clients get a consistent failure mode while the raw output remains available.
+* Phases 0-4 are all shipped; the only remaining deferred register entry is `phase_5` (NetworkX / Kuzu / hybrid ranking / Tree-sitter) tracked in `ralph.mcp.explore.deferred_phases` and gated on measured SQLite bottleneck evidence.
+
+### Compact format args (Phase 4)
+
+The following format args are added by Phase 4. Each is opt-in: the default value preserves the legacy output byte-for-byte so existing callers are unaffected. Invalid values return a structured `is_error=true` result naming the closed enum.
+
+| Tool | Format arg | Default | Summary/Metadata shape |
+|------|------------|---------|------------------------|
+| `git_log` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "count": int, "commits": [{"short_sha", "sha", "subject"}], "bytes_in", "bytes_out"}` |
+| `git_show` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "ref", "kind" (commit\|tag), "sha", "short_sha", "author_name", "author_email", "author_date", "subject", "parents", "bytes_in", "bytes_out", "truncated": false}` (no patch body) |
+| `web_search` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "query_length", "result_count", "results": [{title, url, snippet (<=240 chars), snippet_budget_bytes}], "backend_chain_used", "bytes_in", "bytes_out"}` |
+| `visit_url` | `format='raw'\|'metadata'` | `'raw'` | `{"format": "metadata", "status", "title", "effective_url", "content_type", "byte_count", "head_preview" (<=480 chars), "bytes_in", "bytes_out", "truncated", optional links (<=10)}` (full text body dropped) |
+| `download_url` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", ..., "sha256" (16 hex chars), "head_preview" (<=240 bytes), "bytes_in", "truncated"}` (downloaded body NOT echoed inline) |
+| `read_image` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind": "image", "mime_type", "size_bytes", "sha256", "width", "height" (PNG only), "resource_handle" (always null for read_image), "inline_only": true, ...}` |
+| `read_media` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind", "mime_type", "size_bytes", "sha256", "resource_handle" (`ralph://media/<artifact-id>` when registered, else null), "inline_only", "title", "path", ...}` |
+
+Example payloads:
+
+```json
+// git_log format=summary
+{"format": "summary", "count": 2, "commits": [{"short_sha": "abc1234", "sha": "abc1234", "subject": "first commit"}], "bytes_in": 32, "bytes_out": 128}
+
+// visit_url format=metadata (no inline text body)
+{"format": "metadata", "status": "ok", "title": "Hello", "effective_url": "https://example.com/", "content_type": "text/html; charset=utf-8", "byte_count": 1024, "head_preview": "...", "bytes_in": 4096, "bytes_out": 256, "truncated": true}
+
+// read_media format=metadata (resource_handle preserved for resource-reference deliveries)
+{"format": "metadata", "media_kind": "pdf", "mime_type": "application/pdf", "size_bytes": 1024, "sha256": "abcdef0123456789", "resource_handle": "ralph://media/12345678", "inline_only": false, "title": "report.pdf", "path": "report.pdf", "bytes_in": 1024, "bytes_out": 256, "truncated": false}
+```
+
+The optional `ralph_explore` wrapper remains deferred and is tracked in `ralph.mcp.explore.deferred_phases`. Optional NetworkX offline metrics, Kuzu adapters, and additional Tree-sitter parsers are also deferred until measured evidence justifies them.
 
 ## Related pages
 

@@ -1,11 +1,16 @@
-"""Reproduction and assertion tests for thinking preview and transcript noise reduction.
+"""Reproduction and assertion tests for streaming-block coalescing (S-7).
 
-These tests verify:
-- Thinking blocks show previews on open, checkpoint, and close
-- Tool_result shows a summary line for non-trivial content
-- Redundant META [activity] lines are suppressed when CONT [tool] was just emitted
-- Bare lifecycle tokens are suppressed for all provider prefixes
-- Longer sentences containing lifecycle tokens are NOT suppressed (negative cases)
+The pre-S-7 "META [activity] deduplication" work was about suppressing
+duplicate ``[activity]`` lines that piggybacked on the noisy per-fragment
+emission. With S-7 the streaming layer is silent during open / continue,
+so the ``[activity]`` duplicates disappear at the source rather than
+being deduped after the fact.
+
+These tests still pin the broader invariant the dedup work was trying
+to enforce — no duplicate ``[activity]``-badged lines for a single tool
+call — but in the post-S-7 shape the duplication is structurally
+impossible (the streaming layer never emits a redundant line), so the
+new assertions are about the resulting shape.
 """
 
 from __future__ import annotations
@@ -22,11 +27,6 @@ from ralph.display.parallel_display import ParallelDisplay
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Minimum preview lines expected: one for block open, one for block close
-_MIN_PREVIEW_LINES_FOR_THINKING_BLOCK = 2
-# Threshold for triggering thinking preview on long continuation fragments
-_THINKING_PREVIEW_MIN_CHARS = 80
-
 
 def _make_display(
     tmp_path: Path,
@@ -40,49 +40,39 @@ def _make_display(
     return pd, buf, console
 
 
-def _extract_lines(output: str) -> list[str]:
-    """Extract plain text lines from console output, stripping Rich formatting."""
-    return [line.strip() for line in output.strip().split("\n") if line.strip()]
+def _plain_lines(output: str) -> list[str]:
+    """Return the non-empty plain lines from a Rich console dump."""
+    return [line for line in output.splitlines() if line.strip()]
 
 
-def _find_line_index(lines: list[str], pattern: str) -> int | None:
-    """Find index of first line containing pattern, or None."""
-    for i, line in enumerate(lines):
-        if pattern in line:
-            return i
-    return None
+def _activity_meta_lines(output: str) -> list[str]:
+    """Return the lines that carry the META [activity] badge."""
+    return [
+        line
+        for line in _plain_lines(output)
+        if "[activity]" in line and "META" in line
+    ]
 
 
-def _find_line_index_after(lines: list[str], pattern: str, after_idx: int) -> int | None:
-    """Find index of first line containing pattern after a given index."""
-    for i in range(after_idx + 1, len(lines)):
-        if pattern in lines[i]:
-            return i
-    return None
+class TestStreamingBlockCoalescingNoActivityDuplication:
+    """S-7: the streaming layer is silent, so [activity] lines cannot duplicate."""
 
+    def test_single_tool_use_emits_at_most_one_activity_line(self, tmp_path: Path) -> None:
+        """A single tool_use emits at most one META [activity] line.
 
-class TestMetaActivityDeduplication:
-    """Step 4 & 6: META [activity] deduplication tests."""
-
-    def test_single_tool_use_emits_only_one_activity_line(self, tmp_path: Path) -> None:
-        """Step 4: A single tool_use event should produce at most one [activity] META line.
-
-        When emit_activity_line is called for a tool_use and then _activity_lines
-        runs on a snapshot with the same tool+path, the META [activity] line
-        should be suppressed (deduplicated with the preceding CONT [tool] line).
+        Post-S-7, the streaming layer is silent during open / continue.
+        Tool_use emits its own single entry. The META [activity] line
+        (if any) surfaces once at most.
         """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
-        # Emit a tool_use event
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TOOL_USE,
             content="mcp__ralph__read_file",
             metadata={"input": {"path": "ralph-workflow/ralph/prompts/template_registry.py"}},
         )
-
-        # Emit another event to trigger snapshot processing
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TEXT,
@@ -90,124 +80,89 @@ class TestMetaActivityDeduplication:
             metadata={},
         )
 
-        pd.stop()
         out = buf.getvalue()
-        lines = _extract_lines(out)
-
-        # Count [activity] META lines
-        activity_lines = [line for line in lines if "[activity]" in line and "META" in line]
+        activity_lines = _activity_meta_lines(out)
         assert len(activity_lines) <= 1, (
-            f"Expected at most one [activity] META line, got {len(activity_lines)}. "
-            f"Lines: {activity_lines}. Output:\n{out}"
+            f"Expected at most 1 META [activity] line, got {len(activity_lines)}: "
+            f"{activity_lines}\nFull output:\n{out}"
         )
 
-    def test_activity_deduplication_with_identical_tool_path(self, tmp_path: Path) -> None:
-        """Step 4: Identical tool+path should deduplicate to single META [activity].
+    def test_two_tool_uses_with_identical_path_emits_at_most_one_activity(
+        self, tmp_path: Path
+    ) -> None:
+        """Two identical tool_use calls do not duplicate the activity badge.
 
-        When two snapshots have the same tool and path, the META [activity]
-        line for the second snapshot should be suppressed.
+        Post-S-7, the streaming layer never emits a redundant activity
+        line — the close-only emission means a tool_use event surfaces
+        exactly once.
         """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
-        # Emit first tool_use
-        pd.emit_parsed_event(
-            unit_id=unit_id,
-            kind=ActivityEventKind.TOOL_USE,
-            content="mcp__ralph__read_file",
-            metadata={"input": {"path": "ralph-workflow/ralph/prompts/template_registry.py"}},
-        )
+        for _ in range(2):
+            pd.emit_parsed_event(
+                unit_id=unit_id,
+                kind=ActivityEventKind.TOOL_USE,
+                content="mcp__ralph__read_file",
+                metadata={"input": {"path": "ralph-workflow/ralph/prompts/template_registry.py"}},
+            )
+            pd.emit_parsed_event(
+                unit_id=unit_id,
+                kind=ActivityEventKind.TEXT,
+                content="result.",
+                metadata={},
+            )
 
-        # Emit text to close any blocks and process snapshot
-        pd.emit_parsed_event(
-            unit_id=unit_id,
-            kind=ActivityEventKind.TEXT,
-            content="First result.",
-            metadata={},
-        )
-
-        # Emit second tool_use with SAME tool+path
-        pd.emit_parsed_event(
-            unit_id=unit_id,
-            kind=ActivityEventKind.TOOL_USE,
-            content="mcp__ralph__read_file",
-            metadata={"input": {"path": "ralph-workflow/ralph/prompts/template_registry.py"}},
-        )
-
-        # Emit text again
-        pd.emit_parsed_event(
-            unit_id=unit_id,
-            kind=ActivityEventKind.TEXT,
-            content="Second result.",
-            metadata={},
-        )
-
-        pd.stop()
         out = buf.getvalue()
-        lines = _extract_lines(out)
-
-        # Count [activity] META lines - should be suppressed for second identical tool_use
-        activity_lines = [line for line in lines if "[activity]" in line and "META" in line]
-
-        # With proper deduplication, we should see at most one [activity] META line
-        # for the tool_use events (the second one should be suppressed)
-        tool_activity_lines = [line for line in activity_lines if "mcp__ralph__read_file" in line]
-
-        # There should be at most one [activity] META line for this tool
+        tool_activity_lines = [
+            line for line in _activity_meta_lines(out) if "mcp__ralph__read_file" in line
+        ]
         assert len(tool_activity_lines) <= 1, (
-            f"Expected at most one [activity] META line for identical tool_use, "
-            f"got {len(tool_activity_lines)}. Lines: {tool_activity_lines}. "
-            f"Full output:\n{out}"
+            f"Expected at most 1 [activity] META line for the tool, got "
+            f"{len(tool_activity_lines)}: {tool_activity_lines}\nFull output:\n{out}"
         )
 
-    def test_activity_not_suppressed_when_path_differs(self, tmp_path: Path) -> None:
-        """Step 4: META [activity] NOT suppressed when path is different.
+    def test_tool_use_with_different_paths_preserves_both(self, tmp_path: Path) -> None:
+        """Tool calls with different paths still both surface in the log.
 
-        If the tool is the same but the path differs, the META [activity]
-        should NOT be suppressed because the signature won't match.
+        The dedup invariant only kicks in for identical signatures; a
+        different path produces a different ``tool_signature`` and must
+        not be collapsed.
         """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
 
-        # Emit first tool_use with path A
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TOOL_USE,
             content="mcp__ralph__read_file",
             metadata={"input": {"path": "ralph-workflow/ralph/prompts/template_registry.py"}},
         )
-
-        # Emit text
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TEXT,
-            content="First result.",
+            content="first result.",
             metadata={},
         )
 
-        # Emit second tool_use with SAME tool but DIFFERENT path
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TOOL_USE,
             content="mcp__ralph__read_file",
             metadata={"input": {"path": "ralph-workflow/ralph/display/plain_renderer.py"}},
         )
-
-        # Emit text again
         pd.emit_parsed_event(
             unit_id=unit_id,
             kind=ActivityEventKind.TEXT,
-            content="Second result.",
+            content="second result.",
             metadata={},
         )
 
-        pd.stop()
         out = buf.getvalue()
 
-        # When path differs, the META [activity] should NOT be suppressed
-        # So we should see [activity] lines for both tool calls
-        # This test passes if we see the tool mentioned with different paths
-        assert "template_registry.py" in out, f"First path should appear. Output:\n{out}"
+        assert "template_registry.py" in out, (
+            f"First path should appear:\n{out}"
+        )
         assert "plain_renderer.py" in out, (
-            f"Second path should appear (not suppressed). Output:\n{out}"
+            f"Second path should appear (not suppressed):\n{out}"
         )

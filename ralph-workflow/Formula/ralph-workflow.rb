@@ -25,10 +25,10 @@ class RalphWorkflow < Formula
   license "AGPL-3.0-or-later"
 
   # TODO: Update URL and sha256 after first release (see banner above)
-  # url "https://codeberg.org/RalphWorkflow/Ralph-Workflow/releases/download/vVERSION/ralph-darwin-universal2.tar.gz"
+  # url "https://github.com/Ralph-Workflow/Ralph-Workflow/releases/download/vVERSION/ralph-darwin-universal2.tar.gz"
   # sha256 "SHA256"
 
-  head "https://codeberg.org/RalphWorkflow/Ralph-Workflow.git", branch: "main"
+  head "https://github.com/Ralph-Workflow/Ralph-Workflow.git", branch: "main"
 
   def install
     # Install the standalone binary (no Python required)

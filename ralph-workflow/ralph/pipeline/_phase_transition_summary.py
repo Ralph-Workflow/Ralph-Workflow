@@ -40,7 +40,9 @@ if TYPE_CHECKING:
 
 
 def _snapshot_from_state_func() -> _SnapshotFromStateFn:
-    module = cast("_SnapshotModule", import_module("ralph.display.snapshot"))
+    module = cast(
+        "_SnapshotModule", import_module("ralph.display.snapshot")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.snapshot_from_state
 
 

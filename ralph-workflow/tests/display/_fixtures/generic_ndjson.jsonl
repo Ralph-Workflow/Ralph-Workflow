@@ -1,0 +1,3 @@
+{"kind":"text","provider":"generic","content":"Generic agent is working.","metadata":{}}
+{"kind":"status","provider":"generic","content":"Waiting for input.","metadata":{}}
+{"kind":"error","provider":"generic","content":"No parser metadata supplied.","metadata":{}}

@@ -90,8 +90,98 @@ def file_read_specs() -> list[ToolSpec]:
                             ),
                             "default": 5_000_000,
                         },
+                        "evidence_id": {
+                            "type": "string",
+                            "description": (
+                                "Indexed evidence handle returned by a prior "
+                                "grep/search/read call. Resolves the exact span "
+                                "plus ``context_lines``. Fails closed on stale "
+                                "expected_content_hash."
+                            ),
+                        },
+                        "span_id": {
+                            "type": "string",
+                            "description": (
+                                "Indexed symbol-span selector. Resolves the "
+                                "exact span via the explore index when present; "
+                                "returns ``unknown_evidence`` when the span id "
+                                "is not in the store."
+                            ),
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": (
+                                "Indexed symbol selector. Resolves via the "
+                                "explore index when present; returns "
+                                "``unknown_evidence`` (or ``ambiguous_symbol`` "
+                                "when multiple candidates match) when the "
+                                "symbol is not in the store."
+                            ),
+                        },
+                        "expected_content_hash": {
+                            "type": "string",
+                            "description": (
+                                "Precondition: fail closed when the file's current "
+                                "SHA-256 does not match this value."
+                            ),
+                        },
+                        "context_lines": {
+                            "type": "integer",
+                            "description": ("Number of context lines around an indexed span."),
+                            "default": 0,
+                        },
+                        "return_metadata": {
+                            "type": "boolean",
+                            "description": (
+                                "Include content hash, generation, and freshness in the response."
+                            ),
+                            "default": False,
+                        },
                     },
-                    "required": ["path"],
+                    # AC-01: exactly-one selector alternative. The
+                    # handler accepts legacy ``path`` reads OR a single
+                    # indexed selector (``evidence_id`` / ``span_id`` /
+                    # ``symbol``). Mixed or empty selector sets are
+                    # rejected by schema validation BEFORE the handler
+                    # runs.
+                    "oneOf": [
+                        {
+                            "title": "Path selector",
+                            "required": ["path"],
+                            "properties": {
+                                "evidence_id": False,
+                                "span_id": False,
+                                "symbol": False,
+                            },
+                        },
+                        {
+                            "title": "Evidence selector",
+                            "required": ["evidence_id"],
+                            "properties": {
+                                "path": False,
+                                "span_id": False,
+                                "symbol": False,
+                            },
+                        },
+                        {
+                            "title": "Span selector",
+                            "required": ["span_id"],
+                            "properties": {
+                                "path": False,
+                                "evidence_id": False,
+                                "symbol": False,
+                            },
+                        },
+                        {
+                            "title": "Symbol selector",
+                            "required": ["symbol"],
+                            "properties": {
+                                "path": False,
+                                "evidence_id": False,
+                                "span_id": False,
+                            },
+                        },
+                    ],
                     "allOf": [
                         {"not": {"required": ["line_start", "offset"]}},
                         {"not": {"required": ["line_start", "limit"]}},
@@ -168,8 +258,62 @@ def file_read_specs() -> list[ToolSpec]:
                             "items": {"type": "string"},
                             "description": "List of file paths to read.",
                         },
+                        "items": {
+                            "type": "array",
+                            "description": (
+                                "Mixed read selectors. Each item is one of "
+                                '{"path": "..."}, {"path": "...", '
+                                '"line_start": N, "line_end": N}, '
+                                '{"evidence_id": "..."}, {"span_id": "..."}, '
+                                'or {"symbol": "..."}. The indexed selectors '
+                                "resolve via the explore index when present."
+                            ),
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "per_item_max_bytes": {
+                            "type": "integer",
+                            "description": (
+                                "Cap each returned item to this many bytes (0 = no cap)."
+                            ),
+                            "default": 0,
+                        },
+                        "return_metadata": {
+                            "type": "boolean",
+                            "description": (
+                                "Include content hash, generation, and freshness per item."
+                            ),
+                            "default": False,
+                        },
+                        "fail_fast": {
+                            "type": "boolean",
+                            "description": (
+                                "When true, a stale indexed item fails the entire "
+                                "call. When false, partial results are returned "
+                                "with per-item error metadata."
+                            ),
+                            "default": True,
+                        },
                     },
-                    "required": ["paths"],
+                    # AC-01: exactly one of ``paths`` (legacy full-
+                    # path reads) or ``items`` (mixed selector batch
+                    # including indexed ``evidence_id``/``span_id``/
+                    # ``symbol`` entries) must be supplied; neither
+                    # alone nor both is a structural schema error.
+                    "oneOf": [
+                        {
+                            "title": "Legacy paths",
+                            "required": ["paths"],
+                            "properties": {"items": False},
+                        },
+                        {
+                            "title": "Mixed selector items",
+                            "required": ["items"],
+                            "properties": {"paths": False},
+                        },
+                    ],
                 },
                 required_capability=McpCapability.WORKSPACE_READ.value,
             ),

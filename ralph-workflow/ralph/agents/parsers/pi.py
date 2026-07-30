@@ -175,10 +175,43 @@ _PI_PASSTHROUGH_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
         "queue_update",
         "compaction_start",
         "compaction_end",
-        "auto_retry_start",
-        "auto_retry_end",
     }
 )
+
+
+#: ``message.stopReason`` value pi sets when the model turn failed
+#: outright (provider unreachable, model rejected, transport error).
+#: On this path ``message.content`` is EMPTY and the human-readable
+#: cause lives in ``message.errorMessage`` -- so the content walk in
+#: :meth:`_PiDispatch._emit_message_content` yields nothing and the
+#: failure is invisible unless ``errorMessage`` is surfaced
+#: explicitly.  Distinct from ``"length"`` (context exhaustion),
+#: which :meth:`_PiDispatch._handle_done` already handles.
+_PI_ERROR_STOP_REASON = "error"
+
+
+def _message_failure_text(message: object) -> str:
+    """Return the human-readable cause of a failed pi model turn.
+
+    Returns ``""`` unless ``message`` is a dict whose ``stopReason``
+    is :data:`_PI_ERROR_STOP_REASON`.  When the stop reason marks a
+    failure but ``errorMessage`` is missing or blank, a generic
+    fallback is returned so the failure still surfaces as an error
+    line rather than being silently dropped -- an unexplained
+    failure is still a failure.
+    """
+    if not isinstance(message, dict):
+        return ""
+    message_dict = cast("dict[str, object]", message)
+    stop_reason = message_dict.get("stopReason")
+    if not isinstance(stop_reason, str):
+        return ""
+    if stop_reason.casefold() != _PI_ERROR_STOP_REASON:
+        return ""
+    error_message = message_dict.get("errorMessage")
+    if isinstance(error_message, str) and error_message.strip():
+        return error_message
+    return "model turn failed (stopReason=error)"
 
 
 _PI_STOP_EVENTS: frozenset[str] = frozenset({"agent_end", "turn_end"})
@@ -221,6 +254,8 @@ class _PiDispatch:
             "tool_execution_update": self._handle_tool_execution_update,
             "tool_execution_end": self._handle_tool_execution_end,
             "extension_error": self._handle_extension_error,
+            "auto_retry_start": self._handle_auto_retry_start,
+            "auto_retry_end": self._handle_auto_retry_end,
         }
         for _evt in _PI_PASSTHROUGH_TOP_LEVEL_EVENTS:
             self._top_level_handlers[_evt] = _make_passthrough(_evt)
@@ -286,7 +321,88 @@ class _PiDispatch:
         for key in list(self._owner._accumulators.keys()):
             self._owner._accumulators.pop(key, None)
         yield from self._emit_message_content(obj, stripped)
+        # A failed turn carries an EMPTY ``content`` array, so the walk
+        # above yields nothing and the cause would be lost.  Surface it
+        # here -- ``message_end`` is the authoritative terminal snapshot
+        # for the message, so this fires exactly once per failed turn.
+        # ``turn_end`` / ``agent_end`` carry copies of the SAME message
+        # object and deliberately do NOT re-emit it (see
+        # ``_PI_STOP_EVENTS`` handling in :meth:`dispatch`).
+        failure_text = _message_failure_text(obj.get("message"))
+        if failure_text:
+            yield AgentOutputLine(
+                type="error",
+                content=failure_text,
+                raw=stripped,
+                metadata=obj,
+            )
         self._owner.reset_emission_flags()
+
+    def _handle_auto_retry_start(
+        self,
+        obj: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Announce a retry attempt with an operator-readable body.
+
+        Emitted with a populated ``content`` because a content-free
+        line renders as a bodiless ``WARN`` banner downstream, which
+        tells the operator nothing about why the retry happened.
+        This stays a non-``error`` line: pi is still inside its own
+        bounded retry ladder and may yet succeed; only the exhausted
+        ladder (``auto_retry_end`` with ``success=false``) is terminal.
+        """
+        attempt = obj.get("attempt")
+        max_attempts = obj.get("maxAttempts")
+        error_message = obj.get("errorMessage")
+        parts: list[str] = []
+        if isinstance(attempt, int) and isinstance(max_attempts, int):
+            parts.append(f"retry {attempt}/{max_attempts}")
+        elif isinstance(attempt, int):
+            parts.append(f"retry {attempt}")
+        else:
+            parts.append("retry")
+        delay_ms = obj.get("delayMs")
+        if isinstance(delay_ms, int) and not isinstance(delay_ms, bool):
+            parts.append(f"after {delay_ms}ms")
+        if isinstance(error_message, str) and error_message.strip():
+            parts.append(f"- {error_message}")
+        yield AgentOutputLine(
+            type="auto_retry_start",
+            content=" ".join(parts),
+            raw=stripped,
+            metadata=obj,
+        )
+
+    def _handle_auto_retry_end(
+        self,
+        obj: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Close the retry ladder; an exhausted ladder is a hard error.
+
+        ``success=false`` means pi gave up after ``maxAttempts`` and
+        will exit rc=0 with no useful work done.  That MUST surface as
+        ``type='error'`` carrying ``finalError`` so the completion gate
+        and the failure classifier can see a real cause instead of a
+        generic "no completion evidence" exit.
+        """
+        success = obj.get("success")
+        if success is False:
+            final_error = obj.get("finalError")
+            content = (
+                final_error
+                if isinstance(final_error, str) and final_error.strip()
+                else "agent retries exhausted"
+            )
+            yield AgentOutputLine(
+                type="error",
+                content=content,
+                raw=stripped,
+                metadata=obj,
+            )
+            return
+        yield AgentOutputLine(type="auto_retry_end", raw=stripped, metadata=obj)
 
     def _handle_message_update(
         self,
@@ -317,7 +433,7 @@ class _PiDispatch:
             type="tool_use",
             content=tool_name,
             raw=stripped,
-            metadata={"tool": tool_name, "args": args},
+            metadata={"tool": tool_name, "args": args, "tool_call_id": obj.get("toolCallId")},
         )
 
     def _handle_tool_execution_update(
@@ -325,14 +441,9 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        partial = obj.get("partialResult", "")
-        content = partial if isinstance(partial, str) else _extract_tool_result_text(partial)
-        yield AgentOutputLine(
-            type="tool_result",
-            content=content,
-            raw=stripped,
-            metadata=obj,
-        )
+        """Keep partial tool updates in raw capture until the terminal event arrives."""
+        del obj, stripped
+        return iter(())
 
     def _handle_tool_execution_end(
         self,
@@ -347,14 +458,22 @@ class _PiDispatch:
                 type="error",
                 content=extracted if extracted else "tool execution failed",
                 raw=stripped,
-                metadata=obj,
+                metadata={
+                    **obj,
+                    "tool": str(obj.get("toolName", "unknown")),
+                    "tool_call_id": obj.get("toolCallId"),
+                },
             )
             return
         yield AgentOutputLine(
             type="tool_result",
             content=extracted,
             raw=stripped,
-            metadata=obj,
+            metadata={
+                **obj,
+                "tool": str(obj.get("toolName", "unknown")),
+                "tool_call_id": obj.get("toolCallId"),
+            },
         )
 
     def _handle_extension_error(
@@ -377,9 +496,7 @@ class _PiDispatch:
         if content_index in self._owner.saw_text_end_by_index:
             return
         acc = self._get_text_accumulator(content_index)
-        yield from acc.accumulate(
-            delta, stripped, kind=_TEXT_KIND, keep_current_when_empty=True
-        )
+        yield from acc.accumulate(delta, stripped, kind=_TEXT_KIND, keep_current_when_empty=True)
 
     def _handle_text_end(
         self,
@@ -392,9 +509,7 @@ class _PiDispatch:
         acc_key = _accumulator_key(_TEXT_KIND, content_index)
         if content:
             self._owner._accumulators.pop(acc_key, None)
-            yield AgentOutputLine(
-                type=_TEXT_KIND, content=content, raw=stripped, metadata=sub
-            )
+            yield AgentOutputLine(type=_TEXT_KIND, content=content, raw=stripped, metadata=sub)
             return
         acc = self._owner._accumulators.pop(acc_key, None)
         if acc is not None:
@@ -446,16 +561,14 @@ class _PiDispatch:
         sub: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        return
-        yield  # pragma: no cover - explicit generator for the type checker
+        return iter([])
 
     def _handle_toolcall_delta(
         self,
         sub: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        return
-        yield  # pragma: no cover - explicit generator for the type checker
+        return iter([])
 
     def _handle_toolcall_end(
         self,
@@ -468,7 +581,7 @@ class _PiDispatch:
         if isinstance(tool_call, dict):
             tool_call_dict = cast("dict[str, object]", tool_call)
             tool_name = str(tool_call_dict.get("name", "unknown"))
-            args = tool_call_dict.get("input", {})
+            args = tool_call_dict.get("arguments", tool_call_dict.get("input", {}))
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -519,18 +632,14 @@ class _PiDispatch:
                 continue
             block_dict = cast("dict[str, object]", block)
             block_type = str(block_dict.get("type", ""))
-            if (
-                block_type == _TEXT_KIND
-                and block_index not in self._owner.saw_text_end_by_index
-            ):
+            if block_type == _TEXT_KIND and block_index not in self._owner.saw_text_end_by_index:
                 acc_key = _accumulator_key(_TEXT_KIND, block_index)
                 self._owner._accumulators.pop(acc_key, None)
                 self._owner.saw_text_end_by_index.add(block_index)
                 yield from self._handle_text_block(block_dict, stripped)
             elif (
                 block_type == _THINKING_KIND
-                and block_index
-                not in self._owner.saw_thinking_end_by_index
+                and block_index not in self._owner.saw_thinking_end_by_index
             ):
                 acc_key = _accumulator_key(_THINKING_KIND, block_index)
                 self._owner._accumulators.pop(acc_key, None)
@@ -713,7 +822,13 @@ class PiParser(NdjsonParserBase):
         self,
         obj: dict[str, object],
         raw: str,
+        source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
+        # DA-002 (wt-028-display S-2 / AC-01): the base class
+        # post-processes the iterator to attach ``source_timestamp``
+        # to any AgentOutputLine that lacks one, so the per-event
+        # dispatcher itself does not need to thread the parameter.
+        del source_timestamp  # accepted for override compatibility; ignored
         # R5: register any embedded PID into the shared registry BEFORE
         # the dispatcher routes the event.
         self._try_register_subagent_pid_from_obj(obj)

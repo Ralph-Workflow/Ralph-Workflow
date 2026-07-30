@@ -47,8 +47,15 @@ def _base_snapshot(
     )
 
 
-def test_waiting_progress_renders_info_level() -> None:
-    """A PROGRESS waiting_status_line is emitted as INFO level with [waiting] tag."""
+def test_waiting_progress_renders_progress_signal() -> None:
+    """A PROGRESS waiting_status_line is emitted as a [waiting] line with no plumbing chrome.
+
+    wt-028-display S-4 retires the LEVEL badge on the chrome prefix;
+    the severity is now carried by the body text (PROGRESS == "still
+    active") and by the renderer's own icon+label carrier. The
+    rendered line keeps the [waiting] tag and the body verbatim, and
+    carries no plumbing vocabulary (no INFO/WARN/ERROR/META/OUT).
+    """
     pd, buf = _make_display()
     line = "Background child work still active (run=60s, cumulative=120s, ceiling=1800s)"
     snap = _base_snapshot(waiting_status_line=line)
@@ -56,11 +63,14 @@ def test_waiting_progress_renders_info_level() -> None:
     out = buf.getvalue()
     assert "[waiting]" in out
     assert "still active" in out
-    assert "INFO" in out
+    for forbidden in ("INFO", "WARN", "ERROR", "META", "OUT"):
+        assert forbidden not in out, (
+            f"wt-028-display S-4: PROGRESS line must not leak {forbidden!r} chrome; got: {out!r}"
+        )
 
 
-def test_waiting_suspected_frozen_renders_warn_level() -> None:
-    """A SUSPECTED_FROZEN waiting_status_line is emitted as WARN level with [waiting] tag."""
+def test_waiting_suspected_frozen_renders_frozen_signal() -> None:
+    """A SUSPECTED_FROZEN waiting_status_line is emitted as a [waiting] line with frozen body."""
     pd, buf = _make_display()
     line = (
         "Background child work may be frozen "
@@ -71,11 +81,14 @@ def test_waiting_suspected_frozen_renders_warn_level() -> None:
     out = buf.getvalue()
     assert "[waiting]" in out
     assert "may be frozen" in out
-    assert "WARN" in out
+    for forbidden in ("INFO", "WARN", "ERROR", "META", "OUT"):
+        assert forbidden not in out, (
+            f"wt-028-display S-4: SUSPECTED_FROZEN line must not leak {forbidden!r} chrome; got: {out!r}"
+        )
 
 
-def test_waiting_hard_stop_renders_error_level() -> None:
-    """A HARD_STOP waiting_status_line is emitted as ERROR level with [waiting] tag."""
+def test_waiting_hard_stop_renders_hard_stop_signal() -> None:
+    """A HARD_STOP waiting_status_line is emitted as a [waiting] line with the ceiling body."""
     pd, buf = _make_display()
     snap = _base_snapshot(
         waiting_status_line=(
@@ -87,7 +100,10 @@ def test_waiting_hard_stop_renders_error_level() -> None:
     out = buf.getvalue()
     assert "[waiting]" in out
     assert "hit hard ceiling" in out
-    assert "ERROR" in out
+    for forbidden in ("INFO", "WARN", "ERROR", "META", "OUT"):
+        assert forbidden not in out, (
+            f"wt-028-display S-4: HARD_STOP line must not leak {forbidden!r} chrome; got: {out!r}"
+        )
 
 
 def test_waiting_line_does_not_overwrite_activity_line() -> None:
@@ -107,8 +123,14 @@ def test_waiting_line_does_not_overwrite_activity_line() -> None:
     assert "mcp__ralph__read_file" in out
 
 
-def test_waiting_exited_renders_info_level_once() -> None:
-    """An EXITED waiting_status_line is emitted as INFO [waiting] exactly once."""
+def test_waiting_exited_renders_exited_signal_once() -> None:
+    """An EXITED waiting_status_line is emitted as a [waiting] line exactly once.
+
+    The line carries the EXITED body verbatim ("resumed activity")
+    and never leaks plumbing-vocabulary chrome (no INFO/WARN/ERROR/
+    META/OUT). The deduplication contract (one line per distinct
+    status) is unchanged from the prior round.
+    """
     pd, buf = _make_display()
     snap = _base_snapshot(
         waiting_status_line="Background child work resumed activity (run=60s, cumulative=120s)",
@@ -117,7 +139,13 @@ def test_waiting_exited_renders_info_level_once() -> None:
     out = buf.getvalue()
     assert "[waiting]" in out
     assert "resumed activity" in out
-    assert "INFO" in out
+    assert out.count("[waiting]") == 1, (
+        f"EXITED line must dedupe to one [waiting] tag; got: {out!r}"
+    )
+    for forbidden in ("INFO", "WARN", "ERROR", "META", "OUT"):
+        assert forbidden not in out, (
+            f"wt-028-display S-4: EXITED line must not leak {forbidden!r} chrome; got: {out!r}"
+        )
 
 
 def test_waiting_exited_does_not_persist_after_cleared() -> None:

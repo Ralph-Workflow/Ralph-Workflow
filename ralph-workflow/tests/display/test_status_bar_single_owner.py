@@ -22,16 +22,17 @@ Scanned checks (AST-based, no subprocess, no network, no real file I/O):
 3. ``ralph/cli/**/*.py`` and ``ralph/runtime/**/*.py`` are forbidden from
    constructing ``StatusBar`` or starting/stopping the composed instance.
 
-The AST cache is pre-warmed at module import time (matching the
-``tests/display/test_single_mode_anti_drift.py`` pattern) so the per-test
-scan runs in well under 1 s.
+The contract is evaluated in one scan so xdist does not repeat the same
+source-tree parse on separate workers for each clause.
 """
 
 from __future__ import annotations
 
 import ast
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
+
+import pytest
 
 _RALPH_DIR = Path(__file__).parent.parent.parent / "ralph"
 _SCAN_DIRS = (
@@ -44,12 +45,9 @@ _FORBIDDEN_DIRS = (
     _RALPH_DIR / "runtime",
 )
 _CONSTRUCTOR_FILE = "parallel_display.py"
-_START_LINE_NUMBER = 1401
-_STOP_LINE_NUMBER = 1409
-_CTOR_LINE_NUMBER = 521
 
 
-@lru_cache(maxsize=1)
+@cache
 def _scan_targets() -> tuple[Path, ...]:
     """Return every ``*.py`` file under the three scan directories."""
     files: list[Path] = []
@@ -63,10 +61,16 @@ def _scan_targets() -> tuple[Path, ...]:
     return tuple(files)
 
 
-@lru_cache(maxsize=256)
+@cache
 def _parse(path: Path) -> ast.Module:
     """Return the AST module for ``path``, parsed once and cached."""
     return ast.parse(path.read_text(encoding="utf-8"))
+
+
+def _mentions_status_bar(path: Path) -> bool:
+    """Return whether ``path`` can contain a lifecycle site of interest."""
+    source = path.read_text(encoding="utf-8")
+    return "StatusBar" in source or "status_bar" in source
 
 
 def _rel(path: Path) -> str:
@@ -130,114 +134,92 @@ def _attribute_call_sites(
     return sites
 
 
-# Pre-warm the AST cache at import time so per-test SIGALRM windows
-# are not spent re-parsing files.
-for _path in _scan_targets():
-    _parse(_path)
+def _site_is_in_method(
+    tree: ast.Module,
+    lineno: int,
+    *,
+    class_name: str,
+    method_name: str,
+) -> bool:
+    """Return whether ``lineno`` belongs to the named class method."""
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for child in node.body:
+            if (
+                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name == method_name
+                and child.lineno <= lineno <= (child.end_lineno or child.lineno)
+            ):
+                return True
+    return False
 
 
-def test_status_bar_only_instantiated_inside_parallel_display() -> None:
-    """``StatusBar(...)`` constructor sites appear ONLY in parallel_display.py.
-
-    The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.__init__``
-    at line 521 (``self._status_bar: StatusBar = StatusBar(self)``). No
-    other module under ``ralph/display/``, ``ralph/pipeline/``, or
-    ``ralph/cli/`` may construct ``StatusBar``.
-    """
+@pytest.mark.timeout_seconds(5)
+def test_parallel_display_exclusively_owns_status_bar_lifecycle() -> None:
+    """All constructor, start, stop, CLI, and runtime ownership clauses hold."""
+    # DA-003 (wt-028-display P1 / AC-08 / S-13): this test does an AST
+    # scan over ralph/display, ralph/pipeline, and ralph/cli, which
+    # costs ~0.5 s of CPU alone. Under 1.5x oversubscription on a
+    # 12-core host, the wall-clock push can exceed the default 1 s
+    # SIGALRM cap even when the test would pass instantly with no
+    # contention. The 5 s ceiling keeps the contract intact under
+    # both 1.0x and 1.5x partitions without raising the global budget.
     violations: list[str] = []
+    receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
+
     for path in _scan_targets():
+        if not _mentions_status_bar(path):
+            continue
         tree = _parse(path)
         for lineno in _status_bar_constructor_sites(tree):
-            if path.name == _CONSTRUCTOR_FILE and lineno == _CTOR_LINE_NUMBER:
+            if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
+                tree,
+                lineno,
+                class_name="ParallelDisplay",
+                method_name="__init__",
+            ):
                 continue
             violations.append(f"{_rel(path)}:{lineno}: StatusBar(...)")
-    assert not violations, (
-        "StatusBar constructor invoked outside the canonical site "
-        "(ralph/display/parallel_display.py:ParallelDisplay.__init__). "
-        "Persistent Status Bar lifecycle must have exactly one owner "
-        "(ParallelDisplay). Violations:\n" + "\n".join(violations)
-    )
-
-
-def test_parallel_display_is_only_class_that_starts_status_bar() -> None:
-    """``_status_bar.start()`` / ``status_bar.start()`` appear ONLY in
-    ``ParallelDisplay.start``.
-
-    The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.start``
-    at line 1382. No other module under ``ralph/display/``, ``ralph/pipeline/``,
-    or ``ralph/cli/`` may call ``start()`` on the composed StatusBar.
-    """
-    receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
-    violations: list[str] = []
-    for path in _scan_targets():
-        tree = _parse(path)
         for lineno in _attribute_call_sites(
             tree,
             attr="start",
             receiver_names=receiver_names,
         ):
-            if path.name == _CONSTRUCTOR_FILE and lineno == _START_LINE_NUMBER:
+            if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
+                tree,
+                lineno,
+                class_name="ParallelDisplay",
+                method_name="start",
+            ):
                 continue
             violations.append(f"{_rel(path)}:{lineno}: *.start()")
-    assert not violations, (
-        "StatusBar.start() invoked outside the canonical site "
-        "(ralph/display/parallel_display.py:ParallelDisplay.start). "
-        "Persistent Status Bar lifecycle must have exactly one owner. "
-        "Violations:\n" + "\n".join(violations)
-    )
-
-
-def test_status_bar_stop_only_inside_parallel_display_stop() -> None:
-    """``_status_bar.stop()`` / ``status_bar.stop()`` appear ONLY in
-    ``ParallelDisplay.stop``.
-
-    The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.stop``
-    at line 1390. No other module under ``ralph/display/``, ``ralph/pipeline/``,
-    or ``ralph/cli/`` may call ``stop()`` on the composed StatusBar.
-    """
-    receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
-    violations: list[str] = []
-    for path in _scan_targets():
-        tree = _parse(path)
         for lineno in _attribute_call_sites(
             tree,
             attr="stop",
             receiver_names=receiver_names,
         ):
-            if path.name == _CONSTRUCTOR_FILE and lineno == _STOP_LINE_NUMBER:
+            if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
+                tree,
+                lineno,
+                class_name="ParallelDisplay",
+                method_name="stop",
+            ):
                 continue
             violations.append(f"{_rel(path)}:{lineno}: *.stop()")
-    assert not violations, (
-        "StatusBar.stop() invoked outside the canonical site "
-        "(ralph/display/parallel_display.py:ParallelDisplay.stop). "
-        "Persistent Status Bar lifecycle must have exactly one owner. "
-        "Violations:\n" + "\n".join(violations)
-    )
 
-
-def test_status_bar_is_not_constructed_in_cli_or_runtime_modules() -> None:
-    """``ralph/cli/**/*.py`` and ``ralph/runtime/**/*.py`` are forbidden from
-    constructing ``StatusBar`` or starting/stopping the composed instance.
-
-    The persistent Status Bar is owned exclusively by
-    ``ParallelDisplay``; CLI / runtime layers must reach it through
-    ``pd.status_bar`` (the composed accessor on ``ParallelDisplay``) or
-    via ``active.update_status_bar(...)`` rather than constructing or
-    directly starting / stopping a ``StatusBar``. This test pins the
-    separation between the display-owner and the consumers.
-    """
-    receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
-    forbidden_files: list[Path] = []
+    forbidden_files: set[Path] = set()
     for forbidden_dir in _FORBIDDEN_DIRS:
         if not forbidden_dir.exists():
             continue
         for path in sorted(forbidden_dir.rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue
-            forbidden_files.append(path)
+            forbidden_files.add(path)
 
-    violations: list[str] = []
-    for path in forbidden_files:
+    for path in sorted(forbidden_files - set(_scan_targets())):
+        if not _mentions_status_bar(path):
+            continue
         tree = _parse(path)
         violations.extend(
             f"{_rel(path)}:{lineno}: StatusBar(...)"
@@ -259,9 +241,9 @@ def test_status_bar_is_not_constructed_in_cli_or_runtime_modules() -> None:
                 receiver_names=receiver_names,
             )
         )
+
     assert not violations, (
-        "CLI / runtime layers must NOT construct StatusBar or "
-        "directly start/stop the composed instance — the persistent "
-        "Status Bar is owned exclusively by ParallelDisplay. "
+        "ParallelDisplay must exclusively own StatusBar construction and "
+        "lifecycle calls; CLI and runtime modules may only consume it. "
         "Violations:\n" + "\n".join(violations)
     )

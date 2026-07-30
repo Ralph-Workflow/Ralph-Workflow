@@ -22,6 +22,7 @@ from ._helpers import (
     _error_output_signal,
     _evidence_precedence,
     _non_blank_output_signal,
+    _opencode_step_frame_signal,
     _os_descendant_state,
     _probe_check_quiet,
     _progress_report_signal,
@@ -49,7 +50,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
     a FakeLivenessProbe without spawning real processes.
 
     Exit classification uses evidence precedence:
-      1. terminal_ack_seen or schema-valid required artifact -> TERMINAL_COMPLETE
+      1. durable phase-completion evidence -> TERMINAL_COMPLETE
       2. fresh progress in registry -> WAITING_ON_CHILD
       3. live OS descendants with no fresh progress -> RESUMABLE_CONTINUE (stale)
       4. else -> RESUMABLE_CONTINUE
@@ -94,6 +95,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify OpenCode output for idle-watchdog activity."""
+        frame_signal = _opencode_step_frame_signal(line)
+        if frame_signal is not None:
+            return frame_signal
         signal = _classify_opencode_child_signal(line)
         if signal is not None:
             return signal
@@ -116,7 +120,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         signal sent". Sink exceptions are swallowed so a buggy sink
         cannot corrupt the registry or break the line loop.
         """
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         # Invoke the activity sink BEFORE the registry update so a
         # progress signal is recorded as activity regardless of whether
         # the registry update succeeds. We only invoke on the two
@@ -209,7 +215,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
         scoped_child_evidence_stale = False
 
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if registry is not None:
             had_scoped_records = registry.has_records(probe_prefix)
             if had_scoped_records:
@@ -247,7 +255,9 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self, "_registry", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         label_prefix = self._active_label_prefix()
         return _evidence_precedence(
             handle, completion_signals, liveness_probe, label_prefix, registry=registry

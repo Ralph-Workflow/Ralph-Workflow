@@ -225,7 +225,7 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
 
 
 def test_show_phase_start_from_entry_outer_dev_label() -> None:
-    """show_phase_start_from_entry renders canonical Dev N/cap label."""
+    """show_phase_start_from_entry renders canonical Cycle N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=3, outer_dev_cap=7)
@@ -233,12 +233,12 @@ def test_show_phase_start_from_entry_outer_dev_label() -> None:
     pd.emit_phase_start_from_entry(entry)
     output = buf.getvalue()
     assert "Development" in output
-    assert "Dev 3/7" in output
-    assert "Dev #3" not in output
+    assert "Cycle 3/7" in output
+    assert "Cycle #3" not in output
 
 
 def test_show_phase_start_from_entry_inner_analysis_label() -> None:
-    """show_phase_start_from_entry renders canonical Analysis N/cap label."""
+    """show_phase_start_from_entry renders canonical iter N/cap label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     entry = PhaseEntryModel(
@@ -248,7 +248,7 @@ def test_show_phase_start_from_entry_inner_analysis_label() -> None:
     pd.emit_phase_start_from_entry(entry)
     output = buf.getvalue()
     assert "Development Analysis" in output
-    assert "Analysis 2/3" in output
+    assert "iter 2/3" in output
 
 
 def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
@@ -267,8 +267,8 @@ def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
     output = buf.getvalue()
     assert "[iteration" not in output
     assert "[reviewer_pass" not in output
-    assert "Dev 2/5" in output
-    assert "Analysis 1/3" in output
+    assert "Cycle 2/5" in output
+    assert "iter 1/3" in output
 
 
 # --- Tests for default mode banners ---

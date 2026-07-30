@@ -8,7 +8,7 @@ JSON-RPC request/response seam.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -30,6 +30,7 @@ from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.mcp.upstream.registry import ProxiedTool, UpstreamRegistry
 from ralph.workspace.memory import MemoryWorkspace
+from tests._support.typed_accessors import must_mapping
 
 BROKEN_CANARY = "sk-fake-leak-canary-test-12345"
 
@@ -131,7 +132,7 @@ def _list_tools(server: McpServer, state: ServerState) -> list[dict[str, object]
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"tools/list failed: {resp}"
-    return cast("list[dict[str, Any]]", cast("dict[str, Any]", resp.result)["tools"])
+    return must_mapping(resp.result)["tools"]
 
 
 def _call_tool(
@@ -151,7 +152,7 @@ def _call_tool(
     )
     resp, _ = server.handle_request(req, state)
     assert resp is not None, f"tools/call {name!r} returned None response"
-    return cast("dict[str, Any]", resp.result)
+    return resp.result
 
 
 def test_mcp_server_boots_with_mcp_toml_and_custom_upstream() -> None:
@@ -302,8 +303,8 @@ def test_resource_templates_list_includes_media_template_when_media_read_is_gran
     req = JsonRpcRequest(jsonrpc="2.0", method="resources/templates/list", params={}, msg_id=5)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"resource templates/list failed: {resp}"
-    result = cast("dict[str, Any]", resp.result)
-    templates = cast("list[dict[str, Any]]", result.get("resourceTemplates", []))
+    result = resp.result
+    templates = result.get("resourceTemplates", [])
     uri_templates = {t.get("uriTemplate") for t in templates}
     assert "ralph://media/{artifact_id}" in uri_templates, (
         f"Expected ralph://media/{{artifact_id}} in resourceTemplates, got: {uri_templates}"

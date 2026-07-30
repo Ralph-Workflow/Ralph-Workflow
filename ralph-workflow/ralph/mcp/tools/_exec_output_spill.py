@@ -18,6 +18,7 @@ spill behavior cannot silently diverge.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -47,9 +48,15 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
     directory = spill_dir if spill_dir is not None else Path(tempfile.gettempdir())
     directory.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="ralph-exec-", suffix=".txt", dir=str(directory))
-    with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
-        spill_file.write(text)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
+            spill_file.write(text)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
     path = Path(name)
+    # Do not prune the shared OS temp directory: another process may own a
+    # matching file there. The OS reclaims spill_dir=None files instead.
     if spill_dir is not None:
         prune_cache_files(
             directory.glob("ralph-exec-*.txt"),
@@ -79,19 +86,140 @@ def format_or_spill(
     returncode: int,
     truncated: bool,
     spill_dir: Path | None,
+    summary: bool = False,
+    stdout_text: str | None = None,
+    stderr_text: str | None = None,
+    exec_resource_resolver: object | None = None,
 ) -> ToolResult:
     """Return the result inline, or spill to a file when it is too large.
 
     ``truncated`` forces a spill even under the inline limit, because a truncated
     capture means the full output never fit and the agent must be told so.
+
+    AC-11 contract: when ``summary=True`` the response is a JSON
+    envelope carrying ``stdout_resource_id`` / ``stderr_resource_id``
+    replayable handles plus spill paths and a head/tail preview. The
+    raw output fallback (``summary=False``) is the legacy behavior.
+
+    ``stdout_text`` and ``stderr_text`` are optional pre-split streams;
+    when supplied they are tracked separately so the stdout/stderr
+    resource ids point at per-stream spill files instead of the
+    combined text. When omitted, ``text`` is treated as stdout (the
+    pre-AC-11 contract).
+
+    ``exec_resource_resolver`` is an optional
+    :class:`ralph.mcp.tools._exec_resource_uri.ExecResourceResolver`.
+    When supplied, every spill path is registered with the resolver
+    so the resulting ``ralph://exec/<spill-name>`` URIs can be
+    replayed through ``resources/read``. When ``None``, the URIs
+    remain well-formed but the server returns a structured
+    "resolver not attached" error on read. Callers should pass the
+    session's resolver to keep the resource IDs replayable.
     """
     encoded_len = len(text.encode("utf-8", errors="replace"))
     is_error = returncode != 0
+    has_split_streams = stdout_text is not None or stderr_text is not None
+    stdout_value = stdout_text if stdout_text is not None else text
+    stderr_value = stderr_text if stderr_text is not None else ""
+    stdout_encoded_len = len(stdout_value.encode("utf-8", errors="replace"))
+    stderr_encoded_len = len(stderr_value.encode("utf-8", errors="replace"))
+
+    def _register(spill: Path) -> str:
+        if exec_resource_resolver is None:
+            return f"ralph://exec/{spill.name}"
+        # Resolver returns a stable URI for the registered spill; the
+        # legacy ``ralph://exec/<name>`` shape is also acceptable.
+        # The resolver attribute is typed as
+        # ``ExecResourceResolverLike`` on the production session
+        # classes; the closure-bound argument here is ``object | None``
+        # to keep the surrounding ``format_or_spill`` signature
+        # narrow, so a local ``getattr`` is required to invoke
+        # ``register`` without an audit policy-violating blanket
+        # type-ignore marker.
+        register_method: object = getattr(exec_resource_resolver, "register", None)
+        if not callable(register_method):
+            return f"ralph://exec/{spill.name}"
+        raw_result: object = register_method(spill)
+        if isinstance(raw_result, str):
+            return raw_result
+        return f"ralph://exec/{spill.name}"
+
     if truncated or encoded_len > INLINE_OUTPUT_LIMIT_BYTES:
+        # Spill the combined text so the legacy fallback (summary=False)
+        # keeps working; for summary=True we also spill each stream
+        # separately when the caller provided split streams.
         spill_path = spill_output(text, spill_dir)
         preview = build_spill_preview(text, spill_path, encoded_len, truncated=truncated)
-        return ToolResult(content=[ToolContent.text_content(preview)], is_error=is_error)
-    return ToolResult(content=[ToolContent.text_content(text)], is_error=is_error)
+        if not summary:
+            return ToolResult(content=[ToolContent.text_content(preview)], is_error=is_error)
+        # AC-11: when the caller provided split streams, each stream
+        # gets its own resource id and spill path so the agent can
+        # re-read stdout and stderr independently. Both streams are
+        # spilled whenever the combined output triggered this branch,
+        # regardless of each stream's individual truncation flag —
+        # otherwise a nonempty stderr stream below the 1 MiB inline
+        # threshold would have no replayable resource id when the
+        # combined output exceeds the limit, breaking the AC-11
+        # stdout/stderr replayable-resource contract. When the caller
+        # did not split, the combined spill is the single source of
+        # truth and we report it under stdout_resource_id.
+        if has_split_streams:
+            stdout_resource_id: str | None = None
+            stdout_spill_path_v: str | None = None
+            if stdout_value:
+                stdout_spill = spill_output(stdout_value, spill_dir)
+                stdout_resource_id = _register(stdout_spill)
+                stdout_spill_path_v = str(stdout_spill)
+            stderr_resource_id: str | None = None
+            stderr_spill_path: str | None = None
+            if stderr_value:
+                stderr_spill = spill_output(stderr_value, spill_dir)
+                stderr_resource_id = _register(stderr_spill)
+                stderr_spill_path = str(stderr_spill)
+        else:
+            stdout_resource_id = _register(spill_path)
+            stdout_spill_path_v = str(spill_path)
+            stderr_resource_id = None
+            stderr_spill_path = None
+        payload = {
+            "format": "summary",
+            "returncode": returncode,
+            "is_error": is_error,
+            "stdout_bytes": stdout_encoded_len,
+            "stderr_bytes": stderr_encoded_len,
+            "truncated": truncated,
+            "stdout_resource_id": stdout_resource_id,
+            "stdout_spill_path": stdout_spill_path_v,
+            "stderr_resource_id": stderr_resource_id,
+            "stderr_spill_path": stderr_spill_path,
+            "preview": preview,
+        }
+
+        return ToolResult(
+            content=[ToolContent.text_content(json.dumps(payload))],
+            is_error=is_error,
+        )
+    if not summary:
+        return ToolResult(content=[ToolContent.text_content(text)], is_error=is_error)
+    payload = {
+        "format": "summary",
+        "returncode": returncode,
+        "is_error": is_error,
+        "stdout_bytes": stdout_encoded_len,
+        "stderr_bytes": stderr_encoded_len,
+        "truncated": False,
+        "stdout_resource_id": None,
+        "stdout_spill_path": None,
+        "stderr_resource_id": None,
+        "stderr_spill_path": None,
+        "stdout": stdout_value,
+        "stderr": stderr_value,
+    }
+
+    return ToolResult(
+        content=[ToolContent.text_content(json.dumps(payload))],
+        is_error=is_error,
+    )
 
 
 __all__ = [

@@ -18,6 +18,7 @@ from loguru import logger
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.enums import Verbosity
+from ralph.display.auto_integrate_message import format_auto_integrate_message
 from ralph.display.context import install_width_refresher, make_display_context
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -36,7 +37,7 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.onboarding import CODEBERG_STAR_CTA
+from ralph.onboarding import GITHUB_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
@@ -74,6 +75,14 @@ from ralph.pipeline.activity_stream import (
     truncate,
 )
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit,
+    auto_integrate_on_phase_transition,
+)
+from ralph.pipeline.auto_integrate_agent import (
+    build_agent_conflict_resolver,
+    build_agent_rebase_stop_resolver,
+)
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -142,8 +151,8 @@ from ralph.policy.loader import (
 )
 from ralph.process.manager import process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
-from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import FailureContext
 from ralph.telemetry._sentry import record_phase_execution
 from ralph.workspace import FsWorkspace
@@ -157,10 +166,14 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
+    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.rebase_state import RebaseState
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
+        PhaseDefinition,
         PipelinePolicy,
         PolicyBundle,
     )
@@ -193,8 +206,8 @@ __all__ = [
     "install_signal_handlers",
     "install_width_refresher",
     "make_display_context",
+    "materialize_master_prompt",
     "materialize_prompt_for_phase",
-    "materialize_system_prompt",
     "metadata_summary",
     "phase_output_artifact_paths",
     "prompt_session_drain_for_phase",
@@ -227,7 +240,7 @@ def __getattr__(name: str) -> object:
     preserving the public re-export contract.
     """
     if name == "run":
-        from ralph.pipeline.run_loop import run as _run_loop_entry  # noqa: PLC0415
+        from ralph.pipeline.run_loop import run as _run_loop_entry
 
         module_globals: dict[str, object] = globals()
         module_globals["run"] = _run_loop_entry
@@ -289,6 +302,23 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
 validate_custom_mcp_servers = _validate_custom_mcp_servers
 
 
+def _execute_commit_effect_from_deps(
+    effect: CommitEffect,
+    pipeline_deps: PipelineDeps,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | None,
+    verbosity: Verbosity,
+) -> PipelineEvent:
+    if pipeline_deps.commit_effect_executor is not None:
+        return cast(
+            "PipelineEvent",
+            pipeline_deps.commit_effect_executor(effect, workspace_scope.root),
+        )
+    return execute_commit_effect(
+        effect, create_commit, stage_all, workspace_scope.root, display, verbosity=verbosity
+    )
+
+
 def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
@@ -319,8 +349,8 @@ def _execute_effect(
             policy_bundle=policy_bundle,
         )
     if isinstance(effect, CommitEffect):
-        return execute_commit_effect(
-            effect, create_commit, stage_all, workspace_scope.root, display, verbosity=verbosity
+        return _execute_commit_effect_from_deps(
+            effect, pipeline_deps, workspace_scope, display, verbosity
         )
     if isinstance(effect, EarlySkipCommitEffect):
         logger.info("Skipping commit early: worktree is clean")
@@ -370,7 +400,9 @@ def _execute_effect_with_optional_display(
         "pipeline_deps": pipeline_deps,
     }
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
-    return cast("_ExecuteEffectKwargsFn", fn)(effect, config, workspace_scope, **supported)
+    return cast("_ExecuteEffectKwargsFn", fn)(
+        effect, config, workspace_scope, **supported
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def execute_effect_with_optional_display(
@@ -410,18 +442,67 @@ def _invoke_execute_effect_with_optional_display(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     pipeline_deps: PipelineDeps | None = None,
+    pre_workspace: object | None = None,
+    pre_phase_role: str | None = None,
+    pre_phase_drain: str | None = None,
 ) -> Event:
-    return execute_effect_with_optional_display(
-        effect,
-        config,
-        workspace_scope,
-        display=display,
-        display_context=display_context,
-        verbosity=verbosity,
-        state=state,
-        policy_bundle=policy_bundle,
-        pipeline_deps=pipeline_deps,
+    # Phase 1 lifecycle hooks: bounded changed-file refresh before
+    # and after an InvokeAgentEffect. Hooks skip cleanly when the
+    # explore index is disabled or missing; they never block the
+    # agent indefinitely (fail-open for the agent, fail-closed for
+    # the reindex job).
+    #
+    # AC-04: the refresh gate is the development / fix phase drain
+    # (NOT just the role). The planning block in
+    # ``ralph/policy/defaults/pipeline.toml`` is also mapped to
+    # ``role = "execution"``; gating on role alone would trigger
+    # an uncosted index refresh for the planning agent. The drain
+    # is the authoritative identity of a dev/fix session.
+    from ralph.mcp.explore.lifecycle import (
+        after_agent_refresh,
+        before_agent_refresh,
+        is_execution_phase_for_refresh,
     )
+
+    is_agent = isinstance(effect, InvokeAgentEffect)
+    should_refresh = is_agent and is_execution_phase_for_refresh(
+        phase_role=pre_phase_role,
+        phase_drain=pre_phase_drain,
+    )
+
+    if should_refresh:
+        pre_workspace_obj: object = pre_workspace
+        before_index: object = getattr(pre_workspace_obj, "explore_index", None)
+        try:
+            before_agent_refresh(
+                workspace_root=workspace_scope.root,
+                explore_index=before_index,
+            )
+        except Exception as exc:
+            logger.debug("before_agent_refresh skipped: %s", exc)
+
+    try:
+        return execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
+            pipeline_deps=pipeline_deps,
+        )
+    finally:
+        if should_refresh:
+            after_index: object = getattr(pre_workspace_obj, "explore_index", None)
+            try:
+                after_agent_refresh(
+                    workspace_root=workspace_scope.root,
+                    explore_index=after_index,
+                )
+            except Exception as exc:
+                logger.debug("after_agent_refresh skipped: %s", exc)
 
 
 def _reduce_runtime_recovery(
@@ -521,6 +602,446 @@ def _coarse_outcome_for_event(event: Event) -> str:
     return "failure"
 
 
+def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) -> None:
+    """Emit the user-facing action log line for an auto-integration outcome.
+
+    Delegates the verb -> phrase mapping to
+    :func:`ralph.display.auto_integrate_message.format_auto_integrate_message`
+    so the live activity line and the run's final receipt cannot drift.
+    The single ``[cyan]auto-integrate:[/cyan]`` prefix is added here;
+    the formatter returns a bare phrase.
+
+    Per the prompt Notes the user-facing line should describe what
+    actually happened: ``rebased onto target`` / ``merged target into
+    feature`` (each optionally followed by ``, fast-forwarded
+    <target>`` or ``, fast-forward skipped: <reason>``) /
+    ``skipped: <reason>`` / ``conflict: <reason>`` /
+    ``recovered (<reason>)``.
+    """
+    message = format_auto_integrate_message(
+        outcome.last_action,
+        outcome.last_target,
+        outcome.last_reason,
+        fast_forwarded=outcome.fast_forwarded,
+        refresh=outcome.last_refresh,
+        push=outcome.last_push,
+        remote_sync=outcome.last_remote_sync,
+        remote=outcome.last_remote,
+    )
+    # A skip or conflict means no integration happened this commit; an
+    # operator who expects continuous integration must not lose that
+    # signal in the INFO stream, so it escalates to a WARN line.
+    if outcome.last_action in ("skipped", "conflict"):
+        display.emit_warn_line("run", "auto-integrate", message)
+        return
+    if (
+        outcome.last_action in ("rebased", "merged")
+        and not outcome.fast_forwarded
+        and outcome.last_reason
+    ):
+        display.emit_warn_line("run", "auto-integrate", message)
+        return
+    emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
+
+
+def _inline_event_for_effect(effect: object) -> PipelineEvent | None:
+    """Map an inline-effect handle to the phase-transition event the
+    boundary integration hook should treat it as.
+
+    The mapping mirrors what :func:`_execute_effect` returns for the
+    SAME effect when it routes through the normal path; without it,
+    the inline early-return would route every SaveCheckpointEffect
+    through the no-op ``PHASE_LOOPBACK`` path, so a checkpoint save
+    could never carry a catch-up landing to this checkout. Returns
+    ``None`` only for effects the boundary integration is not
+    equipped to handle (currently none of the inline ones; the
+    fallback is conservative).
+    """
+    if isinstance(effect, SaveCheckpointEffect):
+        return PipelineEvent.CHECKPOINT_SAVED
+    if isinstance(effect, PreparePromptEffect):
+        return PipelineEvent.PROMPT_PREPARED
+    if isinstance(effect, ExitSuccessEffect):
+        return PipelineEvent.COMPLETE
+    if isinstance(effect, ExitFailureEffect):
+        return PipelineEvent.FAILED
+    if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
+        return PipelineEvent.PHASE_ADVANCE
+    return None
+
+
+def _integrate_inline_effect(
+    *,
+    effect: Effect,
+    inline_result: PipelineState | int,
+    state: PipelineState,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    pipeline_deps: PipelineDeps | None,
+    display_context: DisplayContext | None,
+) -> PipelineState | int:
+    """Run the boundary integration hook for an inline-effect return and
+    thread the outcome back through a state-shaped result.
+
+    The helper owns the early-return-on-inline-effect path in
+    :func:`_run_pipeline_step` so the orchestrator function keeps a
+    sensible branch / statement count and the test surface is
+    narrowly scoped to this contract. Returns ``inline_result``
+    unchanged when:
+
+    * the effect is not one of the mapped inline effects (the helper
+      returns ``None`` for the event), OR
+    * the integration returns ``None`` (disabled / no work to do),
+      OR
+    * ``inline_result`` is not a :class:`PipelineState` (e.g. the
+      ``int`` return of :class:`ExitSuccessEffect`): the integration
+      is run for its git side-effect but cannot be threaded onto a
+      non-state value.
+    """
+    inline_event = _inline_event_for_effect(effect)
+    if inline_event is None:
+        return inline_result
+    try:
+        outcome = _integrate_on_phase_transition(
+            event=inline_event,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
+    except Exception as inline_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate inline-effect boundary raised: {}",
+            inline_exc,
+        )
+        return inline_result
+    if outcome is not None and isinstance(inline_result, PipelineState):
+        # PipelineState-shaped result: thread the integration
+        # outcome into the persisted checkpoint so the catch-up
+        # survives a crash right after the inline effect. The
+        # reducer/phase on the returned state is left untouched;
+        # ``copy_with(rebase=...)`` only updates the rebase slot.
+        return inline_result.copy_with(rebase=outcome)
+    return inline_result
+
+
+def _maybe_auto_integrate(
+    *,
+    effect: object,
+    event: object,
+    commit_phase_def: PhaseDefinition | None,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: PipelineState,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None = None,
+    registry: _RegistryLike | None = None,
+    pipeline_deps: PipelineDeps | None = None,
+    display_context: DisplayContext | None = None,
+) -> RebaseState | None:
+    """Run the post-commit auto-integration step when warranted.
+
+    Mirrors the existing commit-seam block (clears the cycle baseline,
+    then conditionally integrates). Returns ``None`` when no integration
+    ran (disabled path / non-commit phase / ``COMMIT_SKIPPED`` / the
+    integration call returned ``None``). Otherwise returns the
+    recorded ``RebaseState`` and emits a user-facing action log line
+    so the operator sees ``rebased`` / ``merged`` / ``fast-forwarded
+    <target>`` / ``skipped: <reason>``.
+
+    Extracted from :func:`_run_pipeline_step` so the seam keeps a
+    sensible branch + statement count without losing the
+    ``COMMIT_SUCCESS``-only trigger and the skip-on-``COMMIT_SKIPPED``
+    guard.
+
+    The ``effect`` / ``event`` parameters are typed as ``object`` so
+    callers passing a union of effect / event types do not need to
+    pre-narrow; the helper narrows via ``isinstance`` / ``in`` itself.
+    """
+    if not (
+        isinstance(effect, CommitEffect)
+        and commit_phase_def is not None
+        and commit_phase_def.role == "commit"
+        and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
+    ):
+        # Non-commit seam: keep the branch in lockstep with the target
+        # at every successful phase boundary (silent no-op when the
+        # worktree is dirty or nothing moved).
+        return _integrate_on_phase_transition(
+            event=event,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
+    clear_cycle_baseline(workspace_scope.root)
+    # The commit-boundary integration (crash record + full sequence
+    # keyed to a NEW commit) fires only on COMMIT_SUCCESS. An
+    # early-skipped commit still means a clean tree, so the boundary
+    # hook below catches a target that moved during the cycle.
+    if event != PipelineEvent.COMMIT_SUCCESS:
+        return _integrate_on_phase_transition(
+            event=event,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
+    if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
+        return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
+    conflict_resolver = _build_seam_conflict_resolver(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
+    )
+    try:
+        outcome = auto_integrate_after_commit(
+            config,
+            workspace_scope,
+            state.rebase,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=_build_seam_rebase_stop_resolver(
+                policy_bundle=policy_bundle,
+                registry=registry,
+                display=display,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                display_context=display_context,
+            ),
+            display=display,
+        )
+    except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
+        # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
+        logger.warning(
+            "auto_integrate_after_commit raised unexpectedly: {}",
+            auto_integrate_exc,
+        )
+        return None
+    if outcome is not None:
+        _log_auto_integrate_outcome(display, outcome)
+    return outcome
+
+
+#: Events that trigger the boundary integration hook.
+#:
+#: The hook is STATELESS and EVENT-AGNOSTIC. It runs for EVERY
+#: ``PipelineEvent`` reaching the phase-transition boundary other
+#: than :data:`PipelineEvent.COMMIT_SUCCESS` (which has its own
+#: commit-boundary path via :func:`auto_integrate_after_commit`).
+#: Whether the integration actually moves a ref is decided downstream
+#: by the same guards the commit seam already trusts:
+#: :func:`ralph.pipeline.auto_integrate._worktree_is_clean` defers
+#: (records a skip, mutates nothing) on any uncommitted TRACKED change,
+#: and :func:`ralph.git.rebase.check_rebase_preconditions` blocks when
+#: a rebase / merge / cherry-pick is already in progress. A clean
+#: worktree means no in-progress phase work can be lost, so a catch-up
+#: is safe regardless of which event fired.
+#:
+#: The hook is the SINGLE place that carries another agent's landing
+#: to a feature branch that is not committing right now, so restricting
+#: it to a success-only whitelist was the asymmetry that broke
+#: cross-agent synchronisation on every non-success seam. The whitelist
+#: used to be the gate; the worktree/preconditions guards below are the
+#: gate now, and they enforce the same invariant on every event.
+_PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
+    {
+        PipelineEvent.AGENT_SUCCESS,
+        PipelineEvent.AGENT_FAILURE,
+        PipelineEvent.AGENT_RETRY,
+        PipelineEvent.ANALYSIS_SUCCESS,
+        PipelineEvent.ANALYSIS_LOOPBACK,
+        PipelineEvent.PHASE_LOOPBACK,
+        PipelineEvent.PHASE_ADVANCE,
+        PipelineEvent.REVIEW_CLEAN,
+        PipelineEvent.REVIEW_ISSUES_FOUND,
+        PipelineEvent.FIX_SUCCESS,
+        PipelineEvent.FIX_FAILURE,
+        PipelineEvent.COMMIT_SKIPPED,
+        PipelineEvent.COMMIT_FAILURE,
+        PipelineEvent.CHECKPOINT_SAVED,
+        PipelineEvent.CONTEXT_CLEANED,
+        PipelineEvent.INTERRUPTED,
+        PipelineEvent.PROMPT_PREPARED,
+        PipelineEvent.FAN_OUT_STARTED,
+        PipelineEvent.WORKERS_RESUMED,
+        PipelineEvent.ALL_WORKERS_COMPLETE,
+        PipelineEvent.COMPLETE,
+        PipelineEvent.FAILED,
+    }
+)
+
+
+def _build_seam_conflict_resolver(
+    *,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    display: ParallelDisplay,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None = None,
+    workspace_scope: WorkspaceScope | None = None,
+    display_context: DisplayContext | None = None,
+) -> ConflictResolver | None:
+    """Pipeline-backed resolver when policy + registry are available, else None.
+
+    ``pipeline_deps`` and ``workspace_scope`` are what let the resolver
+    start a REAL Ralph MCP session; a resolver built without them
+    declines instead of invoking an agent that would have no exec policy
+    and no completion contract. They are keyword-only with ``None``
+    defaults so an all-mock seam still constructs.
+    """
+    if policy_bundle is None or registry is None:
+        return None
+    # Production path: hand the integration step a pipeline-backed
+    # resolver so a conflicted endpoint merge is resolved and committed
+    # instead of abandoned until the next commit.
+    return build_agent_conflict_resolver(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
+    )
+
+
+def _build_seam_rebase_stop_resolver(
+    *,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    display: ParallelDisplay,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None = None,
+    workspace_scope: WorkspaceScope | None = None,
+    display_context: DisplayContext | None = None,
+) -> RebaseStopResolver | None:
+    """Rebase-stop resolver when policy + registry are available, else None.
+
+    The counterpart of :func:`_build_seam_conflict_resolver`, and gated on
+    exactly the same availability: without it a conflicted rebase is
+    aborted and degraded to one endpoint merge, which is precisely the
+    behaviour that made auto-rebase look broken whenever a real conflict
+    appeared.
+    """
+    if policy_bundle is None or registry is None:
+        return None
+    return build_agent_rebase_stop_resolver(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
+    )
+
+
+def _integrate_on_phase_transition(
+    *,
+    event: object,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: PipelineState,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    pipeline_deps: PipelineDeps | None = None,
+    display_context: DisplayContext | None = None,
+) -> RebaseState | None:
+    """Run the boundary integration hook for successful phase events."""
+    if event not in _PHASE_TRANSITION_INTEGRATION_EVENTS:
+        # R2/AC8: ladder rung 3 -- this helper is called only for pipeline
+        # transitions; non-seam events are retried at their next real seam.
+        return None
+    if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
+        return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
+    conflict_resolver = _build_seam_conflict_resolver(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
+    )
+    try:
+        outcome = auto_integrate_on_phase_transition(
+            config,
+            workspace_scope,
+            state.rebase,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=_build_seam_rebase_stop_resolver(
+                policy_bundle=policy_bundle,
+                registry=registry,
+                display=display,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                display_context=display_context,
+            ),
+            display=display,
+        )
+    except Exception as transition_exc:  # pragma: no cover -- defensive
+        # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
+        logger.warning(
+            "auto_integrate_on_phase_transition raised unexpectedly: {}",
+            transition_exc,
+        )
+        return None
+    if outcome is not None:
+        _log_auto_integrate_outcome(display, outcome)
+    return outcome
+
+
+def _integrate_after_fan_out(
+    *,
+    state: PipelineState,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    pipeline_deps: PipelineDeps | None = None,
+    display_context: DisplayContext | None = None,
+) -> PipelineState:
+    """Integrate a completed fan-out at the shared coordinator seam."""
+    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    if not bool(enabled_raw):
+        return state
+    outcome = _integrate_on_phase_transition(
+        event=PipelineEvent.ALL_WORKERS_COMPLETE,
+        config=config,
+        workspace_scope=workspace_scope,
+        state=state,
+        display=display,
+        policy_bundle=policy_bundle,
+        registry=registry,
+        pipeline_deps=pipeline_deps,
+        display_context=display_context,
+    )
+    return state.copy_with(rebase=outcome) if outcome is not None else state
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -548,10 +1069,22 @@ def _run_pipeline_step(
     _phase_role = (
         phase_def.role if (phase_def is not None and phase_def.role is not None) else "execution"
     )
+    # AC-04: the drain is the authoritative identity of a dev/fix
+    # session; the role alone is too permissive (planning also maps
+    # to ``role=execution``).
+    _phase_drain = (
+        phase_def.drain if (phase_def is not None and phase_def.drain is not None) else None
+    )
     _phase_timer = PhaseTimer.start(state.phase)
     _phase_outcome = "crashed"
     try:
-        effect = call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
+        effect = call_determine_effect_from_policy(
+            state,
+            policy_bundle,
+            workspace_scope,
+            config,
+            pipeline_deps=pipeline_deps,
+        )
         inline_result = handle_inline_effect(
             effect=effect,
             state=state,
@@ -561,15 +1094,55 @@ def _run_pipeline_step(
             registry=registry,
             config=config,
             workspace_scope=workspace_scope,
+            pipeline_deps=pipeline_deps,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
         )
         if inline_result is not None:
+            # Inline-effect early-return path: a phase transition realized
+            # purely as an inline effect (SaveCheckpointEffect /
+            # PreparePromptEffect / ExitSuccessEffect / ExitFailureEffect /
+            # ExhaustedAnalysisPhaseAdvanceEffect) would otherwise BYPASS the
+            # boundary integration the normal path runs at the bottom of
+            # the step, so a checkpoint save or a prompt-prepared
+            # transition could never carry another agent's landing to
+            # this checkout. The hook is the single seam that catches
+            # up an advanced target between commits, so it MUST fire on
+            # every inline transition too. The integration logic
+            # lives in ``_integrate_inline_effect`` to keep this
+            # orchestrator's branch / statement count under the
+            # project caps; the helper is best-effort and fail-closed
+            # so an exception never escapes.
+            inline_result = _integrate_inline_effect(
+                effect=effect,
+                inline_result=inline_result,
+                state=state,
+                config=config,
+                workspace_scope=workspace_scope,
+                display=display,
+                policy_bundle=policy_bundle,
+                registry=registry,
+                pipeline_deps=pipeline_deps,
+                display_context=display_context,
+            )
             _phase_outcome = "skipped"
             return inline_result
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
+
+            def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
+                return _integrate_after_fan_out(
+                    state=finished_state,
+                    config=config,
+                    workspace_scope=workspace_scope,
+                    display=display,
+                    policy_bundle=policy_bundle,
+                    registry=registry,
+                    pipeline_deps=pipeline_deps,
+                    display_context=display_context,
+                )
+
             return execute_fan_out_sync(
                 effect=effect,
                 state=state,
@@ -582,6 +1155,7 @@ def _run_pipeline_step(
                 cli_overrides=cli_overrides,
                 monitor_stop_cb=_monitor_stop_cb,
                 pipeline_deps=pipeline_deps,
+                _on_successful_completion=integrate_after_successful_fan_out,
             )
 
         with process_phase_scope(state.phase):
@@ -597,9 +1171,7 @@ def _run_pipeline_step(
             )
             try:
                 _materialize_fn = (
-                    pipeline_deps.phase_prompt_materializer
-                    if pipeline_deps is not None
-                    else None
+                    pipeline_deps.phase_prompt_materializer if pipeline_deps is not None else None
                 )
                 materialize_agent_prompt_if_needed(
                     effect,
@@ -628,6 +1200,9 @@ def _run_pipeline_step(
                 state=state,
                 policy_bundle=policy_bundle,
                 pipeline_deps=pipeline_deps,
+                pre_workspace=workspace,
+                pre_phase_role=_phase_role,
+                pre_phase_drain=_phase_drain,
             )
             if isinstance(effect, InvokeAgentEffect):
                 state = _apply_session_capture(state)
@@ -647,13 +1222,19 @@ def _run_pipeline_step(
                 )
 
         _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
-        if (
-            isinstance(effect, CommitEffect)
-            and _commit_phase_def is not None
-            and _commit_phase_def.role == "commit"
-            and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
-        ):
-            clear_cycle_baseline(workspace_scope.root)
+        _auto_integrate_outcome = _maybe_auto_integrate(
+            effect=effect,
+            event=event,
+            commit_phase_def=_commit_phase_def,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
         _phase_outcome = _coarse_outcome_for_event(event)
         next_state, _ = reducer_reduce(
             state,
@@ -661,6 +1242,12 @@ def _run_pipeline_step(
             policy_bundle.pipeline,
             recovery=recovery_controller,
         )
+        # Thread the integration outcome into the persisted checkpoint.
+        # Must happen AFTER reducer_reduce (so the state model is
+        # consistent) and BEFORE _save_checkpoint_or_log (so the
+        # outcome survives a crash right after the phase).
+        if _auto_integrate_outcome is not None:
+            next_state = next_state.copy_with(rebase=_auto_integrate_outcome)
         skipped_phases = record_phase_transition_metadata(
             display,
             state,
@@ -757,6 +1344,7 @@ def _handle_inline_effect(
     agents_policy: AgentsPolicy | None = None,
     registry: _RegistryLike | None = None,
     config: UnifiedConfig | None = None,
+    pipeline_deps: PipelineDeps | None = None,
     display: ParallelDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
@@ -800,6 +1388,7 @@ def _handle_inline_effect(
                     state=state,
                     registry=registry,
                     config=config,
+                    pipeline_deps=pipeline_deps,
                 )
             except MissingPlanHandoffError as exc:
                 recovered_state = _recover_missing_plan_handoff(
@@ -872,7 +1461,7 @@ def _emit_success_exit(
     # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 2 runs.
     show_cta = (hash(str(os.getpid()) + str(getenv("USER") or "")) % 2) == 0
     if show_cta:
-        emit_activity_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
+        emit_activity_line(display, None, f"[bold yellow]{GITHUB_STAR_CTA}[/bold yellow]")
     return 0
 
 
@@ -881,10 +1470,37 @@ def _call_determine_effect_from_policy(
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
+    *,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> Effect:
     fn = determine_effect_from_policy
     params = signature(fn).parameters
     if "config" in params:
+        has_changes = (
+            pipeline_deps.has_uncommitted_changes
+            if pipeline_deps is not None and pipeline_deps.has_uncommitted_changes is not None
+            else None
+        )
+        agy_probe = pipeline_deps.agy_agents_probe if pipeline_deps is not None else None
+        if "agy_agents_probe" in params and agy_probe is not None:
+            if "has_uncommitted_changes_fn" in params and has_changes is not None:
+                return fn(
+                    state,
+                    policy_bundle,
+                    workspace_scope,
+                    config=config,
+                    has_uncommitted_changes_fn=has_changes,
+                    agy_agents_probe=agy_probe,
+                )
+            return fn(state, policy_bundle, workspace_scope, config=config, agy_agents_probe=agy_probe)
+        if "has_uncommitted_changes_fn" in params and has_changes is not None:
+            return fn(
+                state,
+                policy_bundle,
+                workspace_scope,
+                config=config,
+                has_uncommitted_changes_fn=has_changes,
+            )
         return fn(state, policy_bundle, workspace_scope, config=config)
 
     positional = [

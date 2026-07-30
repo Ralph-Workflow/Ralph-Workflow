@@ -28,10 +28,7 @@ if TYPE_CHECKING:
     from ralph.pydantic_compat import RalphBaseModel
 
 PLAN_ARTIFACT_TYPE = "plan"
-PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.json"
-PLAN_MARKDOWN_PATH = ".agent/PLAN.md"
-PLAN_DRAFT_PATH = ".agent/artifacts/.plan_draft.json"
-PLAN_DRAFT_SCHEMA_VERSION = 1
+PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.md"
 
 SectionMode = Literal["replace", "append"]
 
@@ -57,9 +54,6 @@ PLAN_SECTION_NAMES: frozenset[str] = frozenset(
 __all__ = [
     "PLAN_ARTIFACT_PATH",
     "PLAN_ARTIFACT_TYPE",
-    "PLAN_DRAFT_PATH",
-    "PLAN_DRAFT_SCHEMA_VERSION",
-    "PLAN_MARKDOWN_PATH",
     "PLAN_SECTION_LIST_ITEM_MODELS",
     "PLAN_SECTION_NAMES",
     "PLAN_SECTION_OBJECT_MODELS",

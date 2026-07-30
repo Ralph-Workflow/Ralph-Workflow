@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_ARTIFACT_TOOL
+from ralph.mcp.protocol._session_drain import SessionDrain
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL
+from ralph.prompts import template_variables
 from ralph.prompts.template_context import TemplateContext
-from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import (
     TemplateNotFoundError,
     TemplateRegistry,
     _packaged_template_cache,
     packaged_template_root,
 )
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 
-_SUBMIT_ARTIFACT_TOOL_REFERENCE = f"`{SUBMIT_ARTIFACT_TOOL}`"
-_DECLARE_COMPLETE_TOOL_REFERENCE = DECLARE_COMPLETE_TOOL
+_SUBMIT_MD_ARTIFACT_TOOL_REFERENCE = f"`{SUBMIT_MD_ARTIFACT_TOOL}`"
+_DECLARE_COMPLETE_TOOL_NAME = str(DECLARE_COMPLETE_TOOL)
+_DECLARE_COMPLETE_TOOL_REFERENCE = f"`{DECLARE_COMPLETE_TOOL}`"
 
 __all__ = [
     "CHANGES_PLACEHOLDER",
@@ -59,6 +63,17 @@ def render_review_prompt(
             template = _load_packaged_review_template()
 
     try:
+        # wt-034-mcp-opti: include the shared MCP partial, so the
+        # reviewer's rendered prompt advertises the brokered tool
+        # surface (the prompt now includes ``shared/_mcp_tools.j2``).
+        # Capability-driven variables come from the REVIEW drain's
+        # bundled defaults so every ``*_TOOL_REFERENCE`` slot the
+        # partial references is filled (StrictUndefined is on; a
+        # missing slot raises and the prompt fails to render).
+        caps, flags = template_variables.default_caps_and_flags_for_drain(
+            SessionDrain.REVIEW
+        )
+        capability_vars = template_variables.capability_template_variables(caps, flags)
         return render_template(
             template,
             {
@@ -69,10 +84,12 @@ def render_review_prompt(
                 "FIX_RESULT": "(no fix result available)",
                 "FIX_RESULT_PATH": "",
                 "LAST_RETRY_ERROR": "",
-                "SUBMIT_ARTIFACT_TOOL_REFERENCE": _SUBMIT_ARTIFACT_TOOL_REFERENCE,
-                "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": f"the tool named {SUBMIT_ARTIFACT_TOOL}",
+                "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": _SUBMIT_MD_ARTIFACT_TOOL_REFERENCE,
+                "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": f"the tool named {SUBMIT_MD_ARTIFACT_TOOL}",
+                "DECLARE_COMPLETE_TOOL_NAME": _DECLARE_COMPLETE_TOOL_NAME,
                 "DECLARE_COMPLETE_TOOL_REFERENCE": _DECLARE_COMPLETE_TOOL_REFERENCE,
                 "WRITE_FILE_TOOL_REFERENCE": "",
+                **capability_vars,
             },
             partials,
         )

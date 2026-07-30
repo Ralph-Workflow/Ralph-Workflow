@@ -87,6 +87,7 @@ def _parse_tool_call_from_description(description: str | None) -> str | None:
         return None
     return head
 
+
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 
@@ -122,6 +123,7 @@ if TYPE_CHECKING:
 # exposed on the public ``IdleWatchdog`` constructor).
 _MAX_SUBAGENT_OUTPUT_CAPTURES: int = 128
 _MAX_EVICTED_TOMBSTONES: int = _MAX_SUBAGENT_OUTPUT_CAPTURES
+
 
 def record_invocation_start(self: IdleWatchdog) -> None:
     """Record the start of the invocation.
@@ -248,6 +250,23 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._entry_corroboration = None
     self._last_progress_fingerprint = None
     self._classify_quiet_provider = None
+    # wt-047-stall-label: clear stall on invocation start. A new
+    # invocation cannot inherit a stale STALLED state from the
+    # previous run; the watchdog's stall-state flag is the single
+    # source of truth for the Status Bar's STALLED slot and a
+    # fresh invocation starts un-stalled. ``_set_stall`` dedupes
+    # so a no-op ``False`` set is harmless.
+    self._set_stall(active=False, now=now, idle_elapsed=0.0)
+
+
+def record_invocation_end(self: IdleWatchdog) -> None:
+    """Record invocation teardown and clear an active stall transition."""
+    now = self._clock.monotonic()
+    self._set_stall(
+        active=False,
+        now=now,
+        idle_elapsed=max(0.0, now - self._last_activity),
+    )
 
 
 def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[str, object]:
@@ -294,29 +313,19 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
     """
     timestamp = now if now is not None else self._clock.monotonic()
     live_subagent_count = (
-        self._process_monitor.live_subagent_count()
-        if self._process_monitor is not None
-        else 0
+        self._process_monitor.live_subagent_count() if self._process_monitor is not None else 0
     )
     snapshot: dict[str, object] = {
         "last_fire_reason": (
-            self._last_fire_reason.value
-            if self._last_fire_reason is not None
-            else None
+            self._last_fire_reason.value if self._last_fire_reason is not None else None
         ),
         "last_deferred_kind": (
-            self._last_deferred_kind.value
-            if self._last_deferred_kind is not None
-            else None
+            self._last_deferred_kind.value if self._last_deferred_kind is not None else None
         ),
-        "last_alive_by": (
-            self._last_alive_by.value if self._last_alive_by is not None else None
-        ),
+        "last_alive_by": (self._last_alive_by.value if self._last_alive_by is not None else None),
         "idle_elapsed_seconds": round(self.idle_elapsed_seconds(timestamp), 1),
         "invocation_elapsed_seconds": round(self.invocation_elapsed_seconds, 1),
-        "cumulative_waiting_on_child_seconds": round(
-            self._cumulative_waiting_on_child_seconds, 1
-        ),
+        "cumulative_waiting_on_child_seconds": round(self._cumulative_waiting_on_child_seconds, 1),
         "last_subagent_progress_description": self._last_subagent_progress_description,
         "last_subagent_progress_at": self._last_subagent_progress_at,
         "current_subagent_tool_call": _parse_tool_call_from_description(
@@ -402,24 +411,31 @@ def record_tool_result_activity(self: IdleWatchdog) -> None:
     the configured ``post_tool_result_progression_seconds`` budget.
     If not, the watchdog fires STALLED_AFTER_TOOL_RESULT.
 
-    This is a NEW BEHAVIOR for direct wedge detection. The
-    existing ``pty_line_reader._handle_queued_line`` calls this
-    method AFTER ``record_activity()`` on the TOOL_RESULT branch
-    so the wedge is detected in ~120s by default (the
-    post-tool-result budget) rather than waiting for the full
-    300s idle timeout.
+    Both line readers call this INSTEAD OF ``record_activity()`` on the
+    TOOL_RESULT branch. It does everything ``record_activity`` does -- resets
+    the idle baseline, marks meaningful output -- EXCEPT clear the repetition
+    streak, which is the whole point (see below). Calling both, as the PTY
+    reader used to, put the ``note_progress()`` back in and defeated the
+    contract this docstring describes.
 
     Does NOT reset _session_started_at (the session ceiling
     remains absolute).
+
+    Deliberately does NOT call ``RepetitionTracker.note_progress()``. A tool
+    result only proves the tool returned, not that the agent advanced — the
+    same reasoning ``record_tool_use_activity`` documents for the call side.
+    Because every tool call is followed by its result, clearing the streak
+    here reset the tool-call dimension after each completed call, so
+    ``REPEATED_IDENTICAL_TOOL_CALL`` could never reach its threshold and an
+    agent re-issuing one identical call forever stayed invisible.
     """
     now = self._clock.monotonic()
     self._accumulate_waiting_run(now)
-    self._last_activity = now
-    self._in_drain_window = False
-    self._drain_started_at = None
+    self._reset_idle_baseline()
+    self._last_meaningful_output_at = now
+    self._has_meaningful_output = True
     self._last_tool_result_at = now
     self._awaiting_post_tool_result_progression = True
-    self._repetition_tracker.note_progress()
 
 
 def record_subagent_work(

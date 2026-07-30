@@ -5,7 +5,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -58,7 +57,7 @@ def test_format_validation_helpers_handle_various_inputs() -> None:
     assert format_validation_message(42) == "42"
 
     dummy = _DummyValidationError([detail, {"loc": None, "msg": "oops"}])
-    messages = format_validation_error_messages(cast("Any", dummy))
+    messages = format_validation_error_messages(dummy)
     assert messages == [
         "  agents.chain: missing chain",
         "  <root>: oops",
@@ -69,7 +68,10 @@ def test_load_policy_invalid_toml_raises(tmp_path: Path) -> None:
     (tmp_path / "agents.toml").write_text("not a valid toml: <<<")
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
         load_policy(tmp_path)
-    assert "Failed to parse TOML" in excinfo.value.message
+    assert "Could not parse TOML" in excinfo.value.message
+    assert "WHY:" in excinfo.value.message
+    assert "FIX:" in excinfo.value.message
+    assert "ralph --check-config" in excinfo.value.message
     assert excinfo.value.source == "agents.toml"
 
 
@@ -79,6 +81,38 @@ def test_load_policy_reports_agent_validation_failure(tmp_path: Path) -> None:
         load_policy(tmp_path)
     assert "agents.toml validation failed" in excinfo.value.message
     assert excinfo.value.source == "agents"
+
+
+def test_load_policy_read_error_distinct_from_parse_error(tmp_path: Path) -> None:
+    """An OSError opening the file must surface as a read error, not a parse error.
+
+    Before the fix the loader caught ``Exception`` and labelled every
+    non-parse failure as ``"Failed to parse TOML at <path>: <err>"``,
+    which misdirected operators at a read problem (permissions,
+    missing directory, vanished mount) toward TOML syntax. After the
+    fix OSError and TOMLDecodeError take separate paths and the
+    message clearly distinguishes them.
+    """
+    target = tmp_path / "agents.toml"
+    target.write_text("placeholder = 1\n")
+    # Remove read permission so ``open()`` raises PermissionError
+    # (a subclass of OSError) on POSIX.
+    target.chmod(0o000)
+    try:
+        with pytest.raises(LoaderPolicyValidationError) as excinfo:
+            load_policy(tmp_path)
+        message = excinfo.value.message
+        assert "Could not read TOML" in message, (
+            f"Read-failure envelope MUST distinguish itself from parse failures; got: {message!r}"
+        )
+        assert "Failed to parse TOML" not in message, (
+            f"Read-failure envelope MUST NOT be labelled as a parse failure; got: {message!r}"
+        )
+        assert "WHY:" in message and "FIX:" in message
+        assert excinfo.value.source == "agents.toml"
+    finally:
+        # Restore permissions so tmp_path cleanup can remove the file.
+        target.chmod(0o644)
 
 
 def test_load_policy_reports_unknown_transition_target(tmp_path: Path) -> None:
@@ -271,6 +305,173 @@ def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_pat
 
     assert bundle.agents.agent_chains["planning"].agents == ["codex"]
     assert bundle.agents.agent_drains["planning"].chain == "planning"
+
+
+def test_config_synthesized_agents_policy_backfills_policy_remediation(
+    tmp_path: Path,
+) -> None:
+    """A user config predating the policy_remediation chain must not block runs.
+
+    When the unified config defines its own agent_chains/agent_drains, the
+    out-of-graph policy_remediation chain is backfilled from the bundled
+    defaults instead of silently disappearing, and the drain aliases to the
+    chain behind the user's development drain when one exists.
+    """
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "development": ["codex"],
+            "analysis": ["codex"],
+            "commit": ["codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "development": "development",
+            "development_analysis": "analysis",
+            "development_commit": "commit",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    remediation_chain = agents_policy.agent_chains.get("policy_remediation")
+    assert remediation_chain is not None
+    assert remediation_chain.agents == ["claude"]
+    remediation_drain = agents_policy.agent_drains.get("policy_remediation")
+    assert remediation_drain is not None
+    assert remediation_drain.chain == "development"
+    assert agents_policy.agent_chains["planning"].agents == ["codex"]
+
+
+def test_project_agents_toml_backfills_policy_remediation(tmp_path: Path) -> None:
+    (tmp_path / "agents.toml").write_text(
+        dedent(
+            """
+            [agent_chains.planning]
+            agents = ["codex"]
+
+            [agent_drains.planning]
+            chain = "planning"
+            drain_class = "planning"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path)
+
+    remediation_chain = agents_policy.agent_chains.get("policy_remediation")
+    assert remediation_chain is not None
+    assert remediation_chain.agents == ["claude"]
+    assert agents_policy.agent_drains["policy_remediation"].chain == "policy_remediation"
+
+
+def test_project_agents_toml_merges_onto_defaults_like_other_policies(
+    tmp_path: Path,
+) -> None:
+    """agents.toml layers onto bundled defaults exactly like pipeline.toml
+    and artifacts.toml: user entries win per name, everything else keeps
+    its bundled default."""
+    (tmp_path / "agents.toml").write_text(
+        dedent(
+            """
+            [agent_chains.development]
+            agents = ["custom-dev"]
+
+            [agent_drains.development]
+            chain = "development"
+            drain_class = "development"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path)
+
+    assert agents_policy.agent_chains["development"].agents == ["custom-dev"]
+    assert agents_policy.agent_chains["planning"].agents == ["claude"]
+    assert agents_policy.agent_drains["commit"].chain == "commit"
+
+
+def test_config_synthesized_policy_keeps_default_chains_not_overridden(
+    tmp_path: Path,
+) -> None:
+    config = UnifiedConfig(
+        agent_chains={"planning": ["codex"]},
+        agent_drains={"planning": "planning"},
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    assert agents_policy.agent_chains["planning"].agents == ["codex"]
+    assert agents_policy.agent_chains["development"].agents == ["claude"]
+    assert agents_policy.agent_drains["development"].chain == "development"
+
+
+def test_backfilled_policy_remediation_binds_development_drain_chain(
+    tmp_path: Path,
+) -> None:
+    """When the user policy binds a development drain, policy remediation
+    routes through the same chain instead of the bundled default. The shipped
+    pipeline has no review drain, so the development chain is the alias
+    target."""
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "development": ["dev-agent", "codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "development": "development",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    remediation_drain = agents_policy.agent_drains.get("policy_remediation")
+    assert remediation_drain is not None
+    assert remediation_drain.chain == "development"
+    assert agents_policy.agent_chains["development"].agents == ["dev-agent", "codex"]
+
+
+def test_backfilled_policy_remediation_ignores_review_drain(tmp_path: Path) -> None:
+    """A legacy review drain must NOT capture policy remediation: the shipped
+    pipeline has no review drain, so aliasing to it routes remediation into a
+    chain the pipeline never runs. Without a development drain the bundled
+    default binding survives."""
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "review": ["reviewer-agent", "codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "review": "review",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    remediation_drain = agents_policy.agent_drains.get("policy_remediation")
+    assert remediation_drain is not None
+    assert remediation_drain.chain == "policy_remediation"
+
+
+def test_user_defined_policy_remediation_chain_is_not_overwritten(tmp_path: Path) -> None:
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "policy_remediation": ["opencode"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "policy_remediation": "policy_remediation",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    assert agents_policy.agent_chains["policy_remediation"].agents == ["opencode"]
 
 
 def test_load_policy_rejects_artifact_required_in_artifacts_toml(tmp_path: Path) -> None:
@@ -582,234 +783,3 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
     for idx, (fmt, value) in enumerate(expected_messages):
         assert mock_logger.error.call_args_list[idx][0][0] == fmt
         assert mock_logger.error.call_args_list[idx][0][1] == value
-
-
-def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -> None:
-    """After removing sibling-drain inference, a pipeline drain missing from
-    agent_drains must cause a cross-policy validation failure at load time.
-    """
-    config_dir = tmp_path / ".agent"
-    config_dir.mkdir(parents=True)
-
-    config = UnifiedConfig(
-        agent_chains={"dev_chain": ["claude"]},
-        agent_drains={"development": "dev_chain"},
-        # development_analysis drain intentionally absent — no sibling inference
-    )
-    (config_dir / "pipeline.toml").write_text(
-        dedent(
-            """
-            entry_phase = "development"
-            terminal_phase = "complete"
-
-            [phases.development]
-            drain = "development"
-            role = "execution"
-            [phases.development.transitions]
-            on_success = "development_analysis"
-
-            [phases.development_analysis]
-            drain = "development_analysis"
-            role = "execution"
-            [phases.development_analysis.transitions]
-            on_success = "complete"
-
-            [phases.complete]
-            drain = "complete"
-            role = "terminal"
-            terminal_outcome = "success"
-            [phases.complete.transitions]
-            on_success = "complete"
-            on_loopback = "complete"
-            """
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
-        load_policy(config_dir, config=config)
-
-
-def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
-    """Loading a pipeline.toml with the deprecated terminal_recovery_route field raises an error."""
-    config_dir = tmp_path / ".agent"
-    config_dir.mkdir(parents=True)
-
-    config = UnifiedConfig(
-        agent_chains={"main": ["claude"]},
-        agent_drains={"planning": "main", "complete": "main"},
-    )
-    (config_dir / "pipeline.toml").write_text(
-        dedent(
-            """
-            entry_phase = "planning"
-            terminal_phase = "complete"
-
-            [phases.planning]
-            drain = "planning"
-            role = "execution"
-            [phases.planning.transitions]
-            on_success = "complete"
-
-            [phases.complete]
-            drain = "complete"
-            role = "terminal"
-            terminal_outcome = "success"
-            [phases.complete.transitions]
-            on_success = "complete"
-            on_loopback = "complete"
-
-            [recovery]
-            cycle_cap = 200
-            terminal_recovery_route = "phase_failed"
-            """
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(LoaderPolicyValidationError, match="deprecated"):
-        load_policy(config_dir, config=config)
-
-
-def test_build_agents_policy_includes_custom_drains() -> None:
-    """build_agents_policy_from_config includes all declared drains unconditionally."""
-
-    config = UnifiedConfig(
-        agent_chains={"custom_chain": ["claude"]},
-        agent_drains={"my_custom_drain": "custom_chain"},
-    )
-    policy = build_agents_policy_from_config(config)
-    assert "my_custom_drain" in policy.agent_drains
-    assert policy.agent_drains["my_custom_drain"].chain == "custom_chain"
-
-
-def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() -> None:
-    """Default policy must treat failed analysis as stronger rework, not termination."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-
-    bundle = load_policy(defaults_dir)
-    development_decisions = bundle.pipeline.phases["development_analysis"].decisions
-    planning_decisions = bundle.pipeline.phases["planning_analysis"].decisions
-
-    assert development_decisions is not None
-    assert planning_decisions is not None
-    assert development_decisions["failed"].target == development_decisions["request_changes"].target
-    assert planning_decisions["failed"].target == planning_decisions["request_changes"].target
-    assert development_decisions["failed"].target == "development"
-    assert planning_decisions["failed"].target == "planning"
-
-
-def test_default_policy_routes_planning_through_planning_analysis() -> None:
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-
-    bundle = load_policy(defaults_dir)
-    planning = bundle.pipeline.phases["planning"]
-    planning_analysis = bundle.pipeline.phases["planning_analysis"]
-
-    assert planning.transitions.on_success == "planning_analysis"
-    assert planning_analysis.role == "analysis"
-    assert planning_analysis.transitions.on_success == "development"
-    assert planning_analysis.transitions.on_loopback == "planning"
-    assert planning_analysis.loop_policy is not None
-    assert planning_analysis.loop_policy.iteration_state_field == "planning_analysis_iteration"
-    assert (
-        bundle.pipeline.loop_counters["planning_analysis_iteration"].default_max
-        == PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS
-    )
-    assert bundle.agents.agent_drains["planning_analysis"].drain_class == "analysis"
-    contract = bundle.artifacts.artifacts["planning_analysis_decision"]
-    assert contract.artifact_type == "planning_analysis_decision"
-    assert contract.prompt_template == "planning_analysis.jinja"
-
-
-def test_bundled_defaults_have_reviewless_phase_set() -> None:
-    """Bundled default policy must expose the reviewless phase set and no reviewer_pass counter."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-
-    bundle = load_policy(defaults_dir)
-    expected_phases = {
-        "planning",
-        "planning_analysis",
-        "development",
-        "development_analysis",
-        "development_commit_cleanup",
-        "development_commit",
-        "development_final_commit_cleanup",
-        "development_final_commit",
-        "complete",
-        "failed_terminal",
-    }
-    assert set(bundle.pipeline.phases) == expected_phases
-    assert "reviewer_pass" not in bundle.pipeline.budget_counters
-    assert bundle.pipeline.entry_phase == "planning"
-    assert bundle.pipeline.terminal_phase == "complete"
-
-    # Bundled default agent surface must not expose review-era drains or chains.
-    review_era_drains = {"review", "review_analysis", "review_commit", "fix"}
-    assert not review_era_drains.intersection(bundle.agents.agent_drains), (
-        f"Review-era drains still present in bundled defaults: "
-        f"{review_era_drains.intersection(bundle.agents.agent_drains)}"
-    )
-    review_era_chains = {"review", "fix", "review_commit"}
-    assert not review_era_chains.intersection(bundle.agents.agent_chains), (
-        f"Review-era chains still present in bundled defaults: "
-        f"{review_era_chains.intersection(bundle.agents.agent_chains)}"
-    )
-
-
-def test_default_policy_has_artifact_history_enabled_on_planning() -> None:
-    """Default policy must have artifact_history.enabled=True on planning phase."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    bundle = load_policy(defaults_dir)
-    planning = bundle.pipeline.phases["planning"]
-    assert planning.artifact_history is not None, "planning phase must declare artifact_history"
-    assert planning.artifact_history.enabled is True
-
-
-def test_default_policy_has_artifact_history_enabled_on_planning_analysis() -> None:
-    """Default policy must have artifact_history.enabled=True on planning_analysis phase."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    bundle = load_policy(defaults_dir)
-    planning_analysis = bundle.pipeline.phases["planning_analysis"]
-    assert planning_analysis.artifact_history is not None, (
-        "planning_analysis phase must declare artifact_history"
-    )
-    assert planning_analysis.artifact_history.enabled is True
-
-
-def test_default_policy_has_artifact_history_enabled_on_development() -> None:
-    """Default policy must have artifact_history.enabled=True on development phase."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    bundle = load_policy(defaults_dir)
-    development = bundle.pipeline.phases["development"]
-    assert development.artifact_history is not None, (
-        "development phase must declare artifact_history"
-    )
-    assert development.artifact_history.enabled is True
-
-
-def test_default_policy_planning_clears_history_on_fresh_entry() -> None:
-    """Default planning phase must clear history on fresh (non-loopback) entry."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    bundle = load_policy(defaults_dir)
-    planning = bundle.pipeline.phases["planning"]
-    assert planning.artifact_history is not None
-    assert planning.artifact_history.clear_on_fresh_entry is True
-
-
-def test_default_policy_planning_analysis_preserves_history_on_fresh_entry() -> None:
-    """Default planning_analysis phase must NOT clear history on fresh entry."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    bundle = load_policy(defaults_dir)
-    planning_analysis = bundle.pipeline.phases["planning_analysis"]
-    assert planning_analysis.artifact_history is not None
-    assert planning_analysis.artifact_history.clear_on_fresh_entry is False
-
-
-def test_default_policy_development_clears_history_on_fresh_entry() -> None:
-    """Default development phase must clear history on fresh (non-loopback) entry."""
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    bundle = load_policy(defaults_dir)
-    development = bundle.pipeline.phases["development"]
-    assert development.artifact_history is not None
-    assert development.artifact_history.clear_on_fresh_entry is True

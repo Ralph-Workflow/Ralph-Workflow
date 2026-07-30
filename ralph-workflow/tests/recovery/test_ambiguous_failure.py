@@ -16,7 +16,6 @@ from ralph.mcp.artifacts.development_result_validation_error import (
 from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     normalize_plan_artifact_content,
-    render_plan_markdown,
 )
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -253,17 +252,8 @@ def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_render_plan_markdown_with_prompt_shape_payload_routes_to_artifact_validation() -> None:
-    """Drive the malformed-plan shape from the prompt traceback through the real
-    materialize-handoff code.
-
-    The prompt's failure originated at ensure_markdown_handoff_from_artifact ->
-    render_plan_markdown -> normalize_plan_artifact_content where a plan with
-    summary as a string (instead of a Summary object) and steps with 'details'
-    (instead of 'content') was passed. Reproduce that exact shape, capture the
-    PlanArtifactValidationError that the real code raises, and assert the classifier
-    routes it to ARTIFACT_VALIDATION without budget debit.
-    """
+def test_malformed_plan_routes_to_artifact_validation() -> None:
+    """Malformed normalized plan content remains an artifact-validation failure."""
     malformed_payload = {
         "status": "completed",
         "summary": ("Development pass plan for the verifier/test fixes and final verification."),
@@ -280,7 +270,7 @@ def test_render_plan_markdown_with_prompt_shape_payload_routes_to_artifact_valid
     }
 
     with pytest.raises(PlanArtifactValidationError) as exc_info:
-        render_plan_markdown(malformed_payload)
+        normalize_plan_artifact_content(malformed_payload)
 
     classifier = FailureClassifier()
     failure = classifier.classify(exc_info.value, phase="development", agent="codex")

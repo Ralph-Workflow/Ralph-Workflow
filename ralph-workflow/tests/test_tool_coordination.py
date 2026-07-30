@@ -3,14 +3,12 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    ToolContent,
     handle_coordinate,
     handle_declare_complete,
     handle_read_env,
@@ -71,7 +69,7 @@ def test_declare_complete_uses_session_run_id_for_sentinel_key(
         now_fn=lambda: 456,
     )
 
-    assert "timestamp=456" in cast("ToolContent", result.content[0]).text
+    assert "timestamp=456" in result.content[0].text
     assert seen == [(".agent/completion_seen_run-1.json", "run-1")]
 
 
@@ -89,10 +87,11 @@ def test_declare_complete_threads_broker_secret_to_sentinel(
         *,
         sentinel_hmac: object = None,
         _write_fn: object = None,
-    ) -> None:
+    ) -> bool:
         captured["workspace"] = workspace
         captured["run_id"] = run_id
         captured["sentinel_hmac"] = sentinel_hmac
+        return True
 
     monkeypatch.setattr(coordination_module, "_write_completion_sentinel", capture_write)
 
@@ -117,8 +116,9 @@ def test_declare_complete_without_broker_secret_omits_hmac(
         *,
         sentinel_hmac: object = None,
         _write_fn: object = None,
-    ) -> None:
+    ) -> bool:
         captured["sentinel_hmac"] = sentinel_hmac
+        return True
 
     monkeypatch.setattr(coordination_module, "_write_completion_sentinel", capture_write)
 
@@ -155,7 +155,7 @@ def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(
     )
 
     assert result.is_error is True
-    text = cast("ToolContent", result.content[0]).text
+    text = result.content[0].text
     assert "Task completion rejected" in text
     assert "durable completion sentinel" in text
     assert "timestamp=456" not in text
@@ -169,7 +169,7 @@ def test_report_progress_accepts_injected_timestamp() -> None:
         now_fn=lambda: 123,
     )
 
-    assert "timestamp=123" in cast("ToolContent", result.content[0]).text
+    assert "timestamp=123" in result.content[0].text
 
 
 def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
@@ -203,6 +203,89 @@ def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
     assert legacy_path.exists()
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "run-fallback-1"
+
+
+def test_write_completion_sentinel_falls_back_when_db_upsert_raises_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An OS failure during DB upsert still produces durable file evidence."""
+
+    class _RootWorkspace:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+
+        def absolute_path(self, path: str) -> str:
+            return str(self.root / path)
+
+    class _FailingDB:
+        def upsert_completion_sentinel(
+            self,
+            _run_id: str,
+            _hmac_hex: str | None,
+        ) -> None:
+            raise OSError("disk I/O error")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        coordination_module,
+        "RunStateDB",
+        lambda _workspace_root: _FailingDB(),
+    )
+
+    assert coordination_module._write_completion_sentinel(
+        _RootWorkspace(tmp_path),
+        "run-upsert-oserror",
+    )
+    assert (tmp_path / ".agent" / "completion_seen_run-upsert-oserror.json").exists()
+
+
+def test_completion_sentinel_accepts_verified_fallback_after_write_reports_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A persist-then-raise file API must not create contradictory evidence."""
+
+    class _RootWorkspace:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+
+        def absolute_path(self, path: str) -> str:
+            return str(self.root / path)
+
+    def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.DatabaseError("locked")
+
+    target = tmp_path / ".agent" / "completion_seen_run-persisted.json"
+    real_write_text = Path.write_text
+
+    def _persist_then_raise(
+        path: Path,
+        content: str,
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        written = real_write_text(
+            path,
+            content,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+        if path == target:
+            raise OSError("late write error")
+        return written
+
+    monkeypatch.setattr(coordination_module, "RunStateDB", _raise_sqlite)
+    monkeypatch.setattr(Path, "write_text", _persist_then_raise)
+
+    assert coordination_module._write_completion_sentinel(
+        _RootWorkspace(tmp_path),
+        "run-persisted",
+    )
+    assert json.loads(target.read_text(encoding="utf-8")) == {"run_id": "run-persisted"}
 
 
 def test_write_completion_sentinel_durable_fallback_with_hmac(
@@ -248,7 +331,7 @@ def test_coordinate_accepts_injected_timestamp() -> None:
         now_fn=lambda: 789,
     )
 
-    assert "timestamp=789" in cast("ToolContent", result.content[0]).text
+    assert "timestamp=789" in result.content[0].text
 
 
 class MockDeniedSession:
@@ -263,12 +346,12 @@ def test_read_env_returns_variable_value() -> None:
     result = handle_read_env(
         MockCapableSession(), MockWorkspace(), {"name": "MY_VAR"}, env={"MY_VAR": "hello"}
     )
-    assert "MY_VAR=hello" in cast("ToolContent", result.content[0]).text
+    assert "MY_VAR=hello" in result.content[0].text
 
 
 def test_read_env_returns_not_found_when_missing() -> None:
     result = handle_read_env(MockCapableSession(), MockWorkspace(), {"name": "MISSING"}, env={})
-    assert "MISSING=[not found]" in cast("ToolContent", result.content[0]).text
+    assert "MISSING=[not found]" in result.content[0].text
 
 
 def test_read_env_requires_capability() -> None:
@@ -287,7 +370,7 @@ def test_read_env_refuses_broker_secret() -> None:
         {"name": "RALPH_BROKER_SECRET"},
         env={"RALPH_BROKER_SECRET": "topsecret-broker-key"},
     )
-    text = cast("ToolContent", result.content[0]).text
+    text = result.content[0].text
     assert "topsecret-broker-key" not in text
     assert "redacted" in text.lower()
     assert "RALPH_BROKER_SECRET=" in text

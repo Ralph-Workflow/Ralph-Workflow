@@ -30,33 +30,52 @@ def test_phase_close_emits_body_line() -> None:
     body_lines = [ln for ln in out.splitlines() if "[phase-close]" in ln and "───" not in ln]
     assert len(body_lines) == 1
     milestone = UNICODE_GLYPHS["milestone"]
-    expected = f"INFO META [phase-close] {milestone} phase=planning plan: 5 step(s), 2 risk(s)"
-    assert expected in body_lines[0]
+    # wt-028-display S-4: chrome prefix no longer carries INFO META
+    # (level/category) badges -- severity is carried by the
+    # renderer's own icon+label carrier. The line still carries the
+    # [phase-close] tag, the milestone glyph, and the body.
+    line = body_lines[0]
+    assert f"[phase-close] {milestone} phase=planning plan: 5 step(s), 2 risk(s)" in line
+    for forbidden in ("INFO META", "WARN META", "ERROR META", "MILESTONE META"):
+        assert forbidden not in line, (
+            f"wt-028-display S-4: phase-close line must not leak {forbidden!r} chrome; got: {line!r}"
+        )
 
 
 def test_phase_close_flushes_open_streaming_block() -> None:
+    """``emit_phase_close`` closes any active streaming block before its body line.
+
+    S-7 (wt-028-display P1): the close line carries ``[output]`` (NOT
+    ``[content-end]``); the lifecycle suffix is part of the retired
+    per-fragment vocabulary. The ordering invariant — streaming close
+    before phase-close body — still holds.
+    """
     pd, buf = _make_display()
     # Open a streaming block
     pd.emit_activity_line("u", "text", "streaming content")
     pd.emit_phase_close("development", "development: result artifact present")
     out = buf.getvalue()
-    # [content-end] must appear before the body [phase-close] line
-    body_phase_close_idx = out.index("INFO META [phase-close] phase=development")
-    content_end_idx = out.index("[content-end]")
-    assert "[content-end]" in out
-    assert content_end_idx < body_phase_close_idx, (
-        f"[content-end] (at {content_end_idx}) must appear before "
+    # The streaming-block close line uses the public ``[output]`` tag and
+    # must appear before the [phase-close] body line. The retired ``content``
+    # tag is internal vocabulary and must not return.
+    body_phase_close_idx = out.index("[phase-close] phase=development")
+    content_close_idx = out.index("[output][u]")
+    assert "[output][u]" in out
+    assert "[content][u]" not in out
+    # Pre-S-7 retired token must NOT appear.
+    assert "[content-end]" not in out
+    assert content_close_idx < body_phase_close_idx, (
+        f"[output][u] (at {content_close_idx}) must appear before "
         f"the [phase-close] body line (at {body_phase_close_idx}); got:\n{out}"
     )
 
 
-def test_phase_close_sanitises_produced() -> None:
+def test_phase_close_reduces_rich_markup() -> None:
     pd, buf = _make_display()
     pd.emit_phase_close("review", "[red]issues[/red]")
     out = buf.getvalue()
+    assert "phase=review issues" in out
     assert "[red]" not in out
-    assert "[/red]" not in out
-    assert "issues" in out
 
 
 def test_phase_close_no_ansi() -> None:
@@ -122,8 +141,8 @@ def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
     pd.emit_phase_close("fix", "fix: applied", options=PhaseCloseOptions(iteration_context=ctx))
     out = buf.getvalue()
     assert "phase=fix" in out
-    assert "[Dev #2]" in out
-    assert "[Analysis #1]" in out
+    assert "[Cycle #2]" in out
+    assert "[iter #1]" in out
     assert "fix: applied" in out
 
 
@@ -148,14 +167,14 @@ def test_phase_close_iteration_context_empty_no_labels() -> None:
 
 
 def test_phase_close_iteration_context_analysis_with_cap() -> None:
-    """emit_phase_close with inner_analysis + cap shows [Analysis N/cap] label."""
+    """emit_phase_close with inner_analysis + cap shows [iter N/cap] label."""
     pd, buf = _make_display()
     ctx = PhaseIterationContext(inner_analysis=3, inner_analysis_cap=5)
     pd.emit_phase_close(
         "development_analysis", "analysis: done", options=PhaseCloseOptions(iteration_context=ctx)
     )
     out = buf.getvalue()
-    assert "[Analysis 3/5]" in out
+    assert "[iter 3/5]" in out
 
 
 def test_phase_close_exit_trigger_included_in_output() -> None:
@@ -194,7 +213,7 @@ def test_phase_close_exit_trigger_with_iteration_context() -> None:
     opts = PhaseCloseOptions(iteration_context=ctx, exit_trigger="produced")
     pd.emit_phase_close("fix", "fix: applied", options=opts)
     out = buf.getvalue()
-    assert "[Dev #2]" in out
+    assert "[Cycle #2]" in out
     assert "exit=produced" in out
     assert "fix: applied" in out
 

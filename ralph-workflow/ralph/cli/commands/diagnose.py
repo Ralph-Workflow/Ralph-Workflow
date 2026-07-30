@@ -12,9 +12,16 @@ from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
+from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
-from ralph.config.loader import load_config
+from ralph.cli._capability_summary import DOCS_MCP_NOT_INSTALLED_MESSAGE
+from ralph.config.loader import (
+    _global_config_path,
+    collect_unknown_config_fields,
+    load_config,
+    load_toml,
+)
 from ralph.diagnostics.fs_health import FsHealth
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
@@ -38,6 +45,7 @@ from ralph.policy.loader import (
 from ralph.policy.validation import (
     PolicyValidationError,
     validate_agent_chains_satisfiable,
+    validate_chain_agents_on_path,
     validate_recovery_config,
 )
 from ralph.pro_support.prompt import resolve_effective_prompt_path
@@ -99,6 +107,7 @@ def diagnose_command(
 
     workspace_scope = resolve_workspace_scope()
 
+    _check_version(display=display, allow_network=ctx.console.is_terminal)
     config_ok = _check_git_repo(display=display)
     config_ok &= _check_configuration(config_path, cli_overrides, display=display)
     agent_missing = _check_agents_impl(cli_overrides, display=display)
@@ -181,6 +190,8 @@ def _check_capability_state(*, display: object) -> bool:
             Text("yes", style="theme.status.warning") if entry.update_available else Text("no")
         )
         last_ok = entry.last_check_ok_iso or "(never)"
+        if label.startswith("Docs MCP") and entry.status == CapabilityStatus.NOT_INSTALLED:
+            last_ok = DOCS_MCP_NOT_INSTALLED_MESSAGE
         rows.append((label, "Managed", status_text, update_text, last_ok))
     _emit_simple_table(display, "Baseline Capabilities", rows)
     return True
@@ -202,25 +213,24 @@ def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...
     for cell in rows[0] if rows else ("Check", "Status"):
         if isinstance(cell, Text):
             pass
-    # Build a generic 5-column layout matching the row shape used by the
-    # capability / git / configuration / workspace tables in this module.
-    column_styles = [
-        "theme.cat.meta",
-        None,
-        "theme.status.success",
-        "theme.text.muted",
-        "theme.text.muted",
-    ]
-    headers = ["Capability", "Type", "Status", "Update Available", "Last Checked"]
-    if not rows:
-        for header, style in zip(headers, column_styles, strict=False):
-            table.add_column(header, style=style) if style else table.add_column(header)
-    else:
-        for header, style in zip(headers, column_styles, strict=False):
-            table.add_column(header, style=style) if style else table.add_column(header)
+    headers = {
+        "Baseline Capabilities": ["Capability", "Source", "Status", "Update", "Last checked"],
+        "Version": ["Item", "Value"],
+        "Agents": ["Agent", "Configured command", "PATH", "Install", "Config"],
+        "Git Repository": ["Check", "Result"],
+        "Configuration": ["Setting", "Value"],
+        "Pre-flight Validation": ["Check", "Result"],
+        "Workspace Files": ["File", "Status"],
+        "Filesystem Health": ["Volume", "Spotlight", "Journal", "Warnings"],
+    }.get(title, ["Check", "Result"])
+    column_styles = ["theme.cat.meta", None, "theme.status.success", "theme.text.muted", "theme.text.muted"]
+    for header, style in zip(headers, column_styles, strict=False):
+        table.add_column(header, style=style) if style else table.add_column(header)
     for row in rows:
-        cells = list(row) + [None] * (5 - len(row))
-        table.add_row(*(str(cell) if cell is not None else "-" for cell in cells[:5]))
+        cells = list(row) + [None] * (len(headers) - len(row))
+        table.add_row(
+            *(cell if isinstance(cell, Text) else str(cell) if cell is not None else "-" for cell in cells[: len(headers)])
+        )
     display.emit_renderable(table)
 
 
@@ -314,44 +324,11 @@ def _run_preflight_validation(
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         registry = AgentRegistry.from_config(config)
 
-        if config_path is not None:
-            policy_dir = config_path.parent
-            has_effective_policy_files = any(
-                (policy_dir / name).exists()
-                for name in (
-                    "ralph-workflow.toml",
-                    "agents.toml",
-                    "pipeline.toml",
-                    "artifacts.toml",
-                )
-            )
-        else:
-            policy_dir = workspace_scope.resolve_agent_file("pipeline.toml").parent
-            has_effective_policy_files = any(
-                workspace_scope.resolve_agent_file(name).exists()
-                for name in (
-                    "ralph-workflow.toml",
-                    "agents.toml",
-                    "pipeline.toml",
-                    "artifacts.toml",
-                )
-            )
-        if not has_effective_policy_files:
-            rows.append(
-                (
-                    "Pre-flight",
-                    Text(
-                        "Skipped: project is not initialized yet (run `ralph --init`)",
-                        style="theme.status.warning",
-                    ),
-                    "",
-                    "",
-                    "",
-                )
-            )
-            _emit_simple_table(display, "Pre-flight Validation", rows)
-            return True
-
+        policy_dir = (
+            config_path.parent
+            if config_path is not None
+            else workspace_scope.resolve_agent_file("pipeline.toml").parent
+        )
         bundle = (
             load_policy(policy_dir, config=config)
             if config_path is not None
@@ -359,6 +336,7 @@ def _run_preflight_validation(
         )
 
         validate_agent_chains_satisfiable(bundle, registry)
+        validate_chain_agents_on_path(bundle.agents)
         validate_recovery_config(bundle)
 
         rows.append(("Agent chains", Text("Satisfiable", style="theme.status.success"), "", "", ""))
@@ -384,6 +362,47 @@ def _run_preflight_validation(
         return False
 
 
+def _check_version(*, display: object, allow_network: bool) -> None:
+    """Report the installed version, latest known release, and how to upgrade."""
+    from ralph.update_check import update_status
+
+    rows: list[tuple[object, ...]] = []
+    try:
+        status = update_status(allow_network=allow_network)
+    except Exception:
+        return
+
+    rows.append(("Installed version", status.current_version, "", "", ""))
+    if status.disabled:
+        rows.append(("Update check", Text("disabled", style="theme.text.muted"), "", "", ""))
+        _emit_simple_table(display, "Version", rows)
+        return
+
+    if status.latest_version is None:
+        rows.append(
+            ("Latest release", Text("unknown (offline?)", style="theme.text.muted"), "", "", "")
+        )
+    elif status.update_available:
+        rows.append(
+            (
+                "Latest release",
+                _status_text("Update available", status.latest_version, "theme.status.warning"),
+                "",
+                "",
+                "",
+            )
+        )
+        rows.append(
+            ("Detected install", status.install.kind.value, "", "", ""),
+        )
+        rows.append(("Upgrade with", status.install.upgrade_command, "", "", ""))
+    else:
+        rows.append(
+            ("Latest release", Text("up to date", style="theme.status.success"), "", "", "")
+        )
+    _emit_simple_table(display, "Version", rows)
+
+
 def _check_git_repo(*, display: object) -> bool:
     """Check git repository status."""
     from ralph.display.parallel_display import ParallelDisplay
@@ -395,7 +414,15 @@ def _check_git_repo(*, display: object) -> bool:
         repo_root = find_repo_root()
         rows.append(("Repository root", str(repo_root), "", "", ""))
     except Exception as e:
-        rows.append(("Repository", _status_text("Error", str(e), "theme.status.error"), "", "", ""))
+        rows.append(
+            (
+                "Repository",
+                _status_text("Error", f"{e}. FIX: run `git init` before running Ralph Workflow.", "theme.status.error"),
+                "",
+                "",
+                "",
+            )
+        )
         _emit_simple_table(display, "Git Repository", rows)
         return False
 
@@ -428,7 +455,14 @@ def _check_configuration(
     *,
     display: object,
 ) -> bool:
-    """Check configuration validity."""
+    """Check configuration validity.
+
+    Surfaces typo'd config keys as a distinct warning row in the
+    Configuration table so the operator sees them at the same gate that
+    reports ``Config loaded: Success``. Unknown fields are ADVISORY only
+    \u2014 the gate never fails on them; the recommended fix is the
+    ``ralph --check-config`` flow that mirrors the loader warning.
+    """
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -449,8 +483,110 @@ def _check_configuration(
         _emit_simple_table(display, "Configuration", rows)
         return False
 
+    # Advisory: re-read the effective global + local TOML so we can flag
+    # typo'd keys without changing the validation result. Unknown keys
+    # are tolerated by the Pydantic schema (extra='ignore') but should
+    # still be visible at the first-run gate.
+    unknown_field_rows = _collect_unknown_field_rows(config_path, workspace_scope)
+    rows.extend(unknown_field_rows)
+
     _emit_simple_table(display, "Configuration", rows)
     return True
+
+
+def _collect_unknown_field_rows(
+    config_path: Path | None, workspace_scope: WorkspaceScope | None
+) -> list[tuple[object, ...]]:
+    """Render unknown-field findings as Configuration-table rows.
+
+    Re-reads the global config and either the explicit ``config_path`` or
+    the workspace-local ``.agent/ralph-workflow.toml`` and runs the
+    pure :func:`collect_unknown_config_fields` collector. Returns one
+    warning-styled row per finding, with the field name in column 1 and
+    the suggested correction + next command in column 2.
+    """
+    rows: list[tuple[object, ...]] = []
+    findings: list[tuple[str, str | None]] = []
+
+    global_path = _global_config_path()
+    global_data = load_toml(global_path)
+    findings.extend(_findings_with_path(global_data, global_path))
+
+    if config_path is not None:
+        local_data = load_toml(config_path)
+        findings.extend(_findings_with_path(local_data, config_path))
+    elif workspace_scope is not None:
+        local_path = workspace_scope.local_config_path
+        local_data = load_toml(local_path)
+        findings.extend(_findings_with_path(local_data, local_path))
+        # Inherited / propagated ancestor config files contribute to
+        # the effective config but the loader's per-source unknown-field
+        # warning needs the per-path name so the operator can locate the
+        # typo in a specific inherited file, not just the local one.
+        for propagated_path in workspace_scope.propagated_config_paths:
+            propagated_data = load_toml(propagated_path)
+            findings.extend(_findings_with_path(propagated_data, propagated_path))
+
+    for field_path, suggestion in findings:
+        fix = (
+            f"did you mean `{suggestion}`? fix in TOML, then `ralph --check-config`"
+            if suggestion is not None
+            else "fix in TOML, then `ralph --check-config`"
+        )
+        rows.append(
+            (
+                field_path,
+                Text(fix, style="theme.status.warning"),
+                "",
+                "",
+                "",
+            )
+        )
+    return rows
+
+
+def _findings_with_path(data: dict[str, object], path: Path) -> list[tuple[str, str | None]]:
+    """Run the loader collector and pull (field, suggestion) tuples out of it.
+
+    The collector returns human-readable single-line messages; the
+    diagnose renderer needs the structured ``(field, suggestion)`` pair
+    so we re-parse the suggestion out of the line with a minimal scan
+    rather than introducing a parallel data path through the loader.
+    """
+    raw_lines = collect_unknown_config_fields(data, path)
+    parsed: list[tuple[str, str | None]] = []
+    for line in raw_lines:
+        field, suggestion = _parse_unknown_field_line(line)
+        if field is None:
+            continue
+        parsed.append((field, suggestion))
+    return parsed
+
+
+def _parse_unknown_field_line(line: str) -> tuple[str | None, str | None]:
+    """Extract ``(field, suggestion)`` from a loader-formatted warning line.
+
+    The loader formats each line as::
+        What failed: unknown setting `<field>` in <path>. ...
+        Fix: ... did you mean `<suggestion>`? ...
+
+    Pulling these out without restructuring the loader keeps the
+    collector and the diagnose renderer on the same contract. The line
+    shape is owned by ``config_error_messages`` and this parser is the
+    single non-trivial consumer.
+    """
+    field: str | None = None
+    suggestion: str | None = None
+    _, _, tail = line.partition("unknown setting `")
+    if not tail:
+        return field, suggestion
+    field_part, _, tail = tail.partition("`")
+    field = field_part or None
+    if "did you mean `" in tail:
+        _, _, after = tail.partition("did you mean `")
+        suggestion_part, _, _ = after.partition("`")
+        suggestion = suggestion_part or None
+    return field, suggestion
 
 
 def check_agents(
@@ -505,7 +641,16 @@ def _check_agents_impl(
                 cmd = agent.cmd if agent else ""
                 path_status = path_by_name.get(name, Text("missing", style="theme.status.warning"))
                 config_cell = _status_text("Configured", cmd, "theme.status.success")
-                rows.append((name, config_cell, path_status, "", ""))
+                if (
+                    name in path_by_name
+                    and availability
+                    and dict(availability).get(name) != "available"
+                ):
+                    install_hint = install_url_for(name) or "No install link available"
+                    config_hint = f"edit \\[agents.{name}] in ralph-workflow-agents.toml"
+                    rows.append((name, config_cell, path_status, install_hint, config_hint))
+                else:
+                    rows.append((name, config_cell, path_status, "", ""))
     except Exception as e:
         rows.append(("Agents", _status_text("Error", str(e), "theme.status.error"), "-", "", ""))
         _emit_simple_table(display, "Agents", rows)
@@ -699,7 +844,12 @@ def _check_workspace_files(*, display: object) -> bool:
                 )
             )
         else:
-            rows.append((file_label, Text("Not found", style="theme.status.warning"), "", "", ""))
+            missing = (
+                "Optional — not created; run `ralph --init-local-config` to add it"
+                if file_path == ".agent/ralph-workflow.toml"
+                else "Not found"
+            )
+            rows.append((file_label, Text(missing, style="theme.status.warning"), "", "", ""))
 
     _emit_simple_table(display, "Workspace Files", rows)
     return True
@@ -734,9 +884,7 @@ def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
     else:
         journal_mb = journal_bytes / (1024 * 1024)
         style = (
-            "theme.status.warning"
-            if journal_bytes > 50 * 1024 * 1024
-            else "theme.status.success"
+            "theme.status.warning" if journal_bytes > 50 * 1024 * 1024 else "theme.status.success"
         )
         journal_cell = Text(f"{journal_mb:.1f} MB", style=style)
 
@@ -744,9 +892,7 @@ def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
     if warnings_count == 0:
         warnings_cell: Text = Text("none", style="theme.status.success")
     else:
-        warnings_cell = Text(
-            f"{warnings_count} warning(s)", style="theme.status.warning"
-        )
+        warnings_cell = Text(f"{warnings_count} warning(s)", style="theme.status.warning")
 
     rows: list[tuple[object, ...]] = [
         (

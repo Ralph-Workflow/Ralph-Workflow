@@ -192,12 +192,12 @@ error message by substring.
 
 ## Deterministic rc=0 classification
 
-The `OpenCodeResumableExitError` (a clean `rc=0` exit with no
-artifact, no `declare_complete` — see
+The `OpenCodeResumableExitError` (a clean `rc=0` exit without the durable
+`declare_complete` sentinel or without a required artifact receipt — see
 `ralph.agents.invoke._open_code_resumable_exit_error`) is classified
 deterministically as `FailureCategory.AGENT` by the explicit
 typed-cause branch in `ralph/recovery/failure_classifier.py:_categorize_exc`
-(lines 859-869). This branch precedes the broader
+This branch precedes the broader
 `AgentInvocationError` branch, so the exception NEVER falls to
 `FailureCategory.AMBIGUOUS` and the operator never sees the noisy
 `flagged_for_review=true` warning that the pre-fix code emitted.

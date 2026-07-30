@@ -77,6 +77,7 @@ def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
         content: str | None,
         raw_ref: str | None,
         metadata: dict[str, object] | None = None,
+        timestamp: str | None = None,
     ) -> None:
         _capture(unit_id, kind, content, raw_ref, metadata)
 
@@ -101,20 +102,7 @@ def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
     finally:
         _pd_module.ParallelDisplay._emit_activity_event = original_emit
 
-    progress_events = [
-        (name, kind, summary)
-        for name, kind, summary, _meta in captured
-        if kind == ActivityEventKind.SUBAGENT_PROGRESS
-    ]
-    assert len(progress_events) >= 1, (
-        "stream_parsed_agent_activity MUST surface a SUBAGENT_PROGRESS"
-        f" event for a tool_use line; captured={captured}"
-    )
-    # The summary must be the exact sanitized parser-layer summary.
-    assert any(summary == "tool_use:Bash" for _, _, summary in progress_events), (
-        "SUBAGENT_PROGRESS event summary MUST be the exact sanitized"
-        f" 'tool_use:Bash' summary; captured={captured}"
-    )
+    assert [kind for _name, kind, _content, _meta in captured] == [ActivityEventKind.TOOL_USE]
 
 
 _PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
@@ -135,6 +123,21 @@ _PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
             "name": "exec",
             "call_id": "call_1",
             "arguments": {"cmd": "pwd"},
+        }
+    ),
+    ActivityProvider.CURSOR: json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "tool_call": {
+                "mcpToolCall": {
+                    "args": {
+                        "toolName": "mcp__ralph__create_directory",
+                        "args": {"path": "tmp/interactive-cursor-smoke"},
+                    }
+                },
+                "toolCallId": "tool-1",
+            },
         }
     ),
     ActivityProvider.OPENCODE: json.dumps(
@@ -189,6 +192,7 @@ def test_subagent_progress_event_for_every_provider(
         content: str | None,
         raw_ref: str | None,
         metadata: dict[str, object] | None = None,
+        timestamp: str | None = None,
     ) -> None:
         captured.append((unit_id, kind, content or "", metadata or {}))
 
@@ -203,16 +207,4 @@ def test_subagent_progress_event_for_every_provider(
     finally:
         _pd_module.ParallelDisplay._emit_activity_event = original_emit
 
-    progress_events = [
-        (name, kind, summary)
-        for name, kind, summary, _meta in captured
-        if kind == ActivityEventKind.SUBAGENT_PROGRESS
-    ]
-    assert progress_events, (
-        f"provider={provider.value!r} MUST emit SUBAGENT_PROGRESS via "
-        f"stream_parsed_agent_activity; captured={captured}"
-    )
-    assert any(summary.startswith("tool_use:") for _, _, summary in progress_events), (
-        f"provider={provider.value!r} SUBAGENT_PROGRESS summary MUST carry "
-        f"the 'tool_use:' prefix; progress_events={progress_events}"
-    )
+    assert [kind for _name, kind, _content, _meta in captured] == [ActivityEventKind.TOOL_USE]

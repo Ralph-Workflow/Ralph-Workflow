@@ -70,7 +70,7 @@ body:
       options:
         - label: I used a real repo or realistic test repo, not a toy hello-world case.
           required: true
-        - label: I understand Codeberg is the primary repo and I'm reporting this here on purpose.
+        - label: I understand GitHub is the primary repo and I'm reporting this here on purpose.
           required: true
         - label: I checked START_HERE.md or the example review bundle before filing.
           required: false

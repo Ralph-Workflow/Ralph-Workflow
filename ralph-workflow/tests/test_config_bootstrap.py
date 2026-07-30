@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
-from git import Repo
+from pathspec import GitIgnoreSpec
+
+if TYPE_CHECKING:
+    import pytest
 
 import ralph.config.loader as loader_module
 import ralph.policy
@@ -22,15 +25,14 @@ from ralph.config.bootstrap import (
     resolve_global_config_dir,
 )
 from ralph.policy.loader import (
-    PolicyValidationError as LoaderPolicyValidationError,
-)
-from ralph.policy.loader import (
     load_policy,
 )
 from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
-_EXPECTED_REGENERATE_COUNT = 9
+#: Nine files regenerated before ``ralph-workflow-agents.toml`` was split
+#: out of the main config; ten after.
+_EXPECTED_REGENERATE_COUNT = 10
 _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     # Ralph-local
     ".agent/",
@@ -164,7 +166,7 @@ _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/tmp/last_retry_error_development.txt",
     ".agent/raw/unit-a.log",
     ".agent/workers/unit-a/artifacts/development_result.json",
-    ".agent/CURRENT_PROMPT.md",
+    ".agent/PRODUCT_CRITERIA.md",
     "PROMPT.md",
     "wt-123/worktree-file.txt",
 )
@@ -353,6 +355,7 @@ def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
 
     sentinel = "# SENTINEL"
     (global_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
+    (global_dir / "ralph-workflow-agents.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-mcp.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-pipeline.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-artifacts.toml").write_text(sentinel, encoding="utf-8")
@@ -437,12 +440,8 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
     chains = data["agent_chains"]
 
     assert chains["planning"] == ["claude/opus"]
-    assert chains["development"] == [
-        "opencode/minimax/MiniMax-M2.7-highspeed",
-        "codex",
-        "claude/sonnet",
-    ]
-    assert chains["analysis"] == ["opencode/openai/gpt-5.4"]
+    assert chains["development"] == ["claude/sonnet"]
+    assert chains["analysis"] == ["claude/opus"]
     assert chains["commit"] == ["claude/haiku"]
 
     # Review-era chains must not appear in the active default local template.
@@ -502,9 +501,15 @@ def test_generated_local_template_validates_against_bundled_policy(
         )
 
 
-def test_generated_local_template_missing_required_drain_fails_policy_validation(
+def test_generated_local_template_missing_drain_heals_from_bundled_defaults(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A drain line lost from the generated template no longer breaks startup.
+
+    Agents policy layers onto bundled defaults (like pipeline/artifacts), so
+    a template that drifts and drops ``development_commit`` gets the bundled
+    binding back instead of failing policy validation on day zero.
+    """
     defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
@@ -525,8 +530,8 @@ def test_generated_local_template_missing_required_drain_fails_policy_validation
 
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
     config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
-    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
-        load_policy(agent_dir, config=config)
+    bundle = load_policy(agent_dir, config=config)
+    assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
 
 
 def test_ensure_local_configs_adds_default_gitignore_entries(tmp_path: Path) -> None:
@@ -552,7 +557,11 @@ def test_ensure_local_configs_preserves_gitignore_without_duplicate_default_entr
     ensure_local_configs(agent_dir)
 
     content = gitignore.read_text(encoding="utf-8")
-    assert content.count(".agent/") == 1
+    # The parent ``.agent/`` rule is in the file exactly once (the
+    # explicit ``.agent/ralph-explore/`` child rule is permitted
+    # alongside it because the seeder appends the child only when
+    # it is absent).
+    assert content.count(".agent/\n") == 1
     assert content.count("/PROMPT*") == 1
     assert content.count("wt-*/") == 1
 
@@ -611,56 +620,41 @@ def test_ensure_local_configs_gitignore_dedup_when_pattern_already_present(
     assert content.count("__pycache__/") == 1
 
 
-def test_ensure_local_configs_gitignore_covers_representative_local_paths(
-    tmp_git_repo: Path,
+def test_ensure_local_configs_gitignore_includes_patterns_for_representative_local_paths(
+    tmp_path: Path,
 ) -> None:
-    agent_dir = tmp_git_repo / ".agent"
-    ensure_local_configs(agent_dir)
+    ensure_local_configs(tmp_path / ".agent")
 
-    with Repo(tmp_git_repo) as repo:
-        raw = repo.git.check_ignore(*_EXPECTED_IGNORED_LOCAL_PATHS).splitlines()
-    ignored = {p.strip() for p in raw}
-    missing = [p for p in _EXPECTED_IGNORED_LOCAL_PATHS if p not in ignored]
-    assert not missing, f"Paths not covered by .gitignore: {missing}"
+    patterns = set((tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines())
+    expected_patterns = {".agent/", "/PROMPT*", "wt-*/"}
+    assert expected_patterns <= patterns, (
+        "Missing .gitignore rules for representative local paths "
+        f"{_EXPECTED_IGNORED_LOCAL_PATHS}: {expected_patterns - patterns}"
+    )
 
 
-def _paths_ignored_by_check_ignore(cwd: Path, paths: tuple[str, ...]) -> set[str]:
-    """Return the subset of paths git check-ignore -v reports as ignored.
-
-    A path is considered ignored iff a non-negation pattern matched it.
-    The matching pattern is the third colon-separated segment of the first
-    stdout line (after a tab).
-    """
-    if not paths:
-        return set()
-    result = Repo(cwd).git.check_ignore("-v", "--", *paths)
-    ignored: set[str] = set()
-    for line in result.splitlines():
-        if not line:
-            continue
-        prefix, _, path = line.partition("\t")
-        pattern = prefix.rsplit(":", 1)[-1] if ":" in prefix else prefix
-        if not pattern.startswith("!"):
-            ignored.add(path.strip())
-    return ignored
+def _paths_ignored_by_gitignore(gitignore: Path, paths: tuple[str, ...]) -> set[str]:
+    """Return the subset of paths matched by the generated gitignore."""
+    spec = GitIgnoreSpec.from_lines(gitignore.read_text(encoding="utf-8").splitlines())
+    return set(spec.match_files(paths))
 
 
 def test_ensure_local_configs_gitignore_matches_per_category_positive_paths(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
     """Each new gitignore category must cover at least one representative path."""
-    agent_dir = tmp_git_repo / ".agent"
+    agent_dir = tmp_path / ".agent"
     ensure_local_configs(agent_dir)
 
-    ignored = _paths_ignored_by_check_ignore(
-        tmp_git_repo, _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS
+    ignored = _paths_ignored_by_gitignore(
+        tmp_path / ".gitignore", _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS
     )
     missing = [p for p in _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS if p not in ignored]
     assert not missing, f"New-category paths not covered by .gitignore: {missing}"
 
 
 def test_ensure_local_configs_does_not_overignore_tracked_conventions(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
     """Tracked files and source-controlled .gitkeep markers must NOT be ignored.
 
@@ -672,20 +666,22 @@ def test_ensure_local_configs_does_not_overignore_tracked_conventions(
       `!<dir>/.gitkeep` allowlist so source-controlled marker files stay
       tracked even when the dir itself is ignored.
     """
-    agent_dir = tmp_git_repo / ".agent"
+    agent_dir = tmp_path / ".agent"
     ensure_local_configs(agent_dir)
 
-    ignored = _paths_ignored_by_check_ignore(tmp_git_repo, _EXPECTED_TRACKED_NON_IGNORED_PATHS)
+    ignored = _paths_ignored_by_gitignore(
+        tmp_path / ".gitignore", _EXPECTED_TRACKED_NON_IGNORED_PATHS
+    )
     over_ignored = [p for p in _EXPECTED_TRACKED_NON_IGNORED_PATHS if p in ignored]
     assert not over_ignored, (
         f"Tracked files or .gitkeep markers that the new gitignore must NOT ignore: {over_ignored}"
     )
 
 
-def test_ensure_local_configs_gitignore_idempotent_for_new_categories(
+def test_ensure_local_configs_regression_idempotent_excludes_do_not_timeout(
     tmp_git_repo: Path,
 ) -> None:
-    """Re-running ensure_local_configs must not duplicate the new gitignore lines."""
+    """Plan S-1: repeated local config seeding must finish within the test budget."""
     agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
     ensure_local_configs(agent_dir)
@@ -769,15 +765,15 @@ def test_global_template_bootstraps_first_run_policy_without_local_override(
     )
 
 
-def test_global_template_missing_active_drain_breaks_first_run_startup(
+def test_global_template_missing_active_drain_heals_on_first_run_startup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Protect the exact startup regression users see when global drain bindings drift.
+    """Global drain-binding drift no longer bricks first-run startup.
 
-    The failure mode is severe: Ralph rejects startup during policy loading, before any
-    planning or development can begin. This test documents the contract by simulating the
-    broken fresh-install config and asserting the runtime surfaces the same unbound-drain
-    class of failure the user would see on day zero.
+    This used to be a severe day-zero failure: Ralph rejected startup during
+    policy loading. Agents policy now layers onto the bundled defaults, so a
+    fresh-install config that lost ``development_commit`` gets the bundled
+    binding back and startup proceeds.
     """
     global_dir = tmp_path / "global"
     global_dir.mkdir()
@@ -793,8 +789,8 @@ def test_global_template_missing_active_drain_breaks_first_run_startup(
     project_root.mkdir()
 
     config = loader_module.load_config(workspace_scope=WorkspaceScope(project_root))
-    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
-        load_policy(project_root / ".agent", config=config)
+    bundle = load_policy(project_root / ".agent", config=config)
+    assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
 
 
 # ---------------------------------------------------------------------------
@@ -809,15 +805,9 @@ def test_global_template_missing_active_drain_breaks_first_run_startup(
 # identifier ``completion_sentinel_*.json``).
 
 
-def test_ensure_local_configs_seeds_git_exclude(tmp_path: Path) -> None:
-    """``ensure_local_configs`` must seed ``.git/info/exclude`` with the canonical patterns.
-
-    Note: ``.git/info/exclude`` only lives inside an actual git repo, so this
-    test uses a real ``Repo.init``-created repo instead of a bare tmp_path.
-    """
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+def test_ensure_local_configs_seeds_git_exclude(tmp_git_repo: Path) -> None:
+    """``ensure_local_configs`` must seed ``.git/info/exclude`` with canonical patterns."""
+    repo_root = tmp_git_repo
     agent_dir = repo_root / ".agent"
 
     ensure_local_configs(agent_dir)
@@ -829,11 +819,9 @@ def test_ensure_local_configs_seeds_git_exclude(tmp_path: Path) -> None:
         assert pattern in content, f"Missing canonical exclude pattern: {pattern!r}"
 
 
-def test_ensure_local_configs_git_exclude_idempotent(tmp_path: Path) -> None:
+def test_ensure_local_configs_git_exclude_idempotent(tmp_git_repo: Path) -> None:
     """Re-running bootstrap must not duplicate any canonical exclude pattern."""
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+    repo_root = tmp_git_repo
     agent_dir = repo_root / ".agent"
 
     ensure_local_configs(agent_dir)

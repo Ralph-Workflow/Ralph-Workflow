@@ -99,3 +99,92 @@ def test_emit_info_panel_quiet_mode_emits_nothing() -> None:
     pd.stop()
     assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"
     assert captured == [], f"quiet mode must not call console.print, got: {captured!r}"
+# ---------------------------------------------------------------------------
+# DA-001 (S-5 / AC-04): the info Panel / unboxed body honor
+# ``DisplayContext.body_measure()`` so prose on a very wide console
+# (e.g. 250 cols) does not run the full terminal width.
+# ---------------------------------------------------------------------------
+
+
+def test_emit_info_panel_caps_body_width_at_body_measure_on_wide_console() -> None:
+    """DA-001: 250-col console -> Panel width == body_measure (NOT 250)."""
+    buf = StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=False,
+        width=250,
+        color_system=None,
+        theme=RALPH_THEME,
+    )
+    ctx = make_display_context(console=console, env={})
+    assert ctx.width == 250
+    body_measure = ctx.body_measure()
+
+    captured_panel: list[Panel] = []
+
+    class _CaptureConsole:
+        width = 250
+        file = buf
+
+        def print(self, *args: object, **kwargs: object) -> None:
+            captured_panel.extend(arg for arg in args if isinstance(arg, Panel))
+            console.print(*args, **kwargs)
+
+    cap_ctx = make_display_context(console=_CaptureConsole(), env={})
+    pd_cap = ParallelDisplay(cap_ctx)
+    pd_cap.emit_info_panel(title="Next steps", content="Some short body content.")
+    pd_cap.stop()
+    assert len(captured_panel) == 1, (
+        f"expected exactly 1 panel under wide console, got {len(captured_panel)}"
+    )
+    panel = captured_panel[0]
+    # Pre-fix bug: no width was passed to Panel, so Rich defaulted
+    # to the console's 250 cols and prose ran full terminal width.
+    # DA-001 pins the panel.width to body_measure() instead.
+    assert panel.width == body_measure, (
+        f"info Panel width must equal body_measure ({body_measure}) on a "
+        f"250-col console, got {panel.width!r}"
+    )
+    assert panel.width < 250, (
+        f"info Panel must not run the full terminal width; got {panel.width!r}"
+    )
+
+
+def test_emit_info_panel_unboxed_body_caps_width_on_wide_height_constrained_console() -> None:
+    """DA-001: 12-row / 250-col console -> unboxed body line length stays <= body_measure.
+
+    The height-constrained path emits a heading + body pair (no
+    border). The body print must still honor ``body_measure()`` so
+    a 250-col terminal does not print 250-char prose lines from an
+    info block.
+    """
+    buf = StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=False,
+        width=250,
+        color_system=None,
+        theme=RALPH_THEME,
+    )
+    ctx = make_display_context(console=console, env={}, force_height=12)
+    assert ctx.is_height_constrained()
+    pd = ParallelDisplay(ctx)
+    pd.emit_info_panel(title="Next steps", content="Some short body content.")
+    pd.stop()
+    rendered = buf.getvalue()
+    # The body line is everything after the title line and before
+    # any trailing whitespace; assert the longest non-rule line
+    # stays at or below body_measure.
+    body_lines = [
+        line
+        for line in rendered.splitlines()
+        if line
+        and "Next steps" not in line
+        and "\u2500" not in line
+    ]
+    assert body_lines, f"expected a body line in rendered output, got: {rendered!r}"
+    longest = max(len(line) for line in body_lines)
+    assert longest <= ctx.body_measure() + 4, (
+        f"height-constrained body line must respect body_measure ({ctx.body_measure()}); "
+        f"longest line was {longest!r}: {rendered!r}"
+    )

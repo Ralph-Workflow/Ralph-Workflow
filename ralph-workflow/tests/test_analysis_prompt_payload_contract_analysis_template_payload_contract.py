@@ -13,7 +13,6 @@ _ANALYSIS_TEMPLATES = ["development_analysis.jinja", "review_analysis.jinja"]
 _SUBAGENT_ANALYSIS_INPUTS = {
     "development_analysis.jinja": "PROMPT, PLAN, and the latest artifact",
     "review_analysis.jinja": "PROMPT, PLAN, and the latest artifact",
-    "planning_analysis.jinja": "PROMPT and the current finalized plan or staged draft",
 }
 
 _RETRY_HINT_TEMPLATES = [
@@ -37,6 +36,7 @@ class TestAnalysisTemplatePayloadContract:
         self, name: str, input_phrase: str
     ) -> None:
         source = _load(name)
+        normalized_source = " ".join(source.split())
         assert "## SUBAGENTS AND PARALLEL WORK" in source, (
             f"{name}: missing dedicated subagent/parallel work section"
         )
@@ -51,7 +51,9 @@ class TestAnalysisTemplatePayloadContract:
         assert "run independent analysis or verification work in parallel" in source, (
             f"{name}: must instruct safe parallel execution"
         )
-        assert input_phrase in source, f"{name}: must direct retrieval of the core analysis inputs"
+        assert input_phrase in normalized_source, (
+            f"{name}: must direct retrieval of the core analysis inputs"
+        )
         assert "Only you, in the main session, may submit the final analysis artifact" in source, (
             f"{name}: artifact submission must remain in the main session"
         )

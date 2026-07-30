@@ -107,8 +107,8 @@ class TestSymmetricStartCloseTranscriptOrdering:
         assert close_pos != -1, "Expected [phase-close] in transcript"
         assert phase_pos < close_pos, "[phase] must appear before [phase-close]"
 
-    def test_start_and_close_use_same_dev_label_vocabulary(self) -> None:
-        """Phase-start banner and [phase-close] transcript line use the same Dev label."""
+    def test_start_and_close_use_same_cycle_label_vocabulary(self) -> None:
+        """Phase-start banner and [phase-close] transcript line use the same Cycle label."""
 
         # Phase-start banner
         start_buf = StringIO()
@@ -133,6 +133,6 @@ class TestSymmetricStartCloseTranscriptOrdering:
         start_out = start_buf.getvalue()
         close_out = close_buf.getvalue()
 
-        # Both should reference Dev 3/5
-        assert "Dev 3/5" in start_out, f"Expected 'Dev 3/5' in start banner: {start_out!r}"
-        assert "Dev 3/5" in close_out, f"Expected 'Dev 3/5' in phase-close line: {close_out!r}"
+        # Both should reference Cycle 3/5
+        assert "Cycle 3/5" in start_out, f"Expected 'Cycle 3/5' in start banner: {start_out!r}"
+        assert "Cycle 3/5" in close_out, f"Expected 'Cycle 3/5' in phase-close line: {close_out!r}"

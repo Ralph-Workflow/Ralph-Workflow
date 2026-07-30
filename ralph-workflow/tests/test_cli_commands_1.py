@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
+import pytest
 from git import Repo
 from rich.console import Console
 
@@ -17,7 +16,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
-from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -26,8 +25,17 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
-if TYPE_CHECKING:
-    import pytest
+
+def _write_commit_message_doc(repo_root: Path, message: str) -> None:
+    """Write the markdown commit_message artifact the way MCP submission does."""
+    if message.upper().startswith("SKIP:"):
+        reason = message[len("SKIP:") :].strip()
+        document = f"---\ntype: skip\nreason: {reason}\n---\n"
+    else:
+        document = f"---\ntype: commit\nsubject: {message}\n---\n"
+    path = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
 
 
 _SUMMARY_RETRY_FAILURES = 2
@@ -35,7 +43,7 @@ _SUMMARY_RETRY_FAILURES = 2
 
 def _artifact_invoke(tmp_path: Path, message: str) -> object:
     def _fake(agent: object, prompt_file: str, *, options: object = None) -> object:
-        write_commit_message_artifact(tmp_path, message)
+        _write_commit_message_doc(tmp_path, message)
         return iter([])
 
     return _fake
@@ -118,7 +126,7 @@ def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Pat
     registry = build_ralph_tool_registry(session, FsWorkspace(tmp_path))
     tool_names = {definition.name for definition in registry.list_definitions()}
 
-    assert {"write_file", "read_file", "ralph_submit_artifact"}.issubset(tool_names)
+    assert {"write_file", "read_file", "ralph_submit_md_artifact"}.issubset(tool_names)
 
 
 def test_commit_plumbing_reports_missing_repository(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -190,7 +198,7 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     def fake_stage_all(repo_root: Path) -> None:
         staged_all_calls.append(repo_root)
 
-    monkeypatch.setattr(commit_module, "stage_all", fake_stage_all, raising=False)
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", fake_stage_all)
     monkeypatch.setattr(
         commit_module,
         "working_tree_diff",
@@ -240,8 +248,13 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     assert "No staged changes to commit" not in output
 
 
+@pytest.mark.timeout_seconds(5)
 def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path) -> None:
     """_working_tree_diff must exclude files committed in earlier mid-cycle commits.
+
+    Real git subprocess work against ``tmp_git_repo`` regularly exceeds the
+    1-second default ceiling under parallel xdist load, so this test carries
+    the elevated per-test ceiling used by the other real-git tests.
 
     The standalone commit plumbing must use HEAD-only diff semantics so that
     files committed during an earlier dev iteration do not appear in the prompt
@@ -261,13 +274,67 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
     assert "mid_cycle.py" not in diff
 
 
+@pytest.mark.timeout_seconds(5)
+def test_working_tree_diff_includes_untracked_only_work(tmp_git_repo: Path) -> None:
+    untracked = tmp_git_repo / "new_module.py"
+    untracked.write_text("new = True\n", encoding="utf-8")
+
+    diff = commit_module.working_tree_diff(tmp_git_repo)
+
+    assert "## Untracked files (not yet tracked by git):" in diff
+    assert "new_module.py" in diff
+
+
+@pytest.mark.timeout_seconds(5)
+def test_working_tree_diff_includes_tracked_and_untracked_work(tmp_git_repo: Path) -> None:
+    readme = tmp_git_repo / "README.md"
+    readme.write_text("updated\n", encoding="utf-8")
+    untracked = tmp_git_repo / "new_module.py"
+    untracked.write_text("new = True\n", encoding="utf-8")
+
+    diff = commit_module.working_tree_diff(tmp_git_repo)
+
+    assert "README.md" in diff
+    assert "## Untracked files (not yet tracked by git):" in diff
+    assert "new_module.py" in diff
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
+def test_working_tree_diff_preserves_staged_and_untracked_work_before_first_commit(
+    tmp_path: Path,
+) -> None:
+    run_git(
+        ["init", "-q"],
+        cwd=tmp_path,
+        label="test:init-unborn-repository",
+        options=GitRunOptions(check=True, timeout=5),
+    )
+    staged = tmp_path / "staged.py"
+    staged.write_text("staged = True\n", encoding="utf-8")
+    run_git(
+        ["add", "--", "staged.py"],
+        cwd=tmp_path,
+        label="test:stage-unborn-repository-file",
+        options=GitRunOptions(check=True, timeout=5),
+    )
+    untracked = tmp_path / "untracked.py"
+    untracked.write_text("untracked = True\n", encoding="utf-8")
+
+    diff = commit_module.working_tree_diff(tmp_path)
+
+    assert "staged.py" in diff
+    assert "untracked.py" in diff
+    assert "## Untracked files (not yet tracked by git):" in diff
+
+
 def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> None:
     """The MCP session built for commit plumbing must expose workspace.write_ephemeral.
 
     Commit prompts instruct the agent to fall back to write_file when
-    artifact.submit is unavailable. That fallback only works if the commit
-    session grants workspace.write_ephemeral so the MCP server allows the
-    write_file tool call to .agent/tmp/commit_message.json.
+    markdown artifact submission is unavailable. That fallback only works if
+    the commit session grants workspace.write_ephemeral so the MCP server
+    allows the write_file tool call to .agent/tmp/commit_message.md.
     """
     agents_policy = AgentsPolicy(
         agent_chains={"commit_chain": AgentChainConfig(agents=["claude"])},
@@ -336,7 +403,7 @@ def test_generate_commit_uses_commit_drain_agent_chain(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_agents.append(agent_config.cmd)
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
@@ -383,7 +450,7 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_model_flags.append(agent_config.model_flag)
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -443,7 +510,7 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
         seen_session_ids.append(None if options is None else options.session_id)
         if len(seen_session_ids) == 1:
             return iter(['{"type":"session","session_id":"claude-session-1"}'])
-        write_commit_message_artifact(tmp_path, "fix: retried in session")
+        _write_commit_message_doc(tmp_path, "fix: retried in session")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -499,7 +566,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         invoked_agents.append((agent_config.cmd, None if options is None else options.session_id))
         if len(invoked_agents) <= _SUMMARY_RETRY_FAILURES:
             return iter(["claude: This is a commit prompt file requesting a commit message"])
-        write_commit_message_artifact(tmp_path, "fix: fallback agent message")
+        _write_commit_message_doc(tmp_path, "fix: fallback agent message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -518,8 +585,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     # commit-specific prompt.
     assert any("required artifact 'commit_message'" in body for body in prompt_bodies[1:])
     assert any('artifact_type="commit_message"' in body for body in prompt_bodies[1:])
-    assert any(".agent/tmp/commit_message.json" in body for body in prompt_bodies[1:])
-    assert any("Do not use content_path for this retry" in body for body in prompt_bodies[1:])
+    assert any(".agent/artifacts/commit_message.md" in body for body in prompt_bodies[1:])
     assert any("Submit the artifact now" in body for body in prompt_bodies[1:])
     output = stream.getvalue()
     assert "Generated commit message" in output
@@ -567,7 +633,7 @@ def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_model_flags.append(agent_config.model_flag)
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -617,7 +683,7 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
         options = kwargs.get("options")
         seen_extra_env.append(None if options is None else options.extra_env)
         assert options is not None and options.pure is True
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
@@ -679,8 +745,8 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
     )
 
     assert captured_prompt
-    assert "ralph_submit_artifact" in captured_prompt[0]
-    assert "ralph_ralph_submit_artifact" not in captured_prompt[0]
+    assert "ralph_ralph_submit_md_artifact" in captured_prompt[0]
+    assert "mcp__ralph__ralph_submit_md_artifact" not in captured_prompt[0]
 
 
 def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
@@ -726,22 +792,10 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     )
 
     assert captured_prompt
-    assert "ralph_submit_artifact" in captured_prompt[0]
-    assert "mcp__ralph__ralph_submit_artifact" in captured_prompt[0]
-    # Architectural fix (2026-06-14): the template's REQUIRED PROCEDURE
-    # section (which carried the original "write the raw commit payload"
-    # text) was removed. The shared artifact submission macro is now
-    # the single source of truth for the unavailable-tool fallback;
-    # it uses the wording "raw inner payload" rather than "raw commit
-    # payload". Both surfaces point at the same
-    # ``.agent/tmp/commit_message.json`` path, so the test must assert
-    # against the macro's wording, not the (now-removed) duplicate
-    # procedure's wording. The macro's step 6 wraps onto two lines in
-    # the rendered output; match the substrings separately to avoid
-    # line-break brittleness.
-    assert "raw inner" in captured_prompt[0].lower()
-    assert "payload json" in captured_prompt[0].lower()
-    assert ".agent/tmp/commit_message.json" in captured_prompt[0]
+    assert "ralph_submit_md_artifact" in captured_prompt[0]
+    assert "mcp__ralph__ralph_submit_md_artifact" in captured_prompt[0]
+    assert "same complete markdown document" in captured_prompt[0].lower()
+    assert ".agent/tmp/commit_message.md" in captured_prompt[0]
 
 
 def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
@@ -775,7 +829,7 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_commands.append(agent_config.cmd)
-        write_commit_message_artifact(tmp_path, "fix: review fallback message")
+        _write_commit_message_doc(tmp_path, "fix: review fallback message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -820,7 +874,7 @@ def test_generate_commit_appends_default_fallback_after_configured_chain(
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_commands.append(agent_config.cmd)
         if agent_config.cmd == "claude":
-            write_commit_message_artifact(tmp_path, "fix: default fallback message")
+            _write_commit_message_doc(tmp_path, "fix: default fallback message")
             return iter([])
         if len(invoked_commands) <= 2:
             return iter([])
@@ -878,22 +932,16 @@ def test_generate_commit_msg_writes_commit_message_artifact(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert artifact_file.exists()
-    artifact = json.loads(artifact_file.read_text(encoding="utf-8"))
-    assert artifact["type"] == "commit_message"
-    assert artifact["content"] == {
-        "type": "commit",
-        "subject": "feat: persist generated commit message",
-    }
-    assert commit_file.exists()
-    assert commit_file.read_text(encoding="utf-8") == "feat: persist generated commit message"
+    assert artifact_file.read_text(encoding="utf-8") == (
+        "---\ntype: commit\nsubject: feat: persist generated commit message\n---\n"
+    )
     output = stream.getvalue()
     assert "Generated commit message" in output
 
 
-def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
+def test_generate_commit_msg_reads_subject_from_markdown_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
@@ -933,8 +981,10 @@ def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
-    assert commit_file.read_text(encoding="utf-8") == "fix: normalize commit subject"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    assert artifact_file.read_text(encoding="utf-8") == (
+        "---\ntype: commit\nsubject: fix: normalize commit subject\n---\n"
+    )
     output = stream.getvalue()
     assert "fix: normalize commit subject" in output
     assert "Generated commit message" in output
@@ -954,7 +1004,7 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
 
     committed_messages: list[str] = []
@@ -1004,7 +1054,7 @@ def test_generate_commit_applies_message_from_persisted_artifact(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -1036,9 +1086,7 @@ def test_generate_commit_applies_message_from_persisted_artifact(
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
 
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert committed_messages == ["fix: persist then commit"]
     assert not artifact_file.exists()
-    assert not commit_file.exists()
     assert "Created commit" in stream.getvalue()

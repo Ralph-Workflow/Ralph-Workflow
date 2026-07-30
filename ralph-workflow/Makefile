@@ -1,27 +1,28 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: ``auto`` — uses all available CPU cores up to the cap in
-# ralph/test_suites.py (_MAX_PYTEST_WORKERS = 12). On a 12-core machine
-# this is 12 workers; on smaller hosts fewer. The earlier default of 4
-# was safe on the legacy ~10k test corpus but is borderline once a
-# feature branch adds a few hundred tests (per-tick wall-clock with 4
-# workers is ~49-55s pytest + ~4s Python startup overhead, which
-# intermittently exceeds 60s). With auto (12) workers the pytest run
-# drops to ~42-49s with the same per-test 1s timeout, leaving ample
-# headroom under the 60s combined budget. On systems with 12+ fast
-# cores, ``auto`` (capped at 12 by ralph.test_suites) is also
-# acceptable, but may starve some tests at the 1s per-test cap;
-# override as needed:
-#   PYTEST_WORKERS=auto make test
-#   PYTEST_WORKERS=8 make test
-#   PYTEST_WORKERS=2  make test   # legacy default — may exceed budget
+# Default: `auto` uses one worker per core, capped at twelve shards. The 1.0 s
+# per-test SIGALRM budget charges wall clock; the prior 24-process profile
+# starved otherwise-fast tests and contended on temporary SQLite stores. The
+# capped profile keeps the maintained suite below the immutable 60 s budget.
+# Operators may override after measuring their own host.
+#
+# The raw targets (test-unit / test-integration / test-subprocess-e2e /
+# test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
+# literally, so this exported default governs both ralph.test_suites and
+# the raw-target paths. Keep conditional assignment so operators can
+# override:
+#   PYTEST_WORKERS=8  make test   # pin the floor
+#   PYTEST_WORKERS=2  make test
+#   PYTEST_WORKERS=24 make test   # may exceed 1s per-test under load
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
 # is a SECONDARY cap only. PYTEST_WORKERS is parallelism, not a budget
-# extension — increasing parallelism keeps wall-clock under the budget.
+# extension — increasing parallelism keeps wall-clock under the budget,
+# but past a saturation point it starves individual workers past the
+# per-test 1 s SIGALRM cap instead.
 PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
@@ -65,6 +66,7 @@ help:
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
 	@echo "  test-live-agy    Run live AGY subprocess tests (excluded from test-subprocess-e2e; longer timeout)"
+	@echo "  test-auto-integrate-e2e Run the real-git auto-integration end-to-end proof (wired into 'make verify')"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
 	@echo "  fmt            Format code with ruff"
@@ -119,8 +121,11 @@ test-unit:
 test-integration:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
 
+# Runs with the same parallel workers as `make test`. Work stealing balances
+# independent real-process tests across workers within the immutable 60-second
+# per-suite cap.
 test-subprocess-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
 
 # Live AGY tests are excluded from `test-subprocess-e2e` because they
 # require real network round-trips to the Antigravity backend and run
@@ -133,6 +138,11 @@ test-subprocess-e2e:
 # so any drift fails CI.
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
+
+# Focused profile over the same explicit 24-file registry used by
+# the combined ``make test`` invocation.
+test-auto-integrate-e2e:
+	$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e
 
 # Real-runtime budget test that runs ``make test`` to assert the 60 s combined
 # test budget. This test consumes ~25 s of wall-clock time by design (it
@@ -238,7 +248,7 @@ verify: verify-drift docs
 #   1. No hardcoded source-prompt construction outside the resolver —
 #      scans ralph/ for PROMPT.md literals except in ralph/pro_support/prompt.py,
 #      the engine-owned ralph/prompts/ package (which writes the
-#      materialised CURRENT_PROMPT.md), and documentation.
+#      materialised PRODUCT_CRITERIA.md), and documentation.
 #   2. No marker references outside the marker reader — scans ralph/ for
 #      .ralph/run.json except in ralph/pro_support/marker.py.
 #   3. (Verified by audit_mcp_timeout, not grepped here.)
@@ -280,7 +290,7 @@ verify-drift:
 	    | grep -v "display/prompt_reader.py" \
 	    | grep -v "pipeline/prompt_prep.py" \
 	    | grep -v "pipeline/orchestrator.py" \
-	    | grep -v "prompts/system_prompt.py" \
+	    | grep -v "prompts/master_prompt.py" \
 	    | grep -v "prompts/materialize.py" \
 	    | grep -v "prompts/developer/" \
 	    | grep -v "parallel/worker_runtime.py" \
@@ -372,6 +382,14 @@ docs-linkcheck:
 
 route-linkcheck:
 	cd .. && python3 scripts/check_route_page_links.py README.md START_HERE.md docs/README.md ralph-workflow/docs/README.md
+
+# Verify that every research-citation URL in the bundled project-policy
+# starters resolves (HTTP < 400), satisfying the PROMPT's
+# 'verify that every cited URL resolves' link-verification requirement.
+# On-demand maintenance gate; not wired into 'make verify' because it
+# requires network I/O.
+policy-citation-linkcheck:
+	cd .. && python3 scripts/check_route_page_links.py ralph-workflow/ralph/project_policy/starters/*.md
 
 serve-docs: docs
 	@echo "Serving docs at http://localhost:8080"

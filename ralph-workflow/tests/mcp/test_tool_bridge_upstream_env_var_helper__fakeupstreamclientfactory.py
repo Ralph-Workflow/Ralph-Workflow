@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.mcp.upstream.models import UpstreamTool
+from tests._support.typed_accessors import (
+    must_mapping,
+    must_str,
+)
 
 if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -15,11 +19,11 @@ class _FakeUpstreamClientFactory:
     def __init__(self, tools: list[dict[str, object]]) -> None:
         result: list[UpstreamTool] = []
         for t in tools:
-            name = cast("str", t["name"])
+            name = must_str(t["name"])
             desc_raw = t.get("description", "")
             desc = str(desc_raw) if desc_raw else ""
             input_schema_raw = t.get("inputSchema", {})
-            input_schema = cast("dict[str, object]", input_schema_raw)
+            input_schema = must_mapping(input_schema_raw)
             result.append(UpstreamTool(name=name, description=desc, input_schema=input_schema))
         self._tools = result
 

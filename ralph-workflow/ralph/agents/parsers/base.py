@@ -57,7 +57,7 @@ def extract_error_message(obj: object) -> str:
     """Extract an error message string from a parsed JSON object.
 
     Resolution order (union of all per-parser bodies):
-    1. obj['error'] dict -> message, type, or name field (claude/codex/opencode/gemini)
+    1. obj['error'] dict -> message, type, data.message, or name field
     2. obj['error'] non-empty string (codex/generic)
     3. obj.get('message') (codex/opencode/generic)
     4. obj.get('error') non-dict truthy value (codex fallback)
@@ -73,9 +73,20 @@ def extract_error_message(obj: object) -> str:
         return "unknown error"
     error_val = obj.get("error")
     if isinstance(error_val, dict):
-        return str(
-            error_val.get("message", error_val.get("type", error_val.get("name", "unknown error")))
-        )
+        for key in ("message", "type"):
+            candidate = error_val.get(key)
+            if candidate:
+                return str(candidate)
+        # OpenCode nests the only actionable text one level deeper:
+        # ``{"error": {"name": "APIError", "data": {"message": "...", "statusCode": 402}}}``.
+        # Falling straight through to ``name`` reported the operator-useless
+        # string "APIError" and dropped "requires more credits ... 402".
+        data = error_val.get("data")
+        if isinstance(data, dict):
+            nested = data.get("message")
+            if nested:
+                return str(nested)
+        return str(error_val.get("name", "unknown error"))
 
     result = "unknown error"
     if isinstance(error_val, str) and error_val:

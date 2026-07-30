@@ -20,69 +20,44 @@ IMPORTANT: The previous attempt did not complete successfully.
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
-ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
-EXECUTION PLAN:
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
 {% include 'shared/_analysis_context.j2' %}
 
-{% if ARTIFACT_HISTORY_PATH %}
-ARTIFACT HISTORY:
-Prior development artifacts from previous iterations are archived under:
-`{{ARTIFACT_HISTORY_DIR}}`
-Canonical history index file:
-`{{ARTIFACT_HISTORY_PATH}}`
-Inspect this history when you want to understand what has been tried before
-and what development-analysis feedback they received.
-{% endif %}
+{% include 'shared/_artifact_history.j2' %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
 
-{% if HAS_DOCS_MCP %}
+{% set DOCS_LOOKUP_VARIANT = 'long' %}
+{% set DOCS_LOOKUP_PHASE = 'development' %}
+{% set DOCS_LOOKUP_INTENT = 'Before implementing or debugging with a library or framework:' %}
+{% include 'shared/_docs_lookup.j2' %}
 
-## DOCUMENTATION LOOKUP
+## PARALLEL EXECUTION (when the plan declares `## Work Units` or `## Parallel Plan`)
 
-The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Before implementing or debugging with a library or framework:
-1. Search documentation using the docs-mcp search tool from your MCP tool list.
-2. Fall back to `web_search` only when docs-mcp returns no useful results for the specific API or behavior you need.
-
-{% else %}
-
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during development.
-
-{% endif %}
-
-## PARALLEL EXECUTION (when the plan declares `work_units` or `parallel_plan`)
-
-When the EXECUTION PLAN above declares `work_units` or `parallel_plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within the `allowed_directories` of each work unit, and producing the matching `plan_items_proven` evidence for each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `unit_id` order.
-
-Sub-agents are not limited to declared work units. Even when the plan declares neither field, use them whenever it genuinely helps:
-- **Information gathering**: fan out read-only sub-agents to locate code, map call sites, or research APIs instead of reading file after file in your own context.
-- **Naturally concurrent steps**: plan steps with no dependency between them and disjoint target files may run as separate sub-agents at the same time.
-- **Independent checks**: investigations or verifications that do not depend on each other can run concurrently while you continue the next step.
-
-When to stay sequential: steps that touch the same files, steps ordered by `depends_on`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.
+{% include 'shared/_parallel_execution.j2' %}
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
-You MUST submit a `development_result` artifact before declaring completion. The artifact must include proof for every plan step and every prior analysis how_to_fix item:
+{% include 'shared/_development_result_proof.j2' %}
 
-**plan_items_proven** (required when the execution plan has steps): One unique entry per step.
-- `plan_item`: Canonical step reference — must EXACTLY match "Step N: <title>" where N is the step number and <title> is the step title as written in the plan.
-- `proof`: Concrete evidence, e.g. "Modified src/validation.py lines 10-25. All tests pass."
+{% set development_result_example %}
+---
+type: development_result
+status: completed
+---
 
-**plan_items_proven** (required when the plan uses work_units): One entry for the work unit you were assigned.
-- `plan_item`: Must EXACTLY match the `unit_id` of your assigned work unit from the plan.
-- `proof`: Concrete evidence of what you implemented for this work unit.
+## Summary
+- [SUM-1] Implemented the requested fix and verified it.
 
-**analysis_items_addressed** (required when ANALYSIS FEEDBACK exists): One unique entry per `how_to_fix` item.
-- `how_to_fix_item`: Must EXACTLY match the how_to_fix text from the prior analysis artifact — copy it verbatim, do not paraphrase.
-- `proof`: Concrete evidence of how it was resolved.
+## Files Changed
+- [FC-1] src/main.py
 
-Each `plan_item` and each `how_to_fix_item` must be distinct — duplicate entries will fail validation. Unknown references (ones that don't match an actual plan step, work_unit id, or analysis item) will also fail validation and trigger a re-prompt.
-
-{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Implemented the requested fix and verified it.","files_changed":"- src/main.py","plan_items_proven":[{"plan_item":"Step 1: Implement the fix","proof":"Updated src/main.py and ran pytest."}],"analysis_items_addressed":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## Plan Items Proven
+- [S-1] Updated src/main.py and ran pytest tests/test_main.py -q; it passes.
+{% endset %}
+{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-development-result-artifact', '.agent/artifact-formats/development_result.md') }}

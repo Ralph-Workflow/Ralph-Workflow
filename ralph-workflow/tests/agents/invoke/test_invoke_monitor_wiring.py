@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING
 
 import pytest
@@ -10,9 +11,11 @@ from ralph.agents.idle_watchdog import IdleWatchdog
 from ralph.agents.invoke import invoke_agent
 from ralph.agents.invoke._invoke_options import InvokeOptions
 from ralph.agents.invoke._types import ResolvedInvocationRuntime
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.child_liveness import ChildLivenessSubagentPidSource
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 from ralph.process.monitor import (
     DefaultProcessMonitor,
     NullDiscoveryStrategy,
@@ -21,6 +24,12 @@ from ralph.process.monitor import (
     ProcessRole,
     SubagentOutputCapture,
     role_classifier_for_transport,
+)
+from ralph.testing.fake_process import (
+    FakePopen,
+    FakePsutil,
+    ProcessState,
+    ProcessStreams,
 )
 
 if TYPE_CHECKING:
@@ -56,17 +65,34 @@ def _capture_idle_watchdog_args(
     monkeypatch.setattr(IdleWatchdog, "__init__", _patched_init)
 
 
+@pytest.fixture(autouse=True)
+def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
+    """Keep monitor-wiring tests inside the injected process boundary."""
+    def factory(_command: object, _options: object) -> FakePopen:
+        return FakePopen(
+            1,
+            state=ProcessState(returncode=0),
+            streams=ProcessStreams(stdout=io.StringIO("")),
+        )
+
+    manager = ProcessManager(
+        policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False),
+        sync_process_factory=factory,
+        psutil=FakePsutil(),
+    )
+    monkeypatch.setattr("ralph.agents.invoke._process_reader.get_process_manager", lambda: manager)
+
+
 def _noop_command(
     _config: AgentConfig,
     _prompt_file: str,
     *,
     options: object,
 ) -> list[str]:
-    """Return a fast Python command so the invocation completes quickly."""
+    """Return a placeholder command; the autouse fixture injects the process."""
     return [
-        "python",
-        "-c",
-        "print('hello from agent')",
+        "echo",
+        "hello from agent",
     ]
 
 
@@ -82,6 +108,7 @@ def _noop_command(
         AgentTransport.AGY,
     ],
 )
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_process_monitor_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -121,12 +148,19 @@ def test_invoke_wires_process_monitor_for_transport(
         AgentTransport.AGY,
     ],
 )
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_discovery_strategy_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """Non-OpenCode transports get NullDiscoveryStrategy (consolidated)."""
+    """Non-OpenCode transports get NullDiscoveryStrategy (consolidated).
+
+    The six invoke-path cases share process-startup work; under full xdist load
+    that occasionally exceeds the default one-second test cap. This registered
+    per-test override matches the neighboring invoke wiring coverage without
+    changing the immutable combined verification budget.
+    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -149,6 +183,7 @@ def test_invoke_wires_discovery_strategy_for_transport(
     assert isinstance(monitor._discovery_strategy, NullDiscoveryStrategy)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_opencode_registry_discovery_strategy(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -196,6 +231,7 @@ def test_invoke_wires_opencode_registry_discovery_strategy(
         AgentTransport.AGY,
     ],
 )
+@pytest.mark.timeout_seconds(5)
 def test_invoke_role_classifier_is_conservative_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -233,6 +269,7 @@ def test_invoke_role_classifier_is_conservative_for_transport(
     assert classifier(123, [transport.value, "run", "hello"]) == ProcessRole.INCIDENTAL_HELPER
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_respects_disabled_monitor_flags(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -261,6 +298,7 @@ def test_invoke_respects_disabled_monitor_flags(
     assert captured.get("process_monitor") is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_disabling_only_process_monitor_keeps_discovery(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -321,6 +359,7 @@ def test_invoke_disabling_only_output_capture_keeps_process_monitor(
     assert monitor._discovery_strategy is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_wires_subagent_pid_source_for_opencode(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -353,6 +392,7 @@ def test_invoke_wires_subagent_pid_source_for_opencode(
     assert isinstance(pid_source, ChildLivenessSubagentPidSource)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_poll_interval_reaches_process_monitor(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -417,9 +457,8 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
     monkeypatch.setattr(
         "ralph.agents.invoke._command_builders.OpencodeCommandBuilder.build",
         lambda self, _config, _prompt_file, *, options: [
-            "python",
-            "-c",
-            "import time; time.sleep(0.15)",
+            "sleep",
+            "0.15",
         ],
     )
     monkeypatch.setattr(
@@ -442,5 +481,5 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
         process_exit_wait_seconds=2.0,
     )
 
-    lines = list(invoke_agent(config, str(prompt_file), options=options))
+    lines = list(invoke_agent(config, str(prompt_file), options=options, _clock=FakeClock()))
     assert lines == []

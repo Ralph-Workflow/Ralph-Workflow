@@ -1,0 +1,18 @@
+name: CLA
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  cla:
+    name: Require contributor license agreement
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify CLA checkbox
+        run: cd ralph-workflow && python -m ralph.contrib.cla

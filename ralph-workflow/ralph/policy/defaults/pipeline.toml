@@ -2,36 +2,52 @@
 #
 # This bundled default is authored as explicit blocks and compiled by the loader
 # into the flat runtime phase graph used by reducer/checkpoint/display code.
+# ============================================================
+# OPTIONAL — everything below this line has a working default.
+# Skip this file entirely unless you know you need it.
+# ============================================================
+# Edit this only if you are changing which checks or phases run in the pipeline.
 
 entry_block = "developer_iteration"
 terminal_phase = "complete"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you need to tune how often a loop can run.
 # Loop counters
 # ---------------------------------------------------------------------------
 
+# Raise this if development-analysis reviews keep looping past 10 passes before approving a change;
+# lower it to fail fast on a weaker development agent instead of grinding through retries.
 [loop_counters.development_analysis_iteration]
 default_max = 10
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-default_max = 1
+# Raise above 0 only when a smaller planning model needs extra passes to self-correct;
+# capable planners usually do not need it, and each pass costs more.
+default_max = 0
 description = "Planning analysis loop iteration counter"
 
+# Raise this only if commit-cleanup (fixing lint/format issues before a commit) needs more than 3 self-correction passes;
+# most agents fix cleanup issues in one or two passes.
 [loop_counters.commit_cleanup_iteration]
 default_max = 3
 description = "Commit cleanup loop iteration counter"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you need to change the total development-cycle budget.
 # Budget counters
 # ---------------------------------------------------------------------------
 
+# This is the overall ceiling on full plan -> build -> commit cycles for one run.
+# Raise it for a multi-day task that needs more passes; lower it to cap cost/time on a quick task.
 [budget_counters.iteration]
 description = "Development iteration counter (developer cycles)"
 tracks_budget = true
 default_max = 5
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing the workflow phases or their order.
 # Block-authored default workflow
 # ---------------------------------------------------------------------------
 
@@ -109,6 +125,7 @@ prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
 display_style = "theme.phase.development"
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
+result_status_post_commit = { partial = "development" }
 [blocks.development.phase.transitions]
 on_success = "development_commit_cleanup"
 on_loopback = "development"
@@ -246,6 +263,7 @@ on_success = "failed_terminal"
 on_loopback = "failed_terminal"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing what happens after a commit.
 # Post-commit budget-guarded routing
 # ---------------------------------------------------------------------------
 
@@ -268,6 +286,7 @@ phase = "development_final_commit"
 budget_state = "no_review"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing retry behavior.
 # Default retry policy
 # ---------------------------------------------------------------------------
 
@@ -277,6 +296,7 @@ retry_delay_ms = 1000
 retry_in_session = false
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing recovery after an agent failure.
 # Recovery policy
 # ---------------------------------------------------------------------------
 

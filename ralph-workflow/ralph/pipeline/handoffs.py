@@ -145,6 +145,12 @@ def resolve_post_commit_phase(
     and budget_state. This works for any commit-role phase, not just the
     canonical development_commit/review_commit names.
     """
+    if state.post_commit_phase_override is not None:
+        target = state.post_commit_phase_override
+        if target not in pipeline_policy.phases and target not in pipeline_policy.terminal_states():
+            raise ValueError(f"Post-commit override references unknown phase '{target}'")
+        return target
+
     phase_def = pipeline_policy.phases.get(state.phase)
     is_commit_phase = phase_def is not None and phase_def.role == "commit"
 

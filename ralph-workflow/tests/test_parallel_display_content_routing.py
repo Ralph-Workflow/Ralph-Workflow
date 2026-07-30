@@ -42,11 +42,18 @@ def test_push_text_line_emits_content_tag(tmp_path: Path) -> None:
         '{"type":"content_block_delta","delta":{"type":"text_delta","text":"hello world"}}',
         provider=ActivityProvider.CLAUDE,
     )
+    # S-7: streaming layer is silent during open/continue; pd.stop() flushes
+    # the open block so the single coalesced entry surfaces.
+    pd.stop()
     out = buf.getvalue()
-    # Streaming blocks: first text event opens [content-start]
-    assert "[content" in out
+    # S-7 single-entry shape: one [output] line carrying the joined passage.
+    assert "[output" in out
     assert "[u]" in out
     assert "hello world" in out
+    content_lines = [line for line in out.splitlines() if "[output][u]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
+    )
 
 
 def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
@@ -66,11 +73,16 @@ def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
     ]
     for line in lines:
         pd.activity_router.push_raw_line("u", line, provider=ActivityProvider.CLAUDE)
+    # S-7: stop() flushes the still-open thinking block as one coalesced entry.
+    pd.stop()
     out = buf.getvalue()
-    # Streaming blocks: first thinking event opens [thinking-start]
-    assert "[thinking" in out
+    assert "[reasoning" in out
     assert "[u]" in out
     assert "deep thought" in out
+    thinking_lines = [line for line in out.splitlines() if "[reasoning][u]" in line]
+    assert len(thinking_lines) == 1, (
+        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\\n{out}"
+    )
 
 
 def test_output_does_not_contain_raw_json(tmp_path: Path) -> None:
@@ -95,13 +107,20 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     pd.activity_router.push_raw_line(
         "u", '{"type":"message_stop"}', provider=ActivityProvider.CLAUDE
     )
+    # S-7: stop() flushes the still-open block; condensation is part of the
+    # single coalesced entry.
+    pd.stop()
 
     out = buf.getvalue()
-    # Streaming blocks use [content-start]/[content-continue]/[content-end] tags
-    assert "[content" in out
+    # S-7 single-entry shape: one [output] line carrying the condensed passage.
+    assert "[output" in out
     # Content should be condensed (not all characters present)
     assert len(out) < _LONG_TEXT_LEN
     assert "…" in out or "truncated" in out or "raw unavailable" in out
+    content_lines = [line for line in out.splitlines() if "[output][u]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
+    )
 
 
 def test_only_one_activity_router_per_parallel_display(tmp_path: Path) -> None:
@@ -179,14 +198,21 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
         provider=ActivityProvider.CLAUDE,
         raw_reference=".agent/raw/u.log",
     )
+    # S-7: stop() flushes the still-open block; condensation lives in the
+    # single coalesced entry that surfaces.
+    pd.stop()
 
     out = buf.getvalue()
-    assert "[content" in out
+    assert "[output" in out
     assert ".agent/raw/u.log" in out
+    content_lines = [line for line in out.splitlines() if "[output][u]" in line]
+    assert len(content_lines) == 1, (
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
+    )
 
 
 def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) -> None:
-    """tool_use with input metadata renders path= on the [tool] line."""
+    """tool_use with input metadata renders path= on the [call] line."""
     pd, buf = _make_display(tmp_path)
     event = json.dumps(
         {
@@ -241,7 +267,7 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
 
 
 def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> None:
-    """Lifecycle prefix 'claude/sonnet: thinking' must not produce [content] output."""
+    """Lifecycle prefix 'claude/sonnet: thinking' must not produce [output] output."""
     pd, buf = _make_display(tmp_path)
     pd.activity_router.push_raw_line(
         "main",
@@ -250,8 +276,8 @@ def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> N
     )
     pd.stop()
     out = buf.getvalue()
-    assert "[content][main]" not in out
-    assert "[thinking][main]" not in out
+    assert "[output][main]" not in out
+    assert "[reasoning][main]" not in out
 
 
 def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Path) -> None:
@@ -279,7 +305,7 @@ def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) 
 
 
 def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
-    """_stream_parsed_agent_activity must not emit [content][activity] for thinking events."""
+    """_stream_parsed_agent_activity must not emit [output][activity] for thinking events."""
 
     pd, buf = _make_display(tmp_path)
 
@@ -305,11 +331,51 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
         agent_name="claude/sonnet",
         display=pd,
     )
+    # S-7: stop() flushes the still-open thinking block as one coalesced entry.
+    pd.stop()
 
     out = buf.getvalue()
-    assert "[content][activity]" not in out
+    assert "[output][activity]" not in out
     assert "deep reasoning here" in out
-    assert "[thinking" in out
+    assert "[reasoning" in out
+    thinking_lines = [line for line in out.splitlines() if "[reasoning]" in line]
+    assert len(thinking_lines) == 1, (
+        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\\n{out}"
+    )
+
+
+def test_stream_parsed_agent_activity_correlates_read_result_without_preview_duplication(tmp_path: Path) -> None:
+    """A Claude result retains its correlated content in its single result entry."""
+    pd, buf = _make_display(tmp_path)
+    tool_use = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "id": "call-1",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "src/example.py", "line_start": 17},
+            },
+        }
+    )
+    tool_result = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_result",
+                "tool_use_id": "call-1",
+                "content": '{"content":"def render():\\n    return 1\\n","total_lines":50}',
+            },
+        }
+    )
+    stream_parsed_agent_activity(
+        [tool_use, tool_result], parser_type="claude", agent_name="claude/sonnet", display=pd
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert "read_file" in output
+    assert "def render" in output
+    assert "src/example.py" in output
 
 
 def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:
@@ -336,9 +402,13 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
     )
 
     out = buf.getvalue()
-    assert "[content][activity]" not in out
+    assert "[output][activity]" not in out
     assert "ralph.read_file" in out
     assert out.count("ralph.read_file") == 1
+    # wt-028-display S-3 (DA-001): the public tool_use tag is ``call``,
+    # not the retired ``[tool]`` parser-kind identifier.
+    assert "[call]" in out
+    assert "[tool]" not in out
 
 
 def test_stream_parsed_agent_activity_session_sink_ignores_nested_tool_payload_session_id(
@@ -375,4 +445,34 @@ def test_stream_parsed_agent_activity_plain_tool_line_routes_to_tool_use(tmp_pat
 
     out = buf.getvalue()
     assert "read_file" in out
-    assert "[content][activity]" not in out
+    assert "[output][activity]" not in out
+
+
+
+def test_live_read_result_preserves_correlated_window_line_numbers() -> None:
+    """A partial MCP read retains the request window in its live preview gutter."""
+    import io
+    import re
+
+    from rich.console import Console
+
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+
+    output = io.StringIO()
+    display = ParallelDisplay(
+        make_display_context(
+            console=Console(file=output, force_terminal=True, color_system="truecolor"), env={}
+        )
+    )
+    display.emit_parsed_event(
+        "u1", ActivityEventKind.TOOL_USE, "mcp__ralph__read_file",
+        {"input": {"path": "x.py", "line_start": 17, "line_end": 18}},
+    )
+    display.emit_parsed_event(
+        "u1", ActivityEventKind.TOOL_RESULT,
+        '{"path":"x.py","content":"def render():\\n    return 1\\n","total_lines":50,"returned_lines":2,"truncated":true}', {},
+    )
+    rendered = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output.getvalue())
+    assert re.search(r"\b17\s+def render\(\):", rendered)
+    assert re.search(r"\b18\s+return 1", rendered)

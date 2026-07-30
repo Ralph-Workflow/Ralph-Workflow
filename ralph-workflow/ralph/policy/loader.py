@@ -23,6 +23,7 @@ from loguru import logger
 from pydantic import TypeAdapter, ValidationError
 
 import ralph.policy
+from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.phases import register_role_handlers
 from ralph.policy.models import (
     AgentChainConfig,
@@ -60,7 +61,7 @@ def _load_toml(path: Path) -> dict[str, object]:
         Parsed TOML content or empty dict if file doesn't exist.
 
     Raises:
-        PolicyValidationError: If TOML parsing fails.
+        PolicyValidationError: If TOML parsing fails OR the file cannot be read.
     """
     if not path.exists():
         return {}
@@ -68,13 +69,46 @@ def _load_toml(path: Path) -> dict[str, object]:
     try:
         with path.open("rb") as fh:
             data: dict[str, object] = tomllib.load(fh)
+        _warn_unknown_policy_top_level_fields(data, path)
         return data
-    except Exception as exc:
+    except _TOML_DECODE_ERROR as exc:
         raise PolicyValidationError(
-            f"Failed to parse TOML at {path}: {exc}",
+            (
+                f"Could not parse TOML at {path}: {exc}.\n"
+                "WHY: settings in a malformed TOML file are not safe to use, "
+                "so Ralph refuses to guess what you meant.\n"
+                f"FIX: correct the TOML syntax in {path}, then re-run "
+                "`ralph --check-config`."
+            ),
+            source=str(path.name),
+        ) from exc
+    except OSError as exc:
+        raise PolicyValidationError(
+            (
+                f"Could not read TOML at {path}: {exc}.\n"
+                "WHY: a file that Ralph cannot open is the same as a file "
+                "Ralph cannot trust, so the loader refuses to silently fall back.\n"
+                f"FIX: check that {path} exists, that the file is readable "
+                "(file mode and ownership), and that the directory is accessible; "
+                "then re-run `ralph --check-config`."
+            ),
             source=str(path.name),
         ) from exc
 
+
+def _warn_unknown_policy_top_level_fields(data: dict[str, object], path: Path) -> None:
+    if path.name == "pipeline.toml":
+        warn_unknown_top_level_fields(data, path, PIPELINE_POLICY_FIELDS)
+    elif path.name == "artifacts.toml":
+        warn_unknown_top_level_fields(data, path, _ARTIFACTS_TOP_LEVEL_FIELDS)
+
+
+# tomllib.TOMLDecodeError is type-Any on 3.14 because the runtime module
+# has no mypy-compatible stubs; bind it once so the ``except`` clause and
+# any callers see a stable, narrowed type.
+_TOML_DECODE_ERROR = cast(
+    "type[Exception]", tomllib.TOMLDecodeError
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
@@ -82,6 +116,8 @@ _GLOBAL_POLICY_FILENAME_MAP = {
     "pipeline.toml": "ralph-workflow-pipeline.toml",
     "artifacts.toml": "ralph-workflow-artifacts.toml",
 }
+_ARTIFACTS_TOP_LEVEL_FIELDS = frozenset({"artifacts"})
+
 PIPELINE_POLICY_FIELDS = frozenset(
     {
         "blocks",
@@ -209,7 +245,9 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
     """Format all pydantic ValidationError errors into human-readable strings."""
-    details = cast("ValidationErrorDetails", exc.errors())
+    details = cast(
+        "ValidationErrorDetails", exc.errors()
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return [format_validation_error_detail(detail) for detail in details]
 
 
@@ -417,7 +455,9 @@ def _coerce_agent_chain_config(
     if isinstance(value, AgentChainConfig):
         return value
     return AgentChainConfig(
-        agents=list(cast("Sequence[str]", value)),
+        agents=list(
+            cast("Sequence[str]", value)
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         max_retries=retry_budget,
         retry_delay_ms=retry_delay_ms,
     )
@@ -436,7 +476,9 @@ def _coerce_agent_drain_config(
             capability_class=value.capability_class,
         )
     return AgentDrainConfig(
-        chain=cast("str", value),
+        chain=cast(
+            "str", value
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         drain_class=builtin_drain_classes.get(drain),
     )
 
@@ -506,7 +548,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     )
 
 
-_DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []
+_DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []  # bounded-accumulator-ok: at most one cached default AgentsPolicy
 
 
 def _cached_default_agents_policy() -> AgentsPolicy:
@@ -515,6 +557,86 @@ def _cached_default_agents_policy() -> AgentsPolicy:
             _validate_agents(_load_toml(default_dir() / "agents.toml"))
         )
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
+
+
+def _alias_out_of_graph_drain(
+    user_chains: dict[str, AgentChainConfig],
+    user_drains: dict[str, AgentDrainConfig],
+    *,
+    drain: str,
+    drain_class: str,
+    fallback_drain: str,
+) -> None:
+    """Bind an undeclared out-of-graph ``drain`` to a user chain, in place.
+
+    A user's own chain of the same name wins. Otherwise the drain follows the
+    chain behind ``fallback_drain`` -- the in-graph drain of the same class --
+    so a user who redirected their whole pipeline to a different agent gets
+    that agent for the out-of-graph policy phases too.
+
+    ``fallback_drain`` is always same-class on purpose. The shipped pipeline
+    has NO review drain (see :mod:`ralph.project_policy.remediation`), so a
+    legacy ``review`` drain in a user config must never capture either policy
+    phase.
+    """
+    if drain in user_drains:
+        return
+    if drain in user_chains:
+        user_drains[drain] = AgentDrainConfig(chain=drain, drain_class=drain_class)
+        return
+    fallback_binding = user_drains.get(fallback_drain)
+    if fallback_binding is not None and fallback_binding.chain in user_chains:
+        user_drains[drain] = AgentDrainConfig(chain=fallback_binding.chain, drain_class=drain_class)
+
+
+def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolicy:
+    """Merge a user agents policy onto the bundled defaults.
+
+    Mirrors the pipeline/artifacts layering: user entries win per chain and
+    drain name; anything not overridden keeps its bundled default. This is
+    what makes internal chains (``policy_remediation``,
+    ``policy_remediation_analysis``) survive user configs written before those
+    chains existed.
+
+    Before the merge, each undeclared out-of-graph policy drain is aliased to
+    the chain behind the user's same-class in-graph drain. See
+    :func:`_alias_out_of_graph_drain`.
+    """
+    defaults = _cached_default_agents_policy()
+    user_chains = dict(user_policy.agent_chains)
+    user_drains = dict(user_policy.agent_drains)
+    _alias_out_of_graph_drain(
+        user_chains,
+        user_drains,
+        drain="policy_remediation",
+        drain_class="development",
+        fallback_drain="development",
+    )
+    _alias_out_of_graph_drain(
+        user_chains,
+        user_drains,
+        drain="policy_remediation_analysis",
+        drain_class="analysis",
+        fallback_drain="development_analysis",
+    )
+    # Auto-integration's conflict resolver runs out of graph too, and an
+    # unresolved drain here does not fail loudly: the resolver simply
+    # declines, every rebase conflict falls back to an abort, and
+    # auto-rebase silently stops working for exactly the workspaces that
+    # customised their agents. Registering the alias is what stops a
+    # user-supplied agents.toml from disabling the feature by omission.
+    _alias_out_of_graph_drain(
+        user_chains,
+        user_drains,
+        drain="rebase_conflict_resolution",
+        drain_class="development",
+        fallback_drain="development",
+    )
+    return AgentsPolicy(
+        agent_chains={**defaults.agent_chains, **user_chains},
+        agent_drains={**defaults.agent_drains, **user_drains},
+        forbid_sibling_drain_inference=user_policy.forbid_sibling_drain_inference,
+    )
 
 
 def _load_agents_policy_from_path(
@@ -527,7 +649,7 @@ def _load_agents_policy_from_path(
         else None
     )
     if agents_policy is not None:
-        return agents_policy
+        return _merge_agents_policy_onto_defaults(agents_policy)
 
     if not agents_path.exists():
         return _cached_default_agents_policy()
@@ -535,7 +657,7 @@ def _load_agents_policy_from_path(
     agents_data = _load_toml(agents_path)
     if not agents_data:
         return _cached_default_agents_policy()
-    return _validate_agents(agents_data)
+    return _merge_agents_policy_onto_defaults(_validate_agents(agents_data))
 
 
 def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:

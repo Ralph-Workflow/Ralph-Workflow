@@ -26,5 +26,7 @@ class ScopeItem(RalphBaseModel):
     )
     category: ScopeCategory | None = Field(
         default=None,
-        description="Optional ScopeCategory enum; see ScopeCategory literal.",
+        min_length=1,
+        max_length=200,
+        description="Optional free-form descriptive category.",
     )

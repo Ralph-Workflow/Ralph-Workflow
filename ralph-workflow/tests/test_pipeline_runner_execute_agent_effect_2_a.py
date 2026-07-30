@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from io import StringIO
 from pathlib import Path
@@ -105,37 +104,8 @@ def _write_minimal_plan_artifacts(
     context: str = "Existing plan",
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+    (root / ".agent" / "artifacts" / "plan.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -147,24 +117,8 @@ def _write_minimal_plan_artifacts(
 def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:01+00:00",
-                "sections": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
+    (artifact_dir / ".plan.draft.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
 
@@ -557,14 +511,14 @@ class TestExecuteAgentEffectA:
             (
                 "development",
                 (
-                    ".agent/artifacts/development_result.json",
+                    ".agent/artifacts/development_result.md",
                     ".agent/DEVELOPMENT_RESULT.md",
                 ),
             ),
             (
                 "development_analysis",
                 (
-                    ".agent/artifacts/development_analysis_decision.json",
+                    ".agent/artifacts/development_analysis_decision.md",
                     ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
                 ),
             ),
@@ -586,12 +540,12 @@ class TestExecuteAgentEffectA:
         stale_artifacts = [tmp_path / artifact_path for artifact_path in artifact_paths]
         for stale_artifact in stale_artifacts:
             stale_artifact.parent.mkdir(parents=True, exist_ok=True)
-            stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
+            stale_artifact.write_text("---\ntype: stale\n---\n", encoding="utf-8")
 
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=runner_module.AgentRegistry.from_config,
         )
 
@@ -622,18 +576,11 @@ class TestExecuteAgentEffectA:
         )
         _write_minimal_plan_artifacts(tmp_path, context="Loopback plan")
         _write_minimal_plan_draft(tmp_path, context="Loopback draft")
-        (tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json").write_text(
-            json.dumps(
-                {
-                    "type": "planning_analysis_decision",
-                    "content": {
-                        "status": "request_changes",
-                        "summary": "Need revisions",
-                        "what_came_up_short": ["issue"],
-                        "how_to_fix": ["fix it"],
-                    },
-                }
-            ),
+        (tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.md").write_text(
+            "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+            "## Summary\n- [S1] Need revisions\n"
+            "## What Came Up Short\n- [W1] issue\n"
+            "## How To Fix\n- [W1] fix it\n",
             encoding="utf-8",
         )
         prompt_file = tmp_path / "PROMPT.md"
@@ -642,7 +589,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=_registry_factory(MagicMock()).from_config,
         )
 
@@ -659,11 +606,11 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
-    def test_execute_agent_effect_worker_mode_uses_namespaced_system_prompt_and_session(
+    def test_execute_agent_effect_worker_mode_uses_namespaced_master_prompt_and_session(
         self,
         tmp_path: Path,
     ) -> None:
@@ -674,10 +621,10 @@ class TestExecuteAgentEffectA:
             drain="development",
         )
         worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
-        prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
+        prompt_file = worker_ns / "tmp" / "development_master_prompt.md"
         captured: dict[str, object] = {}
 
-        def _fake_materialize_system_prompt(**kwargs: object) -> str:
+        def _fake_materialize_master_prompt(**kwargs: object) -> str:
             captured["materialize_kwargs"] = kwargs
             return str(prompt_file)
 
@@ -693,7 +640,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge_factory=recording_factory,
-            system_prompt_materializer=_fake_materialize_system_prompt,
+            master_prompt_materializer=_fake_materialize_master_prompt,
             registry_factory=_registry_factory(agent_config).from_config,
         )
 
@@ -725,6 +672,80 @@ class TestExecuteAgentEffectA:
         assert call["worker_namespace"] == worker_ns
         assert worker_ns in call["allowed_roots"]
 
+    def test_master_prompt_materialization_detects_custom_planning_phase_semantically(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        captured: dict[str, object] = {}
+        ctx = MagicMock()
+        ctx.workspace_scope.root = tmp_path
+        ctx.effect.phase = "blueprint"
+        ctx.effect.drain = "plan_output"
+        ctx.worker_namespace = None
+        ctx.policy_bundle = None
+
+        def _fake_materialize_master_prompt(**kwargs: object) -> str:
+            captured.update(kwargs)
+            return "master.md"
+
+        required_artifact = MagicMock()
+        required_artifact.artifact_type = "plan"
+        pipeline_deps = MagicMock()
+        pipeline_deps.master_prompt_materializer = _fake_materialize_master_prompt
+        result = effect_executor_module._materialize_master_prompt(
+            ctx,
+            pipeline_deps,
+            required_artifact=required_artifact,
+        )
+
+        assert result == "master.md"
+        assert captured["name"] == "blueprint"
+        assert captured["planning_style"] is True
+
+    def test_master_prompt_materializer_internal_type_error_is_not_retried(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ctx = MagicMock()
+        ctx.workspace_scope.root = tmp_path
+        ctx.effect.phase = "blueprint"
+        ctx.effect.drain = "plan_output"
+        ctx.worker_namespace = None
+        ctx.policy_bundle = None
+        calls = 0
+
+        def _broken_materializer(
+            workspace_root: Path,
+            name: str,
+            default_product_criteria: str | None = None,
+            worker_namespace: Path | None = None,
+            planning_style: bool = False,
+        ) -> str:
+            nonlocal calls
+            del (
+                workspace_root,
+                name,
+                default_product_criteria,
+                worker_namespace,
+                planning_style,
+            )
+            calls += 1
+            raise TypeError("materializer implementation failed")
+
+        required_artifact = MagicMock()
+        required_artifact.artifact_type = "plan"
+        pipeline_deps = MagicMock()
+        pipeline_deps.master_prompt_materializer = _broken_materializer
+
+        with pytest.raises(TypeError, match="materializer implementation failed"):
+            effect_executor_module._materialize_master_prompt(
+                ctx,
+                pipeline_deps,
+                required_artifact=required_artifact,
+            )
+
+        assert calls == 1
+
     def test_execute_agent_effect_worker_mode_does_not_clear_shared_phase_artifacts(
         self,
         tmp_path: Path,
@@ -743,10 +764,10 @@ class TestExecuteAgentEffectA:
             drain="development",
         )
         worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
-        shared_artifact = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        shared_artifact = tmp_path / ".agent" / "artifacts" / "development_result.md"
         shared_artifact.parent.mkdir(parents=True, exist_ok=True)
         shared_artifact.write_text("{}", encoding="utf-8")
-        prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
+        prompt_file = worker_ns / "tmp" / "development_master_prompt.md"
 
         agent_config = AgentConfig(
             cmd="claude",
@@ -758,7 +779,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=_registry_factory(agent_config).from_config,
         )
 
@@ -806,7 +827,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=_registry_factory(MagicMock()).from_config,
         )
 
@@ -823,8 +844,8 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_materialize_prepared_prompt_preserves_resumed_planning_context(
@@ -860,8 +881,8 @@ class TestExecuteAgentEffectA:
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING EDIT MODE" in rendered
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_materialize_agent_prompt_if_needed_preserves_resumed_planning_context(
@@ -900,8 +921,8 @@ class TestExecuteAgentEffectA:
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING EDIT MODE" in rendered
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_materialize_agent_prompt_if_needed_resets_resumed_planning_context_when_prompt_changed(
@@ -913,7 +934,7 @@ class TestExecuteAgentEffectA:
         _write_minimal_plan_artifacts(tmp_path, context="Resumed plan")
         _write_minimal_plan_draft(tmp_path, context="Resumed draft")
         (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
-        (tmp_path / ".agent" / "CURRENT_PROMPT.md").write_text(
+        (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").write_text(
             "Resume the interrupted planning pass",
             encoding="utf-8",
         )
@@ -946,11 +967,11 @@ class TestExecuteAgentEffectA:
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING MODE" in rendered
         assert "PLANNING EDIT MODE" not in rendered
-        assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+        assert (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").read_text(encoding="utf-8") == (
             "Replace the plan with a different task"
         )
-        assert not (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert not (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert not (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert not (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_dynamic_ccs_agent_reaches_invocation(self) -> None:
@@ -964,7 +985,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=runner_module.AgentRegistry.from_config,
         )
 
@@ -993,7 +1014,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1019,7 +1040,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1054,7 +1075,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1102,7 +1123,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1139,7 +1160,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 

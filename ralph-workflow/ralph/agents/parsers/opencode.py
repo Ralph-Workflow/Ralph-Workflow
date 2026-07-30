@@ -31,6 +31,17 @@ class _OpenCodeDispatch:
         event_type = str(obj.get("type", "unknown"))
 
         if event_type == "step_start":
+            # NOTE: OpenCode 1.17.15 emits exactly five event types --
+            # step_start, step_finish, text, tool_use, error -- and carries the
+            # part id at ``part.id``, not at the top level. So this lookup
+            # always misses on the live runtime and the accumulator machinery
+            # below never engages. That is currently harmless because the
+            # ``stream`` deltas it accumulates do not exist either; text
+            # arrives whole in one ``text`` event. Do NOT "fix" this by
+            # reading ``part.id``: the step-start part id is a DIFFERENT part
+            # from the text part the deltas would belong to, so it would key
+            # the accumulator wrongly. Both halves must be reworked together
+            # against a runtime that actually streams.
             step_id = str(obj.get("id", ""))
             if step_id:
                 self._owner._current_part_id = step_id
@@ -141,6 +152,15 @@ class _OpenCodeDispatch:
 
         status = str(state_obj.get("status", ""))
         if status == "completed":
+            # OpenCode collapses the call and its result into ONE terminal
+            # event, so a completed tool carries BOTH. Emitting only the
+            # ``tool_result`` erased the dispatch: consumers that count
+            # dispatches by ``type == "tool_use"`` (e.g.
+            # ``_subagent_smoke_evidence``) saw zero, and a real ``task``
+            # subagent run was reported as "subagent dispatch was not
+            # observed". Surface the dispatch first, then the result, so the
+            # ordered dispatch -> result -> post-activity lifecycle holds.
+            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
             output = state_obj.get("output", "")
             yield AgentOutputLine(
                 type="tool_result",
@@ -151,6 +171,12 @@ class _OpenCodeDispatch:
             return
 
         if status == "error":
+            # Same reasoning as the ``completed`` branch above: the dispatch
+            # itself is real and MUST stay visible. Emitting only the error
+            # erased the call from the tool timeline, so an errored ``task``
+            # dispatch reported "subagent dispatch was not observed" even
+            # though the subagent was genuinely dispatched.
+            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
             err = str(state_obj.get("error", "tool error"))
             yield AgentOutputLine(type="error", content=err, raw=raw, metadata=metadata)
             return
@@ -223,12 +249,14 @@ class OpenCodeParser(NdjsonParserBase):
     ) -> None:
         super().__init__()
         # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
-        # source label. OpenCode emits structured child-lifecycle events
-        # (child_started/child_progress/child_heartbeat/child_complete)
-        # that the OpenCode strategy ingests into a ChildLivenessRegistry;
-        # the parser-side registry hook is forward-compat for events that
-        # carry an embedded PID. OpenCode's PID stream flows through the
-        # ChildLivenessSubagentPidSource adapter on the OpenCode path.
+        # source label. The OpenCode strategy ingests structured
+        # child-lifecycle events (child_started/child_progress/
+        # child_heartbeat/child_complete) into a ChildLivenessRegistry, and the
+        # parser-side registry hook is forward-compat for events that carry an
+        # embedded PID. Verified against OpenCode 1.17.15: the live runtime
+        # emits NONE of those types and no event carries a PID, so both hooks
+        # are inert today -- real subagent dispatch arrives as a ``task`` tool
+        # call and is classified by ``_opencode_tool_signal`` instead.
         self._subagent_pid_registry = subagent_pid_registry
         self._subagent_source_label = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
@@ -240,7 +268,13 @@ class OpenCodeParser(NdjsonParserBase):
         self,
         obj: dict[str, object],
         raw: str,
+        source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
+        # DA-002 (wt-028-display S-2 / AC-01): the base class
+        # post-processes the iterator to attach ``source_timestamp``
+        # to any AgentOutputLine that lacks one, so the per-event
+        # dispatcher itself does not need to thread the parameter.
+        del source_timestamp  # accepted for override compatibility; ignored
         yield from self._dispatcher.dispatch(obj, raw)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

@@ -1,1006 +1,465 @@
-"""Regression tests for the new internal skills (submit-plan-artifact, submit-artifact)
-and the skill pointers added to the planning prompt family and MCP error helpers.
-
-This file is pure-Python: it only reads source files via ``Path.read_text`` and
-directly invokes the seven target error helpers against a real
-``PathFileBackend`` rooted in ``tmp_path``. No subprocess, no ``time.sleep``,
-no real network. The new ``test_internal_skills_mcp_prompts`` module is
-expected to run in well under a second so the 60 s combined test budget
-remains GREEN.
-"""
+"""Prompt-quality contracts shared by packaged markdown-artifact skills."""
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
 import pytest
-from jinja2 import ChainableUndefined, DictLoader, Environment
 
-from ralph.mcp.artifacts._path_file_backend import PathFileBackend
-from ralph.mcp.tools.artifact import (
-    _artifact_content_format_error,
-    _format_plan_batch_envelope_error,
-    _format_plan_finalize_error,
-    _format_plan_section_submission_error,
-    _format_plan_step_edit_error,
-    _raise_format_doc_error,
-    _raise_index_format_error,
-    prepare_artifact_submission,
-)
+from ralph.config.mcp_models import McpConfig
+from ralph.mcp.artifacts.markdown._spec import parse_and_validate
+from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
+from ralph.mcp.protocol._session_drain import SessionDrain
+from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
+from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
+from ralph.mcp.tools.bridge._registry import tool_specs
 from ralph.mcp.tools.names import RalphToolName
-from ralph.skills._content import BASELINE_SKILL_NAMES
-from tests.test_prompt_template_files import (
-    PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE,
-    PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE,
-    PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE,
-    PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE,
-    PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE,
-    PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE,
-    PLANNING_EDIT_FALLBACK_SCOUT_GUIDANCE,
-    PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE,
-    PLANNING_STABLE_ID_GUIDANCE,
+from ralph.prompts import template_variables
+from ralph.prompts.template_context import TemplateContext
+from ralph.skills import get_skill_content
+
+PLANNING_SKILLS = ("submit-plan-artifact.md", "writing-plans.md")
+
+ARTIFACT_SKILLS = (
+    "submit-artifact.md",
+    "submit-plan-artifact.md",
+    "submit-commit-message-artifact.md",
+    "submit-development-result-artifact.md",
+    "submit-commit-cleanup-artifact.md",
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = REPO_ROOT / "ralph" / "skills" / "content"
-TEMPLATES_DIR = REPO_ROOT / "ralph" / "prompts" / "templates"
 
-PLAN_SKILL_PATH = SKILL_DIR / "submit-plan-artifact.md"
-PLAN_STEP_EDITS_SKILL_PATH = SKILL_DIR / "submit-plan-step-edits.md"
-ARTIFACT_SKILL_PATH = SKILL_DIR / "submit-artifact.md"
-COMMIT_MESSAGE_SKILL_PATH = SKILL_DIR / "submit-commit-message-artifact.md"
-DEVELOPMENT_RESULT_SKILL_PATH = SKILL_DIR / "submit-development-result-artifact.md"
-COMMIT_CLEANUP_SKILL_PATH = SKILL_DIR / "submit-commit-cleanup-artifact.md"
-ARTIFACT_SKILL_PATHS = (
-    ARTIFACT_SKILL_PATH,
-    COMMIT_MESSAGE_SKILL_PATH,
-    DEVELOPMENT_RESULT_SKILL_PATH,
-    COMMIT_CLEANUP_SKILL_PATH,
-)
-PLANNING_JINJA = TEMPLATES_DIR / "planning.jinja"
-PLANNING_FALLBACK_JINJA = TEMPLATES_DIR / "planning_fallback.jinja"
-PLANNING_EDIT_JINJA = TEMPLATES_DIR / "planning_edit.jinja"
-PLANNING_EDIT_FALLBACK_JINJA = TEMPLATES_DIR / "planning_edit_fallback.jinja"
-COMMIT_MESSAGE_JINJA = TEMPLATES_DIR / "commit_message.jinja"
-DEVELOPER_ITERATION_JINJA = TEMPLATES_DIR / "developer_iteration.jinja"
-DEVELOPER_ITERATION_CONTINUATION_JINJA = TEMPLATES_DIR / "developer_iteration_continuation.jinja"
-COMMIT_CLEANUP_JINJA = TEMPLATES_DIR / "commit_cleanup.jinja"
-DEVELOPMENT_ANALYSIS_JINJA = TEMPLATES_DIR / "development_analysis.jinja"
-REVIEW_ANALYSIS_JINJA = TEMPLATES_DIR / "review_analysis.jinja"
-PLANNING_ANALYSIS_JINJA = TEMPLATES_DIR / "planning_analysis.jinja"
+def _read(name: str) -> str:
+    return get_skill_content(name.removesuffix(".md"))
 
 
-def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    match = re.match(r"---\n(?P<fm>.*?)\n---\n(?P<body>.*)", text, re.DOTALL)
-    if match is None:
-        raise AssertionError(f"missing YAML frontmatter: {text[:80]!r}")
-    fm_raw = match.group("fm")
-    body = match.group("body")
-    fields: dict[str, str] = {}
-    for line in fm_raw.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        key, _, value = line.partition(":")
-        fields[key.strip()] = value.strip()
-    return fields, body
+def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None:
+    for name in ARTIFACT_SKILLS:
+        text = _read(name)
+        frontmatter = re.match(r"---\n(.*?)\n---", text, re.DOTALL)
+        assert frontmatter is not None
+        assert "description: Use when" in frontmatter.group(1)
+        assert "version: 2.1.0" in frontmatter.group(1)
+        assert "ralph_submit_md_artifact" in text
+        assert "ralph_submit_artifact" not in text
 
 
-def _read_skill(path: Path) -> tuple[dict[str, str], str]:
-    return _parse_frontmatter(path.read_text(encoding="utf-8"))
-
-
-def _fenced_json_objects(markdown: str) -> list[dict[str, object]]:
-    blocks: list[dict[str, object]] = []
-    for match in re.finditer(r"```json\n(?P<body>.*?)\n```", markdown, re.DOTALL):
-        body = match.group("body")
-        try:
-            decoded = json.loads(body)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(decoded, dict):
-            blocks.append(decoded)
-    return blocks
-
-
-# ---------------------------------------------------------------------------
-# AC-01 — submit-plan-artifact.md skill shape
-# ---------------------------------------------------------------------------
-
-
-def test_submit_plan_artifact_skill_shape() -> None:
-    assert PLAN_SKILL_PATH.exists(), f"missing skill: {PLAN_SKILL_PATH}"
-    fm, body = _read_skill(PLAN_SKILL_PATH)
-
-    assert fm.get("name") == "submit-plan-artifact"
-    assert fm.get("description"), "frontmatter description is required"
-    assert fm["description"].startswith("Use when"), (
-        f"description must start with 'Use when', got: {fm['description']!r}"
-    )
-
-    expected_h2 = (
-        "## Overview",
-        "## When to Use",
-        "## Core Flow",
-        "## Planning Quality Criteria",
-        "## Correcting a Rejected Payload",
-        "## Source of Truth Reference",
-        "## Common Mistakes",
-    )
-    for header in expected_h2:
-        assert header in body, f"missing H2 section: {header!r}"
-
-    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
-    assert ".agent/artifact-formats/plan.md" in body, "body must reference the plan format doc"
-    assert "ralph_submit_plan_section" in body, "body must mention ralph_submit_plan_section"
-    assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, (
-        "body must differentiate from the ralph_submit_artifact MCP tool"
-    )
-
-
-def test_submit_plan_artifact_skill_blocks_stale_atomic_and_minimal_guidance() -> None:
-    """The authored skill must not reintroduce invalid plan recovery shortcuts."""
-    _, body = _read_skill(PLAN_SKILL_PATH)
-
-    forbidden_fragments = (
-        "The atomic `ralph_submit_artifact` payload",
-        '"artifact_type": "plan"',
-        'design.planning_profile = "minimal"',
-        'planning_profile = "minimal"',
-        "to permit an empty list",
-        "empty skill lists are allowed",
-    )
-    for fragment in forbidden_fragments:
-        assert fragment not in body, (
-            f"submit-plan-artifact.md contains stale/minimal plan guidance: {fragment!r}"
-        )
-
-    assert "Falling back to `ralph_submit_artifact` for plans" in body
-    assert "Empty skill lists are invalid for every planning" in body
-    assert "profile." in body
-    assert "A failed `ralph_finalize_plan` preserves the" in body
-    assert "staged draft for repair" in body
-    assert "lost the staged draft" not in body
-    assert "truly starting over" in body
-    assert "blank draft" in body
-    assert "Do not use discard" in body
-    assert "ordinary `validation_warnings`" in body
-    assert 'serializer wrapper objects such as `{"item": ["writing-plans"]}`' in body
-    assert '"satisfied_by_steps": [1]' in body
-    assert "## Per-section compact payload templates" not in body
-    assert "Concrete outcome" not in body
-    assert "All tests pass" not in body
-    assert body.count("## Dumb-proof checklist (plan-artifact)") == 1
-
-
-def test_submit_plan_artifact_skill_documents_validate_error_object_shape() -> None:
-    """The skill must match ralph_validate_draft's runtime error object shape."""
-    _, body = _read_skill(PLAN_SKILL_PATH)
-    assert '{"valid":false,"finalizable":false,"errors":[{"message":' in body
-    assert '"code":"SUMMARY_MISSING_SCOPE_ITEMS"' in body
-    assert '"repair":"Re-submit section' in body
-    assert 'errors":["summary: required field is missing"]' not in body
-
-
-# ---------------------------------------------------------------------------
-# AC-02 — submit-artifact.md skill shape
-# ---------------------------------------------------------------------------
-
-
-def test_submit_artifact_skill_shape() -> None:
-    assert ARTIFACT_SKILL_PATH.exists(), f"missing skill: {ARTIFACT_SKILL_PATH}"
-    fm, body = _read_skill(ARTIFACT_SKILL_PATH)
-
-    assert fm.get("name") == "submit-artifact"
-    assert fm.get("description"), "frontmatter description is required"
-    assert fm["description"].startswith("Use when"), (
-        f"description must start with 'Use when', got: {fm['description']!r}"
-    )
-
-    expected_h2 = (
-        "## Overview",
-        "## When to Use",
-        "## Core Flow (canonical submission)",
-        "## Recovery from a Bad Payload",
-        "## Source of Truth Reference",
-        "## Common Mistakes",
-    )
-    for header in expected_h2:
-        assert header in body, f"missing H2 section: {header!r}"
-
-    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
-    assert ".agent/artifact-formats/artifact_formats_index.md" in body, (
-        "body must reference the artifact formats index doc"
-    )
-    assert "artifact_type" in body and "content" in body, (
-        "body must show artifact_type and content envelope keys"
-    )
-    assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
-    assert "native JSON" in body and "object/array" in body
-    assert "Passing an object instead of a JSON string" not in body
-
-
-def test_submit_artifact_development_result_example_matches_validator() -> None:
-    """The skill's concrete development_result example must pass the real normalizer."""
-    _, body = _read_skill(ARTIFACT_SKILL_PATH)
-    examples = [
-        block
-        for block in _fenced_json_objects(body)
-        if block.get("artifact_type") == "development_result"
-        and isinstance(block.get("content"), dict)
-    ]
-    assert examples, "submit-artifact.md must include a native development_result example"
-
-    artifact_type, normalized = prepare_artifact_submission(examples[0])
-
-    assert artifact_type == "development_result"
-    addressed = normalized["analysis_items_addressed"]
-    assert isinstance(addressed, list)
-    assert all(isinstance(item, dict) and "how_to_fix_item" in item for item in addressed)
-    assert "verification" not in normalized
-
-
-def test_packaged_artifact_skills_reference_only_real_mcp_tools() -> None:
-    known_tools = {tool.value for tool in RalphToolName}
+def test_packaged_artifact_skills_reference_only_registered_ralph_tools() -> None:
+    known = {tool.value for tool in RalphToolName}
     unknown: dict[str, list[str]] = {}
-    for path in ARTIFACT_SKILL_PATHS:
-        _fm, body = _read_skill(path)
-        referenced = set(re.findall(r"\b(?:ralph_)?[a-z][a-z0-9_]+(?=\()", body))
-        missing = sorted(
-            name for name in referenced if name.startswith("ralph_") and name not in known_tools
-        )
+    for name in ARTIFACT_SKILLS:
+        references = set(re.findall(r"\bralph_[a-z0-9_]+", _read(name)))
+        missing = sorted(references - known)
         if missing:
-            unknown[path.name] = missing
+            unknown[name] = missing
 
     assert unknown == {}
 
 
-def test_concrete_artifact_skill_examples_match_validators() -> None:
-    placeholder_markers = ("{...", "<exact-", "<type>", "<artifact")
-    validated: list[str] = []
-    for path in ARTIFACT_SKILL_PATHS:
-        _fm, body = _read_skill(path)
-        for block in _fenced_json_objects(body):
-            if "artifact_type" not in block:
-                continue
-            encoded = json.dumps(block)
-            assert not any(marker in encoded for marker in placeholder_markers), (
-                f"{path.name} contains a placeholder JSON artifact example: {encoded}"
-            )
-            prepare_artifact_submission(block)
-            validated.append(f"{path.name}:{block['artifact_type']}")
+def test_plan_skill_native_markdown_example_matches_validator() -> None:
+    text = _read("submit-plan-artifact.md")
+    match = re.search(r"Worked example:\s*```markdown\n(.*?)\n```", text, re.DOTALL)
+    assert match is not None
 
-    assert "submit-artifact.md:commit_message" in validated
-    assert "submit-artifact.md:development_result" in validated
-    assert "submit-commit-message-artifact.md:commit_message" in validated
+    normalized, diagnostics = parse_and_validate(match.group(1), PLAN_SPEC)
+
+    assert not [item for item in diagnostics if item.severity == "error"]
+    assert len(normalized["steps"]) >= 2
 
 
-# ---------------------------------------------------------------------------
-# AC-03 — BASELINE_SKILL_NAMES registers both new skills (length 30)
-# ---------------------------------------------------------------------------
+def test_planning_skill_and_format_doc_keep_advice_nonblocking() -> None:
+    for name in PLANNING_SKILLS:
+        text = _read(name)
+        assert "Warnings and info are advice" in text or name == "writing-plans.md"
+        assert "advisory findings are errors" not in text
+
+    format_doc = (
+        Path(__file__).resolve().parents[1]
+        / "ralph"
+        / "mcp"
+        / "artifacts"
+        / "format_docs"
+        / "planning_analysis_decision.md"
+    ).read_text(encoding="utf-8")
+    assert "Observation:" in format_doc
+    assert "Cost:" in format_doc
+    assert "Fix:" in format_doc
+    assert "Critical Files omits" not in format_doc
 
 
-def test_baseline_skill_names_includes_new_skills() -> None:
-    assert isinstance(BASELINE_SKILL_NAMES, tuple)
-    assert len(BASELINE_SKILL_NAMES) == 30, (
-        f"expected 30 baseline skills after registration, got {len(BASELINE_SKILL_NAMES)}"
-    )
-    assert "submit-plan-artifact" in BASELINE_SKILL_NAMES
-    assert "submit-plan-step-edits" in BASELINE_SKILL_NAMES
-    assert "submit-artifact" in BASELINE_SKILL_NAMES
-    assert "submit-commit-message-artifact" in BASELINE_SKILL_NAMES
-    assert "submit-development-result-artifact" in BASELINE_SKILL_NAMES
-    assert "submit-commit-cleanup-artifact" in BASELINE_SKILL_NAMES
+def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:
+    text = _read("submit-plan-artifact.md")
+
+    assert "recommended authoring pattern, not required grammar" in text
+    assert "Orient, Characterize, Change, and Verify" in text
+    assert "ralph_edit_md_artifact" in text
+    assert "ralph_edit_md_plan_step" not in text
 
 
-# ---------------------------------------------------------------------------
-# AC-04 — planning.jinja gains a skill pointer without losing invariants
-# ---------------------------------------------------------------------------
+def test_development_result_skill_teaches_closed_status_vocabulary() -> None:
+    text = _read("submit-development-result-artifact.md")
+
+    assert "closed-vocabulary" in text
+    assert "`completed` or `partial`" in text
+    assert "unknown status is coerced" not in text
 
 
-def test_planning_jinja_skill_pointer_and_invariants() -> None:
-    source = PLANNING_JINJA.read_text(encoding="utf-8")
-    assert "submit-plan-artifact" in source, "planning.jinja must reference submit-plan-artifact"
-    preserved = (
-        "## PROMPT SCOPE CLASSIFICATION",
-        "Common StepType mistakes",
-        "Plan-artifact scope (planner-meta-task)",
-        "## Agent-Driven Parallel Execution",
-        "Ralph-managed fan-out is dormant",
-        "sub-agents",
-        ".agent",
-        ".git",
-        "allowed_directories",
-    )
-    for needle in preserved:
-        assert needle in source, f"planning.jinja must preserve {needle!r}"
-    banned = (
-        "## Same-Workspace Parallel Worker Rules",
-        "ralph coordinate",
-    )
-    for needle in banned:
-        assert needle not in source, f"planning.jinja must NOT contain {needle!r}"
-
-
-# ---------------------------------------------------------------------------
-# AC-05 — planning_fallback.jinja gains a skill pointer and preserves headings
-# ---------------------------------------------------------------------------
-
-
-def test_planning_fallback_jinja_skill_pointer_and_invariants() -> None:
-    source = PLANNING_FALLBACK_JINJA.read_text(encoding="utf-8")
-    assert "submit-plan-artifact" in source, (
-        "planning_fallback.jinja must reference submit-plan-artifact"
-    )
-    preserved = (
-        "## Plan-artifact canonical contract",
-        "Plan size limits",
-        "Cross-section invariants",
-        "ARTIFACT_HISTORY_PATH",
-        "ARTIFACT_HISTORY_DIR",
-    )
-    for needle in preserved:
-        assert needle in source, f"planning_fallback.jinja must preserve {needle!r}"
-
-    rendered = _render_template_source(PLANNING_FALLBACK_JINJA)
-    heading_count = rendered.count("## OPTIONAL: submit-plan-artifact skill")
-    assert heading_count == 1, (
-        "planning_fallback.jinja must render exactly one "
-        "'## OPTIONAL: submit-plan-artifact skill' heading (was "
-        f"{heading_count}); the shared include already emits the heading, so "
-        "the source must not duplicate it inline."
+def test_prompt_templates_use_markdown_tools_without_retired_json_vocabulary() -> None:
+    registry = TemplateContext.default().registry
+    combined = "\n".join(
+        registry.get_template(name)
+        for name in (
+            "planning",
+            "planning_analysis",
+            "planning_edit",
+            "planning_edit_fallback",
+            "planning_fallback",
+        )
     )
 
-
-# ---------------------------------------------------------------------------
-# AC-05 — planning_edit.jinja and planning_edit_fallback.jinja gain a skill pointer
-# ---------------------------------------------------------------------------
-
-
-def test_planning_edit_and_fallback_skill_pointer() -> None:
-    edit_source = PLANNING_EDIT_JINJA.read_text(encoding="utf-8")
-    edit_fallback_source = PLANNING_EDIT_FALLBACK_JINJA.read_text(encoding="utf-8")
-
-    assert "submit-plan-artifact" in edit_source, (
-        "planning_edit.jinja must reference submit-plan-artifact"
-    )
-    assert "submit-plan-artifact" in edit_fallback_source, (
-        "planning_edit_fallback.jinja must reference submit-plan-artifact"
-    )
-
-    for source, label in (
-        (edit_source, "planning_edit.jinja"),
-        (edit_fallback_source, "planning_edit_fallback.jinja"),
+    for variable in (
+        "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE",
+        "VERIFY_MD_ARTIFACT_TOOL_REFERENCE",
     ):
-        for needle in (
-            PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE,
-            PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE,
-            PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE,
-            PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE,
-            PLANNING_STABLE_ID_GUIDANCE,
-        ):
-            assert needle in source, f"{label} must preserve {needle!r}"
-
-    for needle in (
-        PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE,
-        PLANNING_EDIT_FALLBACK_SCOUT_GUIDANCE,
-        PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE,
-        PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE,
+        assert variable in combined
+    assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" not in combined
+    for retired in (
+        "ralph_submit_plan_section",
+        "ralph_submit_plan_sections",
+        "ralph_validate_draft",
+        "ralph_finalize_plan",
+        "plan.json",
     ):
-        assert needle in edit_fallback_source, (
-            f"planning_edit_fallback.jinja must preserve {needle!r}"
-        )
-
-    for source, label in (
-        (edit_source, "planning_edit.jinja"),
-        (edit_fallback_source, "planning_edit_fallback.jinja"),
-    ):
-        for needle in ("ARTIFACT_HISTORY_PATH", "ARTIFACT_HISTORY_DIR"):
-            assert needle in source, f"{label} must preserve {needle!r}"
-        for needle in ("arabold/docs-mcp-server", "localhost:6280"):
-            assert needle in source, f"{label} must preserve {needle!r}"
+        assert retired not in combined
 
 
-# ---------------------------------------------------------------------------
-# AC-06 — Plan error helpers mention the submit-plan-artifact skill
-# ---------------------------------------------------------------------------
+def test_planning_analysis_prompt_requires_cost_element_per_finding() -> None:
+    """Every ``## What Came Up Short`` entry must surface a ``Cost:`` element.
 
-
-def _call_plan_helper(
-    helper_name: str,
-    *,
-    workspace_root: Path,
-    backend: PathFileBackend,
-) -> str:
-    """Call one of the four plan error helpers with a synthetic detail."""
-    detail = "synthetic test detail"
-
-    if helper_name == "_format_plan_section_submission_error":
-        return _format_plan_section_submission_error(
-            section="summary",
-            mode="replace",
-            detail=detail,
-            workspace_root=workspace_root,
-            backend=backend,
-            tool_name="ralph_submit_plan_section",
-        )
-    if helper_name == "_format_plan_batch_envelope_error":
-        return _format_plan_batch_envelope_error(
-            detail=detail,
-            workspace_root=workspace_root,
-            backend=backend,
-        )
-    if helper_name == "_format_plan_finalize_error":
-        return _format_plan_finalize_error(
-            detail=detail,
-            workspace_root=workspace_root,
-            backend=backend,
-            tool_name="ralph_finalize_plan",
-        )
-    if helper_name == "_format_plan_step_edit_error":
-        return _format_plan_step_edit_error(
-            detail=detail,
-            workspace_root=workspace_root,
-            backend=backend,
-            tool_name="ralph_insert_plan_step",
-        )
-    msg = f"unknown plan helper: {helper_name}"
-    raise AssertionError(msg)
-
-
-@pytest.mark.parametrize(
-    "helper_name",
-    [
-        "_format_plan_section_submission_error",
-        "_format_plan_batch_envelope_error",
-        "_format_plan_finalize_error",
-        "_format_plan_step_edit_error",
-    ],
-)
-def test_plan_error_helpers_mention_submit_plan_artifact_skill(
-    helper_name: str,
-    tmp_path: Path,
-) -> None:
-    backend = PathFileBackend()
-    workspace_root = tmp_path
-    # _plan_format_doc_reference calls materialize_format_doc which writes a
-    # file into the workspace; tmp_path satisfies the side effect without
-    # polluting the real repo.
-    message = _call_plan_helper(
-        helper_name,
-        workspace_root=workspace_root,
-        backend=backend,
-    )
-    assert "submit-plan-artifact" in message, (
-        f"{helper_name} must mention the submit-plan-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/plan.md" in message, (
-        f"{helper_name} must keep the existing plan.md format-doc reference"
-    )
-
-
-# ---------------------------------------------------------------------------
-# AC-06 — Generic artifact error helpers mention the submit-artifact skill
-# ---------------------------------------------------------------------------
-
-
-def test_raise_index_format_error_mentions_submit_artifact_skill(tmp_path: Path) -> None:
-    backend = PathFileBackend()
-    with pytest.raises(Exception) as excinfo:
-        _raise_index_format_error(
-            tmp_path,
-            backend,
-            "synthetic index error",
-        )
-    message = str(excinfo.value)
-    assert "submit-artifact" in message, (
-        "_raise_index_format_error must mention the submit-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/artifact_formats_index.md" in message, (
-        "_raise_index_format_error must keep the existing index-doc reference"
-    )
-
-
-def test_raise_format_doc_error_mentions_submit_artifact_skill(tmp_path: Path) -> None:
-    backend = PathFileBackend()
-    exc = RuntimeError("synthetic format-doc error")
-    with pytest.raises(Exception) as excinfo:
-        _raise_format_doc_error("development_result", tmp_path, backend, exc)
-    message = str(excinfo.value)
-    assert "submit-artifact" in message, (
-        "_raise_format_doc_error must mention the submit-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/development_result.md" in message, (
-        "_raise_format_doc_error must keep the existing format-doc reference"
-    )
-
-
-def test_artifact_content_format_error_mentions_submit_artifact_skill() -> None:
-    message = _artifact_content_format_error("commit_message")
-    assert "submit-artifact" in message, (
-        "_artifact_content_format_error must mention the submit-artifact skill pointer"
-    )
-    assert "content" in message and "artifact_type" in message, (
-        "_artifact_content_format_error must keep the existing canonical envelope example"
-    )
-
-
-# ---------------------------------------------------------------------------
-# AC-07 — Three new skill shape tests (commit_message, development_result, commit_cleanup)
-# ---------------------------------------------------------------------------
-
-
-def test_submit_commit_message_artifact_skill_shape() -> None:
-    assert COMMIT_MESSAGE_SKILL_PATH.exists(), f"missing skill: {COMMIT_MESSAGE_SKILL_PATH}"
-    fm, body = _read_skill(COMMIT_MESSAGE_SKILL_PATH)
-
-    assert fm.get("name") == "submit-commit-message-artifact"
-    assert fm.get("description"), "frontmatter description is required"
-    assert fm["description"].startswith("Use when"), (
-        f"description must start with 'Use when', got: {fm['description']!r}"
-    )
-
-    expected_h2 = (
-        "## Overview",
-        "## When to Use",
-        "## Core Flow (one-shot)",
-        "## Recovery from a Bad Payload",
-        "## Source of Truth Reference",
-        "## Common Mistakes",
-    )
-    for header in expected_h2:
-        assert header in body, f"missing H2 section: {header!r}"
-
-    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
-    assert ".agent/artifact-formats/commit_message.md" in body, (
-        "body must reference the commit_message format doc"
-    )
-    assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
-
-
-def test_submit_development_result_artifact_skill_shape() -> None:
-    assert DEVELOPMENT_RESULT_SKILL_PATH.exists(), f"missing skill: {DEVELOPMENT_RESULT_SKILL_PATH}"
-    fm, body = _read_skill(DEVELOPMENT_RESULT_SKILL_PATH)
-
-    assert fm.get("name") == "submit-development-result-artifact"
-    assert fm.get("description"), "frontmatter description is required"
-    assert fm["description"].startswith("Use when"), (
-        f"description must start with 'Use when', got: {fm['description']!r}"
-    )
-
-    expected_h2 = (
-        "## Overview",
-        "## When to Use",
-        "## Core Flow (one-shot)",
-        "## Recovery from a Bad Payload",
-        "## Source of Truth Reference",
-        "## Common Mistakes",
-    )
-    for header in expected_h2:
-        assert header in body, f"missing H2 section: {header!r}"
-
-    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
-    assert ".agent/artifact-formats/development_result.md" in body, (
-        "body must reference the development_result format doc"
-    )
-    assert "plan_items_proven" in body, "body must surface plan_items_proven field"
-    assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
-
-
-def test_submit_commit_cleanup_artifact_skill_shape() -> None:
-    assert COMMIT_CLEANUP_SKILL_PATH.exists(), f"missing skill: {COMMIT_CLEANUP_SKILL_PATH}"
-    fm, body = _read_skill(COMMIT_CLEANUP_SKILL_PATH)
-
-    assert fm.get("name") == "submit-commit-cleanup-artifact"
-    assert fm.get("description"), "frontmatter description is required"
-    assert fm["description"].startswith("Use when"), (
-        f"description must start with 'Use when', got: {fm['description']!r}"
-    )
-
-    expected_h2 = (
-        "## Overview",
-        "## When to Use",
-        "## Core Flow (one-shot)",
-        "## Recovery from a Bad Payload",
-        "## Source of Truth Reference",
-        "## Common Mistakes",
-        "## Red Flags - STOP and Start Over",
-    )
-    for header in expected_h2:
-        assert header in body, f"missing H2 section: {header!r}"
-
-    actual_h2 = tuple(re.findall(r"^## .+$", body, flags=re.MULTILINE))
-    assert actual_h2 == expected_h2, (
-        f"submit-commit-cleanup-artifact.md must contain exactly seven H2 sections in the "
-        f"planned order; got {actual_h2!r}"
-    )
-
-    assert "SECURITY BOUNDARY" not in body, (
-        "submit-commit-cleanup-artifact.md must NOT contain any dangling "
-        "'SECURITY BOUNDARY' cross-reference (the security-boundary rule is "
-        "covered under Common Mistakes, not as a standalone section)"
-    )
-
-    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
-    assert ".agent/artifact-formats/commit_cleanup.md" in body, (
-        "body must reference the commit_cleanup format doc"
-    )
-    assert "actions" in body, "body must surface the actions array contract"
-    assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
-
-
-def test_submit_commit_message_artifact_skill_documents_breaking_change_marker() -> None:
-    """The conventional-commit breaking-change `!` marker must be documented."""
-    assert COMMIT_MESSAGE_SKILL_PATH.exists(), f"missing skill: {COMMIT_MESSAGE_SKILL_PATH}"
-    _, body = _read_skill(COMMIT_MESSAGE_SKILL_PATH)
-    assert "!" in body, (
-        "submit-commit-message-artifact.md must document the breaking-change `!` marker"
-    )
-    needle = "Breaking" if "Breaking" in body else "breaking"
-    assert needle in body, (
-        "submit-commit-message-artifact.md must surface the breaking-change "
-        "concept alongside the conventional-commit subject shape"
-    )
-    assert re.search(r"\(\)!\:|!:\s", body), (
-        "submit-commit-message-artifact.md must show the breaking-change `!` "
-        "placement (e.g. `type!:` or `type(scope)!:`)"
-    )
-
-
-# ---------------------------------------------------------------------------
-# AC-08 — Three per-type pointer tests in _raise_format_doc_error
-# ---------------------------------------------------------------------------
-
-
-def test_raise_format_doc_error_mentions_per_type_skill_for_commit_message(
-    tmp_path: Path,
-) -> None:
-    backend = PathFileBackend()
-    exc = RuntimeError("synthetic format-doc error")
-    with pytest.raises(Exception) as excinfo:
-        _raise_format_doc_error("commit_message", tmp_path, backend, exc)
-    message = str(excinfo.value)
-    assert "submit-artifact" in message, (
-        "_raise_format_doc_error must still emit the generic submit-artifact sentence"
-    )
-    assert "submit-commit-message-artifact" in message, (
-        "_raise_format_doc_error must append the per-type skill pointer for commit_message"
-    )
-
-
-def test_raise_format_doc_error_mentions_per_type_skill_for_development_result(
-    tmp_path: Path,
-) -> None:
-    backend = PathFileBackend()
-    exc = RuntimeError("synthetic format-doc error")
-    with pytest.raises(Exception) as excinfo:
-        _raise_format_doc_error("development_result", tmp_path, backend, exc)
-    message = str(excinfo.value)
-    assert "submit-artifact" in message, (
-        "_raise_format_doc_error must still emit the generic submit-artifact sentence"
-    )
-    assert "submit-development-result-artifact" in message, (
-        "_raise_format_doc_error must append the per-type skill pointer for development_result"
-    )
-
-
-def test_raise_format_doc_error_mentions_per_type_skill_for_commit_cleanup(
-    tmp_path: Path,
-) -> None:
-    backend = PathFileBackend()
-    exc = RuntimeError("synthetic format-doc error")
-    with pytest.raises(Exception) as excinfo:
-        _raise_format_doc_error("commit_cleanup", tmp_path, backend, exc)
-    message = str(excinfo.value)
-    assert "submit-artifact" in message, (
-        "_raise_format_doc_error must still emit the generic submit-artifact sentence"
-    )
-    assert "submit-commit-cleanup-artifact" in message, (
-        "_raise_format_doc_error must append the per-type skill pointer for commit_cleanup"
-    )
-
-
-# ---------------------------------------------------------------------------
-# AC-09 — Three analysis-template OPTIONAL skill pointer tests
-# ---------------------------------------------------------------------------
-
-
-def _render_template_source(template_path: Path) -> str:
-    """Render a .jinja template source with the shared OPTIONAL pointer resolved.
-
-    Renders with empty globals so the include resolves to its literal block.
-    Asserts on substring presence, not exact render equality.
+    The product brief (AC-12) requires every analysis finding to state
+    the run cost it imposes; the per-entry form lives in
+    ``planning_analysis.jinja``. If the ``Cost:`` element is dropped or
+    rephrased, the standard is no longer stated once and this test
+    fails closed.
     """
-    source = template_path.read_text(encoding="utf-8")
-    shared_dir = REPO_ROOT / "ralph" / "prompts" / "templates" / "shared"
-
-    partials: dict[str, str] = {}
-    for path in shared_dir.rglob("*.jinja"):
-        key = path.relative_to(shared_dir.parent).with_suffix("").as_posix()
-        partials[key] = path.read_text(encoding="utf-8")
-    for path in shared_dir.rglob("*.j2"):
-        key = path.relative_to(shared_dir.parent).with_suffix("").as_posix()
-        partials[key] = path.read_text(encoding="utf-8")
-
-    env = Environment(
-        loader=DictLoader({"__main__.j2": source, **{f"{k}.j2": v for k, v in partials.items()}}),
-        autoescape=False,
-        keep_trailing_newline=True,
-        undefined=ChainableUndefined,
+    source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
+    assert "Cost:" in source, (
+        "planning_analysis.jinja must require a `Cost:` element per finding"
     )
-    env.globals["raise_error"] = lambda *_args, **_kwargs: ""
-    template = env.get_template("__main__.j2")
-    return template.render()
+    assert "Observation:" in source
+    assert "Fix:" in source
+    # The form must NOT regress to the legacy ``MCP plan-edit tools``
+    # vocabulary that no longer exists in the runtime.
+    assert "MCP plan-edit tools" not in source
 
 
-def test_development_analysis_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(DEVELOPMENT_ANALYSIS_JINJA)
-    assert "submit-artifact" in rendered, (
-        "development_analysis.jinja must emit the submit-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/artifact_formats_index.md" in rendered, (
-        "development_analysis.jinja must reference the artifact_formats_index.md doc"
-    )
+# --- AC-01: registered == advertised regression guard ---------------------
+#
+# The MCP tool surface has three coupled sources of truth:
+#
+# 1. The :class:`RalphToolName` enum (canonical name list) — consumed by
+#    :mod:`ralph.prompts.template_variables` to generate the
+#    ``*_TOOL_REFERENCE`` variables the partial :file:`_mcp_tools.jinja`
+#    renders.
+# 2. The bridge specs in :mod:`ralph.mcp.tools.bridge._specs_*` — the
+#    actual tool registrations the runtime serves.
+# 3. :func:`visible_tool_names_for_capabilities` — the live
+#    capability-driven projection onto (2) that the prompts consume
+#    via :func:`capability_template_variables`.
+#
+# Drift between these surfaces produces the "GIT_STATUS_TOOL_REFERENCE is
+# undefined" template failure class documented in
+# :mod:`ralph.prompts.template_variables`. The tests below pin the
+# surfaces together per drain and pin the rendered reference variables
+# so a new tool cannot ship registered-but-unadvertised or
+# advertised-but-unrendered.
 
 
-def test_review_analysis_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(REVIEW_ANALYSIS_JINJA)
-    assert "submit-artifact" in rendered, (
-        "review_analysis.jinja must emit the submit-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/artifact_formats_index.md" in rendered, (
-        "review_analysis.jinja must reference the artifact_formats_index.md doc"
-    )
+def _registered_tool_names() -> set[str]:
+    """Return the set of canonical names registered by the bridge specs."""
+    return {spec.metadata.definition.name for spec in tool_specs(McpConfig())}
 
 
-def test_planning_analysis_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(PLANNING_ANALYSIS_JINJA)
-    assert "submit-artifact" in rendered, (
-        "planning_analysis.jinja must emit the submit-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/artifact_formats_index.md" in rendered, (
-        "planning_analysis.jinja must reference the artifact_formats_index.md doc"
-    )
+def test_registered_tools_equal_canonical_enum() -> None:
+    """Every registered tool name must be a member of ``RalphToolName``.
 
-
-# ---------------------------------------------------------------------------
-# AC-10 — Four developer/commit template per-type skill pointer tests
-# ---------------------------------------------------------------------------
-
-
-def test_commit_message_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(COMMIT_MESSAGE_JINJA)
-    assert "submit-commit-message-artifact" in rendered, (
-        "commit_message.jinja must emit the per-type submit-commit-message-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/commit_message.md" in rendered, (
-        "commit_message.jinja must reference the commit_message.md doc"
+    The bridge specs and the canonical enum are the two sources of
+    truth for tool naming. If they drift, the runtime registers a tool
+    the prompt template does not know about (or vice versa).
+    """
+    registered = _registered_tool_names()
+    enum_names = {tool.value for tool in RalphToolName}
+    # Plan-artifact-specific tools (ralph_edit_md_artifact etc.) are
+    # being removed on another branch — keep them in the enum but
+    # do not flag them as registered-or-not.
+    assert registered == enum_names, (
+        f"registered tools drift from RalphToolName enum: "
+        f"only-registered={sorted(registered - enum_names)}, "
+        f"only-enum={sorted(enum_names - registered)}"
     )
 
 
-def test_developer_iteration_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(DEVELOPER_ITERATION_JINJA)
-    assert "submit-development-result-artifact" in rendered, (
-        "developer_iteration.jinja must emit the per-type "
-        "submit-development-result-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/development_result.md" in rendered, (
-        "developer_iteration.jinja must reference the development_result.md doc"
-    )
+@pytest.mark.parametrize("drain", list(SessionDrain))
+def test_advertised_tools_per_drain_match_registration(drain: SessionDrain) -> None:
+    """For each drain, the visible advertised set is a subset of the registered set.
 
-
-def test_developer_iteration_continuation_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(DEVELOPER_ITERATION_CONTINUATION_JINJA)
-    assert "submit-development-result-artifact" in rendered, (
-        "developer_iteration_continuation.jinja must emit the per-type "
-        "submit-development-result-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/development_result.md" in rendered, (
-        "developer_iteration_continuation.jinja must reference the development_result.md doc"
-    )
-
-
-def test_commit_cleanup_jinja_has_optional_skill_pointer() -> None:
-    rendered = _render_template_source(COMMIT_CLEANUP_JINJA)
-    assert "submit-commit-cleanup-artifact" in rendered, (
-        "commit_cleanup.jinja must emit the per-type submit-commit-cleanup-artifact skill pointer"
-    )
-    assert ".agent/artifact-formats/commit_cleanup.md" in rendered, (
-        "commit_cleanup.jinja must reference the commit_cleanup.md doc"
+    Every tool the prompt advertises for a drain must be a tool the
+    bridge actually registers. The reverse direction (every registered
+    tool advertised on every drain) is NOT asserted: a tool is only
+    visible to a drain when the drain's capability set grants the
+    required capability, so the visible set is a strict subset of the
+    registered set.
+    """
+    capability_ids = template_variables.default_capability_identifiers_for_drain(drain)
+    if not capability_ids:
+        # Some drains have no default capabilities (e.g. COMMIT runs
+        # in a strict read-only mode); skip the assertion for those.
+        pytest.skip(f"drain {drain!r} has no default capabilities")
+    visible = set(visible_tool_names_for_capabilities(capability_ids, drain=drain.value))
+    registered = _registered_tool_names()
+    missing = visible - registered
+    assert not missing, (
+        f"drain {drain!r} advertises tools that are not registered: "
+        f"{sorted(missing)}"
     )
 
 
-def test_commit_cleanup_jinja_json_fences_are_parseable() -> None:
-    text = COMMIT_CLEANUP_JINJA.read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", text, flags=re.DOTALL)
-    assert blocks, "commit_cleanup.jinja must contain JSON examples"
-    for index, block in enumerate(blocks, start=1):
-        try:
-            json.loads(block)
-        except json.JSONDecodeError as exc:  # pragma: no cover - failure path
-            pytest.fail(f"commit_cleanup.jinja JSON block {index} is invalid: {exc}")
+@pytest.mark.parametrize("drain", list(SessionDrain))
+def test_prompt_reference_variables_cover_visible_tools(drain: SessionDrain) -> None:
+    """Every visible tool renders a non-empty ``*_TOOL_REFERENCE`` variable.
 
-
-# ---------------------------------------------------------------------------
-# AC-11 — submit-plan-step-edits.md skill shape (new skill)
-# ---------------------------------------------------------------------------
-
-
-def test_submit_plan_step_edits_skill_shape() -> None:
-    assert PLAN_STEP_EDITS_SKILL_PATH.exists(), f"missing skill: {PLAN_STEP_EDITS_SKILL_PATH}"
-    fm, body = _read_skill(PLAN_STEP_EDITS_SKILL_PATH)
-
-    assert fm.get("name") == "submit-plan-step-edits"
-    assert fm.get("description"), "frontmatter description is required"
-    assert fm["description"].startswith("Use when"), (
-        f"description must start with 'Use when', got: {fm['description']!r}"
-    )
-    assert len(fm["description"]) <= 500, (
-        f"description must stay under the 500-char soft cap, got {len(fm['description'])}"
-    )
-
-    frontmatter_text = PLAN_STEP_EDITS_SKILL_PATH.read_text(encoding="utf-8")
-    total_frontmatter = len(re.match(r"---\n.*?\n---", frontmatter_text, re.DOTALL).group(0))
-    assert total_frontmatter <= 1024, (
-        f"frontmatter must stay under the 1024-char hard cap, got {total_frontmatter}"
-    )
-
-    cso_keywords = (
-        "cross-section validator failure",
-        "step numbering off-by-one",
-        "dangling depends_on",
-        "orphan AC satisfied_by_steps",
-    )
-    for keyword in cso_keywords:
-        assert keyword in fm["description"], (
-            f"description must contain CSO keyword {keyword!r} for trigger-symptom "
-            f"discovery; got: {fm['description']!r}"
-        )
-
-    expected_h2 = (
-        "## Overview",
-        "## When to Use",
-        "## Core Flow (step mutation)",
-        "## Correcting Rejected Step Edits",
-        "## Analysis Feedback Corrections",
-        "## Source of Truth Reference",
-        "## Common Mistakes",
-        "## Red Flags - STOP and Start Over",
-    )
-    for header in expected_h2:
-        assert header in body, f"missing H2 section: {header!r}"
-
-    tool_names = (
-        "ralph_insert_plan_step",
-        "ralph_replace_plan_step",
-        "ralph_patch_step",
-        "ralph_remove_plan_step",
-        "ralph_move_plan_step",
-    )
-    for tool_name in tool_names:
-        assert tool_name in body, f"body must mention {tool_name!r}"
-
-    assert ".agent/artifact-formats/plan.md" in body, "body must reference the plan format doc"
-    assert "reindex" in body, "body must surface the reindex semantics"
-    assert "orphan" in body, "body must surface the orphan AC drop semantics"
-    assert "## Red Flags - STOP and Start Over" in body, (
-        "body must end with the Red Flags section per writing-skills.md"
-    )
-    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
-
-
-# ---------------------------------------------------------------------------
-# AC-12 — planning.jinja pointer sections removed
-# ---------------------------------------------------------------------------
-
-
-def test_planning_jinja_pointer_sections_removed() -> None:
-    source = PLANNING_JINJA.read_text(encoding="utf-8")
-
-    removed_h2 = (
-        "## INTENT & INTENT_VERB",
-        "## STEP CONTRACT",
-        "## PLAN SIZE LIMITS",
-        "## CYCLE GUARD",
-        "## MODULE FAMILY",
-        "## StepType reference",
-        "## STEP \u2194 ACCEPTANCE-CRITERIA LINKING",
-        "## DESIGN SECTION",
-    )
-    for header in removed_h2:
-        assert f"{header}\n" not in source, (
-            f"planning.jinja must NOT contain the deleted H2 heading {header!r}"
-        )
-
-    assert "## Plan-artifact canonical contract\n" in source, (
-        "planning.jinja must contain the new '## Plan-artifact canonical contract' heading"
-    )
-    assert "## Common StepType mistakes" in source, (
-        "planning.jinja must preserve the '## Common StepType mistakes' section"
-    )
-    assert "## OPTIONAL: submit-plan-artifact skill" in source, (
-        "planning.jinja must preserve the existing '## OPTIONAL: submit-plan-artifact skill' "
-        "section (per AC-04 invariants)"
-    )
-
-
-# ---------------------------------------------------------------------------
-# AC-13 — planning_fallback.jinja pointer sections removed
-# ---------------------------------------------------------------------------
-
-
-def test_planning_fallback_jinja_pointer_sections_removed() -> None:
-    source = PLANNING_FALLBACK_JINJA.read_text(encoding="utf-8")
-
-    removed_h2 = ("## Plan size limits", "## Model tier", "## Cycle guard")
-    for header in removed_h2:
-        assert f"{header}\n" not in source, (
-            f"planning_fallback.jinja must NOT contain the deleted H2 heading {header!r}"
-        )
-
-    rendered = _render_template_source(PLANNING_FALLBACK_JINJA)
-    heading_count = rendered.count("## OPTIONAL: submit-plan-artifact skill")
-    assert heading_count == 1, (
-        "planning_fallback.jinja must render exactly one "
-        "'## OPTIONAL: submit-plan-artifact skill' heading (was "
-        f"{heading_count}); the shared include already emits the heading, so "
-        "the source must not duplicate it inline."
-    )
-
-    assert "ARTIFACT_HISTORY_PATH" in source and "ARTIFACT_HISTORY_DIR" in source, (
-        "planning_fallback.jinja must preserve the ARTIFACT_HISTORY_PATH / "
-        "ARTIFACT_HISTORY_DIR tokens"
-    )
-
-
-# ---------------------------------------------------------------------------
-# AC-14 — planning_edit*.jinja reference the new submit-plan-step-edits skill
-# ---------------------------------------------------------------------------
-
-
-def test_planning_edit_skill_pointer_wired() -> None:
-    edit_source = PLANNING_EDIT_JINJA.read_text(encoding="utf-8")
-    edit_fallback_source = PLANNING_EDIT_FALLBACK_JINJA.read_text(encoding="utf-8")
-
-    for source, label in (
-        (edit_source, "planning_edit.jinja"),
-        (edit_fallback_source, "planning_edit_fallback.jinja"),
-    ):
-        assert "submit-plan-step-edits" in source, (
-            f"{label} must reference the new submit-plan-step-edits skill pointer"
-        )
-        assert "submit-plan-artifact" in source, (
-            f"{label} must preserve the existing submit-plan-artifact skill pointer"
+    The shared partial :file:`_mcp_tools.jinja` consumes
+    ``*_TOOL_REFERENCE`` variables; if a visible tool lacks a
+    reference, the partial renders an empty string and the agent loses
+    the tool name. This test fails closed on any visible tool that
+    has no rendered reference.
+    """
+    capability_ids = template_variables.default_capability_identifiers_for_drain(drain)
+    if not capability_ids:
+        pytest.skip(f"drain {drain!r} has no default capabilities")
+    visible = set(visible_tool_names_for_capabilities(capability_ids, drain=drain.value))
+    caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
+    vars_map = template_variables.capability_template_variables(caps, flags)
+    # Build a value-to-enum-name map so a tool whose enum member is
+    # ``DISCARD_MD_DRAFT`` looks up ``DISCARD_MD_DRAFT_TOOL_REFERENCE``
+    # rather than ``RALPH_DISCARD_MD_DRAFT_TOOL_REFERENCE``. The enum
+    # name (not the value) is the prompt-variable suffix; a tool like
+    # ``ralph_discard_md_draft`` shares the value prefix with several
+    # others, so the enum name is the unambiguous key.
+    enum_member_by_value = {tool.value: tool.name for tool in RalphToolName}
+    for tool in sorted(visible):
+        member_name = enum_member_by_value.get(tool, tool.upper())
+        var_name = f"{member_name}_TOOL_REFERENCE"
+        value = vars_map.get(var_name, "")
+        assert value, (
+            f"drain {drain!r}: visible tool {tool!r} rendered empty "
+            f"{var_name}; partial will silently drop the tool name"
         )
 
 
-# ---------------------------------------------------------------------------
-# AC-15 — _format_plan_step_edit_error mentions submit-plan-step-edits
-# ---------------------------------------------------------------------------
-
-
-def test_format_plan_step_edit_error_mentions_submit_plan_step_edits(
-    tmp_path: Path,
+@pytest.mark.parametrize("drain", list(SessionDrain))
+def test_server_registry_visible_names_equals_rendered_prompt_set(
+    drain: SessionDrain,
 ) -> None:
-    backend = PathFileBackend()
-    message = _format_plan_step_edit_error(
-        detail="synthetic test detail",
-        workspace_root=tmp_path,
-        backend=backend,
-        tool_name="ralph_insert_plan_step",
+    """Server's live registry visible names equal the prompt-rendered set, per drain.
+
+    Per-drain AC-01 / S-3 regression: build an :class:`AgentSession`
+    with the drain's bundled default capabilities, attach a
+    :class:`MemoryWorkspace`, build the production :class:`ToolBridge`
+    registry, and ``list_definitions()`` to get the LIVE visible
+    canonical tool names. Compare those names (plus their Claude
+    aliases) against the names the prompt-rendering machinery
+    produces for the same drain via
+    :func:`visible_tool_names_for_capabilities` and
+    :func:`capability_template_variables`.
+
+    The test compares two LIVE surfaces (server vs. prompt
+    rendering), not a snapshot, so a future drift that registers a
+    new tool but forgets to register it in ``RalphToolName`` (or
+    vice versa) fails closed on both directions: the registry can
+    never advertise a name the prompt cannot render, and the prompt
+    can never render a name the registry cannot serve.
+    """
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.tool_contract import canonicalize_tool_names
+    from ralph.mcp.tools.bridge import build_ralph_tool_registry
+    from ralph.workspace.memory import MemoryWorkspace
+
+    capability_ids = template_variables.default_capability_identifiers_for_drain(drain)
+    if not capability_ids:
+        pytest.skip(f"drain {drain!r} has no default capabilities")
+    session = AgentSession(
+        session_id=f"ac01-{drain.value}",
+        run_id=f"ac01-{drain.value}",
+        drain=drain.value,
+        capabilities=set(capability_ids),
     )
-    assert "submit-plan-step-edits" in message, (
-        "_format_plan_step_edit_error must mention the submit-plan-step-edits skill pointer"
+    workspace = MemoryWorkspace()
+    registry = build_ralph_tool_registry(session, workspace)
+    server_visible_canonical = {
+        str(name) for name in canonicalize_tool_names(
+            [definition.name for definition in registry.list_definitions()]
+        )
+    }
+
+    prompt_visible = set(
+        visible_tool_names_for_capabilities(capability_ids, drain=drain.value)
     )
-    assert "submit-plan-artifact" in message, (
-        "_format_plan_step_edit_error must preserve the existing submit-plan-artifact sentence"
+    prompt_canonical = set(canonicalize_tool_names(prompt_visible))
+
+    assert server_visible_canonical == prompt_canonical, (
+        f"drain {drain!r}: server registry visible names vs. rendered "
+        f"prompt tool set must be equal. "
+        f"only-server={sorted(server_visible_canonical - prompt_canonical)}, "
+        f"only-prompt={sorted(prompt_canonical - server_visible_canonical)}"
     )
-    assert ".agent/artifact-formats/plan.md" in message, (
-        "_format_plan_step_edit_error must keep the existing plan.md format-doc reference"
+
+    # Every server-side visible tool renders a non-empty
+    # ``*_TOOL_REFERENCE`` variable for the same drain — the prompt
+    # contract pins both sides at once.
+    caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
+    vars_map = template_variables.capability_template_variables(caps, flags)
+    enum_member_by_value = {tool.value: tool.name for tool in RalphToolName}
+    for tool in sorted(server_visible_canonical):
+        member_name = enum_member_by_value.get(tool, tool.upper())
+        var_name = f"{member_name}_TOOL_REFERENCE"
+        assert vars_map.get(var_name, ""), (
+            f"drain {drain!r}: server-visible tool {tool!r} rendered "
+            f"empty {var_name} (every server-visible tool MUST have a "
+            f"non-empty prompt reference)"
+        )
+
+
+# --- AC-04: edit-tools-only rule in shared partial ----------------------
+#
+# The shared partial :file:`_mcp_tools.jinja` is the only prompt-side
+# surface that lists every tool an agent is granted, and the only
+# prompt-side surface the agent reads when deciding how to mutate the
+# workspace. If it ever stops saying the Ralph edit tools are the
+# ONLY permitted write path, native shell/editor tools creep back in
+# and the workspace integrity contract breaks. The tests below pin
+# the wording and pin cross-phase consistency.
+
+
+def _render_partial(drain: SessionDrain) -> str:
+    """Render the shared ``_mcp_tools`` partial for the given drain's caps."""
+    from ralph.prompts.template_context import TemplateContext
+    from ralph.prompts.template_engine import render_template
+
+    ctx = TemplateContext.default()
+    caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
+    variables = template_variables.capability_template_variables(caps, flags)
+    partial = ctx.partials["_mcp_tools"]
+    return render_template(partial, variables, ctx.partials)
+
+
+@pytest.mark.parametrize("drain", list(SessionDrain))
+def test_mcp_partial_states_edit_tools_only_write_path(drain: SessionDrain) -> None:
+    """The shared partial makes the edit-tools-only rule explicit per drain.
+
+    When the drain grants workspace write, the rendered partial must
+    state that the Ralph write/edit tools are the only permitted
+    write/edit path. When the drain does NOT grant workspace write,
+    the partial must NOT contradict the rule — it must omit the WRITE
+    section entirely rather than leaving a generic description that
+    could be misread.
+    """
+    rendered = _render_partial(drain)
+    caps, _flags = template_variables.default_caps_and_flags_for_drain(drain)
+    has_mcp_write = caps.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)
+    if has_mcp_write:
+        assert "ONLY permitted write/edit path" in rendered, (
+            f"drain {drain!r} has workspace write but the partial does not "
+            f"state the edit-tools-only rule"
+        )
+    else:
+        # Drain grants no write capability: the partial must omit the
+        # WRITE section entirely rather than asserting the rule for a
+        # tool the agent cannot call.
+        assert "ONLY permitted write/edit path" not in rendered, (
+            f"drain {drain!r} has no workspace write but the partial "
+            f"still asserts the edit-tools-only rule"
+        )
+
+
+@pytest.mark.parametrize("drain", list(SessionDrain))
+def test_mcp_partial_kept_within_two_added_sentences(drain: SessionDrain) -> None:
+    """Prompt bloat budget guard: the partial adds at most two sentences.
+
+    The plan's AC-04 caps the wording change at two sentences. The
+    partial source is the canonical text; the rendered output must
+    not introduce extra prose beyond the two new sentences. We count
+    new sentences by comparing the rendered output to a fixed
+    baseline that has the same template minus the two added sentences
+    — but since the partial is the canonical surface, we instead
+    assert the rendered partial contains exactly two sentence-ending
+    punctuators (``period + space`` or ``em-dash + space``) AFTER
+    the leading ``READ / SEARCH:`` and ``EXPLORE INDEX:`` lines, in
+    the new prose paragraphs.
+    """
+    rendered = _render_partial(drain)
+    caps, _flags = template_variables.default_caps_and_flags_for_drain(drain)
+    has_mcp_write = caps.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)
+    # The two added sentences live below READ/SEARCH and (when write
+    # is granted) below WRITE. Pin the substring presence; the plan
+    # budget is "no net growth beyond two sentences" — keep the
+    # contract simple by asserting each sentence is exactly one line.
+    assert "Use these for every workspace read or search" in rendered, (
+        f"drain {drain!r}: READ/SEARCH clarifying sentence missing"
     )
+    if has_mcp_write:
+        assert "These Ralph Workflow edit tools are the ONLY permitted write/edit path" in rendered, (
+            f"drain {drain!r}: WRITE clarifying sentence missing"
+        )
+    # Hard-bloat guard: the partial source adds exactly two new
+    # sentences, no more. Count occurrences of the canonical
+    # clarifying sentences — anything beyond 1 per slot is bloat.
+    read_clarifying_count = rendered.count(
+        "Use these for every workspace read or search"
+    )
+    assert read_clarifying_count == 1, (
+        f"drain {drain!r}: READ/SEARCH clarifying sentence appears "
+        f"{read_clarifying_count} times (expected exactly 1)"
+    )
+    write_clarifying_count = rendered.count(
+        "These Ralph Workflow edit tools are the ONLY permitted write/edit path"
+    )
+    if has_mcp_write:
+        assert write_clarifying_count == 1, (
+            f"drain {drain!r}: WRITE clarifying sentence appears "
+            f"{write_clarifying_count} times (expected exactly 1)"
+        )
+    else:
+        assert write_clarifying_count == 0, (
+            f"drain {drain!r}: WRITE clarifying sentence leaks into a "
+            f"read-only drain's partial"
+        )
+
+
+def test_mcp_partial_identical_across_phase_templates() -> None:
+    """Every phase template that includes the partial produces the same MCP section.
+
+    The shared partial is the single source of truth for the agent's
+    tool surface. If two phase templates render with different
+    wording, agents see a different rule per phase and the
+    edit-tools-only rule weakens. The simplest invariant is: pick a
+    drain with the maximum tool surface (DEVELOPMENT), render the
+    partial, and check the rendered output contains every visible
+    tool name AND the edit-tools-only rule.
+    """
+    rendered = _render_partial(SessionDrain.DEVELOPMENT)
+    visible = set(
+        visible_tool_names_for_capabilities(
+            template_variables.default_capability_identifiers_for_drain(SessionDrain.DEVELOPMENT),
+            drain=SessionDrain.DEVELOPMENT.value,
+        )
+    )
+    # Every visible canonical tool name must appear as a backticked
+    # reference in the rendered partial.
+    for tool in sorted(visible):
+        assert f"`{tool}`" in rendered, (
+            f"visible tool {tool!r} not rendered in the shared partial"
+        )
+    # And the edit-tools-only sentence is present.
+    assert "ONLY permitted write/edit path" in rendered

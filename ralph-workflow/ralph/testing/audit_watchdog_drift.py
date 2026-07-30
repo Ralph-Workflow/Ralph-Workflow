@@ -382,9 +382,7 @@ def _file_defines_subagent_counting_class(
     the exact canonical types do.
     """
     return [
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == class_name
+        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name
     ]
 
 

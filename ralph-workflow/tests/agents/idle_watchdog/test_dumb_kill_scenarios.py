@@ -1,12 +1,12 @@
 """Regression tests for the user's extended dumb-kill scenarios.
 
 The existing ``test_smart_verdict_dumb_kills.py`` covers the two
-canonical dumb-kill incidents (agent reading CURRENT_PROMPT with
+canonical dumb-kill incidents (agent reading PRODUCT_CRITERIA with
 subagent_liveness fresh, agent with single fragment + live child).
 This file covers the EXTENDED set of productive-but-quiet
 scenarios the user described in the wt-012 prompt:
 
-  - Agent reading ``.agent/CURRENT_PROMPT.md`` while dispatching
+  - Agent reading ``.agent/PRODUCT_CRITERIA.md`` while dispatching
     subagents (the subagent_progress channel is fresh).
   - Agent alive with ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` child
     and corroborator reports ``scoped_child_active=True``.
@@ -142,7 +142,7 @@ def _three_agent_state(current_index: int = 0) -> PipelineState:
     ).copy_with(last_connectivity_state="online")
 
 
-def test_dumb_kill_agent_reading_current_prompt_with_subagent_progress() -> None:
+def test_dumb_kill_agent_reading_product_criteria_with_subagent_progress() -> None:
     """R3 contract (Trustworthy Idle Watchdog): the cumulative ceiling
     fires UNCONDITIONALLY when ``candidate_total >= effective_ceiling``.
 

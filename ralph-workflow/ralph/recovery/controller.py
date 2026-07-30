@@ -458,8 +458,12 @@ def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], Callabl
     # Lazy import to avoid circular dependency via ralph.phases import chain
     module = import_module("ralph.phases.required_artifacts")
     namespace = cast("dict[str, object]", module.__dict__)
-    build_retry_hint = cast("Callable[[str, str], str]", namespace["build_retry_hint"])
-    retry_hint_path = cast("Callable[[str], str]", namespace["retry_hint_path"])
+    build_retry_hint = cast(
+        "Callable[[str, str], str]", namespace["build_retry_hint"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    retry_hint_path = cast(
+        "Callable[[str], str]", namespace["retry_hint_path"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return build_retry_hint, retry_hint_path
 
 
@@ -1071,7 +1075,9 @@ class RecoveryController:
         """Return a runtime observability snapshot of recovery state."""
         tracker_snapshot = self._unavailability_tracker.snapshot()
         merged_attempts = dict(self._backoff_attempts)
-        merged_attempts.update(cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {})))
+        merged_attempts.update(
+            cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {}))
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return {
             "cycle_cap": self._cap.cap,
             "budgets": {

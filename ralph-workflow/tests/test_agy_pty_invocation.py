@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import (
     InvokeOptions,
@@ -58,6 +58,10 @@ def test_agy_invoke_uses_pty_not_subprocess(
     )
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.default_catalog",
+        lambda: SimpleNamespace(get=lambda _command: None),
+    )
 
     list(
         invoke_agent(
@@ -405,10 +409,11 @@ def test_ansi_wrapped_completion_marker_detected(
         waiting_listener=None,
         monitor=None,
         required_artifact=None,
+        requires_completion_evidence=True,
         evaluate_completion_fn=lambda *args, **kwargs: None,
     )
 
-    lines = list(run_pty_and_read_lines(["claude", "--print"], cast("Any", ctx)))
+    lines = list(run_pty_and_read_lines(["claude", "--print"], ctx))
 
     assert lines == [ansi_line]
     assert captured_completion_seen == [True]
@@ -482,10 +487,11 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         waiting_listener=None,
         monitor=None,
         required_artifact=None,
+        requires_completion_evidence=True,
         evaluate_completion_fn=lambda *args, **kwargs: None,
     )
 
-    iterator = run_pty_and_read_lines(["nanocoder"], cast("Any", ctx))
+    iterator = run_pty_and_read_lines(["nanocoder"], ctx)
     assert next(iterator) == "Nanocoder banner\n"
 
     iterator.close()

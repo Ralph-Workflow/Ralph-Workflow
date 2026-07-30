@@ -2,29 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import ConfigDict, Field
 
 from ralph.pydantic_compat import RalphBaseModel
 
-PreferredPattern = Literal[
-    "constructor",
-    "parameter",
-    "interface",
-    "service-locator",
-    "ambient-context",
-    "unknown",
-]
-
-ForbiddenPattern = Literal[
-    "global-singleton",
-    "module-level-mutable-state",
-    "import-time-side-effects",
-    "subprocess-time-random",
-    "env-var-direct-read",
-    "unknown",
-]
+type PreferredPattern = str
+type ForbiddenPattern = str
 
 
 class DependencyInjection(RalphBaseModel):
@@ -37,12 +20,12 @@ class DependencyInjection(RalphBaseModel):
     preferred_patterns: list[PreferredPattern] = Field(
         default_factory=list,
         max_length=20,
-        description="PreferredPattern enum list (max 20); see PreferredPattern literal.",
+        description="Free-form preferred-pattern hints (max 20).",
     )
     forbidden_patterns: list[ForbiddenPattern] = Field(
         default_factory=list,
         max_length=50,
-        description="ForbiddenPattern enum list (max 50); see ForbiddenPattern literal.",
+        description="Free-form forbidden-pattern hints (max 50).",
     )
     notes: str | None = Field(
         default=None,

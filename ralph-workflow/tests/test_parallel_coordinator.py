@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import json
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,
+    PipelineEvent,
+    WorkerCompletedEvent,
     WorkerFailedEvent,
 )
 from ralph.pipeline.work_units import WorkUnit
@@ -33,7 +34,7 @@ def _load_run_fan_out() -> RunFanOut:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = getattr(module, "run_fan_out", None)
     assert callable(run_fan_out), "run_fan_out must be defined"
-    return cast("RunFanOut", run_fan_out)
+    return run_fan_out
 
 
 def make_unit(unit_id: str, deps: list[str] | None = None) -> WorkUnit:
@@ -63,18 +64,32 @@ def make_worker_context(
 def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "plan.md").write_text(
+        "---\ntype: plan\n---\n## Summary\ndone\n",
+        encoding="utf-8",
     )
+
+
+async def test_nonzero_worker_exit_is_failure_even_when_artifacts_would_exist() -> None:
+    """Analysis regression: exit 1 must not become a completed worker event."""
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    executor = FakeAgentExecutor(
+        {unit.unit_id: FakeRun(outputs=["agent failed"], exit_code=1, duration_ms=1)}
+    )
+
+    events = await run_fan_out(
+        effect=FanOutEffect(work_units=(unit,), max_workers=1),
+        executor=executor,
+        display=RecordingDisplay(),
+    )
+
+    failures = [event for event in events if isinstance(event, WorkerFailedEvent)]
+    assert len(failures) == 1
+    assert failures[0].exit_code == 1
+    assert "agent failed" in failures[0].error
+    assert not any(isinstance(event, WorkerCompletedEvent) for event in events)
+    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
 
 
 class TestPreflightRejection:

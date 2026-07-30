@@ -7,7 +7,7 @@ network, no time.sleep, no real file I/O.
 from __future__ import annotations
 
 from io import StringIO
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -56,7 +56,7 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _make_fake_bundle() -> PolicyBundle:
@@ -84,7 +84,6 @@ def _make_fake_bundle() -> PolicyBundle:
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
             )
         }
     )
@@ -111,7 +110,7 @@ class TestBuildDefaultPipelineDeps:
         assert deps.display_context is display_ctx
         assert deps.model_identity is None
         assert deps.registry_factory is None
-        assert deps.system_prompt_materializer is not None
+        assert deps.master_prompt_materializer is not None
         assert deps.phase_prompt_materializer is not None
         assert deps.artifact_requirements_resolver is not None
         assert deps.bridge_factory is not None
@@ -402,17 +401,17 @@ class TestProHooksComposition:
 
         assert deps.model_identity is model_identity
 
-    def test_system_prompt_materializer_override(self, tmp_path: Path) -> None:
+    def test_master_prompt_materializer_override(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
-        fake_materializer = MagicMock(return_value="fake-system-prompt.md")
-        hooks = ProPipelineHooks(system_prompt_materializer=fake_materializer)
+        fake_materializer = MagicMock(return_value="fake-master-prompt.md")
+        hooks = ProPipelineHooks(master_prompt_materializer=fake_materializer)
         deps = build_default_pipeline_deps(
             _build_config(tmp_path),
             display_ctx,
             pro_hooks=hooks,
         )
 
-        assert deps.system_prompt_materializer is fake_materializer
+        assert deps.master_prompt_materializer is fake_materializer
 
     def test_phase_prompt_materializer_override(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
@@ -442,13 +441,13 @@ class TestProHooksComposition:
         display_ctx = _display_context()
         override_ctx = _display_context()
         model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
-        fake_system_materializer = MagicMock(return_value="fake-system-prompt.md")
+        fake_system_materializer = MagicMock(return_value="fake-master-prompt.md")
         fake_phase_materializer = MagicMock(return_value="fake-phase-prompt.md")
         fake_resolver = MagicMock(return_value=None)
         hooks = ProPipelineHooks(
             display_context=override_ctx,
             model_identity=model_identity,
-            system_prompt_materializer=fake_system_materializer,
+            master_prompt_materializer=fake_system_materializer,
             phase_prompt_materializer=fake_phase_materializer,
             artifact_requirements_resolver=fake_resolver,
         )
@@ -460,7 +459,7 @@ class TestProHooksComposition:
 
         assert deps.display_context is override_ctx
         assert deps.model_identity is model_identity
-        assert deps.system_prompt_materializer is fake_system_materializer
+        assert deps.master_prompt_materializer is fake_system_materializer
         assert deps.phase_prompt_materializer is fake_phase_materializer
         assert deps.artifact_requirements_resolver is fake_resolver
 

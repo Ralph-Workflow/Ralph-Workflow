@@ -36,7 +36,7 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     import pytest
 
-    from ralph.pipeline.factory import MaterializeSystemPromptFn
+    from ralph.pipeline.factory import MaterializeMasterPromptFn
 
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_phases_retry_on_stale_session_helper__fakeregistryinstance import (
@@ -87,14 +87,14 @@ class FakeBridge:
         return
 
 
-def _system_prompt_materializer(tmp_path: Path) -> MaterializeSystemPromptFn:
+def _master_prompt_materializer(tmp_path: Path) -> MaterializeMasterPromptFn:
     def _materialize(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
+        del workspace_root, name, default_product_criteria, worker_namespace
         return str(tmp_path / "SYS.md")
 
     return _materialize
@@ -174,7 +174,7 @@ def test_runner_stale_session_internal_retry_succeeds(
         registry_factory=_registry_factory(
             AgentConfig(cmd="claude", output_flag="--json-stream")
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -269,7 +269,7 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -343,7 +343,7 @@ def test_runner_retry_prompt_condenses_visible_output_in_real_retry_flow(
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -408,7 +408,7 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -466,7 +466,7 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
         registry_factory=_registry_factory(
             AgentConfig(cmd="claude", output_flag="--json-stream")
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -553,7 +553,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -619,7 +619,7 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -687,7 +687,7 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -904,7 +904,7 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -995,7 +995,7 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_str_exc
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1077,7 +1077,7 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_parsed_
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1218,7 +1218,7 @@ def test_stale_session_retry_preserves_per_line_character_truncation(
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1303,7 +1303,7 @@ def test_resume_retry_still_uses_12_line_tail_for_non_stale_session(
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1374,7 +1374,7 @@ def test_non_stale_fresh_retry_still_uses_12_line_tail(
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1467,7 +1467,7 @@ def test_inactivity_timeout_with_session_resume_safe_false_still_uses_12_line_ta
                 session_flag="--resume {}",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1570,7 +1570,7 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
                 model=model_name,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -1697,7 +1697,7 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
                 model=model_name,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     # Explicit-session retry: ``session_id`` passed directly, ``state``
@@ -1842,7 +1842,7 @@ def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note
                 transport=AgentTransport.OPENCODE,
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(
@@ -2004,7 +2004,7 @@ def test_stale_session_retry_prompt_nonempty_prior_output_keeps_existing_block(
                 model="m",
             )
         ).from_config,
-        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+        master_prompt_materializer=_master_prompt_materializer(tmp_path),
     )
 
     result = effect_executor_module.execute_agent_effect(

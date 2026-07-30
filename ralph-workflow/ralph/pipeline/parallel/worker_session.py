@@ -9,6 +9,7 @@ workspace scope that the worker should operate in.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -21,8 +22,6 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.pipeline.parallel.worker_session_bundle import WorkerSessionBundle
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.mcp.server.factory import McpServerFactory
     from ralph.pipeline.work_units import WorkUnit
     from ralph.workspace.scope import WorkspaceScope
@@ -71,6 +70,21 @@ def build_worker_session(
         stored_capability_profile=cfg.session_capability_profile,
     )
     mcp_handle = mcp_factory.build(session)
+    # AC-04: attach one ExploreIndex per worker so grep/search/list/edit
+    # operations share the same generation + dirty-path state as serial
+    # execution. Mirrors ``ralph/pipeline/session_bridge.py:218-231``:
+    # ``build_explore_index`` only opens the store — it does not index —
+    # so the cost is bounded. The try/except keeps the worker alive
+    # when the explore index is unavailable (read-only / exotic
+    # workspaces); the handler layer already treats a missing handle
+    # as live-grep fallback.
+    try:
+        from ralph.mcp.explore.handlers import build_explore_index
+
+        explore_handle = build_explore_index(Path(workspace_scope.root))
+        session.explore_index = explore_handle
+    except Exception:
+        pass
     return WorkerSessionBundle(
         session=session,
         mcp_handle=mcp_handle,

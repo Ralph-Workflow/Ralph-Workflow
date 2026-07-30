@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import ralph.mcp.tools._exec_output_spill as exec_output_spill
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools.coordination import ToolContent
 from ralph.mcp.tools.exec import ExecRunDeps, handle_exec_command
@@ -104,6 +107,34 @@ def test_large_output_spills_inside_workspace_when_no_spill_dir_injected(
         f"spill {spilled_path} is outside the workspace {tmp_path} — "
         "the agent cannot read it through the workspace-scoped read tools"
     )
+
+
+def test_spill_write_failure_removes_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FailingFile:
+        def __init__(self, fd: int) -> None:
+            self._fd = fd
+
+        def __enter__(self) -> FailingFile:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            exec_output_spill.os.close(self._fd)
+
+        def write(self, _text: str) -> None:
+            raise OSError("disk full")
+
+    monkeypatch.setattr(
+        exec_output_spill.os,
+        "fdopen",
+        lambda fd, *_args, **_kwargs: FailingFile(fd),
+    )
+
+    with pytest.raises(OSError, match="disk full"):
+        exec_output_spill.spill_output("output", tmp_path)
+
+    assert list(tmp_path.glob("ralph-exec-*.txt")) == []
 
 
 def test_small_output_stays_inline_and_does_not_spill(tmp_path: Path) -> None:

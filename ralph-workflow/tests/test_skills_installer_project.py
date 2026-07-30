@@ -718,3 +718,148 @@ def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -
         "Relative symlinks MUST keep _project_skills_need_install=False after "
         "workspace relocation (no worktree-switch churn)"
     )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> None:
+    """Project-scope install removes managed skills that the baseline no longer ships.
+
+    The ``submit-plan-step-edits`` skill was retired (the per-step edit
+    endpoint was removed in the wt-044 redesign) and is no longer in
+    ``BASELINE_SKILL_NAMES``. After install, no managed entry by that
+    name should remain on disk in the canonical nor in any sibling root.
+    The user-edit preservation contract is honoured: a user-added skill
+    directory without ``_MANAGED_MARKER`` MUST NOT be pruned even if its
+    name happens to coincide with a removed baseline skill.
+    """
+    from ralph.skills._content import _MANAGED_MARKER
+    from ralph.skills._installer import _prune_removed_baseline_skills
+
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+
+    # Step 1: clean install. Canonical must match the baseline.
+    with patch("pathlib.Path.home", return_value=home):
+        install_project_baseline_skills(tmp_path)
+    for name in BASELINE_SKILL_NAMES:
+        assert (canonical / name).is_dir(), f"baseline skill {name!r} missing after install"
+
+    # Step 2: plant a managed skill that is NOT in the baseline (mimics
+    # a stale `submit-plan-step-edits` from a prior release). The marker
+    # makes it look like Ralph-managed content so the prune can identify
+    # it as eligible for removal.
+    stale_name = "submit-plan-step-edits"
+    assert stale_name not in BASELINE_SKILL_NAMES, (
+        "this test assumes the retired skill is no longer in the baseline"
+    )
+    stale_dir = canonical / stale_name
+    stale_dir.mkdir(parents=True, exist_ok=True)
+    (stale_dir / "SKILL.md").write_text("stale", encoding="utf-8")
+    (stale_dir / _MANAGED_MARKER).write_text(
+        json.dumps({"managed_by": "ralph-workflow", "skill": stale_name}), encoding="utf-8"
+    )
+    assert stale_dir.is_dir()
+
+    # Step 3: also plant a user-owned skill (no marker) in EVERY sibling
+    # root so the loop check in step 6 has a target to compare against.
+    user_owned_target = "user-owned-skill"
+    for sibling in project_sibling_skill_roots_top(tmp_path):
+        sibling_root = sibling.resolve(tmp_path)
+        user_owned = sibling_root / user_owned_target
+        user_owned.mkdir(parents=True, exist_ok=True)
+        (user_owned / "SKILL.md").write_text("user content", encoding="utf-8")
+        # Deliberately do NOT plant a managed marker.
+
+    # Step 4: the prune helper removes managed entries whose name is no
+    # longer in the baseline.
+    pruned = _prune_removed_baseline_skills(canonical)
+    assert stale_name in pruned, (
+        f"expected the stale managed skill to be pruned; got {pruned!r}"
+    )
+    assert not stale_dir.exists(), "stale managed skill must be removed from the canonical"
+
+    # Step 5: the user-owned entry (no marker) is preserved in every sibling root.
+    for sibling in project_sibling_skill_roots_top(tmp_path):
+        sibling_root = sibling.resolve(tmp_path)
+        user_owned = sibling_root / user_owned_target
+        assert user_owned.is_dir(), (
+            f"{sibling.agent}: user-owned skill without marker must survive the prune"
+        )
+        assert (user_owned / "SKILL.md").read_text(encoding="utf-8") == "user content"
+
+    # Step 6: the full install call also runs the prune, so a symlink to
+    # the now-removed canonical entry is gone from every sibling root.
+    with patch("pathlib.Path.home", return_value=home):
+        install_project_baseline_skills(tmp_path)
+    for sibling in project_sibling_skill_roots_top(tmp_path):
+        sibling_root = sibling.resolve(tmp_path)
+        stale_symlink = sibling_root / stale_name
+        assert not stale_symlink.exists(), (
+            f"{sibling.agent}: stale symlink to retired skill must be removed; "
+            f"saw {stale_symlink}"
+        )
+        # The user-owned entry is untouched by the install.
+        assert (sibling_root / user_owned_target).is_dir(), (
+            f"{sibling.agent}: user-owned skill must survive the full install"
+        )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path) -> None:
+    """A broken symlink whose name is no longer in the baseline is pruned.
+
+    Prior to the wt-044 close-out, ``_prune_removed_baseline_skills`` only
+    inspected ``is_dir()`` entries with a ``_MANAGED_MARKER`` file. A
+    sibling-root symlink pointing at a now-removed canonical entry
+    (e.g. ``submit-plan-step-edits`` after the per-step edit endpoint was
+    retired) fails both checks because the target no longer exists, so the
+    stale symlink survives forever. The fix unlinks such dead symlinks
+    unconditionally when their name is not in the baseline; a baseline
+    symlink that resolves to a real directory is left intact.
+    """
+    from ralph.skills._content import BASELINE_SKILL_NAMES
+    from ralph.skills._installer import _prune_removed_baseline_skills
+
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    # 1. Plant a broken symlink to a retired skill — the live case.
+    retired_name = "submit-plan-step-edits"
+    assert retired_name not in BASELINE_SKILL_NAMES
+    (root / retired_name).symlink_to(
+        root / "does-not-exist", target_is_directory=True
+    )
+    assert (root / retired_name).is_symlink()
+    assert not (root / retired_name).exists()
+
+    # 2. Plant a real, valid symlink to a baseline skill — the keep case.
+    real_target = root / "real-target"
+    real_target.mkdir()
+    (real_target / "SKILL.md").write_text("body", encoding="utf-8")
+    (real_target / ".ralph-managed.json").write_text(
+        json.dumps({"managed_by": "ralph-workflow", "skill": "real-target"}),
+        encoding="utf-8",
+    )
+    # Pick a baseline skill whose name we can plant safely; if the real
+    # baseline name does not match ``real_target`` we fall through to a
+    # plain directory symbol so the prune treats it as a baseline entry.
+    alive_baseline_name = next(iter(BASELINE_SKILL_NAMES))
+    assert alive_baseline_name not in {retired_name}
+    # The simplest "alive baseline" tile is a baseline-named directory
+    # (the test only cares that the prune leaves BASELINE_SKILL_NAMES
+    # alone, not about its content).
+    (root / alive_baseline_name).mkdir()
+    (root / alive_baseline_name / "SKILL.md").write_text("body", encoding="utf-8")
+
+    pruned = _prune_removed_baseline_skills(root)
+
+    assert retired_name in pruned, (
+        f"broken symlink to retired skill must be pruned; got {pruned!r}"
+    )
+    assert not (root / retired_name).exists(), (
+        "broken symlink must be unlinked even when no marker is reachable"
+    )
+    # Baseline entries stay; the test's tile uses the real baseline name.
+    assert (root / alive_baseline_name).is_dir(), (
+        f"baseline entry {alive_baseline_name!r} must not be pruned"
+    )

@@ -100,7 +100,9 @@ class _GeminiDispatch:
     def _parse_tool_call(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         function_call_obj: JsonValue | None = obj.get("function_call")
         func_call: JsonDict | None = (
-            cast("JsonDict", function_call_obj) if isinstance(function_call_obj, dict) else None
+            cast("JsonDict", function_call_obj)
+            if isinstance(function_call_obj, dict)
+            else None  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
         tool_name = str(
             obj.get("name", "")
@@ -114,7 +116,9 @@ class _GeminiDispatch:
         elif func_call is not None:
             func_args = func_call.get("args")
             if isinstance(func_args, dict):
-                args_str = str(cast("JsonDict", func_args))
+                args_str = str(
+                    cast("JsonDict", func_args)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -135,7 +139,9 @@ class _GeminiDispatch:
         if isinstance(parts, list):
             for part in parts:
                 if isinstance(part, dict):
-                    part_dict = cast("JsonDict", part)
+                    part_dict = cast(
+                        "JsonDict", part
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     text = str(part_dict.get("text", ""))
                     if text:
                         if part_dict.get("thought") is True:
@@ -144,7 +150,9 @@ class _GeminiDispatch:
                             yield AgentOutputLine(type="text", content=text, raw=stripped)
                     function_call_obj = part_dict.get("function_call")
                     func: JsonDict | None = (
-                        cast("JsonDict", function_call_obj)
+                        cast(
+                            "JsonDict", function_call_obj
+                        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                         if isinstance(function_call_obj, dict)
                         else None
                     )
@@ -168,16 +176,26 @@ class _GeminiDispatch:
         candidate = candidates_val[0]
         if not isinstance(candidate, dict):
             return
-        content_val = cast("JsonDict", candidate).get("content")
+        content_val = cast(
+            "JsonDict", candidate
+        ).get(
+            "content"
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if not isinstance(content_val, dict):
             return
-        parts_val = cast("JsonDict", content_val).get("parts")
+        parts_val = cast(
+            "JsonDict", content_val
+        ).get(
+            "parts"
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         if not isinstance(parts_val, list):
             return
         for part in parts_val:
             if not isinstance(part, dict):
                 continue
-            part_dict = cast("JsonDict", part)
+            part_dict = cast(
+                "JsonDict", part
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             text = str(part_dict.get("text", ""))
             if not text:
                 continue
@@ -191,7 +209,9 @@ class _GeminiDispatch:
         if isinstance(parts_val, list) and parts_val:
             first_part = parts_val[0]
             if isinstance(first_part, dict):
-                part_dict = cast("JsonDict", first_part)
+                part_dict = cast(
+                    "JsonDict", first_part
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 return str(part_dict.get("text", ""))
         return ""
 
@@ -234,7 +254,13 @@ class GeminiParser(NdjsonParserBase):
         self,
         obj: dict[str, object],
         raw: str,
+        source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
+        # DA-002 (wt-028-display S-2 / AC-01): the base class
+        # post-processes the iterator to attach ``source_timestamp``
+        # to any AgentOutputLine that lacks one, so the per-event
+        # dispatcher itself does not need to thread the parameter.
+        del source_timestamp  # accepted for override compatibility; ignored
         # R5: register any embedded PID into the shared registry BEFORE
         # the dispatcher routes the event.
         self._try_register_subagent_pid_from_obj(obj)

@@ -33,8 +33,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
@@ -47,15 +46,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.config.agent_config import AgentConfig
-    from ralph.config.enums import Verbosity
-    from ralph.config.models import UnifiedConfig
-    from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.policy.models import PolicyBundle
-    from ralph.pro_support.heartbeat import ProHeartbeatClient
-    from ralph.pro_support.state_query import SnapshotRegistry
-    from ralph.pro_support.watcher import ProMarkerWatcher
-    from ralph.recovery.controller import RecoveryController
 
     class _ActiveDisplayLike(Protocol):
         def emit(self, unit_id: object, line: str) -> object: ...
@@ -96,14 +86,11 @@ def _make_loop_ctx(
     monitor_stop: Callable[[], None] | None = None,
     workspace_scope: WorkspaceScope | None = None,
 ) -> _LoopContext:
-    """Build a ``_LoopContext`` populated with ``MagicMock`` placeholders.
+    """Build a ``_LoopContext`` with inert placeholders.
 
-    The wrapper at ``run_loop.py:446-469`` only reads
-    ``loop_ctx.active_display``, ``loop_ctx.monitor_stop``, and
-    ``loop_ctx.workspace_scope``. The other 15 fields are populated
-    with ``MagicMock()`` placeholders so the dataclass construction
-    succeeds without spinning up real policy / config / connectivity
-    objects. The ``cast`` calls satisfy mypy strict mode.
+    The wrapper only reads ``active_display``, ``monitor_stop``, and
+    ``workspace_scope``. The remaining fields are not exercised here,
+    so plain objects keep this interrupt-contract test fast.
     """
     resolved_display = active_display if active_display is not None else _StubDisplay()
     resolved_scope = (
@@ -112,24 +99,24 @@ def _make_loop_ctx(
         else WorkspaceScope(root=Path(tempfile.gettempdir()))
     )
     return _LoopContext(
-        policy_bundle=cast("PolicyBundle", MagicMock()),
+        policy_bundle=object(),
         workspace_scope=resolved_scope,
-        config=cast("UnifiedConfig", MagicMock()),
-        active_display=cast("ParallelDisplay", resolved_display),
-        display_context=cast("DisplayContext", MagicMock()),
-        effective_verbosity=cast("Verbosity", MagicMock()),
-        registry=cast("_RegistryLike", MagicMock()),
+        config=object(),
+        active_display=resolved_display,
+        display_context=object(),
+        effective_verbosity=object(),
+        registry=object(),
         effective_pipeline_subscriber=None,
-        controller=cast("RecoveryController", MagicMock()),
+        controller=object(),
         config_path=None,
         cli_overrides={},
         monitor_stop=monitor_stop,
-        connectivity_monitor=cast("_MonitorLike", MagicMock()),
-        sleep=cast("Callable[[float], None]", MagicMock()),
+        connectivity_monitor=object(),
+        sleep=lambda _seconds: None,
         is_quiet=False,
-        heartbeat_client=cast("ProHeartbeatClient | None", None),
-        pro_watcher=cast("ProMarkerWatcher | None", None),
-        snapshot_registry=cast("SnapshotRegistry | None", None),
+        heartbeat_client=None,
+        pro_watcher=None,
+        snapshot_registry=None,
     )
 
 
@@ -209,7 +196,7 @@ def test_run_loop_handle_keyboard_interrupt_marks_state_interrupted(
     _handle_keyboard_interrupt(state, loop_ctx)
     assert len(save_calls) == 1
     saved_state, _message, _path = save_calls[0]
-    saved_state_obj = cast("PipelineState", saved_state)
+    saved_state_obj = saved_state
     assert saved_state_obj.interrupted_by_user is True
 
 
@@ -268,7 +255,7 @@ def test_run_loop_handle_keyboard_interrupt_saves_checkpoint_to_workspace_scope(
     assert returned_path == Path("/tmp/test-checkpoint.json")
     assert len(save_calls) == 1
     saved_state, _message, saved_path = save_calls[0]
-    saved_state_obj = cast("PipelineState", saved_state)
+    saved_state_obj = saved_state
     assert saved_state_obj.interrupted_by_user is True
     assert saved_path == Path("/tmp/test-checkpoint.json")
 

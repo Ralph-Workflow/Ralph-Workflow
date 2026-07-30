@@ -48,6 +48,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
@@ -58,6 +60,18 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ralph.process.monitor._subagent_output_capture import SubagentOutputCapture
+
+
+# Per-test pytest marker: the cap-probing tests do real I/O via
+# the production ``poll_subagent_output`` path with 4096
+# synthesized workers. Under parallel xdist CPU contention the
+# file-walking and stub-construction work has been observed to
+# exceed the global 1-second per-test cap; 5 seconds is the
+# minimum supported by the audit invariant
+# (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``) and well under the
+# 60-second combined ``make verify`` budget. The default 1 s
+# cap remains in place for every other test in the suite.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 # Worker count used to probe the cache and tombstone caps from

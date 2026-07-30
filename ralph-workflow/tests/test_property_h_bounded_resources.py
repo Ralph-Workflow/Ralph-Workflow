@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import concurrent.futures
-from typing import cast
 
 import pytest
 
@@ -55,11 +54,11 @@ def test_shutdown_called_on_dead_inner_before_respawn() -> None:
     restart_calls: list[_RecordingInner] = []
 
     def restart_fn() -> _RecordingInner:
-        restart_calls.append(cast("_RecordingInner", new_inner))
+        restart_calls.append(new_inner)
         return new_inner
 
     bridge = RestartAwareMcpBridge(
-        inner=cast("object", old_inner),
+        inner=old_inner,
         restart_fn=restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
         run_id="test-run",
@@ -84,7 +83,7 @@ def test_no_restart_when_process_is_healthy() -> None:
         return _RecordingInner(exit_code=None)
 
     bridge = RestartAwareMcpBridge(
-        inner=cast("object", healthy_inner),
+        inner=healthy_inner,
         restart_fn=restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
         run_id="test-run",
@@ -143,7 +142,7 @@ def test_adversarial_restart_fn_raises_propagates() -> None:
         raise RuntimeError("respawn failed")
 
     bridge = RestartAwareMcpBridge(
-        inner=cast("object", old_inner),
+        inner=old_inner,
         restart_fn=broken_restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
         run_id="test-run",
@@ -171,7 +170,7 @@ def test_restart_count_caps_at_max_restarts() -> None:
         return inner
 
     bridge = RestartAwareMcpBridge(
-        inner=cast("object", inners[0]),
+        inner=inners[0],
         restart_fn=rotating_restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
         run_id="test-run",
@@ -235,7 +234,7 @@ def test_singleton_atexit_shutdown_calls_executor_shutdown() -> None:
     # Then swap in a recording executor that tracks the shutdown args.
     recording = _RecordingExecutor()
     _saturated_dispatch._default_dispatch.install_executor(
-        cast("concurrent.futures.ThreadPoolExecutor", recording)
+        recording
     )
 
     # Invoke the registered atexit hook directly.
@@ -268,7 +267,7 @@ def test_bounded_sdk_call_singleton_atexit_shutdown() -> None:
     _bounded_sdk_call.with_timeout(lambda: 1, 5.0)
     recording = _RecordingExecutor()
     _bounded_sdk_call._default_call.install_executor(
-        cast("concurrent.futures.ThreadPoolExecutor", recording)
+        recording
     )
 
     assert callable(_bounded_sdk_call._atexit_shutdown)
@@ -296,7 +295,7 @@ def test_singleton_atexit_uses_current_singleton_not_captured() -> None:
 
     recording = _RecordingExecutor()
     fresh = _saturated_dispatch._SaturatedDispatch(max_workers=1)
-    fresh.install_executor(cast("concurrent.futures.ThreadPoolExecutor", recording))
+    fresh.install_executor(recording)
     _saturated_dispatch_mod._default_dispatch = fresh
 
     try:

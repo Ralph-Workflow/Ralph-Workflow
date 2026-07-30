@@ -37,5 +37,7 @@ class LazyToolHandler:
     ) -> object:
         del host_session, workspace
         module: ModuleType = import_module(self._module_name)
-        handler = cast("ToolHandler", getattr(module, self._handler_name))
+        handler = cast(
+            "ToolHandler", getattr(module, self._handler_name)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return handler(self._session, self._workspace, params, **self._extra_kwargs)

@@ -297,9 +297,7 @@ def _normalize_media_block(
                 # ``import_module('ralph.mcp.tools.workspace')`` pattern at
                 # ``_upstream_proxy_handler.py:43``). importlib avoids the
                 # PLC0415 noqa which the lint-bypass audit forbids.
-                _media_io_mod: ModuleType = import_module(
-                    "ralph.mcp.tools.workspace._media_io"
-                )
+                _media_io_mod: ModuleType = import_module("ralph.mcp.tools.workspace._media_io")
                 _media_session_mod: ModuleType = import_module(
                     "ralph.mcp.tools.workspace._media_session"
                 )
@@ -313,13 +311,9 @@ def _normalize_media_block(
                     _media_session_mod._workspace_artifact_loader,
                 )
 
-                cache_path = _write_durable_media_cache(
-                    _workspace, artifact_id, raw_bytes
-                )
+                cache_path = _write_durable_media_cache(_workspace, artifact_id, raw_bytes)
                 if cache_path:
-                    byte_loader = _workspace_artifact_loader(
-                        _workspace, cache_path, ""
-                    )
+                    byte_loader = _workspace_artifact_loader(_workspace, cache_path, "")
             except Exception:
                 # Failure to wire the durable cache is non-fatal: fall back
                 # to the in-memory retention contract for this single entry.

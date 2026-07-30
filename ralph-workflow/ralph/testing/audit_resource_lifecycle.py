@@ -26,6 +26,8 @@ Enforces the resource-lifecycle contract documented in
    unbounded. Mutable collection LITERALS (``[]``, ``{}``, ``set()``)
    assigned to a module-level name or ``self.X`` are flagged — they
    have no cap and grow monotonically across a long session.
+5. Direct child-process creation (``subprocess`` / ``os`` / ``asyncio``) is
+   allowed ONLY under ``ralph/process/``, where ProcessManager owns teardown.
 
 The audit resolves ``import x as y`` / ``from x import y [as z]``
 bindings so an aliased call cannot evade detection (``import httpx as
@@ -35,11 +37,10 @@ contract (``import collections as c; c.deque()`` is caught; ``from
 collections import deque; deque()`` is caught).
 
 Escape hatch: an inline marker on the call's line suppresses the
-violation. The single-string ``_ALLOW_MARKER`` has been generalized to
-a marker SET (``_ALLOW_MARKERS``) so the resource-lifecycle-ok
-(contracts 1-3) and bounded-accumulator-ok (contract 4) markers
-coexist and a future contract (contract 5+) can opt in without
-disrupting existing markers. Keep markers rare and justified.
+violation. The marker SET (``_ALLOW_MARKERS``) keeps the
+resource-lifecycle-ok marker for contracts 1-3 and 5 and the
+bounded-accumulator-ok marker for contract 4. Keep markers rare and
+justified.
 
 Scope and exclusions (intentional, documented):
 
@@ -88,12 +89,9 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 )
 
 # Inline marker set that suppresses a violation (the only escape hatch).
-# Generalize to a SET so the resource-lifecycle-ok (contracts 1-3) and
-# bounded-accumulator-ok (contract 4) markers coexist; a future contract
-# can opt in without disrupting existing markers.
-_ALLOW_MARKERS: frozenset[str] = frozenset(
-    {"resource-lifecycle-ok", "bounded-accumulator-ok"}
-)
+# resource-lifecycle-ok covers contracts 1-3 and 5; bounded-accumulator-ok
+# covers contract 4.
+_ALLOW_MARKERS: frozenset[str] = frozenset({"resource-lifecycle-ok", "bounded-accumulator-ok"})
 
 # threading.Thread / Thread constructors — these must carry daemon=True.
 _THREAD_NAMES: frozenset[str] = frozenset({"threading.Thread", "Thread"})
@@ -110,12 +108,8 @@ _HTTP_ROOTS: frozenset[str] = frozenset({"httpx", "requests"})
 # ``popitem(last=False)`` / ``len(...) > cap`` eviction policy in the
 # code itself. The audit MUST flag them so the only escape is an honest
 # ``# bounded-accumulator-ok: <cap>`` marker naming the real cap / drain.
-_ORDERED_DICT_NAMES: frozenset[str] = frozenset(
-    {"OrderedDict", "collections.OrderedDict"}
-)
-_DEFAULT_DICT_NAMES: frozenset[str] = frozenset(
-    {"defaultdict", "collections.defaultdict"}
-)
+_ORDERED_DICT_NAMES: frozenset[str] = frozenset({"OrderedDict", "collections.OrderedDict"})
+_DEFAULT_DICT_NAMES: frozenset[str] = frozenset({"defaultdict", "collections.defaultdict"})
 
 # Raw os fd creation — only allowed under ralph/process/ (centralized
 # process lifecycle layer). Outside that allowlist, this is a leak.
@@ -125,8 +119,15 @@ _RAW_OS_FD_NAMES: frozenset[str] = frozenset({"os.open", "os.openpty", "os.pipe"
 # because the centralized process lifecycle owns the fd. Paths are
 # matched against the relative-to-package-root path of the file under
 # audit.
-_RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = (
-    "process",
+_RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = ("process",)
+
+_DIRECT_CHILD_PROCESS_NAMES: frozenset[str] = frozenset(
+    {
+        "subprocess.run", "subprocess.call", "subprocess.check_call",
+        "subprocess.check_output", "subprocess.Popen", "subprocess.getoutput",
+        "subprocess.getstatusoutput", "os.system", "os.posix_spawn", "os.fork",
+        "asyncio.create_subprocess_exec", "asyncio.create_subprocess_shell",
+    }
 )
 
 
@@ -339,7 +340,9 @@ def _is_static_dict_key(node: ast.expr) -> bool:
     populated once at construction and never mutated thereafter, so
     they are dispatch / handler / config tables — NOT accumulators.
     """
-    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript))
+    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript)) or (
+        isinstance(node, ast.Tuple) and all(_is_static_dict_key(element) for element in node.elts)
+    )
 
 
 def _is_unbounded_accumulator_value(
@@ -475,9 +478,7 @@ def _is_module_level_or_self_init(
     documented here), but the audit intentionally skips them.
     """
     is_module_level = enclosing_function is None
-    is_init = (
-        enclosing_function is not None and enclosing_function.name == "__init__"
-    )
+    is_init = enclosing_function is not None and enclosing_function.name == "__init__"
     if not (is_module_level or is_init):
         return False
     for target in targets:
@@ -520,12 +521,35 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         self._in_with_calls: set[ast.Call] | None = None
 
     def _allowed(self, node: ast.AST) -> bool:
-        lineno: int = getattr(node, "lineno", 0)
-        if not (1 <= lineno <= len(self.source_lines)):
-            return False
-        return any(
-            marker in self.source_lines[lineno - 1] for marker in _ALLOW_MARKERS
-        )
+        # The marker convention is ``# bounded-accumulator-ok: <reason>``
+        # on the same line as the assignment. For multi-line assignments
+        # (``_X: dict[str, bool] = {}`` split across several lines or
+        # parenthesized assignment targets), the marker naturally falls
+        # on the line where the value closes (``] = {}``). The audit
+        # accepts the assignment's own line, the value's line, and the
+        # assignment's ``end_lineno`` so the marker can sit at the
+        # natural end-of-statement position too.
+        candidates: set[int] = set()
+        for attr in ("lineno", "end_lineno"):
+            value: int | None = getattr(node, attr, None)
+            if isinstance(value, int) and value > 0:
+                candidates.add(value)
+        # When the anchor is an AnnAssign / Assign, the value's
+        # lineno is the line where the ``=`` happens for multi-line
+        # patterns (``_X: dict[\n  str, bool\n] = {}``). Pull it from
+        # the value attribute if available.
+        value_node: ast.AST | None = getattr(node, "value", None)
+        if value_node is not None:
+            v_lineno: int | None = getattr(value_node, "lineno", None)
+            if isinstance(v_lineno, int) and v_lineno > 0:
+                candidates.add(v_lineno)
+        for candidate in candidates:
+            if (
+                1 <= candidate <= len(self.source_lines)
+                and any(marker in self.source_lines[candidate - 1] for marker in _ALLOW_MARKERS)
+            ):
+                return True
+        return False
 
     def _add(self, node: ast.AST, category: str, detail: str) -> None:
         if self._allowed(node):
@@ -598,9 +622,7 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         value is NOT an unbounded accumulator (e.g., ``deque(maxlen=8)``
         or a non-collection expression).
         """
-        if not _is_unbounded_accumulator_value(
-            value, self._module_aliases, self._from_imports
-        ):
+        if not _is_unbounded_accumulator_value(value, self._module_aliases, self._from_imports):
             return
         if not _is_module_level_or_self_init(targets, self._enclosing_function):
             return
@@ -615,16 +637,13 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> None:
-        canonical = _canonical_name(
-            _dotted_name(node), self._module_aliases, self._from_imports
-        )
+        canonical = _canonical_name(_dotted_name(node), self._module_aliases, self._from_imports)
 
         if canonical in _THREAD_NAMES and not _keyword_truthy(node, "daemon"):
             self._add(
                 node,
                 "non_daemon_thread",
-                f"{canonical}() without daemon=True — non-daemon "
-                "threads can block process exit",
+                f"{canonical}() without daemon=True — non-daemon threads can block process exit",
             )
 
         if canonical in _HTTP_CLIENT_NAMES:
@@ -649,6 +668,17 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
                 f"{canonical}() outside ralph/process/ — raw fd "
                 "creation must be centralized in the process lifecycle "
                 "layer (relocate or add # resource-lifecycle-ok: <reason>)",
+            )
+
+        if (
+            canonical in _DIRECT_CHILD_PROCESS_NAMES
+            or (canonical is not None and canonical.startswith("os.spawn"))
+        ) and not self._is_in_raw_fd_allowlist():
+            self._add(
+                node,
+                "direct_child_spawn",
+                f"{canonical}() outside ralph/process/ — child creation must flow "
+                "through ProcessManager (relocate or add # resource-lifecycle-ok: <reason>)",
             )
 
         self.generic_visit(node)
@@ -710,6 +740,8 @@ _IMPORT_KEYWORDS: tuple[str, ...] = (
     "from urllib3",
     "import urllib3",
     # raw os fd rule
+    "import subprocess",
+    "from subprocess",
     "from os import",
     "import os",
     # alias-only patterns (still useful: catches ``from x import`` /
@@ -750,6 +782,13 @@ _AUDIT_SUBSTRINGS: tuple[str, ...] = (
     "os.open(",
     "os.openpty(",
     "os.pipe(",
+    # direct child-spawn rule (contract 5)
+    "subprocess",
+    "subprocess.run(", "subprocess.call(", "subprocess.check_call(",
+    "subprocess.check_output(", "subprocess.Popen(", "subprocess.getoutput(",
+    "subprocess.getstatusoutput(", "os.system(", "system(", "os.spawn", "spawn",
+    "os.posix_spawn(", "posix_spawn(", "os.fork(", "fork(",
+    "asyncio.create_subprocess_exec(", "asyncio.create_subprocess_shell(",
     # accumulator constructors (contract 4) — alias-resolved
     # call patterns. The bare ``=[]`` / ``={}`` / ``[]`` / ``{}``
     # literal patterns are also included: a file that lacks every
@@ -847,19 +886,10 @@ def _default_roots() -> list[Path]:
     """Roots audited when no explicit root is given.
 
     Covers every production package the resource-lifecycle contract
-    applies to: ``ralph/mcp`` (HTTP client + daemon thread),
-    ``ralph/agents`` (subprocess agent executor + daemon threads),
-    ``ralph/executor`` (sync + async process runners),
-    ``ralph/process`` (centralized process lifecycle; the raw-fd
-    allowlist root), ``ralph/pipeline`` (run loop + interrupt threads),
-    ``ralph/runtime`` (runtime helper modules),
-    ``ralph/pro_support`` (Pro heartbeat client — daemon thread +
-    HTTP client), ``ralph/recovery`` (recovery control flow),
-    ``ralph/display`` (per-unit display accumulators drained by
-    ``ParallelDisplay.drop_unit`` / ``ActivityRouter.drop_unit`` from
-    the parallel coordinator finally block), and ``ralph/prompts``
-    (template registry caches bounded by the packaged-template
-    file set).
+    applies to every production package with lifecycle-sensitive code.
+    ``ralph/process`` remains the raw-fd allowlist root; ``ralph/recovery``
+    is deliberately excluded only from the separate timeout audit because
+    its event waits need type-aware handling there.
     """
     package_root = Path(__file__).parent.parent
     return [
@@ -873,6 +903,26 @@ def _default_roots() -> list[Path]:
         package_root / "recovery",
         package_root / "display",
         package_root / "prompts",
+        package_root / "diagnostics",
+        package_root / "api",
+        package_root / "update_check",
+        package_root / "contrib",
+        package_root / "git",
+        package_root / "cli",
+        package_root / "telemetry",
+        package_root / "policy",
+        package_root / "language_detector",
+        package_root / "workspace",
+        package_root / "phases",
+        package_root / "guidelines",
+        package_root / "checkpoint",
+        package_root / "config",
+        package_root / "exit_pause",
+        package_root / "files",
+        package_root / "platform",
+        package_root / "project_policy",
+        package_root / "skills",
+        package_root / "interrupt",
     ]
 
 

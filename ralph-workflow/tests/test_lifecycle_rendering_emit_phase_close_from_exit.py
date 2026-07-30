@@ -123,8 +123,8 @@ class TestEmitPhaseCloseFromExit:
         exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         pd.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
-        assert "Dev" in out
-        assert "Analysis" in out
+        assert "Cycle" in out
+        assert "iter" in out
 
     def test_emits_elapsed_and_counters(self) -> None:
         pd, buf = _make_display()

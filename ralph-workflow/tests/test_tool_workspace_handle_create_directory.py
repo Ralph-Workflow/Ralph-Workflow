@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    ToolContent,
 )
 from ralph.mcp.tools.workspace import (
     WORKSPACE_EDIT_CAPABILITY,
@@ -33,7 +31,7 @@ class TestHandleCreateDirectory:
             {"path": "new/dir"},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["path"] == "new/dir"
         assert payload["created"] is True
 

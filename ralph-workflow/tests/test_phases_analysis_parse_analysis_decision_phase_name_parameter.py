@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import tempfile
-from functools import lru_cache
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from ralph.phases.analysis import parse_analysis_decision_status
-from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     PhaseDecisionRoute,
     PhaseDefinition,
@@ -17,11 +13,16 @@ from ralph.policy.models import (
     PipelinePolicy,
 )
 
+_COMPLETED_DECISION_MARKDOWN = """\
+---
+type: development_analysis_decision
+status: completed
+---
 
-@lru_cache(maxsize=1)
-def _default_policy_bundle() -> object:
-    with tempfile.TemporaryDirectory() as tmp:
-        return load_policy(Path(tmp) / ".agent")
+## Summary
+
+- [SUM-1] Development analysis completed.
+"""
 
 
 class TestParseAnalysisDecisionPhaseNameParameter:
@@ -91,9 +92,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
         """When phase_name is provided, it is used for decisions table lookup in policy."""
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"development_analysis_decision","content":{"status":"completed"}}'
-        )
+        workspace.read.return_value = _COMPLETED_DECISION_MARKDOWN
         ctx = MagicMock()
         ctx.workspace = workspace
         ctx.artifacts_policy = MagicMock()
@@ -109,9 +108,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
         """Without phase_name, drain_name falls back — returns status when phase not in policy."""
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"development_analysis_decision","content":{"status":"completed"}}'
-        )
+        workspace.read.return_value = _COMPLETED_DECISION_MARKDOWN
         ctx = MagicMock()
         ctx.workspace = workspace
         ctx.artifacts_policy = MagicMock()

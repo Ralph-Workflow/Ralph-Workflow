@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.mcp_models import McpConfig, MediaConfig, WebSearchConfig
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 
 if TYPE_CHECKING:
@@ -48,6 +49,29 @@ def _make_session() -> AgentSession:
 
 def _visible_tool_names(registry: ToolBridge) -> set[str]:
     return {d.name for d in registry.list_definitions()}
+
+
+def test_default_registry_schemas_are_isolated_between_instances() -> None:
+    """A caller cannot mutate the next bridge instance through its schema."""
+    first = build_ralph_tool_registry(_make_session(), MemoryWorkspace())
+    first_definition = first.list_definitions()[0]
+    first_definition.input_schema["cache_probe"] = True
+
+    second = build_ralph_tool_registry(_make_session(), MemoryWorkspace())
+    second_definition = second.list_definitions()[0]
+
+    assert "cache_probe" not in second_definition.input_schema
+
+
+def test_prompt_catalog_reuses_profile_without_leaking_mutations() -> None:
+    """Repeated prompt rendering preserves the capability-filtered catalog."""
+    first = visible_tool_names_for_capabilities(_CAPABILITIES, drain="development")
+    first.clear()
+
+    second = visible_tool_names_for_capabilities(reversed(tuple(_CAPABILITIES)), drain="development")
+
+    assert "read_file" in second
+    assert WEB_SEARCH_TOOL in second
 
 
 def test_disabled_web_search_omits_tool() -> None:

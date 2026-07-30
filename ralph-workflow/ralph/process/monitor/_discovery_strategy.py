@@ -171,14 +171,11 @@ class RegistryBackedSubagentOutputCapture:
         # (spawn), not as forward progress, and is suppressed here.
         # Subsequent ``record_progress(...)`` calls advance
         # ``last_progress_at`` and trigger a normal progress emission.
-        if (
-            record.last_progress_at is not None
-            and (
-                record.last_progress_at != self._last_progress_at
-                or (
-                    record.last_known_phase != self._last_progress_phase
-                    and record.last_progress_at != self._last_progress_at
-                )
+        if record.last_progress_at is not None and (
+            record.last_progress_at != self._last_progress_at
+            or (
+                record.last_known_phase != self._last_progress_phase
+                and record.last_progress_at != self._last_progress_at
             )
         ):
             phase = record.last_known_phase or "progress"
@@ -190,10 +187,7 @@ class RegistryBackedSubagentOutputCapture:
             lines.append("[subagent] heartbeat")
             self._last_heartbeat_at = record.last_heartbeat_at
 
-        if (
-            record.terminal_state is not None
-            and record.terminal_state != self._last_terminal_state
-        ):
+        if record.terminal_state is not None and record.terminal_state != self._last_terminal_state:
             state = record.terminal_state
             lines.append(f"[subagent] terminal: state={state}")
             self._last_terminal_state = state

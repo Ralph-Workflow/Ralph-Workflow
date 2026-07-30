@@ -10,11 +10,10 @@ from __future__ import annotations
 import contextlib
 import itertools
 import sys
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
 import pytest
@@ -134,7 +133,7 @@ def _apply_runner_stubs(
         bridge=_FakeBridge(),
         registry_factory=_fake_registry_factory,
         policy_bundle=_mock_bundle,
-        process_teardown=cast("Callable[[], None] | None", process_teardown),
+        process_teardown=process_teardown,
     )
 
     def _execute_agent_effect_wrapper(

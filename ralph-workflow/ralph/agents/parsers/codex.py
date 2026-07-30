@@ -196,23 +196,55 @@ class _CodexDispatch:
         if item_type == "mcp_tool_call":
             tool_name = str(item_obj.get("tool", "unknown"))
             arguments: object = item_obj.get("arguments", {})
-            yield AgentOutputLine(
-                type="tool_use",
-                content=tool_name,
-                raw=stripped,
-                metadata={"tool": tool_name, "input": arguments},
-            )
+            call_id = str(item_obj.get("id", ""))
+            metadata = {
+                "tool": tool_name,
+                "input": arguments,
+                "tool_call_id": call_id,
+            }
+            if str(obj.get("type", "")) == "item.completed":
+                result = item_obj.get("result", item_obj.get("error", ""))
+                yield AgentOutputLine(
+                    type="tool_result",
+                    content=_item_result_content(result),
+                    raw=stripped,
+                    metadata={
+                        **metadata,
+                        "result": result,
+                        "error": item_obj.get("error", ""),
+                    },
+                )
+            else:
+                yield AgentOutputLine(
+                    type="tool_use", content=tool_name, raw=stripped, metadata=metadata
+                )
             return
 
         if item_type == "command_execution":
             command = str(item_obj.get("command", ""))
             if command:
-                yield AgentOutputLine(
-                    type="tool_use",
-                    content="bash",
-                    raw=stripped,
-                    metadata=item_obj,
-                )
+                metadata = {
+                    "tool": "bash",
+                    "command": command,
+                    "tool_call_id": str(item_obj.get("id", "")),
+                }
+                if str(obj.get("type", "")) == "item.completed":
+                    result = item_obj.get("result", item_obj.get("error", ""))
+                    yield AgentOutputLine(
+                        type="tool_result",
+                        content=_item_result_content(result),
+                        raw=stripped,
+                        metadata={
+                            **metadata,
+                            "result": result,
+                            "exit_code": item_obj.get("exit_code", 0),
+                            "error": item_obj.get("error", ""),
+                        },
+                    )
+                else:
+                    yield AgentOutputLine(
+                        type="tool_use", content="bash", raw=stripped, metadata=metadata
+                    )
             else:
                 yield AgentOutputLine(
                     type="item_command_execution",
@@ -234,6 +266,23 @@ class _CodexDispatch:
             return
 
         yield AgentOutputLine(type=f"item_{item_type}", raw=stripped, metadata=item_obj)
+
+
+def _item_result_content(result: object) -> str:
+    """Extract the readable text from a Codex terminal tool result."""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        content = result.get("content")
+        if isinstance(content, list):
+            texts = [
+                str(item.get("text", ""))
+                for item in content
+                if isinstance(item, dict) and item.get("text")
+            ]
+            if texts:
+                return " ".join(texts)
+    return ""
 
 
 class CodexParser(NdjsonParserBase):
@@ -278,8 +327,14 @@ class CodexParser(NdjsonParserBase):
         self,
         obj: dict[str, object],
         raw: str,
+        source_timestamp: str | None = None,
     ) -> Iterator[AgentOutputLine]:
         # R5 registration hook is centralised in NdjsonParserBase.
+        # DA-002 (wt-028-display S-2 / AC-01): the base class
+        # post-processes the iterator to attach ``source_timestamp``
+        # to any AgentOutputLine that lacks one, so the per-event
+        # dispatcher itself does not need to thread the parameter.
+        del source_timestamp  # accepted for override compatibility; ignored
         yield from self._dispatcher.dispatch(obj, raw)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

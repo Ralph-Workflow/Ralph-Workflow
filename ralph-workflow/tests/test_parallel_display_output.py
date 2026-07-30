@@ -12,21 +12,21 @@ from ralph.display.parallel_display import ParallelDisplay, strip_markup
 from ralph.pipeline.state import PipelineState
 
 
-def test_strip_markup_removes_rich_tags() -> None:
+def test_strip_markup_strips_valid_markup_and_preserves_literal_brackets() -> None:
     assert strip_markup("[green]ok[/green]") == "ok"
+    assert strip_markup("[see foo/bar") == "[see foo/bar"
     assert strip_markup("plain text") == "plain text"
 
 
-def test_default_mode_emit_strips_rich_markup() -> None:
-    """In the single default mode, emit strips rich markup from lines."""
+def test_default_mode_emit_reduces_rich_markup() -> None:
+    """In the single default mode, Rich markup is reduced before rendering."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
-    assert "hello" in text
-    assert "[/green]" not in text
-    assert "[green]" not in text
+    assert "[output][unit-1] hello\n" in text
+    assert "[green]hello[/green]" not in text
 
 
 def test_emit_analysis_result_in_default_mode_records_to_decision_log() -> None:
@@ -124,7 +124,7 @@ def test_long_unit_id_does_not_hide_payload_content() -> None:
 
     out = buf.getvalue()
     assert "Invoking agent:" in out
-    assert "[content][opencode/minimax/Mini..." in out
+    assert "[output][opencode/minimax/Mini..." in out
 
 
 def test_emit_refreshes_visible_activity_when_line_changes_but_unit_is_same() -> None:

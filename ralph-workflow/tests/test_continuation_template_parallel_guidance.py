@@ -13,17 +13,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_CONTINUATION_TEMPLATE = (
-    Path(__file__).resolve().parents[1]
-    / "ralph"
-    / "prompts"
-    / "templates"
-    / "developer_iteration_continuation.jinja"
-)
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates"
+_CONTINUATION_TEMPLATE = _TEMPLATES_DIR / "developer_iteration_continuation.jinja"
+# The PARALLEL EXECUTION body is shared verbatim with the base developer
+# template via this partial; the heading itself stays in the template.
+_PARALLEL_EXECUTION_PARTIAL = _TEMPLATES_DIR / "shared" / "_parallel_execution.jinja"
 
 
 def _read_continuation_template() -> str:
-    return _CONTINUATION_TEMPLATE.read_text(encoding="utf-8")
+    return "\n".join(
+        (
+            _CONTINUATION_TEMPLATE.read_text(encoding="utf-8"),
+            _PARALLEL_EXECUTION_PARTIAL.read_text(encoding="utf-8"),
+        )
+    )
 
 
 def test_continuation_template_contains_new_heading() -> None:
@@ -70,12 +73,12 @@ def test_continuation_template_encourages_proactive_subagent_use() -> None:
 
 
 def test_continuation_template_keeps_allowed_directories_contract() -> None:
-    """The continuation template must mention ``allowed_directories`` so
-    a sub-agent dispatched for a work unit knows the per-unit scope
-    contract.
+    """The continuation template must mention the plan's ``Directories:``
+    field so a sub-agent dispatched for a work unit knows the per-unit
+    scope contract.
     """
     source = _read_continuation_template()
-    assert "allowed_directories" in source
+    assert "Directories:" in source
 
 
 def test_continuation_template_new_section_warns_about_fan_out() -> None:
@@ -85,7 +88,20 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
     """
     source = _read_continuation_template()
     assert "dispatching your own sub-agents" in source
-    assert "unit_id" in source
+    assert "[unit-ID]" in source
+
+
+def test_continuation_template_uses_shape_aware_dispatch_and_fan_in() -> None:
+    source = _read_continuation_template()
+    assert "compact, linear plan" in source
+    assert "Do not create delegation overhead" in source
+    assert "multiple subplans" in source
+    assert "dedicated sub-agent for each independent unit" in source
+    assert "For 4-5 units" in source
+    assert "dispatch every independent ready unit in parallel" in source
+    assert "collect each unit's proof" in source
+    assert "cross-unit verification" in source
+    assert "final acceptance verification" in source
 
 
 def test_continuation_template_requires_subagent_gate_before_submission() -> None:

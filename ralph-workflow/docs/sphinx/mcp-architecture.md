@@ -112,7 +112,7 @@ The full tool list is in {doc}`mcp-tools`. Tools are implemented in `ralph.mcp.t
 
 | Package | Tools provided |
 |---|---|
-| `ralph.mcp.tools.artifact` | `ralph_submit_artifact`, plan section tools |
+| `ralph.mcp.tools.md_artifact` | `ralph_submit_md_artifact`, `ralph_verify_md_artifact`, `ralph_stage_md_artifact`, `ralph_edit_md_artifact`, `ralph_get_md_draft`, `ralph_discard_md_draft`, `ralph_finalize_md_artifact` |
 | `ralph.mcp.tools.workspace` | `read_file`, `read_multiple_files`, `stat_path`, `list_allowed_roots`, `write_file`, `list_directory`, `search_files`, `grep_files`, `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file`, `delete_path`, `directory_tree`, `list_directory_recursive`, `read_media`, `read_image` |
 | `ralph.mcp.tools.exec` | `exec` (bounded shell execution) |
 | `ralph.mcp.tools.git_read` | `git_status`, `git_diff`, `git_log`, `git_show` |
@@ -209,3 +209,53 @@ asserts observable behavior on the shipped path.
 - {doc}`mcp-tools` — full tool reference
 - {doc}`artifacts` — the artifact submission tools
 - {py:mod}`ralph.mcp` — full API reference
+
+## Indexed exploration substrate
+
+Ralph Workflow maintains a deterministic, disposable SQLite+FTS5 indexed
+exploration substrate under `.agent/ralph-explore/` for the current
+workspace. The substrate is owned by `ralph.mcp.explore` and exposes three
+new MCP tools:
+
+* `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage. Side-effect free: it inspects the existing on-disk state and never creates SQLite files or `.agent/ralph-explore/` directories. The response carries `managed_ignore_rule_repair`, a structured next-run seeding instruction surfaced when the managed `.agent/` gitignore rule is absent so callers can repair the disposable-cache coverage without guessing.
+* `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent). `timeout_ms` is bounded in `[1, 60000]`; out-of-range or malformed values are rejected before any I/O. Returns `job_id`, `job_status`, `generation`, `changed_files`, `failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`, `error_summary`.
+* `ralph_graph` — graph-native queries (`neighbors`, `path`, `impact`, `hubs`, `tests`) with bounded traversal, evidence-backed output, and `freshness` policy (`required` / `prefer_fresh` / `allow_stale`). The query path is bounded by a per-call `timeout_ms` (1-30000) and an explicit `cancel` flag; deadline expiry and cancellation return a bounded, truthful incomplete result (`deadline_exceeded=true` / `cancelled=true` plus `missing_data`) without exposing mutable work to readers.
+
+Existing read/search tools gain optional indexed arguments (`use_index`,
+`evidence_id`, `span_id`, `symbol`, `rank_by`, `return_evidence_ids`,
+`ranked`, `role`, etc.) so agents can choose indexed or live behavior per
+call. Indexed responses carry `index_used`, `index_generation`, `is_stale`,
+`stale_paths_count`, `dirty_paths_count`, and `fallback_reason` so callers
+can detect fall-back without inspecting tool internals.
+
+The substrate is:
+
+* **deterministic** — no LLM, no embedding, no network call. The index can be deleted and rebuilt without affecting source files or workflow artifacts.
+* **git-ignored** — `auto_seed_default_gitignore` in `ralph/config/bootstrap.py` appends both the parent `.agent/` rule and the explicit `.agent/ralph-explore/` child rule so the disposable cache coverage is reported transparently in the seeded default gitignore.
+* **bounded** — job history caps at 100/14 days; evidence tombstones cap at 10k/30 days; SQLite WAL mode + busy-timeout guarantee concurrent readers.
+* **fail-open for the agent** — bounded reindex runs before and after every development/fix agent invocation; timeout never blocks the agent.
+* **idempotent** — running reindex twice against the same tree produces the same logical rows (generation metadata aside); unchanged files are detected by content hash and skipped.
+
+### Module layout
+
+The substrate is split into focused submodules under `ralph.mcp.explore`:
+
+* `store` — SQLite + FTS5 DDL, manifest, evidence, tombstones, dirty_paths, jobs, settings, plus the structure tables (`spans`, `symbols`, `edges`).
+* `pipeline` — manifest/hash/generation lifecycle, idempotent reindex, single-writer coalescing.
+* `dirty_paths` — persisted queue + `mark_dirty` seam for write handlers.
+* `ranking` — deterministic score components (lexical, symbol, graph, changed) for `search_files` and `grep_files`.
+* `structure` — Python AST and Markdown heading/link/anchor extractors (Phase 2).
+* `graph` — bounded recursive-CTE graph queries for `ralph_graph` (Phase 2).
+* `handlers` — `ralph_index_status`, `ralph_reindex`, and `ralph_graph` MCP handlers.
+* `bench` — scripted-flow benchmark harness (no LLM, deterministic Clock seam).
+* `audit_register` — Phase 0 per-tool outcome register (keep / add_argument / rework_internals / defer).
+* `deferred_phases` — tracked deferral register for remaining optional work.
+* `lifecycle` — before/after dev-fix session refresh hooks used by the pipeline runner.
+
+### Phase scope
+
+* **Phase 1 (lexical, shipped)** — FTS5 chunking, content-hash evidence, idempotent reindex, mutation dirty marking. The `.agent/ralph-explore/` index lives under a parent `.agent/` plus an explicit `.agent/ralph-explore/` child rule in the bootstrap-managed gitignore so the disposable cache coverage is reported transparently.
+* **Phase 2 (structure + graph, shipped)** — Python AST and Markdown structure extraction in `structure.py`, the `spans`/`symbols`/`edges` SQLite tables, and `ralph_graph` for callers/path/impact/hubs/tests queries. The structure and graph tables also feed `+100 / +80 / +60 / +50 / +40 / +30 / +20 / -50` score components for `search_files` and `grep_files`; when the index lacks the corresponding data, those components report `+0 component:no_indexed_data` with an explicit zero-applied reason rather than `disabled:phase2`. See `ralph-workflow/ralph/mcp/explore/structure.py` for the Python AST + Markdown extractors, `ralph-workflow/ralph/mcp/explore/graph.py` for the `ralph_graph` neighbors/path/impact/hubs/tests queries, and the `ralph-workflow/ralph/mcp/explore/ranking.py` score-component ladder.
+* **Phase 3 (impact-aware editing, shipped)** — `edit_file` accepts `expected_content_hash`, `target` (`evidence_id` / `span_id` / `symbol`), `match_strategy` (`exact` / `within_target` / `all_in_target`), `reindex` (`auto` / `skip` / `changed_blocking`), `impact_preview`, and `return_evidence_updates`. `impact_preview` runs a conservative `ralph_graph` impact query when the index has the target symbol. Phase 3 wiring lives in `ralph-workflow/ralph/mcp/tools/bridge/_specs_file_write.py` (edit_file MCP schema for `match_strategy`/`target`/`expected_content_hash`/`impact_preview`/`reindex`/`return_evidence_updates`) and `ralph-workflow/ralph/mcp/tools/workspace/_write_handlers.py:handle_edit_file` (the spec enforcement), with the conservative `rename`/`signature`/`behavior`/`delete`/`unknown` labels defined in `ralph-workflow/ralph/mcp/explore/graph.py:_IMPACT_RELATIONS`. Malformed Python extraction raises a typed `PythonExtractionError` that the reindex pipeline catches in its preflight so lexical/structure rows for the path remain queryable while the path is reported in `failed_files` and retried on the next pass.
+* **Phase 4 (audited non-index remediation, shipped)** — `git_status` (`format=compact`), `git_diff` (`format=summary`), `git_log` (`format=summary`), `git_show` (`format=summary`), `exec` (`format=summary`), `web_search` (`format=summary`), `download_url` (`format=summary`), `visit_url` (`format=metadata`), `read_image` (`format=metadata`), and `read_media` (`format=metadata`) are shipped with the compact/summary output modes; `unsafe_exec` and its `raw_exec` alias are kept unchanged (`keep`) because the summary mode is intentionally only on the bounded exec path. The compact/format tools are audited as `add_argument` in `audit_register` with a deterministic Phase 0 rationale; the markdown artifact tools and coordination tools are audited as `keep` because their existing structured behavior already matches the Phase-4 acceptance contract. The per-tool `AuditCounters` are seeded in `ralph.mcp.explore._audit_seed_*` and can be overlaid by measured `run_benchmark` results via `refresh_audit_register(measurements)` (see `tests/test_explore_audit_register.py` for the deterministic overlay contract); a bench-fed `Measurement` carries a `source` like `bench_fixtures/Q1` so the audit consumer can trace the counter back to the exact fixture. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles of the form `ralph://exec/<spill-name>`; production sessions attach an `ExecResourceResolver` in `ralph.mcp.tools._exec_resource_uri` so those handles are replayable through `resources/read` (the resource template `ralph://exec/{spill_name}` is registered alongside `ralph://media/{artifact_id}`). Sessions without the resolver return a structured "resolver not attached" error so legacy clients get a consistent failure mode while the raw output remains available.
+* **Optional deferred work** — `phase_5` is the only entry in `ralph.mcp.explore.deferred_phases`. It tracks the `ralph_explore` wrapper, NetworkX offline metrics, Kuzu adapters, and additional Tree-sitter parsers, all gated on measured SQLite bottleneck evidence and never shipped by default.

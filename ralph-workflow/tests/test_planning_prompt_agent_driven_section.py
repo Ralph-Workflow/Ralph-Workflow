@@ -1,54 +1,32 @@
-"""The new ``## Agent-Driven Parallel Execution`` heading must be present
-in ``planning.jinja`` and the old
-``## Same-Workspace Parallel Worker Rules`` heading must be absent.
-
-This test reads the template source directly (rather than rendering it
-through the custom template engine) because the source-text checks are
-exactly what the audit (``audit_parallelization_dormant``) enforces on
-the bundled prompt — a drift in the rendered prompt always means a drift
-in the source text.
-"""
+"""Rendered-template regression checks for concise planning guidance."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
-_PLANNING_TEMPLATE = (
-    Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates" / "planning.jinja"
-)
+from ralph.prompts.template_context import TemplateContext
 
 
-def _read_planning_template() -> str:
-    return _PLANNING_TEMPLATE.read_text(encoding="utf-8")
+def _source(name: str) -> str:
+    return TemplateContext.default().registry.get_template(name.removesuffix(".jinja"))
 
 
-def test_planning_prompt_contains_new_heading_and_lacks_old() -> None:
-    source = _read_planning_template()
-    assert "## Agent-Driven Parallel Execution" in source, (
-        "planning prompt must include the new agent-driven section"
-    )
-    assert "## Same-Workspace Parallel Worker Rules" not in source, (
-        "planning prompt must NOT include the legacy same-workspace section"
-    )
+def test_planning_prompt_keeps_optional_parallelism_concise() -> None:
+    source = _source("planning.jinja")
+    assert "Use subagents only when independent repository discovery" in source
+    assert "compact linear plan is valid" in source
+    assert "Same-Workspace Parallel Worker Rules" not in source
+    assert "ralph coordinate" not in source
 
 
-def test_planning_prompt_new_section_warns_about_fan_out() -> None:
-    source = _read_planning_template()
-    assert "Ralph-managed fan-out is dormant" in source
-    assert "sub-agents" in source
-    assert "ralph coordinate" not in source, (
-        "planning prompt must not reference the nonexistent ralph coordinate "
-        "command, even as a prohibition"
-    )
+def test_planning_prompt_keeps_readable_optional_structure() -> None:
+    source = _source("shared/_planning_submission_mechanics.j2")
+    assert "### [S-n] Title" in source
+    assert "stable and never renumbered" in source
+    assert "Project-specific `Type:` values are accepted" not in source
+    assert "preserved verbatim" in source
 
 
-def test_planning_prompt_keeps_unchanged_sections() -> None:
-    """Sanity: the rework must not have removed the legacy rules' underlying
-    contract — the planning prompt must still mention allowed_directories
-    disjointness (the contract for any parallelization shape, agent-driven
-    or fan-out).
-    """
-    source = _read_planning_template()
-    assert "allowed_directories" in source
-    assert ".agent" in source
-    assert ".git" in source
+def test_analysis_reviews_substance_not_parallel_document_shape() -> None:
+    source = _source("planning_analysis.jinja")
+    assert "do not grade document shape" in source
+    assert "fresh repository evidence" in source
+    assert "nine-dimension" not in source

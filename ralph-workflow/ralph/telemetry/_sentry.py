@@ -22,16 +22,25 @@ from typing import TYPE_CHECKING, Protocol, cast, get_args, runtime_checkable
 
 import sentry_sdk
 import sentry_sdk.metrics as sentry_metrics
+from sentry_sdk.integrations.dedupe import DedupeIntegration
+from sentry_sdk.integrations.excepthook import ExcepthookIntegration
 
 from ralph import __version__ as ralph_version
+from ralph.config.agent_transport import AgentTransport
 from ralph.platform.detection import current_platform
 from ralph.policy.models._types import PhaseRole
 from ralph.runtime._version_info import PythonVersionInfo
 from ralph.runtime.environment import detect_runtime_environment
+from ralph.telemetry._agent_config_payload import (
+    AGENT_FAMILY_BY_TRANSPORT,
+    build_agent_config_payload,
+)
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from ralph.config.agent_config import AgentConfig
 
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
 _HOME_PREFIX: str = str(Path.home())
@@ -49,22 +58,47 @@ _EXTRA_SCRUB_PREFIXES: tuple[str, ...] = ()
 # Module-level scalars only (no list/dict/set/deque). Populated by the
 # lifecycle functions; consumed by finalize_session.
 _SESSION_STARTED_AT: float | None = None
+_SESSION_STARTED_AT_UTC: datetime | None = None
 _SESSION_OUTCOME: str = "unknown"
+_SESSION_FINALIZED: bool = False
 _INITIALIZED: bool = False
 _SESSION_TRANSACTION: object | None = None
 
 # PhaseRole closed vocabulary — auto-derived from the Literal type alias via
 # ``get_args`` so the validation set cannot drift from the type. Phase telemetry
 # keys exclusively on these values; raw phase names are never forwarded.
-_PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
+_PHASE_ROLES: frozenset[str] = frozenset(
+    cast("tuple[str, ...]", get_args(PhaseRole))
+)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
+# Mirrors ralph.project_policy.schema_state.POLICY_SCHEMA_STATES. Restated here
+# rather than imported so telemetry keeps a dependency-free import graph (it is
+# loaded on the pipeline-runner import path); test_telemetry_sentry.py pins the
+# two vocabularies together so they cannot drift.
+_POLICY_SCHEMA_STATES: frozenset[str] = frozenset({"current", "outdated", "absent", "unknown"})
+_SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
+    {
+        "planning",
+        "development",
+        "development_analysis",
+        "planning_analysis",
+        "development_commit",
+        "analysis",
+        "commit",
+        "policy_remediation",
+        "policy_remediation_analysis",
+    }
+)
+_AGENT_STATS_MAX_KEYS = 128
 
 # Aggregate phase statistics across the whole pipeline run. Keyed by PhaseRole,
 # drained at session finalize. Bounded by the 8-value closed vocabulary above
 # (not by user input).
-_PHASE_STATS: dict[str, dict[str, object]] = (
-    {}
-)  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
+_PHASE_STATS: dict[
+    str, dict[str, object]
+] = {}  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
+
+_AGENT_STATS: dict[str, dict[str, object]] = {}  # bounded-accumulator-ok: bounded by _AGENT_STATS_MAX_KEYS; drained at session finalize
 
 # Coarse UTC time-of-day buckets captured once at session start for aggregate
 # ``when`` analytics. ``None`` until set_session_wallclock_start() runs; the
@@ -175,6 +209,16 @@ def _telemetry_is_inactive() -> bool:
     return is_telemetry_disabled() or is_telemetry_disabled_by_config() or not _INITIALIZED
 
 
+def is_telemetry_active() -> bool:
+    """Return True when telemetry is enabled AND Sentry was initialized.
+
+    Lets a caller skip work whose ONLY purpose is to feed telemetry (e.g.
+    reading the policy pack to derive its schema state) when nothing would be
+    forwarded anyway.
+    """
+    return not _telemetry_is_inactive()
+
+
 def _sentry_environment() -> str:
     try:
         platform = current_platform()
@@ -185,7 +229,9 @@ def _sentry_environment() -> str:
 
 def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) -> None:
     with contextlib.suppress(Exception):
-        add_breadcrumb = cast("_BreadcrumbRecorder", sentry_sdk.add_breadcrumb)
+        add_breadcrumb = cast(
+            "_BreadcrumbRecorder", sentry_sdk.add_breadcrumb
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload: dict[str, object] = dict(data)
         add_breadcrumb(
             category=category,
@@ -202,7 +248,9 @@ def _metric_count(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        count = cast("_MetricCounter", sentry_metrics.count)
+        count = cast(
+            "_MetricCounter", sentry_metrics.count
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload: dict[str, object] = dict(attributes)
         count(name, value, attributes=payload)
 
@@ -215,7 +263,9 @@ def _metric_distribution(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        distribution = cast("_MetricDistribution", sentry_metrics.distribution)
+        distribution = cast(
+            "_MetricDistribution", sentry_metrics.distribution
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         payload: dict[str, object] = dict(attributes)
         distribution(name, value, unit=unit, attributes=payload)
 
@@ -309,7 +359,9 @@ def _scrub_frames(frames: object) -> None:
         filename = d_frame.get("filename")
         if not _is_path_like_filename(filename):
             continue
-        d_frame["filename"] = _basename_of_path_like(cast("str", filename))
+        d_frame["filename"] = _basename_of_path_like(
+            cast("str", filename)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _scrub_event(event: object, _hint: object) -> object:
@@ -372,7 +424,23 @@ def init_sentry(user_id: str, session_id: str) -> None:
         # Automatic integrations can add HTTP/subprocess spans containing
         # URLs, argv, cwd, or other non-metadata details. Keep tracing
         # limited to the manual ``ralph.session`` transaction below.
+        #
+        # ``default_integrations=False`` disables the WHOLE default set, which
+        # silently included ``ExcepthookIntegration`` — so an unhandled crash
+        # never reached Sentry and the only events this client could ever emit
+        # were the "session start"/"session end" messages below. The two
+        # integrations re-enabled here are opted in EXPLICITLY rather than by
+        # flipping the flag, so the privacy-sensitive defaults stay off:
+        # Argv (forwards sys.argv), Stdlib (HTTP/subprocess spans with URLs),
+        # Logging (application logs may carry prompts, paths, model output),
+        # Modules (installed package inventory), Atexit (Ralph flushes
+        # explicitly via ``finalize_session``). Excepthook events still pass
+        # through ``before_send=_scrub_event`` and carry no local variables
+        # (``include_local_variables=False``), so the metadata-only contract
+        # holds. Dedupe prevents one propagating exception from being reported
+        # twice when both a handled capture and the excepthook observe it.
         default_integrations=False,
+        integrations=[ExcepthookIntegration(always_run=True), DedupeIntegration()],
         auto_enabling_integrations=False,
         traces_sample_rate=1.0,
         # Profiling samples stack frames outside the event scrubber path, so
@@ -432,17 +500,72 @@ def set_environment_context() -> None:
         pass
 
 
-def record_session_start(now: float | None = None) -> None:
+def set_agent_config_context(agents: Mapping[str, AgentConfig]) -> None:
+    """Attach the metadata-only agent-configuration snapshot to Sentry.
+
+    Called once at config load so the payload rides on EVERY subsequent event —
+    including crashes — rather than only a cleanly finalized session. The
+    sanitization contract lives in ``_agent_config_payload``: user-authored
+    agent names, raw ``cmd`` strings, and flag values never leave the process.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft.
+    """
+    if _telemetry_is_inactive():
+        return
+    with contextlib.suppress(Exception):
+        payload = build_agent_config_payload(agents)
+        sentry_sdk.set_context("agent_config", payload)
+        sentry_sdk.set_tag("agent_count", payload.get("agent_count"))
+        sentry_sdk.set_tag("agent_families", payload.get("agent_families"))
+
+
+def set_policy_schema_context(state: str) -> None:
+    """Attach the project's policy-schema state as a closed-vocabulary tag.
+
+    The caller derives the state (see
+    :func:`ralph.project_policy.schema_state.policy_schema_state`); telemetry
+    stays a pure sink and never reaches into the policy layer. Values outside
+    the closed vocabulary collapse to ``unknown`` rather than being forwarded.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft.
+    """
+    if _telemetry_is_inactive():
+        return
+    with contextlib.suppress(Exception):
+        safe_state = state if state in _POLICY_SCHEMA_STATES else "unknown"
+        sentry_sdk.set_tag("policy_schema_state", safe_state)
+
+
+def _python_version() -> str | None:
+    """Return the running ``major.minor.micro`` Python version, or None."""
+    try:
+        info = PythonVersionInfo.from_sys(sys)
+    except Exception:
+        return None
+    return f"{info.major}.{info.minor}.{info.micro}"
+
+
+def _format_utc_timestamp(value: datetime) -> str:
+    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return normalized.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def record_session_start(
+    now: float | None = None,
+    now_dt: datetime | None = None,
+) -> None:
     """Record the monotonic-clock session start time.
 
     Tests inject ``now=<float>`` for determinism (audit_test_policy forbids
     ``time.monotonic()`` in test files). Production code passes ``now=None``
     so the call resolves to ``time.monotonic()`` at runtime.
     """
-    global _SESSION_STARTED_AT, _SESSION_TRANSACTION  # noqa: PLW0603
+    global _SESSION_FINALIZED, _SESSION_STARTED_AT, _SESSION_STARTED_AT_UTC, _SESSION_TRANSACTION  # noqa: PLW0603
     if now is None:
         now = time.monotonic()
     _SESSION_STARTED_AT = float(now)
+    _SESSION_STARTED_AT_UTC = now_dt if now_dt is not None else datetime.now(UTC)
+    _SESSION_FINALIZED = False
     if _telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
@@ -457,6 +580,8 @@ def record_session_start(now: float | None = None) -> None:
         message="session start",
         data={"event": "start"},
     )
+    with contextlib.suppress(Exception):
+        sentry_sdk.capture_message("session start", level="info")
 
 
 def set_session_outcome(outcome: str) -> None:
@@ -575,6 +700,93 @@ def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
         )
 
 
+def record_agent_invocation(
+    *,
+    transport: AgentTransport | str,
+    phase_role: str,
+    drain: str | None,
+    drain_class: str | None,
+    pipeline_profile: str,
+    duration_s: float,
+    outcome: str,
+) -> None:
+    """Record one logical agent invocation using only bounded dimensions.
+
+    Agent names and custom policy identifiers are deliberately absent from the
+    payload. The resolved transport, closed phase role, allowlisted bundled
+    drain name, and custom/default pipeline profile provide useful attribution
+    without forwarding user-authored labels.
+    """
+    if _telemetry_is_inactive():
+        return
+    transport_value = transport.value if isinstance(transport, AgentTransport) else str(transport)
+    attributes: dict[str, object] = {
+        "agent_family": AGENT_FAMILY_BY_TRANSPORT.get(transport_value, "custom"),
+        "transport": transport_value if transport_value in AGENT_FAMILY_BY_TRANSPORT else "generic",
+        "pipeline_profile": pipeline_profile
+        if pipeline_profile in {"default", "custom"}
+        else "custom",
+        "phase_role": phase_role if phase_role in _PHASE_ROLES else "unknown",
+        "drain": drain if drain in _SAFE_DRAIN_NAMES else "custom",
+        "drain_class": drain_class if drain_class in _PHASE_ROLES else "unknown",
+        "outcome": outcome
+        if outcome in {"success", "failure", "interrupted", "crashed"}
+        else "crashed",
+    }
+    with contextlib.suppress(Exception):
+        _metric_count("ralph.agent.invocation", 1.0, attributes=attributes)
+        _metric_distribution(
+            "ralph.agent.duration",
+            max(0.0, float(duration_s)),
+            unit="second",
+            attributes=attributes,
+        )
+        key = "|".join(str(attributes[field]) for field in attributes)
+        if key not in _AGENT_STATS and len(_AGENT_STATS) >= _AGENT_STATS_MAX_KEYS:
+            key = "overflow"
+        slot = _AGENT_STATS.setdefault(key, {"count": 0, "duration_s": 0.0})
+        count_raw = slot.get("count", 0)
+        duration_raw = slot.get("duration_s", 0.0)
+        if not isinstance(count_raw, int) or not isinstance(duration_raw, float | int):
+            return
+        slot["count"] = count_raw + 1
+        slot["duration_s"] = duration_raw + max(0.0, float(duration_s))
+        _add_breadcrumb(
+            category="ralph.agent",
+            message="agent invocation",
+            data=attributes,
+        )
+
+
+#: Closed set of origins a handled failure may be attributed to. Keeping this
+#: bounded preserves the metadata-only contract: an unknown origin collapses to
+#: ``"unknown"`` rather than forwarding a user-authored label as a tag value.
+_HANDLED_FAILURE_ORIGINS: frozenset[str] = frozenset({"agent_invocation"})
+
+
+def report_handled_exception(exc: BaseException, *, origin: str) -> None:
+    """Capture a failure Ralph handled internally so it still reaches Sentry.
+
+    The excepthook integration only observes exceptions that propagate out of
+    the process. Ralph deliberately catches most failures — a wedged agent, a
+    watchdog fire, a classified transient fault — to retry or degrade, so
+    without an explicit capture those never produced a Sentry event and an
+    operator could not distinguish a clean run from one that churned for hours.
+
+    Fail-soft by contract: never raises, and no-ops when telemetry is disabled
+    or Sentry was never initialized. The event is tagged with a bounded
+    ``ralph.origin`` and passes through the same ``before_send`` scrubber as
+    every other event.
+    """
+    if _telemetry_is_inactive():
+        return
+    safe_origin = origin if origin in _HANDLED_FAILURE_ORIGINS else "unknown"
+    with contextlib.suppress(Exception), sentry_sdk.new_scope() as scope:
+        scope.set_tag("ralph.origin", safe_origin)
+        scope.set_tag("ralph.handled", "true")
+        sentry_sdk.capture_exception(exc)
+
+
 def flush_telemetry(timeout: float = 2.0) -> None:
     """Bounded, fail-soft Sentry flush."""
     with contextlib.suppress(Exception):
@@ -583,6 +795,7 @@ def flush_telemetry(timeout: float = 2.0) -> None:
 
 def finalize_session(
     now: float | None = None,
+    end_dt: datetime | None = None,
     flush_timeout: float = 2.0,
 ) -> float | None:
     """Emit the session-end context + message and flush. Returns the duration in seconds.
@@ -597,13 +810,15 @@ def finalize_session(
     values are process-local: they are meaningful only inside this
     process instance and leak no real-world clock information.
     """
-    global _SESSION_TRANSACTION  # noqa: PLW0603
-    if not _INITIALIZED or _SESSION_STARTED_AT is None:
+    global _SESSION_FINALIZED, _SESSION_TRANSACTION  # noqa: PLW0603
+    if not _INITIALIZED or _SESSION_STARTED_AT is None or _SESSION_FINALIZED:
         return None
 
     started = _SESSION_STARTED_AT
     end_clock = time.monotonic() if now is None else float(now)
     duration = max(0.0, end_clock - started)
+    ended_at_utc = end_dt if end_dt is not None else datetime.now(UTC)
+    _SESSION_FINALIZED = True
 
     try:
         session_payload: dict[str, object] = {
@@ -611,12 +826,24 @@ def finalize_session(
             "started_monotonic_s": started,
             "ended_monotonic_s": end_clock,
             "outcome": _SESSION_OUTCOME,
+            # Ralph's version also ships as the Sentry release + a global tag;
+            # restating it on the session makes the run self-describing when a
+            # session is inspected in isolation.
+            "ralph_version": ralph_version,
         }
+        python_version = _python_version()
+        if python_version is not None:
+            session_payload["python_version"] = python_version
+        if _SESSION_STARTED_AT_UTC is not None:
+            session_payload["started_at_utc"] = _format_utc_timestamp(_SESSION_STARTED_AT_UTC)
+        session_payload["ended_at_utc"] = _format_utc_timestamp(ended_at_utc)
         if _SESSION_WALLCLOCK_BUCKETS is not None:
             session_payload["wallclock"] = dict(_SESSION_WALLCLOCK_BUCKETS)
         if _PHASE_STATS:
-            session_payload["phases"] = {
-                role: dict(stats) for role, stats in _PHASE_STATS.items()
+            session_payload["phases"] = {role: dict(stats) for role, stats in _PHASE_STATS.items()}
+        if _AGENT_STATS:
+            session_payload["agent_invocations"] = {
+                key: dict(stats) for key, stats in _AGENT_STATS.items()
             }
         sentry_sdk.set_context("session", session_payload)
         attributes = {"outcome": _SESSION_OUTCOME}
@@ -643,5 +870,6 @@ def finalize_session(
     # Drain aggregates AFTER the snapshot is sent so a subsequent session can
     # reuse the module-level accumulators safely (bounded-accumulator-ok).
     _PHASE_STATS.clear()
+    _AGENT_STATS.clear()
     _SESSION_TRANSACTION = None
     return duration

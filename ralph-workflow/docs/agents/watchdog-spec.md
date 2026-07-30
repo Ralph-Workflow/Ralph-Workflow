@@ -456,6 +456,239 @@ Verify cited line numbers after touching the cited files.
 
 ---
 
+## AC-7 (wt-047-stall-label) — Status Bar `STALLED` is exclusively watchdog-sourced
+
+> The status bar's `STALLED` label and the watchdog's stall assessment
+> used to be two independent arbiters that drifted apart: the bar
+> derived `stalled` from a 30 s gap between
+> `StatusBarModel.last_activity_monotonic` and `now_monotonic`, while
+> the watchdog judged stalls from `TimeoutPolicy` thresholds and
+> first-party evidence channels. This split produced visible
+> drift — the bar reported `STALLED` for a healthy session (fresh
+> subagent output with a quiet stdout), or stayed silent while the
+> watchdog was about to fire. AC-7 makes the watchdog the single
+> source of truth: every stall-state transition is published as a
+> `WaitingStatusEvent`, the subscriber forwards it to the Status Bar
+> host, and the bar reads the watchdog-sourced attention only.
+
+### Single-source-of-truth invariant
+
+The watchdog publishes the stall-state transitions on its existing
+`WaitingStatusListener` channel
+(`IdleWatchdog._emit` → reader `_on_waiting_event` →
+`waiting_listener` → `waiting_dispatch.dispatch_waiting_event` →
+`PipelineSubscriber.record_waiting_status`). The status bar renders
+`STALLED` only from that watchdog-sourced state. No display-side
+gap derivation exists; `StatusBarModel.last_activity_monotonic` is
+gone, `_STALL_THRESHOLD_SECONDS` is gone, and the producer write at
+`ParallelDisplay._emit_activity_event` is gone (zero dead code).
+
+### New `WaitingStatusKind` members
+
+`ralph/agents/idle_watchdog/waiting_status_kind.py` gains two kinds
+that bracket the stall lifecycle:
+
+| Kind | Fires when |
+|------|------------|
+| `STALLED = "stalled"` | The watchdog considers the run stalled. One event per transition INTO a stall. |
+| `STALL_RESUMED = "stall_resumed"` | The watchdog considers the run no longer stalled. One event per transition OUT of a stall. |
+
+The transition is gated by `IdleWatchdog._set_stall(active, ...)`
+which compares against the runtime `_stall_active` flag and emits
+exactly once per transition. Repeated ticks with the same `active`
+value are no-ops (no per-tick spam).
+
+### `STALLED` trigger sites
+
+All six production sites are inside the watchdog's single
+evaluation path; each flips the runtime flag and emits `STALLED`
+via `_set_stall`:
+
+- `ralph/agents/idle_watchdog/_waiting_branch.py:318-326` — alongside
+  the `SUSPECTED_FROZEN` emission (the suspect-threshold cross).
+- `ralph/agents/idle_watchdog/_waiting_branch.py:220-226` — alongside
+  the `HARD_STOP` emission for the stuck-job sub-ceiling branch.
+- `ralph/agents/idle_watchdog/_waiting_branch.py:280-286` — alongside
+  the `HARD_STOP` emission for the cumulative ceiling branch.
+- `ralph/agents/idle_watchdog/_gate.py:146-152` — at the `STUCK`
+  classifier verdict (a `FIRE` for a non-absolute reason).
+- `ralph/agents/idle_watchdog/_gate.py:184-190` — at the
+  `SILENT_SUBAGENT` gate-deferral site (the gate allows the FIRE,
+  so the stall signal must ride on the FIRE).
+- `ralph/agents/idle_watchdog/_gate.py:155` — at the
+  `SESSION_CEILING_EXCEEDED` bypass path (DA-001). The bypass
+  skips the StuckClassifier (the cap is not a stuck-detection
+  signal) but still transitions the runtime stall flag before
+  returning FIRE so the Status Bar's `STALLED` slot lights up
+  identically to a STUCK classifier verdict or a SILENT_SUBAGENT
+  fire.
+
+`SESSION_CEILING_EXCEEDED` IS a `STALLED` trigger (DA-001): the
+operator-set cap is an absolute ceiling, but the watchdog is the
+sole owner of the `STALLED` label and a session that hit the cap
+is a stalled run from the operator's perspective (the cap fired
+because the run was alive but un-killable by every other rule).
+The bypass path at `ralph/agents/idle_watchdog/_gate.py:142`
+transitions the runtime stall flag via
+`_set_stall(active=True, ...)` before returning FIRE, so the
+Status Bar's `STALLED` slot lights up identically to a STUCK
+classifier verdict or a SILENT_SUBAGENT fire. The SESSION_CEILING
+bypass still bypasses the StuckClassifier (the cap is not a
+stuck-detection signal), it just preserves the stall-state
+transition that the Status Bar subscribes to.
+
+### `STALL_RESUMED` trigger sites
+
+Three production sites clear the runtime flag and emit
+`STALL_RESUMED` via `_set_stall`:
+
+- `ralph/agents/idle_watchdog/idle_watchdog.py:883-887` — inside
+  `_reset_idle_baseline()` (called by `record_activity` and the
+  post-tool-result path).
+- `ralph/agents/idle_watchdog/_activity_methods.py` — inside
+  `record_invocation_end()`; teardown clears a stall before its listener
+  binding is removed by either reader.
+- `ralph/agents/idle_watchdog/idle_watchdog.py` — inside
+  `_accumulate_waiting_run()` on the `EXITED` transition (the wait
+  is over, any prior `SUSPECTED_FROZEN` / `HARD_STOP`-driven stall
+  is stale).
+
+`_set_stall(active=False, ...)` is idempotent: a redundant call
+emits no event. The flag stays in lockstep with the watchdog's
+own assessment (a single source of truth), and the
+`is_stalled` property exposes the runtime state for tests and
+diagnostics.
+
+### Plumb to the Status Bar host
+
+`ralph/display/subscriber.py` accepts a new optional constructor
+parameter `watchdog_attention_sink: Callable[[str | None], None] | None`.
+Every `WaitingStatusEvent` carries `stall_active`, the watchdog's
+assessment at emission time. `record_waiting_status` mirrors that flag to
+the sink on every event (`"stalled"` when true, otherwise `None`), so any
+live watchdog event re-synchronizes the host without a display-side latch.
+The sink call is wrapped defensively (a misbehaving host cannot break the
+snapshot path).
+
+`ralph/display/parallel_display.py` gains a thread-safe
+`watchdog_attention: str | None` field with a `watchdog_attention`
+property and a `set_watchdog_attention(value)` setter. The
+`PipelineSubscriber(...)` construction site at line ~626 wires
+`watchdog_attention_sink=self.set_watchdog_attention`.
+
+### Status Bar host substitution
+
+`ralph/display/status_bar.py` replaces
+`_model_with_live_activity_anchor` with
+`_model_with_live_attention`. On each Live tick, when
+`model.attention is None` and the host display reports a watchdog
+attention, the host returns
+`dataclasses.replace(model, attention=live)`. Pushed operator
+states (`waiting` / `retrying` / `terminated`) ALWAYS win: a host
+that reports `stalled` while the runner pushed `waiting` does not
+overwrite the pushed state. The defensive `getattr` read keeps
+legacy or stub hosts (no `watchdog_attention` slot) degrading to
+the pushed model rather than raising inside the render callback.
+
+`_resolve_attention_state` no longer derives `stalled` from a time
+gap. The function reads only `model.attention` (the pushed state
+OR the host-substituted watchdog value) and indexes it against
+`ATTENTION_PRESENTATION`. Unknown values are ignored defensively
+so a future addition to the named state set cannot poison the
+slot.
+
+### Display formatting
+
+`ralph/display/subscriber.py::_format_waiting_status_line` gains
+explicit branches for the two new kinds — `STALLED` renders
+`Agent stalled (idle_elapsed=Ns, watchdog assessment)` and
+`STALL_RESUMED` renders
+`Agent resumed after stall (idle_elapsed=Ns)`. Both branches
+NEVER fall through to the `hit hard ceiling` template reserved
+for `HARD_STOP` (the kind dispatch is locked by
+`audit_lint_bypass.py::_NOQA_ALLOWLIST`).
+
+### Stall-label lifetime
+
+A `STALLED` label belongs to the invocation whose watchdog raised it. The
+subscriber mirrors every `WaitingStatusEvent.stall_active` assessment; it does
+not latch transition kinds. Both reader teardown paths call
+`record_invocation_end()` before removing their waiting listener, so the final
+false assessment clears an active label. A healthy invocation remains silent.
+
+No consumer may copy `watchdog_attention` into a pushed
+`StatusBarModel.attention`: the Status Bar substitutes the host value on each
+Live tick only when the pushed operator attention is `None`. Conflict-resolution
+and policy-remediation status pushes follow that rule.
+
+### Run cleanup
+
+`ralph/pipeline/run_loop.py::_cleanup_pipeline` calls
+`active_display.set_watchdog_attention(None)` alongside the existing
+`unsubscribe_bus()` / `unsubscribe_display()` so a stale `stalled`
+value never outlives the run. The pushed `terminated` state already
+wins during shutdown rendering, so clearing the watchdog attention
+here is the safest cleanup step (no leaked state across runs).
+
+### Pin tests (black-box capture)
+
+- `tests/agents/idle_watchdog/test_stall_status_events.py` — the
+  watchdog-sourced transition contract: `_set_stall` emits
+  `STALLED` exactly once on entry into a stall and `STALL_RESUMED`
+  exactly once on exit; repeated ticks emit no duplicates; the
+  `STALL_RESUMED` triggers (`record_activity`,
+  `record_invocation_end`, `_accumulate_waiting_run` EXITED)
+  each flip the flag and emit the matching kind; a stall
+  oscillating across many ticks still emits exactly-once per
+  transition. The `is_stalled` property mirrors the runtime state.
+- `tests/display/test_subscriber.py` — explicit `_format_waiting_status_line`
+  text for the two new kinds (never the `hit hard ceiling` fallback);
+  the `watchdog_attention_sink` mirror of every event's `stall_active`
+  assessment, and a raising sink does not break the snapshot path.
+- `tests/display/test_status_bar_liveness.py` — the bar renders
+  `STALLED` ONLY when the watchdog has pushed
+  `attention='stalled'`; a bare time gap of any size never produces
+  `STALLED` when `attention` is `None`;
+  `_STALL_THRESHOLD_SECONDS` no longer exists on the module
+  (`test_stall_threshold_named_constant_removed`); pushed
+  operator states win over a watchdog-sourced `stalled`.
+- `tests/display/test_status_bar_live_activity_anchor.py` —
+  rewritten in place to test the new `_model_with_live_attention`
+  host substitution (the old `_model_with_live_activity_anchor`
+  symbol is gone). A watchdog-sourced `stalled` renders
+  `STALLED`; a pushed `waiting` / `retrying` / `terminated`
+  always wins; a host without `watchdog_attention` degrades to
+  the pushed model; a watchdog-sourced `None` renders blank.
+- `tests/display/test_accessibility_matrix.py` — the two
+  `_STALL_THRESHOLD_SECONDS`-based cases are reworked to the
+  pushed-attention form (a pushed `stalled` renders STALLED;
+  no pushed attention never renders STALLED).
+- `tests/pipeline/test_run_loop_status_bar_wiring.py` — the
+  production push path no longer carries
+  `last_activity_monotonic` (the dead display-side derivation
+  is gone); the host's `watchdog_attention` slot exists,
+  defaults to `None`, and the setter writes the slot; the
+  captured model carries only `run_started_monotonic` and
+  `attention`.
+
+### Behavior change
+
+The 30 s `STALLED` label for a healthy agent with a quiet stdout
+is gone (the previous false positive). A stalled run now flips to
+`STALLED` when the watchdog emits the stall-state transition —
+i.e. the pre-fire `SUSPECTED_FROZEN` suspect-threshold cross, the
+`HARD_STOP` ceiling cross, or a non-absolute `FIRE` verdict —
+and the bar stays clean for a healthy agent indefinitely (until
+the watchdog itself raises the alarm). `SUSPECTED_FROZEN` is a
+stall assessment (the watchdog has not yet returned a `FIRE`
+verdict — the second ``evaluate()`` still returns
+``WAITING_ON_CHILD``) and is paired with `STALLED` because the
+operator-visible signal is "the watchdog believes this is a
+stall", not "the watchdog has actually fired". Documented under
+the `### Changed` header in `CHANGELOG.md` `[Unreleased]`.
+
+---
+
 ## AC-5 (product-brief) — Recovery & stopping visibility
 
 > The R1–R8 watchdog spec covers product-brief acceptance criteria
@@ -602,12 +835,12 @@ controller's ``snapshot()`` reports a non-error state.
   is appended to the exception message in a
   `[last_tool_call=..., elapsed=...]` suffix so a logged traceback
   is actionable without requiring a debugger. The exception's
-  base diagnostic message text (`"(no artifact, no
-  declare_complete)"`) is the root-cause signature produced by
-  `ralph/agents/completion_signals.py::find_declare_complete_marker`
-  in `ralph/agents/invoke/_completion.py` when an agent subprocess
-  exits cleanly (rc=0) WITHOUT a completion artifact AND WITHOUT
-  the `declare_complete` marker. The historical `flagged_for_review=true`
+  base diagnostic message text (`"completion sentinel missing, or
+  required artifact receipt missing"`) is the root-cause signature
+  produced by `ralph/agents/invoke/_completion.py` when an agent
+  subprocess exits cleanly (rc=0) without the durable
+  `declare_complete` sentinel or without a receipt required by the
+  phase. Transcript markers are diagnostic only. The historical `flagged_for_review=true`
   log line was the ambiguous-warning path that the deterministic
   classification introduced here explicitly removes; no current
   attribute or method of `OpenCodeResumableExitError` carries the
@@ -714,7 +947,7 @@ level 1 rejects unsupported claims per AGENTS.md.
   `ralph.agents.invoke._completion._check_process_result` raises
   `OpenCodeResumableExitError` carrying the captured `session_id`
   when the agent subprocess exits `rc=0` without completion evidence
-  (no artifact, no `declare_complete`). A regression at
+  (no durable sentinel, or no required receipt). A regression at
   `_completion.py:389` (the `raise` statement) would silently break
   the R4 watchdog-driven resume contract — the recovery controller
   would lose its typed exception to lift `resumable_session_id` from

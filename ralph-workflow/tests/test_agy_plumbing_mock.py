@@ -29,7 +29,6 @@ from pathlib import Path
 
 import pytest
 
-from ralph.config.enums import AgentTransport
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _AGENT_SESSION_CEILINGS,
     _SMOKE_IDLE_TIMEOUT_SECONDS,
@@ -40,27 +39,29 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 )
 
 
-def test_agy_prompt_allows_agent_artifacts() -> None:
-    """The AGY smoke prompt explicitly allows ``.agent/artifacts/`` writes."""
+def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
+    """The AGY smoke prompt submits Markdown through the canonical MCP tool."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
-        submit_artifact_tool_name="ralph_submit_artifact",
-        transport=AgentTransport.AGY,
+        submit_artifact_tool_name="ralph_submit_md_artifact",
     )
-    assert ".agent/artifacts/" in prompt_text
-    assert "Do not touch files outside the workspace-managed paths" in prompt_text
-    assert "Do not touch files outside tmp/" not in prompt_text
+    assert "Call `ralph_submit_md_artifact`" in prompt_text
+    assert 'artifact_type="smoke_test_result"' in prompt_text
+    assert "```markdown" in prompt_text
+    assert "mandatory final action" in prompt_text
+    assert "receipt is not phase completion" in prompt_text
+    assert "Do not start background work" in prompt_text
 
 
-def test_agy_prompt_forbids_other_agent_subdirectories() -> None:
-    """The AGY smoke prompt forbids writes outside ``tmp/`` and ``.agent/artifacts/``."""
+def test_agy_prompt_allows_validated_fallback_when_submit_tool_is_unavailable() -> None:
+    """AGY can leave the validated fallback without writing a canonical artifact."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
-        submit_artifact_tool_name="ralph_submit_artifact",
-        transport=AgentTransport.AGY,
+        submit_artifact_tool_name="ralph_submit_md_artifact",
     )
-    assert "do not write to any other `.agent/` subdirectory" in prompt_text
-    assert "workspace root" in prompt_text
+    assert "If the submission tool is unavailable" in prompt_text
+    assert ".agent/tmp/smoke_test_result.md" in prompt_text
+    assert "Do not write the canonical artifact directly" in prompt_text
 
 
 def test_smoke_invariants_hold() -> None:

@@ -6,7 +6,6 @@ and is suppressed on resume, same-phase retry, and analysis loopback.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,14 +29,15 @@ def _load_default_policy_bundle() -> tuple[PipelinePolicy, ArtifactsPolicy]:
 def _write_artifact_files(
     ws: FsWorkspace,
     artifact_type: str,
-    json_path: str,
+    artifact_path: str,
     md_path: str | None,
 ) -> None:
     """Write minimal artifact files for a given artifact type."""
-    ws.mkdirs(Path(json_path).parent.as_posix())
-    ws.write(json_path, json.dumps({"type": artifact_type, "content": "test"}))
+    ws.mkdirs(Path(artifact_path).parent.as_posix())
+    document = f"---\ntype: {artifact_type}\n---\n## Summary\n- [S1] test\n"
+    ws.write(artifact_path, document)
     if md_path:
-        ws.write(md_path, f"# {artifact_type}\n\ntest content")
+        ws.write(md_path, document)
 
 
 class TestHandleInlineEffectPhaseEntryClearing:
@@ -52,17 +52,17 @@ class TestHandleInlineEffectPhaseEntryClearing:
         ws = FsWorkspace(root)
 
         # Pre-create all 6 planning, planning_analysis, and development_analysis files
-        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
@@ -87,11 +87,11 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # All 6 files cleared
-        assert not ws.exists(".agent/artifacts/plan.json")
+        assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_planning_to_development_clears_analysis_and_dev(self, tmp_path: Path) -> None:
@@ -105,19 +105,19 @@ class TestHandleInlineEffectPhaseEntryClearing:
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
@@ -146,11 +146,11 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # All 6 files cleared
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_result.json")
+        assert not ws.exists(".agent/artifacts/development_result.md")
         assert not ws.exists(".agent/DEVELOPMENT_RESULT.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_development_commit_clears_dev_and_analysis(self, tmp_path: Path) -> None:
@@ -163,13 +163,13 @@ class TestHandleInlineEffectPhaseEntryClearing:
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
@@ -200,9 +200,9 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # All 4 files cleared
-        assert not ws.exists(".agent/artifacts/development_result.json")
+        assert not ws.exists(".agent/artifacts/development_result.md")
         assert not ws.exists(".agent/DEVELOPMENT_RESULT.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_planning_resume_does_not_clear(self, tmp_path: Path) -> None:
@@ -212,7 +212,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
 
         effect = PreparePromptEffect(
             phase="planning", previous_phase=None, drain="planning", iteration=0
@@ -234,7 +234,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # Files still exist (resume guard suppressed clearing)
-        assert ws.exists(".agent/artifacts/plan.json")
+        assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
 
     def test_analysis_loopback_does_not_clear(self, tmp_path: Path) -> None:
@@ -244,7 +244,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
 
         effect = PreparePromptEffect(
             phase="planning", previous_phase="planning_analysis", drain="planning", iteration=3
@@ -268,7 +268,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # Files still exist (analysis loopback, not fresh)
-        assert ws.exists(".agent/artifacts/plan.json")
+        assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
 
     def test_same_phase_loopback_does_not_clear(self, tmp_path: Path) -> None:
@@ -281,7 +281,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
@@ -307,7 +307,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # Files still exist
-        assert ws.exists(".agent/artifacts/development_result.json")
+        assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_development_commit_to_planning_clears_planning(self, tmp_path: Path) -> None:
@@ -317,17 +317,17 @@ class TestHandleInlineEffectPhaseEntryClearing:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
@@ -355,11 +355,11 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # All 6 files cleared despite checkpoint_saved_count > 0
-        assert not ws.exists(".agent/artifacts/plan.json")
+        assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_resumed_non_planning_phase_does_not_clear(self, tmp_path: Path) -> None:
@@ -372,7 +372,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
@@ -396,5 +396,5 @@ class TestHandleInlineEffectPhaseEntryClearing:
             runner_module.materialize_prepared_prompt = original
 
         # Files still exist (non-planning resume guard suppressed clearing)
-        assert ws.exists(".agent/artifacts/development_result.json")
+        assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")

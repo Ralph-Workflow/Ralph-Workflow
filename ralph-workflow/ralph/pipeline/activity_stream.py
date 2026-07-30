@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import replace
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -14,95 +13,43 @@ from rich.text import Text
 
 from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
-from ralph.config.enums import AgentTransport, Verbosity
-from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.config.enums import AgentTransport
+from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
     ParallelDisplay,
     emit_activity_line,
-    get_display_context,
-    resolve_active_display,
     subscriber_for_display,
 )
+from ralph.display.tool_args import format_tool_input
 from ralph.mcp.server._activity_sink import invoke_subagent_sink
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
-from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
     from collections import deque
     from collections.abc import Callable, Iterable, Iterator
-    from pathlib import Path
 
     from ralph.agents.idle_watchdog import SubagentPidRegistry
     from ralph.config.agent_config import AgentConfig
-    from ralph.display.artifact_reader import PlanSummary
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
-    from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.pipeline.events import Event
 
 if TYPE_CHECKING:
-
-    class _ReadPlanArtifactFn(Protocol):
-        def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
 
     class _ParallelDisplayModule(Protocol):
         ParallelDisplay: type[ParallelDisplay]
 
 
 _MAX_TEXT_LENGTH = 200
-_MAX_TOOL_INPUT_LENGTH = 120
-_MAX_TOOL_RESULT_LENGTH = 150
 _MAX_TOOL_RESULT_BRIEF = 80
-_TOOL_RESULT_BRIEF_THRESHOLD = 500
-_MAX_METADATA_PARTS = 3
 _MAX_METADATA_SUMMARY_LENGTH = 120
+_MAX_RETAINED_TOOL_TARGETS = 128
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
+    module = cast(
+        "_ParallelDisplayModule", import_module("ralph.display.parallel_display")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     return module.ParallelDisplay
-
-
-def _emit_via_display(
-    display_context: DisplayContext,
-    method_name: str,
-    *args: object,
-    **kwargs: object,
-) -> bool:
-    """Resolve an active display and call the named method, returning success.
-
-    Returns True when a ParallelDisplay with the requested method was found
-    and invoked. Returns False when no active display is available, allowing
-    callers to fall back to the legacy free-function path if one exists.
-
-    When ``display_context`` itself is a ``ParallelDisplay`` (test fakes,
-    legacy paths) the method is called directly on the supplied object. When
-    it is a ``DisplayContext`` (the canonical path), the active display is
-    resolved via ``resolve_active_display``.
-    """
-    display: object | None = display_context
-    if not isinstance(display_context, ParallelDisplay):
-        try:
-            display = resolve_active_display(None, display_context)
-        except Exception:
-            return False
-    if display is None:
-        return False
-    method = getattr(display, method_name, None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    if method is None or not callable(method):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        return False
-    try:
-        method(*args, **kwargs)
-    except Exception:
-        return False
-    return True
-
-
-def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
-    module = import_module("ralph.display.artifact_reader")
-    return cast("_ReadPlanArtifactFn", module.read_plan_artifact)
 
 
 def _terminal_width() -> int:
@@ -111,135 +58,6 @@ def _terminal_width() -> int:
 
 def _available_width(prefix_len: int) -> int:
     return max(40, _terminal_width() - prefix_len - 2)
-
-
-@dataclass(frozen=True)
-class _ArtifactRenderCtx:
-    workspace_root: Path
-    display_context: DisplayContext
-    display: ParallelDisplay | None
-    verbosity: Verbosity
-    ra: RequiredArtifact
-
-
-def render_phase_artifact_handoff(
-    phase: str,
-    event: Event,
-    workspace_root: Path,
-    display: ParallelDisplay | None,
-    ctx: ArtifactHandoffContext | None = None,
-) -> None:
-    """Render the artifact handoff panel after a phase completes."""
-    _ctx = ctx or ArtifactHandoffContext()
-    display_ctx = get_display_context(display, _ctx.display_context)
-    effective_drain = _ctx.drain or phase
-    required_artifact = (
-        resolve_phase_required_artifact(
-            _ctx.policy_bundle.pipeline,
-            _ctx.policy_bundle.artifacts,
-            phase=phase,
-            drain=effective_drain,
-        )
-        if _ctx.policy_bundle is not None
-        else None
-    )
-
-    if required_artifact is None:
-        if event != PipelineEvent.AGENT_SUCCESS:
-            return
-        if _ctx.policy_bundle is not None:
-            phase_def = _ctx.policy_bundle.pipeline.phases.get(phase)
-            role = phase_def.role if phase_def is not None else None
-            if role == "analysis":
-                _emit_via_display(
-                    display_ctx, "emit_analysis_decision", workspace_root, effective_drain
-                )
-            else:
-                logger.debug(
-                    "policy: no renderer for phase '{}' (role={});"
-                    " skipping artifact handoff render",
-                    phase,
-                    role,
-                )
-        return
-
-    artifact_type = required_artifact.artifact_type
-    if artifact_type.endswith("_analysis_decision"):
-        _emit_via_display(display_ctx, "emit_analysis_decision", workspace_root, effective_drain)
-        return
-
-    if event == PipelineEvent.AGENT_SUCCESS:
-        _render_success_artifact(
-            artifact_type,
-            _ArtifactRenderCtx(
-                workspace_root=workspace_root,
-                display_context=display_ctx,
-                display=display,
-                verbosity=_ctx.verbosity,
-                ra=required_artifact,
-            ),
-        )
-
-
-def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> None:
-    def _emit_close(produced: str) -> None:
-        if ctx.verbosity != Verbosity.QUIET and hasattr(ctx.display, "record_artifact_outcome"):
-            with suppress(Exception):
-                cast("ParallelDisplay", ctx.display).record_artifact_outcome(produced)
-
-    if artifact_type == "plan":
-        _emit_via_display(ctx.display_context, "emit_plan_artifact", ctx.workspace_root)
-        with suppress(Exception):
-            plan = _read_plan_artifact_func()(ctx.workspace_root)
-            produced = (
-                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
-                if plan is not None
-                else "(no plan artifact on disk)"
-            )
-            _emit_close(produced)
-        return
-
-    if artifact_type == "development_result":
-        _emit_via_display(ctx.display_context, "emit_development_artifact", ctx.workspace_root)
-        produced = (
-            "result produced"
-            if (ctx.workspace_root / ctx.ra.json_path).exists()
-            else "no result artifact"
-        )
-        _emit_close(produced)
-        return
-
-    if artifact_type == "issues":
-        _emit_via_display(ctx.display_context, "emit_review_artifact", ctx.workspace_root)
-        with suppress(Exception):
-            issue_count = _count_issues(ctx.workspace_root / ctx.ra.json_path)
-            _emit_close(f"{issue_count} issue(s)")
-        return
-
-    if artifact_type == "fix_result":
-        _emit_via_display(ctx.display_context, "emit_fix_artifact", ctx.workspace_root)
-        _emit_close("applied")
-
-
-def _count_issues(issues_path: Path) -> int:
-    if not issues_path.exists():
-        return 0
-    try:
-        issues_text = issues_path.read_text(encoding="utf-8")
-        issues_data = cast("object", json.loads(issues_text))
-        content_obj = (
-            cast("dict[str, object]", issues_data).get("content")
-            if isinstance(issues_data, dict)
-            else issues_data
-        )
-        issues_list = (
-            cast("dict[str, object]", content_obj).get("issues")
-            if isinstance(content_obj, dict)
-            else content_obj
-        )
-        return len(issues_list) if isinstance(issues_list, list) else 0
-    except Exception:
-        return 0
 
 
 def stream_parsed_agent_activity(
@@ -260,10 +78,18 @@ def stream_parsed_agent_activity(
     the Trustworthy Idle Watchdog spec). Both kwargs are optional;
     legacy callers continue to work without them.
     """
-    transport = cast("AgentTransport | None", kwargs.get("transport"))
-    display_context = cast("DisplayContext | None", kwargs.get("display_context"))
-    raw_output_sink = cast("deque[str] | list[str] | None", kwargs.get("raw_output_sink"))
-    rendered_output_sink = cast("deque[str] | list[str] | None", kwargs.get("rendered_output_sink"))
+    transport = cast(
+        "AgentTransport | None", kwargs.get("transport")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    display_context = cast(
+        "DisplayContext | None", kwargs.get("display_context")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    raw_output_sink = cast(
+        "deque[str] | list[str] | None", kwargs.get("raw_output_sink")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    rendered_output_sink = cast(
+        "deque[str] | list[str] | None", kwargs.get("rendered_output_sink")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
     subagent_pid_registry = cast(
         "SubagentPidRegistry | None",
@@ -278,7 +104,9 @@ def stream_parsed_agent_activity(
         parser_key = resolve_parser_key(
             agent_config.cmd,
             agent_config.json_parser,
-            cast("AgentTransport", agent_config.transport),
+            cast(
+                "AgentTransport", agent_config.transport
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
     else:
         parser_key = (
@@ -307,7 +135,9 @@ def stream_parsed_agent_activity(
     # SUBAGENT_PROGRESS display event can re-use the exact string the
     # sink received (avoids re-sanitizing or re-emitting raw payload).
     last_subagent_summary: list[str] = []
+    tool_targets: dict[str, dict[str, object]] = {}
     for parsed_line in parser.parse(_iter_lines()):
+        retained_line = _retain_tool_result_target(parsed_line, tool_targets)
         # Forward parsed lines to the per-parser subagent sink so the
         # idle watchdog's per-channel evidence surface stays fresh for
         # ALL parsers (Claude, OpenCode, Codex, Gemini, Pi, Agy,
@@ -323,50 +153,86 @@ def stream_parsed_agent_activity(
             )
             last_subagent_summary.clear()
             try:
-                _capture_summary_into(parsed_line, emit_hook, last_subagent_summary)
+                _capture_summary_into(retained_line, emit_hook, last_subagent_summary)
             except Exception:
                 logger.debug("parser.emit_subagent_activity failed", exc_info=True)
-        rendered = _render_agent_activity_line(parsed_line, agent_name)
+        rendered = _render_agent_activity_line(retained_line, agent_name)
         if rendered is not None and rendered_output_sink is not None:
             rendered_output_sink.append(rendered.plain)
         if isinstance(display, parallel_display_cls):
-            kind = map_parser_type_to_kind(parsed_line.type)
+            kind = map_parser_type_to_kind(retained_line.type)
+            # DA-002 (wt-028-display S-2 / AC-01): the parser-to-display
+            # handoff forwards the source-event timestamp the parser
+            # extracted so the rendered record carries ``[hh:mm:ss]``
+            # from the agent's own clock rather than the display
+            # clock. ``None`` keeps the pre-fix display-clock
+            # fallback for any parser that does not yet yield a
+            # source timestamp.
             display.emit_parsed_event(
-                agent_name, kind, parsed_line.content, parsed_line.metadata or {}
+                agent_name,
+                kind,
+                retained_line.content,
+                retained_line.metadata or {},
+                timestamp=retained_line.timestamp,
             )
             # emit_parsed_event already records a tool_use on the display's
             # subscriber; recording it again here would double-count the repeat
             # counter (a single call would render "(x2)"). Record only non-tool
             # lines here on the parallel path.
-            record_on_subscriber = parsed_line.type != "tool_use"
+            record_on_subscriber = retained_line.type != "tool_use"
         else:
             if rendered is not None:
                 emit_activity_line(display, None, rendered.plain, display_context=display_context)
             record_on_subscriber = True
         if subscriber is not None and record_on_subscriber:
-            _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
+            _record_activity_on_subscriber(subscriber, retained_line, rendered, agent_name)
 
-        # Surface the sanitized subagent summary as a SUBAGENT_PROGRESS
-        # event on the parallel display so the operator sees
-        # real-time per-tool progress on the console transcript.  We
-        # only fire when (a) we are using a parallel display, (b) the
-        # parser hook emitted a summary for this line, and (c) the
-        # summary is non-empty.  The summary was already sanitized by
-        # the parser hook so no further sanitization is needed here.
-        if isinstance(display, parallel_display_cls) and last_subagent_summary:
-            summary = last_subagent_summary[0]
-            try:
-                display.emit_parsed_event(
-                    agent_name,
-                    ActivityEventKind.SUBAGENT_PROGRESS,
-                    summary,
-                    parsed_line.metadata or {},
-                )
-            except Exception:
-                logger.debug(
-                    "display.emit_parsed_event for SUBAGENT_PROGRESS failed",
-                    exc_info=True,
-                )
+
+def _tool_correlation_key(metadata: dict[str, object], tool_name: str) -> str:
+    """Return the documented cross-parser call identifier, falling back to tool name."""
+    return tool_call_id(metadata) or tool_name
+
+
+def _retain_tool_result_target(
+    line: AgentOutputLine, tool_targets: dict[str, dict[str, object]]
+) -> AgentOutputLine:
+    """Carry a tool call's structured target into its matching result metadata."""
+    metadata = line.metadata
+    tool = metadata.get("tool")
+    tool_name = tool if isinstance(tool, str) else (line.content or "")
+    key = _tool_correlation_key(metadata, tool_name)
+    if line.type == "tool_use":
+        raw_input = metadata.get("input", metadata.get("args", metadata.get("arguments")))
+        target = format_tool_input(raw_input)
+        if target:
+            retained: dict[str, object] = {"target": target, "tool_name": tool_name}
+            payload: object = raw_input
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except (TypeError, ValueError):
+                    payload = None
+            if isinstance(payload, dict):
+                for field in ("path", "file_path", "filePath", "filename"):
+                    value = payload.get(field)
+                    if isinstance(value, str) and value:
+                        retained["tool_path"] = value
+                        break
+                for field in ("line_start", "offset"):
+                    value = payload.get(field)
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        retained[field] = value
+            if key:
+                if len(tool_targets) >= _MAX_RETAINED_TOOL_TARGETS:
+                    tool_targets.pop(next(iter(tool_targets)))
+                tool_targets[key] = retained
+        return line
+    if line.type != "tool_result" or not key or metadata.get("target"):
+        return line
+    retained_target = tool_targets.pop(key, None)
+    if not retained_target:
+        return line
+    return replace(line, metadata={**metadata, **retained_target})
 
 
 def _capture_summary_into(
@@ -478,137 +344,65 @@ def _truncate(text: str, max_length: int) -> str:
 
 
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    content_renderers: dict[str, Callable[[], Text | None]] = {
-        "text": lambda: _render_text_line(agent_name, output.content, "white"),
-        "thinking": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "result": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "status": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "tool_use": lambda: _render_tool_use_line(agent_name, output),
-        "tool_result": lambda: _render_tool_result_line(agent_name, output.content),
-        "error": lambda: _render_error_line(agent_name, output.content),
-    }
-    renderer = content_renderers.get(output.type)
-    if renderer is not None:
-        return renderer()
-    return _render_metadata_event_line(agent_name, output)
+    """Render an agent event through the single registry.
 
+    After the wt-028-display consolidation, this function constructs a
+    canonical :class:`AgentActivityEvent` from the parser-shaped
+    :class:`AgentOutputLine` via the shared normalizer
+    (:func:`ralph.display.agent_event_renderer.normalize_event_from_agent_output_line`)
+    so agent-specific quirks (claude / codex / opencode / ...) are
+    removed BEFORE rendering. It then delegates every presentation
+    decision to the single registry via
+    :func:`ralph.display.agent_event_renderer.render_event` and
+    extracts the plain text from the returned :class:`rich.text.Text`
+    so downstream callers that expect a styled Text keep working
+    unchanged.
 
-def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
-    stripped = content.strip()
-    if not stripped:
+    The previous per-type helpers (``_render_text_line`` /
+    ``_render_tool_use_line`` / ``_render_tool_result_line`` /
+    ``_render_error_line`` / ``_render_metadata_event_line`` /
+    ``_tool_input_summary`` / ``_metadata_summary`` / ``_kv_summary``
+    / ``_styled_prefix``) were the pipeline runner's competing
+    formatter; they have been deleted and this function is the
+    single rendering seam on the pipeline-runnner side.
+
+    Production call sites construct typed events at ingestion and call
+    :func:`render_event` directly. The plain-text adapter
+    ``render_event_kind_text`` is kept only at the final presentation
+    boundary (for paths that don't carry a Console / unit_id and need
+    a plain string back), not in the rendering seam.
+    """
+    from ralph.display.activity_provider import ActivityProvider
+    from ralph.display.agent_event_renderer import (
+        normalize_event_from_agent_output_line,
+        render_event,
+    )
+
+    # The pipeline runner's caller chain does not always carry a
+    # parser-shaped ``provider`` hint (it predates the typed-event
+    # boundary). Use ``UNKNOWN`` so the canonical normalizer never has
+    # to invent one; backend-specific quirks are already removed by
+    # ``make_event`` -> ``map_parser_type_to_kind`` so the registry
+    # renders the same line regardless of which provider fed the
+    # ``AgentOutputLine`` here.
+    event = normalize_event_from_agent_output_line(
+        output, provider=ActivityProvider.UNKNOWN, unit_id=agent_name
+    )
+    from ralph.display.agent_event_renderer import _truncate_to_cells
+
+    text = render_event(event, unit_id=agent_name, escape_body=False)
+    plain = _truncate_to_cells(text.plain, 200)
+    if not plain:
         return None
-    rendered = _styled_prefix(agent_name, style)
-    text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
-    rendered.append(_truncate(stripped, text_width))
-    return rendered
-
-
-def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
-    tool_name = output.content.strip() or "unknown-tool"
-    prefix_label = f"{agent_name} tool"
-    rendered = _styled_prefix(prefix_label, "magenta")
-    rendered.append(tool_name, style="bold magenta")
-    input_summary = _tool_input_summary(output.metadata)
-    if input_summary:
-        prefix_total = len(prefix_label) + len(tool_name) + 4
-        tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
-        truncated = _truncate(input_summary, tool_input_width)
-        rendered.append(f" ({truncated})", style="dim")
-    return rendered
-
-
-def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
-    result = content.strip()
-    if not result:
-        return None
-    result_label = f"{agent_name} result"
-    rendered = _styled_prefix(result_label, "dim")
-    result_prefix_len = len(result_label) + 2
-    max_length = (
-        _MAX_TOOL_RESULT_BRIEF
-        if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD
-        else _MAX_TOOL_RESULT_LENGTH
-    )
-    result_width = min(max_length, _available_width(result_prefix_len))
-    rendered.append(_truncate(result, result_width), style="dim")
-    return rendered
-
-
-def _render_error_line(agent_name: str, content: str) -> Text:
-    error = content.strip() or "unknown error"
-    rendered = _styled_prefix(f"{agent_name} ✗", "red")
-    rendered.append(error, style="bold red")
-    return rendered
-
-
-def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
-    summary = _metadata_summary(output.metadata)
-    rendered = _styled_prefix(agent_name, "dim")
-    rendered.append(output.type, style="dim")
-    if summary:
-        rendered.append(f" ({summary})", style="dim")
-    return rendered
-
-
-def _tool_input_summary(metadata: dict[str, object]) -> str:
-    if not metadata:
-        return ""
-    input_data = metadata.get("input")
-    if not isinstance(input_data, dict):
-        return ""
-    args = input_data.get("args")
-    if isinstance(args, str) and args:
-        return args
-    return _kv_summary(
-        input_data,
-        preferred_keys=("command", "workdir", "path", "file_path", "pattern", "name"),
-        max_parts=_MAX_METADATA_PARTS,
-        max_length=_MAX_TOOL_INPUT_LENGTH,
-    )
-
-
-def _metadata_summary(metadata: dict[str, object]) -> str:
-    if not metadata:
-        return ""
-    return _kv_summary(
-        metadata,
-        preferred_keys=(
-            "status",
-            "summary",
-            "phase",
-            "decision",
-            "message",
-            "event",
-            "tool",
-            "path",
-            "workdir",
-            "command",
-        ),
-        max_parts=_MAX_METADATA_PARTS,
-        max_length=_MAX_METADATA_SUMMARY_LENGTH,
-    )
-
-
-def _kv_summary(
-    values: dict[str, object],
-    *,
-    preferred_keys: tuple[str, ...],
-    max_parts: int,
-    max_length: int,
-) -> str:
-    parts: list[str] = []
-    for key in preferred_keys:
-        value = _format_metadata_value(values.get(key))
-        if value is None:
-            continue
-        parts.append(f"{key}={value}")
-        if len(parts) >= max_parts:
-            break
-    return _truncate(", ".join(parts), max_length) if parts else ""
+    return Text(plain)
 
 
 def _format_metadata_value(value: object) -> str | None:
+    """Return the metadata value if it's a non-empty string, else ``None``.
+
+    Used by :func:`_record_activity_on_subscriber` to extract clean
+    string values for ``path`` / ``workdir`` / ``command`` slots.
+    """
     if value is None:
         return None
     if isinstance(value, str) and value:
@@ -616,18 +410,46 @@ def _format_metadata_value(value: object) -> str | None:
     return None
 
 
-def _styled_prefix(label: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}: ", style=f"bold {style}")
-    return text
+# NOTE: the per-type render helpers ``_render_text_line``,
+# ``_render_tool_use_line``, ``_render_tool_result_line``,
+# ``_render_error_line``, ``_render_metadata_event_line``,
+# ``_tool_input_summary``, ``_metadata_summary``, ``_kv_summary``,
+# ``_styled_prefix`` were the pipeline runner's competing
+# agent-output formatter. After the wt-028-display consolidation
+# they are deleted; :mod:`ralph.display.agent_event_renderer` is
+# the single source of truth for agent-event presentation
+# decisions.
 
 
 render_agent_activity_line = _render_agent_activity_line
 record_activity_on_subscriber = _record_activity_on_subscriber
-metadata_summary = _metadata_summary
+# ``truncate`` / ``available_width`` / ``terminal_width`` / ``MAX_*``
+# were removed when the per-type render helpers were consolidated into
+# the agent-event renderer registry. External callers should use
+# :mod:`ralph.display.agent_event_renderer` directly instead.
 truncate = _truncate
 available_width = _available_width
 terminal_width = _terminal_width
+# Truncation limits exposed for backward compatibility with tests that
+# assert the legacy ``MAX_TEXT_LENGTH`` / ``MAX_TOOL_RESULT_BRIEF``
+# constants. The registry's own cell-aware truncation uses 200 cells
+# by default (see ``_METADATA_SUMMARY_MAX_CHARS`` and the
+# ``_truncate_to_cells`` helper); these aliases pin the historical
+# values so the suite's outer surface stays unchanged.
 MAX_TEXT_LENGTH = _MAX_TEXT_LENGTH
 MAX_TOOL_RESULT_BRIEF = _MAX_TOOL_RESULT_BRIEF
 MAX_METADATA_SUMMARY_LENGTH = _MAX_METADATA_SUMMARY_LENGTH
+
+
+def metadata_summary(metadata: dict[str, object]) -> str:
+    """Backwards-compatible metadata summary shim.
+
+    Returns the registry's stable ``key=value, ...`` summary for the
+    preferred metadata keys (status / summary / phase / decision /
+    message / event / tool / path / workdir / command). Kept as a
+    free function so the existing pipeline-runner test that asserts
+    ``runner_module.metadata_summary`` still works.
+    """
+    from ralph.display.agent_event_renderer import _metadata_summary
+
+    return _metadata_summary(metadata)

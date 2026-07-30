@@ -12,7 +12,7 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.enums import Verbosity
@@ -97,7 +97,7 @@ def _make_fake_bundle() -> PolicyBundle:
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
+                artifact_path=".agent/artifacts/plan.md",
             )
         }
     )
@@ -127,7 +127,7 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
     config.general.max_same_agent_retries = 1
     config.general.checkpoint = MagicMock()
     config.general.parallel_max_workers = None
-    return cast("UnifiedConfig", config)
+    return config
 
 
 def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: ModuleType) -> None:
@@ -444,7 +444,7 @@ def test_pipeline_deps_policy_bundle_is_authoritative_for_pro_hooks(
     )
     _install_display_context(monkeypatch, run_loop_module)
 
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         _build_config(tmp_path),
         initial_state=state,
         pro_hooks=hooks,
@@ -474,11 +474,11 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     def fake_system_materializer(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return "fake-system-prompt.md"
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return "fake-master-prompt.md"
 
     def fake_phase_materializer(
         context: object = None,
@@ -501,7 +501,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     hooks = ProPipelineHooks(
         display_context=override_display_context,
         model_identity=model_identity,
-        system_prompt_materializer=fake_system_materializer,
+        master_prompt_materializer=fake_system_materializer,
         phase_prompt_materializer=fake_phase_materializer,
         artifact_requirements_resolver=fake_artifact_resolver,
     )
@@ -527,7 +527,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
         lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
     )
 
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         _build_config(tmp_path),
         initial_state=state,
         pro_hooks=hooks,
@@ -540,7 +540,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     assert observed_deps is not None
     assert observed_deps.display_context is override_display_context
     assert observed_deps.model_identity is model_identity
-    assert observed_deps.system_prompt_materializer is fake_system_materializer
+    assert observed_deps.master_prompt_materializer is fake_system_materializer
     assert observed_deps.phase_prompt_materializer is fake_phase_materializer
     assert observed_deps.artifact_requirements_resolver is fake_artifact_resolver
 
@@ -597,7 +597,7 @@ def test_late_marker_adoption_starts_heartbeat_after_run(
 
     config = _build_config(tmp_path)
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+    exit_code = run_loop_module.run(
         config, initial_state=state, pro_hooks=hooks
     )
     assert exit_code == 0

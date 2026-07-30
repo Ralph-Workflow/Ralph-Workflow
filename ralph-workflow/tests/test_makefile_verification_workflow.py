@@ -4,6 +4,9 @@ import ast
 import re
 from pathlib import Path
 
+from ralph import test_suites as test_suites_module
+from ralph import verify as verify_module
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
 
@@ -104,9 +107,31 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        "python -m pytest tests/ -q -n 1 -m "
+        "python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "
         '"subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"'
     ]
+
+
+def test_make_verify_excludes_paid_agy_markers() -> None:
+    """The immutable default profile cannot collect manual paid AGY runs."""
+    expression = test_suites_module._VERIFICATION_MARK_EXPRESSION
+
+    assert "not subprocess_e2e" in expression
+    assert "not smoke" in expression
+    assert all(
+        all(token not in field for token in ("agy", "smoke", "live_agy"))
+        for label, _command, args, _timeout in verify_module._VERIFY_STEPS
+        for field in (label, *args)
+    )
+
+    live_test_sources = [
+        source
+        for path in (REPO_ROOT / "tests").rglob("test_*.py")
+        for source in [path.read_text(encoding="utf-8")]
+        if "pytest.mark.live_agy" in source
+    ]
+    assert live_test_sources
+    assert all("pytest.mark.subprocess_e2e" in source for source in live_test_sources)
 
 
 def test_test_live_agy_target_uses_live_agy_marker() -> None:
@@ -228,3 +253,10 @@ def test_makefile_exposes_explicit_twine_upload_targets() -> None:
     ]
     assert publish_body == twine_upload_body
     assert test_pypi_body == twine_upload_testpypi_body
+
+
+def test_test_auto_integrate_e2e_delegates_to_canonical_registry() -> None:
+    """The focused target must use the same explicit registry as ``make test``."""
+    assert _target_body("test-auto-integrate-e2e") == [
+        "$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e"
+    ]

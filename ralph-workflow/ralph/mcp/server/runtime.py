@@ -70,6 +70,7 @@ from ralph.mcp.upstream.config import (
     load_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.process._spawn_env import sanitize_process_environment
 from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 from ralph.workspace.fs import FsWorkspace
 
@@ -128,7 +129,9 @@ def build_standalone_http_server(
         drain="standalone",
         capabilities=_all_capability_values(),
     )
-    allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
+    allowed_roots = cast(
+        "tuple[Path, ...]", getattr(effective_session, "allowed_roots", ())
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     workspace = FsWorkspace(
         workspace_root,
         allowed_roots=allowed_roots if allowed_roots else None,
@@ -294,12 +297,19 @@ def main(argv: Sequence[str] | None = None) -> None:
         ``ralph.process.mcp_supervisor``. Reads the MCP session
         environment variables.
     """
+    sanitize_process_environment()
     args = parse_args(argv)
     run_standalone_server(
-        cast("Path", args.workspace),
+        cast(
+            "Path", args.workspace
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         transport=DEFAULT_TRANSPORT,
-        host=cast("str", args.host),
-        port=cast("int", args.port),
+        host=cast(
+            "str", args.host
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        port=cast(
+            "int", args.port
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
 
 

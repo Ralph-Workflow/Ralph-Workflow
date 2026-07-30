@@ -14,22 +14,17 @@ from ralph.prompts.materialize import (
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-PLANNING_ACTIVE_TEXT = (
-    "The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`."
-)
-PLANNING_ACTIVE_INSTRUCTION = (
-    "1. Search documentation first using the docs-mcp search tool from your MCP tool list."
-)
+PLANNING_ACTIVE_TEXT = "Docs MCP is active (localhost:6280)."
+PLANNING_ACTIVE_INSTRUCTION = "Prefer docs-mcp search over"
 PLANNING_FALLBACK_HINT = (
-    "> **Documentation hint:** Configuring `arabold/docs-mcp-server` on "
-    "`localhost:6280` in `.agent/mcp.toml` improves library and API "
-    "documentation lookup quality during planning."
+    "Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml "
+    "improves documentation lookup quality during planning."
 )
 PLANNING_ANALYSIS_ACTIVE_TEXT = (
     "The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`."
 )
 PLANNING_ANALYSIS_ACTIVE_INSTRUCTION = (
-    "1. Search documentation first using the docs-mcp search tool from your MCP tool list."
+    "1. Search documentation using the docs-mcp search tool from your MCP tool list."
 )
 PLANNING_ANALYSIS_FALLBACK_HINT = (
     "> **Documentation hint:** Configuring `arabold/docs-mcp-server` on "

@@ -8,7 +8,6 @@ per-test 1 s budget without losing the end-to-end contract they assert.
 from __future__ import annotations
 
 import dataclasses
-import json
 import shutil
 import tomllib
 from io import StringIO
@@ -16,18 +15,19 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import typer
 from rich.console import Console
 
+from ralph.cli.commands import check_policy as check_policy_module
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.cli.commands.check_policy import check_policy_command
-from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import RALPH_THEME
-from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
@@ -37,6 +37,18 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.skills._capability_state import CapabilityState
+
+
+def _write_commit_message_doc(repo_root: Path, message: str) -> None:
+    """Write the markdown commit_message artifact the way MCP submission does."""
+    if message.upper().startswith("SKIP:"):
+        reason = message[len("SKIP:"):].strip()
+        document = f"---\ntype: skip\nreason: {reason}\n---\n"
+    else:
+        document = f"---\ntype: commit\nsubject: {message}\n---\n"
+    path = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
 
 
 def _stub_baseline_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -69,7 +81,7 @@ _POLICY_VALIDATION_EXIT_CODE = 2
 
 def _artifact_invoke(tmp_path: Path, message: str) -> object:
     def _fake(agent: object, prompt_file: str, *, options: object = None) -> object:
-        write_commit_message_artifact(tmp_path, message)
+        _write_commit_message_doc(tmp_path, message)
         return iter([])
 
     return _fake
@@ -157,7 +169,9 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    monkeypatch.setattr(
+        commit_module, "stage_commit_changes_safely", lambda _root: None
+    )
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -186,10 +200,11 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
 
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert artifact_file.exists()
-    assert commit_file.exists()
+    assert "subject: fix: preserve artifacts on failure" in artifact_file.read_text(
+        encoding="utf-8"
+    )
     assert "Commit failed" in stream.getvalue()
 
 
@@ -197,21 +212,7 @@ def test_show_commit_msg_reads_artifact_without_staged_changes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    artifact_file.parent.mkdir(parents=True, exist_ok=True)
-    artifact_file.write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {"message": "fix: read stored commit message"},
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_commit_message_doc(tmp_path, "fix: read stored commit message")
 
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
@@ -249,9 +250,9 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
-    commit_file.parent.mkdir(parents=True, exist_ok=True)
-    commit_file.write_text("feat: old message", encoding="utf-8")
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    _write_commit_message_doc(tmp_path, "feat: old message")
+    assert artifact_file.exists()
 
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
@@ -289,7 +290,7 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    assert not commit_file.exists()
+    assert not artifact_file.exists()
     assert "Skipping commit: agent requested skip" in stream.getvalue()
 
 
@@ -495,7 +496,7 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
         return iter(
             [
                 '{"type":"item.completed","item":'
-                '{"type":"mcp_tool_result","tool":"ralph_submit_artifact",'
+                '{"type":"mcp_tool_result","tool":"ralph_submit_md_artifact",'
                 '"result":{"status":"failed","reason":"invalid payload"}}}\n'
             ]
         )
@@ -508,71 +509,9 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     )
 
     output = stream.getvalue()
-    assert "ralph_submit_artifact" in output
+    assert "ralph_submit_md_artifact" in output
     assert 'result={"reason": "invalid' in output
     assert 'payload", "status": "failed"}' in output
-
-
-def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    stream = _attach_console(monkeypatch, commit_module)
-    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
-    monkeypatch.setattr(
-        commit_module,
-        "working_tree_diff",
-        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
-    )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
-    _stub_commit_bridge(monkeypatch)
-
-    class FakeRegistry:
-        @classmethod
-        def from_config(cls, _config: object) -> object:
-            return cls()
-
-        def get(self, _name: str) -> object:
-            return AgentConfig(
-                cmd="claude -p",
-                output_flag="--output-format=stream-json",
-                can_commit=True,
-                json_parser=JsonParserType.CLAUDE,
-                transport=AgentTransport.CLAUDE,
-            )
-
-    def fake_invoke_agent(*_args: object, **_kwargs: object) -> object:
-        artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(
-            json.dumps(
-                {
-                    "type": "commit",
-                    "subject": "fix(cli): salvage commit fallback",
-                }
-            ),
-            encoding="utf-8",
-        )
-        line = json.dumps(
-            {
-                "type": "response.output_text.delta",
-                "delta": "tool unavailable; wrote raw payload",
-            }
-        )
-        return iter([f"{line}\n"])
-
-    monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
-    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
-
-    commit_module.commit_plumbing(
-        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
-    )
-
-    output = stream.getvalue()
-    assert "Generated commit message" in output
-    assert "fix(cli): salvage commit fallback" in output
 
 
 def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -864,12 +803,10 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     stream = _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert (tmp_path / "PROMPT.md").exists()
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
-    assert (tmp_path / ".agent" / "pipeline.toml").exists()
-    assert (tmp_path / ".agent" / "artifacts.toml").exists()
+    assert not (tmp_path / ".agent").exists()
+    assert (tmp_path / ".gitignore").exists()
     output = stream.getvalue()
     assert "Ralph" in output
     assert "Created" in output
@@ -903,7 +840,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     (agent_dir / "pipeline.toml").write_text("# pipeline", encoding="utf-8")
     (agent_dir / "artifacts.toml").write_text("# artifacts", encoding="utf-8")
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert prompt.read_text() == "existing"
     assert config.read_text() == "existing config"
     assert "Created" not in stream.getvalue()
@@ -915,7 +852,7 @@ def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom" / "custom.toml"
     custom.parent.mkdir()
-    init_module.init_command(template="default", config_path=custom)
+    init_module.init_command(template=None, config_path=custom)
     assert custom.exists()
     assert "Created" in stream.getvalue()
 
@@ -927,27 +864,24 @@ def test_init_command_creates_prompt_in_cwd_not_template_subdir(
     _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert (tmp_path / "PROMPT.md").exists()
     assert not (tmp_path / "default").exists()
 
 
-def test_init_command_creates_agent_dir_in_cwd(
+def test_init_command_does_not_create_local_config_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="default")
-    assert (tmp_path / ".agent").is_dir()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
-    assert (tmp_path / ".agent" / "pipeline.toml").exists()
-    assert (tmp_path / ".agent" / "artifacts.toml").exists()
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    init_module.init_command(template=None)
+    assert not (tmp_path / ".agent").exists()
+    assert (tmp_path / ".gitignore").exists()
 
 
-def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
+def test_init_command_fallback_next_steps_remain_concise(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -971,7 +905,7 @@ def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
     init_module.init_command()
 
     output = stream.getvalue()
-    assert "Template:" not in output
+    assert "deprecated" not in output.lower()
 
 
 def test_display_tables_render() -> None:
@@ -997,7 +931,7 @@ def test_display_tables_render() -> None:
 
 
 @pytest.mark.timeout_seconds(3)
-def test_init_command_writes_support_and_global_configs(
+def test_init_command_writes_only_global_configs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     xdg_dir = tmp_path / "xdg"
@@ -1008,18 +942,41 @@ def test_init_command_writes_support_and_global_configs(
 
     init_module.init_command(None, None)
 
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
-    assert (tmp_path / ".agent" / "pipeline.toml").exists()
-    assert (tmp_path / ".agent" / "artifacts.toml").exists()
+    assert not (tmp_path / ".agent").exists()
+    assert (tmp_path / ".gitignore").exists()
     assert (xdg_dir / "ralph-workflow.toml").exists()
     assert (xdg_dir / "ralph-workflow-mcp.toml").exists()
 
-    assert isinstance(tomllib.loads((tmp_path / ".agent" / "mcp.toml").read_text()), dict)
-    assert isinstance(tomllib.loads((tmp_path / ".agent" / "pipeline.toml").read_text()), dict)
-    assert isinstance(tomllib.loads((tmp_path / ".agent" / "artifacts.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow-mcp.toml").read_text()), dict)
+
+
+def test_init_command_feature_spec_writes_distinct_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    init_module.init_command("feature-spec")
+
+    prompt = (tmp_path / "PROMPT.md").read_text(encoding="utf-8")
+    assert "Add <feature> to <surface>" in prompt
+    assert not (tmp_path / ".agent").exists()
+
+
+def test_init_command_unknown_template_label_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(typer.Exit) as excinfo:
+        init_module.init_command("unknown")
+
+    assert excinfo.value.exit_code == 1
+    assert "Valid templates" in stream.getvalue()
+    assert not (tmp_path / "PROMPT.md").exists()
 
 
 def test_init_command_respects_explicit_config_path(
@@ -1039,14 +996,24 @@ def test_init_command_respects_explicit_config_path(
 
 
 class TestCheckPolicyCommand:
-    """check_policy_command validates the active policy and reports results."""
+    """check_policy_command validates the active policy and reports results.
+
+    P0 (wt-028-display S-14): the command now routes its success and
+    warning output through the shared ``display.emit_status`` /
+    ``display.emit_warning`` surface so the drift-prevention suite can
+    verify no command reaches the terminal through a private print
+    path. Tests use ``_attach_console`` to inject a StringIO-backed
+    Rich console (the canonical display seam) and read the captured
+    output from the returned stream.
+    """
 
     def test_success_returns_zero_and_prints_ok(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
+        stream = _attach_console(monkeypatch, check_policy_module)
         code = check_policy_command(tmp_path)
-        out = capsys.readouterr().out
+        out = stream.getvalue()
         assert code == 0
         assert "Policy OK" in out
         assert "phases:" in out
@@ -1054,11 +1021,12 @@ class TestCheckPolicyCommand:
         assert "artifact contracts:" in out
 
     def test_success_includes_counts(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
+        stream = _attach_console(monkeypatch, check_policy_module)
         check_policy_command(tmp_path)
-        out = capsys.readouterr().out
+        out = stream.getvalue()
         # All count lines are present
         for label in (
             "phases:",
@@ -1070,16 +1038,17 @@ class TestCheckPolicyCommand:
             assert label in out
 
     def test_missing_directory_returns_one(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         missing = tmp_path / "nonexistent"
+        stream = _attach_console(monkeypatch, check_policy_module)
         code = check_policy_command(missing)
-        err = capsys.readouterr().err
+        out = stream.getvalue()
         assert code == 1
-        assert "not found" in err
+        assert "not found" in out
 
     def test_invalid_pipeline_returns_two(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _copy_defaults(tmp_path)
         # Overwrite pipeline.toml with an invalid transition target
@@ -1096,10 +1065,11 @@ class TestCheckPolicyCommand:
             'on_success = "complete"\n'
             'on_loopback = "complete"\n'
         )
+        stream = _attach_console(monkeypatch, check_policy_module)
         code = check_policy_command(tmp_path)
-        err = capsys.readouterr().err
+        out = stream.getvalue()
         assert code == _POLICY_VALIDATION_EXIT_CODE
-        assert "Policy validation error" in err
+        assert "Policy validation error" in out
 
 
 def test_agent_session_uses_stored_capability_profile_when_set() -> None:

@@ -14,6 +14,7 @@ import pytest
 from ralph.diagnostics import (
     SystemInfo,
 )
+from tests._diagnostics_git_probe import stub_git_probe
 
 MULTI_AGENT_COUNT = 2
 
@@ -23,7 +24,8 @@ class TestSystemInfo:
 
     @pytest.fixture(scope="class")
     def info(self) -> SystemInfo:
-        return SystemInfo.gather()
+        """Gather once with a deterministic git probe."""
+        return SystemInfo.gather(git_probe=stub_git_probe)
 
     def test_system_info_gather_returns_instance(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() returns a SystemInfo instance."""
@@ -52,12 +54,12 @@ class TestSystemInfo:
 
     def test_system_info_gather_uses_injected_env_for_shell(self) -> None:
         """Test that SystemInfo.gather() uses injected env for shell."""
-        info = SystemInfo.gather(env={"SHELL": "/bin/zsh"})
+        info = SystemInfo.gather(env={"SHELL": "/bin/zsh"}, git_probe=stub_git_probe)
         assert info.shell == "/bin/zsh"
 
     def test_system_info_gather_returns_none_shell_when_env_empty(self) -> None:
         """Test that SystemInfo.gather() returns None shell when env is empty."""
-        info = SystemInfo.gather(env={})
+        info = SystemInfo.gather(env={}, git_probe=stub_git_probe)
         assert info.shell is None
 
     def test_system_info_gather_populates_git_version(self, info: SystemInfo) -> None:

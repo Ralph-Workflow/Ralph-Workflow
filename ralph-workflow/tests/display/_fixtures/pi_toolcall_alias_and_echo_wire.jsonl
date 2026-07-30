@@ -1,0 +1,6 @@
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":0,"toolCall":{"id":"call-pi-alias-1","name":"copy_file","arguments":{"path":"target.py"}}}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"id":"call-pi-alias-2","name":"copy_file","arguments":{"path":"other.py"}}}}
+{"type":"message_end","message":{"content":[{"type":"toolCall","id":"call-pi-alias-1","name":"copy_file","arguments":{"path":"target.py"}}]}}
+{"type":"tool_execution_end","toolCallId":"call-pi-alias-1","toolName":"copy_file","result":{"content":[{"type":"text","text":"Destination target.py already exists"}]},"isError":true}
+{"type":"message_update","assistantMessageEvent":{"type":"text_end","contentIndex":1,"content":"Destination target.py already exists"}}
+{"type":"agent_end","messages":[]}

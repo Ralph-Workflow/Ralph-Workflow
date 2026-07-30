@@ -2,7 +2,7 @@
 
 The cross-caller drift: a model that connects, reasons, and returns an empty
 turn with NO tool call (e.g. nanocoder/MiniMax-M3 over-reasoning a commit
-message and never calling ``ralph_submit_artifact``) is retried by the pipeline
+message and never calling ``ralph_submit_md_artifact``) is retried by the pipeline
 path (the classifier treats it as recoverable), but the direct-MCP recovery path
 used by `ralph --generate-commit` did NOT retry it because the empty-response
 signal was gated on prior tool activity. These tests pin that BOTH a
@@ -49,6 +49,26 @@ def test_post_tool_result_empty_response_keeps_specific_reason() -> None:
     reason = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError)
 
     assert reason == "a post-tool-result continuation failure"
+
+
+def test_bare_fetch_failed_is_a_transient_connectivity_failure() -> None:
+    """Node/Bun surface a bare ``fetch failed`` with the errno on ``.cause``.
+
+    Node-based agent CLIs (pi, opencode) exit with exactly this string when
+    their provider endpoint flaps, and the text carries no ECONNRESET /
+    ENOTFOUND marker to match on. Without it the fault is misclassified as a
+    non-retryable agent failure and the run is abandoned instead of retried.
+    """
+    exc = AgentInvocationError(
+        "pi",
+        1,
+        "TypeError: fetch failed",
+        parsed_output=["pi/minimax/MiniMax-M3 fetch failed"],
+    )
+
+    reason = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError)
+
+    assert reason == "a transient connectivity failure"
 
 
 def test_unrelated_failure_is_not_retryable() -> None:

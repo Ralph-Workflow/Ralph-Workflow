@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,6 +16,7 @@ from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.smoke_test_result import read_smoke_test_result_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
@@ -23,7 +24,6 @@ from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 if TYPE_CHECKING:
-    from collections import deque
     from collections.abc import Callable
 
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
@@ -52,11 +52,275 @@ def test_resolve_smoke_harness_spec_claude_uses_legacy_layout() -> None:
     assert spec.run_id == "interactive-claude-smoke"
 
 
+def test_build_smoke_prompt_adds_shared_subagent_scenario_only_when_requested() -> None:
+    basic = smoke_plumbing_module._build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
+    )
+    subagents = smoke_plumbing_module._build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
+        subagents=True,
+    )
+
+    assert "delegate exactly one bounded, read-only task" not in basic
+    assert "delegate exactly one bounded, read-only task" in subagents
+    assert "After the subagent result" in subagents
+    assert "mcp__ralph__ralph_submit_md_artifact" in subagents
+    assert "declare_complete" in subagents
+
+
+def test_build_smoke_prompt_uses_custom_subagent_task_without_losing_harness_contract() -> None:
+    prompt = smoke_plumbing_module._build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
+        subagents=True,
+        subagent_prompt="Inspect the parser and report two possible edge cases.",
+    )
+
+    assert "Inspect the parser and report two possible edge cases." in prompt
+    assert "tmp/interactive-claude-smoke/todo-list.js" in prompt
+    assert "smoke_test_result" in prompt
+    assert "declare_complete" in prompt
+
+
+def test_subagent_smoke_evidence_requires_dispatch_result_and_later_activity() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_subagent",
+                            "name": "Agent",
+                            "input": {"prompt": "inspect parser"},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_subagent",
+                            "content": "inspection complete",
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_write",
+                            "name": "Write",
+                            "input": {"file_path": "tmp/todo-list.js"},
+                        }
+                    ]
+                },
+            }
+        ),
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert evidence.dispatch_seen is True
+    assert evidence.result_seen is True
+    assert evidence.post_result_activity_seen is True
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) is None
+
+
+@pytest.mark.parametrize(
+    ("lines", "expected_error"),
+    [
+        ([], "subagent dispatch was not observed"),
+        (
+            [
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Task",'
+                '"input":{"prompt":"inspect"}}]}}'
+            ],
+            "subagent result was not observed",
+        ),
+        (
+            [
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Task",'
+                '"input":{"prompt":"inspect"}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+            ],
+            "no meaningful activity was observed after the subagent result",
+        ),
+    ],
+)
+def test_subagent_smoke_evidence_reports_first_missing_signal(
+    lines: list[str],
+    expected_error: str,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == expected_error
+
+
+def test_subagent_smoke_evidence_rejects_duplicate_dispatches() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_first","name":"Agent","input":{}},'
+        '{"type":"tool_use","id":"toolu_second","name":"Task","input":{}}]}}',
+        '{"type":"user","message":{"content":['
+        '{"type":"tool_result","tool_use_id":"toolu_first","content":"done"}]}}',
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_write","name":"Write","input":{}}]}}',
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
+        "expected exactly one subagent dispatch, observed 2"
+    )
+
+
+def test_subagent_smoke_evidence_collapses_streamed_opencode_task() -> None:
+    """A single OpenCode ``task`` streamed as running THEN completed is ONE dispatch.
+
+    OpenCode may emit an intermediate (non-completed) tool state before the
+    terminal one, and for a completed tool the parser now surfaces both the
+    dispatch and the result. Counting raw ``tool_use`` events would see the same
+    ``callID`` twice and reject a genuine single subagent with "expected exactly
+    one subagent dispatch, observed 2". Dispatches are counted by distinct call
+    ID, so a streamed call collapses to one.
+    """
+    config = AgentConfig(
+        cmd="opencode",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+    running = (
+        '{"type":"tool_use","part":{"type":"tool","tool":"task","callID":"call_1",'
+        '"state":{"status":"running","input":{"description":"d"}}}}'
+    )
+    completed = (
+        '{"type":"tool_use","part":{"type":"tool","tool":"task","callID":"call_1",'
+        '"state":{"status":"completed","input":{"description":"d"},"output":"done"}}}'
+    )
+    post = '{"type":"text","part":{"type":"text","text":"the subagent finished"}}'
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, [running, completed, post])
+
+    assert evidence.dispatch_count == 1, (
+        f"a single streamed task must count as one dispatch; got {evidence.dispatch_count}"
+    )
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) is None, (
+        "a streamed single subagent with result and post-activity must pass"
+    )
+
+
+def test_subagent_smoke_evidence_rejects_mismatched_result_id() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_subagent","name":"Agent","input":{}}]}}',
+        '{"type":"user","message":{"content":['
+        '{"type":"tool_result","tool_use_id":"toolu_other","content":"done"}]}}',
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_write","name":"Write","input":{}}]}}',
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
+        "subagent result was not observed"
+    )
+
+
+def test_subagent_smoke_evidence_correlates_cursor_call_ids() -> None:
+    config = AgentConfig(
+        cmd="agent",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.CURSOR,
+    )
+    lines = [
+        '{"type":"tool_call","subtype":"started","call_id":"subagent-1",'
+        '"toolName":"Task","args":{}}',
+        '{"type":"tool_call","subtype":"completed","call_id":"subagent-other",'
+        '"toolName":"Task","result":"done"}',
+        '{"type":"tool_call","subtype":"started","call_id":"write-1","toolName":"Write","args":{}}',
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
+        "subagent result was not observed"
+    )
+
+
+def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scenario(
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    common = {
+        "agent_name": "claude/haiku",
+        "config": config,
+        "unified_config": UnifiedConfig(),
+        "workspace_root": tmp_path,
+        "prompt_file": Path("PROMPT.md"),
+        "output_file": tmp_path / "tmp" / "todo-list.js",
+        "options": InvokeOptions(show_progress=False),
+        "display_context": make_display_context(),
+    }
+    basic_params = SmokeRunParams(**common)
+    subagent_params = SmokeRunParams(**common, subagents_requested=True)
+
+    basic_errors = smoke_plumbing_module._detect_smoke_errors(basic_params, [], [], None, None)
+    subagent_errors = smoke_plumbing_module._detect_smoke_errors(
+        subagent_params, [], [], None, None
+    )
+
+    assert "subagent dispatch was not observed" not in basic_errors
+    assert "subagent dispatch was not observed" in subagent_errors
+
+
 def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
-    spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/Claude Sonnet 4.6 (Thinking)")
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/claude-sonnet-4-6")
     assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
     assert spec.output_file == Path("tmp/interactive-agy-smoke/todo-list.js")
-    assert spec.run_id == "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
+    assert spec.run_id == "interactive-agy-smoke-claude-sonnet-4-6"
 
 
 def test_resolve_smoke_harness_spec_nanocoder_uses_nanocoder_layout() -> None:
@@ -131,7 +395,7 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     monkeypatch.setattr(
         smoke_plumbing_module,
         "AgentRegistry",
-        _make_fake_registry(agent_name="agy/Claude Sonnet 4.6 (Thinking)"),
+        _make_fake_registry(agent_name="agy/claude-sonnet-4-6"),
     )
     monkeypatch.setattr(
         smoke_plumbing_module,
@@ -147,19 +411,11 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     output_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("export const todos = [];\n", encoding="utf-8")
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "smoke_test_result.json").write_text(
-        '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-        '"content":{"status":"passed","summary":"ok"},'
-        '"created_at":"now","updated_at":"now","metadata":{}}',
-        encoding="utf-8",
-    )
 
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=_fake_config(),
         workspace_root=tmp_path,
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         prompt_file=tmp_path / "PROMPT.md",
         output_file=output_path,
         display_context=make_display_context(),
@@ -169,10 +425,10 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
         ),
     )
 
-    assert result.agent_name == "agy/Claude Sonnet 4.6 (Thinking)"
-    assert cleared_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
-    assert captured_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
-    assert captured_bridge_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
+    assert result.agent_name == "agy/claude-sonnet-4-6"
+    assert cleared_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
+    assert captured_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
+    assert captured_bridge_run_ids == ["interactive-agy-smoke-claude-sonnet-4-6"]
 
 
 def _fake_bridge_factory(**_kwargs: object) -> object:
@@ -222,14 +478,6 @@ def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output(
     output_file = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(
-        '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-        '"content":{"status":"passed","summary":"ok"},'
-        '"created_at":"now","updated_at":"now","metadata":{}}',
-        encoding="utf-8",
-    )
     config = AgentConfig(
         cmd="claude",
         json_parser=JsonParserType.CLAUDE,
@@ -267,6 +515,38 @@ def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output(
 
     assert "fewer than 3 meaningful output lines were observed" not in errors
     assert "no tool activity was observed" not in errors
+
+
+def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
+    tmp_path: Path,
+) -> None:
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("module.exports = {};\n", encoding="utf-8")
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.6-flash-low",
+        config=AgentConfig(cmd="agy", json_parser="generic", transport=AgentTransport.AGY),
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        ["Created the requested todo list and submitted the smoke result."],
+        [],
+        None,
+        None,
+        tool_activity_seen=True,
+        artifact_submitted=True,
+        run_id="interactive-agy-smoke-gemini-3.6-flash-low",
+    )
+
+    assert "fewer than 3 meaningful output lines were observed" not in errors
 
 
 class TestSmokePlumbingCharacterization:
@@ -330,18 +610,6 @@ class TestSmokePlumbingCharacterization:
         output_path = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("export const todos = [];\n", encoding="utf-8")
-        artifact_dir = tmp_path / ".agent" / "artifacts"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        (artifact_dir / "smoke_test_result.json").write_text(
-            '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-            '"content":{"status":"passed","summary":"ok",'
-            '"output_file":"tmp/interactive-claude-smoke/todo-list.js",'
-            '"observed_working":["tmp artifact created"],'
-            '"observed_breaks":[],'
-            '"headless_guide_checks":["session capture"]},'
-            '"created_at":"now","updated_at":"now","metadata":{}}',
-            encoding="utf-8",
-        )
 
         monkeypatch.setattr(smoke_plumbing_module, "invoke_agent", _fake_invoke_agent)
 
@@ -407,7 +675,9 @@ def _fake_config() -> UnifiedConfig:
 
 
 def _fake_execute_agent_effect_for_config(
-    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+    agent_name: str = "agy/claude-sonnet-4-6",
+    *,
+    raw_lines: tuple[str, ...] = (),
 ) -> Callable[..., PipelineEvent]:
     def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
         raw_sink = kwargs.get("raw_output_sink")
@@ -427,33 +697,15 @@ def _fake_execute_agent_effect_for_config(
             output_path = workspace_root / output_relpath
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text("export const todos = [];\n", encoding="utf-8")
-            artifact_dir = workspace_root / ".agent" / "artifacts"
-            artifact_dir.mkdir(parents=True, exist_ok=True)
-            (artifact_dir / "smoke_test_result.json").write_text(
-                json.dumps(
-                    {
-                        "name": "smoke_test_result",
-                        "artifact_type": "smoke_test_result",
-                        "content": {
-                            "status": "passed",
-                            "summary": "ok",
-                            "output_file": output_relpath,
-                            "observed_working": ["tmp artifact created"],
-                            "observed_breaks": [],
-                            "headless_guide_checks": ["tool activity"],
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
         if raw_sink is not None:
-            cast("deque[str]", raw_sink).append(
+            raw_sink.extend(raw_lines)
+            raw_sink.append(
                 "Task declared complete: session_id=dummy, summary=done\n"
                 if not agent_name.startswith("agy/")
                 else "agy planning line\n"
             )
         if rendered_sink is not None:
-            cast("deque[str]", rendered_sink).append(
+            rendered_sink.append(
                 "Task declared complete\n"
                 if not agent_name.startswith("agy/")
                 else "agy planning line\n"
@@ -461,6 +713,115 @@ def _fake_execute_agent_effect_for_config(
         return PipelineEvent.AGENT_SUCCESS
 
     return fake_execute_agent_effect
+
+
+@pytest.mark.parametrize(
+    ("transcript", "expected_error"),
+    [
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_write","name":"Write",'
+                '"input":{}}]}}',
+            ),
+            None,
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_other",'
+                '"content":"done"}]}}',
+            ),
+            "subagent result was not observed",
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+            ),
+            "no meaningful activity was observed after the subagent result",
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done again"}]}}',
+            ),
+            "no meaningful activity was observed after the subagent result",
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_first","name":"Agent","input":{}},'
+                '{"type":"tool_use","id":"toolu_second","name":"Task","input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_first",'
+                '"content":"done"}]}}',
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_write","name":"Write",'
+                '"input":{}}]}}',
+            ),
+            "expected exactly one subagent dispatch, observed 2",
+        ),
+    ],
+)
+def test_run_smoke_plumbing_enforces_ordered_subagent_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    transcript: tuple[str, ...],
+    expected_error: str | None,
+) -> None:
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="claude/haiku"),
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "execute_agent_effect",
+        _fake_execute_agent_effect_for_config("claude/haiku", raw_lines=transcript),
+    )
+
+    result = smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="claude/haiku",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+        subagents=True,
+    )
+
+    lifecycle_errors = {
+        "subagent dispatch was not observed",
+        "subagent result was not observed",
+        "no meaningful activity was observed after the subagent result",
+        "expected exactly one subagent dispatch, observed 2",
+    }
+    observed_lifecycle_errors = lifecycle_errors.intersection(result.errors)
+    assert observed_lifecycle_errors == ({expected_error} if expected_error else set())
 
 
 def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
@@ -522,13 +883,13 @@ def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
     monkeypatch.setattr(
         smoke_plumbing_module,
         "AgentRegistry",
-        _make_fake_registry(agent_name="agy/Claude Sonnet 4.6 (Thinking)"),
+        _make_fake_registry(agent_name="agy/claude-sonnet-4-6"),
     )
 
     smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),
         workspace_root=tmp_path,
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         prompt_file=tmp_path / "PROMPT.md",
         display_context=make_display_context(),
         pipeline_deps=PipelineDeps(
@@ -563,26 +924,53 @@ def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
     assert captured_params[0].unified_config.general.agent_max_session_seconds == 120.0
 
 
-def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+def _make_artifact(
+    tmp_path: Path,
+    *,
+    observed_breaks: list[str],
+    run_id: str = "interactive-claude-smoke",
+) -> None:
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    breaks_section = (
+        "\n## Observed Breaks\n"
+        + "\n".join(
+            f"- [BR-{index}] {item}" for index, item in enumerate(observed_breaks, 1)
+        )
+        if observed_breaks
+        else ""
+    )
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "artifact_type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "summary": "ok",
-                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
-                    "observed_working": ["tmp artifact created"],
-                    "observed_breaks": observed_breaks,
-                    "headless_guide_checks": ["tool activity"],
-                },
-            }
-        ),
+        f"""\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/interactive-agy-smoke/todo-list.js
+---
+## Summary
+- [SUM-1] Smoke checks passed.
+
+## Observed Working
+- [OK-1] tmp artifact created
+
+{breaks_section}
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
+    result = promote_fallback_artifact(
+        tmp_path,
+        "smoke_test_result",
+        run_id=run_id,
+    )
+    assert result is not None
+
+
+def _make_completion_sentinel(tmp_path: Path, run_id: str) -> None:
+    sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
 
 def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
@@ -590,16 +978,8 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
 ) -> None:
     """AGY with no artifact write still fails the completion check.
 
-    The completion signal for AGY is the canonical receipt promoted from the
-    agent's direct artifact write (see
-    ``smoke_plumbing._explicit_completion_seen`` for the AGY branch and
-    the regression test
-    ``test_agy_smoke_completion_requires_receipt_not_transcript_marker`` in
-    tests/test_smoke_plumbing_uses_canonical_submit.py). When the agent
-    never writes the artifact, no receipt is promoted, and the smoke run
-    must fail with ``"smoke_test_result artifact was not submitted"`` —
-    not with the legacy ``"declare_complete marker was not observed"``
-    message, which was removed because the substring check was spoofable.
+    Required smoke completion needs both a canonical receipt and the durable
+    sentinel. A transcript substring satisfies neither.
     """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -607,7 +987,7 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     # CRUCIALLY: do NOT write the artifact. The smoke run must report the
     # missing-receipt completion failure, not the legacy transcript-marker
     # failure.
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     if artifact_path.exists():
         artifact_path.unlink()
 
@@ -617,7 +997,7 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
         transport=AgentTransport.AGY,
     )
     params = SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -630,23 +1010,8 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
 
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
-    # The new contract: AGY completion requires the canonical receipt
-    # (promoted from the artifact write). With no artifact, the
-    # completion check fails; the user-facing failure wording is
-    # transport-agnostic on purpose, so we assert that the failure
-    # surfaces as EITHER the receipt-missing failure (artifact not
-    # submitted) or the completion-marker failure (declare_complete
-    # marker was not observed) since both are user-visible signals of
-    # the same underlying gap. The important invariant is that the
-    # smoke run does NOT silently pass: a transcript substring cannot
-    # satisfy the AGY completion check (see the companion regression
-    # test ``test_agy_smoke_completion_requires_receipt_not_transcript_marker``
-    # in tests/test_smoke_plumbing_uses_canonical_submit.py for the
-    # strict contract).
-    assert (
-        "smoke_test_result artifact was not submitted" in errors
-        or "declare_complete marker was not observed" in errors
-    ), f"Expected a completion-failure error, got: {errors}"
+    assert "smoke_test_result artifact was not submitted" in errors
+    assert "completion sentinel was not observed" in errors
     # The transcript-only marker path must NOT satisfy completion.
     # Drive the harness with a transcript that contains the substring
     # and confirm the failure still fires (i.e. the substring is not
@@ -655,10 +1020,10 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     errors_with_marker = smoke_plumbing_module._detect_smoke_errors(
         params, transcript_with_marker, transcript_with_marker, None, None
     )
-    assert "declare_complete marker was not observed" in errors_with_marker, (
+    assert "completion sentinel was not observed" in errors_with_marker, (
         "AGY completion must NOT be satisfied by the transcript substring "
         "'Task declared complete:'. The substring is a spoofable signal and "
-        "the new contract requires the canonical receipt. "
+        "the contract requires the durable sentinel. "
         f"Got errors: {errors_with_marker}"
     )
     assert "smoke_test_result artifact was not submitted" in errors_with_marker, (
@@ -689,26 +1054,28 @@ def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
     # CRUCIALLY: do NOT write the workspace file. The file write is the
     # authoritative AGY tool-activity signal, so a pre-created file would
     # mask the regression.
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    # Self-reporting artifact: the headless_guide_checks declare "tool
-    # activity" but no actual tool activity is observed (no parser event,
-    # no file write). The harness must NOT trust the self-report.
+    # Self-reporting artifact: a spec-valid canonical Markdown document whose
+    # Headless Guide Checks declare "tool activity" while no actual tool
+    # activity is observed (no parser event, no file write). The harness
+    # must NOT trust the self-report.
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "artifact_type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "summary": "ok",
-                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
-                    "observed_working": ["tmp artifact created"],
-                    "observed_breaks": [],
-                    "headless_guide_checks": ["tool activity"],
-                },
-            }
-        ),
+        """\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/interactive-agy-smoke/todo-list.js
+---
+## Summary
+- [SUM-1] ok
+
+## Observed Working
+- [OK-1] tmp artifact created
+
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 
@@ -718,7 +1085,7 @@ def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
         transport=AgentTransport.AGY,
     )
     params = SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -736,23 +1103,23 @@ def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
     assert "expected todo-list.js was not created" in errors
 
 
-def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
+def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
     tmp_path: Path,
 ) -> None:
-    """AGY with a canonical receipt satisfies completion even with breaks.
+    """AGY with receipt and sentinel may report non-blocking observed breaks.
 
-    The completion signal for AGY is the canonical receipt promoted from
-    the agent's direct artifact write, independent of the
-    ``observed_breaks`` field. When the receipt is present, the completion
-    check passes; breaks are reported in the ``Observed breaks`` section
-    but do not block completion. The legacy test asserted the opposite
-    (breaks block completion) because the old substring check was both
-    spoofable and conflated completion with breaks.
+    The receipt is independent of the model-authored ``observed_breaks``
+    field. Completion still comes from the separate durable sentinel.
     """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    _make_artifact(tmp_path, observed_breaks=["something went wrong"])
+    _make_artifact(
+        tmp_path,
+        observed_breaks=["something went wrong"],
+        run_id="interactive-claude-smoke",
+    )
+    _make_completion_sentinel(tmp_path, "interactive-claude-smoke")
 
     config = AgentConfig(
         cmd="agy",
@@ -760,7 +1127,7 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
         transport=AgentTransport.AGY,
     )
     params = SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -783,22 +1150,24 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
         params, [], [], None, None, artifact_submitted=artifact_submitted
     )
 
-    # The receipt is present, so completion is satisfied; neither the
-    # transcript-marker failure nor the artifact-not-submitted failure
-    # should fire.
-    assert "declare_complete marker was not observed" not in errors
+    assert "completion sentinel was not observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
 
 
-def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_activity(
+def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
     tmp_path: Path,
 ) -> None:
-    """Nanocoder interactive completion is proven by the smoke artifact receipt."""
+    """Nanocoder uses the same receipt-plus-sentinel completion contract."""
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    _make_artifact(tmp_path, observed_breaks=[])
+    _make_artifact(
+        tmp_path,
+        observed_breaks=[],
+        run_id="interactive-nanocoder-smoke",
+    )
+    _make_completion_sentinel(tmp_path, "interactive-nanocoder-smoke")
 
     config = AgentConfig(
         cmd="nanocoder",
@@ -836,7 +1205,7 @@ def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_act
         run_id=run_id,
     )
 
-    assert "declare_complete marker was not observed" not in errors
+    assert "completion sentinel was not observed" not in errors
     assert "no tool activity was observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
@@ -913,7 +1282,7 @@ def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
 
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
-    assert "declare_complete marker was not observed" in errors
+    assert "completion sentinel was not observed" in errors
     assert "session ID was not observed" in errors
 
 
@@ -926,7 +1295,7 @@ def _make_agy_params(tmp_path: Path) -> SmokeRunParams:
         transport=AgentTransport.AGY,
     )
     return SmokeRunParams(
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name="agy/claude-sonnet-4-6",
         config=config,
         unified_config=UnifiedConfig(),
         workspace_root=tmp_path,
@@ -1044,19 +1413,10 @@ def test_read_smoke_test_result_artifact_returns_none_for_invalid_content(
 ) -> None:
     """An artifact with invalid content (missing required field) returns None."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_path = artifact_dir / "smoke_test_result.json"
+    artifact_path = artifact_dir / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    # missing summary, output_file, headless_guide_checks
-                },
-            }
-        ),
+        "---\ntype: smoke_test_result\nstatus: passed\n---\n",
         encoding="utf-8",
     )
 
@@ -1078,23 +1438,24 @@ def test_read_smoke_test_result_artifact_returns_validated_content(
 ) -> None:
     """A fully valid artifact returns the validated content dict."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_path = artifact_dir / "smoke_test_result.json"
+    artifact_path = artifact_dir / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "summary": "all checks passed",
-                    "output_file": "tmp/smoke/output.js",
-                    "observed_working": ["created output"],
-                    "observed_breaks": [],
-                    "headless_guide_checks": ["tool activity"],
-                },
-            }
-        ),
+        """\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/smoke/output.js
+---
+## Summary
+- [SUM-1] all checks passed
+
+## Observed Working
+- [OK-1] created output
+
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 

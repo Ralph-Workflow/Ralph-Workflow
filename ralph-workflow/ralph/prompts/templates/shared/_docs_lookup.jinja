@@ -1,0 +1,27 @@
+{#
+  Documentation lookup blurb. Used inline (via include) by templates that need
+  the long form, and via macro ``render_docs_lookup_short`` for the short
+  form. The port comes from the ``DOCS_MCP_PORT`` template variable so the
+  number lives in exactly one place.
+#}
+{% if HAS_DOCS_MCP %}
+{% if DOCS_LOOKUP_VARIANT == 'short' %}
+Docs MCP is active ({{DOCS_MCP_PORT}}). Prefer docs-mcp search over {{WEB_SEARCH_TOOL_REFERENCE}} for library/API research during {{DOCS_LOOKUP_PHASE | default('development')}}.
+{% elif DOCS_LOOKUP_VARIANT == 'short_block' %}
+> **Documentation:** The `arabold/docs-mcp-server` is configured and reachable at `{{DOCS_MCP_PORT}}`. Use docs-mcp search for library and API research before {{DOCS_LOOKUP_ACTION | default('revising the plan')}}.
+{% else %}
+
+## DOCUMENTATION LOOKUP
+
+The `arabold/docs-mcp-server` is configured and reachable at `{{DOCS_MCP_PORT}}`. {{DOCS_LOOKUP_INTENT | default('Before implementing or debugging with a library or framework:')}}
+1. Search documentation using the docs-mcp search tool from your MCP tool list.
+2. Fall back to `{{WEB_SEARCH_TOOL_REFERENCE}}` only when docs-mcp returns no useful results for the specific API or behavior you need.
+
+{% endif %}
+{% else %}
+{% if DOCS_LOOKUP_VARIANT == 'short' %}
+Tip: Configuring arabold/docs-mcp-server on {{DOCS_MCP_PORT}} in .agent/mcp.toml improves documentation lookup quality during {{DOCS_LOOKUP_PHASE | default('development')}}.
+{% else %}
+> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `{{DOCS_MCP_PORT}}` in `.agent/mcp.toml` improves library and API documentation lookup quality during {{DOCS_LOOKUP_PHASE | default('development')}}.
+{% endif %}
+{% endif %}

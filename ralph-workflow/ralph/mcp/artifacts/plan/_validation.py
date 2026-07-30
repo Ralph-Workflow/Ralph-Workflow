@@ -1,4 +1,4 @@
-"""Plan-artifact validation, normalization, and payload decoding.
+"""Plan-artifact validation and normalization.
 
 The single source of truth for ``PlanArtifact`` (the top-level
 validated schema) lives here because it owns the cross-reference
@@ -11,18 +11,10 @@ The lazy WorkUnit forward reference (handled by
 also lives here so the rebuild state is a local concern of the
 module that owns the model that needs it.
 
-The payload decoding helpers (``parse_plan_payload_strict``,
-``parse_plan_payload_lenient``, and the private
-``_decode_plan_payload`` core) consolidate the four previously
-duplicated JSON parsers that lived in ``tools/artifact.py``,
-``prompts/plan_format.py``, and the original ``__init__.py``.
 """
 
 from __future__ import annotations
 
-import json
-from collections.abc import Mapping
-from contextlib import suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -36,7 +28,6 @@ from ralph.mcp.artifacts.plan._section_models import (
     PlanConstraints,
     PlanStep,
     RiskMitigation,
-    ScopeItem,
     SkillsMcp,
     Summary,
     VerificationStep,
@@ -48,7 +39,6 @@ from ralph.mcp.artifacts.plan._section_registry import (
     SectionMode,
 )
 from ralph.mcp.artifacts.plan._size_limits import check_plan_size
-from ralph.mcp.artifacts.plan._step_contract import StepType
 from ralph.mcp.artifacts.plan.plan_artifact_validation_error import (
     PlanArtifactValidationError,
 )
@@ -60,57 +50,9 @@ from ralph.pydantic_validation_errors import (
 )
 
 if TYPE_CHECKING:
-    from ralph.pipeline.work_unit import WorkUnit
+    from collections.abc import Mapping
 
-# Closed intent_verb -> allowed ScopeCategory mapping. Every (verb, category)
-# pair encountered in real engineering plans must be in the allowed set;
-# otherwise the plan is rejected at normalize_plan_artifact_content time.
-# The categories listed in each verb's allowed set are the closed ScopeCategory
-# Literal values: bugfix, feature, refactor, test, docs, infra, migration,
-# security, performance, cleanup, research, unknown, file_change, prompt,
-# other.
-_INTENT_VERB_ALLOWED_CATEGORIES: dict[str, frozenset[str]] = {
-    "fix": frozenset({"bugfix", "file_change", "other", "unknown"}),
-    "add": frozenset(
-        {
-            "feature",
-            "infra",
-            "test",
-            "security",
-            "performance",
-            "docs",
-            "migration",
-            "refactor",
-            "cleanup",
-            "other",
-            "file_change",
-            "prompt",
-            "unknown",
-        }
-    ),
-    "refactor": frozenset({"refactor", "cleanup", "file_change", "other", "unknown"}),
-    "migrate": frozenset({"migration", "refactor", "other", "file_change", "unknown"}),
-    "document": frozenset({"docs", "other", "unknown"}),
-    "investigate": frozenset({"research", "other", "unknown"}),
-    "improve": frozenset(
-        {
-            "refactor",
-            "feature",
-            "performance",
-            "test",
-            "security",
-            "docs",
-            "infra",
-            "cleanup",
-            "other",
-            "file_change",
-            "prompt",
-            "unknown",
-        }
-    ),
-    "configure": frozenset({"infra", "security", "other", "unknown"}),
-    "remove": frozenset({"cleanup", "refactor", "other", "file_change", "unknown"}),
-}
+    from ralph.pipeline.work_unit import WorkUnit
 
 # Shell-invocation denylist for VerificationStep.method. Each prefix is
 # startswith() matched; the trailing space on each entry ensures legitimate
@@ -123,28 +65,41 @@ _SHELL_INVOCATION_PREFIXES: tuple[str, ...] = (
 
 
 class PlanArtifact(RalphBaseModel):
-    """Top-level validated schema for a plan artifact."""
+    """Top-level validated schema for a plan artifact.
+
+    Only the structure the pipeline consumes is required: at least one
+    step (unless the plan is a no-op). Every other section is optional
+    context — a plan may take any shape (single linear step list,
+    several subplans, or per-work-unit mini-plans) as long as its step
+    IDs stay unique and, when work units are used, the work-unit
+    structure stays parseable.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    summary: Summary
-    skills_mcp: SkillsMcp
+    summary: Summary | None = None
+    skills_mcp: SkillsMcp | None = None
     steps: list[PlanStep] = Field(..., min_length=1)
-    critical_files: CriticalFiles
-    risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
+    critical_files: CriticalFiles | None = None
+    risks_mitigations: list[RiskMitigation] = Field(default_factory=list)
     constraints: PlanConstraints | None = None
     noop: bool | None = Field(default=None, exclude=True)
     schema_version: int = Field(default=0, ge=0)
     design: DesignSection | None = None
-    verification_strategy: list[VerificationStep] = Field(..., min_length=1)
+    verification_strategy: list[VerificationStep] = Field(default_factory=list)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: "list[WorkUnit]" = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_depends_on_acyclic(self) -> PlanArtifact:
-        """Reject plans whose ``steps[*].depends_on`` graph contains a cycle.
+        """Reject ambiguous, dangling, or cyclic consumed step identifiers.
 
-        Mirrors the cycle-detector pattern in
+        Step numbers are the canonical form of document-wide ``S-n`` IDs.
+        Validate uniqueness and reference resolution before building the graph,
+        so direct canonical payloads cannot bypass the Markdown boundary's
+        strict consumed-ID contract.
+
+        Cycle detection mirrors the pattern in
         :func:`ralph.pipeline.work_units._validate_acyclic` (line 158 of
         ``ralph/pipeline/work_units.py``): DFS with two sets
         (``visiting`` = current DFS stack, ``visited`` = fully explored).
@@ -161,6 +116,19 @@ class PlanArtifact(RalphBaseModel):
         at step N`` where ``N`` is the step number that re-entered the
         DFS stack.
         """
+        step_numbers = [step.number for step in self.steps]
+        known_steps: set[int] = set()
+        for step_number in step_numbers:
+            if step_number in known_steps:
+                raise PlanArtifactValidationError(f"duplicate plan step number {step_number}")
+            known_steps.add(step_number)
+        for step in self.steps:
+            for dependency in step.depends_on:
+                if dependency not in known_steps:
+                    raise PlanArtifactValidationError(
+                        f"plan step {step.number} depends on unknown step {dependency}"
+                    )
+
         graph: dict[int, list[int]] = {step.number: list(step.depends_on) for step in self.steps}
         visiting: set[int] = set()
         visited: set[int] = set()
@@ -192,30 +160,36 @@ class PlanArtifact(RalphBaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_parallel_unit_graphs(self) -> PlanArtifact:
+        """Validate every consumed fan-out graph and nested-step ownership."""
+        _validate_named_dependency_graph(
+            [(item.id, item.depends_on) for item in self.parallel_plan],
+            label="parallel plan item",
+        )
+        _validate_named_dependency_graph(
+            [(unit.unit_id, unit.dependencies) for unit in self.work_units],
+            label="work unit",
+        )
+        _validate_work_unit_step_ownership(self.work_units, self.steps)
+        return self
+
+    @model_validator(mode="after")
     def _validate_step_ac_cross_references(self) -> PlanArtifact:
-        """Cross-validate the 2-way step<->acceptance-criterion link and 3 cross-section invariants.
+        """Cross-validate step/criterion links and consumed execution invariants.
 
         Each step's ``satisfies`` list must reference an AC id that exists on
         the plan, and each AC's ``satisfied_by_steps`` list must reference a
         real step number. Orphan links are rejected so the executor never
         consumes a stale or broken AC<->step link.
 
-        After the cross-reference check, four additional invariants are
-        enforced (each is a hard ``PlanArtifactValidationError``):
+        Two additional consumed invariants remain hard:
 
-        1. ``summary.intent_verb`` -> ``scope_item.category`` compatibility.
-           Every scope item whose category is NOT in the verb's allowed set
-           is rejected with a message naming the offending text. The check
-           skips when ``intent_verb`` is empty (the field is optional).
-        2. ``parallel_plan`` and ``work_units`` are mutually exclusive. A
+        1. ``parallel_plan`` and ``work_units`` are mutually exclusive. A
            plan that declares both raises a validation error.
-        3. ``verification_strategy[*].method`` must not invoke a shell
+        2. ``verification_strategy[*].method`` must not invoke a shell
            interpreter directly. Three strict ``startswith()`` prefixes are
            denied: ``bash -c ``, ``sh -c ``, ``eval `` (with trailing
            space so legitimate invocations like ``bash ./script.sh`` pass).
-        4. ``design.acceptance_criteria`` entries must not reference a
-           ``research`` or ``verify`` step in ``satisfied_by_steps``; only
-           ``file_change`` and ``action`` steps can satisfy an AC.
         """
         criteria: list[AcceptanceCriterion] = _collect_criteria(self.design)
         ac_ids: set[str] = {c.id for c in criteria}
@@ -227,18 +201,13 @@ class PlanArtifact(RalphBaseModel):
         _check_satisfies_links(self.steps, criteria, ac_ids)
         _check_satisfied_by_steps_links(criteria, step_numbers)
 
-        # Cross-section invariant 1: intent_verb -> scope_item.category.
-        _check_intent_verb_category_compatibility(
-            self.summary.intent_verb, self.summary.scope_items
-        )
-
-        # Cross-section invariant 2: parallel_plan and work_units are
-        # mutually exclusive.
+        # Parallel Plan and Work Units are two representations of the same
+        # consumed fan-out contract and therefore remain mutually exclusive.
         if self.parallel_plan and self.work_units:
             msg = "plan cannot declare both parallel_plan and work_units; pick one"
             raise PlanArtifactValidationError(msg)
 
-        # Cross-section invariant 3: shell-invocation guard on verification.
+        # Shell-invocation guard on verification.
         for step in self.verification_strategy:
             method = step.method
             for prefix in _SHELL_INVOCATION_PREFIXES:
@@ -249,16 +218,8 @@ class PlanArtifact(RalphBaseModel):
                     )
                     raise PlanArtifactValidationError(msg)
 
-        # Cross-section invariant 4: research/verify steps cannot satisfy an AC.
-        if criteria:
-            step_type_by_number: dict[int, str] = {s.number: str(s.step_type) for s in self.steps}
-            _check_research_verify_step_references(criteria, step_type_by_number)
-
-        if not self.skills_mcp.skills:
-            raise PlanArtifactValidationError(
-                "skills_mcp.skills must contain at least one skill name"
-            )
         return self
+
 
 class _PlanArtifactRebuildState:
     rebuilt: bool = False
@@ -339,27 +300,11 @@ def _format_validation_error(exc: ValidationError) -> str:
 
     Uses the shared :mod:`ralph.pydantic_validation_errors` formatter to
     produce a field-level, value-aware message for every error in the
-    exception. After the shared formatter runs, this helper appends a
-    step_type remediation hint whenever the error set contains a
-    ``steps[*].step_type`` literal_error; this preserves the long-standing
-    ``"step_type"`` / ``"verify_command"`` substrings that existing
-    ``pytest.raises(..., match=...)`` assertions expect.
-
-    The remediation hint is appended *after* the shared formatter's
-    output so the canonical field-level messages stay first and the
-    step_type hint serves as a focused, plan-specific follow-up. The
-    shared formatter runs once per ``ValidationError`` so the result is
-    deterministic and never duplicates lines.
-
-    An unknown top-level section (``design_constraints`` at the top
-    level) is also surfaced as a follow-up hint that names the
-    rejected key and suggests the closest canonical section.
+    exception. Unknown top-level or design sub-section keys also receive
+    focused follow-up hints.
     """
     shared_lines = format_validation_error_messages(exc)
     follow_ups: list[str] = []
-    step_type_hint = _step_type_remediation_hint(exc)
-    if step_type_hint is not None:
-        follow_ups.append(step_type_hint)
     section_hint = _top_level_unknown_section_hint(exc)
     if section_hint is not None:
         follow_ups.append(section_hint)
@@ -369,45 +314,6 @@ def _format_validation_error(exc: ValidationError) -> str:
     if not follow_ups:
         return "\n".join(shared_lines) if shared_lines else str(exc)
     return "\n".join(shared_lines) + "\n" + "\n".join(follow_ups)
-
-
-def _step_type_remediation_hint(exc: ValidationError) -> str | None:
-    """Return a step_type remediation hint when the error set contains one.
-
-    Returns ``None`` if no error in the exception targets
-    ``steps[*].step_type`` so the shared formatter's output is used as-is
-    in the common case. The hint is deterministic, names the four valid
-    StepType members, and includes the canonical
-    ``verify_command = 'pytest ...'`` remediation that the planning
-    prompt recommends.
-    """
-    valid_step_types: tuple[str, ...] = (
-        "file_change",
-        "action",
-        "research",
-        "verify",
-    )
-    _min_step_type_loc_len: int = 3
-    for err in _error_records(exc):
-        loc_value: object = err.get("loc", ())
-        loc: tuple[object, ...] = (
-            cast("tuple[object, ...]", loc_value) if isinstance(loc_value, tuple) else ()
-        )
-        if (
-            len(loc) >= _min_step_type_loc_len
-            and loc[0] == "steps"
-            and isinstance(loc[1], int)
-            and loc[2] == "step_type"
-        ):
-            step_index: int = loc[1]
-            input_value: object = err.get("input", None)
-            return (
-                f"step {step_index + 1} step_type={input_value!r} is not a valid value; "
-                f"valid values are {list(valid_step_types)}. "
-                f"For test-running steps use step_type='verify' with a "
-                f"verify_command like 'pytest tests/test_x.py -q'."
-            )
-    return None
 
 
 def _format_design_subkey_suggestion(exc: ValidationError) -> str | None:
@@ -601,25 +507,6 @@ def validate_plan_section(
     )
 
 
-def merge_plan_section(
-    sections: PlanArtifactDict,
-    section: str,
-    fragment: object,
-    mode: SectionMode,
-) -> PlanArtifactDict:
-    """Return a new sections dict with the given fragment merged in."""
-    new_sections: dict[str, object] = dict(sections)
-    if section in PLAN_SECTION_OBJECT_MODELS or mode == "replace":
-        new_sections[section] = fragment
-        return new_sections
-
-    existing = new_sections.get(section)
-    base: list[object] = list(existing) if isinstance(existing, list) else []
-    base.append(fragment)
-    new_sections[section] = base
-    return new_sections
-
-
 def _collect_criteria(design: DesignSection | None) -> list[AcceptanceCriterion]:
     if design is None or design.acceptance_criteria is None:
         return []
@@ -667,174 +554,78 @@ def _check_satisfied_by_steps_links(
                 raise PlanArtifactValidationError(msg)
 
 
-def _check_intent_verb_category_compatibility(
-    intent_verb: str,
-    scope_items: list[ScopeItem],
+def _validate_named_dependency_graph(
+    entries: list[tuple[str, list[str]]],
+    *,
+    label: str,
 ) -> None:
-    """Reject scope items whose category is NOT in the verb's allowed set.
-
-    Skips when ``intent_verb`` is empty (the field is optional; the user
-    has not committed to a closed verb). The full 9-verb x 15-category
-    mapping is documented at the top of this module.
-    """
-    if not intent_verb:
-        return
-    allowed = _INTENT_VERB_ALLOWED_CATEGORIES.get(intent_verb)
-    if allowed is None:
-        return
-    for item in scope_items:
-        category = item.category
-        if category is None:
-            continue
-        if category not in allowed:
-            msg = (
-                f"scope item {item.text!r} has category {category!r} which is "
-                f"incompatible with intent_verb={intent_verb!r}; change the verb to one "
-                f"that admits {category!r} or split into multiple plans"
-            )
-            raise PlanArtifactValidationError(msg)
-
-
-def _check_research_verify_step_references(
-    criteria: list[AcceptanceCriterion],
-    step_type_by_number: dict[int, str],
-) -> None:
-    """Reject ``satisfied_by_steps`` references to research/verify steps.
-
-    Only ``file_change`` and ``action`` steps can satisfy an AC because
-    they produce a concrete, observable change; research and verify
-    steps are exploratory or pure-check and cannot be the authoritative
-    completion signal for an AC.
-    """
-    for criterion in criteria:
-        raw_refs: object = getattr(criterion, "satisfied_by_steps", [])
-        refs: list[int] = (
-            [raw for raw in raw_refs if isinstance(raw, int)] if isinstance(raw_refs, list) else []
+    """Reject duplicate, dangling, self-referential, or cyclic unit graphs."""
+    identifiers = [identifier for identifier, _ in entries]
+    known = set(identifiers)
+    if len(known) != len(identifiers):
+        duplicate = next(
+            identifier
+            for index, identifier in enumerate(identifiers)
+            if identifier in identifiers[:index]
         )
-        for step_ref in refs:
-            step_type = step_type_by_number.get(step_ref)
-            if step_type in (StepType.RESEARCH, StepType.VERIFY):
-                msg = (
-                    "satisfied_by_steps cannot reference a research or verify step; "
-                    f"step {step_ref} is {step_type!r} for criterion {criterion.id!r}"
+        raise PlanArtifactValidationError(f"duplicate {label} ID {duplicate!r}")
+    graph = dict(entries)
+    for identifier, dependencies in entries:
+        for dependency in dependencies:
+            if dependency == identifier:
+                raise PlanArtifactValidationError(f"{label} {identifier!r} depends on itself")
+            if dependency not in known:
+                raise PlanArtifactValidationError(
+                    f"{label} {identifier!r} references unknown dependency {dependency!r}"
                 )
-                raise PlanArtifactValidationError(msg)
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(identifier: str) -> None:
+        if identifier in visited:
+            return
+        if identifier in visiting:
+            raise PlanArtifactValidationError(
+                f"{label} dependency cycle detected at {identifier!r}"
+            )
+        visiting.add(identifier)
+        for dependency in graph.get(identifier, []):
+            visit(dependency)
+        visiting.remove(identifier)
+        visited.add(identifier)
+
+    for identifier in identifiers:
+        visit(identifier)
 
 
-def _decode_plan_payload(raw: str | Mapping[str, object]) -> PlanArtifactDict:
-    """Canonical plan-payload decoder shared by the strict and lenient helpers.
-
-    Accepts either a JSON string (decoded exactly once) or a mapping
-    (shallow-copied to avoid leaking the caller's dict). Detects the
-    ``{"type": "plan", "content": {...}}`` envelope and returns the
-    inner ``content`` dict when it is a dict, otherwise raises
-    ``PlanArtifactValidationError``.
-    """
-    if isinstance(raw, str):
-        try:
-            parsed: object = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise PlanArtifactValidationError(f"Content must be valid JSON: {exc}") from exc
-        if isinstance(parsed, str):
-            with suppress(json.JSONDecodeError):
-                parsed = json.loads(parsed)
-    elif isinstance(raw, Mapping):
-        parsed = dict(raw)
-    else:
-        raise PlanArtifactValidationError(
-            f"plan payload must be a JSON string or mapping, got {type(raw).__name__}"
-        )
-
-    if not isinstance(parsed, dict):
-        raise PlanArtifactValidationError("plan payload must decode to a JSON object")
-    parsed_dict = cast("PlanArtifactDict", parsed)
-    if parsed_dict.get("type") == "plan":
-        nested = parsed_dict.get("content")
-        if isinstance(nested, dict):
-            return cast("PlanArtifactDict", nested)
-        raise PlanArtifactValidationError("plan envelope has no valid 'content' object")
-    return parsed_dict
-
-
-def parse_plan_payload_strict(raw: str | Mapping[str, object]) -> PlanArtifactDict:
-    """Strict plan-payload decoder that raises on any failure."""
-    return _decode_plan_payload(raw)
-
-
-def parse_plan_payload_lenient(
-    raw: str | Mapping[str, object],
-) -> PlanArtifactDict | None:
-    """Lenient plan-payload decoder that returns None on the same failures."""
-    try:
-        return _decode_plan_payload(raw)
-    except PlanArtifactValidationError:
-        return None
-
-
-def finalize_plan_draft(draft: PlanArtifactDict) -> PlanArtifactDict:
-    """Validate a draft's sections as a whole PlanArtifact.
-
-    Raises PlanArtifactValidationError if any cross-section invariant fails
-    (e.g. a required section is still missing).
-    """
-    sections = draft.get("sections")
-    if not isinstance(sections, dict):
-        raise PlanArtifactValidationError("plan draft is missing a 'sections' object")
-    return normalize_plan_artifact_content(cast("PlanArtifactDict", sections))
-
-
-def _schema_with_evidence_string_shorthand(schema: dict[str, object]) -> dict[str, object]:
-    """Expose the accepted bare-string evidence shorthand in JSON Schema."""
-    defs_obj = schema.get("$defs")
-    if isinstance(defs_obj, dict):
-        defs = cast("dict[str, object]", defs_obj)
-        plan_step_obj = defs.get("PlanStep")
-        if isinstance(plan_step_obj, dict):
-            plan_step = cast("dict[str, object]", plan_step_obj)
-            properties_obj = plan_step.get("properties")
-            if isinstance(properties_obj, dict):
-                properties = cast("dict[str, object]", properties_obj)
-                expected_evidence_obj = properties.get("expected_evidence")
-                if isinstance(expected_evidence_obj, dict):
-                    expected_evidence = cast("dict[str, object]", expected_evidence_obj)
-                    items_obj = expected_evidence.get("items")
-                    if isinstance(items_obj, dict):
-                        items = cast("dict[str, object]", items_obj)
-                        if "anyOf" not in items:
-                            string_schema: dict[str, object] = {
-                                "type": "string",
-                                "description": (
-                                    "Bare-string shorthand accepted for legacy compatibility; "
-                                    "canonicalized to EvidenceRef(kind='file', ref=value)."
-                                ),
-                            }
-                            expected_evidence["items"] = {"anyOf": [items, string_schema]}
-    return schema
-
-
-def generate_plan_schema() -> dict[str, object]:
-    """Return the JSON Schema for ``PlanArtifact`` as a Python dict.
-
-    The on-disk file at ``ralph/mcp/artifacts/plan/schema.json`` is generated
-    from this helper (via ``PlanArtifact.model_json_schema()``) and locked
-    by the regression test ``test_schema_json_file_matches_generate_plan_schema``.
-    External tools (mypy, pyright, vscode) can consume the on-disk file to
-    type-check a plan without round-tripping Pydantic.
-    """
-    _ensure_plan_artifact_rebuilt()
-    return _schema_with_evidence_string_shorthand(PlanArtifact.model_json_schema())
+def _validate_work_unit_step_ownership(
+    work_units: list[WorkUnit],
+    steps: list[PlanStep],
+) -> None:
+    """Keep nested mini-plan ownership resolvable and one-to-one."""
+    known_steps = {f"S-{step.number}" for step in steps}
+    owner_by_step: dict[str, str] = {}
+    for unit in work_units:
+        for step_id in unit.step_ids:
+            if step_id not in known_steps:
+                raise PlanArtifactValidationError(
+                    f"work unit {unit.unit_id!r} owns unknown step ID {step_id!r}"
+                )
+            prior_owner = owner_by_step.get(step_id)
+            if prior_owner is not None:
+                raise PlanArtifactValidationError(
+                    f"step ID {step_id!r} is owned by work units "
+                    f"{prior_owner!r} and {unit.unit_id!r}"
+                )
+            owner_by_step[step_id] = unit.unit_id
 
 
 __all__ = [
     "PlanArtifact",
     "PlanArtifactValidationError",
     "SectionMode",
-    "finalize_plan_draft",
-    "generate_plan_schema",
     "is_noop_plan",
-    "merge_plan_section",
     "normalize_plan_artifact_content",
-    "parse_plan_payload_lenient",
-    "parse_plan_payload_strict",
     "validate_plan_section",
 ]

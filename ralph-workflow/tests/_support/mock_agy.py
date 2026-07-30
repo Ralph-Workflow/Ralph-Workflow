@@ -1,4 +1,4 @@
-"""Deterministic simulator for the AGY v1.0.8 --print wire format.
+"""Deterministic simulator for the measured AGY v1.1.8 CLI surface.
 
 This module is importable and runnable as ``python -m tests._support.mock_agy``.
 It is used by the Ralph smoke harness when ``RALPH_AGY_BINARY`` points at it
@@ -9,8 +9,9 @@ Controlled by environment variables:
 
 * ``MOCK_AGY_BEHAVIOR`` - ``normal`` (default), ``quota_exhausted``, or
   ``invalid_model``.
-* ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/artifacts/`` and
-  ``tmp/`` are written. Defaults to the current working directory.
+* ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/tmp/``,
+  ``.agent/artifacts/``, the completion sentinel, and ``tmp/`` are written.
+  Defaults to the current working directory.
 
 The simulator honors the flag set measured from the real binary:
 ``--print``/``-p``, ``--dangerously-skip-permissions``, ``--model``,
@@ -21,7 +22,6 @@ single positional prompt argument.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -29,20 +29,28 @@ from pathlib import Path
 
 CANONICAL_MODELS: frozenset[str] = frozenset(
     {
-        "Gemini 3.5 Flash (Medium)",
-        "Gemini 3.5 Flash (High)",
-        "Gemini 3.5 Flash (Low)",
-        "Gemini 3.1 Pro (Low)",
-        "Gemini 3.1 Pro (High)",
-        "Claude Sonnet 4.6 (Thinking)",
-        "Claude Opus 4.6 (Thinking)",
-        "GPT-OSS 120B (Medium)",
+        "gemini-3.6-flash-high",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.5-flash-high",
+        "gemini-3.5-flash-medium",
+        "gemini-3.5-flash-low",
+        "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
     }
 )
 
 OUTPUT_FILE_RELPATH = "tmp/interactive-agy-smoke/todo-list.js"
-ARTIFACT_RELPATH = ".agent/artifacts/smoke_test_result.json"
+# The mock authors the fallback Markdown document that
+# ``ralph.mcp.artifacts.canonical_submit.promote_fallback_artifact`` consumes
+# and promotes to the canonical ``.agent/artifacts/smoke_test_result.md``
+# artifact plus a durable submission receipt.
+ARTIFACT_RELPATH = ".agent/tmp/smoke_test_result.md"
 PROMPT_RECEIVED_RELPATH = ".agent/artifacts/.mock_agy_prompt.txt"
+RUN_ID_ENV = "RALPH_MCP_RUN_ID"
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
@@ -51,6 +59,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dangerously-skip-permissions", action="store_true")
     parser.add_argument("--model", default=None)
     parser.add_argument("--add-dir", action="append", default=[])
+    parser.add_argument("--effort", choices=("low", "medium", "high"), default=None)
     parser.add_argument("--print-timeout", default=None)
     parser.add_argument("--conversation", default=None)
     parser.add_argument("--sandbox", action="store_true")
@@ -86,30 +95,40 @@ def _write_prompt_received(artifact_dir: Path, prompt: str | None) -> None:
 def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
     artifact_path = artifact_dir / ARTIFACT_RELPATH
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact = {
-        "name": "smoke_test_result",
-        "type": "smoke_test_result",
-        "content": {
-            "status": "passed",
-            "output_file": OUTPUT_FILE_RELPATH,
-            "observed_working": [
-                "created todo-list.js",
-                "wrote smoke_test_result artifact",
-            ],
-            "observed_breaks": [],
-            "headless_guide_checks": [
-                "tool activity",
-                "parser events",
-                "tmp artifact creation",
-            ],
-            "summary": "AGY smoke test completed successfully",
-        },
-        "created_at": "2026-01-01T00:00:00+00:00",
-        "updated_at": "2026-01-01T00:00:00+00:00",
-        "metadata": {},
-    }
-    artifact_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+    artifact_path.write_text(
+        "---\n"
+        "type: smoke_test_result\n"
+        "status: passed\n"
+        f"output_file: {OUTPUT_FILE_RELPATH}\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] AGY smoke test completed successfully\n"
+        "\n"
+        "## Observed Working\n"
+        "\n"
+        "- [OK-1] created todo-list.js\n"
+        "- [OK-2] wrote smoke_test_result artifact\n"
+        "\n"
+        "## Headless Guide Checks\n"
+        "\n"
+        "- [HG-1] tool activity\n"
+        "- [HG-2] parser events\n"
+        "- [HG-3] tmp artifact creation\n",
+        encoding="utf-8",
+    )
     return artifact_path
+
+
+def _write_completion_sentinel(artifact_dir: Path) -> None:
+    """Simulate the mock agent's successful ``declare_complete`` MCP call."""
+    run_id = os.environ.get(RUN_ID_ENV)
+    if not run_id:
+        return
+    sentinel = artifact_dir / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
 
 def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
@@ -129,12 +148,9 @@ def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
     print(f"Session ID: {session_id}")
-    # The smoke prompt for AGY (see ``smoke_plumbing._build_smoke_prompt``)
-    # intentionally does NOT instruct the model to print a transcript
-    # completion marker; the authoritative completion signal is the canonical
-    # receipt promoted from the agent's direct artifact write. The mock
-    # faithfully omits the transcript marker so test coverage matches the
-    # current prompt contract.
+    # The mock omits a spoofable transcript marker. ``main`` writes the same
+    # durable sentinel that the real ``declare_complete`` tool would produce
+    # in this no-HMAC test harness.
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -161,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_todo_list(artifact_dir)
     _write_prompt_received(artifact_dir, args.prompt)
     _write_smoke_test_result_artifact(artifact_dir)
+    _write_completion_sentinel(artifact_dir)
     _emit_normal_stdout(args.model, args.prompt)
     return 0
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.cli.commands.prompt_helper import run_prompt_helper
@@ -60,7 +60,7 @@ class TestRefineAcceptLoop:
                 return mock_invoke_runtime()
 
         monkeypatch.setattr(
-            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            _session_runtime().ManagedAgentSessionRuntime,
             "open",
             classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
@@ -90,6 +90,26 @@ class TestRefineAcceptLoop:
         assert (workspace_root / "PROMPT.md").exists(), "PROMPT.md should be written on Accept"
         # Only the initial artifact-producing turn ran; Accept does not re-invoke.
         assert mock_invoke.call_count == 1
+
+    def test_run_does_not_delete_retired_json_artifact(
+        self,
+        workspace_root: Path,
+        config_with_helper_agent: UnifiedConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Prompt-helper no longer owns cleanup of the retired JSON artifact path."""
+        self._setup_base_runtime(monkeypatch)
+        legacy_artifact = workspace_root / ".agent" / "artifacts" / "product_spec.json"
+        legacy_artifact.parent.mkdir(parents=True)
+        legacy_artifact.write_text('{"title": "legacy"}', encoding="utf-8")
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.Prompt.ask",
+            lambda *args, **kwargs: "An idea" if kwargs.get("choices") is None else "Accept",
+        )
+
+        run_prompt_helper(config_with_helper_agent, workspace_root)
+
+        assert legacy_artifact.read_text(encoding="utf-8") == '{"title": "legacy"}'
 
     def test_refine_reinvokes_agent_then_accept_writes_prompt_md(
         self,

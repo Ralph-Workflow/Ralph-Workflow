@@ -20,7 +20,7 @@ body:
         - Unclear agent-choice guidance
         - Unclear fit / bad-fit guidance
         - Unclear install / setup step
-        - Unclear Codeberg-vs-GitHub guidance
+        - Unclear GitHub-vs-Codeberg guidance
         - Unclear differentiation vs another tool
         - Something else
     validations:
@@ -42,7 +42,7 @@ body:
   - type: textarea
     id: next_step
     attributes:
-      label: What would have made you more likely to try or star/watch on Codeberg?
+      label: What would have made you more likely to try or star/watch on GitHub?
       placeholder: A clearer example, a shorter checklist, a comparison, a screenshot, etc.
     validations:
       required: true

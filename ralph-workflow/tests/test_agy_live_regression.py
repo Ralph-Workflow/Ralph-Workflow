@@ -51,17 +51,15 @@ from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
 # Capture the real HOME at import time, BEFORE the conftest
 # ``_isolate_process_home`` autouse fixture remaps it to a per-test sandbox.
-# AGY v1.0.9 needs the real HOME to find its keyring credentials; the
+# AGY v1.1.8 needs the real HOME to find its keyring credentials; the
 # sandbox HOME has no .gemini/antigravity-cli state and no OAuth tokens, so
 # AGY falls back to the OAuth browser flow and times out.
 _REAL_HOME = Path(os.environ.get("HOME") or Path.home()).resolve()
 
-# The model alias to drive for live tests. The default ``agy/Claude Sonnet 4.6
-# (Thinking)`` alias sometimes hits the 24h individual quota (RESOURCE_EXHAUSTED
-# 429) in the test environment; ``agy/Gemini 3.5 Flash (Medium)`` is a
-# deterministic fallback that ships with a generous per-account quota and is
-# one of the 8 canonical aliases returned by ``agy models``.
-_LIVE_AGY_AGENT = "agy/Gemini 3.5 Flash (Medium)"
+# The model alias to drive for live tests. The default
+# ``agy/claude-sonnet-4-6`` can hit the individual quota; the observed-working
+# low-tier ``agy/gemini-3.6-flash-low`` alias is published by ``agy models``.
+_LIVE_AGY_AGENT = "agy/gemini-3.6-flash-low"
 # The expected canonical-receipt run_id mirrors the smoke harness spec for
 # ``_LIVE_AGY_AGENT``. Computing it from the spec keeps the receipt test
 # aligned when the fallback model changes.
@@ -97,7 +95,7 @@ def _write_smoke_prompt(prompt_file: Path) -> None:
 def _build_live_env() -> dict[str, str]:
     """Build the env dict for a live AGY smoke run.
 
-    AGY v1.0.9 stores its keyring credentials in the OS keychain but the
+    AGY v1.1.8 stores its keyring credentials in the OS keychain but the
     Go runtime also keeps a session cache under ``$HOME/.gemini/antigravity-cli``.
     The conftest ``_isolate_process_home`` autouse fixture remaps HOME to a
     per-test sandbox, which makes AGY fall back to the OAuth browser flow
@@ -107,7 +105,7 @@ def _build_live_env() -> dict[str, str]:
     We therefore override HOME in the env returned here to the user's real
     home (captured from the parent process before the autouse fixture ran)
     so the live AGY can authenticate via the keychain. The test outputs
-    (``.agent/artifacts/smoke_test_result.json``, ``.agent/receipts/...``)
+    (``.agent/artifacts/smoke_test_result.md``, ``.agent/receipts/...``)
     are still isolated to the workspace dir because the smoke CLI derives
     ``workspace_root`` from ``Path.cwd()`` (the test's ``cwd=`` argument),
     not from ``$HOME``.
@@ -268,7 +266,7 @@ def test_live_agy_produces_green_parity_table(
     output = live_smoke_session.output
     cli_log_tail = live_smoke_session.cli_log_tail
 
-    assert "agy/Gemini 3.5 Flash (Medium)" in output, (
+    assert "agy/gemini-3.6-flash-low" in output, (
         f"Expected AGY parity row in output. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
@@ -289,16 +287,16 @@ def test_live_agy_produces_green_parity_table(
 def test_live_agy_artifact_present(live_smoke_session: _LiveSmokeResult) -> None:
     """After the live smoke run, the smoke_test_result artifact is present.
 
-    Reads the session-shared smoke workspace and asserts
-    ``.agent/artifacts/smoke_test_result.json`` is on disk. There is NO
-    auth/quota permits allowance; the upstream-blocked xfail gate
-    converts documented transient conditions into a clear xfail.
+    Reads the session-shared smoke workspace and asserts the canonical
+    Markdown artifact ``.agent/artifacts/smoke_test_result.md`` is on
+    disk. There is NO auth/quota permits allowance; the upstream-blocked
+    xfail gate converts documented transient conditions into a clear xfail.
     """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 
-    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.md"
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -329,6 +327,10 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         f"Expected the dash-prefixed '- smoke_test_result artifact submitted' "
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
+    assert "- completion sentinel observed" in output, (
+        f"Expected the durable completion-sentinel success marker. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    )
     assert "No breaks observed" in output or "Breaks: none" in output, (
         f"Expected no breaks marker in parity report. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -338,7 +340,7 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         "- no tool activity was observed",
         "- smoke_test_result artifact was not submitted",
         "- expected todo-list.js was not created",
-        "- declare_complete marker was not observed",
+        "- completion sentinel was not observed",
         "- no parser events were observed",
         "- fewer than 3 meaningful output lines were observed",
     )
@@ -396,7 +398,7 @@ def test_live_agy_pty_read_thread_sees_output(
         shutil.which("agy") or "agy",
         "--dangerously-skip-permissions",
         "--model",
-        "Gemini 3.5 Flash (Medium)",
+        "gemini-3.6-flash-low",
         "--print",
         "Reply with exactly the word: hello",
     ]
@@ -493,15 +495,17 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     """The AGY-side direct file write is promoted to a canonical receipt.
 
     Reads the session-shared smoke workspace and asserts the canonical
-    artifact submission path: the live AGY writes
-    ``.agent/artifacts/smoke_test_result.json`` directly and the
+    artifact submission path: the live AGY authors the fallback
+    ``.agent/tmp/smoke_test_result.md`` Markdown document and the
     ``promote_fallback_artifact`` / ``write_artifact_receipt`` machinery
-    in ``ralph.mcp.artifacts`` durably stamps a canonical receipt keyed
-    on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
+    in ``ralph.mcp.artifacts`` writes the canonical
+    ``.agent/artifacts/smoke_test_result.md`` artifact and durably stamps
+    a canonical receipt keyed on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
     in the per-workspace ``.agent/state.db`` (one row per
     ``(run_id, artifact_type)``); the legacy
-    ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is
-    read-only fallback during the dual-read rollout window.
+    ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is a
+    migration read fallback and a durable write fallback when DB
+    persistence is unavailable.
 
     Asserting via the public ``artifact_receipt_present`` read API
     verifies the behavioral promotion contract without coupling to
@@ -514,7 +518,7 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 
-    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.md"
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -523,8 +527,8 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     expected_run_id = live_smoke_session.expected_run_id
     # RFC-013 P3: assert the canonical receipt is durably present via
     # the public artifact_receipt_present read API. The legacy
-    # .agent/receipts/<run_id>/<type>.json path is read-only fallback;
-    # production writes go to the per-workspace .agent/state.db only.
+    # .agent/receipts/<run_id>/<type>.json path is a migration read fallback
+    # and a durable write fallback when DB persistence is unavailable.
     assert (
         artifact_receipt_present(
             live_smoke_session.workspace,
@@ -567,7 +571,7 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     output = live_smoke_session.output
 
     expected_run_id = live_smoke_session.expected_run_id
-    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.md"
 
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
@@ -577,7 +581,7 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     # .agent/state.db. Asserting via the public artifact_receipt_present
     # read API verifies the end-to-end promotion contract without
     # coupling to which physical store the receipt landed in (the legacy
-    # .agent/receipts/<run_id>/<type>.json path is read-only fallback).
+    # .agent/receipts/<run_id>/<type>.json path is the durable fallback).
     assert (
         artifact_receipt_present(
             live_smoke_session.workspace,
@@ -607,6 +611,10 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
         "Expected the dash-prefixed '- smoke_test_result artifact submitted' "
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
+    )
+    assert "- completion sentinel observed" in output, (
+        "Expected the independent durable completion evidence in the report. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
 
 

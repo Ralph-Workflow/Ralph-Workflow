@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
-    ToolContent,
     ToolError,
 )
 from ralph.mcp.tools.workspace import (
@@ -33,7 +31,7 @@ class TestHandleReadFileFullReadTruncation:
 
         result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "small.txt"})
         assert result.is_error is False
-        assert cast("ToolContent", result.content[0]).text == "small content"
+        assert result.content[0].text == "small content"
 
     def test_oversize_file_returns_truncation_envelope(self) -> None:
         ws = MagicMock()
@@ -45,7 +43,7 @@ class TestHandleReadFileFullReadTruncation:
 
         result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "large.txt"})
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["truncated"] is True
         assert payload["total_bytes"] == 10_000_000
         assert payload["max_bytes"] == FULL_READ_DEFAULT_MAX_BYTES
@@ -66,7 +64,7 @@ class TestHandleReadFileFullReadTruncation:
             {"path": "file.txt", "max_bytes": 1000},
         )
         assert result.is_error is False
-        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        payload = json.loads(result.content[0].text)
         assert payload["max_bytes"] == 1000
         assert payload["truncated"] is True
 

@@ -66,16 +66,11 @@ REGISTRY: dict[str, SideEffectContract] = {
     "move_file": _contract("move_file", "mutate"),
     "copy_file": _contract("copy_file", "mutate"),
     "delete_path": _contract("delete_path", "mutate"),
-    "ralph_submit_artifact": _contract("ralph_submit_artifact", "mutate"),
-    "ralph_submit_plan_section": _contract("ralph_submit_plan_section", "mutate"),
-    "ralph_submit_plan_sections": _contract("ralph_submit_plan_sections", "mutate"),
-    "ralph_insert_plan_step": _contract("ralph_insert_plan_step", "mutate"),
-    "ralph_replace_plan_step": _contract("ralph_replace_plan_step", "mutate"),
-    "ralph_remove_plan_step": _contract("ralph_remove_plan_step", "mutate"),
-    "ralph_move_plan_step": _contract("ralph_move_plan_step", "mutate"),
-    "ralph_patch_step": _contract("ralph_patch_step", "mutate"),
-    "ralph_finalize_plan": _contract("ralph_finalize_plan", "mutate"),
-    "ralph_discard_plan_draft": _contract("ralph_discard_plan_draft", "mutate"),
+    "ralph_submit_md_artifact": _contract("ralph_submit_md_artifact", "mutate"),
+    "ralph_stage_md_artifact": _contract("ralph_stage_md_artifact", "mutate"),
+    "ralph_edit_md_artifact": _contract("ralph_edit_md_artifact", "mutate"),
+    "ralph_finalize_md_artifact": _contract("ralph_finalize_md_artifact", "mutate"),
+    "ralph_discard_md_draft": _contract("ralph_discard_md_draft", "mutate"),
     "coordinate": _contract("coordinate", "mutate"),
     "declare_complete": _contract("declare_complete", "mutate"),
     "report_progress": _contract("report_progress", "mutate"),
@@ -94,10 +89,21 @@ REGISTRY: dict[str, SideEffectContract] = {
     "git_diff": _contract("git_diff", "read"),
     "git_log": _contract("git_log", "read"),
     "git_show": _contract("git_show", "read"),
-    "ralph_get_plan_draft": _contract("ralph_get_plan_draft", "read"),
-    "ralph_validate_draft": _contract("ralph_validate_draft", "read"),
+    "ralph_verify_md_artifact": _contract("ralph_verify_md_artifact", "read"),
+    "ralph_get_md_draft": _contract("ralph_get_md_draft", "read"),
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
+    # Indexed exploration tools (Phase 1).
+    "ralph_index_status": _contract("ralph_index_status", "read"),
+    # A reindex may write to the SQLite index inside the workspace,
+    # but the operation is bounded, idempotent, and recoverable; we
+    # classify it as ``read`` here because it does not mutate
+    # source-of-truth files (the .agent/ralph-explore/ subtree is a
+    # derived disposable cache).
+    "ralph_reindex": _contract("ralph_reindex", "read"),
+    # Phase 2: bounded graph traversal over the indexed substrate;
+    # pure read, no source-of-truth mutation.
+    "ralph_graph": _contract("ralph_graph", "read"),
 }
 
 

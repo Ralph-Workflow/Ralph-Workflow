@@ -3,7 +3,7 @@
 This module is the single source of truth for the generous-but-bounded
 size limits that apply to a plan artifact. ``PlanSizeLimits.DEFAULT``
 defines every cap used by the plan schema, the runtime size guard, the
-generated JSON schema, the format doc, and the planning prompt templates.
+format doc, and the planning prompt templates.
 No model hard-codes a cap.
 
 The runtime size guard ``check_plan_size`` is a PURE helper that NEVER
@@ -24,6 +24,7 @@ constraints in the per-section modules):
 | ``PlanStep.rationale`` | (none) | medium | 8000 |
 | ``PlanStep.location`` | (none) | short | 500 |
 | ``PlanStep.verify_command`` | (none) | medium | 2000 |
+| ``PlanStep.expected_outcome`` | (none) | medium | 8000 |
 | ``PlanStep.targets`` (list) | (none) | short | 100 |
 | ``PlanStep.depends_on`` (list) | (none) | short | 50 |
 | ``PlanStep.satisfies`` (list) | (none) | short | 50 |
@@ -52,6 +53,7 @@ constraints in the per-section modules):
 | ``VerificationStep.cwd`` | 200 | short | 500 |
 | ``AcceptanceCriterion.description`` | (none) | medium | 8000 |
 | ``AcceptanceCriterion.verification_step`` | (none) | medium | 2000 |
+| ``AcceptanceCriterion.expected_outcome`` | (none) | medium | 8000 |
 | ``AcceptanceCriterion.evidence_path`` | (none) | short | 1000 |
 | ``AcceptanceCriterion.satisfied_by_steps`` (list) | (none) | short | 50 |
 | ``EvidenceRef.ref`` | 200 | short | 1000 |

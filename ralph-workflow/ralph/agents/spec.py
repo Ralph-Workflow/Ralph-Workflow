@@ -68,7 +68,9 @@ class AgentSpec:
         """Build an AgentSpec from an AgentConfig plus keyword overrides."""
         return cls(
             name=config.cmd,
-            transport=cast("AgentTransport", config.transport),
+            transport=cast(
+                "AgentTransport", config.transport
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             interactive=interactive,
             requires_pty=interactive,
             session_resume_template=config.session_flag,

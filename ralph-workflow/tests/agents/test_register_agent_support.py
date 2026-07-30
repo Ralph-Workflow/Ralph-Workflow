@@ -7,7 +7,7 @@ no real psutil.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -27,6 +27,7 @@ from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
     _PARSER_REGISTRY,
     AgentOutputLine,
+    ClaudeInteractiveParser,
     ClaudeParser,
     get_parser,
     resolve_parser_key,
@@ -40,6 +41,7 @@ from ralph.agents.support import AgentSupport
 from ralph.cli.commands.commit import collect_commit_agent_output
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.plumbing.smoke_plumbing import (
@@ -51,7 +53,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.process.child_liveness import ChildLivenessRegistry
 
 
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
@@ -71,7 +72,7 @@ def _reset_catalog() -> object:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
     yield
     cat._entries.clear()
     cat._entries.update(_GOLDEN_ENTRIES)
@@ -82,7 +83,7 @@ def _reset_catalog() -> object:
     cat._state.commands.clear()
     cat._state.commands.update(_GOLDEN_CUSTOM)
     cat._state.strategies.clear()
-    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.strategies.update(_GOLDEN_STRATEGIES)
 
 
 class FakeAgentParser:
@@ -284,7 +285,7 @@ class TestRegisterAgentSupport:
 
     def test_strategy_factory_kwargs_are_preserved_when_accepted(self) -> None:
         registry = AgentRegistry()
-        fake_registry = cast("ChildLivenessRegistry", object())
+        fake_registry = object()
 
         register_agent_support(
             "fake-kwargs",
@@ -326,7 +327,7 @@ class TestRegisterAgentSupport:
             "fake-no-kwargs",
             AgentTransport.GENERIC,
             label_scope="scope-x",
-            registry=cast("ChildLivenessRegistry", object()),
+            registry=object(),
         )
         assert isinstance(strategy, FakeAgentStrategy)
 
@@ -370,7 +371,14 @@ class TestRegisterAgentSupport:
             agent_config=config,
         )
 
-        assert rendered == ["fake-stream: hello"]
+        # After wt-028-display the pipeline runner routes through the single
+        # agent-event renderer registry; the output carries the registry's
+        # INFO carrier icon plus the agent prefix and body.
+        assert len(rendered) == 1
+        assert "fake-stream" in rendered[0]
+        assert "hello" in rendered[0]
+        # Plain-text path uses the icon (\u2139 for info) so meaning survives color-off.
+        assert "\u2139" in rendered[0]
 
     def test_custom_cmd_and_session_flag_override_defaults(self) -> None:
         registry = AgentRegistry()
@@ -472,6 +480,20 @@ class TestResolveParserKey:
         )
         assert key == "claude_interactive"
 
+    def test_configured_claude_interactive_override_keeps_interactive_parser(self) -> None:
+        """User-reported Claude smoke parsing regression, 2026-07-14."""
+        config = AgentConfig(
+            cmd="claude",
+            json_parser=JsonParserType.CLAUDE,
+            transport=AgentTransport.CLAUDE_INTERACTIVE,
+        )
+        AgentRegistry.from_config(UnifiedConfig(agents={"claude": config}))
+
+        key = resolve_parser_key(config.cmd, config.json_parser, config.transport)
+
+        assert key == "claude_interactive"
+        assert isinstance(get_parser(key), ClaudeInteractiveParser)
+
 
 class TestStrategyForCommand:
     """Runtime strategy resolution prefers the agent's command name."""
@@ -536,7 +558,7 @@ class TestRegistrationRegressionCases:
 
     def test_kwargs_forwarded_through_var_keyword_factory(self) -> None:
         registry = AgentRegistry()
-        fake_registry = cast("ChildLivenessRegistry", object())
+        fake_registry = object()
 
         register_agent_support(
             "kwargs-agent",

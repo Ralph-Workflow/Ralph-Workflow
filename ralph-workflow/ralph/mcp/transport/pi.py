@@ -39,12 +39,17 @@ def write_pi_mcp_extension(
     extension_path.write_text(_render_pi_mcp_extension(endpoint), encoding="utf-8")
     return extension_path, cleanup
 
+
 def _render_pi_mcp_extension(endpoint: str) -> str:
     endpoint_literal = json.dumps(endpoint)
     return f"""import type {{ ExtensionAPI }} from "@earendil-works/pi-coding-agent";
 
 const ENDPOINT = {endpoint_literal};
+const MCP_STARTUP_TIMEOUT_MS = 10_000;
 const FALLBACK_SCHEMA = {{ type: "object", additionalProperties: true }};
+const TERMINAL_TOOLS = new Set([
+  "declare_complete",
+]);
 
 let nextId = 1;
 let sessionId: string | undefined;
@@ -194,6 +199,21 @@ async function listTools(signal?: AbortSignal): Promise<McpTool[]> {{
   }});
 }}
 
+async function listToolsWithTimeout(): Promise<McpTool[]> {{
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MCP_STARTUP_TIMEOUT_MS);
+  try {{
+    return await listTools(controller.signal);
+  }} catch (error) {{
+    if (controller.signal.aborted) {{
+      throw new Error(`Ralph MCP startup timed out after ${{MCP_STARTUP_TIMEOUT_MS}}ms`);
+    }}
+    throw error;
+  }} finally {{
+    clearTimeout(timeoutId);
+  }}
+}}
+
 function piToolResult(result: unknown): JsonObject {{
   if (!isObject(result)) {{
     return {{
@@ -217,7 +237,7 @@ function piToolResult(result: unknown): JsonObject {{
 }}
 
 export default async function (pi: ExtensionAPI) {{
-  const tools = await listTools();
+  const tools = await listToolsWithTimeout();
   for (const tool of tools) {{
     pi.registerTool({{
       name: tool.name,
@@ -230,7 +250,10 @@ export default async function (pi: ExtensionAPI) {{
           name: tool.name,
           arguments: isObject(params) ? params : {{}},
         }}, signal);
-        return piToolResult(result);
+        return {{
+          ...piToolResult(result),
+          terminate: TERMINAL_TOOLS.has(tool.name),
+        }};
       }},
     }});
   }}

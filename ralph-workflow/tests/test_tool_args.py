@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.display.activity_model import ActivityEventKind, ActivityProvider
+from ralph.display.activity_provider import provider_for_transport
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
@@ -117,6 +118,44 @@ def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> N
 
     assert "ralph.read_file" in out, f"Expected 'ralph.read_file' in output:\n{out}"
     assert "path=ralph-workflow/ralph/x.py" in out
+
+
+def test_cursor_mcp_tool_wrapper_renders_inner_tool_and_args(tmp_path: Path) -> None:
+    """Cursor MCP wrapper events render the inner Ralph tool, not ``mcpToolCall``."""
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}),
+        workspace_root=tmp_path,
+    )
+
+    event = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "call_id": "tool-1",
+            "tool_call": {
+                "mcpToolCall": {
+                    "args": {
+                        "name": "ralph-mcp__ralph__create_directory",
+                        "toolName": "mcp__ralph__create_directory",
+                        "args": {"path": "tmp/interactive-cursor-smoke"},
+                    }
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    pd.activity_router.push_raw_line(
+        "cursor/auto", event, provider=provider_for_transport("cursor")
+    )
+    out = buf.getvalue()
+
+    assert "ralph.create_directory" in out, out
+    assert "path=tmp/interactive-cursor-smoke" in out, out
+    assert "mcpToolCall" not in out, out
 
 
 def test_tool_use_metadata_preserves_original_name() -> None:

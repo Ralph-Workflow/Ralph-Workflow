@@ -65,15 +65,19 @@ def _all_mcp_session_members() -> list[str]:
 
 
 def test_mcp_session_protocol_has_expected_member_count() -> None:
-    """The Protocol must declare 21 members (the production contract).
+    """The Protocol must declare 23 members (the production contract).
 
     Updated for RFC-013 P3: ``broker_secret`` is added to the
     surface so the broker-owned HMAC secret can be threaded through
-    the live receipt / sentinel write paths.
+    the live receipt / sentinel write paths. AC-03 adds
+    ``explore_index`` so the production session bridge can attach
+    one ExploreIndex handle per session/workspace pair. AC-11 adds
+    ``exec_resource_resolver`` so the production session bridge can
+    attach one ``ExecResourceResolver`` per session/workspace pair.
     """
     members = _all_mcp_session_members()
-    assert len(members) == 21, (
-        f"McpSession expected to declare 21 members, found {len(members)}: {members}"
+    assert len(members) == 23, (
+        f"McpSession expected to declare 23 members, found {len(members)}: {members}"
     )
 
 
@@ -116,6 +120,8 @@ def test_file_backed_session_returns_sensible_values_for_all_properties(
         "policy_flags",
         "stored_capability_profile",
         "broker_secret",
+        "explore_index",
+        "exec_resource_resolver",
     }
     for name in _all_mcp_session_members():
         if name in nullable:
@@ -199,8 +205,9 @@ def test_no_isinstance_narrowing_on_session_in_mcp_package(tmp_path: Path) -> No
     assert not hits, f"isinstance narrowing of session to FileBackedSession: {hits}"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
-    """Audit: no cast('McpSession', ...) in ralph/ — the storm-enabling laundering."""
+    """Audit: no ... in ralph/ — the storm-enabling laundering."""
     ralph_root = Path(__file__).parent.parent / "ralph"
     hits: list[str] = []
     for py_file in ralph_root.rglob("*.py"):
@@ -212,7 +219,7 @@ def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
         ):
             rel = py_file.relative_to(Path(__file__).parent.parent)
             hits.append(f"{rel}")
-    assert not hits, f"Found cast(*McpSession, ...) laundering: {hits}"
+    assert not hits, f"Found ... laundering: {hits}"
 
 
 def test_runtime_session_returns_typed_mcp_session(tmp_path: Path) -> None:

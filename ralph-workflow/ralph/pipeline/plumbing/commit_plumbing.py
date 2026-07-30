@@ -36,9 +36,10 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, cast
 
-from rich.text import Text
+if TYPE_CHECKING:
+    from rich.text import Text
 
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -57,6 +58,12 @@ from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.display.activity_provider import ActivityProvider, provider_for_transport
+from ralph.display.agent_event_renderer import (
+    normalize_event_from_agent_output_line,
+    render_event,
+)
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -66,13 +73,12 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
 )
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
     DefaultPipelineFactory,
-    MaterializeSystemPromptFn,
+    MaterializeMasterPromptFn,
     PipelineCore,
     PipelineDeps,
     _resolve_phase_required_artifact,
@@ -90,7 +96,8 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
-from ralph.prompts.system_prompt import materialize_system_prompt
+from ralph.prompts.master_prompt import materialize_master_prompt
+from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
@@ -109,15 +116,11 @@ if TYPE_CHECKING:
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.pro_support.hooks import ProPipelineHooks
 
-# Late-binding reference for the test-patch surface: tests in
-# ``tests/test_cli_commit_command.py`` (and friends) patch names
-# on ``ralph.cli.commands.commit`` at runtime (e.g.
-# ``start_commit_bridge``, ``materialize_system_prompt``,
-# ``invoke_agent``). Importing the module here at top level (rather
-# than inside the function body) satisfies PLC0415 and gives the
-# plumbing a stable handle to look up the latest attribute values
-# at call time.
-_commit_module: types.ModuleType = importlib.import_module("ralph.cli.commands.commit")
+
+def _commit_cli_module() -> types.ModuleType:
+    """Resolve the CLI patch surface lazily without creating an import cycle."""
+    return importlib.import_module("ralph.cli.commands.commit")
+
 
 __all__ = [
     "CommitAgentResult",
@@ -126,8 +129,6 @@ __all__ = [
     "run_commit_plumbing",
 ]
 
-
-_T = TypeVar("_T")
 
 _VERBOSE_THRESHOLD = 2
 _SKIP_PREFIX = "skip:"
@@ -161,7 +162,7 @@ def _commit_required_artifact() -> RequiredArtifact:
     return RequiredArtifact(
         phase="commit",
         artifact_type=COMMIT_MESSAGE_TYPE,
-        json_path=COMMIT_MESSAGE_ARTIFACT,
+        artifact_path=COMMIT_MESSAGE_ARTIFACT,
         markdown_path=None,
         normalizer=normalize_commit_message_content,
         artifact_required=True,
@@ -182,7 +183,7 @@ def _commit_artifact_requirements_resolver(
 def _apply_commit_deps_overrides(
     deps: PipelineDeps,
     *,
-    materializer: MaterializeSystemPromptFn | None,
+    materializer: MaterializeMasterPromptFn | None,
     registry: object | None,
 ) -> PipelineDeps:
     """Apply commit-specific overrides to a ``PipelineDeps`` bundle.
@@ -196,7 +197,7 @@ def _apply_commit_deps_overrides(
     """
     core = deps.core
     if materializer is not None:
-        core = dataclasses.replace(core, system_prompt_materializer=materializer)
+        core = dataclasses.replace(core, master_prompt_materializer=materializer)
     # Only replace the default artifact resolver. If Pro or a test injected a
     # custom resolver via PipelineCore/ProPipelineHooks, preserve it so the
     # commit path shares the same injectable collaborator contract as the
@@ -227,7 +228,7 @@ def _apply_commit_deps_overrides(
 def _commit_pipeline_deps(
     config: UnifiedConfig,
     display_context: DisplayContext,
-    materializer: MaterializeSystemPromptFn | None,
+    materializer: MaterializeMasterPromptFn | None,
     registry: object | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
@@ -305,7 +306,9 @@ def run_commit_plumbing(
                 "display_context is required when pipeline_deps and pipeline_core are not provided"
             )
         effective_pipeline_deps = _commit_pipeline_deps(
-            cast("UnifiedConfig", chain_config.general_config),
+            cast(
+                "UnifiedConfig", chain_config.general_config
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             display_context,
             materializer=None,
             registry=chain_config.registry,
@@ -323,7 +326,7 @@ def run_commit_plumbing(
     last_error: Exception | None = None
     output_lines: list[str] = []
 
-    materializer = effective_core.system_prompt_materializer
+    materializer = effective_core.master_prompt_materializer
     with with_bridge_lifetime(
         effective_core,
         effective_bridge_factory,
@@ -407,10 +410,11 @@ def _commit_prompt_for_agent(
     repo_root: Path,
 ) -> str:
     payload_output_dir = repo_root / ".agent" / "tmp" / "prompt_payloads"
+    submit_artifact_tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
     if _is_opencode_agent(agent):
         return prompt_commit_message_for_opencode(
             diff,
-            submit_artifact_tool_name=SUBMIT_ARTIFACT_TOOL,
+            submit_artifact_tool_name=submit_artifact_tool_names[0],
             payload_config=CommitPromptPayloadConfig(
                 output_dir=payload_output_dir,
                 name_prefix="commit_plumbing",
@@ -419,7 +423,7 @@ def _commit_prompt_for_agent(
     return prompt_commit_message(
         diff,
         template_registry=template_registry,
-        submit_artifact_tool_names=_submit_artifact_tool_names_for_transport(agent.transport),
+        submit_artifact_tool_names=submit_artifact_tool_names,
         payload_config=CommitPromptPayloadConfig(
             output_dir=payload_output_dir,
             name_prefix="commit_plumbing",
@@ -430,11 +434,7 @@ def _commit_prompt_for_agent(
 def _submit_artifact_tool_names_for_transport(
     transport: AgentTransport | None,
 ) -> tuple[str, ...]:
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return SUBMIT_ARTIFACT_TOOL.prompt_aliases(
-            tool_name_prefix=claude_tool_name_prefix(),
-        )
-    return (SUBMIT_ARTIFACT_TOOL,)
+    return (submit_artifact_tool_name_for_transport(transport),)
 
 
 def _generate_commit_message_with_agent(
@@ -446,7 +446,7 @@ def _generate_commit_message_with_agent(
     display_context: DisplayContext,
     prior_session_id: str | None = None,
     output_collector: list[str] | None = None,
-    materializer: MaterializeSystemPromptFn | None = None,
+    materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
@@ -562,7 +562,9 @@ def _reset_tool_registry_callback(
     callback = reset_tool_registry_callback(bridge)
     if callback is None:
         return None
-    return cast("typing.Callable[[], object]", callback)
+    return cast(
+        "typing.Callable[[], object]", callback
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _run_commit_agent_attempt_with_recovery(
@@ -576,7 +578,7 @@ def _run_commit_agent_attempt_with_recovery(
     prior_session_id: str | None = None,
     on_retry_failure: typing.Callable[[list[str]], object] | None = None,
     output_collector: list[str] | None = None,
-    materializer: MaterializeSystemPromptFn | None = None,
+    materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
     """Run a single commit-agent attempt through the shared execution core.
@@ -588,6 +590,7 @@ def _run_commit_agent_attempt_with_recovery(
     """
     last_session_id: str | None = prior_session_id
     last_error: Exception | None = None
+    commit_module = _commit_cli_module()
 
     def _capture_session_id(sid: str) -> None:
         nonlocal last_session_id
@@ -601,7 +604,7 @@ def _run_commit_agent_attempt_with_recovery(
     rendered_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
 
     delete_artifacts = _get_patched(
-        _commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
+        commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
     delete_artifacts(attempt_context.repo_root)
     # The commit run_id is fixed ("commit-plumbing") and reused across
@@ -642,21 +645,27 @@ def _run_commit_agent_attempt_with_recovery(
             effective_general_config,
             effective_pipeline_deps,
             workspace_scope,
-            bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
+            bridge=cast(
+                "RestartAwareMcpBridge", attempt_context.bridge
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
             session_id=prior_session_id,
             raw_output_sink=raw_output,
             rendered_output_sink=rendered_output,
             set_session_id_cb=_capture_session_id,
-            invoke_agent=_get_patched(_commit_module, "invoke_agent", invoke_agent),
+            invoke_agent=_get_patched(commit_module, "invoke_agent", invoke_agent),
             on_retry_failure=on_retry_failure,
             agent_invocation_error_sink=_capture_error,
         )
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
             parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, cast("AgentTransport", agent.transport)
+                agent.cmd,
+                agent.json_parser,
+                cast(
+                    "AgentTransport", agent.transport
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -667,7 +676,7 @@ def _run_commit_agent_attempt_with_recovery(
             output_collector.extend(raw_lines)
         if event.value == "agent_success":
             read_artifact = _get_patched(
-                _commit_module, "read_commit_message_artifact", read_commit_message_artifact
+                commit_module, "read_commit_message_artifact", read_commit_message_artifact
             )
             artifact_message = read_artifact(attempt_context.repo_root)
             if artifact_message:
@@ -765,40 +774,39 @@ def invoke_commit_agent_attempt(
     session_id: str | None = None,
     display_context: DisplayContext,
     session_id_sink: typing.Callable[[str], None] | None = None,
-    materializer: MaterializeSystemPromptFn | None = None,
+    materializer: MaterializeMasterPromptFn | None = None,
 ) -> CommitAgentAttempt:
     """Run one commit-agent invocation attempt and return its result.
 
     .. deprecated::
         Kept as a thin late-binding wrapper for tests that patch
-        ``ralph.cli.commands.commit.{materialize_system_prompt,invoke_agent,
+        ``ralph.cli.commands.commit.{materialize_master_prompt,invoke_agent,
         delete_commit_message_artifacts,read_commit_message_artifact}``.
         New code should call :func:`execute_agent_effect` through
         :func:`_run_commit_agent_attempt_with_recovery`.
     """
     # Late-binding: tests patch ``ralph.cli.commands.commit.{X}``; look the
     # names up at call time so the patches take effect even though this
-    # function lives in the plumbing module. (The import is module-level
-    # to satisfy PLC0415; the function-level ``getattr`` is what makes
-    # the patches take effect.)
+    # function lives in the plumbing module.
+    commit_module = _commit_cli_module()
     materialize = _get_patched(
-        _commit_module,
-        "materialize_system_prompt",
-        materializer if materializer is not None else materialize_system_prompt,
+        commit_module,
+        "materialize_master_prompt",
+        materializer if materializer is not None else materialize_master_prompt,
     )
-    invoke = _get_patched(_commit_module, "invoke_agent", invoke_agent)
+    invoke = _get_patched(commit_module, "invoke_agent", invoke_agent)
     delete_artifacts = _get_patched(
-        _commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
+        commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
     read_artifact = _get_patched(
-        _commit_module, "read_commit_message_artifact", read_commit_message_artifact
+        commit_module, "read_commit_message_artifact", read_commit_message_artifact
     )
 
     delete_artifacts(attempt_context.repo_root)
-    system_prompt = materialize(
+    master_prompt = materialize(
         workspace_root=attempt_context.repo_root,
         name="commit",
-        default_current_prompt="Commit message generation task.",
+        default_product_criteria="Commit message generation task.",
     )
     if attempt_context.general_config is not None:
         general_cfg = attempt_context.general_config
@@ -812,7 +820,7 @@ def invoke_commit_agent_attempt(
                 extra_env=_stringify_extra_env(attempt_context.extra_env),
                 pure=_is_opencode_agent(agent),
                 session_id=session_id,
-                system_prompt_file=system_prompt,
+                master_prompt_file=master_prompt,
                 required_artifact=_commit_required_artifact(),
             ),
         )
@@ -823,7 +831,7 @@ def invoke_commit_agent_attempt(
             extra_env=_stringify_extra_env(attempt_context.extra_env),
             pure=_is_opencode_agent(agent),
             session_id=session_id,
-            system_prompt_file=system_prompt,
+            master_prompt_file=master_prompt,
             required_artifact=_commit_required_artifact(),
         )
     try:
@@ -853,7 +861,11 @@ def invoke_commit_agent_attempt(
         parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
             parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, cast("AgentTransport", agent.transport)
+                agent.cmd,
+                agent.json_parser,
+                cast(
+                    "AgentTransport", agent.transport
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -945,13 +957,10 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: 
     and submit-tool name are supplied here.
     """
     required = _commit_required_artifact()
-    example_content: dict[str, str] = {
-        "type": "commit",
-        "subject": "fix(auth): prevent token expiry race",
-    }
+    example_content = "---\ntype: commit\nsubject: fix(auth): prevent token expiry race\n---"
     example_arguments: dict[str, str] = {
         "artifact_type": required.artifact_type,
-        "content": json.dumps(example_content),
+        "content": example_content,
     }
     tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
     hint = build_retry_hint(
@@ -1035,59 +1044,35 @@ def _resolve_commit_parser(parser_type: str) -> AgentParser:
 
 
 def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    rendered: Text | None = None
+    """Render a parser line via the shared ``render_event`` registry.
 
-    if output.type == "text":
-        content = output.content.strip()
-        if content:
-            rendered = _styled_commit_prefix(agent_name, "theme.text.emphasis")
-            rendered.append(content)
-    elif output.type == "tool_use":
-        tool_name = output.content.strip() or "unknown-tool"
-        summary = _tool_input_summary(output.metadata)
-        rendered = _styled_commit_prefix(f"{agent_name} tool", "theme.phase.review_analysis")
-        rendered.append(tool_name)
-        if summary:
-            rendered.append(f" ({summary})")
-    elif output.type == "tool_result":
-        result = output.content.strip() or _event_summary(output)
-        if result:
-            rendered = _styled_commit_prefix(f"{agent_name} tool result", "theme.text.muted")
-            rendered.append(result)
-    elif output.type == "error":
-        error = output.content.strip() or "unknown error"
-        rendered = _styled_commit_prefix(f"{agent_name} error", "theme.status.error")
-        rendered.append(error)
-    else:
-        rendered = _styled_commit_prefix(f"{agent_name} {output.type}", "theme.text.muted")
-        rendered.append(_event_summary(output))
+    DA-005 (wt-028-display S-20): the private commit renderer is
+    folded into the shared presentation pipeline. Every kind
+    (``text`` / ``tool_use`` / ``tool_result`` / ``error`` /
+    unknown) routes through
+    :func:`normalize_event_from_agent_output_line` and then
+    :func:`render_event`, so the commit path renders the same way
+    as every other code path that emits agent activity.
 
+    Returns ``None`` for kinds whose event carries no body to
+    surface (e.g. an empty ``text`` line), matching the legacy
+    contract that a ``None`` return means "skip this line".
+    """
+    provider = provider_for_transport(agent_name)
+    if provider is ActivityProvider.GENERIC and agent_name:
+        # The transport name didn't match any known provider; fall
+        # back to the agent's own normalized name so identity_color
+        # still picks the deterministic slot for it.
+        provider = ActivityProvider(agent_name) if agent_name in ActivityProvider.__members__ else ActivityProvider.GENERIC
+    event = normalize_event_from_agent_output_line(
+        output,
+        provider=provider,
+        unit_id=agent_name,
+    )
+    if event.kind == ActivityEventKind.TEXT and not (event.content or "").strip():
+        return None
+    rendered = render_event(event, unit_id=agent_name, escape_body=True)
     return rendered
-
-
-def _styled_commit_prefix(label: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    return text
-
-
-def _event_summary(output: AgentOutputLine) -> str:
-    content = output.content.strip()
-    if content:
-        return content
-    if output.metadata:
-        summary = _metadata_summary(output.metadata)
-        if summary:
-            return summary
-    return "(no details)"
-
-
-def _tool_input_summary(metadata: dict[str, object]) -> str:
-    input_obj = metadata.get("input")
-    if isinstance(input_obj, dict):
-        return _metadata_summary(cast("dict[str, object]", input_obj))
-    return ""
 
 
 def _metadata_summary(metadata: dict[str, object]) -> str:
@@ -1302,11 +1287,17 @@ class _CommitWritePromptFileProto(typing.Protocol):
 
 
 def _resolve_commit_start_commit_bridge() -> _CommitStartBridgeProto:
-    return typing.cast("_CommitStartBridgeProto", _commit_module.start_commit_bridge)
+    return typing.cast(
+        "_CommitStartBridgeProto",
+        _commit_cli_module().start_commit_bridge,
+    )
 
 
 def _resolve_commit_write_prompt_file() -> _CommitWritePromptFileProto:
-    return typing.cast("_CommitWritePromptFileProto", _commit_module.write_commit_prompt_file)
+    return typing.cast(
+        "_CommitWritePromptFileProto",
+        _commit_cli_module().write_commit_prompt_file,
+    )
 
 
 def _stringify_extra_env(extra_env: object) -> dict[str, str] | None:
@@ -1329,19 +1320,19 @@ write_commit_prompt_file = _write_commit_prompt_file
 render_commit_agent_activity_line = _render_commit_agent_activity_line
 
 
-def _get_patched(  # noqa: UP047
+def _get_patched[T](
     module: types.ModuleType,
     name: str,
-    fallback: _T,
-) -> _T:
+    fallback: T,
+) -> T:
     """Return ``getattr(module, name, fallback)`` with proper typing.
 
     Tests patch the corresponding names on
     ``ralph.cli.commands.commit`` at runtime. We can't statically type
-    ``getattr`` as ``_T`` (mypy would warn) without an explicit cast,
+    ``getattr`` as ``T`` (mypy would warn) without an explicit cast,
     so this helper centralises the cast pattern.
     """
-    value: _T = getattr(module, name, fallback)
+    value: T = getattr(module, name, fallback)
     if value is None:
         return fallback
     return value

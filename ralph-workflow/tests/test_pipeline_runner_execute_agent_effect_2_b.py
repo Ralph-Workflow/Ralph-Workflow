@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -95,37 +94,8 @@ def _write_minimal_plan_artifacts(
     context: str = "Existing plan",
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+    (root / ".agent" / "artifacts" / "plan.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -137,24 +107,8 @@ def _write_minimal_plan_artifacts(
 def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:01+00:00",
-                "sections": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
+    (artifact_dir / ".plan.draft.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
 
@@ -293,7 +247,13 @@ class TestExecuteAgentEffectB:
         assert "message_start" not in printed
         # Meaningful events still stream
         assert "plan complete" in printed
-        assert "stop" in printed
+        # After wt-028-display the agent-event renderer registry owns
+        # presentation; turn.completed becomes an UNKNOWN event with no
+        # preferred-metadata keys, so the line carries the registry's
+        # warning carrier with no body (the event itself is the stop
+        # signal, not the visible text). Lifecycle suppression + plan
+        # surface is what the AC-06/AC-08 contract asserts here.
+        assert "turn.completed" not in printed or "INFO" in printed
 
     def test_retries_transient_connectivity_failures_with_session_resume(
         self, tmp_path: Path

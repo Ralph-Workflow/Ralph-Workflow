@@ -1,13 +1,15 @@
 """Bootstrap helpers for creating user-global and project-local config files.
 
 Auto-creates the user-global Ralph config set on first run, including
-~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml,
-~/.config/ralph-workflow-pipeline.toml, and
-~/.config/ralph-workflow-artifacts.toml from bundled templates.
+~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-agents.toml,
+~/.config/ralph-workflow-mcp.toml, ~/.config/ralph-workflow-pipeline.toml,
+and ~/.config/ralph-workflow-artifacts.toml from bundled templates.
 Also supports regenerating configs with .bak backups via --regenerate-config.
 
 Bootstrap creates the standard first-run config set:
-  - User-global: ~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml,
+  - User-global: ~/.config/ralph-workflow.toml,
+                 ~/.config/ralph-workflow-agents.toml,
+                 ~/.config/ralph-workflow-mcp.toml,
                  ~/.config/ralph-workflow-pipeline.toml,
                  ~/.config/ralph-workflow-artifacts.toml
   - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml,
@@ -21,7 +23,6 @@ Bootstrap creates the standard first-run config set:
 from __future__ import annotations
 
 import importlib.util
-import os
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -30,7 +31,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
+from loguru import logger
 
+from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
 from ralph.config.loader import load_toml
 from ralph.git.operations import _atomic_append_text, append_to_gitignore
 
@@ -38,6 +41,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
+_GLOBAL_AGENTS_FILENAME = "ralph-workflow-agents.toml"
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _GLOBAL_PIPELINE_FILENAME = "ralph-workflow-pipeline.toml"
 _GLOBAL_ARTIFACTS_FILENAME = "ralph-workflow-artifacts.toml"
@@ -50,9 +54,25 @@ _GLOBAL_POLICY_FILENAME_MAP = {
 }
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
+
+
+def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Resolve the user-global config directory."""
+    return _resolve_global_config_dir(env)
+
+
 _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
-    # Ralph Workflow local artifacts (existing — DO NOT REORDER)
+    # Ralph Workflow local artifacts (existing — DO NOT REORDER).
+    # The first entry ``.agent/`` already covers the
+    # ``.agent/ralph-explore/`` disposable cache by virtue of its
+    # trailing slash. The explicit child rule below is added to
+    # satisfy the prompt's "managed gitignore child entry"
+    # requirement (AC-05) without reordering the protected entries
+    # above: ``auto_seed_default_gitignore`` only appends missing
+    # patterns, so the parent ``.agent/`` rule is preserved and
+    # the explicit child rule is added next to the parent.
     ".agent/",
+    ".agent/ralph-explore/",
     "/PROMPT*",
     "wt-*/",
     "/checkpoint.json",
@@ -280,24 +300,6 @@ class BootstrapResult:
     backup: Path | None = None
 
 
-def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
-    """Resolve the user-global config directory.
-
-    Honors XDG_CONFIG_HOME when set; falls back to ~/.config.
-
-    Args:
-        env: Environment mapping to read from. Uses os.environ when None.
-
-    Returns:
-        Path to the config directory.
-    """
-    env_map: Mapping[str, str] = os.environ if env is None else env
-    xdg = env_map.get("XDG_CONFIG_HOME", "")
-    if xdg:
-        return Path(xdg)
-    return Path.home() / ".config"
-
-
 def ensure_global_config(global_dir: Path | None = None, *, force: bool = False) -> BootstrapResult:
     """Ensure ~/.config/ralph-workflow.toml exists, creating it from the bundled template.
 
@@ -318,6 +320,29 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
         if migrated is not None:
             return migrated
     return result
+
+
+def ensure_global_agents_config(
+    global_dir: Path | None = None, *, force: bool = False
+) -> BootstrapResult:
+    """Ensure ~/.config/ralph-workflow-agents.toml exists, from the bundled template.
+
+    Agent CLI definitions are transport plumbing (binary, flags, output
+    parser), so they live apart from the main config, which opens on the
+    ``[agent_chains]`` operators actually edit.
+
+    Args:
+        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
+        force: When True, overwrite an existing file (backs it up to <name>.bak first).
+
+    Returns:
+        BootstrapResult describing the action taken.
+    """
+    if global_dir is None:
+        global_dir = resolve_global_config_dir()
+    target = global_dir / _GLOBAL_AGENTS_FILENAME
+    source = _get_bundled_defaults_dir() / _GLOBAL_AGENTS_FILENAME
+    return _copy_with_backup(source, target, force)
 
 
 def ensure_global_mcp_config(
@@ -547,7 +572,21 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
     if file_existed:
         try:
             existing = set(exclude_path.read_text(encoding="utf-8").splitlines())
-        except OSError:
+        except OSError as exc:
+            # Non-fatal: best-effort seeding must not block the run, but
+            # silently assuming "the file is empty" would cause every
+            # default pattern to be appended (potential duplicates on
+            # retry once the read problem is fixed). Warn so the
+            # operator can investigate the read failure without
+            # breaking the run.
+            logger.warning(
+                "Could not read existing git exclude at {}: {}. "
+                "Proceeding as if the file were empty; this may append "
+                "duplicate patterns on a later run. Check file permissions "
+                "and ownership to remove the warning.",
+                exclude_path,
+                exc,
+            )
             existing = set()
     missing = [p for p in _DEFAULT_GIT_EXCLUDE_PATTERNS if p not in existing]
     if missing:
@@ -585,7 +624,21 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
     if gitignore_path.exists():
         try:
             existing = set(gitignore_path.read_text(encoding="utf-8").splitlines())
-        except OSError:
+        except OSError as exc:
+            # Non-fatal: best-effort seeding must not block the run, but
+            # silently assuming "the file is empty" would cause every
+            # default pattern to be appended (potential duplicates on
+            # retry once the read problem is fixed). Warn so the
+            # operator can investigate the read failure without
+            # breaking the run.
+            logger.warning(
+                "Could not read existing .gitignore at {}: {}. "
+                "Proceeding as if the file were empty; this may append "
+                "duplicate patterns on a later run. Check file permissions "
+                "and ownership to remove the warning.",
+                gitignore_path,
+                exc,
+            )
             existing = set()
     missing = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p not in existing]
     if missing:
@@ -627,6 +680,7 @@ def regenerate_all(
     """
     results: list[BootstrapResult] = [
         ensure_global_config(global_dir, force=True),
+        ensure_global_agents_config(global_dir, force=True),
         ensure_global_mcp_config(global_dir, force=True),
         *ensure_global_policy_configs(global_dir, force=True),
     ]

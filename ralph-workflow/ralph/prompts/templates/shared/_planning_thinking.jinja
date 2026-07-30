@@ -1,0 +1,18 @@
+## Plan the work before the paperwork
+
+Inspect the request and repository before writing the plan. Ground claims about
+files, behavior, commands, and patterns in evidence; turn unknowns into a discovery step rather than guessing.
+
+Plan the full arc in this order, even for easy-looking work:
+
+1. **Orient** — identify the requested outcome, relevant code, and constraints.
+2. **Characterize** — establish current behavior with an existing test,
+   reproduction, or inspected artifact.
+3. **Change** — name the smallest concrete edits and their dependencies.
+4. **Verify** — name runnable checks or inspectable evidence that proves the
+   outcome.
+
+Be concrete where it survives contact with the repository: outcome, real
+files, current behavior, proof, and known risks. Let implementation detail
+change as discovery teaches you more. Keep commitments next to the step they
+describe and state each one once so the plan remains readable mid-run.

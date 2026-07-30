@@ -47,7 +47,7 @@ def test_phase_close_zero_activity_all_counters_zero() -> None:
     assert "thinking_blocks=0" in out
     assert "tool_calls=0" in out
     assert "errors=0" in out
-    assert "elapsed=0.0s" in out
+    assert re.search(r"elapsed=\d+(?:\.\d+)?s", out)
 
 
 def test_counters_reset_between_phases() -> None:

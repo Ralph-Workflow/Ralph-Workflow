@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import StringIO
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -12,7 +12,7 @@ from loguru import logger
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
-from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 
@@ -27,7 +27,7 @@ class TestUpstreamRegistryWarningBehavior:
     def _make_tools_caller(self, tools: list[dict[str, object]]) -> object:
         def caller(method: str, params: dict[str, object]) -> dict[str, object]:
             if method == "tools/list":
-                return {"tools": cast("object", tools)}
+                return {"tools": tools}
             return {}
 
         return caller
@@ -45,7 +45,7 @@ class TestUpstreamRegistryWarningBehavior:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "healthy":
-                return cast("Any", HttpUpstreamClient(server, caller=good_caller))
+                return HttpUpstreamClient(server, caller=good_caller)
             return HttpUpstreamClient(server, caller=bad_caller)
 
         stream = StringIO()
@@ -53,7 +53,7 @@ class TestUpstreamRegistryWarningBehavior:
         try:
             registry = UpstreamRegistry.build(
                 [healthy, broken],
-                client_factory=cast("UpstreamClientFactory", client_factory),
+                client_factory=client_factory,
                 on_unreachable="warn_and_skip",
             )
         finally:
@@ -86,7 +86,7 @@ class TestUpstreamRegistryWarningBehavior:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "healthy":
-                return cast("Any", HttpUpstreamClient(server, caller=good_caller))
+                return HttpUpstreamClient(server, caller=good_caller)
             return HttpUpstreamClient(server, caller=bad_caller)
 
         stream = StringIO()
@@ -94,7 +94,7 @@ class TestUpstreamRegistryWarningBehavior:
         try:
             UpstreamRegistry.build(
                 [healthy, broken],
-                client_factory=cast("UpstreamClientFactory", client_factory),
+                client_factory=client_factory,
                 on_unreachable="warn_and_skip",
             )
         finally:
@@ -120,12 +120,12 @@ class TestUpstreamRegistryWarningBehavior:
             raise UpstreamCallError("server unreachable")
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
-            return cast("Any", HttpUpstreamClient(server, caller=bad_caller))
+            return HttpUpstreamClient(server, caller=bad_caller)
 
         with pytest.raises(UpstreamValidationError) as excinfo:
             UpstreamRegistry.build(
                 [broken],
-                client_factory=cast("UpstreamClientFactory", client_factory),
+                client_factory=client_factory,
             )
 
         message = str(excinfo.value)

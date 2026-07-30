@@ -22,8 +22,8 @@ class FakeConnectivityMonitor:
     def __init__(self, initial_state: ConnectivityState = ConnectivityState.ONLINE) -> None:
         self._state: ConnectivityState = initial_state
         self._listeners: list[  # bounded-accumulator-ok: drained
-    Callable[[ConnectivityEvent], None]
-] = []
+            Callable[[ConnectivityEvent], None]
+        ] = []
         self._online_event: asyncio.Event = asyncio.Event()
         if initial_state == ConnectivityState.ONLINE:
             self._online_event.set()

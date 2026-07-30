@@ -9,7 +9,6 @@ future use. Re-arm by setting ``[phases.<phase>.parallelization] dispatch_mode
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 import uuid
 from dataclasses import dataclass
@@ -24,8 +23,9 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.executor.process import run_process_async
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
-from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
-from ralph.mcp.artifacts.store import list_artifacts
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
 from ralph.pipeline import checkpoint as ckpt
@@ -54,7 +54,7 @@ from ralph.policy.validation import PolicyValidationError
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from rich.console import Console
@@ -113,6 +113,7 @@ class _FanOutCtx:
     run_process_async_fn: _RunProcessAsyncFn | None = None
     reducer_reduce_fn: _ReducerReduceFn | None = None
     pipeline_deps: PipelineDeps | None = None
+    on_successful_completion: Callable[[PipelineState], PipelineState] | None = None
 
 
 def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: PipelineState) -> None:
@@ -133,14 +134,14 @@ def write_parallel_development_summary(
     state: PipelineState,
     verification: VerificationResult | None = None,
 ) -> None:
-    """Write .agent/artifacts/parallel_development_summary.json after fan-out completes."""
+    """Write the Markdown parallel-development summary after fan-out completes."""
     v = verification or VerificationResult(ran=False, passed=None, exit_code=None)
     workers: list[dict[str, object]] = []
     for unit in effect.work_units:
         uid = unit.unit_id
         ws = state.worker_states.get(uid)
         artifact_dir = workspace_scope.root / ".agent" / "workers" / uid / "artifacts"
-        artifact_count = len(list_artifacts(artifact_dir)) if artifact_dir.exists() else 0
+        artifact_count = len(list(artifact_dir.glob("*.md"))) if artifact_dir.exists() else 0
 
         if ws is None:
             status = "failed"
@@ -194,22 +195,95 @@ def write_parallel_development_summary(
         },
     }
 
+    markdown = _render_parallel_summary_markdown(summary)
     agent_artifacts = workspace_scope.root / ".agent" / "artifacts"
-    summary_path = agent_artifacts / "parallel_development_summary.json"
+    summary_path = agent_artifacts / "parallel_development_summary.md"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, summary_path, markdown, encoding="utf-8")
     logger.debug(
-        "Wrote parallel_development_summary.json: any_failed={f} all_succeeded={s}",
+        "Wrote parallel_development_summary.md: any_failed={f} all_succeeded={s}",
         f=any_failed,
         s=all_succeeded,
     )
 
-    sync_markdown_handoff(workspace_scope.root, "parallel_development_summary", summary)
+    write_parallel_summary_handoff(workspace_scope.root, summary)
+
+
+def write_parallel_summary_handoff(
+    workspace_root: Path,
+    summary: Mapping[str, object],
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> str | None:
+    """Write the markdown handoff for the internally generated parallel summary.
+
+    The summary is engine-generated (never an agent-submitted markdown
+    artifact), so fan-out renders the handoff itself. It reuses the
+    development-result handoff path so the analysis phase picks it up through
+    the same fallback path without code changes.
+    """
+    relative_path = handoff_path_for_artifact("parallel_development_summary")
+    if relative_path is None:
+        return None
+    destination = workspace_root / relative_path
+    backend.mkdir(destination.parent, parents=True, exist_ok=True)
+    write_text_if_changed(
+        backend, destination, _render_parallel_summary_markdown(summary), encoding="utf-8"
+    )
+    return relative_path
+
+
+def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
+    """Render the parallel development summary for analysis agent consumption."""
+    lines = ["# Parallel Development Summary"]
+
+    workers = content.get("workers")
+    if isinstance(workers, list) and workers:
+        lines.extend(["", "## Workers"])
+        for w in workers:
+            if not isinstance(w, dict):
+                continue
+            uid = w.get("unit_id", "?")
+            status = w.get("status", "unknown")
+            artifact_count = w.get("artifact_count", 0)
+            final_message = w.get("final_message")
+            entry = f"- **{uid}**: {status} ({artifact_count} artifact(s))"
+            if final_message:
+                entry += f" — {final_message}"
+            lines.append(entry)
+
+    any_failed = content.get("any_failed", False)
+    all_succeeded = content.get("all_succeeded", False)
+    lines.extend(
+        [
+            "",
+            "## Status",
+            "",
+            f"- any_failed: {str(any_failed).lower()}",
+            f"- all_succeeded: {str(all_succeeded).lower()}",
+        ]
+    )
+
+    verification = content.get("verification")
+    if isinstance(verification, dict):
+        ran = verification.get("ran", False)
+        passed = verification.get("passed")
+        exit_code = verification.get("exit_code")
+        lines.extend(["", "## Verification"])
+        if ran:
+            result = "passed" if passed else f"failed (exit code {exit_code})"
+            lines.extend(["", f"Ran: yes — {result}"])
+        else:
+            lines.extend(["", "Ran: no"])
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
     module = import_module("ralph.display.parallel_display")
-    return cast("type[ParallelDisplay]", module.ParallelDisplay)
+    return cast(
+        "type[ParallelDisplay]", module.ParallelDisplay
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
 def _fan_out_display_and_subscriber(
@@ -221,7 +295,9 @@ def _fan_out_display_and_subscriber(
     if isinstance(display, parallel_display_cls):
         parallel_display = display
     else:
-        console = cast("Console | None", getattr(display, "console", None))
+        console = cast(
+            "Console | None", getattr(display, "console", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         parallel_display = parallel_display_cls(make_display_context(console=console))
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_subscriber is None and hasattr(parallel_display, "subscriber"):
@@ -241,9 +317,13 @@ def _build_session_mcp_plan_for_phase(
     """Build session MCP plan for fan-out workers matching the serial execution contract."""
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
-    _effect_drain = cast("str | None", getattr(effect, "drain", None))
+    _effect_drain = cast(
+        "str | None", getattr(effect, "drain", None)
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     drain: str = (
-        cast("str", _effect_drain)
+        cast(
+            "str", _effect_drain
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
         or effect.phase
         or "development"
@@ -271,9 +351,13 @@ def _build_session_mcp_plan_for_phase(
         agent_config = registry.get(agent_name)
 
     _transport_raw = cast("object", getattr(agent_config, "transport", None))
-    transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
+    transport = (
+        cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
-    model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
+    model_flag = (
+        cast("str | None", _model_flag_raw) if agent_config is not None else None
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
     effective_agents_policy = (
         policy_bundle.agents
@@ -317,12 +401,16 @@ def _fan_out_worker_context(
     _executor_cls = (
         executor_cls
         if executor_cls is not None
-        else cast("_ExecutorFactory", SubprocessAgentExecutor)
+        else cast(
+            "_ExecutorFactory", SubprocessAgentExecutor
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     _mcp_factory_cls = (
         mcp_factory_cls
         if mcp_factory_cls is not None
-        else cast("_McpFactory", DynamicBindingMcpServerFactory)
+        else cast(
+            "_McpFactory", DynamicBindingMcpServerFactory
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     executor = _executor_cls(_parallel_worker_command(), signal_bridge=bridge)
     workspace = FsWorkspace(
@@ -374,6 +462,7 @@ def _persist_parallel_worker_manifests(
             unit_id=unit.unit_id,
             description=unit.description,
             allowed_directories=list(unit.allowed_directories),
+            step_ids=list(unit.step_ids),
             phase=effect.phase,
             drain=session_drain,
             config_path=str(config_path) if config_path is not None else None,
@@ -421,7 +510,9 @@ def _resume_fan_out_state(
     _reduce = (
         reducer_reduce_fn
         if reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+        else cast(
+            "_ReducerReduceFn", reducer_reduce
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
@@ -444,7 +535,9 @@ async def _run_post_fanout_verification(
     _run = (
         run_process_async_fn
         if run_process_async_fn is not None
-        else cast("_RunProcessAsyncFn", run_process_async)
+        else cast(
+            "_RunProcessAsyncFn", run_process_async
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     verify_result = await _run(
         "make",
@@ -480,7 +573,9 @@ async def _run_verify_phase(
     _reduce = (
         ctx.reducer_reduce_fn
         if ctx.reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+        else cast(
+            "_ReducerReduceFn", reducer_reduce
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
@@ -496,12 +591,16 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
     _reduce = (
         ctx.reducer_reduce_fn
         if ctx.reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+        else cast(
+            "_ReducerReduceFn", reducer_reduce
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     _install = (
         ctx.install_signal_handlers_fn
         if ctx.install_signal_handlers_fn is not None
-        else cast("_InstallSignalHandlersFn", install_signal_handlers)
+        else cast(
+            "_InstallSignalHandlersFn", install_signal_handlers
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     )
     teardown_fn: Callable[[], None] | None = None
     try:
@@ -613,6 +712,23 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         write_parallel_development_summary(
             ctx.workspace_scope, ctx.effect, wave_state, verification
         )
+        all_workers_succeeded = (
+            len(wave_state.worker_states) == len(ctx.effect.work_units)
+            and bool(wave_state.worker_states)
+            and all(
+                worker.status == WorkerStatus.SUCCEEDED
+                for worker in wave_state.worker_states.values()
+            )
+        )
+        verification_passed = (
+            not ctx.effect.run_post_fanout_verification or verification.passed is True
+        )
+        if (
+            all_workers_succeeded
+            and verification_passed
+            and ctx.on_successful_completion is not None
+        ):
+            return ctx.on_successful_completion(current)
         return current
     except KeyboardInterrupt:
         raise
@@ -653,19 +769,44 @@ def execute_fan_out_sync(
     **opts: object,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
-    policy_bundle = cast("PolicyBundle", opts["policy_bundle"])
-    workspace_scope = cast("WorkspaceScope", opts["workspace_scope"])
-    pipeline_subscriber = cast("_PipelineSubscriberLike | None", opts.get("pipeline_subscriber"))
-    dashboard_subscriber = cast("_PipelineSubscriberLike | None", opts.get("dashboard_subscriber"))
-    config = cast("UnifiedConfig | None", opts.get("config"))
-    config_path = cast("Path | None", opts.get("config_path"))
+    policy_bundle = cast(
+        "PolicyBundle", opts["policy_bundle"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    workspace_scope = cast(
+        "WorkspaceScope", opts["workspace_scope"]
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    pipeline_subscriber = cast(
+        "_PipelineSubscriberLike | None", opts.get("pipeline_subscriber")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    dashboard_subscriber = cast(
+        "_PipelineSubscriberLike | None", opts.get("dashboard_subscriber")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    config = cast(
+        "UnifiedConfig | None", opts.get("config")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    config_path = cast(
+        "Path | None", opts.get("config_path")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     cli_overrides = cast("dict[str, object] | None", opts.get("cli_overrides"))
     monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
-    install_fn = cast("_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers"))
-    executor_cls = cast("_ExecutorFactory | None", opts.get("_executor_cls"))
-    mcp_factory_cls = cast("_McpFactory | None", opts.get("_mcp_factory_cls"))
-    run_process_fn = cast("_RunProcessAsyncFn | None", opts.get("_run_process_async"))
-    reducer_fn = cast("_ReducerReduceFn | None", opts.get("_reducer_reduce"))
+    install_fn = cast(
+        "_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    executor_cls = cast(
+        "_ExecutorFactory | None", opts.get("_executor_cls")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    mcp_factory_cls = cast(
+        "_McpFactory | None", opts.get("_mcp_factory_cls")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    run_process_fn = cast(
+        "_RunProcessAsyncFn | None", opts.get("_run_process_async")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    reducer_fn = cast(
+        "_ReducerReduceFn | None", opts.get("_reducer_reduce")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    on_successful_completion = cast(
+        "Callable[[PipelineState], PipelineState] | None", opts.get("_on_successful_completion")
+    )
 
     parallel_display, effective_subscriber = _fan_out_display_and_subscriber(
         display, pipeline_subscriber, dashboard_subscriber
@@ -688,6 +829,7 @@ def execute_fan_out_sync(
         run_process_async_fn=run_process_fn,
         reducer_reduce_fn=reducer_fn,
         pipeline_deps=pipeline_deps,
+        on_successful_completion=on_successful_completion,
     )
     return asyncio.run(_run_fan_out_async(ctx))
 

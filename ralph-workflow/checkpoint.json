@@ -9,7 +9,20 @@
   "rebase": {
     "pending": false,
     "in_progress": false,
-    "completed": false
+    "completed": false,
+    "last_action": null,
+    "last_reason": null,
+    "last_target": null,
+    "fast_forwarded": false,
+    "last_refresh": null,
+    "last_push": null,
+    "last_remote_sync": null,
+    "last_remote": null,
+    "last_push_status": null,
+    "consecutive_conflicts": 0,
+    "last_conflict_feature_sha": null,
+    "last_conflict_target_sha": null,
+    "recovery_record_retained": false
   },
   "commit": {
     "message_prepared": false,
@@ -34,6 +47,7 @@
   "policy_entry_phase": "__unset__",
   "policy_format_version": null,
   "current_drain": null,
+  "post_commit_phase_override": null,
   "work_units": [],
   "worker_states": {},
   "recovery_cycle_count": 0,

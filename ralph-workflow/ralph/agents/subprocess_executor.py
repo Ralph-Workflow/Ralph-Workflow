@@ -7,10 +7,12 @@ import contextlib
 import os
 import time
 from pathlib import Path
+from subprocess import DEVNULL as _DEVNULL
 from subprocess import PIPE as _PIPE
 from subprocess import STDOUT as _STDOUT
 from typing import TYPE_CHECKING
 
+from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
@@ -48,6 +50,37 @@ def agent_process_label_prefix(unit_id: str, env: dict[str, str] | None = None) 
     if scope:
         return f"agent:{scope}:{unit_id}:"
     return f"agent:{unit_id}:"
+
+
+def _binary_basename(command: Sequence[str]) -> str:
+    """Extract the executable name from a spawn argv, ignoring absolute paths."""
+    if not command:
+        return ""
+    head = command[0]
+    return head.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+
+
+def _missing_binary_message(command: Sequence[str]) -> str:
+    """Format the 'agent binary not found' ExecutorError message.
+
+    Returns a what/why/fix envelope pointing the operator at the missing
+    CLI's install URL. The URL is sourced from ``install_url_for`` (see
+    ``agent_install_links.AGENT_INSTALL_URLS``) so a newly added agent
+    automatically gains an install hint here.
+    """
+    binary = _binary_basename(command)
+    install_url = install_url_for(binary)
+    what = (
+        f"Could not find the '{binary}' CLI on PATH."
+        if binary
+        else "Could not find the agent CLI on PATH."
+    )
+    why = "Ralph Workflow needs the CLI to drive the active agent; missing executables surface as FileNotFoundError before the process can start."
+    if install_url:
+        fix = f"Install it from {install_url} (or change the active agent block in [agents.*] of ~/.config/ralph-workflow.toml to one you already have), then re-run."
+    else:
+        fix = "Either install the CLI on PATH, or change the active agent block in [agents.*] of ~/.config/ralph-workflow.toml to point at a binary you already have, then re-run."
+    return f"{what}\nWHY: {why}\nFIX: {fix}"
 
 
 class SubprocessAgentExecutor:
@@ -143,6 +176,7 @@ class SubprocessAgentExecutor:
                 SpawnOptions(
                     cwd=str(self._cwd) if self._cwd is not None else None,
                     env=env,
+                    stdin=_DEVNULL,
                     stdout=_PIPE,
                     stderr=_STDOUT,
                     start_new_session=True,
@@ -151,6 +185,8 @@ class SubprocessAgentExecutor:
             )
         except OSError as exc:
             on_status(WorkerStatus.FAILED)
+            if isinstance(exc, FileNotFoundError):
+                raise ExecutorError(_missing_binary_message(self._command)) from exc
             raise ExecutorError(f"Failed to start subprocess: {exc}") from exc
 
         async def drain_output() -> None:

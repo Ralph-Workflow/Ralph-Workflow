@@ -41,7 +41,7 @@ def _display() -> tuple[ParallelDisplay, io.StringIO]:
 
 
 def _tool_lines(text: str) -> list[str]:
-    return [ln.strip() for ln in text.splitlines() if "[tool]" in ln]
+    return [ln.strip() for ln in text.splitlines() if "[call]" in ln]
 
 
 def _strip_ts(line: str) -> str:
@@ -84,7 +84,7 @@ def test_both_feed_paths_render_tool_use_identically() -> None:
 
     tool_a = _tool_lines(buf_a.getvalue())
     tool_b = _tool_lines(buf_b.getvalue())
-    assert tool_a, f"router path produced no [tool] line:\n{buf_a.getvalue()}"
+    assert tool_a, f"router path produced no [call] line:\n{buf_a.getvalue()}"
     # Compare without the leading timestamp (which differs by wall-clock).
     assert [_strip_ts(x) for x in tool_a] == [_strip_ts(x) for x in tool_b]
 

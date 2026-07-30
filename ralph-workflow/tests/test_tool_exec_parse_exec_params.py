@@ -114,23 +114,41 @@ class TestParseExecParams:
         assert result.command == "python"
         assert result.args == ["-m", "pytest", "-q", "tests/test_tool_exec.py"]
 
-    def test_shell_operator_command_string_accepted(self) -> None:
-        params = {"command": "ls | grep py"}
-        result = parse_exec_params(params)
-        assert result.command == "sh"
-        assert result.args == ["-c", "ls | grep py"]
+    def test_shell_operator_command_string_becomes_shell_command(self) -> None:
+        """A pipe in a command STRING routes through ``sh -c``: the raw
+        string is preserved in ``shell_command`` and ``command`` / ``args``
+        carry the first pipeline segment for a readable result header.
+        """
+        result = parse_exec_params({"command": "ls | grep py"})
+        assert result.shell_command == "ls | grep py"
+        assert result.command == "ls"
+        assert result.args == []
 
-    def test_and_and_shell_operator(self) -> None:
-        params = {"command": "git show c9da560 --stat && echo ---"}
-        result = parse_exec_params(params)
-        assert result.command == "sh"
-        assert result.args == ["-c", "git show c9da560 --stat && echo ---"]
+    def test_and_and_shell_operator_becomes_shell_command(self) -> None:
+        result = parse_exec_params({"command": "git show c9da560 --stat && echo ---"})
+        assert result.shell_command == "git show c9da560 --stat && echo ---"
+        assert result.command == "git"
+        assert result.args == ["show", "c9da560", "--stat"]
 
-    def test_redirection_operator(self) -> None:
-        params = {"command": "echo hello > /tmp/test.txt"}
-        result = parse_exec_params(params)
-        assert result.command == "sh"
-        assert result.args == ["-c", "echo hello > /tmp/test.txt"]
+    def test_redirection_operator_becomes_shell_command(self) -> None:
+        result = parse_exec_params({"command": "echo hello > /tmp/test.txt"})
+        assert result.shell_command == "echo hello > /tmp/test.txt"
+        assert result.command == "echo"
+        assert result.args == ["hello"]
+
+    def test_semicolon_shell_operator_becomes_shell_command(self) -> None:
+        result = parse_exec_params({"command": "echo safe; ls -la"})
+        assert result.shell_command == "echo safe; ls -la"
+        assert result.command == "echo"
+        assert result.args == ["safe"]
+
+    def test_argv_list_operator_stays_literal_not_shell(self) -> None:
+        """An argv LIST is explicit argv: operator tokens stay literal and
+        the invocation is NOT shell-interpreted (shell_command is None)."""
+        result = parse_exec_params({"command": ["ls", "|", "grep", "py"]})
+        assert result.shell_command is None
+        assert result.command == "ls"
+        assert result.args == ["|", "grep", "py"]
 
     def test_no_operator_preserves_behavior(self) -> None:
         params = {"command": "python -m pytest tests/test_tool_exec.py"}
@@ -142,3 +160,48 @@ class TestParseExecParams:
         params = {"command": "python -c \"print('hello')"}
         with pytest.raises(InvalidParamsError):
             parse_exec_params(params)
+
+    def test_quoted_metacharacter_remains_valid_argv(self) -> None:
+        """AC-11 backward compatibility: ``printf '>'`` and other
+        quoted literals are valid argv and must NOT be rejected.
+        The previous raw-character precheck broke this case by
+        treating any ``| & ; < >`` in the input as compound
+        shell. The quote-aware walker allows the literal ``>``
+        because it sits inside single quotes.
+        """
+        params = {"command": "printf '>'"}
+        result = parse_exec_params(params)
+        assert result.command == "printf"
+        assert result.args == [">"]
+
+    def test_double_quoted_metacharacter_remains_valid_argv(self) -> None:
+        """AC-11: ``grep "a|b"`` (double-quoted shell
+        metacharacter inside the argument) must parse without
+        rejection.
+        """
+        params = {"command": 'grep "a|b"'}
+        result = parse_exec_params(params)
+        assert result.command == "grep"
+        assert result.args == ["a|b"]
+
+    def test_unquoted_compound_command_becomes_shell(self) -> None:
+        """An unquoted ``;`` produces a shell command; the blacklist that
+        guards the embedded ``curl`` is enforced later, per pipeline
+        segment, in ``handle_exec_command`` (not at parse time)."""
+        result = parse_exec_params({"command": "echo safe; ls -la"})
+        assert result.shell_command == "echo safe; ls -la"
+        assert result.command == "echo"
+
+    def test_unquoted_pipe_preserves_first_segment_args(self) -> None:
+        result = parse_exec_params({"command": "grep -r foo . | wc -l"})
+        assert result.shell_command == "grep -r foo . | wc -l"
+        assert result.command == "grep"
+        assert result.args == ["-r", "foo", "."]
+
+    def test_quoted_operator_is_not_shell(self) -> None:
+        """A fully-quoted operator is literal argv, not shell: ``shell_command``
+        stays None so the command runs argv-direct."""
+        result = parse_exec_params({"command": "printf '>'"})
+        assert result.shell_command is None
+        assert result.command == "printf"
+        assert result.args == [">"]

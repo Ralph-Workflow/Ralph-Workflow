@@ -6,7 +6,7 @@ import pathlib
 import tempfile
 from contextlib import nullcontext
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
@@ -19,7 +19,6 @@ from ralph.mcp.protocol.startup import HeartbeatPolicy
 from ralph.mcp.server.lifecycle import (
     McpRestartPolicy,
     McpServerError,
-    ProcessLike,
     RestartAwareMcpBridge,
     StandaloneMcpProcess,
 )
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ralph.display.parallel_display import ParallelDisplay
 
 
 def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
@@ -92,7 +90,7 @@ def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
 
     inner = StandaloneMcpProcess(
         endpoint="http://127.0.0.1:9888/mcp",
-        process=cast("ProcessLike", _FakePopen()),
+        process=_FakePopen(),
         session_file=sf,
     )
     return RestartAwareMcpBridge(
@@ -113,14 +111,14 @@ def test_config_idle_timeout_flows_to_invoke_options(
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
     captured: dict[str, object] = {}
 
-    def fake_materialize_system_prompt(
+    def fake_materialize_master_prompt(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return str(tmp_path / "SYSTEM_PROMPT.md")
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -137,7 +135,7 @@ def test_config_idle_timeout_flows_to_invoke_options(
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
         bridge=FakeBridge(),
-        system_prompt_materializer=fake_materialize_system_prompt,
+        master_prompt_materializer=fake_materialize_master_prompt,
         registry_factory=_registry_factory,
     )
 
@@ -212,19 +210,19 @@ def _run_with_config(
     """Helper that wires up fakes and runs execute_agent_effect."""
     del monkeypatch
 
-    def fake_materialize_system_prompt(
+    def fake_materialize_master_prompt(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return str(tmp_path / "SYSTEM_PROMPT.md")
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
 
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
         bridge=FakeBridge(),
-        system_prompt_materializer=fake_materialize_system_prompt,
+        master_prompt_materializer=fake_materialize_master_prompt,
         registry_factory=_registry_factory,
     )
     effect_executor_module.execute_agent_effect(
@@ -442,14 +440,14 @@ def test_mcp_server_error_causes_agent_failure(
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
-    def fake_materialize_system_prompt(
+    def fake_materialize_master_prompt(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return str(tmp_path / "SYSTEM_PROMPT.md")
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
 
     def fake_check_mcp_bridge_health(_bridge: object) -> None:
         raise McpServerError("budget exhausted", restart_count=3)
@@ -457,7 +455,7 @@ def test_mcp_server_error_causes_agent_failure(
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
         bridge=FakeBridge(),
-        system_prompt_materializer=fake_materialize_system_prompt,
+        master_prompt_materializer=fake_materialize_master_prompt,
         registry_factory=_registry_factory,
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
@@ -485,14 +483,14 @@ def test_bridge_shared_across_retry_attempts(
     invoke_calls: list[int] = []
     attempt = 0
 
-    def fake_materialize_system_prompt(
+    def fake_materialize_master_prompt(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return str(tmp_path / "SYSTEM_PROMPT.md")
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
 
     def fake_invoke_agent(
         _agent_cfg: AgentConfig, prompt_file: str, *, options: object = None
@@ -508,7 +506,7 @@ def test_bridge_shared_across_retry_attempts(
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
         bridge_factory=recording_factory,
-        system_prompt_materializer=fake_materialize_system_prompt,
+        master_prompt_materializer=fake_materialize_master_prompt,
         registry_factory=_registry_factory,
     )
 
@@ -537,14 +535,14 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
     health_check_calls: list[int] = []
     invoke_attempt = 0
 
-    def fake_materialize_system_prompt(
+    def fake_materialize_master_prompt(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return str(tmp_path / "SYSTEM_PROMPT.md")
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return str(tmp_path / "MASTER_PROMPT.md")
 
     def fake_check_mcp_bridge_health(_bridge: object) -> None:
         health_check_calls.append(1)
@@ -561,7 +559,7 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
         bridge=FakeBridge(),
-        system_prompt_materializer=fake_materialize_system_prompt,
+        master_prompt_materializer=fake_materialize_master_prompt,
         registry_factory=_registry_factory,
         check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
@@ -618,7 +616,8 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         config,
         deps,
         WorkspaceScope(tmp_path),
-        display=cast("ParallelDisplay", _FakeDisplay()),
+        display_context=None,
+        display=_FakeDisplay(),
     )
 
     assert recorded == [1], f"expected record_mcp_restart([1]); got {recorded}"

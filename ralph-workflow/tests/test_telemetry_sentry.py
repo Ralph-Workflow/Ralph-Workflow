@@ -5,23 +5,32 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import cast, get_args
+from typing import get_args
 
 import pytest
 
+import ralph
+from ralph.config.agent_config import AgentConfig
+from ralph.config.agent_transport import AgentTransport
 from ralph.platform.architecture import Architecture
 from ralph.platform.environment_info import EnvironmentInfo
 from ralph.platform.models import PlatformInfo
 from ralph.platform.operating_system import OperatingSystem
 from ralph.policy.models._types import PhaseRole
+from ralph.project_policy import markers as policy_markers
+from ralph.project_policy.schema_state import POLICY_SCHEMA_STATES, policy_schema_state
 from ralph.runtime import _version_info
 from ralph.runtime.environment import RuntimeEnvironment
+from ralph.telemetry import _agent_config_payload as _sentry_payload
 from ralph.telemetry import _sentry
 from ralph.telemetry._sentry import (
     _scrub_event,
     _scrub_obj,
     init_sentry,
     is_telemetry_disabled,
+)
+from tests._support.typed_accessors import (
+    must_mapping,
 )
 
 
@@ -67,6 +76,143 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     # even if the scrubber misses a prefix. Disabling local-variable capture
     # at the SDK level removes the surface entirely.
     assert kwargs.get("include_local_variables") is False
+
+
+def test_init_sentry_enables_excepthook_so_crashes_are_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unhandled crash MUST be able to reach Sentry.
+
+    ``default_integrations=False`` disables the whole default set, which
+    silently included ``ExcepthookIntegration`` -- leaving a client that could
+    only ever emit the "session start"/"session end" messages. The integration
+    is opted back in EXPLICITLY so the privacy-sensitive defaults stay off.
+    """
+    captured: list[dict[str, object]] = []
+
+    def capture_init(**kwargs: object) -> None:
+        captured.append(dict(kwargs))
+
+    def noop_set_user(arg: object) -> None:
+        pass
+
+    def noop_set_tag(key: object, val: object) -> None:
+        pass
+
+    monkeypatch.setattr("sentry_sdk.init", capture_init)
+    monkeypatch.setattr("sentry_sdk.set_user", noop_set_user)
+    monkeypatch.setattr("sentry_sdk.set_tag", noop_set_tag)
+
+    init_sentry("a" * 32, "b" * 64)
+
+    integrations = captured[0].get("integrations")
+    assert isinstance(integrations, list)
+    names = {type(integration).__name__ for integration in integrations}
+    assert "ExcepthookIntegration" in names
+    # Privacy-sensitive defaults must remain disabled: these forward argv,
+    # HTTP/subprocess spans with URLs, application logs, and the installed
+    # package inventory respectively.
+    assert "ArgvIntegration" not in names
+    assert "StdlibIntegration" not in names
+    assert "LoggingIntegration" not in names
+    assert "ModulesIntegration" not in names
+
+
+class _RecordingScope:
+    """Minimal stand-in for a Sentry scope context manager."""
+
+    def __init__(self, tags: dict[str, str]) -> None:
+        self._tags = tags
+
+    def set_tag(self, key: str, value: str) -> None:
+        self._tags[key] = value
+
+    def __enter__(self) -> _RecordingScope:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+def _patch_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    inactive: bool,
+) -> tuple[list[BaseException], dict[str, str]]:
+    captured: list[BaseException] = []
+    tags: dict[str, str] = {}
+
+    def fake_inactive() -> bool:
+        return inactive
+
+    def fake_new_scope() -> _RecordingScope:
+        return _RecordingScope(tags)
+
+    def fake_capture(exc: object) -> None:
+        assert isinstance(exc, BaseException)
+        captured.append(exc)
+
+    monkeypatch.setattr(_sentry, "_telemetry_is_inactive", fake_inactive)
+    monkeypatch.setattr("sentry_sdk.new_scope", fake_new_scope)
+    monkeypatch.setattr("sentry_sdk.capture_exception", fake_capture)
+    return captured, tags
+
+
+def test_report_handled_exception_captures_a_handled_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failures Ralph catches internally must still produce a Sentry event.
+
+    The excepthook only sees exceptions that propagate out of the process, and
+    Ralph deliberately catches agent failures to retry or degrade -- so without
+    an explicit capture an operator cannot tell a clean run from one that
+    churned for hours on a wedged agent.
+    """
+    captured, tags = _patch_capture(monkeypatch, inactive=False)
+    exc = RuntimeError("fetch failed")
+
+    _sentry.report_handled_exception(exc, origin="agent_invocation")
+
+    assert captured == [exc]
+    assert tags["ralph.origin"] == "agent_invocation"
+    assert tags["ralph.handled"] == "true"
+
+
+def test_report_handled_exception_clamps_unknown_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unbounded origin would forward a user-authored label as a tag."""
+    _captured, tags = _patch_capture(monkeypatch, inactive=False)
+
+    _sentry.report_handled_exception(RuntimeError("boom"), origin="/Users/someone/my-project")
+
+    assert tags["ralph.origin"] == "unknown"
+
+
+def test_report_handled_exception_is_a_noop_when_telemetry_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opting out of telemetry must suppress handled-failure capture too."""
+    captured, _tags = _patch_capture(monkeypatch, inactive=True)
+
+    _sentry.report_handled_exception(RuntimeError("boom"), origin="agent_invocation")
+
+    assert captured == []
+
+
+def test_report_handled_exception_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Telemetry must never change control flow, even when the SDK errors."""
+
+    def fake_inactive() -> bool:
+        return False
+
+    def exploding_new_scope() -> _RecordingScope:
+        raise RuntimeError("sentry is down")
+
+    monkeypatch.setattr(_sentry, "_telemetry_is_inactive", fake_inactive)
+    monkeypatch.setattr("sentry_sdk.new_scope", exploding_new_scope)
+
+    _sentry.report_handled_exception(RuntimeError("boom"), origin="agent_invocation")
 
 
 def test_init_sentry_sets_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -893,6 +1039,7 @@ def test_record_session_start_and_finalize_session(
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[tuple[str, str]] = []
@@ -976,10 +1123,86 @@ def test_record_session_start_and_finalize_session(
     assert session_context[1]["started_monotonic_s"] == pytest.approx(100.0)
     assert session_context[1]["ended_monotonic_s"] == pytest.approx(160.0)
     assert session_context[1]["outcome"] == "success"
-    assert len(message_calls) == 1
-    assert message_calls[0][0] == "session end"
-    assert message_calls[0][1] == "info"
+    assert [message[0] for message in message_calls] == ["session start", "session end"]
+    assert all(message[1] == "info" for message in message_calls)
     assert flush_calls == [2.0]
+
+
+def test_session_lifecycle_records_utc_start_and_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Session context exposes queryable UTC bounds alongside monotonic duration."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+
+    context_calls: list[tuple[str, dict[str, object]]] = []
+    message_calls: list[str] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: context_calls.append((name, dict(data))),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.capture_message",
+        lambda message, level=None: message_calls.append(str(message)),
+    )
+    monkeypatch.setattr("sentry_sdk.start_session", lambda session_mode="application": None)
+    monkeypatch.setattr("sentry_sdk.start_transaction", lambda **kwargs: None)
+    monkeypatch.setattr("sentry_sdk.end_session", lambda: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    start_dt = datetime(2026, 7, 14, 12, 0, 0, tzinfo=UTC)
+    end_dt = datetime(2026, 7, 14, 12, 0, 7, tzinfo=UTC)
+    _sentry.record_session_start(now=10.0, now_dt=start_dt)
+    assert _sentry.finalize_session(now=17.5, end_dt=end_dt) == pytest.approx(7.5)
+
+    session = next(data for name, data in context_calls if name == "session")
+    assert session["started_at_utc"] == "2026-07-14T12:00:00Z"
+    assert session["ended_at_utc"] == "2026-07-14T12:00:07Z"
+    assert message_calls == ["session start", "session end"]
+
+
+def test_agent_invocation_uses_safe_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom agent and drain names never enter invocation telemetry."""
+    metric_calls: list[tuple[str, dict[str, object] | None]] = []
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.count",
+        lambda name, value, attributes=None: metric_calls.append(
+            (str(name), dict(attributes) if attributes is not None else None)
+        ),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.distribution",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr("sentry_sdk.add_breadcrumb", lambda **kwargs: None)
+
+    _sentry.record_agent_invocation(
+        transport=AgentTransport.GENERIC,
+        phase_role="execution",
+        drain="customer-secret-drain",
+        drain_class="execution",
+        pipeline_profile="custom",
+        duration_s=2.25,
+        outcome="failure",
+    )
+
+    name, attributes = metric_calls[0]
+    assert name == "ralph.agent.invocation"
+    assert attributes == {
+        "agent_family": "custom",
+        "transport": "generic",
+        "pipeline_profile": "custom",
+        "phase_role": "execution",
+        "drain": "custom",
+        "drain_class": "execution",
+        "outcome": "failure",
+    }
+    assert "customer-secret" not in repr(metric_calls)
 
 
 def test_finalize_session_returns_none_when_not_initialized(
@@ -1075,6 +1298,7 @@ def test_finalize_session_is_fail_soft_on_flush_error(
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "failure")
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
@@ -1306,6 +1530,7 @@ def test_set_session_wallclock_start_records_utc_buckets(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
@@ -1335,6 +1560,7 @@ def test_wallclock_no_full_timestamp_no_timezone(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -1401,6 +1627,7 @@ def test_record_phase_execution_accumulates_by_role(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
     monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
 
     captured: dict[str, object] = {}
@@ -1498,7 +1725,7 @@ def test_record_phase_execution_fail_soft(
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     # Force a KeyError by pre-populating with a non-dict value.
-    _sentry._PHASE_STATS["execution"] = cast("dict[str, dict[str, object]]", "this is not a dict")
+    _sentry._PHASE_STATS["execution"] = "this is not a dict"
 
     # Must not raise even though the stats lookup will fail.
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
@@ -1512,6 +1739,7 @@ def test_phase_stats_drained_after_finalize(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
     monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
 
     monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
@@ -1960,3 +2188,355 @@ def _flatten(value: object) -> list[object]:
             out.extend(_flatten(item))
         return out
     return [value]
+
+
+def _agent(**overrides: object) -> AgentConfig:
+    """Build an AgentConfig with a benign default command."""
+    fields: dict[str, object] = {"cmd": "claude"}
+    fields.update(overrides)
+    return AgentConfig.model_validate(fields)
+
+
+def _capture_contexts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[tuple[str, dict[str, object]]], list[tuple[str, object]]]:
+    """Activate telemetry and capture set_context / set_tag calls."""
+    contexts: list[tuple[str, dict[str, object]]] = []
+    tags: list[tuple[str, object]] = []
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: contexts.append((str(name), dict(must_mapping(data)))),
+    )
+    monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: tags.append((str(k), v)))
+    return contexts, tags
+
+
+def test_agent_config_context_drops_names_and_raw_cmd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User-authored agent names and raw cmd strings never leave the process."""
+    contexts, tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_agent_config_context(
+        {
+            "acme-internal-agent": _agent(
+                cmd="/Users/jane/secret-corp/bin/wrapper.sh --key hunter2",
+                transport=AgentTransport.GENERIC,
+            ),
+        }
+    )
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    leaves = _flatten(payload)
+    assert "acme-internal-agent" not in leaves
+    assert not any(
+        isinstance(leaf, str) and ("secret-corp" in leaf or "hunter2" in leaf) for leaf in leaves
+    )
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["custom"])
+    assert entry["binary"] == "custom"
+    assert ("agent_count", 1) in tags
+
+
+def test_agent_config_context_keeps_model_and_reduces_flags_to_booleans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Model IDs pass through verbatim; flag VALUES are reduced to presence booleans."""
+    contexts, tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_agent_config_context(
+        {
+            "primary": _agent(
+                cmd="/opt/homebrew/bin/claude --dangerously-skip",
+                transport=AgentTransport.CLAUDE,
+                model="zai-coding-plan/glm-5.2",
+                yolo_flag="--dangerously-skip-permissions",
+                model_flag="--model",
+                can_commit=True,
+            ),
+        }
+    )
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["claude"])
+    assert entry["model"] == "zai-coding-plan/glm-5.2"
+    assert entry["binary"] == "claude"
+    assert entry["can_commit"] is True
+    flags = must_mapping(entry["flags"])
+    assert flags["yolo_flag"] is True
+    assert flags["model_flag"] is True
+    assert flags["session_flag"] is False
+    assert "--dangerously-skip-permissions" not in _flatten(payload)
+    assert ("agent_families", "claude") in tags
+
+
+def test_agent_config_context_disambiguates_same_family_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two agents on one transport get distinct, name-free slugs."""
+    contexts, _tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_agent_config_context(
+        {
+            "fast": _agent(cmd="claude", transport=AgentTransport.CLAUDE, model="haiku"),
+            "deep": _agent(cmd="claude", transport=AgentTransport.CLAUDE, model="opus"),
+        }
+    )
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    agents = must_mapping(payload["agents"])
+    assert set(agents.keys()) == {"claude", "claude_2"}
+    assert payload["agent_count"] == 2
+
+
+def test_agent_config_context_caps_entries_but_reports_true_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pathological config is truncated in the payload, not in the count."""
+    contexts, _tags = _capture_contexts(monkeypatch)
+    oversized = {
+        f"agent-{i}": _agent(cmd="claude", transport=AgentTransport.CLAUDE) for i in range(40)
+    }
+
+    _sentry.set_agent_config_context(oversized)
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    agents = must_mapping(payload["agents"])
+    assert len(agents) == _sentry_payload.AGENT_CONFIG_MAX_ENTRIES
+    assert payload["agent_count"] == 40
+    assert payload["truncated"] is True
+
+
+def test_agent_config_context_noop_when_not_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No agent config is forwarded when Sentry was never initialized."""
+    contexts: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: contexts.append((str(name), dict(must_mapping(data)))),
+    )
+
+    _sentry.set_agent_config_context({"primary": _agent()})
+
+    assert contexts == []
+
+
+def _write_policy_pack(root: Path, *, first_line: str) -> None:
+    policy_dir = root / policy_markers.CANONICAL_DIR
+    policy_dir.mkdir(parents=True, exist_ok=True)
+    for name in policy_markers.CORE_POLICY_FILES:
+        (policy_dir / name).write_text(f"{first_line}\n\n# Policy\n", encoding="utf-8")
+
+
+def test_policy_schema_state_absent_when_no_policy_pack(tmp_path: Path) -> None:
+    assert policy_schema_state(tmp_path) == "absent"
+
+
+def test_policy_schema_state_current_when_marker_matches(tmp_path: Path) -> None:
+    _write_policy_pack(tmp_path, first_line=policy_markers.POLICY_SCHEMA_MARKER)
+    assert policy_schema_state(tmp_path) == "current"
+
+
+def test_policy_schema_state_outdated_when_marker_stale(tmp_path: Path) -> None:
+    _write_policy_pack(tmp_path, first_line="<!-- ralph-policy-schema: v1 -->")
+    assert policy_schema_state(tmp_path) == "outdated"
+
+
+def test_telemetry_policy_schema_vocabulary_matches_policy_layer() -> None:
+    """The restated vocabulary in _sentry must not drift from the policy layer."""
+    assert _sentry._POLICY_SCHEMA_STATES == POLICY_SCHEMA_STATES
+
+
+def test_set_policy_schema_context_tags_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _contexts, tags = _capture_contexts(monkeypatch)
+    _write_policy_pack(tmp_path, first_line=policy_markers.POLICY_SCHEMA_MARKER)
+
+    _sentry.set_policy_schema_context(policy_schema_state(tmp_path))
+
+    assert ("policy_schema_state", "current") in tags
+
+
+def test_set_policy_schema_context_rejects_unknown_vocabulary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An out-of-vocabulary state collapses to 'unknown' instead of being forwarded."""
+    _contexts, tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_policy_schema_context("/Users/jane/secret-corp/policy")
+
+    assert ("policy_schema_state", "unknown") in tags
+    assert not any("secret-corp" in str(value) for _key, value in tags)
+
+
+def test_finalize_session_reports_ralph_and_python_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The session payload is self-describing: it carries the versions that produced it."""
+    contexts, _tags = _capture_contexts(monkeypatch)
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **k: None)
+    monkeypatch.setattr("sentry_sdk.end_session", lambda: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+    monkeypatch.setattr("sentry_sdk.add_breadcrumb", lambda **kwargs: None)
+    monkeypatch.setattr("sentry_sdk.metrics.count", lambda *a, **k: None)
+    monkeypatch.setattr("sentry_sdk.metrics.distribution", lambda *a, **k: None)
+
+    _sentry.record_session_start(now=100.0)
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    _sentry.finalize_session(now=107.0, flush_timeout=0.0)
+
+    session = next(data for name, data in contexts if name == "session")
+    assert session["ralph_version"] == ralph.__version__
+    assert isinstance(session["python_version"], str)
+    assert session["python_version"].count(".") == 2
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "zai-coding-plan/glm-5.2",
+        "claude-opus-4-8",
+        "openai/gpt-5",
+        "us.anthropic.claude-3-5-sonnet:0",
+        "vendor/family/name-v2",
+    ],
+)
+def test_agent_config_forwards_genuine_model_identifiers(
+    monkeypatch: pytest.MonkeyPatch,
+    model_id: str,
+) -> None:
+    """A model IDENTIFIER is a product identifier and passes through verbatim."""
+    contexts, _tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_agent_config_context({"a": _agent(transport=AgentTransport.CLAUDE, model=model_id)})
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["claude"])
+    assert entry["model"] == model_id
+
+
+@pytest.mark.parametrize(
+    "hostile_model",
+    [
+        "/home/otheruser/priv/model.gguf",
+        "/Users/jane/acme-corp/models/secret-ft-v3",
+        "http://user:pa55w0rd@llm.internal.acme.corp:8000/v1/acme-model",
+        "https://api.acme.internal/v1/models/secret",
+        r"C:\Users\jane\models\secret.gguf",
+        "./relative/path/model.bin",
+        "model with spaces and a /home/jane/secret path",
+        "x" * 200,
+    ],
+)
+def test_agent_config_rejects_paths_urls_and_credentials_in_model(
+    monkeypatch: pytest.MonkeyPatch,
+    hostile_model: str,
+) -> None:
+    """A model field carrying a path, URL, or credential must never reach Sentry.
+
+    ``model`` is free text: local-model and proxy workflows put filesystem paths
+    and credentialed endpoints there. The before_send scrubber only rewrites the
+    home/cwd PREFIX, so such values would otherwise leak org names, directory
+    structure, and passwords.
+    """
+    contexts, _tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_agent_config_context(
+        {"a": _agent(transport=AgentTransport.CLAUDE, model=hostile_model)}
+    )
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    agents = must_mapping(payload["agents"])
+    entry = must_mapping(agents["claude"])
+    assert entry["model"] == "custom"
+    leaves = [leaf for leaf in _flatten(payload) if isinstance(leaf, str)]
+    for secret in ("otheruser", "acme-corp", "pa55w0rd", "acme.internal", "jane", "secret"):
+        assert not any(secret in leaf for leaf in leaves), f"{secret!r} leaked via model"
+
+
+def test_agent_config_distinguishes_unset_model_from_rejected_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unconfigured model stays None; a rejected one reads as 'custom'."""
+    contexts, _tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_agent_config_context(
+        {
+            "unset": _agent(transport=AgentTransport.CLAUDE, model=None),
+            "hostile": _agent(transport=AgentTransport.CODEX, model="/home/jane/m.gguf"),
+        }
+    )
+
+    payload = next(data for name, data in contexts if name == "agent_config")
+    agents = must_mapping(payload["agents"])
+    assert must_mapping(agents["claude"])["model"] is None
+    assert must_mapping(agents["codex"])["model"] == "custom"
+
+
+def test_agent_families_tag_covers_every_agent_not_just_forwarded_ones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A config larger than the entry cap must not under-report its families."""
+    _contexts, tags = _capture_contexts(monkeypatch)
+    oversized: dict[str, AgentConfig] = {
+        f"claude-{i}": _agent(cmd="claude", transport=AgentTransport.CLAUDE) for i in range(40)
+    }
+    # Sits beyond AGENT_CONFIG_MAX_ENTRIES, so it is never a forwarded entry.
+    oversized["tail-codex"] = _agent(cmd="codex", transport=AgentTransport.CODEX)
+
+    _sentry.set_agent_config_context(oversized)
+
+    families = next(value for key, value in tags if key == "agent_families")
+    assert families == "claude,codex"
+
+
+def test_agent_family_table_covers_every_transport() -> None:
+    """A new AgentTransport must not silently degrade to 'custom'/'generic'.
+
+    Without this guard a 10th transport would be reported as an unknown custom
+    agent with every gate green — the telemetry would be wrong, not broken.
+    """
+    assert {transport.value for transport in AgentTransport} == set(
+        _sentry_payload.AGENT_FAMILY_BY_TRANSPORT
+    )
+
+
+@pytest.mark.parametrize("state", sorted(POLICY_SCHEMA_STATES))
+def test_every_vocabulary_state_survives_the_sink(
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+) -> None:
+    """Each in-vocabulary state reaches Sentry unchanged (not collapsed to 'unknown')."""
+    _contexts, tags = _capture_contexts(monkeypatch)
+
+    _sentry.set_policy_schema_context(state)
+
+    assert ("policy_schema_state", state) in tags
+
+
+def test_policy_schema_state_unknown_when_policy_file_unreadable(tmp_path: Path) -> None:
+    """An unreadable policy pack degrades to 'unknown' rather than raising."""
+    _write_policy_pack(tmp_path, first_line=policy_markers.POLICY_SCHEMA_MARKER)
+    unreadable = tmp_path / policy_markers.CANONICAL_DIR / policy_markers.CORE_POLICY_FILES[0]
+    unreadable.write_bytes(b"\xff\xfe\x00invalid utf-8 \xc3\x28")
+
+    assert policy_schema_state(tmp_path) == "unknown"
+
+
+def test_set_policy_schema_context_noop_when_not_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tags: list[tuple[str, object]] = []
+    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: tags.append((str(k), v)))
+
+    _sentry.set_policy_schema_context("current")
+
+    assert tags == []

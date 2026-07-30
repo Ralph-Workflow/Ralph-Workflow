@@ -26,6 +26,8 @@ Returns exit code 0 if no violations found, 1 otherwise.
 from __future__ import annotations
 
 import ast
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -95,8 +97,44 @@ def _name_violates(name: str) -> bool:
     return "registry" in lower and ("agent" in lower or "parser" in lower)
 
 
+#: Pre-filter regex for the cheap text-level gate.
+#: A file that contains NONE of the forbidden-name substrings cannot
+#: produce a module-level dict violation, so the AST parse (the slow
+#: step) is skipped for the vast majority of files. The set of
+#: substrings here is the UNION of ``_name_violates``'s two cases:
+#: every ``_FORBIDDEN_NAME_PREFIXES`` entry, plus the lower-cased
+#: ``registry``/``agent``/``parser`` substring combinations.
+_CANDIDATE_NAME_RE = re.compile(
+    r"_PARSER_REGISTRY|_CUSTOM_COMMAND_REGISTRY|_STRATEGY_DISPATCH|"
+    r"registry[_\w]*agent|agent[_\w]*registry|"
+    r"registry[_\w]*parser|parser[_\w]*registry",
+    re.IGNORECASE,
+)
+
+
+def _has_candidate_name(content: str) -> bool:
+    """Return True when ``content`` has any substring that could be a violation.
+
+    Cheap text-level pre-filter that lets the scan skip the slow
+    ``ast.parse`` step for files that obviously contain none of the
+    forbidden-name patterns. Matches the same names
+    :func:`_name_violates` would flag, so it never produces a false
+    negative (a file that contains a candidate substring but parses
+    cleanly with no module-level dict assignment still returns ``[]``
+    from :func:`_scan_file`).
+    """
+    return _CANDIDATE_NAME_RE.search(content) is not None
+
+
 def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
     """Scan a single file for module-level dict violations."""
+    # Pre-filter: skip the slow AST parse for files that obviously
+    # contain none of the forbidden-name patterns. The 1.0s per-test
+    # budget enforced by ``ralph.verify_timeout`` is the binding
+    # constraint; ast.parse on every file in ralph/agents pushes the
+    # audit close to the cap under heavy pytest-xdist load.
+    if not _has_candidate_name(content):
+        return []
     violations: list[RegistrySyncViolation] = []
     try:
         tree = ast.parse(content)
@@ -130,20 +168,33 @@ def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
 
 
 def _collect_py_files(root: Path) -> list[Path]:
-    """Return all ``*.py`` files under any of the audit subtrees."""
+    """Return all ``*.py`` files under any of the audit subtrees.
+
+    Uses :func:`os.walk` rather than :meth:`Path.rglob` because
+    ``rglob`` materializes a fresh :class:`Path` for every match
+    and is ~3-4x slower on cold caches. Under heavy
+    ``pytest-xdist`` load (this audit is run in parallel with 8
+    workers by ``test_run_audit_against_repo_finds_no_violations``)
+    the slower ``rglob`` is the difference between a sub-1s pass
+    and a timeout. The path-prefix check preserves the original
+    "__pycache__" skip behavior.
+    """
     seen: set[Path] = set()
     files: list[Path] = []
     for subtree in _AUDIT_SUBTREES:
         base = root / subtree
         if not base.is_dir():
             continue
-        for path in base.rglob("*.py"):
-            if "__pycache__" in path.parts:
-                continue
-            if path in seen:
-                continue
-            seen.add(path)
-            files.append(path)
+        for parent, dirs, fs in os.walk(base):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for name in fs:
+                if not name.endswith(".py"):
+                    continue
+                path = Path(parent) / name
+                if path in seen:
+                    continue
+                seen.add(path)
+                files.append(path)
     return sorted(files)
 
 

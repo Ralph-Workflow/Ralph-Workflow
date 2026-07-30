@@ -1,10 +1,11 @@
-"""Workspace diff helpers for commit cleanup prompt rendering."""
+"""Workspace diff helpers for direct commit generation and cleanup prompts."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessRunOptions, run_process
+from ralph.git.commit_cleanup import is_recognized_secret_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,13 +31,6 @@ def _is_inside_git_repo(workspace_root: Path) -> bool:
     return False
 
 
-def _git_output_if_repo(workspace_root: Path, *args: str) -> str:
-    """Run a git command only when the workspace is inside a git working tree."""
-    if not _is_inside_git_repo(workspace_root):
-        return _NO_DIFF_SENTINEL
-    return _git_output(workspace_root, *args)
-
-
 # Maximum number of untracked file paths to surface in the cleanup diff before
 # the list is truncated. Keeps the prompt size bounded and prevents prompt
 # overflow when a workspace contains huge numbers of untracked files
@@ -55,17 +49,22 @@ _UNTRACKED_FOOTER_TEMPLATE: str = (
 )
 
 _NO_DIFF_SENTINEL: str = "(no diff available)"
+_REDACTED_SECRET_CHANGES: str = (
+    "## Recognized secret changes\n"
+    "[redacted: secret files will be removed from version control before commit]"
+)
 
 
-def _git_output(workspace_root: Path, *args: str) -> str:
+def _git_output_or_empty(workspace_root: Path, *args: str) -> str:
+    """Return sanitized git stdout, or an empty string on failure/no output."""
     result = run_process(
         "git",
         args,
         options=ProcessRunOptions(cwd=workspace_root),
     )
     if result.returncode != 0:
-        return _NO_DIFF_SENTINEL
-    return _sanitize_surrogates(result.stdout).strip() or _NO_DIFF_SENTINEL
+        return ""
+    return _sanitize_surrogates(result.stdout).strip()
 
 
 def _format_untracked_section(untracked_paths: list[str]) -> str:
@@ -91,25 +90,86 @@ def _format_untracked_section(untracked_paths: list[str]) -> str:
     return f"{_UNTRACKED_HEADER}\n" + "\n".join(visible) + f"\n{footer}"
 
 
-def commit_cleanup_diff(workspace_root: Path) -> str:
-    """Return the pending diff for commit cleanup prompt rendering.
-
-    Combines the tracked ``git diff HEAD`` output with the untracked file list
-    (``git ls-files --others --exclude-standard``). The untracked list is
-    capped at ``_MAX_UNTRACKED_FILES_IN_DIFF`` entries and a truncation
-    footer is appended when more files exist.
-    """
-    tracked = _git_output_if_repo(workspace_root, "diff", "HEAD")
-    untracked_raw = _git_output_if_repo(
-        workspace_root, "ls-files", "--others", "--exclude-standard"
-    )
-    if untracked_raw == _NO_DIFF_SENTINEL:
-        untracked_paths: list[str] = []
-    else:
-        untracked_paths = [line for line in untracked_raw.splitlines() if line.strip()]
+def _combine_tracked_and_untracked(tracked: str, untracked_raw: str) -> str:
+    """Combine a tracked diff with the bounded untracked-path section."""
+    untracked_paths = [line for line in untracked_raw.splitlines() if line.strip()]
     untracked_section = _format_untracked_section(untracked_paths)
+    if not tracked:
+        return untracked_section
     if not untracked_section:
         return tracked
-    if tracked == _NO_DIFF_SENTINEL:
-        return untracked_section
     return f"{tracked}\n\n{untracked_section}"
+
+
+def _secret_filtered_pending_diff(workspace_root: Path) -> tuple[str, bool]:
+    """Return safe pending work and whether recognized secret work was hidden."""
+    if not _is_inside_git_repo(workspace_root):
+        return "", False
+    head_check = run_process(
+        "git",
+        ("rev-parse", "--verify", "HEAD"),
+        options=ProcessRunOptions(cwd=workspace_root),
+    )
+    tracked_paths_raw = _git_output_or_empty(workspace_root, "ls-files", "--cached", "-z")
+    tracked_secret_paths = [
+        path for path in tracked_paths_raw.split("\0") if path and is_recognized_secret_path(path)
+    ]
+    tracked_base = ("diff", "HEAD") if head_check.returncode == 0 else ("diff", "--cached")
+    tracked_args = (
+        *tracked_base,
+        "--",
+        ".",
+        *(f":(exclude,literal){path}" for path in tracked_secret_paths),
+    )
+    tracked = _git_output_or_empty(workspace_root, *tracked_args)
+    tracked_secret_changes_present = False
+    if tracked_secret_paths:
+        secret_diff = run_process(
+            "git",
+            (
+                *tracked_base,
+                "--quiet",
+                "--",
+                *(f":(literal){path}" for path in tracked_secret_paths),
+            ),
+            options=ProcessRunOptions(cwd=workspace_root),
+        )
+        tracked_secret_changes_present = secret_diff.returncode == 1
+    untracked_raw = _git_output_or_empty(
+        workspace_root,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+    )
+    safe_untracked = "\n".join(
+        path for path in untracked_raw.splitlines() if path and not is_recognized_secret_path(path)
+    )
+    combined = _combine_tracked_and_untracked(tracked, safe_untracked)
+    untracked_secret_present = any(
+        path and is_recognized_secret_path(path) for path in untracked_raw.splitlines()
+    )
+    return combined, tracked_secret_changes_present or untracked_secret_present
+
+
+def _with_secret_signal(diff: str, secret_work_present: bool) -> str:
+    """Append a content-free remediation signal when secret work was hidden."""
+    if not secret_work_present:
+        return diff
+    if not diff:
+        return _REDACTED_SECRET_CHANGES
+    return f"{diff}\n\n{_REDACTED_SECRET_CHANGES}"
+
+
+def commit_generation_diff(workspace_root: Path) -> str:
+    """Return safe pending work that a direct commit message must describe."""
+    diff, secret_work_present = _secret_filtered_pending_diff(workspace_root)
+    return _with_secret_signal(diff, secret_work_present)
+
+
+def commit_cleanup_diff(workspace_root: Path) -> str:
+    """Return safe pending work and a content-free secret cleanup signal."""
+    diff, secret_work_present = _secret_filtered_pending_diff(workspace_root)
+    return _with_secret_signal(diff, secret_work_present) or _NO_DIFF_SENTINEL
+
+
+__all__ = ["commit_cleanup_diff", "commit_generation_diff"]

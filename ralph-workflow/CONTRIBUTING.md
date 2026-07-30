@@ -7,13 +7,13 @@ This directory contains the maintained Python package.
 If this is your first contribution, the shortest path is:
 
 ```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
 make dev              # sync the uv environment (editable install + dev extras)
 # ...make your change...
-make verify           # runs the full layered gate: docs build, ruff, mypy,
-                      # the 18 audit steps, and the test suites within the
-                      # immutable 60-second combined test budget
+make verify           # docs/drift, ruff, mypy, combined tests, and every
+                      # declared audit; required real-git E2E runs inside
+                      # make test under the immutable 60-second budget
 ralph --generate-commit   # dogfood the AGENTS.md commit rule
 ```
 
@@ -42,15 +42,34 @@ A few practical notes for a first patch:
   on-ramp.
 
 When you're ready to ship the patch, push your branch and open a PR
-on the primary repo at
-<https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The full
-verification contract, the guardrails, and the contribution policy
-follow below.
+on GitHub or Codeberg. GitHub is the primary development repo; the
+Codeberg mirror remains available for the time being. The
+full verification contract, the guardrails, and the contribution
+policy follow below.
+
+## Contributor License Agreement
+
+Every pull request must agree to the repository-level
+[`Contributor License Agreement`](../CLA.md). The Codeberg and GitHub
+PR templates include the required checkbox:
+
+```markdown
+- [ ] I have read and agree to the Contributor License Agreement in CLA.md, including the grant that allows Ralph Workflow to distribute my contribution under AGPL-3.0-or-later and commercial licenses.
+```
+
+The CI gate checks that exact line and fails every pull-request build
+until it is checked. This applies to Codeberg pull requests through
+Woodpecker and GitHub pull requests through GitHub Actions.
+
+Ralph Workflow remains published as AGPL-3.0-or-later. The CLA also
+grants the project permission to include accepted contributions in
+commercial licenses, which is required for the planned dual-license
+offering.
 
 ## Development setup
 
 ```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
 make dev
 ```
@@ -146,8 +165,10 @@ points to the canonical source.
 
 ## Guardrails
 
-The verification gate runs four policy audits in addition to ruff / mypy /
-pytest. Each one enforces a contract that contributors must preserve.
+The verification gate runs every mandatory audit declared in
+`ralph.verify._VERIFY_STEPS` in addition to ruff, mypy, and pytest. The
+catalog evolves with repository policy; do not copy a numeric audit count
+into documentation. Representative contracts include:
 
 - **Fabrication guard** (`scripts/fabrication_guard.py`, level 1
   pre-commit hook, level 2/3 opt-in) — catches fabricated external
@@ -160,10 +181,10 @@ pytest. Each one enforces a contract that contributors must preserve.
 
 - **Artifact-submission canonical path**
   (`ralph.testing.audit_artifact_submission_canonical_path`) — every
-  artifact must be submitted through the canonical MCP path; ad-hoc
-  file writes to `.agent/PLAN.md` etc. are detected. Why: artifact
-  canonical path is the only path the audit and downstream readers
-  trust. See
+  artifact must be submitted through the canonical MCP path; direct
+  writes to canonical `.agent/artifacts/<type>.md` files, run-scoped
+  receipts, or completion sentinels are detected. Why: the canonical
+  path is the only path the audit and downstream readers trust. See
   [`docs/agents/artifact-submission-contract.md`](docs/agents/artifact-submission-contract.md).
 
 - **Resource-lifecycle contract**
@@ -384,14 +405,16 @@ state must be added to the canonical 3-tuple return shape of
 OpenCode is a session-based agent that may spawn child agents or delegate background work. Ralph Workflow
 models its lifecycle explicitly through `OpenCodeExecutionStrategy` in `ralph/agents/execution_state/opencode_execution_strategy.py`:
 
-**Completion contract:** An OpenCode run is only declared terminal-complete when at least one of
-these conditions is true:
+**Completion contract:** Every completion-enforced OpenCode run requires the
+durable run-scoped sentinel written by `declare_complete`. A phase with a
+required artifact additionally requires the canonical run-scoped artifact
+receipt; neither the receipt nor the sentinel is sufficient alone. Optional-
+artifact and artifact-free phases relax only the receipt requirement.
+Transcript text is diagnostic and cannot replace either durable record.
 
-- The required phase artifact exists on disk (`required_artifact_present=True`), OR
-- The agent explicitly called the `declare_complete` MCP tool (`explicit_complete=True`).
-
-A clean process exit (exit code 0) alone is **not** sufficient for success. If neither signal is
-present, Ralph Workflow raises `OpenCodeResumableExitError` and the runner retries the same OpenCode session
+A clean process exit (exit code 0) alone is **not** sufficient for success.
+When the durable evidence is incomplete, Ralph Workflow raises
+`OpenCodeResumableExitError` and the runner retries the same OpenCode session
 (preserving `session_id`) rather than restarting from scratch.
 
 **Session continuation:** `OpenCodeResumableExitError.resumable_session_id` carries the session ID

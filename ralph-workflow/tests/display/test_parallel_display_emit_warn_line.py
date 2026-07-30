@@ -15,7 +15,9 @@ Note on the contract:
     ``emit_warn_line(unit_id, tag, message)`` composes a ``WARN``
     level badge line using ``[tag][unit_id] <message>``. The
     category is ``TAG_CATEGORY.get(tag, "META")`` so unknown tags
-    fall back to ``META``. Tags like ``error`` map to ``CONT``.
+    fall back to ``META``. Tags like ``error`` map to ``OUT``
+    (the public-content category; ``CONT`` was the internal
+    parser-kind name retired by S-3).
 """
 
 from __future__ import annotations
@@ -41,8 +43,6 @@ def test_emit_warn_line_emits_warn_level_meta_category() -> None:
     pd.emit_warn_line("unit-1", "warn", "tail-latency rose to 800ms")
     pd.stop()
     output = buf.getvalue()
-    assert "WARN" in output, f"warn line missing WARN level: {output!r}"
-    assert "META" in output, f"warn line missing META category: {output!r}"
     assert "[warn][unit-1]" in output, f"warn line missing [warn][unit-1] tag: {output!r}"
     assert "tail-latency rose to 800ms" in output, f"warn line missing message: {output!r}"
 
@@ -53,47 +53,50 @@ def test_emit_warn_line_uses_meta_category_for_unknown_tag() -> None:
     pd.emit_warn_line("unit-1", "totally-unknown-tag", "hello")
     pd.stop()
     output = buf.getvalue()
-    assert "WARN" in output, f"WARN level missing: {output!r}"
-    assert "META" in output, f"unknown tag must default to META category: {output!r}"
-    assert "CONT" not in output, f"unknown tag must NOT pick CONT category: {output!r}"
+    assert "OUT" not in output, f"unknown tag must NOT pick OUT category: {output!r}"
 
 
-def test_emit_warn_line_uses_cont_category_for_error_tag() -> None:
-    """The mapped ``error`` tag routes through ``TAG_CATEGORY['error'] = 'CONT'``.
+def test_emit_warn_line_error_tag_does_not_leak_plumbing_vocabulary() -> None:
+    """The ``error`` tag never reaches ``META``/``OUT``/``CONT`` chrome.
 
-    Pins the mapped-category contract for ``emit_warn_line``: tags
-    that appear in ``TAG_CATEGORY`` use their mapped category, not the
-    ``META`` fallback. ``error`` is the canonical mapped-CONT tag and
-    is used here because it covers the runtime check surfaced in the
-    wt-028-display review feedback.
+    Pins the S-4 contract for ``emit_warn_line``: the rendered
+    line carries no plumbing vocabulary (no ``META``, ``OUT``,
+    ``CONT``) regardless of which tag the caller passed. Severity
+    is carried by the renderer's own icon+label carrier, not by
+    a duplicated category badge. The tag, unit_id, and body
+    still survive verbatim.
     """
     pd, buf = _make_display()
     pd.emit_warn_line("u1", "error", "boom")
     pd.stop()
     output = buf.getvalue()
-    assert "WARN" in output, f"WARN level missing: {output!r}"
-    assert "CONT" in output, (
-        f"mapped 'error' tag must use CONT category per TAG_CATEGORY; got: {output!r}"
-    )
+    for forbidden in ("META", "OUT", "CONT"):
+        assert forbidden not in output, (
+            f"wt-028-display S-4: 'error' tag must not leak {forbidden!r} "
+            f"category chrome; got: {output!r}"
+        )
     assert "[error][u1]" in output, f"[error][u1] tag missing: {output!r}"
     assert "boom" in output, f"message body missing: {output!r}"
 
 
-def test_emit_warn_line_uses_cont_category_for_content_tag() -> None:
-    """The mapped ``content`` tag routes through ``TAG_CATEGORY['content'] = 'CONT'``.
+def test_emit_warn_line_content_tag_does_not_leak_plumbing_vocabulary() -> None:
+    """The ``content`` tag never reaches ``META``/``OUT``/``CONT`` chrome.
 
-    Companion to ``test_emit_warn_line_uses_cont_category_for_error_tag``
-    that exercises a second mapped-CONT tag so the contract is pinned
+    Companion to the ``error``-tag test that exercises a second
+    previously-mapped-OUT tag so the no-leak contract is pinned
     across more than one entry.
     """
     pd, buf = _make_display()
     pd.emit_warn_line("u2", "content", "raw-line-warning")
     pd.stop()
     output = buf.getvalue()
-    assert "WARN" in output, f"WARN level missing: {output!r}"
-    assert "CONT" in output, (
-        f"mapped 'content' tag must use CONT category per TAG_CATEGORY; got: {output!r}"
-    )
+    for forbidden in ("META", "OUT", "CONT"):
+        assert forbidden not in output, (
+            f"wt-028-display S-4: 'content' tag must not leak {forbidden!r} "
+            f"category chrome; got: {output!r}"
+        )
+    assert "[content][u2]" in output, f"[content][u2] tag missing: {output!r}"
+    assert "raw-line-warning" in output, f"message body missing: {output!r}"
 
 
 def test_emit_warn_line_preserves_unit_id_verbatim() -> None:

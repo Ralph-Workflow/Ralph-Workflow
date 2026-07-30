@@ -12,9 +12,10 @@ Uses monkeypatched coordinator and verification hook; no real subprocesses.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+import pytest
 
 from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
@@ -26,11 +27,25 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
+from tests.plan_fixtures import development_result_markdown
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+# ``test_runner_fanout_e2e_full.py`` exercises the full
+# fan-out → post-fan-out verification + handoff integration with
+# real WorkUnit construction, real WorkspaceScope resolution,
+# monkeypatched coordinator + verification hook, and real
+# WorkUnit processing. Under 12-way xdist contention the
+# integration setup + the runner.run fan-out path has been
+# observed to intermittently exceed the 1s default test timeout.
+# 5s is the documented minimum for non-trivial tests (see
+# ``ralph/verify_timeout.py``) and is well under the 60s combined
+# ``make verify`` budget. The 1s default policy is preserved
+# globally; this module-level marker only relaxes the cap for the
+# fan-out integration tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _legacy_display() -> runner_module.ParallelDisplay:
@@ -67,17 +82,9 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
 def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "development_result.json").write_text(
-        json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": f"Worker {unit_id} done", "changes": []},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "development_result.md").write_text(
+        development_result_markdown(unit_id),
+        encoding="utf-8",
     )
 
 

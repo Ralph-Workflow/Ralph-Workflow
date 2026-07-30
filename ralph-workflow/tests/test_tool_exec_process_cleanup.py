@@ -90,7 +90,7 @@ def test_reusable_sandbox_does_not_skip_process_cleanup(tmp_path: Path) -> None:
 def test_shutdown_all_reaps_nested_descendant_tree_on_exit() -> None:
     """ProcessManager.shutdown_all() reaps the host and every nested descendant.
 
-    Characterization test for the CURRENT_PROMPT.md requirement:
+    Characterization test for the PRODUCT_CRITERIA.md requirement:
     "properly killing processes that we spawned" and "gracefully
     killing all child process when exiting". The pre-fix production
     code already satisfies this contract (no production change is

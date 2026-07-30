@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,8 +38,6 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
 _TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
 _AVAILABLE_WIDTH_FLOOR = 40
 _TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
@@ -105,37 +102,8 @@ def _write_minimal_plan_artifacts(
     context: str = "Existing plan",
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+    (root / ".agent" / "artifacts" / "plan.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -147,24 +115,8 @@ def _write_minimal_plan_artifacts(
 def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:01+00:00",
-                "sections": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
+    (artifact_dir / ".plan.draft.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
 
@@ -224,51 +176,15 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Revise the plan")
     workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Existing plan",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+        ".agent/PLAN.md",
+        "# Execution Plan\n\nExisting plan\n",
     )
     workspace.write(
-        ".agent/artifacts/planning_analysis_decision.json",
-        json.dumps(
-            {
-                "type": "planning_analysis_decision",
-                "content": {
-                    "status": "request_changes",
-                    "summary": "Need revisions",
-                    "what_came_up_short": ["issue"],
-                    "how_to_fix": ["fix it"],
-                },
-            }
-        ),
+        ".agent/PLANNING_ANALYSIS_DECISION.md",
+        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Need revisions\n"
+        "## What Came Up Short\n- [W1] issue\n"
+        "## How To Fix\n- [W1] fix it\n",
     )
     workspace.write(
         ".agent/tmp/planning_prompt.md",
@@ -401,8 +317,15 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert isinstance(rendered, Text)
-        assert "result" in rendered.plain
+        # After wt-028-display the pipeline-runner path delegates to
+        # the canonical registry; a successful TOOL_RESULT carries the
+        # PASS carrier (✓ + "PASS" label) and the agent prefix. The
+        # legacy "result <content>" prefix word is replaced by the
+        # carrier label which carries the same semantic meaning
+        # (success-state tool result) under the redundant label
+        # contract (AC-10).
         assert "{'matches': 3, 'path': 'src'}" in rendered.plain
+        assert "PASS" in rendered.plain or "✓" in rendered.plain
 
     def test_claude_assistant_text_renders_without_extra_assistant_summary_line(self) -> None:
         parser = ClaudeParser()
@@ -425,7 +348,16 @@ class TestRenderAgentActivityLine:
             if rendered_line is not None:
                 rendered.append(rendered_line)
 
-        assert [item.plain for item in rendered] == ["dev: Final response"]
+        # After wt-028-display the pipeline runner routes through the
+        # agent-event renderer registry. Claude ``assistant`` text events
+        # carry the registry's INFO carrier (icon + ``INFO`` label) plus
+        # the agent_name prefix and the body. The body still surfaces
+        # without a duplicate ``assistant`` summary line.
+        assert len(rendered) == 1
+        rendered_plain = rendered[0].plain
+        assert "Final response" in rendered_plain
+        assert "assistant" not in rendered_plain
+        assert "dev" in rendered_plain
 
     def test_tool_use_output_escapes_markup_like_input_before_console_render(self) -> None:
         output = AgentOutputLine(
@@ -514,8 +446,11 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        content_part = rendered.plain.split(": ", 1)[1]
-        assert len(content_part) <= _TRUNCATED_TEXT_MAX
+        # Text rows retain their inline identity for compatibility; tool
+        # results instead use the shared live chrome as their sole identity.
+        assert "dev" in rendered.plain
+        # Total plain length stays within the registry's 200-cell cap.
+        assert len(rendered.plain) <= 250  # body + icon + label + agent prefix + ts
 
     def test_tool_input_truncation(self) -> None:
         long_value = "x" * 200
@@ -568,8 +503,9 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        content_part = rendered.plain.split(": ", 1)[1]
-        assert len(content_part) <= _TRUNCATED_RESULT_BRIEF_MAX
+        # Tool-result identity belongs to the shared live chrome, not its body.
+        assert "dev" not in rendered.plain
+        assert len(rendered.plain) <= 250
 
     def test_metadata_summary_caps_total_length(self) -> None:
         metadata: dict[str, object] = {

@@ -5,31 +5,29 @@ from __future__ import annotations
 import json
 import os
 import typing
-from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import AgentTransport
 from ralph.executor.process import ProcessRunOptions, run_process
+from ralph.mcp.artifacts.development_result import DEVELOPMENT_RESULT_ARTIFACT_TYPE
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.handoffs import (
-    ensure_markdown_handoff_from_artifact,
-    handoff_path_for_artifact,
-)
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.history import (
     clear_artifact_history,
     history_index_path,
 )
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
+from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_ARTIFACT_TYPE,
-    PLAN_DRAFT_PATH,
 )
 from ralph.mcp.tools.names import (
-    DECLARE_COMPLETE_TOOL,
-    SUBMIT_ARTIFACT_TOOL,
-    WRITE_FILE_TOOL,
+    SUBMIT_MD_ARTIFACT_TOOL,
     claude_tool_name,
     claude_tool_name_prefix,
     opencode_tool_name,
@@ -68,25 +66,29 @@ from ralph.prompts.developer import (
     prompt_planning_xml_with_context,
 )
 from ralph.prompts.materialize_support import (
-    current_prompt_variables as _current_prompt_variables,
-)
-from ralph.prompts.materialize_support import (
     merged_variables as _merged_variables,
 )
 from ralph.prompts.materialize_support import (
-    persist_current_prompt as _persist_current_prompt,
+    persist_product_criteria as _persist_product_criteria,
 )
 from ralph.prompts.materialize_support import (
     phase_payload_variables,
 )
+from ralph.prompts.materialize_support import (
+    product_criteria_variables as _product_criteria_variables,
+)
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
 )
-from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
+
+PLAN_MD_DRAFT_PATH = ".agent/artifacts/.plan.draft.md"
+PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH = (
+    ".agent/tmp/prompt_payloads/development_result_continuation.md"
+)
 
 __all__ = [
     "MissingPlanHandoffError",
@@ -140,11 +142,10 @@ class PromptPhaseOptions:
 
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
-        from ralph.prompts._multimodal_sidecar_entry import (  # noqa: PLC0415
-            MultimodalSidecarEntry as _Entry,
+        module = import_module(
+            "ralph.prompts._multimodal_sidecar_entry",
         )
-
-        return _Entry
+        return typing.cast("object", module.MultimodalSidecarEntry)
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
@@ -157,32 +158,52 @@ def materialize_prompt_for_phase(
     """Render and persist the prompt for a pipeline phase, returning its dump path."""
     if context is None:
         context = PromptPhaseContext(
-            phase=cast("str", kwargs["phase"]),
-            workspace=cast("Workspace", kwargs["workspace"]),
-            pipeline_policy=cast("PipelinePolicy", kwargs["pipeline_policy"]),
-            session_caps=cast("SessionCapabilities", kwargs["session_caps"]),
-            workspace_root=cast("Path", kwargs["workspace_root"]),
+            phase=cast(
+                "str", kwargs["phase"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            workspace=cast(
+                "Workspace", kwargs["workspace"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            pipeline_policy=cast(
+                "PipelinePolicy", kwargs["pipeline_policy"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            session_caps=cast(
+                "SessionCapabilities", kwargs["session_caps"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            workspace_root=cast(
+                "Path", kwargs["workspace_root"]
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
         if options is None:
             options = PromptPhaseOptions(
-                artifacts_policy=cast("ArtifactsPolicy | None", kwargs.get("artifacts_policy")),
-                worker_namespace=cast("Path | None", kwargs.get("worker_namespace")),
-                previous_phase=cast("str | None", kwargs.get("previous_phase")),
-                resume_existing_phase=cast("bool", kwargs.get("resume_existing_phase", False)),
+                artifacts_policy=cast(
+                    "ArtifactsPolicy | None", kwargs.get("artifacts_policy")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                worker_namespace=cast(
+                    "Path | None", kwargs.get("worker_namespace")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                previous_phase=cast(
+                    "str | None", kwargs.get("previous_phase")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                resume_existing_phase=cast(
+                    "bool", kwargs.get("resume_existing_phase", False)
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                 multimodal_entries=cast(
                     "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
                 ),
-                work_unit=cast("WorkUnit | None", kwargs.get("work_unit")),
+                work_unit=cast(
+                    "WorkUnit | None", kwargs.get("work_unit")
+                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
             )
     opts = options or PromptPhaseOptions()
-    prompt = _render_prompt_for_phase(context, opts)
-    if _should_wrap_worker_prompt(context.phase, context.pipeline_policy, opts):
-        assert opts.work_unit is not None
-        prompt = render_worker_prompt(
-            unit=opts.work_unit,
-            base_prompt=prompt,
-            policy=context.pipeline_policy,
+    if opts.work_unit is not None and opts.worker_namespace is None:
+        opts = replace(
+            opts,
+            worker_namespace=(
+                context.workspace_root / ".agent" / "workers" / opts.work_unit.unit_id
+            ),
         )
+    prompt = _render_prompt_for_phase(context, opts)
     path = dump_rendered_prompt(
         context.workspace,
         context.phase,
@@ -205,23 +226,6 @@ def materialize_prompt_for_phase(
     return path
 
 
-def _should_wrap_worker_prompt(
-    phase: str,
-    pipeline_policy: PipelinePolicy,
-    options: PromptPhaseOptions,
-) -> bool:
-    if options.work_unit is None:
-        return False
-    phase_def = pipeline_policy.phases.get(phase)
-    if phase_def is None or phase_def.role != "execution":
-        return False
-    artifacts_policy = options.artifacts_policy
-    if artifacts_policy is None:
-        return phase == "development"
-    drain = phase_def.drain if phase_def.drain is not None else phase
-    return _drain_artifact_type(drain, artifacts_policy) == "development_result"
-
-
 def prompt_file_for_phase(phase: str) -> str:
     """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
@@ -241,9 +245,18 @@ def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str 
     return phase_def.loopback_prompt_template or phase_def.continuation_template
 
 
-def read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+def read_and_clear_retry_hint(
+    workspace: Workspace,
+    phase: str,
+    *,
+    worker_namespace: Path | None = None,
+) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
-    path = retry_hint_path(phase)
+    path = (
+        str(worker_namespace / "tmp" / f"last_retry_error_{phase}.txt")
+        if worker_namespace is not None
+        else retry_hint_path(phase)
+    )
     if not workspace.exists(path):
         return ""
     try:
@@ -287,7 +300,7 @@ def _render_prompt_for_phase(
         previous_phase=previous_phase,
         artifacts_policy=artifacts_policy,
     )
-    current_prompt_path = _persist_current_prompt(
+    product_criteria_path = _persist_product_criteria(
         workspace_root,
         prompt_content,
         worker_namespace=worker_namespace,
@@ -316,7 +329,7 @@ def _render_prompt_for_phase(
             _commit_phase_diff(workspace_root),
             template_registry=tmpl_ctx.registry,
             partials=tmpl_ctx.partials,
-            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+            submit_artifact_tool_names=SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
                 tool_name_prefix=session_caps.tool_name_prefix,
             ),
             payload_config=CommitPromptPayloadConfig(
@@ -326,12 +339,18 @@ def _render_prompt_for_phase(
         )
     # Commit-cleanup prompt: commit_cleanup role
     if phase_role == "commit_cleanup":
+        _snapshot_partial_execution_result(
+            workspace,
+            previous_phase=previous_phase,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+        )
         return render_commit_cleanup_prompt(
             phase=phase,
             workspace_root=workspace_root,
             worker_namespace=worker_namespace,
             prompt_content=prompt_content,
-            current_prompt_path=current_prompt_path,
+            product_criteria_path=product_criteria_path,
             template_name=template_name,
             tmpl_ctx=tmpl_ctx,
             session_caps=session_caps,
@@ -341,7 +360,10 @@ def _render_prompt_for_phase(
         template_name=template_name,
     )
     # Developer-style prompt: execution role producing a development_result artifact
-    if phase_role == "execution" and drain_artifact_type == "development_result":
+    if phase_role == "execution" and (
+        drain_artifact_type == "development_result"
+        or (options.work_unit is not None and artifacts_policy is None)
+    ):
         return _render_developer_prompt(
             context=context,
             options=options,
@@ -370,7 +392,7 @@ def _render_prompt_for_phase(
             phase_def=phase_def,
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
-            current_prompt_path=current_prompt_path,
+            product_criteria_path=product_criteria_path,
         )
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
@@ -408,10 +430,10 @@ def _render_planning_prompt(
             analysis_feedback_path=analysis_feedback_path,
             artifact_history_path=artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
-            current_prompt_path=str(
-                options.worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+            product_criteria_path=str(
+                options.worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
                 if options.worker_namespace is not None
-                else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+                else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
             ),
             payload_root=str(
                 options.worker_namespace / "tmp" / "prompt_payloads"
@@ -454,20 +476,34 @@ def _render_developer_prompt(
         previous_phase=previous_phase,
         pipeline_policy=pipeline_policy,
     )
-    if dev_is_loopback:
+    prior_partial_result = _resolve_partial_development_result(
+        workspace,
+        drain=drain,
+        artifacts_policy=artifacts_policy,
+        worker_namespace=options.worker_namespace,
+    )
+    is_continuation = dev_is_loopback or prior_partial_result is not None
+    if is_continuation:
         loopback_template_name = _loopback_template_name_for_phase(phase_def)
         if loopback_template_name:
             template_name = loopback_template_name
+    if options.work_unit is not None:
+        template_name = "worker_developer.jinja"
     dev_artifact_history_path = _resolve_and_clear_dev_artifact_history(
         workspace_root=workspace_root,
         phase_def=phase_def,
         drain_artifact_type=drain_artifact_type,
-        is_loopback=dev_is_loopback,
+        is_loopback=is_continuation,
+        worker_namespace=options.worker_namespace,
     )
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
         workspace, phase, pipeline_policy, artifacts_policy
     )
-    last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    last_retry_error = read_and_clear_retry_hint(
+        workspace,
+        phase,
+        worker_namespace=options.worker_namespace,
+    )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
     return prompt_developer_iteration_xml_with_context(
@@ -478,10 +514,10 @@ def _render_developer_prompt(
             analysis_feedback_content=analysis_feedback_content,
             plan_path=plan_path,
             analysis_feedback_path=analysis_feedback_path,
-            current_prompt_path=str(
-                options.worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+            product_criteria_path=str(
+                options.worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
                 if options.worker_namespace is not None
-                else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+                else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
             ),
             payload_root=str(
                 options.worker_namespace / "tmp" / "prompt_payloads"
@@ -490,10 +526,25 @@ def _render_developer_prompt(
             ),
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
+            prior_result_status=prior_partial_result[0] if prior_partial_result else "",
+            prior_result_summary=prior_partial_result[1] if prior_partial_result else "",
+            prior_result_next_steps=prior_partial_result[2] if prior_partial_result else "",
+            prior_result_continuation=prior_partial_result[3] if prior_partial_result else "",
             skills_inline_content=skills_inline_content,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             has_docs_mcp=has_docs_mcp,
+            work_unit_id=options.work_unit.unit_id if options.work_unit else "",
+            work_unit_description=(
+                _worker_description(options.work_unit) if options.work_unit else ""
+            ),
+            work_unit_directories=(
+                json.dumps(options.work_unit.allowed_directories, indent=2)
+                if options.work_unit
+                else ""
+            ),
+            worker_namespace=str(options.worker_namespace or ""),
+            is_continuation=is_continuation,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -515,7 +566,7 @@ def _render_template_based_prompt(
     phase_def: PhaseDefinition | None,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
-    current_prompt_path: str | Path,
+    product_criteria_path: str | Path,
 ) -> str:
     template = tmpl_ctx.registry.get_template(template_name)
     diff_content = _git_diff(workspace_root)
@@ -554,9 +605,10 @@ def _render_template_based_prompt(
     variables.update({k: v for k, v in path_vars.items() if v})
     if phase_def is not None and phase_def.skip_invocation:
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
-    variables.update(_current_prompt_variables(prompt_content, str(current_prompt_path)))
+    variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
+    variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
     return render_template(
         template,
@@ -565,24 +617,11 @@ def _render_template_based_prompt(
     )
 
 
-def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolicy) -> str:
-    """Render the isolated developer prompt for a single parallel work unit."""
-    del policy
-    context = TemplateContext.default()
-    template = context.registry.get_template("worker_developer")
-    return render_template(
-        template,
-        {
-            "unit_id": unit.unit_id,
-            "description": unit.description,
-            "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
-            "base_prompt": base_prompt,
-            "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_ARTIFACT_TOOL}`",
-            "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
-            "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
-        },
-        context.partials,
-    )
+def _worker_description(unit: WorkUnit) -> str:
+    """Return the complete unit assignment, including any bound plan steps."""
+    if not unit.step_ids:
+        return unit.description
+    return f"{unit.description}\n\nAssigned plan steps: {', '.join(unit.step_ids)}"
 
 
 # Transports that expose every MCP tool as ``mcp__<server>__<tool>``: Claude Code
@@ -603,10 +642,10 @@ _CLAUDE_STYLE_TRANSPORTS = (
 def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
     """Return the submit-artifact tool name for the given transport."""
     if transport in _CLAUDE_STYLE_TRANSPORTS:
-        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+        return claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
     if transport == AgentTransport.OPENCODE:
-        return opencode_tool_name(SUBMIT_ARTIFACT_TOOL)
-    return SUBMIT_ARTIFACT_TOOL
+        return opencode_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
+    return SUBMIT_MD_ARTIFACT_TOOL
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
@@ -637,7 +676,6 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
         workspace,
         artifact_type="plan",
         artifact_path=PLAN_ARTIFACT_PATH,
-        fallback_formatter=format_plan_for_execution,
     )
 
 
@@ -654,12 +692,11 @@ def _resolve_required_plan_handoff(
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     if plan_path:
         return plan_content, plan_path
-    if allow_draft_fallback and workspace.exists(PLAN_DRAFT_PATH):
-        with suppress(Exception):
-            parsed = cast("object", json.loads(workspace.read(PLAN_DRAFT_PATH)))
-            if isinstance(parsed, dict) and isinstance(parsed.get("sections"), dict):
-                sections = cast("dict[str, object]", parsed["sections"])
-                return format_plan_for_execution(json.dumps(sections)), ""
+    if allow_draft_fallback and workspace.exists(PLAN_MD_DRAFT_PATH):
+        draft = workspace.read(PLAN_MD_DRAFT_PATH)
+        _content, diagnostics = parse_and_validate(draft, PLAN_SPEC)
+        if not any(diagnostic.severity == "error" for diagnostic in diagnostics):
+            return draft, ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
@@ -865,8 +902,11 @@ def _resolve_and_clear_dev_artifact_history(
     phase_def: PhaseDefinition | None,
     drain_artifact_type: str | None,
     is_loopback: bool,
+    worker_namespace: Path | None = None,
 ) -> str:
     """Resolve the artifact history path and optionally clear it on fresh entry."""
+    if worker_namespace is not None:
+        return ""
     if phase_def is None or phase_def.artifact_history is None or not drain_artifact_type:
         return ""
     if not is_loopback and phase_def.artifact_history.clear_on_fresh_entry:
@@ -881,13 +921,13 @@ def _clear_fresh_planning_context(
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
     """Delete prior planning state before rendering a fresh planning-creation prompt.
-    Clears the plan draft (.plan_draft.json) and artifact history per policy.
+    Clears the staged markdown plan draft and artifact history per policy.
     Drain artifact clearing is handled by phase_entry_cleaner.clear_phase_entry_drains
     at PreparePromptEffect time in the runner flow, and by the direct call in
     _prepare_planning_prompt_context for the direct materialization path.
     """
-    if workspace.exists(PLAN_DRAFT_PATH):
-        workspace.remove(PLAN_DRAFT_PATH)
+    if workspace.exists(PLAN_MD_DRAFT_PATH):
+        workspace.remove(PLAN_MD_DRAFT_PATH)
     workspace_root = Path(workspace.absolute_path("."))
     _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
 
@@ -913,31 +953,16 @@ def _resolve_agent_handoff(
     *,
     artifact_type: str,
     artifact_path: str,
-    fallback_formatter: Callable[[str], str] | None = None,
 ) -> tuple[str | None, str]:
     """Return the Markdown handoff for an agent-consumed artifact.
-    JSON artifacts are Ralph's machine-readable source of truth; prompts should
-    point agents at mirrored Markdown handoffs whenever one is defined.
+
+    Markdown artifacts are the source of truth: submission already writes the
+    handoff file as identical bytes, so resolution reads the existing handoff
+    (or the artifact document itself) directly — no derivation step.
     """
     relative_handoff_path = handoff_path_for_artifact(artifact_type)
-    handoff_path = workspace.absolute_path(relative_handoff_path) if relative_handoff_path else ""
-    artifact_content = _read_optional(workspace, artifact_path)
-    if artifact_content:
-        created_path = ensure_markdown_handoff_from_artifact(
-            Path(workspace.absolute_path(".")),
-            artifact_type,
-            artifact_content,
-        )
-        if created_path is not None:
-            try:
-                markdown = Path(created_path).read_text(encoding="utf-8")
-            except OSError:
-                markdown = None
-            if markdown:
-                return markdown, created_path
-        if fallback_formatter is not None:
-            return fallback_formatter(artifact_content), ""
     if relative_handoff_path:
+        handoff_path = workspace.absolute_path(relative_handoff_path)
         markdown = _read_optional(workspace, relative_handoff_path)
         if markdown:
             return markdown, handoff_path
@@ -948,6 +973,9 @@ def _resolve_agent_handoff(
                 markdown = None
             if markdown:
                 return markdown, handoff_path
+    artifact_content = _read_optional(workspace, artifact_path)
+    if artifact_content:
+        return artifact_content, workspace.absolute_path(artifact_path)
     return None, ""
 
 
@@ -955,7 +983,7 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="issues",
-        artifact_path=".agent/artifacts/issues.json",
+        artifact_path=".agent/artifacts/issues.md",
     )
     return content or "(no review issues available)", path
 
@@ -965,7 +993,7 @@ def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",
-        artifact_path=".agent/artifacts/fix_result.json",
+        artifact_path=".agent/artifacts/fix_result.md",
     )
     return content or "(no fix result available)", path
 
@@ -986,10 +1014,110 @@ def _resolve_loopback_analysis_feedback(
                 content, path = _resolve_agent_handoff(
                     workspace,
                     artifact_type=ra.artifact_type,
-                    artifact_path=ra.json_path,
+                    artifact_path=ra.artifact_path,
                 )
                 return content or "", path
     return "", ""
+
+
+def _resolve_partial_development_result(
+    workspace: Workspace,
+    *,
+    drain: str,
+    artifacts_policy: ArtifactsPolicy | None,
+    worker_namespace: Path | None = None,
+) -> tuple[str, str, str, str] | None:
+    """Return continuation fields from this drain's valid partial result."""
+    if artifacts_policy is None:
+        return None
+    required_artifact = resolve_required_artifact(artifacts_policy, drain=drain)
+    if (
+        required_artifact is None
+        or required_artifact.artifact_type != DEVELOPMENT_RESULT_ARTIFACT_TYPE
+    ):
+        return None
+    if worker_namespace is None:
+        markdown, _path = _resolve_agent_handoff(
+            workspace,
+            artifact_type=required_artifact.artifact_type,
+            artifact_path=required_artifact.artifact_path,
+        )
+    else:
+        markdown = _read_optional(
+            workspace,
+            str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md"),
+        ) or _read_optional(
+            workspace,
+            str(worker_namespace / "artifacts" / "development_result.md"),
+        )
+    if not markdown and worker_namespace is None:
+        markdown = _read_optional(workspace, PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
+    if not markdown:
+        return None
+    content = _validated_development_result_content(markdown)
+    if content is None or content.get("status") != "partial":
+        return None
+    continuation = content.get("continuation")
+    summary = content.get("summary")
+    next_steps = content.get("next_steps")
+    prior_session_id = (
+        continuation.get("prior_session_id") if isinstance(continuation, dict) else None
+    )
+    values = (summary, next_steps, prior_session_id)
+    if not all(isinstance(value, str) for value in values):
+        return None
+    return (
+        "partial",
+        cast("str", summary),
+        cast("str", next_steps),
+        cast("str", prior_session_id),
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+
+
+def _snapshot_partial_execution_result(
+    workspace: Workspace,
+    *,
+    previous_phase: str | None,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> None:
+    """Persist partial execution context before commit phases clear its artifact."""
+    if previous_phase is None or artifacts_policy is None:
+        return
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    if previous_phase_def is None or previous_phase_def.role != "execution":
+        return
+    required_artifact = resolve_required_artifact(
+        artifacts_policy,
+        drain=previous_phase_def.drain,
+    )
+    if (
+        required_artifact is None
+        or required_artifact.artifact_type != DEVELOPMENT_RESULT_ARTIFACT_TYPE
+    ):
+        return
+    markdown, _path = _resolve_agent_handoff(
+        workspace,
+        artifact_type=required_artifact.artifact_type,
+        artifact_path=required_artifact.artifact_path,
+    )
+    if not markdown:
+        return
+    content = _validated_development_result_content(markdown)
+    if content is None:
+        return
+    if content.get("status") == "partial":
+        workspace.write(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH, markdown)
+    elif workspace.exists(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH):
+        workspace.remove(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
+
+
+def _validated_development_result_content(markdown: str) -> dict[str, object] | None:
+    """Return validated development-result content without accepting error diagnostics."""
+    content, diagnostics = parse_and_validate(markdown, DEVELOPMENT_RESULT_SPEC)
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
+    return content
 
 
 def _latest_artifact_content(
@@ -1011,7 +1139,7 @@ def _latest_artifact_content(
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type=ra.artifact_type,
-        artifact_path=ra.json_path,
+        artifact_path=ra.artifact_path,
     )
     return content or "", path
 
@@ -1085,10 +1213,7 @@ def _git_diff(workspace_root: Path) -> str:
         return "(no diff available)"
     baseline_sha = read_cycle_baseline(workspace_root)
     if baseline_sha:
-        committed = _git_output(workspace_root, "diff", baseline_sha, "HEAD")
-        uncommitted = _git_output(workspace_root, "diff", "HEAD")
-        parts = [p for p in (committed, uncommitted) if p and p != "(no diff available)"]
-        return "\n".join(parts) if parts else "(no diff available)"
+        return _git_output(workspace_root, "diff", baseline_sha)
     return _git_output(workspace_root, "diff", "HEAD")
 
 

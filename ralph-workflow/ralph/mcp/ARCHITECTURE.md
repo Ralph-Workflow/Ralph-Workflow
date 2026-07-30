@@ -26,14 +26,18 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 | File | Purpose |
 |------|---------|
 | `names.py` | Tool name constants (`RALPH_MCP_SERVER_NAME`, `READ_FILE_TOOL`, etc.) |
-| `bridge.py` | `ToolBridge` registry and `build_ralph_tool_registry` |
-| `workspace.py` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_media`, `handle_read_image`, etc. |
-| `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
-| `exec.py` | `handle_exec_command`, `run_command` — bounded subprocess execution routed through the reusable sandbox pool; `_build_effective_deps` captures the thread-owned sink from `session.current_thread_tool_output_sink()` once at dispatch and wires it into `on_output_chunk` for SSE streaming |
+| `bridge/` | `ToolBridge` registry, spec helpers, lazy handler dispatchers, `_specs_file_read/_file_write/_file_list/_git_exec/_web_media/_artifacts/_explore.py` MCP schemas; canonical re-export `ralph.mcp.tools.bridge.tool_specs` |
+| `workspace/` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_media`, `handle_read_image`; sub-modules split by concern (`_read_handlers`, `_grep_handlers`, `_write_handlers`, `_list_ops`, `_media_handlers`, `_media_blocks`, `_media_io`, `_media_session`, `_utils`) |
+| `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show`; `format='summary'` compact cards for git_log/git_show |
+| `exec.py` / `_exec_run_deps.py` | `handle_exec_command`, `run_command`, `build_effective_exec_deps` — bounded subprocess execution routed through the reusable sandbox pool; dependency composition captures the thread-owned sink from `session.current_thread_tool_output_sink()` once at dispatch and wires it into `on_output_chunk` for SSE streaming; `format='summary'` returns a compact envelope plus replayable `ralph://exec/<spill-name>` handles |
+| `unsafe_exec.py` | `handle_unsafe_exec_command`, `handle_raw_exec_command` — unrestricted shell command execution in the real workspace; intentionally kept without `format='summary'` so the legacy behavior stays unchanged (audited as `keep`) |
 | `exec_sandbox.py` | `ExecSandboxManager` — lock-free bounded round-robin sandbox pool: per-workspace `_next_slot_index` counter selects slot `(counter % max_slots) + 1` without filesystem locks; `_active_slots` set prevents capacity recovery from deleting live slots; cleanup runs only when `base_dir > max_total_bytes` (capacity-gated, never under budget) |
-| `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. (canonical contract: `docs/agents/artifact-submission-contract.md`) |
-| `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env` |
-| `websearch.py` | `handle_web_search` |
+| `md_artifact.py` | `handle_submit_md_artifact`, `handle_verify_md_artifact`, `handle_stage_md_artifact`, `handle_edit_md_artifact`, `handle_get_md_draft`, `handle_discard_md_draft`, `handle_finalize_md_artifact` — the markdown artifact tool surface (canonical contract: `docs/agents/artifact-submission-contract.md`) |
+| `artifact.py` | `ArtifactHandlerDeps` and workspace/session resolution helpers shared by the markdown handlers (JSON artifact authoring was removed) |
+| `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env`; `handle_declare_complete` is the sole explicit completion-sentinel operation |
+| `websearch.py` | `handle_web_search` with `format='summary'` compact envelopes and UTF-8-accurate `snippet_budget_bytes` |
+| `webvisit.py` | `handle_visit_url` and `handle_download_url` with `format='metadata'` / `format='summary'` replayable resource handles |
+| `_envelope_bytes.py` | `finalize_envelope_bytes_out` shared helper for self-referential `bytes_out` envelopes used by git_read, websearch, webvisit, and read_image/read_media |
 
 **Canonical import path:** `from ralph.mcp.tools import ...` or `from ralph.mcp.tools.<module> import ...`
 
@@ -43,15 +47,17 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 
 | File | Purpose |
 |------|---------|
-| `store.py` | `Artifact`, `submit_artifact`, `get_artifact`, `list_artifacts`, `update_artifact`, `delete_artifact` |
+| `markdown/` | Closed markdown artifact grammar: `MdArtifactSpec`, `parse_and_validate`, `Diagnostic`, per-type specs under `markdown/specs/`, spec registry |
+| `canonical_submit.py` | `submit_artifact_canonical` — the transactional writer for `.agent/artifacts/<type>.md`, handoff copies, and receipts; receipt failure restores prior canonical state, and completion remains a separate `declare_complete` operation |
+| `completion_receipts.py` | DB-first run-scoped artifact receipts with a durable legacy-file fallback |
+| `state_db.py` | `RunStateDB` — the SQLite persistence boundary for receipts and completion sentinels |
 | `file_backend.py` | `FileBackend`, `PathFileBackend`, `DEFAULT_FILE_BACKEND` |
-| `plan.py` | `PlanArtifact`, `validate_plan_artifact`, `finalize_plan_draft`, etc. |
+| `plan/` | Normalized plan models and cross-reference validation used by the markdown spec |
 | `commit_message.py` | Commit message artifact helpers |
 | `development_result.py` | Development result validation |
 | `format_docs/` | Package of bundled dumb-proof Markdown reference docs — `load_bundled_format_doc`, `materialize_format_doc`, `FORMAT_DOC_ARTIFACT_TYPES`; one `.md` per non-plan artifact type loaded via `importlib.resources` |
 | `policy_outcomes.py` | `is_policy_approved` — shared policy interpretation |
 | `audit_adapter.py` | `RalphAuditSinkAdapter`, audit record translation |
-| `bridge.py` | `MCPBridge`, `BridgeConfig` — phase system ↔ MCP bridge |
 
 **Canonical import path:** `from ralph.mcp.artifacts import ...` or `from ralph.mcp.artifacts.<module> import ...`
 
@@ -167,9 +173,9 @@ Key guarantees:
 
 ## Artifact Submission Error Contract
 
-For every non-plan artifact type, when validation fails Ralph materializes a Markdown reference into `.agent/artifact-formats/<type>.md` and the `InvalidParamsError` message points the agent at that file instead of returning raw validator text. Agents must re-read the reference file before retrying.
+When markdown validation fails, `ralph_submit_md_artifact` / `ralph_verify_md_artifact` return a structured payload of line-anchored diagnostics — `{line, section, rule_id, message, severity}` — with `valid: false` and `is_error` set when any diagnostic has `error` severity. Nothing is persisted on error; the agent fixes the document the diagnostics point at and retries. `InvalidParamsError` is reserved for malformed tool calls (missing `artifact_type`/`content`, or an unregistered artifact type).
 
-Plan submission errors are exempt: per-section planning validation already surfaces section-specific, executor-ready messages via `handle_submit_plan_section`/`handle_finalize_plan`.
+The bundled Markdown format references under `.agent/artifact-formats/<type>.md` are materialized into the workspace before each agent invocation (see `ralph/pipeline/session_bridge.py`), so agents can consult the expected document shape at any time.
 
 ## Capability System
 
@@ -313,20 +319,24 @@ The following table lists the canonical import path for each public symbol:
 | `handle_read_file`, `handle_write_file`, etc. | `from ralph.mcp.tools.workspace import ...` |
 | `handle_git_status`, `handle_git_diff`, etc. | `from ralph.mcp.tools.git_read import ...` |
 | `handle_exec_command` | `from ralph.mcp.tools.exec import ...` |
-| `handle_submit_artifact`, `handle_submit_plan_section`, etc. | `from ralph.mcp.tools.artifact import ...` (canonical contract: `docs/agents/artifact-submission-contract.md`) |
+| `handle_submit_md_artifact`, `handle_verify_md_artifact`, the draft staging handlers, `handle_edit_md_artifact` | `from ralph.mcp.tools.md_artifact import ...` (canonical contract: `docs/agents/artifact-submission-contract.md`) |
 | `handle_report_progress`, `handle_declare_complete`, etc. | `from ralph.mcp.tools.coordination import ...` |
 | `handle_web_search` | `from ralph.mcp.tools.websearch import ...` |
+| `handle_visit_url`, `handle_download_url` | `from ralph.mcp.tools.webvisit import ...` |
+| `handle_unsafe_exec_command`, `handle_raw_exec_command` | `from ralph.mcp.tools.unsafe_exec import ...` |
+| `finalize_envelope_bytes_out` | `from ralph.mcp.tools._envelope_bytes import ...` |
+| `AUDIT_REGISTER`, `bench_results_to_measurements`, `refresh_audit_register` | `from ralph.mcp.explore.audit_register import ...` |
+| `ralph_index_status`, `ralph_reindex`, `ralph_graph` handlers | `from ralph.mcp.explore.handlers import ...` |
 | `HttpUpstreamClient`, `StdioUpstreamClient`, `make_upstream_client` | `from ralph.mcp.upstream.client import ...` |
 | `UpstreamMcpServer`, `load_upstream_mcp_servers`, etc. | `from ralph.mcp.upstream.config import ...` |
 | `UpstreamTool`, `UpstreamCallError` | `from ralph.mcp.upstream.models import ...` |
 | `UpstreamRegistry`, `ProxiedTool` | `from ralph.mcp.upstream.registry import ...` |
 | `validate_upstream_mcp_servers` | `from ralph.mcp.upstream.validation import ...` |
 | `probe_agent_transports` | `from ralph.mcp.upstream.agent_probe import ...` |
-| `Artifact`, `submit_artifact`, etc. | `from ralph.mcp.artifacts.store import ...` |
-| `MCPBridge`, `BridgeConfig` | `from ralph.mcp.artifacts.bridge import ...` |
+| `SubmitResult`, `submit_artifact_canonical`, `promote_fallback_artifact` | `from ralph.mcp.artifacts.canonical_submit import ...` |
 | `FileBackend`, `PathFileBackend` | `from ralph.mcp.artifacts.file_backend import ...` |
 | `RalphAuditSinkAdapter` | `from ralph.mcp.artifacts.audit_adapter import ...` |
-| `PlanArtifact`, `validate_plan_artifact`, etc. | `from ralph.mcp.artifacts.plan import ...` |
+| `PlanStep`, `normalize_plan_artifact_content`, etc. | `from ralph.mcp.artifacts.plan import ...` |
 | `is_policy_approved` | `from ralph.mcp.artifacts.policy_outcomes import ...` |
 | `commit_message_artifact_path`, etc. | `from ralph.mcp.artifacts.commit_message import ...` |
 | `normalize_development_result_content` | `from ralph.mcp.artifacts.development_result import ...` |
@@ -336,26 +346,35 @@ The following table lists the canonical import path for each public symbol:
 
 ```
 ralph/mcp/
-├── __init__.py          # Public API: MCPBridge, ToolBridge, access_mode_for_drain, etc.
+├── __init__.py          # Public API: ToolBridge, access_mode_for_drain, etc.
 ├── ARCHITECTURE.md      # This file
 ├── artifacts/           # Artifact storage (both Ralph-as-server and Ralph-as-client)
 │   ├── __init__.py
 │   ├── audit_adapter.py
-│   ├── bridge.py
 │   ├── commit_message.py
 │   ├── development_result.py
 │   ├── file_backend.py
 │   ├── format_docs/     # Package: bundled Markdown reference docs (one per artifact type)
 │   │   ├── __init__.py  # Public API: FORMAT_DOC_ARTIFACT_TYPES, materialize_format_doc, etc.
-│   │   ├── commit_message.md
-│   │   ├── development_result.md
-│   │   ├── issues.md
-│   │   ├── fix_result.md
-│   │   ├── development_analysis_decision.md
-│   │   └── review_analysis_decision.md
-│   ├── plan.py
-│   ├── policy_outcomes.py
-│   └── store.py
+│   │   ├── artifact_formats_index.md
+│   │   ├── <type>.md    # One per registered artifact type (plan, issues, ...)
+│   │   └── examples/    # Validator-backed example documents
+│   ├── markdown/        # Closed markdown grammar, per-type specs, spec registry
+│   ├── plan/            # Normalized plan models and cross-reference validation
+│   └── policy_outcomes.py
+├── explore/             # Phase 0-4 indexed exploration substrate (SQLite + FTS5 + graph)
+│   ├── __init__.py
+│   ├── audit_register.py  # Per-tool outcome register (keep/add_argument/rework_internals/defer)
+│   ├── bench.py          # Scripted-flow benchmark harness, no LLM, deterministic Clock seam
+│   ├── dirty_paths.py    # Persisted queue + mark_dirty seam for write handlers
+│   ├── graph.py          # Bounded recursive-CTE graph queries for ralph_graph
+│   ├── handlers.py       # ralph_index_status / ralph_reindex / ralph_graph MCP handlers
+│   ├── lifecycle.py      # Before/after dev-fix session refresh hooks
+│   ├── pipeline.py       # Manifest/hash/generation lifecycle, idempotent reindex
+│   ├── ranking.py        # Deterministic score components for search_files and grep_files
+│   ├── store.py          # SQLite + FTS5 schema, manifest, evidence, tombstones, dirty_paths, jobs, settings
+│   ├── structure.py      # Python AST and Markdown heading/link extractors
+│   └── deferred_phases.py
 ├── protocol/            # Shared protocol plumbing (both server and client)
 │   ├── __init__.py
 │   ├── capability_mapping.py
@@ -372,14 +391,37 @@ ralph/mcp/
 │   └── runtime.py
 ├── tools/               # Ralph-as-MCP-server tools (Ralph → agents)
 │   ├── __init__.py
+│   ├── _envelope_bytes.py  # Shared self-referential bytes_out helper
 │   ├── artifact.py
-│   ├── bridge.py
+│   ├── bridge/             # ToolBridge registry, lazy dispatchers, spec helpers
+│   │   ├── __init__.py
+│   │   ├── _registry.py
+│   │   ├── _tool_bridge.py
+│   │   ├── _specs_file_read.py
+│   │   ├── _specs_file_write.py
+│   │   ├── _specs_file_list.py
+│   │   ├── _specs_git_exec.py
+│   │   ├── _specs_web_media.py
+│   │   ├── _specs_artifacts.py
+│   │   └── _specs_explore.py
 │   ├── coordination.py
 │   ├── exec.py
 │   ├── git_read.py
 │   ├── names.py
+│   ├── unsafe_exec.py
 │   ├── websearch.py
-│   └── workspace.py
+│   ├── webvisit.py        # handle_visit_url, handle_download_url
+│   └── workspace/         # handle_read_file, handle_write_file, etc., split into:
+│       ├── __init__.py
+│       ├── _read_handlers.py
+│       ├── _grep_handlers.py
+│       ├── _write_handlers.py
+│       ├── _list_ops.py
+│       ├── _media_handlers.py
+│       ├── _media_blocks.py
+│       ├── _media_io.py
+│       ├── _media_session.py
+│       └── _utils.py
 └── upstream/            # Ralph-as-MCP-client (Ralph → external servers)
     ├── __init__.py
     ├── agent_probe.py
@@ -395,7 +437,6 @@ ralph/mcp/
 ```
 ralph.mcp (public API via __init__.py)
 ├── ralph.mcp.artifacts.*         → artifacts/*
-├── ralph.mcp.artifacts.bridge.*  → artifacts/bridge.py
 ├── ralph.mcp.protocol.*          → protocol/*
 ├── ralph.mcp.server.*            → server/*
 ├── ralph.mcp.tools.*             → tools/*

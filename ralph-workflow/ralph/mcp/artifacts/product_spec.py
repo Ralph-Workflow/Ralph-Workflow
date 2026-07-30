@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from ralph.mcp.artifacts._product_spec_errors import ProductSpecValidationError
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.pydantic_validation_errors import format_validation_error_messages
+from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ralph.mcp.artifacts.store import get_artifact
 from ralph.pydantic_compat import RalphBaseModel
 
 PRODUCT_SPEC_ARTIFACT_TYPE = "product_spec"
+_PRODUCT_SPEC_MARKDOWN_PATH = ".agent/artifacts/product_spec.md"
 
 
 class ProductSpec(RalphBaseModel):
@@ -129,14 +133,18 @@ def _emit_context_group(lines: list[str], label: str, items: list[str]) -> None:
 
 
 def read_product_spec_artifact(repo_root: Path) -> dict[str, object] | None:
-    """Read the persisted product_spec artifact content from the workspace."""
-    artifact_dir = repo_root / ".agent" / "artifacts"
+    """Read and validate the canonical Markdown product specification."""
+    workspace = FsWorkspace(repo_root)
     try:
-        artifact = get_artifact(artifact_dir, PRODUCT_SPEC_ARTIFACT_TYPE)
-    except Exception:
+        markdown = workspace.read(_PRODUCT_SPEC_MARKDOWN_PATH)
+    except (FileNotFoundError, OSError):
         return None
-    payload = artifact.content
-    return {str(key): value for key, value in payload.items()}
+
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    content, diagnostics = parse_and_validate(markdown, get_spec(PRODUCT_SPEC_ARTIFACT_TYPE))
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
+    return content
 
 
 __all__ = [

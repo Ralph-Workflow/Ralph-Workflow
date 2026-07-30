@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -589,9 +589,9 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
     def _spy(*args: object, **kwargs: object) -> BaseExecutionStrategy:
         captured.update(kwargs)
         return BaseExecutionStrategy(
-            label_scope=cast("str | None", kwargs.get("label_scope")),
-            registry=cast("ChildLivenessRegistry | None", kwargs.get("registry")),
-            subagent_pid_source=cast("SubagentPidSource | None", kwargs.get("subagent_pid_source")),
+            label_scope=kwargs.get("label_scope"),
+            registry=kwargs.get("registry"),
+            subagent_pid_source=kwargs.get("subagent_pid_source"),
         )
 
     def _empty_generator(*_args: object, **_kwargs: object) -> Iterator[str]:
@@ -601,8 +601,7 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
         # rather than spawning ``claude -p`` and waiting for the
         # login-required exit. ``if False`` keeps this a generator
         # function under mypy and ruff.
-        if False:
-            yield ""
+        return iter([])
 
     # ``strategy_for_command`` is imported into ``invoke`` at module
     # load via ``from ralph.agents.execution_state import strategy_for_command``,
@@ -784,7 +783,7 @@ def test_gemini_parser_propagates_non_value_error_registration_failures() -> Non
             raise sentinel
 
     parser = GeminiParser(
-        subagent_pid_registry=cast("SubagentPidRegistry", _RaisingRegistry()),
+        subagent_pid_registry=_RaisingRegistry(),
         subagent_source_label="gemini",
     )
     line = '{"type": "child_progress", "pid": 7777}'
@@ -816,7 +815,7 @@ def test_gemini_parser_swallows_value_error_registration_failures() -> None:
             raise ValueError(f"unknown subagent source {source!r}")
 
     parser = GeminiParser(
-        subagent_pid_registry=cast("SubagentPidRegistry", _ValueErrorRegistry()),
+        subagent_pid_registry=_ValueErrorRegistry(),
         subagent_source_label="gemini",
     )
     line = '{"type": "child_progress", "pid": 8888}'

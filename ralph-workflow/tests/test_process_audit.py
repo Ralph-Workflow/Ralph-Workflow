@@ -30,10 +30,8 @@ ALLOWLIST: list[tuple[str, str]] = [
         "references subprocess.run/Popen as detection-pattern strings; does not call subprocess",
     ),
     (
-        "diagnostics/fs_health.py",
-        "RFC-013 P4: read-only ``mdutil -s`` probe for Spotlight status "
-        "via injected ``run_command`` (default subprocess.run with timeout=10, "
-        "DI seam for tests). No state-changing subprocess calls.",
+        "testing/audit_resource_lifecycle.py",
+        "references subprocess/asyncio spawn names as detection-pattern strings; does not call subprocess",
     ),
 ]
 
@@ -54,6 +52,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_skills_package_sync_script.py",  # node packaging sync coverage uses a subprocess
     "test_audit_test_policy.py",  # contains subprocess.run literals as test-fixture code strings
     "test_audit_mcp_timeout.py",  # subprocess.run/Popen literals as audit-fixture code strings
+    "test_audit_resource_lifecycle.py",  # subprocess/asyncio spawn literals as audit-fixture code strings
     "test_audit_parallelization_dormant.py",
     # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
     "test_audit_activity_aware_watchdog.py",
@@ -86,6 +85,67 @@ TESTS_ALLOWLIST: set[str] = {
     # PTY slave becomes its controlling terminal. Both required to reproduce
     # the production-path entry point end-to-end with no production-code
     # equivalent under ralph/process/manager
+    "test_audit_terminal_escape_containment.py",
+    # contains ``os.setsid()`` and ``Console(`` as audit-invariant
+    # string literals (these are pattern-pinching needles, not real
+    # subprocess calls -- the audit is exercised through monkeypatched
+    # sources). Mirrors the existing allowlist pattern for audit
+    # test files that maintain POS|CO process-marker literals.
+    "test_git_merge.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_auto_integrate.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_auto_integrate_resolution.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; conflict-resolution + ff-retry tests)
+    "test_auto_integrate_race.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_auto_integrate_recovery.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; recovery + dashed-target security regression tests)
+    "test_auto_integrate_worktree_sync.py",  # real-git multi-worktree integration regression
+    "test_auto_integrate_end_to_end.py",  # clone-layout real-git integration regression
+    "test_auto_integrate_stale_merge_marker.py",  # real-git worktree regression for the stale AUTO_MERGE marker
+    "test_auto_integrate_remote_refresh.py",  # real-git clone-layout regression for the bounded origin refresh
+    "test_auto_integrate_remote_push.py",  # configured-remote auto-integration push regression
+    "test_auto_integrate_fail_closed_e2e.py",  # real-git regression for the fail-closed HEAD-read and merge-state queries
+    "test_auto_integrate_refresh_contract.py",  # real-git regression for the pre-landing target refresh
+    "test_auto_integrate_rebase_conflict_e2e.py",  # real-git proof that a conflicted rebase is resolved in place and landed
+    "test_auto_integrate_real_agent_resolution_e2e.py",  # real-git and real-agent MCP-session regression
+    "test_auto_integrate_fleet_conflict_e2e.py",  # real-git proof that a conflicted rebase across two linked worktrees lands
+    "test_auto_integrate_local_fleet_target_e2e.py",  # real-git multi-worktree proof for the no-origin fleet refresh
+    "test_auto_integrate_conflict_budget.py",  # real-git regression for the bounded conflict-resolution budget
+    "test_auto_integrate_conflict_e2e.py",  # real-git end-to-end proof of the production conflict-resolution chain
+    "test_auto_integrate_clone_conflict_e2e.py",  # real-git clone + linked-worktree conflict/concurrency regression
+    "test_auto_integrate_catchup_e2e.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; background catch-up fast-forward)
+    # git worktree setup via subprocess.run in test fixtures (real-git
+    # subprocess_e2e suite; prefix-colliding sibling worktree regression)
+    "test_auto_integrate_worktree_prefix_e2e.py",
+    # real-git fixtures for the four-seam / two-topology proof: linked
+    # worktrees and clones of a local bare origin are built with git
+    # itself, the same convention every sibling auto-integrate e2e file
+    # follows
+    "test_auto_integrate_seams_e2e.py",
+    # real-git fixtures for the conflict chain at the phase-transition
+    # and startup seams
+    "test_auto_integrate_conflict_seams_e2e.py",
+    # real-git fixtures proving AC-11: hostile user git config (rerere,
+    # gpgsign, autostash, autosquash, updateRefs) is neutralized before
+    # the rebase argv runs. Uses subprocess.run to drive git config +
+    # integration in the per-test repo.
+    "test_auto_integrate_env_pinning.py",
+    # real-git fixtures proving the markerless-conflict path lands the
+    # auto-merge without leaving AUTO_MERGE / MERGE_MSG behind. Uses
+    # subprocess.run to build the conflicted repo and run the resolver.
+    "test_auto_integrate_markerless_conflicts.py",
+    # real-git fixtures proving integration onto a non-``main`` target
+    # branch (release candidate / release branch) lands unchanged. Uses
+    # subprocess.run to set up the alternate-target repo and the
+    # integration argv.
+    "test_auto_integrate_non_main_target.py",
+    # real-git fixtures proving the rung-4 self-resume path lands after
+    # a crash leaves an in-progress rebase. Uses subprocess.run to set
+    # up the crashed state and drive the recovery + resume argv.
+    "test_auto_integrate_rung4_self_resume.py",
+    "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
+    # Patches ``os.killpg`` via monkeypatch to record what production teardown
+    # would have signalled; no real subprocess or signal is delivered. The
+    # regression test pins the AC-12 ownership guard (PID 1 and already-reaped
+    # children must never reach the signal path).
+    "test_teardown_ownership_guard.py",
 }
 
 _MCP_FIXTURE_FILES = {

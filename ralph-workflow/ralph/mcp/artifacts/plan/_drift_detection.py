@@ -2,26 +2,13 @@
 
 from __future__ import annotations
 
-import re
-from typing import Literal
-
 from pydantic import ConfigDict, Field, field_validator
 
 from ralph.pydantic_compat import RalphBaseModel
 
-DriftSource = Literal[
-    "ruff",
-    "mypy",
-    "pytest",
-    "make",
-    "custom-script",
-    "ci",
-    "unknown",
-]
+type DriftSource = str
+type OnDriftAction = str
 
-OnDriftAction = Literal["fail-verify", "log-only", "open-issue", "ignore"]
-
-_SAFE_COMMAND_REGEX = re.compile(r"^[A-Za-z0-9 _./\-:=+]+$")
 _MAX_EXPECTED_OUTPUT_LENGTH = 2000
 
 
@@ -41,11 +28,11 @@ class DriftDetection(RalphBaseModel):
     sources: list[DriftSource] = Field(
         default_factory=list,
         max_length=20,
-        description="DriftSource enum list (max 20); see DriftSource literal.",
+        description="Free-form drift-source hints (max 20).",
     )
     on_drift_action: OnDriftAction | None = Field(
         default=None,
-        description="OnDriftAction enum; see OnDriftAction literal.",
+        description="Free-form response when drift is detected.",
     )
 
     @field_validator("guard_commands")
@@ -54,14 +41,8 @@ class DriftDetection(RalphBaseModel):
         cleaned: list[str] = []
         for entry in commands:
             stripped = entry.strip()
-            if not stripped or not _SAFE_COMMAND_REGEX.match(stripped):
-                msg = (
-                    "drift_detection.guard_commands entries must use only "
-                    "letters, digits, spaces, and these punctuation marks: "
-                    "._/-:=+"
-                )
-                raise ValueError(msg)
-            cleaned.append(stripped)
+            if stripped:
+                cleaned.append(stripped)
         return cleaned
 
     @field_validator("expected_outputs")

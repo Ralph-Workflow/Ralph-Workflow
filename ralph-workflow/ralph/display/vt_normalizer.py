@@ -9,7 +9,18 @@ from __future__ import annotations
 
 import re
 
-_ANSI_ESCAPE_RE = re.compile(r"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x1b\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])")
+# ECMA-48/ECMA-35 escape sequences plus the SO/SI (\x0E/\x0F) charset-shift
+# control bytes. The generic ESC forms (intermediates 0x20-0x2F followed by a
+# final 0x30-0x7E, or a single final byte) cover charset designations like
+# ESC(B and cursor save/restore ESC7/ESC8, which Claude Code >= 2.1.x emits
+# between repaints and which otherwise survive into parsed agent text.
+_ANSI_ESCAPE_RE = re.compile(
+    r"\x1B(?:\[[0-?]*[ -/]*[@-~]"  # CSI sequences
+    r"|\][^\x1b\x07]*(?:\x07|\x1b\\)"  # OSC sequences
+    r"|[ -/]+[0-~]"  # ESC + intermediates + final (charset designation, ...)
+    r"|[0-~])"  # two-byte ESC sequences (DECSC/DECRC, keypad modes, ...)
+    r"|[\x0E\x0F]"  # SO/SI charset-shift control bytes
+)
 
 
 def normalize_vt_text(raw: str) -> str:

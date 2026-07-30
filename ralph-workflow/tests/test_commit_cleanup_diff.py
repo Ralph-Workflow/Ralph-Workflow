@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 
 from ralph.policy.models import (
     ArtifactsPolicy,
@@ -120,6 +121,86 @@ def test_commit_cleanup_prompt_includes_untracked_files_in_header(
     )
     assert "accidental_binary.exe" in rendered
     assert _UNTRACKED_HEADER in rendered
+
+
+def test_commit_cleanup_diff_and_prompt_redact_recognized_secrets(
+    tmp_git_repo: Path,
+) -> None:
+    """Cleanup agents see safe work and a content-free secret remediation signal."""
+    tracked_secret = tmp_git_repo / "private" / ".env"
+    tracked_secret.parent.mkdir()
+    tracked_secret.write_text("TOKEN=tracked-old-placeholder\n", encoding="utf-8")
+    safe_file = tmp_git_repo / "safe.txt"
+    safe_file.write_text("safe old value\n", encoding="utf-8")
+    with Repo(tmp_git_repo) as repo:
+        repo.index.add(["private/.env", "safe.txt"])
+        repo.index.commit("seed cleanup disclosure regression")
+
+    tracked_secret.write_text("TOKEN=tracked-new-placeholder\n", encoding="utf-8")
+    safe_file.write_text("safe new value\n", encoding="utf-8")
+    untracked_secret = tmp_git_repo / "local" / "credentials.json"
+    untracked_secret.parent.mkdir()
+    untracked_secret.write_text(
+        '{"token":"untracked-placeholder"}\n',
+        encoding="utf-8",
+    )
+
+    p = PipelinePolicy(
+        phases={
+            "development_commit_cleanup": PhaseDefinition(
+                drain="commit",
+                role="commit_cleanup",
+                prompt_template="commit_cleanup.jinja",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="development_commit_cleanup",
+                    on_failure="failed_terminal",
+                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+        },
+        entry_phase="development_commit_cleanup",
+        terminal_phase="complete",
+        loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
+    )
+    ws = MemoryWorkspace(root=str(tmp_git_repo))
+    ws.write("PROMPT.md", "x")
+    ws.write(".agent/PLAN.md", "# Plan")
+    ctx = PromptPhaseContext(
+        phase="development_commit_cleanup",
+        workspace=ws,
+        pipeline_policy=p,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_git_repo,
+    )
+
+    diff = commit_cleanup_diff(tmp_git_repo)
+    rendered = ws.read(
+        materialize_prompt_for_phase(
+            ctx,
+            PromptPhaseOptions(
+                artifacts_policy=ArtifactsPolicy(artifacts={}),
+                previous_phase=None,
+            ),
+        )
+    )
+
+    for agent_input in (diff, rendered):
+        assert "safe.txt" in agent_input
+        assert "safe new value" in agent_input
+        assert "Recognized secret changes" in agent_input
+        assert "secret files will be removed from version control" in agent_input
+        assert "private/.env" not in agent_input
+        assert "tracked-old-placeholder" not in agent_input
+        assert "tracked-new-placeholder" not in agent_input
+        assert "local/credentials.json" not in agent_input
+        assert "untracked-placeholder" not in agent_input
 
 
 def test_commit_cleanup_diff_respects_gitignore(tmp_git_repo: Path) -> None:

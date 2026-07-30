@@ -18,12 +18,12 @@ _AGENT = "claude"
 @pytest.mark.parametrize(
     "message",
     [
-        "Missing required artifact at .agent/artifacts/issues.json",
-        "Artifact not found at .agent/artifacts/fix_result.json",
+        "Missing required artifact at .agent/artifacts/issues.md",
+        "Artifact not found at .agent/artifacts/fix_result.md",
         "required_artifact_missing: plan artifact not submitted",
-        "Missing/invalid issues artifact: Artifact not found at .agent/artifacts/issues.json",
-        "Missing required analysis artifact at .agent/artifacts/development_analysis_decision.json",
-        "Missing fix_result artifact at .agent/artifacts/fix_result.json",
+        "Missing/invalid issues artifact: Artifact not found at .agent/artifacts/issues.md",
+        "Missing required analysis artifact at .agent/artifacts/development_analysis_decision.md",
+        "Missing fix_result artifact at .agent/artifacts/fix_result.md",
     ],
 )
 def test_missing_artifact_message_classifies_as_artifact_validation(message: str) -> None:
@@ -36,12 +36,12 @@ def test_missing_artifact_message_classifies_as_artifact_validation(message: str
 @pytest.mark.parametrize(
     "message",
     [
-        "Missing required artifact at .agent/artifacts/issues.json",
-        "Artifact not found at .agent/artifacts/plan.json",
+        "Missing required artifact at .agent/artifacts/issues.md",
+        "Artifact not found at .agent/artifacts/plan.md",
         "required_artifact_missing",
         "Missing/invalid issues artifact: file not found",
-        "Missing required analysis artifact at .agent/artifacts/review_analysis_decision.json",
-        "Missing fix_result artifact at .agent/artifacts/fix_result.json",
+        "Missing required analysis artifact at .agent/artifacts/review_analysis_decision.md",
+        "Missing fix_result artifact at .agent/artifacts/fix_result.md",
     ],
 )
 def test_is_missing_artifact_message_helper(message: str) -> None:
@@ -51,7 +51,7 @@ def test_is_missing_artifact_message_helper(message: str) -> None:
 
 
 def test_missing_artifact_does_not_count_against_budget() -> None:
-    msg = "Missing required artifact at .agent/artifacts/issues.json"
+    msg = "Missing required artifact at .agent/artifacts/issues.md"
     result = _CLASSIFIER.classify(msg, phase=_PHASE, agent=_AGENT)
     assert not result.counts_against_budget
 

@@ -461,6 +461,9 @@ class _BaseFakeWatchdog:
     def record_invocation_start(self) -> None:
         pass
 
+    def record_invocation_end(self) -> None:
+        pass
+
     def set_is_waiting_state(self, state: object) -> None:
         pass
 

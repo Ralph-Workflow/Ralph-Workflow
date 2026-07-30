@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 
+
 def classify_stuck_now(
     self: IdleWatchdog,
     *,
@@ -116,6 +117,19 @@ def gate_fire(
     the watchdog consults ``classify_stuck`` and returns CONTINUE
     (with a debug log naming the kind) for any non-STUCK kind.
 
+    The SESSION_CEILING_EXCEEDED bypass DOES still transition the
+    runtime stall flag (wt-047-stall-label / DA-001): the watchdog
+    is the sole owner of the ``STALLED`` label, and a session that
+    hit the operator-set cap is also a stalled run from the
+    operator's perspective (the cap fired because the run was
+    alive but un-killable by any other rule). The Status Bar must
+    surface the same stall signal here as for a STUCK classifier
+    verdict or a SILENT_SUBAGENT fire. ``_set_stall`` is idempotent
+    so the absolute-ceiling path emits exactly one STALLED
+    transition on entry and a single STALL_RESUMED on the next
+    baseline reset (``record_activity`` / EXITED / invocation
+    start), preserving the exactly-once contract.
+
     When the caller supplies a live ``corroboration`` snapshot, it
     is threaded into the classifier as the canonical "live child"
     input (the analysis-feedback contract for
@@ -139,55 +153,82 @@ def gate_fire(
     whether the fire is actually allowed.
     """
     if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
+        # wt-047-stall-label / DA-001: the operator-set session cap
+        # is one of the ``STALLED`` trigger sites. The watchdog is
+        # the sole owner of the ``STALLED`` label, so the bypass
+        # path here still has to transition the runtime stall flag
+        # BEFORE returning FIRE -- otherwise the Status Bar stays
+        # blank for a session that the watchdog just declared
+        # un-killable by every other rule. ``_set_stall`` is
+        # idempotent: redundant calls (a later retry on the same
+        # tick, or a pre-existing ``_stall_active=True``) emit no
+        # duplicate ``STALLED`` event.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         return WatchdogVerdict.FIRE
-    kind = self._classify_stuck_now(
-        now=now, idle_elapsed=idle_elapsed, corroboration=corroboration
-    )
+    kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed, corroboration=corroboration)
     if kind == StuckKind.STUCK:
+        # wt-047-stall-label: the watchdog is the sole owner of the
+        # STALLED label. A STUCK classifier verdict means the run
+        # is actually stuck (not just deferred by the gate); flip
+        # the stall flag here so the Status Bar reflects the
+        # watchdog's own assessment. ``_set_stall`` is idempotent
+        # so a redundant call is a no-op.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         return WatchdogVerdict.FIRE
-    # Diagnostic-only kind (SILENT_SUBAGENT) gets its OWN
-    # ``_last_fire_reason`` label so operators can see WHY a
-    # would-be fire was deferred ("a subagent dispatched then went
-    # silent for >180s").  Without this branch, every non-STUCK
-    # deferral collapses to ``DEFERRED_BY_STUCK_CLASSIFIER`` and
-    # the SILENT_SUBAGENT diagnostic is invisible at the
-    # ``last_fire_reason`` surface.  See AC-05 + analysis
-    # feedback for the runtime contract.
+    # SILENT_SUBAGENT is a LABEL, never a veto.
+    #
+    # The branch matches a STRICT SUBSET of the STUCK conditions: a
+    # subagent spoke at least once, then went silent for longer than
+    # ``silent_subagent_seconds``, with NO live-child signal
+    # (``_silent_subagent_path`` requires ``alive_by is None``), no
+    # fresh first-party evidence, and ``classify_quiet`` ACTIVE. That
+    # IS a dead agent. Because the classifier checks it BEFORE the
+    # STUCK fall-through, treating it as non-FIRE made it SHADOW
+    # STUCK and inverted the watchdog's liveness: 60s of silence
+    # fired, but anything past the 180s threshold deferred forever
+    # (the gate's only bypass, SESSION_CEILING_EXCEEDED, is driven by
+    # ``max_session_seconds`` which defaults to None). A run that had
+    # ever dispatched a subagent became permanently un-killable.
+    #
+    # Deferral is only safe when a child may be alive -- and in that
+    # case the corroborator sets ``alive_by`` and the higher-priority
+    # LOADING branch wins before this one is ever reached. So the gate
+    # FIRES here. The diagnostic survives via this log line and the
+    # real ``_last_fire_reason`` the caller stamps after the FIRE.
+    #
+    # Liveness invariant, pinned by
+    # ``tests/agents/idle_watchdog/test_silent_subagent_fires.py``:
+    # no classifier kind may defer a fire unboundedly.
     if kind == StuckKind.SILENT_SUBAGENT:
-        self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
-        self._last_deferred_kind = kind
-        # Coarse single-key throttle: caps emissions to one DEBUG
-        # record per ``watchdog_log_throttle_seconds`` per fire_reason
-        # regardless of how the deferred_kind cycles (e.g.
-        # SILENT_SUBAGENT -> DUPLICATE_KILL -> SILENT_SUBAGENT, the
-        # kind-cycle scenario pinned by
-        # ``test_log_spam_throttle_public_surface_kind_cycle_via_public_surface``).
-        # The PROMPT's observed spam was IDENTICAL SILENT_SUBAGENT
-        # messages (the per-tuple throttle handles that case); the
-        # coarse throttle is the defense for hypothetical regressions
-        # that cause the deferred_kind to cycle, where the per-tuple
-        # throttle would MISS because the key changes on every call.
-        # The per-tuple throttle (``_maybe_log_deferred``) is
-        # consulted FIRST so the kind label is preserved in the
-        # ``_last_deferred_log_at`` map; the coarse throttle ONLY
-        # suppresses the duplicate emission when the per-tuple key
-        # has already been logged within the throttle window.
-        coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)
-        if coarse_allowed and self._maybe_log_deferred(
-            fire_reason, kind, idle_elapsed, now
-        ):
-            self._log.debug(
-                "idle watchdog: silent subagent (deferred) reason={} idle_elapsed={}s",
-                fire_reason,
-                round(idle_elapsed, 1),
-            )
-        return WatchdogVerdict.CONTINUE
+        self._log.info(
+            "idle watchdog: silent subagent (firing) reason={} idle_elapsed={}s",
+            fire_reason,
+            round(idle_elapsed, 1),
+        )
+        # wt-047-stall-label: SILENT_SUBAGENT is the gate's fire
+        # signal for a subagent that went quiet past the configured
+        # ``silent_subagent_seconds`` with no live-child signal. Flip
+        # the stall flag here so the Status Bar mirrors the
+        # watchdog's own assessment. ``_set_stall`` is idempotent.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
+        return WatchdogVerdict.FIRE
+    # wt-047-stall-label (DA-001): deferral path must clear any
+    # previously set stall. A prior ``SILENT_SUBAGENT``-induced stall
+    # (or any other non-``STUCK`` fire path) that no longer applies
+    # on the current tick must NOT keep the Status Bar stuck on
+    # ``STALLED`` forever; the watchdog is the sole owner of the
+    # label and the classifier just told us the run is NOT stuck on
+    # this tick. ``_set_stall`` is idempotent so the no-op when
+    # ``_stall_active`` is already False is harmless. The CLEAR is
+    # intentionally placed BEFORE the ``_last_fire_reason`` /
+    # logging so a re-entrant caller that observes the cleared
+    # state during the same call sees the post-deferral truth.
+    if self._stall_active:
+        self._set_stall(active=False, now=now, idle_elapsed=idle_elapsed)
     self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
     self._last_deferred_kind = kind
     coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)
-    if coarse_allowed and self._maybe_log_deferred(
-        fire_reason, kind, idle_elapsed, now
-    ):
+    if coarse_allowed and self._maybe_log_deferred(fire_reason, kind, idle_elapsed, now):
         self._log.debug(
             "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
             fire_reason,

@@ -150,9 +150,25 @@ class ManagedProcess:
         output_limit_bytes: int | None = None,
         on_output_chunk: Callable[[bytes], None] | None = None,
     ) -> tuple[bytes | None, bytes | None]:
-        """Drain output and clean up any descendant processes with psutil."""
+        """Drain output and clean up any descendant processes with psutil.
+
+        Exactly ONE synchronous process-tree scan runs per call, and it
+        runs *after* the child has finished. ``psutil``'s
+        ``children(recursive=True)`` is O(every process on the machine)
+        -- on macOS it walks the whole pid table building a ppid map --
+        so a scan costs more wall-clock than a short-lived ``git``
+        subprocess itself, and it gets *more* expensive exactly when
+        several Ralph agents run side by side and the machine's process
+        count climbs. The pre-``communicate`` scan this method used to
+        take was pure cost with no coverage: it ran microseconds after
+        our own ``spawn``, before the child could have forked anything,
+        so it could only ever observe the empty tree the post-run scan
+        observes again. Descendants that appear *while* the child runs
+        are picked up by the background monitor thread below, and
+        descendants still alive at exit are picked up by the trailing
+        scan; both are preserved.
+        """
         psutil_mod = self._manager._psutil
-        snapshot_descendants = self._snapshot_live_descendants() if psutil_mod is not None else []
         observed_descendants: dict[int, _PsutilProcessLike] = {}
         observed_lock = threading.Lock()
         stop_monitor = threading.Event()
@@ -180,7 +196,6 @@ class ManagedProcess:
                 live_descendants = self._collect_live_descendants(
                     psutil_mod,
                     [
-                        snapshot_descendants,
                         self._observed_descendants(observed_descendants, observed_lock),
                         self._snapshot_live_descendants(),
                     ],
@@ -201,7 +216,6 @@ class ManagedProcess:
             live_descendants = self._collect_live_descendants(
                 psutil_mod,
                 [
-                    snapshot_descendants,
                     self._observed_descendants(observed_descendants, observed_lock),
                     self._snapshot_live_descendants(),
                 ],
@@ -341,7 +355,12 @@ class ManagedProcess:
         try:
             root = psutil_mod.process_from_pid(self.pid)
             descendants = root.children(recursive=True)
-        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+        except (
+            psutil_mod.NoSuchProcess,
+            psutil_mod.AccessDenied,
+            PermissionError,
+            OSError,
+        ):
             return []
         return [proc for proc in descendants if self._is_live_psutil_process(psutil_mod, proc)]
 
@@ -350,7 +369,12 @@ class ManagedProcess:
     ) -> bool:
         try:
             return proc.is_running() and proc.status() != "zombie"
-        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+        except (
+            psutil_mod.NoSuchProcess,
+            psutil_mod.AccessDenied,
+            PermissionError,
+            OSError,
+        ):
             return False
 
     def _collect_live_direct_children(
@@ -361,7 +385,12 @@ class ManagedProcess:
         for proc in processes:
             try:
                 children = proc.children(recursive=False)
-            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            except (
+                psutil_mod.NoSuchProcess,
+                psutil_mod.AccessDenied,
+                PermissionError,
+                OSError,
+            ):
                 continue
             for child in children:
                 if not self._is_live_psutil_process(psutil_mod, child):
@@ -440,6 +469,10 @@ class ManagedProcess:
 
     def kill(self) -> None:
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
+
+    def cleanup_orphans(self) -> None:
+        """Kill descendants that outlived this process."""
+        self._manager.cleanup_orphans(self)
 
     def has_live_descendants(self) -> bool:
         """Return True when this process currently has live descendants."""
