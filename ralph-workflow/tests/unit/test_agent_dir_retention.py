@@ -67,6 +67,64 @@ def test_removes_old_agent_retry_scratch(tmp_path: Path) -> None:
     assert (tmp_path / ".agent" / "tmp" / "development_prompt.md").exists()
 
 
+def test_sweep_regression_reclaims_only_aged_codex_home_dirs(tmp_path: Path) -> None:
+    """S-2: workspace Codex homes are reclaimed only after the age gate."""
+    now = 1_000_000_000.0
+    tmp_dir = tmp_path / ".agent" / "tmp"
+    aged_home = tmp_dir / "codex-home-aged"
+    fresh_home = tmp_dir / "codex-home-fresh"
+    other_dir = tmp_dir / "other-dir"
+    _make_aged(aged_home / "config.toml", _WEEK + 10, now)
+    _make_aged(fresh_home / "config.toml", 60.0, now)
+    _make_aged(other_dir / "config.toml", _WEEK + 10, now)
+
+    removed = sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: now)
+
+    assert not aged_home.exists()
+    assert fresh_home.exists()
+    assert other_dir.exists()
+    assert removed == 1
+
+
+def test_sweep_regression_reclaims_aged_codex_home_with_fresh_symlink_target(
+    tmp_path: Path,
+) -> None:
+    """S-2: Codex-home age checks use the directory metadata, not symlink targets."""
+    now = 1_000_000_000.0
+    target = tmp_path / "live-codex-file"
+    target.write_text("fresh", encoding="utf-8")
+    home = tmp_path / ".agent" / "tmp" / "codex-home-symlinked"
+    home.mkdir(parents=True)
+    (home / "live-file").symlink_to(target)
+    stamp = now - _WEEK - 10
+    os.utime(home, (stamp, stamp), follow_symlinks=False)
+
+    removed = sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: now)
+
+    assert not home.exists()
+    assert target.exists()
+    assert removed == 1
+
+
+def test_sweep_regression_reclaims_only_aged_mcp_session_files(tmp_path: Path) -> None:
+    """S-2: stale MCP session metadata is reclaimed without touching other JSON."""
+    now = 1_000_000_000.0
+    agent_dir = tmp_path / ".agent"
+    aged = agent_dir / "ralph-mcp-session-aged.json"
+    fresh = agent_dir / "ralph-mcp-session-fresh.json"
+    other = agent_dir / "other.json"
+    _make_aged(aged, _WEEK + 10, now)
+    _make_aged(fresh, 60.0, now)
+    _make_aged(other, _WEEK + 10, now)
+
+    removed = sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: now)
+
+    assert not aged.exists()
+    assert fresh.exists()
+    assert other.exists()
+    assert removed == 1
+
+
 def test_missing_agent_dir_is_noop(tmp_path: Path) -> None:
     assert sweep_agent_dir(tmp_path, keep_run_id=None) == 0
 

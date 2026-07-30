@@ -69,8 +69,8 @@ def cleanup_codex_homes() -> None:
     up to ``_ALL_CODEX_HOMES_CAP``. A path evicted beyond that cap loses only
     its atexit registration, never its directory: normal owners use
     ``release_codex_home``; orphaned system-temp homes rely on OS cleanup;
-    workspace-scoped homes under ``.agent/tmp`` rely on the runtime's
-    between-attempt cleanup.
+    workspace-scoped homes under ``.agent/tmp`` rely on run-start aged
+    reclamation by ``sweep_agent_dir``.
 
     Standalone importable function so tests can invoke cleanup
     directly without depending on ``atexit`` timing. ``ignore_errors``
@@ -296,7 +296,7 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
         # Never rmtree here: every outstanding home may still be active.
         # Eviction only drops atexit tracking; normal release removes the
         # directory, while orphaned homes are handled by system-temp cleanup
-        # or the workspace runtime's between-attempt .agent/tmp cleanup.
+        # or run-start aged .agent/tmp reclamation by sweep_agent_dir.
         evicted = next(iter(_all_allocated_codex_homes - {home_str}))
         _all_allocated_codex_homes.discard(evicted)
         logger.warning(

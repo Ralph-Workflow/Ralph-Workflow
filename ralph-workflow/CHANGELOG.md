@@ -52,6 +52,7 @@ tag exists yet — a link to one would be a dead link.
 - **fix(mcp): unlink standalone session metadata when spawn fails** — failed bridge startup leaves no session JSON behind. Locked by `tests/test_mcp_lifecycle_session_file_cleanup.py`.
 - **fix(diagnostics): route mdutil through ProcessManager** — filesystem probes now share tracked child teardown. Locked by `tests/test_fs_health_process_manager.py`.
 - **fix(codex): cap outstanding home atexit tracking** — registry eviction never deletes active directories. Locked by `tests/integration/test_codex_home_cap_eviction.py`.
+- **fix(retention): reclaim aged crashed-run Codex homes and MCP session files at run start** — best-effort seven-day sweeps remove only stale machine bookkeeping, including symlink-mirrored Codex homes. Locked by `tests/unit/test_agent_dir_retention.py`.
 - **fix(artifacts): skip redundant RunStateDB schema initialization** — existing databases use the schema version guard. Locked by `tests/test_state_db_schema_guard.py`.
 - **fix(audits): detect unbounded Future results and direct child spawns** — lifecycle regressions now fail verification. Locked by `tests/test_audit_mcp_timeout.py` and `tests/test_audit_resource_lifecycle.py`.
 
