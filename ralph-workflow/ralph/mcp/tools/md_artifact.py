@@ -14,6 +14,7 @@ from ralph.mcp.artifacts.markdown.specs.plan import (
 )
 from ralph.mcp.artifacts.md_draft_io import (
     delete_md_draft,
+    is_md_draft_seeded,
     load_md_draft,
     md_draft_character_cap,
     save_md_draft,
@@ -198,6 +199,13 @@ def handle_stage_md_artifact(
     existing = (
         load_md_draft(artifact_dir, artifact_type, backend=backend) if mode == "append" else None
     )
+    if existing and mode == "append" and is_md_draft_seeded(
+        artifact_dir, artifact_type, backend=backend
+    ):
+        raise InvalidParamsError(
+            "draft was restored from the last submitted artifact; use mode='replace_all' "
+            f"for a new document or `{EDIT_MD_ARTIFACT_TOOL}` to repair it in place"
+        )
     if existing is None or not existing:
         draft = content
     elif existing.endswith("\n"):

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.mcp.artifacts.md_draft_io import md_draft_workspace_path
+from ralph.mcp.artifacts.md_draft_io import md_draft_workspace_path, seeded_draft_workspace_path
 from ralph.phases.required_artifacts import build_required_artifacts
 
 if TYPE_CHECKING:
@@ -141,6 +141,7 @@ def _seed_drafts_from_canonical(workspace: Workspace, artifacts_policy: Artifact
         if not workspace.exists(artifact_path):
             continue
         workspace.write(draft_path, workspace.read(artifact_path))
+        workspace.write(seeded_draft_workspace_path(required_artifact.artifact_type), "")
 
 
 def clear_phase_entry_drains(

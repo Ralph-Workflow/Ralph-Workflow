@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from pydantic import TypeAdapter
 
+from ralph.mcp.artifacts.md_draft_io import delete_md_draft
+from ralph.mcp.tools.coordination import InvalidParamsError
 from ralph.mcp.tools.md_artifact import (
     handle_finalize_md_artifact,
     handle_get_md_draft,
     handle_stage_md_artifact,
+    handle_submit_md_artifact,
 )
 from ralph.mcp.tools.tool_content import ToolContent
+from ralph.pipeline.phase_entry_cleaner import clear_phase_entry_drains
+from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from tests.mcp.test_md_plan_spec import _plan_document
 from tests.test_artifact_format_docs_mock_session import planning_session
@@ -19,8 +26,6 @@ from tests.test_artifact_format_docs_mock_session import planning_session
 _JSON_OBJECT = TypeAdapter(dict[str, object])
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.mcp.tools.coordination_session_like import CoordinationSessionLike
     from ralph.mcp.tools.tool_result import ToolResult
 
@@ -90,6 +95,36 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
         "Risks",
         "Verification",
     ]
+
+
+def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> None:
+    """S-4: restored canonical plans cannot silently concatenate with a new draft."""
+    workspace = FsWorkspace(tmp_path)
+    session = _session()
+    plan_a = _plan_document()
+    submitted = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "plan", "content": plan_a}
+    )
+    assert submitted.is_error is False
+
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    assert delete_md_draft(artifact_dir, "plan") is True
+    defaults = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    artifacts_policy = load_policy(defaults).artifacts
+    pipeline_policy = load_policy(defaults).pipeline
+    clear_phase_entry_drains(
+        workspace,
+        "planning",
+        "planning_analysis",
+        pipeline_policy,
+        artifacts_policy,
+    )
+
+    with pytest.raises(InvalidParamsError, match="replace_all"):
+        handle_stage_md_artifact(
+            session, workspace, {"artifact_type": "plan", "content": "new plan"}
+        )
+    assert _payload(handle_get_md_draft(session, workspace, {"artifact_type": "plan"}))["content"] == plan_a
 
 
 def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:

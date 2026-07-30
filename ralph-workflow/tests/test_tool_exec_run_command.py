@@ -50,8 +50,21 @@ def test_failing_command(tmp_path: Path) -> None:
 
 
 def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:
+    """The handler wraps launch failures without requiring a real process."""
+
+    def missing_runner(
+        _command: list[str], _cwd: Path, _timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        raise FileNotFoundError("nonexistent_command_xyz")
+
     with pytest.raises(ExecutionError):
-        run_command("nonexistent_command_xyz", [], tmp_path, 5000)
+        run_command(
+            "nonexistent_command_xyz",
+            [],
+            tmp_path,
+            5000,
+            deps=ExecRunDeps(runner=missing_runner),
+        )
 
 
 def test_zero_timeout_clamps_to_bounded_default(tmp_path: Path) -> None:

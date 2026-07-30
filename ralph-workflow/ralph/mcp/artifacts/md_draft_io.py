@@ -43,13 +43,19 @@ def md_draft_path(artifact_dir: Path, artifact_type: str) -> Path:
     return artifact_dir / md_draft_filename(artifact_type)
 
 
-def md_draft_workspace_path(artifact_type: str) -> str:
-    """Return the workspace-relative draft path for one artifact type.
+def _seeded_draft_path(artifact_dir: Path, artifact_type: str) -> Path:
+    """Return the private marker that identifies a canonical-seeded draft."""
+    return artifact_dir / f".{artifact_type}.draft.seeded"
 
-    Used by phase-entry clearing, which addresses artifacts by
-    workspace-relative path rather than by resolved artifact directory.
-    """
+
+def md_draft_workspace_path(artifact_type: str) -> str:
+    """Return the workspace-relative draft path for one artifact type."""
     return f".agent/artifacts/{md_draft_filename(artifact_type)}"
+
+
+def seeded_draft_workspace_path(artifact_type: str) -> str:
+    """Return the workspace-relative provenance marker for a seeded draft."""
+    return f".agent/artifacts/.{artifact_type}.draft.seeded"
 
 
 def load_md_draft(
@@ -81,6 +87,29 @@ def save_md_draft(
     tmp_path = draft_path.with_suffix(".md.tmp")
     backend.write_text(tmp_path, content, encoding="utf-8")
     backend.replace(tmp_path, draft_path)
+    seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
+    if backend.exists(seeded_path):
+        backend.unlink(seeded_path)
+
+
+def mark_md_draft_seeded(
+    artifact_dir: Path,
+    artifact_type: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Mark a draft copied from canonical content rather than authored incrementally."""
+    backend.write_text(_seeded_draft_path(artifact_dir, artifact_type), "", encoding="utf-8")
+
+
+def is_md_draft_seeded(
+    artifact_dir: Path,
+    artifact_type: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> bool:
+    """Return whether a draft was reconstructed from canonical content."""
+    return backend.exists(_seeded_draft_path(artifact_dir, artifact_type))
 
 
 def delete_md_draft(
@@ -94,14 +123,20 @@ def delete_md_draft(
     if not backend.exists(draft_path):
         return False
     backend.unlink(draft_path)
+    seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
+    if backend.exists(seeded_path):
+        backend.unlink(seeded_path)
     return True
 
 
 __all__ = [
     "DEFAULT_MD_DRAFT_CHARACTER_CAP",
     "delete_md_draft",
+    "is_md_draft_seeded",
     "load_md_draft",
+    "mark_md_draft_seeded",
     "md_draft_character_cap",
     "md_draft_path",
     "save_md_draft",
+    "seeded_draft_workspace_path",
 ]
