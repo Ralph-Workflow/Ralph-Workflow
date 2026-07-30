@@ -7,9 +7,40 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts._path_file_backend import PathFileBackend
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
+from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 if TYPE_CHECKING:
     import pytest
+
+
+class _RecordingBackend(MemoryBackend):
+    def __init__(self) -> None:
+        super().__init__()
+        self.synced_directories: list[Path] = []
+
+    def sync_directory(self, path: Path) -> None:
+        self.synced_directories.append(path)
+
+
+def test_artifact_write_regression_atomic_publish_syncs_destination_directory(
+    tmp_path: Path,
+) -> None:
+    """S-6: every atomic artifact publication makes its rename durable."""
+    backend = _RecordingBackend()
+    destination = tmp_path / ".agent" / "artifacts" / "plan.md"
+    backend.mkdir(destination.parent, parents=True, exist_ok=True)
+
+    atomic_write_text_if_changed(
+        backend,
+        destination,
+        "durable content",
+        tmp_path=destination.with_suffix(".md.tmp"),
+        sync_directory=True,
+    )
+
+    assert backend.read_text(destination) == "durable content"
+    assert backend.synced_directories == [destination.parent]
 
 
 def test_artifact_write_regression_fsyncs_written_file(

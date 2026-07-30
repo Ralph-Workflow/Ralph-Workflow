@@ -83,6 +83,7 @@ def atomic_write_text_if_changed(
     *,
     tmp_path: Path,
     encoding: str = "utf-8",
+    sync_directory: bool = False,
 ) -> bool:
     """Atomic temp+replace write of ``content`` to ``destination``, skipping on identity.
 
@@ -123,7 +124,7 @@ def atomic_write_text_if_changed(
             return False
     backend.write_text(tmp_path, content, encoding=encoding)
     backend.replace(tmp_path, destination)
-    if destination.name == "plan.md":
+    if sync_directory:
         backend.sync_directory(destination.parent)
     return True
 

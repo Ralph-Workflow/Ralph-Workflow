@@ -221,6 +221,7 @@ def submit_artifact_canonical(
             markdown,
             tmp_path=artifact_path.with_suffix(".md.tmp"),
             encoding="utf-8",
+            sync_directory=artifact_type == "plan",
         )
         if backend.read_text(artifact_path, encoding="utf-8") != markdown:
             raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
@@ -233,6 +234,7 @@ def submit_artifact_canonical(
                 markdown,
                 tmp_path=handoff_path.with_suffix(".md.tmp"),
                 encoding="utf-8",
+                sync_directory=artifact_type == "plan",
             )
             if backend.read_text(handoff_path, encoding="utf-8") != markdown:
                 raise OSError(f"canonical handoff write was corrupt: {handoff_path}")
