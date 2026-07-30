@@ -8,9 +8,9 @@ children are reaped on every exit path, not just the atexit net.
 
 The teardown is injected via ``loop_ctx.process_teardown`` so tests
 can drive the success and exception paths with a recording callable
-and assert the call shape. The injected callable is fired inside a
-``suppress(Exception)`` so a teardown failure cannot prevent other
-cleanup steps from running.
+and assert the call shape. Cleanup-step failures are swallowed so
+sibling cleanup continues, but each failure MUST emit an actionable
+diagnostic-log record naming the resource and reclamation stage.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Protocol
 from unittest.mock import MagicMock
 
 import pytest
+from loguru import logger
 
 from ralph.pipeline.run_loop import _cleanup_pipeline, _LoopContext
 from ralph.pipeline.state import PipelineState
@@ -116,6 +117,64 @@ def test_cleanup_pipeline_swallows_teardown_exceptions() -> None:
     # Must not raise
     _cleanup_pipeline(
         loop_ctx, _noop_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+    )
+
+
+def test_cleanup_pipeline_logs_teardown_failure_to_diagnostic_log() -> None:
+    """A process_teardown failure must emit a diagnostic-log record.
+
+    Swallowing alone is not enough: operators need an actionable record
+    naming the resource identity and reclamation stage so a leaked
+    process is a recorded defect rather than a silent one.
+    """
+
+    def _bad_teardown() -> None:
+        raise RuntimeError("teardown exploded")
+
+    captured: list[str] = []
+    sink_id = logger.add(captured.append, level="ERROR", format="{message}")
+    try:
+        state = PipelineState(phase="development")
+        loop_ctx = _make_loop_ctx(process_teardown=_bad_teardown)
+        _cleanup_pipeline(
+            loop_ctx, _noop_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+        )
+    finally:
+        logger.remove(sink_id)
+
+    matching = [msg for msg in captured if "process_teardown" in msg and "teardown" in msg.lower()]
+    assert matching, (
+        "expected a diagnostic-log ERROR naming resource=process_teardown / "
+        f"stage=teardown; got: {captured!r}"
+    )
+
+
+def test_cleanup_pipeline_logs_early_step_failure_and_still_runs_teardown() -> None:
+    """An early cleanup failure is logged and does not skip process_teardown."""
+    teardown_calls: list[None] = []
+
+    def _record_teardown() -> None:
+        teardown_calls.append(None)
+
+    def _bad_unsubscribe() -> None:
+        raise RuntimeError("unsubscribe exploded")
+
+    captured: list[str] = []
+    sink_id = logger.add(captured.append, level="ERROR", format="{message}")
+    try:
+        state = PipelineState(phase="development")
+        loop_ctx = _make_loop_ctx(process_teardown=_record_teardown)
+        _cleanup_pipeline(
+            loop_ctx, _bad_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert len(teardown_calls) == 1
+    matching = [msg for msg in captured if "unsubscribe_bus" in msg]
+    assert matching, (
+        "expected a diagnostic-log ERROR naming resource=unsubscribe_bus; "
+        f"got: {captured!r}"
     )
 
 

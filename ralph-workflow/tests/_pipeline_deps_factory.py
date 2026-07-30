@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
+from collections import deque
 from contextlib import nullcontext
 from datetime import timedelta
 from pathlib import Path
@@ -59,11 +60,24 @@ class _FakeBridge:
         pass
 
 
-class _RecordingBridgeFactory:
-    """Bridge factory that records every call and returns a configured bridge."""
+_DEFAULT_BRIDGE_CALL_HISTORY_LIMIT = 64
 
-    def __init__(self, bridge: object | None = None) -> None:
-        self.calls: list[dict[str, object]] = []
+
+class _RecordingBridgeFactory:
+    """Bridge factory that records every call and returns a configured bridge.
+
+    ``calls`` is a FIFO-capped deque so a multi-cycle memory harness cannot
+    retain unbounded per-invocation argument dicts through the test helper.
+    Callers that need longer history inject ``call_history_limit``.
+    """
+
+    def __init__(
+        self,
+        bridge: object | None = None,
+        *,
+        call_history_limit: int = _DEFAULT_BRIDGE_CALL_HISTORY_LIMIT,
+    ) -> None:
+        self.calls: deque[dict[str, object]] = deque(maxlen=call_history_limit)
         self._bridge = bridge
 
     def __call__(

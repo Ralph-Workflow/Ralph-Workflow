@@ -1538,6 +1538,24 @@ def _handle_keyboard_interrupt(
     return 130
 
 
+def _run_cleanup_step(resource: str, stage: str, action: Callable[[], None]) -> None:
+    """Run one cleanup action; log and continue on failure.
+
+    A reclamation failure must not discard the run outcome or abort
+    sibling cleanup. The diagnostic log is the only runtime channel
+    for recording what could not be reclaimed (resource identity +
+    reclamation stage).
+    """
+    try:
+        action()
+    except Exception:
+        logger.exception(
+            "pipeline cleanup failed resource={} stage={}",
+            resource,
+            stage,
+        )
+
+
 def _cleanup_pipeline(
     loop_ctx: _LoopContext,
     unsubscribe_bus: Callable[[], None],
@@ -1550,13 +1568,12 @@ def _cleanup_pipeline(
     The session-wide ``process_teardown`` (defaulting to
     ``get_process_manager().shutdown_all``) runs LAST so every
     spawned child is reaped on every exit (normal, error, SIGINT,
-    SIGTERM). It is wrapped in ``suppress(Exception)`` so a
-    refusing-to-die process cannot break the suite.
+    SIGTERM). Each step is isolated: a failure is logged to the
+    diagnostic channel and sibling cleanup continues so a
+    refusing-to-die process cannot discard the run outcome.
     """
-    with suppress(Exception):
-        unsubscribe_bus()
-    with suppress(Exception):
-        unsubscribe_display()
+    _run_cleanup_step("unsubscribe_bus", "unsubscribe", unsubscribe_bus)
+    _run_cleanup_step("unsubscribe_display", "unsubscribe", unsubscribe_display)
     # wt-047-stall-label: clear the host's watchdog attention at
     # run cleanup so a stale ``stalled`` value never outlives the
     # run. The pushed ``terminated`` state already wins during
@@ -1564,33 +1581,38 @@ def _cleanup_pipeline(
     # is the safest cleanup step (no leaked state across runs).
     active_display_obj = loop_ctx.active_display
     if active_display_obj is not None and hasattr(active_display_obj, "set_watchdog_attention"):
-        with suppress(Exception):
+
+        def _clear_watchdog_attention() -> None:
             active_display_obj.set_watchdog_attention(None)
-    with suppress(Exception):
-        display_stop()
+
+        _run_cleanup_step("watchdog_attention", "clear", _clear_watchdog_attention)
+    _run_cleanup_step("display", "stop", display_stop)
     if loop_ctx.monitor_stop is not None:
-        with suppress(Exception):
-            loop_ctx.monitor_stop()
+        _run_cleanup_step("connectivity_monitor", "stop", loop_ctx.monitor_stop)
     if loop_ctx.pro_watcher is not None:
-        with suppress(Exception):
-            loop_ctx.pro_watcher.stop()
+        _run_cleanup_step("pro_watcher", "stop", loop_ctx.pro_watcher.stop)
     if loop_ctx.heartbeat_client is not None:
-        with suppress(Exception):
-            loop_ctx.heartbeat_client.stop()
+        _run_cleanup_step("heartbeat_client", "stop", loop_ctx.heartbeat_client.stop)
     if loop_ctx.catchup_worker is not None:
-        with suppress(Exception):
-            loop_ctx.catchup_worker.stop()
-    emit_final_summary(
-        state,
-        loop_ctx.workspace_scope.root,
-        subscriber=cast(
-            "PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber
-        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        display=loop_ctx.active_display,
-        display_context=loop_ctx.display_context,
+        _run_cleanup_step("catchup_worker", "stop", loop_ctx.catchup_worker.stop)
+
+    def _emit_summary() -> None:
+        emit_final_summary(
+            state,
+            loop_ctx.workspace_scope.root,
+            subscriber=cast(
+                "PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            display=loop_ctx.active_display,
+            display_context=loop_ctx.display_context,
+        )
+
+    _run_cleanup_step("final_summary", "emit", _emit_summary)
+    _run_cleanup_step(
+        "cycle_baseline",
+        "clear",
+        lambda: _runner_module.clear_cycle_baseline(loop_ctx.workspace_scope.root),
     )
-    with suppress(Exception):
-        _runner_module.clear_cycle_baseline(loop_ctx.workspace_scope.root)
     # Session-wide process teardown: run last so non-phase-labeled
     # children (invoke:/agent:) are reaped on every exit path. The
     # teardown is wired through ``loop_ctx.process_teardown`` so
@@ -1603,8 +1625,7 @@ def _cleanup_pipeline(
         def teardown() -> None:
             get_process_manager().shutdown_all(grace_period_s=0.5)
 
-    with suppress(Exception):
-        teardown()
+    _run_cleanup_step("process_teardown", "teardown", teardown)
 
 
 def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) -> PipelineState:

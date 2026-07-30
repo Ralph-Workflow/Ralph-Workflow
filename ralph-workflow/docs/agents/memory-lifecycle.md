@@ -72,6 +72,20 @@ shutdown chain, and it has three layers of defense:
    `shutdown_all_for_label("agent:<scope>:<unit_id>:", ...)`. The
    segmented prefix avoids matching sibling units.
 
+### Cleanup failure diagnostics
+
+`_cleanup_pipeline` isolates every reclamation step through
+`_run_cleanup_step(resource, stage, action)`. A step failure:
+
+- is logged at ERROR via the diagnostic channel as
+  `pipeline cleanup failed resource=<id> stage=<stage>` (with exception);
+- does **not** stop sibling cleanup steps;
+- does **not** alter the run's exit code, artifacts, or outcome.
+
+Owner: `ralph/pipeline/run_loop.py`. Automated coverage:
+`tests/pipeline/test_run_loop_cleanup_shutdown.py` (teardown failure
+logged; early-step failure logged while process_teardown still runs).
+
 Two safety nets wrap the explicit path:
 
 - **atexit** (`ralph/process/manager/_singleton.py:_atexit_shutdown`):
