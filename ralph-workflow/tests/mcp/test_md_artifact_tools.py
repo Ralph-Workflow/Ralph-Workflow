@@ -70,7 +70,15 @@ def test_markdown_artifact_handlers_verify_and_submit_through_the_same_gate(tmp_
         "overridden": [],
         "repair_hint": REPAIR_HINT,
     }
-    assert _payload(submitted) == _payload(verified)
+    submitted_payload = _payload(submitted)
+    assert submitted_payload == {
+        **_payload(verified),
+        "persisted_document": {
+            "characters": len(_product_spec()),
+            "sections": ["Title", "Scope", "Goals", "Users", "Success Criteria"],
+            "step_ids": [],
+        },
+    }
 
 
 def test_markdown_artifact_submission_rejects_the_verify_diagnostics(tmp_path) -> None:

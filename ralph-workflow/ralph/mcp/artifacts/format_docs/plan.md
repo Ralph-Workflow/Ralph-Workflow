@@ -9,10 +9,11 @@ to the work it describes.
 
 `PLAN001` is the sole error. It means the submission is not a plan: it is
 empty or markup-only, has fewer than 100 characters of actual content, is
-recognizably truncated (an unclosed code fence or dangling plan field label at
-EOF), or is clearly a refusal, question, status update, tool output, stack
-trace, or placeholder. Analysis and execution cannot proceed without a plan to
-read.
+recognizably truncated (an unclosed code fence, dangling plan field label,
+final comma or function word, unclosed inline bracket/parenthesis/backtick, or
+empty list bullet at EOF), or is clearly a refusal, question, status update,
+tool output, stack trace, or placeholder. Analysis and execution cannot proceed
+without a plan to read.
 
 Every other finding is advisory:
 

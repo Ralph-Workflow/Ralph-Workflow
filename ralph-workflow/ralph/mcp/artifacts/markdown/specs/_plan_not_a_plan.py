@@ -59,6 +59,12 @@ _DANGLING_FIELD_PATTERN = re.compile(
     r"^(?:Files|Depends on|Satisfies|Verify|Expect|Location|Evidence|Rationale|Mitigation|Type|Priority):$",
     re.IGNORECASE,
 )
+_DANGLING_FUNCTION_WORD_PATTERN = re.compile(
+    r"\b(?:the|a|an|and|or|but|to|of|in|on|for|with|then|so|that|which|is|are|be|by|at|from|as)$",
+    re.IGNORECASE,
+)
+_EMPTY_BULLET_PATTERN = re.compile(r"^[-*+]\s*$")
+_FENCE_OPENING_PATTERN = re.compile(r"^(?P<fence>`{3,}|~{3,})(?:[^`~].*)?$")
 
 # Recognizably-other-text patterns. Each pattern is anchored to the
 # start of a content line (case-folded) so a plan that happens to
@@ -232,6 +238,28 @@ def _extract_body_text(text: str) -> str:
     return text  # unterminated frontmatter - let the parser flag it
 
 
+def _fence_scanner(text: str) -> tuple[list[str], bool]:
+    """Return non-fenced content lines and whether a fence remains open at EOF."""
+    content_lines: list[str] = []
+    open_fence: tuple[str, int] | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if open_fence is not None:
+            character, minimum = open_fence
+            if re.fullmatch(rf"{re.escape(character)}{{{minimum},}}", stripped):
+                open_fence = None
+            continue
+        opening = _FENCE_OPENING_PATTERN.fullmatch(stripped)
+        if opening is not None:
+            fence = opening.group("fence")
+            if not isinstance(fence, str):  # pragma: no cover - named regex group is always str
+                continue
+            open_fence = (fence[0], len(fence))
+            continue
+        content_lines.append(stripped)
+    return content_lines, open_fence is not None
+
+
 def _content_char_count(text: str) -> int:
     """Count non-whitespace, non-markup characters in ``text``.
 
@@ -240,15 +268,8 @@ def _content_char_count(text: str) -> int:
     and code-fence delimiters, but a robust count needs to handle the
     same set of "not content" markers independently of parser state.
     """
-    in_code_fence = False
     chars = 0
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_code_fence = not in_code_fence
-            continue
-        if in_code_fence:
-            continue
+    for stripped in _fence_scanner(text)[0]:
         if not stripped:
             continue
         if stripped.startswith("#"):
@@ -264,14 +285,7 @@ def _first_content_line(text: str) -> str:
     fields (e.g. ``type: plan``) do not masquerade as the document's
     opening line.
     """
-    in_code_fence = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_code_fence = not in_code_fence
-            continue
-        if in_code_fence:
-            continue
+    for stripped in _fence_scanner(text)[0]:
         if not stripped:
             continue
         if stripped.startswith("#"):
@@ -282,18 +296,29 @@ def _first_content_line(text: str) -> str:
 
 def _is_recognizably_truncated(text: str) -> str | None:
     """Return the unambiguous EOF truncation reason, if present."""
-    fence_count = sum(
-        1 for line in text.splitlines() if line.strip().startswith("```")
-    )
-    if fence_count % 2:
+    content_lines, fence_open = _fence_scanner(text)
+    if fence_open:
         return "an unclosed code fence at end of file"
-    for line in reversed(text.splitlines()):
-        stripped = line.strip()
-        if stripped:
-            if _DANGLING_FIELD_PATTERN.fullmatch(stripped):
-                return "a dangling plan field label at end of file"
-            return None
-    return None
+    final_line = next((line for line in reversed(content_lines) if line), "")
+    signals: tuple[tuple[bool, str], ...] = (
+        (_DANGLING_FIELD_PATTERN.fullmatch(final_line) is not None, "a dangling plan field label at end of file"),
+        (final_line.endswith(","), "a final content line ending with a comma"),
+        (_DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None, "a final content line ending with a dangling function word"),
+        (_has_unclosed_inline_delimiter(final_line), "an unclosed inline delimiter on the final content line"),
+        (_EMPTY_BULLET_PATTERN.fullmatch(final_line) is not None, "a list bullet with no text"),
+    )
+    return next((reason for matched, reason in signals if matched), None)
+
+
+def _has_unclosed_inline_delimiter(line: str) -> bool:
+    """Return whether a final prose line leaves a simple inline delimiter open."""
+    pairs = (("[", "]"), ("(", ")"), ("`", "`"))
+    return any(
+        line.count(opener) > line.count(closer)
+        if opener != closer
+        else line.count(opener) % 2
+        for opener, closer in pairs
+    )
 
 
 def _truncation_message(reason: str) -> str:

@@ -466,3 +466,48 @@ def test_plan001_message_names_consumer_and_fix() -> None:
                     f"PLAN001 message must name analysis or executor as consumer: "
                     f"{d.message!r}"
                 )
+
+
+def test_plan_regression_nested_four_backtick_fence_is_not_misread_as_unclosed() -> None:
+    """S-1: a nested shorter fence remains fenced content, not a closing fence."""
+    text = """---
+type: plan
+---
+## Steps
+
+### [S-1] Preserve plan validation
+Document the supported nested fenced sample and keep parsing the remainder of
+the plan as ordinary content after the enclosing fence closes.
+
+````markdown
+```python
+submit_plan()
+```
+````
+
+## Verification
+Run the focused plan validation suite and confirm complete nested examples pass.
+"""
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    assert [
+        item for item in diagnostics if item.rule_id == "PLAN001" and item.severity == "error"
+    ] == []
+
+
+def test_plan_regression_mid_sentence_eof_emits_plan001_truncation_error() -> None:
+    """S-1: a substantive plan ending mid-sentence cannot land as complete."""
+    text = """---
+type: plan
+---
+## Steps
+
+### [S-1] Preserve complete plan persistence
+Write the canonical plan through an atomic replacement so downstream readers
+only observe complete documents and can resume a repaired planning attempt,
+then"""
+    _content, diagnostics, _overridden = analyze_plan_document(text)
+    errors = [
+        item for item in diagnostics if item.rule_id == "PLAN001" and item.severity == "error"
+    ]
+    assert len(errors) == 1
+    assert "truncated" in errors[0].message

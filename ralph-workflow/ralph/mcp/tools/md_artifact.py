@@ -99,7 +99,7 @@ def handle_submit_md_artifact(
     if result.is_error:
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
-    return result
+    return _submitted_validation_result(artifact_type, content, diagnostics, overridden)
 
 
 def handle_edit_md_artifact(
@@ -282,7 +282,7 @@ def handle_finalize_md_artifact(
     if result.is_error:
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
-    return result
+    return _submitted_validation_result(artifact_type, content, diagnostics, overridden)
 
 
 def _submit_canonical(
@@ -419,6 +419,8 @@ def _edit_result(
     payload["diff"] = diff
     payload["edits_applied"] = edits_applied
     payload["submitted"] = submitted
+    if submitted:
+        payload["persisted_document"] = _document_summary(draft)
     return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
 
 
@@ -463,6 +465,37 @@ def _draft_status_result(
         ],
         is_error=False,
     )
+
+
+def _document_summary(content: str) -> dict[str, object]:
+    """Return the persisted document outline without reparsing validation."""
+    document, _ = parse_markdown_document(content)
+    return {
+        "characters": len(content),
+        "sections": [section.name for section in document.sections],
+        "step_ids": [block.identifier for section in document.sections for block in section.blocks],
+    }
+
+
+def _submitted_validation_result(
+    artifact_type: str,
+    content: str,
+    diagnostics: list[Diagnostic],
+    overridden: list[object] | None = None,
+) -> ToolResult:
+    """Return successful validation plus the exact document summary persisted."""
+    result = _validation_result(artifact_type, diagnostics, overridden)
+    payload = _with_hint(
+        {
+            "artifact_type": artifact_type,
+            "valid": True,
+            "diagnostics": [_diagnostic_payload(item) for item in diagnostics],
+            "counts": _severity_counts(diagnostics),
+            "overridden": [_override_payload(item) for item in (overridden or [])],
+            "persisted_document": _document_summary(content),
+        }
+    )
+    return ToolResult(content=[ToolContent.json_content(payload)], is_error=result.is_error)
 
 
 def _validation_result(

@@ -220,7 +220,14 @@ def test_finalize_submits_through_the_canonical_path_and_retains_the_draft(
     verified = handle_verify_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD + _TAIL}
     )
-    assert _payload(finalized) == _payload(verified)
+    assert _payload(finalized) == {
+        **_payload(verified),
+        "persisted_document": {
+            "characters": len(_HEAD + _TAIL),
+            "sections": ["Title", "Scope", "Goals", "Users", "Success Criteria"],
+            "step_ids": [],
+        },
+    }
     artifact_path = tmp_path / ".agent" / "artifacts" / "product_spec.md"
     assert artifact_path.read_text(encoding="utf-8") == _HEAD + _TAIL
     # The submitted document stays editable for an in-phase revision; only a
