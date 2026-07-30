@@ -300,8 +300,8 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
         evicted = next(iter(_all_allocated_codex_homes - {home_str}))
         _all_allocated_codex_homes.discard(evicted)
         logger.warning(
-            "codex home lifetime registry over _ALL_CODEX_HOMES_CAP=%d; "
-            "dropped atexit registration for %s (directory left in place)",
+            "codex home lifetime registry over _ALL_CODEX_HOMES_CAP={}; "
+            "dropped atexit registration for {} (directory left in place)",
             _ALL_CODEX_HOMES_CAP,
             evicted,
         )

@@ -37,11 +37,10 @@ contract (``import collections as c; c.deque()`` is caught; ``from
 collections import deque; deque()`` is caught).
 
 Escape hatch: an inline marker on the call's line suppresses the
-violation. The single-string ``_ALLOW_MARKER`` has been generalized to
-a marker SET (``_ALLOW_MARKERS``) so the resource-lifecycle-ok
-(contracts 1-3) and bounded-accumulator-ok (contract 4) markers
-coexist and a future contract (contract 5+) can opt in without
-disrupting existing markers. Keep markers rare and justified.
+violation. The marker SET (``_ALLOW_MARKERS``) keeps the
+resource-lifecycle-ok marker for contracts 1-3 and 5 and the
+bounded-accumulator-ok marker for contract 4. Keep markers rare and
+justified.
 
 Scope and exclusions (intentional, documented):
 
@@ -90,9 +89,8 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 )
 
 # Inline marker set that suppresses a violation (the only escape hatch).
-# Generalize to a SET so the resource-lifecycle-ok (contracts 1-3) and
-# bounded-accumulator-ok (contract 4) markers coexist; a future contract
-# can opt in without disrupting existing markers.
+# resource-lifecycle-ok covers contracts 1-3 and 5; bounded-accumulator-ok
+# covers contract 4.
 _ALLOW_MARKERS: frozenset[str] = frozenset({"resource-lifecycle-ok", "bounded-accumulator-ok"})
 
 # threading.Thread / Thread constructors — these must carry daemon=True.

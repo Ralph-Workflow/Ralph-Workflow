@@ -41,12 +41,13 @@ Why this is the entire closure map:
    today, and that any future regression in these classes fails
    `make verify`.
 
-3. The deliberate non-reversals documented under
-   [Known limitations](#known-limitations) are the remaining performance
-   trade-offs the contract accepts: the per-call stdio upstream spawn
-   (simplicity over latency; explicitly out of scope here) and the
-   absence of `__del__` / `weakref.finalize` finalizers (rejected on
-   determinism grounds). No other perf trade-off exists by design.
+3. [Known limitations](#known-limitations) records the deliberate
+   trade-offs this contract does not reverse: saturated-dispatch timeouts
+   release callers but cannot reclaim running workers; per-call stdio upstream
+   spawning preserves isolation rather than merely trading simplicity for
+   latency; and healthy-agent asyncio gather has no hard ceiling because the
+   activity-aware watchdog and teardown own that bound. `__del__` /
+   `weakref.finalize` finalizers remain rejected on determinism grounds.
 
 The contract's stance: **if a future commit grows a new unbounded
 allocation on the hot path, it is caught by the audit (or the next
@@ -318,15 +319,15 @@ classes of leak in production code:
 The audit has TWO inline escape hatch markers on the line that
 suppresses the violation:
 
-- `# resource-lifecycle-ok: <reason>` — applies to contracts 1-3
-  (daemon-Thread, HTTP client, raw-fd);
+- `# resource-lifecycle-ok: <reason>` — applies to contracts 1-3 and 5
+  (daemon-Thread, HTTP client, raw-fd, centralized child spawn);
 - `# bounded-accumulator-ok: <reason>` — applies to contract 4
   (resource accumulators).
 
 Both markers are part of a single marker SET in
-`audit_resource_lifecycle.py` so they coexist without disrupting
-each other (a future contract can opt in by adding to the set). The
-markers are the only allowlist mechanism — keep them rare and
+`audit_resource_lifecycle.py` so contracts 1-3 and 5 share the
+resource-lifecycle marker while contract 4 uses its cap-specific marker.
+The markers are the only allowlist mechanism — keep them rare and
 justified (name the cap / drain).
 
 Exclusions for the accumulator contract (intentional, documented
@@ -464,7 +465,7 @@ HTTP client, file handle, accumulator):
 
 If a new resource class is added, extend the
 `audit_resource_lifecycle.py` audit to cover it AND add an inline
-marker style (`# resource-lifecycle-ok: <reason>` for contracts 1-3
+marker style (`# resource-lifecycle-ok: <reason>` for contracts 1-3 and 5
 or `# bounded-accumulator-ok: <reason>` for contract 4). The audit
 exists to make a future leak fail `make verify` BEFORE it ships, not
 after a long-running session shows OOM in production.

@@ -55,6 +55,8 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
         Path(name).unlink(missing_ok=True)
         raise
     path = Path(name)
+    # Do not prune the shared OS temp directory: another process may own a
+    # matching file there. The OS reclaims spill_dir=None files instead.
     if spill_dir is not None:
         prune_cache_files(
             directory.glob("ralph-exec-*.txt"),
