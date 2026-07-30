@@ -260,7 +260,7 @@ def test_mode_full_pre_cancel_preserves_committed_generation(tmp_path: Path) -> 
         first = reindex(
             store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
         )
-        assert first.status == "ok"
+        assert first.status == "ok", first.error_summary
         prior_generation = int(store.get_setting("current_generation") or 0)
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation >= 1
@@ -299,7 +299,7 @@ def test_mode_full_pre_cancel_preserves_committed_generation(tmp_path: Path) -> 
             workspace,
             options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
         )
-        assert recover.status == "ok"
+        assert recover.status == "ok", recover.error_summary
         assert _count_files_rows(store) == files_before
         assert _count_chunks_rows(store) == chunks_before
         assert _count_fts_rows(store) == fts_before
@@ -329,7 +329,7 @@ def test_mode_full_mid_build_cancel_preserves_committed_generation(
         first = reindex(
             store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
         )
-        assert first.status == "ok"
+        assert first.status == "ok", first.error_summary
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
         files_before = _count_files_rows(store)
@@ -380,7 +380,7 @@ def test_mode_full_mid_build_cancel_preserves_committed_generation(
             workspace,
             options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
         )
-        assert recover.status == "ok"
+        assert recover.status == "ok", recover.error_summary
         assert _count_files_rows(store) == files_before
         assert _count_chunks_rows(store) == chunks_before
         assert _count_fts_rows(store) == fts_before
@@ -410,7 +410,7 @@ def test_mode_full_mid_build_timeout_preserves_committed_generation(
         first = reindex(
             store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
         )
-        assert first.status == "ok"
+        assert first.status == "ok", first.error_summary
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
         files_before = _count_files_rows(store)
@@ -435,7 +435,7 @@ def test_mode_full_mid_build_timeout_preserves_committed_generation(
                 clock=clock,
             ),
         )
-        assert result.status == "timed_out"
+        assert result.status == "timed_out", result.error_summary
         assert store.get_setting("current_generation") == prior_generation_str
         assert _count_files_rows(store) == files_before
         assert _count_chunks_rows(store) == chunks_before
