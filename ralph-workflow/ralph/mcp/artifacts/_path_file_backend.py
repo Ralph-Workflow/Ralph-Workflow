@@ -32,6 +32,13 @@ class PathFileBackend:
     def replace(self, source: Path, destination: Path) -> None:
         source.replace(destination)
 
+    def sync_directory(self, path: Path) -> None:
+        descriptor = os.open(path, os.O_RDONLY)  # resource-lifecycle-ok: closed in finally after bounded directory sync
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         path.unlink(missing_ok=missing_ok)
 

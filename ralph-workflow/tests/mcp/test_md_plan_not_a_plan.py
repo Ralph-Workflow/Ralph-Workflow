@@ -566,6 +566,60 @@ Run the focused plan validation suite and confirm complete nested examples pass.
     ] == []
 
 
+@pytest.mark.parametrize(
+    ("fence", "intro"),
+    [
+        ("```", "Run the following command and confirm the exit code is zero:"),
+        ("~~~", "Run the following command, "),
+        ("```", "Then"),
+    ],
+)
+def test_plan_regression_closed_trailing_fence_is_not_eof_truncation(
+    fence: str, intro: str
+) -> None:
+    """S-1: a closed final fence completes the plan, not its introducing prose."""
+    text = f"""---
+type: plan
+---
+## Steps
+
+### [S-1] Verify durable plan persistence
+Persist the submitted plan atomically, retain all content after a restart, and
+verify the canonical document before downstream phases read it.
+
+{intro}
+{fence}bash
+python -m pytest tests/mcp/test_md_plan_not_a_plan.py -q
+{fence}
+"""
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    assert [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"] == []
+
+
+def test_plan_regression_fenced_substance_counts_toward_content_floor() -> None:
+    """S-3: code and Files lists are plan substance, not markup-only content."""
+    text = """---
+type: plan
+---
+## Steps
+### [S-1] Persist the complete plan
+Files:
+- ralph/mcp/artifacts/plan.py
+- tests/mcp/test_plan.py
+```bash
+python -m pytest tests/mcp/test_plan.py -q
+```
+### [S-2] Verify recovery
+Files:
+- ralph/prompts/materialize.py
+```bash
+python -m pytest tests/test_plan_handoff_requirements.py -q
+```
+"""
+    _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
+    assert [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"] == []
+
+
 def test_plan_regression_mid_sentence_eof_emits_plan001_truncation_error() -> None:
     """S-1: a substantive plan ending mid-sentence cannot land as complete."""
     text = """---

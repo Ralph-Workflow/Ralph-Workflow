@@ -13,6 +13,7 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
+from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
@@ -98,6 +99,32 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
                 previous_phase=previous_phase,
             ),
         )
+
+
+@pytest.mark.parametrize(
+    ("draft", "raises"),
+    [
+        ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Incomplete\nThen run:", True),
+        ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, retain it for retry prompts, and verify every downstream reader receives the complete submitted document after restart.\n", False),
+    ],
+)
+def test_plan_handoff_regression_draft_fallback_requires_valid_plan(
+    draft: str, raises: bool
+) -> None:
+    """S-5: resume may use only a draft that clears PLAN001."""
+    workspace = MemoryWorkspace()
+    workspace.write(".agent/artifacts/.plan.draft.md", draft)
+    if raises:
+        with pytest.raises(MissingPlanHandoffError):
+            materialize_module._resolve_required_plan_handoff(
+                workspace, template_name="development.jinja", allow_draft_fallback=True
+            )
+    else:
+        content, path = materialize_module._resolve_required_plan_handoff(
+            workspace, template_name="development.jinja", allow_draft_fallback=True
+        )
+        assert content == draft
+        assert path == ""
 
 
 def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:

@@ -267,20 +267,26 @@ def _fence_scanner(text: str) -> tuple[list[str], bool]:
 
 
 def _content_char_count(text: str) -> int:
-    """Count non-whitespace, non-markup characters in ``text``.
-
-    Used to gate the 100-character floor. ``text`` should be the
-    post-frontmatter body; the parser already strips frontmatter fences
-    and code-fence delimiters, but a robust count needs to handle the
-    same set of "not content" markers independently of parser state.
-    """
+    """Count non-whitespace body characters, excluding headings and fence delimiters."""
     chars = 0
-    for stripped in _fence_scanner(text)[0]:
-        if not stripped:
+    open_fence: tuple[str, int] | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if open_fence is not None:
+            character, minimum = open_fence
+            if re.fullmatch(rf"{re.escape(character)}{{{minimum},}}", stripped):
+                open_fence = None
+            else:
+                chars += len(stripped.replace(" ", "").replace("\t", ""))
             continue
-        if stripped.startswith("#"):
+        opening = _FENCE_OPENING_PATTERN.fullmatch(stripped)
+        if opening is not None:
+            fence = opening.group("fence")
+            if isinstance(fence, str):
+                open_fence = (fence[0], len(fence))
             continue
-        chars += len(stripped.replace(" ", "").replace("\t", ""))
+        if stripped and not stripped.startswith("#"):
+            chars += len(stripped.replace(" ", "").replace("\t", ""))
     return chars
 
 
@@ -305,15 +311,17 @@ def _is_recognizably_truncated(text: str) -> str | None:
     content_lines, fence_open = _fence_scanner(text)
     if fence_open:
         return "an unclosed code fence at end of file"
+    final_document_line = next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")
     final_line = next((line for line in reversed(content_lines) if line), "")
     is_heading = final_line.startswith("#")
+    final_line_is_document_ending = final_line == final_document_line
     signals: tuple[tuple[bool, str], ...] = (
         (_DANGLING_FIELD_PATTERN.fullmatch(final_line) is not None, "a dangling plan field label at end of file"),
-        (not is_heading and final_line.endswith(":"), "a final content line ending with a colon"),
-        (not is_heading and final_line.endswith(("-", "\u2013", "\u2014")), "a final content line ending with a dangling dash"),
-        (not is_heading and final_line.endswith(","), "a final content line ending with a comma"),
-        (not is_heading and _DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None, "a final content line ending with a dangling function word"),
-        (not is_heading and _has_unclosed_inline_delimiter(final_line), "an unclosed inline delimiter on the final content line"),
+        (final_line_is_document_ending and not is_heading and final_line.endswith(":"), "a final content line ending with a colon"),
+        (final_line_is_document_ending and not is_heading and final_line.endswith(("-", "\u2013", "\u2014")), "a final content line ending with a dangling dash"),
+        (final_line_is_document_ending and not is_heading and final_line.endswith(","), "a final content line ending with a comma"),
+        (final_line_is_document_ending and not is_heading and _DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None, "a final content line ending with a dangling function word"),
+        (final_line_is_document_ending and not is_heading and _has_unclosed_inline_delimiter(final_line), "an unclosed inline delimiter on the final content line"),
         (_EMPTY_BULLET_PATTERN.fullmatch(final_line) is not None, "a list bullet with no text"),
     )
     return next((reason for matched, reason in signals if matched), None)

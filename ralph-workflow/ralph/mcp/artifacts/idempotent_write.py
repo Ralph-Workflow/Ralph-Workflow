@@ -123,6 +123,8 @@ def atomic_write_text_if_changed(
             return False
     backend.write_text(tmp_path, content, encoding=encoding)
     backend.replace(tmp_path, destination)
+    if destination.name == "plan.md":
+        backend.sync_directory(destination.parent)
     return True
 
 

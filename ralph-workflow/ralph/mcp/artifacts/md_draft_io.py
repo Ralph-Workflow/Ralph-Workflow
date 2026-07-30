@@ -121,6 +121,7 @@ def save_md_draft(
     tmp_path = draft_path.with_suffix(".md.tmp")
     backend.write_text(tmp_path, content, encoding="utf-8")
     backend.replace(tmp_path, draft_path)
+    backend.sync_directory(artifact_dir)
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
     if backend.exists(seeded_path):
         backend.unlink(seeded_path)

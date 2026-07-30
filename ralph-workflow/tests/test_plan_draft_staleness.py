@@ -69,6 +69,20 @@ def test_plan_draft_staleness_regression_clears_submitted_content(tmp_path: Path
     assert not workspace.exists(draft_path)
 
 
+def test_plan_draft_staleness_regression_keeps_seeded_canonical_draft(tmp_path: Path) -> None:
+    """S-4: loopback-seeded drafts remain available for in-place repair."""
+    policy = _policy()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write(md_draft_workspace_path("plan"), "submitted plan")
+    workspace.write(seeded_draft_workspace_path("plan"), "")
+    workspace.write(PLAN_ARTIFACT_PATH, "submitted plan")
+
+    register_role_handlers(policy.pipeline)
+    handle_phase(PreparePromptEffect(phase="planning", iteration=1), _context(tmp_path, policy))
+
+    assert workspace.exists(md_draft_workspace_path("plan"))
+
+
 def test_plan_draft_staleness_regression_fallback_promotion_checks_retained_draft(
     tmp_path: Path,
 ) -> None:

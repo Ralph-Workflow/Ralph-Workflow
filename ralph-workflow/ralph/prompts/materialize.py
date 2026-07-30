@@ -21,6 +21,7 @@ from ralph.mcp.artifacts.history import (
 )
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
+from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_ARTIFACT_TYPE,
@@ -692,7 +693,10 @@ def _resolve_required_plan_handoff(
     if plan_path:
         return plan_content, plan_path
     if allow_draft_fallback and workspace.exists(PLAN_MD_DRAFT_PATH):
-        return workspace.read(PLAN_MD_DRAFT_PATH), ""
+        draft = workspace.read(PLAN_MD_DRAFT_PATH)
+        _content, diagnostics = parse_and_validate(draft, PLAN_SPEC)
+        if not any(diagnostic.severity == "error" for diagnostic in diagnostics):
+            return draft, ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
