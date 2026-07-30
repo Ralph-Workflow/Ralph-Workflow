@@ -96,6 +96,9 @@ class WaitingStatusEvent:
             so both surfaces carry the same parsed value. Optional with
             a default so existing positional callers continue to work
             without changes.
+        stall_active: The watchdog's authoritative stall assessment at
+            emission time. Consumers mirror this value rather than
+            deriving independent stall state.
     """
 
     kind: WaitingStatusKind
@@ -108,6 +111,7 @@ class WaitingStatusEvent:
     subagent_activity: str | None = None
     last_subagent_progress_at: float | None = None
     current_subagent_tool_call: str | None = None
+    stall_active: bool = False
 
 
 WaitingStatusListener = Callable[[WaitingStatusEvent], None]

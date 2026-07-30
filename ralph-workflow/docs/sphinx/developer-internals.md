@@ -129,8 +129,9 @@ working directory. At 80 columns the directory left-elides; at 60 it drops,
 the phase abbreviates, and the agent remains; at the 40-column floor attention,
 phase, liveness, elapsed time, and position remain. Position uses `cycle` for
 the outer loop, `iter` for the inner loop, and `round` only for conflict
-resolution. The watchdog alone supplies `STALLED`; the
-injected monotonic clock advances the liveness frame during quiet work at the
+resolution. The watchdog alone supplies `STALLED`, and reader teardown clears
+that assessment when its owning invocation ends; the injected monotonic clock
+advances the liveness frame during quiet work at the
 bounded live-refresh cadence. Width and height changes reflow the footer
 immediately, including 12-row and temporarily below-floor terminals.
 

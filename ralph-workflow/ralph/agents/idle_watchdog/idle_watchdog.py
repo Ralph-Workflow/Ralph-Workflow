@@ -128,6 +128,9 @@ from ._activity_methods import (
     record_activity as activity_record_activity,
 )
 from ._activity_methods import (
+    record_invocation_end as activity_record_invocation_end,
+)
+from ._activity_methods import (
     record_invocation_start as activity_record_invocation_start,
 )
 from ._activity_methods import (
@@ -696,6 +699,10 @@ class IdleWatchdog:
 
     def record_invocation_start(self) -> None:
         activity_record_invocation_start(self)
+
+    def record_invocation_end(self) -> None:
+        """Clear an active stall as this watchdog's invocation ends."""
+        activity_record_invocation_end(self)
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
         """Update the pipeline's wait-state flag for the StuckClassifier gate.

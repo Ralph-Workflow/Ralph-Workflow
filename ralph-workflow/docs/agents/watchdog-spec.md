@@ -545,9 +545,10 @@ Three production sites clear the runtime flag and emit
 - `ralph/agents/idle_watchdog/idle_watchdog.py:883-887` — inside
   `_reset_idle_baseline()` (called by `record_activity` and the
   post-tool-result path).
-- `ralph/agents/idle_watchdog/_activity_methods.py:253-259` — inside
-  `record_invocation_start()` (fresh invocation starts un-stalled).
-- `ralph/agents/idle_watchdog/idle_watchdog.py:1127-1131` — inside
+- `ralph/agents/idle_watchdog/_activity_methods.py` — inside
+  `record_invocation_end()`; teardown clears a stall before its listener
+  binding is removed by either reader.
+- `ralph/agents/idle_watchdog/idle_watchdog.py` — inside
   `_accumulate_waiting_run()` on the `EXITED` transition (the wait
   is over, any prior `SUSPECTED_FROZEN` / `HARD_STOP`-driven stall
   is stale).
@@ -562,18 +563,12 @@ diagnostics.
 
 `ralph/display/subscriber.py` accepts a new optional constructor
 parameter `watchdog_attention_sink: Callable[[str | None], None] | None`.
-`record_waiting_status` maps the watchdog's stall-state transitions
-to the sink:
-
-| Event kind | Sink value |
-|------------|------------|
-| `STALLED` | `"stalled"` |
-| `STALL_RESUMED` | `None` |
-
-The sink call is wrapped defensively (a misbehaving host cannot
-break the snapshot path), and the sink is invoked at most once per
-`record_waiting_status` call (other event kinds do not call the
-sink).
+Every `WaitingStatusEvent` carries `stall_active`, the watchdog's
+assessment at emission time. `record_waiting_status` mirrors that flag to
+the sink on every event (`"stalled"` when true, otherwise `None`), so any
+live watchdog event re-synchronizes the host without a display-side latch.
+The sink call is wrapped defensively (a misbehaving host cannot break the
+snapshot path).
 
 `ralph/display/parallel_display.py` gains a thread-safe
 `watchdog_attention: str | None` field with a `watchdog_attention`
@@ -613,6 +608,13 @@ NEVER fall through to the `hit hard ceiling` template reserved
 for `HARD_STOP` (the kind dispatch is locked by
 `audit_lint_bypass.py::_NOQA_ALLOWLIST`).
 
+### Stall-label lifetime
+
+A `STALLED` label belongs to the invocation whose watchdog raised it. Both
+reader teardown paths call `record_invocation_end()` before removing their
+waiting listener, which publishes `STALL_RESUMED` only when a stall was
+active. A healthy invocation remains silent.
+
 ### Run cleanup
 
 `ralph/pipeline/run_loop.py::_cleanup_pipeline` calls
@@ -629,15 +631,14 @@ here is the safest cleanup step (no leaked state across runs).
   `STALLED` exactly once on entry into a stall and `STALL_RESUMED`
   exactly once on exit; repeated ticks emit no duplicates; the
   `STALL_RESUMED` triggers (`record_activity`,
-  `record_invocation_start`, `_accumulate_waiting_run` EXITED)
+  `record_invocation_end`, `_accumulate_waiting_run` EXITED)
   each flip the flag and emit the matching kind; a stall
   oscillating across many ticks still emits exactly-once per
   transition. The `is_stalled` property mirrors the runtime state.
 - `tests/display/test_subscriber.py` — explicit `_format_waiting_status_line`
   text for the two new kinds (never the `hit hard ceiling` fallback);
-  the `watchdog_attention_sink` mapping for `STALLED` /
-  `STALL_RESUMED` only; every other waiting-status kind leaves the
-  sink untouched, and a raising sink does not break the snapshot path.
+  the `watchdog_attention_sink` mirror of every event's `stall_active`
+  assessment, and a raising sink does not break the snapshot path.
 - `tests/display/test_status_bar_liveness.py` — the bar renders
   `STALLED` ONLY when the watchdog has pushed
   `attention='stalled'`; a bare time gap of any size never produces

@@ -25,6 +25,7 @@ class _EventOptions:
     suspect: Any = 600.0
     diagnostic: Any = None
     subagent_activity: str | None = None
+    stall_active: bool = False
 
 
 def _make_subscriber(tmp_path: Path) -> PipelineSubscriber:
@@ -46,6 +47,7 @@ def _event(opts: _EventOptions) -> WaitingStatusEvent:
         suspect_threshold_seconds=opts.suspect,
         diagnostic=opts.diagnostic or {},
         subagent_activity=opts.subagent_activity,
+        stall_active=opts.stall_active,
     )
 
 
@@ -685,13 +687,10 @@ def test_stall_resumed_event_renders_explicit_line(tmp_path: Path) -> None:
     assert "hit hard ceiling" not in line
 
 
-def test_stalled_event_calls_watchdog_attention_sink_tmp_path(tmp_path: Path) -> None:
-    """Only watchdog stall transitions forward attention to the sink.
-
-    ``STALLED`` sets the Status Bar slot and ``STALL_RESUMED`` clears it.
-    All other waiting-status events remain breadcrumbs and must not derive
-    or clear the watchdog-owned stall state.
-    """
+def test_waiting_event_mirrors_watchdog_stall_assessment_to_attention_sink_tmp_path(
+    tmp_path: Path,
+) -> None:
+    """The host attention always mirrors the watchdog event assessment."""
 
     def _record_sink(value: str | None) -> None:
         received.append(value)
@@ -714,25 +713,20 @@ def test_stalled_event_calls_watchdog_attention_sink_tmp_path(tmp_path: Path) ->
     sub.notify(state)
 
     sub.record_waiting_status(
-        _event(_EventOptions(kind=WaitingStatusKind.STALLED, diagnostic={}))
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.STALLED,
+                diagnostic={},
+                stall_active=True,
+            )
+        )
     )
     assert received == ["stalled"]
 
     sub.record_waiting_status(
-        _event(_EventOptions(kind=WaitingStatusKind.STALL_RESUMED, diagnostic={}))
+        _event(_EventOptions(kind=WaitingStatusKind.PROGRESS, diagnostic={}, stall_active=False))
     )
     assert received == ["stalled", None]
-
-    for kind in (
-        WaitingStatusKind.SUSPECTED_FROZEN,
-        WaitingStatusKind.HARD_STOP,
-        WaitingStatusKind.EXITED,
-        WaitingStatusKind.ENTERED,
-        WaitingStatusKind.PROGRESS,
-        WaitingStatusKind.SUBAGENT_PROGRESS,
-    ):
-        sub.record_waiting_status(_event(_EventOptions(kind=kind, diagnostic={})))
-        assert received == ["stalled", None]
 
 
 def test_subscriber_sink_call_is_defensive(tmp_path: Path) -> None:
@@ -758,7 +752,7 @@ def test_subscriber_sink_call_is_defensive(tmp_path: Path) -> None:
     sub.notify(state)
     # Must not raise — the sink exception is swallowed defensively.
     sub.record_waiting_status(
-        _event(_EventOptions(kind=WaitingStatusKind.STALLED, diagnostic={}))
+        _event(_EventOptions(kind=WaitingStatusKind.STALLED, diagnostic={}, stall_active=True))
     )
     # Snapshot path still produced.
     snapshot = sub.build_snapshot(state)

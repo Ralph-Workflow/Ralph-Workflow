@@ -259,6 +259,16 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._set_stall(active=False, now=now, idle_elapsed=0.0)
 
 
+def record_invocation_end(self: IdleWatchdog) -> None:
+    """Record invocation teardown and clear an active stall transition."""
+    now = self._clock.monotonic()
+    self._set_stall(
+        active=False,
+        now=now,
+        idle_elapsed=max(0.0, now - self._last_activity),
+    )
+
+
 def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[str, object]:
     """Return a JSON-serializable dict of the watchdog's full state.
 

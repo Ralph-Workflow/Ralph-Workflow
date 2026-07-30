@@ -886,6 +886,7 @@ class _ProcessLineReader:
 
             reader.join(timeout=10)
         finally:
+            getattr(watchdog, "record_invocation_end", lambda: None)()
             reset_active_sink(sink_token)
             reset_subagent_sink(subagent_token)
             if self._monitor is not None:

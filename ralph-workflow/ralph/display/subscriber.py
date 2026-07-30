@@ -33,19 +33,6 @@ if TYPE_CHECKING:
 _DECISION_LOG_MAX = 16
 
 
-class _Sentinel:
-    """Marker singleton for the no-call default in ``record_waiting_status``.
-
-    Distinguishes "no sink call this tick" from "sink called with None
-    this tick" (a STALL_RESUMED transition). Used as the initial value
-    of ``sink_value`` so the defensive sink call only fires when the
-    event kind actually mapped to a stall-state transition.
-    """
-
-
-_SENTINEL_NO_CALL = _Sentinel()
-
-
 _logger = logger
 
 
@@ -74,6 +61,7 @@ class _WaitingEventLike(Protocol):
     idle_elapsed_seconds: float
     diagnostic: dict[str, object]
     subagent_activity: str | None
+    stall_active: bool
     kind: _WaitingKindLike
 
 
@@ -509,7 +497,7 @@ class PipelineSubscriber:
             return
         cast_event = event
         snapshots_to_publish: list[PipelineSnapshot] = []
-        sink_value: str | None | _Sentinel = _SENTINEL_NO_CALL
+        sink_value: str | None = None
         with self._lock:
             self._invalidate_snapshot_cache_locked()
             if unit_id is not None:
@@ -527,13 +515,9 @@ class PipelineSubscriber:
                     decision=cast_event.kind.name,
                     reason=line,
                 )
-            # wt-047-stall-label: forward only the watchdog's explicit
-            # stall-state transitions. Other event kinds remain breadcrumbs;
-            # deriving the slot from them would create a second state machine.
-            if cast_event.kind == waiting_kind_cls.STALLED:
-                sink_value = "stalled"
-            elif cast_event.kind == waiting_kind_cls.STALL_RESUMED:
-                sink_value = None
+            # Mirror the watchdog's assessment on every event; the display
+            # owns no independent stall latch.
+            sink_value = "stalled" if cast_event.stall_active else None
             snapshot = self._build_snapshot_locked(self._last_state)
             if snapshot is not None:
                 snapshots_to_publish.append(snapshot)
@@ -543,15 +527,8 @@ class PipelineSubscriber:
                 if cleared is not None:
                     snapshots_to_publish.append(cleared)
         # Sink call is wrapped defensively outside the lock so a
-        # misbehaving host does not break the snapshot path. The
-        # sink is invoked at most once per record_waiting_status
-        # call, and only when the event kind mapped to a stall-state
-        # transition (the default _SENTINEL_NO_CALL is no-op).
-        if sink_value is not _SENTINEL_NO_CALL and self._watchdog_attention_sink is not None:
-            # Narrow the sentinel-typed value to ``str | None`` for the
-            # sink (the sentinel means "do not call", already filtered
-            # above). mypy cannot infer this through the union.
-            assert isinstance(sink_value, (str, type(None)))
+        # misbehaving host does not break the snapshot path.
+        if self._watchdog_attention_sink is not None:
             try:
                 self._watchdog_attention_sink(sink_value)
             except Exception as exc:

@@ -144,6 +144,7 @@ def emit(
         current_subagent_tool_call=_parse_tool_call_from_description(
             self._last_subagent_progress_description
         ),
+        stall_active=self._stall_active,
     )
     if main_listener is not None:
         try:
