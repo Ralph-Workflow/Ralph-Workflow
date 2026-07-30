@@ -34,10 +34,11 @@ import concurrent.futures
 import contextlib
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from ralph.mcp.server._timing_safety import DISPATCH_CAP_MS
+from ralph.timeout_defaults import MCP_DISPATCH_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -51,9 +52,11 @@ _log = logging.getLogger(__name__)
 #: thread limit.
 DEFAULT_MAX_WORKERS: int = 32
 
-# The timing-safety invariant models this as the maximum legitimate tool-call
-# duration (exec is capped at DISPATCH_CAP_MS); this bounds caller release.
-_DEFAULT_DISPATCH_TIMEOUT_SECONDS: Final[float] = DISPATCH_CAP_MS / 1000
+_SATURATION_WARNING_INTERVAL_SECONDS: Final[float] = 1.0
+
+# The caller deadline exceeds the maximum legitimate tool-call duration while
+# retaining transport drain/kill margin below the client request timeout.
+_DEFAULT_DISPATCH_TIMEOUT_SECONDS: Final[float] = MCP_DISPATCH_TIMEOUT_SECONDS
 
 #: HTTP status for the saturation response (503 + JSON-RPC -32001 frame).
 SATURATION_STATUS: int = 503
@@ -96,11 +99,24 @@ class _SaturatedDispatch:
         self._dispatch_timeout_seconds = dispatch_timeout_seconds
         self._executor: concurrent.futures.ThreadPoolExecutor | None = None
         self._lock = threading.Lock()
+        self._inflight: int = 0
+        self._generation: int = 0
+        self._last_saturation_warning_at: float | None = None
 
     @property
     def max_workers(self) -> int:
         """Return the configured worker bound."""
         return self._max_workers
+
+    @property
+    def dispatch_timeout_seconds(self) -> float | None:
+        """Return the caller-release deadline."""
+        return self._dispatch_timeout_seconds
+
+    def _release_slot(self, generation: int) -> None:
+        with self._lock:
+            if generation == self._generation:
+                self._inflight = max(0, self._inflight - 1)
 
     def _ensure_executor(self) -> concurrent.futures.ThreadPoolExecutor:
         if self._executor is None:
@@ -115,17 +131,36 @@ class _SaturatedDispatch:
     def submit[T](self, callable_: Callable[[], T]) -> T | SaturatedResponse:
         """Run ``callable_`` on the bounded executor.
 
-        Returns the result on success, or a :class:`SaturatedResponse`
-        when the executor is shut down. The stdlib
-        ThreadPoolExecutor is unbounded; saturation is detected when
-        the executor is closed (the submit raises RuntimeError).
-        Re-raises the callable's exception unchanged on dispatch
+        Rejects admission with :class:`SaturatedResponse` once ``max_workers``
+        calls are in flight, so no excess callable is queued or invoked. The
+        caller is released at the injected deadline; a running worker is not
+        reclaimed. Re-raises the callable's exception unchanged on dispatch
         failure so the transport-repetition breaker can observe it.
         """
         executor = self._ensure_executor()
+        with self._lock:
+            if self._inflight >= self._max_workers:
+                now = time.monotonic()
+                if (
+                    self._last_saturation_warning_at is None
+                    or now - self._last_saturation_warning_at >= _SATURATION_WARNING_INTERVAL_SECONDS
+                ):
+                    _log.warning("MCP dispatch saturated at max_workers=%s", self._max_workers)
+                    self._last_saturation_warning_at = now
+                return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
+            self._inflight += 1
+            generation = self._generation
+
+        def _tracked() -> T:
+            try:
+                return callable_()
+            finally:
+                self._release_slot(generation)
+
         try:
-            future = executor.submit(callable_)
+            future = executor.submit(_tracked)
         except RuntimeError as exc:
+            self._release_slot(generation)
             # RuntimeError: cannot schedule new futures after shutdown
             if "shutdown" in str(exc).lower() or "shutdown" in type(exc).__name__.lower():
                 return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
@@ -150,23 +185,31 @@ class _SaturatedDispatch:
         with self._lock:
             self._executor = executor
             self._max_workers = executor._max_workers
+            self._inflight = 0
+            self._generation += 1
 
     def shutdown(self, wait: bool = True) -> None:
         """Shut down the underlying executor. Idempotent."""
         with self._lock:
-            if self._executor is not None:
-                self._executor.shutdown(wait=wait)
-                self._executor = None
+            executor = self._executor
+            self._executor = None
+            self._inflight = 0
+            self._generation += 1
+        if executor is not None:
+            executor.shutdown(wait=wait)
 
     def reset(self) -> None:
         """Reset to a fresh executor (test-only seam)."""
         with self._lock:
-            if self._executor is not None:
-                self._executor.shutdown(wait=False)
+            previous_executor = self._executor
             self._executor = concurrent.futures.ThreadPoolExecutor(
                 max_workers=self._max_workers,
                 thread_name_prefix="mcp-saturated-dispatch",
             )
+            self._inflight = 0
+            self._generation += 1
+        if previous_executor is not None:
+            previous_executor.shutdown(wait=False)
 
 
 _default_dispatch = _SaturatedDispatch()

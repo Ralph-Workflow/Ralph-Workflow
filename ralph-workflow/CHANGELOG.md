@@ -46,7 +46,7 @@ tag exists yet — a link to one would be a dead link.
 ### Fixed
 
 - **fix(agents): bound Claude text accumulators and partial transcript/PTY tails** — preserves healthy streams while retaining only bounded tails. Locked by `tests/test_bounded_text_buffer.py`, `tests/test_text_accumulator_bound.py`, `tests/test_claude_interactive_transcript_buffer_bound.py`, and `tests/test_pty_line_reader_pending_bound.py`.
-- **fix(mcp): bound saturated dispatch waits at the modeled deadline** — caller threads return saturation on timeout and queued work is cancelled. Locked by `tests/test_mcp_saturated_dispatch_bounded_result.py`.
+- **fix(mcp): cap saturated dispatch admission and use a 305.0s caller deadline** — requests beyond `max_workers` in-flight calls return saturation without queueing or invocation; the named deadline is above the 300s tool clamp and, with drain plus kill, below the 330s client timeout. Locked by `tests/test_mcp_saturated_dispatch_bounded_result.py`.
 - **fix(mcp): unlink failed exec spill files** — write errors no longer orphan mkstemp output. Locked by `tests/test_tool_exec_large_output_spill.py`.
 - **fix(mcp): unlink standalone session metadata when spawn fails** — failed bridge startup leaves no session JSON behind. Locked by `tests/test_mcp_lifecycle_session_file_cleanup.py`.
 - **fix(diagnostics): route mdutil through ProcessManager** — filesystem probes now share tracked child teardown. Locked by `tests/test_fs_health_process_manager.py`.

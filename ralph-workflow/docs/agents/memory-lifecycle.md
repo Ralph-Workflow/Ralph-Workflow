@@ -19,7 +19,7 @@ is bounded and where the contract deliberately does NOT optimize.
 | `_transcript_thread` transcript fd | Unbounded fd growth on the hot PTY-read path when readline/parse raises mid-loop | `try/finally` close in `PtyLineReader._transcript_thread` | `ralph/agents/invoke/_pty_line_reader.py` |
 | Claude parser TextAccumulator bypass | Unbounded output/thinking accumulation | `TextAccumulator.append_delta` flushes at the raw-line or character cap | `ralph/agents/parsers/text_accumulator.py` |
 | Transcript parser buffer and PTY pending tail | Unbounded newline-free partial-line accumulation | `BoundedTextBuffer` / `clamp_tail` with `DEFAULT_MAX_BUFFER_CHARS` | `ralph/agents/_bounded_text_buffer.py` |
-| Saturated-dispatch `future.result` | Caller thread blocked forever by a wedged handler | Injected `dispatch_timeout_seconds`, defaulting to `DISPATCH_CAP_MS / 1000 = 300.0s`; releases the caller and cancels queued work | `ralph/mcp/server/_saturated_dispatch.py` |
+| Saturated-dispatch admission and `future.result` | Unbounded queued request closures or caller blocked forever by a wedged handler | Admission is capped at `max_workers` in-flight calls; excess calls return `SaturatedResponse` without being queued or invoked. `MCP_DISPATCH_TIMEOUT_SECONDS = 305.0s` releases the caller; a running worker is not reclaimed. | `ralph/mcp/server/_saturated_dispatch.py`, `ralph/timeout_defaults.py` |
 | RunStateDB open | Repeated schema script and commit on the artifact-submit path | `PRAGMA user_version` skips schema setup after initialization | `ralph/mcp/artifacts/state_db.py` |
 | Async-termination default-executor borrowing | Unbounded thread growth in teardown when many concurrent async terminates are dispatched | Dedicated bounded `ThreadPoolExecutor` owned by `ProcessManager`, released by `shutdown_all(wait=False)` | `ralph/process/manager/_process_manager.py` |
 | Background threads | Non-daemon threads blocking process exit | `daemon=True` on every `threading.Thread` (enforced by `audit_resource_lifecycle.py`) | `ralph/testing/audit_resource_lifecycle.py` |
@@ -273,13 +273,13 @@ finally block is a safety net, not a mandatory kill.
 
 ## Known limitations
 
-- **Saturated-dispatch running workers**: the timeout releases the caller
-  thread within `DISPATCH_CAP_MS` (300s) and cancels still-queued callables,
-  but `concurrent.futures` cannot cancel a callable already RUNNING. Its worker
-  is freed only when it returns, so 32 simultaneously wedged handlers can still
-  saturate the pool. Cooperative handler cancellation would require a token in
-  every MCP tool handler; that functionality change is rejected for this pass
-  and tracked as follow-up.
+- **Saturated-dispatch running workers**: admission rejects calls beyond the
+  configured in-flight worker bound, and the 305.0s deadline releases the
+  caller, but `concurrent.futures` cannot cancel a callable already RUNNING.
+  Its worker is freed only when it returns, so simultaneously wedged handlers
+  can still saturate the pool. Cooperative handler cancellation would require a
+  token in every MCP tool handler; that functionality change is rejected for
+  this pass and tracked as follow-up.
 
 - **Per-call stdio upstream spawn (decided non-goal)**:
   `ralph/mcp/upstream/_stdio_upstream_client.py` deliberately spawns per call.

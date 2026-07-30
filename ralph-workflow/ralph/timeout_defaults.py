@@ -154,6 +154,14 @@ SSE_DRAIN_CEILING_MS: int = 5_000
 #: shutdown.
 KILL_ESCALATION_CEILING_MS: int = 5_000
 
+#: Caller deadline for saturated MCP dispatch. ``EXEC_MAX_TIMEOUT_MS`` is the
+#: hard ceiling for legitimate tool calls; adding the kill grace prevents a
+#: healthy clamped call from racing the dispatcher while preserving room for
+#: dispatch, drain, and kill below the 330-second client request timeout.
+MCP_DISPATCH_TIMEOUT_SECONDS: float = (
+    EXEC_MAX_TIMEOUT_MS + KILL_ESCALATION_CEILING_MS
+) / 1000.0
+
 #: Default per-call HTTP timeout for built-in websearch backends (Brave, SearXNG).
 #: Sourced by ralph.mcp.websearch.backends.brave and ralph.mcp.websearch.backends.searxng
 #: to replace the previously hard-coded _TIMEOUT_SECONDS = 10.0 literals. One source of
@@ -374,4 +382,9 @@ if not WEBSEARCH_SDK_TIMEOUT_SECONDS >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS:
     raise RuntimeError(
         "WEBSEARCH_SDK_TIMEOUT_SECONDS must be >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS; "
         f"got SDK={WEBSEARCH_SDK_TIMEOUT_SECONDS!r} < HTTP={WEBSEARCH_BACKEND_TIMEOUT_SECONDS!r}"
+    )
+if not MCP_DISPATCH_TIMEOUT_SECONDS > EXEC_MAX_TIMEOUT_MS / 1000.0:
+    raise RuntimeError(
+        "MCP_DISPATCH_TIMEOUT_SECONDS must exceed the exec timeout ceiling; "
+        f"got MCP_DISPATCH_TIMEOUT_SECONDS={MCP_DISPATCH_TIMEOUT_SECONDS!r}"
     )

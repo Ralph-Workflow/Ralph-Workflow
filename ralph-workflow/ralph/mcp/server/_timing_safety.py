@@ -19,6 +19,7 @@ import os
 from ralph.mcp.protocol.env import MCP_REQUEST_TIMEOUT_MS_ENV
 from ralph.timeout_defaults import (
     EXEC_MAX_TIMEOUT_MS,
+    MCP_DISPATCH_TIMEOUT_SECONDS,
     SSE_DRAIN_CEILING_MS,
 )
 from ralph.timeout_defaults import (
@@ -66,6 +67,16 @@ if not SERVER_WORST_CASE_MS < CLIENT_REQUEST_TIMEOUT_MS:
         f"({DISPATCH_CAP_MS} dispatch + {DRAIN_CEILING_MS} drain "
         f"+ {KILL_ESCALATION_CEILING_MS} kill) "
         f">= CLIENT_REQUEST_TIMEOUT_MS={CLIENT_REQUEST_TIMEOUT_MS}"
+    )
+if not (
+    MCP_DISPATCH_TIMEOUT_SECONDS * 1000
+    + DRAIN_CEILING_MS
+    + KILL_ESCALATION_CEILING_MS
+    < CLIENT_REQUEST_TIMEOUT_MS
+):
+    raise RuntimeError(
+        "dispatch deadline plus drain and kill exceeds client_request_timeout: "
+        f"MCP_DISPATCH_TIMEOUT_SECONDS={MCP_DISPATCH_TIMEOUT_SECONDS}"
     )
 
 
