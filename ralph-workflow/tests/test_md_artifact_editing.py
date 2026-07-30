@@ -103,8 +103,25 @@ def test_edit_replaces_the_first_occurrence_and_persists_the_draft(tmp_path: Pat
     payload = _payload(result)
     assert payload["status"] == "applied"
     assert payload["edits_applied"] == 1
+    assert payload["ambiguous_edits"] == []
     assert "Coding agents" in str(payload["diff"])
     assert _draft(session, workspace) == _SPEC.replace("Agents", "Coding agents")
+
+
+def test_edit_reports_ambiguous_old_text_and_replaces_its_first_occurrence(tmp_path: Path) -> None:
+    """S-7: repeated oldText remains deterministic but is reported to the caller."""
+    session = MockSession()
+    workspace = _workspace(tmp_path)
+    repeated = _SPEC.replace("- [U1] Agents\n", "- [U1] Agents\n- [U2] Agents\n")
+    handle_stage_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": repeated}
+    )
+
+    result = _edit(session, workspace, [{"oldText": "Agents", "newText": "Coding agents"}])
+
+    payload = _payload(result)
+    assert payload["ambiguous_edits"] == [{"edit_index": 0, "occurrences": 2}]
+    assert _draft(session, workspace) == repeated.replace("Agents", "Coding agents", 1)
 
 
 def test_edit_applies_multiple_edits_sequentially(tmp_path: Path) -> None:

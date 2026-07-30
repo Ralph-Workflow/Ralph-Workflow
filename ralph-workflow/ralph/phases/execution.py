@@ -170,10 +170,8 @@ def _clear_stale_plan_draft_if_needed(ctx: PhaseContext) -> None:
         return
     if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
         return
-    draft_mtime = Path(ctx.workspace.absolute_path(draft_path)).stat().st_mtime
-    plan_mtime = Path(ctx.workspace.absolute_path(PLAN_ARTIFACT_PATH)).stat().st_mtime
-    if draft_mtime <= plan_mtime:
-        logger.info("Clearing stale plan draft at {}", draft_path)
+    if ctx.workspace.read(draft_path) == ctx.workspace.read(PLAN_ARTIFACT_PATH):
+        logger.info("Clearing submitted plan draft at {}", draft_path)
         ctx.workspace.remove(draft_path)
 
 
@@ -193,10 +191,11 @@ def _validate_plan_output(
         logger.warning("Planning agent completed without producing {}", ra.artifact_path)
         _write_retry_hint(ctx, phase, detail)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
+    artifact_path = Path(ctx.workspace.absolute_path(ra.artifact_path))
     divergence = unsubmitted_draft_divergence(
-        Path(ctx.workspace.absolute_path(".agent/artifacts")),
+        artifact_path.parent,
         ra.artifact_type,
-        Path(ctx.workspace.absolute_path(ra.artifact_path)),
+        artifact_path,
     )
     if divergence is not None:
         detail = "The staged plan draft contains content that was never submitted."

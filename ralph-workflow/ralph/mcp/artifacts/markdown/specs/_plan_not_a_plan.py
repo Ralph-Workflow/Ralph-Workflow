@@ -300,11 +300,14 @@ def _is_recognizably_truncated(text: str) -> str | None:
     if fence_open:
         return "an unclosed code fence at end of file"
     final_line = next((line for line in reversed(content_lines) if line), "")
+    is_heading = final_line.startswith("#")
     signals: tuple[tuple[bool, str], ...] = (
         (_DANGLING_FIELD_PATTERN.fullmatch(final_line) is not None, "a dangling plan field label at end of file"),
-        (final_line.endswith(","), "a final content line ending with a comma"),
-        (_DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None, "a final content line ending with a dangling function word"),
-        (_has_unclosed_inline_delimiter(final_line), "an unclosed inline delimiter on the final content line"),
+        (not is_heading and final_line.endswith(":"), "a final content line ending with a colon"),
+        (not is_heading and final_line.endswith(("-", "\u2013", "\u2014")), "a final content line ending with a dangling dash"),
+        (not is_heading and final_line.endswith(","), "a final content line ending with a comma"),
+        (not is_heading and _DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None, "a final content line ending with a dangling function word"),
+        (not is_heading and _has_unclosed_inline_delimiter(final_line), "an unclosed inline delimiter on the final content line"),
         (_EMPTY_BULLET_PATTERN.fullmatch(final_line) is not None, "a list bullet with no text"),
     )
     return next((reason for matched, reason in signals if matched), None)

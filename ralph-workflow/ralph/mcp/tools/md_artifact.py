@@ -52,6 +52,8 @@ from ralph.mcp.tools.text_edits import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.mcp.tools.text_edits import TextEdit
+
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
 
 #: Every validating endpoint returns this so a rejected document is repaired
@@ -146,6 +148,7 @@ def handle_edit_md_artifact(
             return _stale_draft_result(artifact_type, expected_hash, current_hash)
 
     label = f".{artifact_type}.draft.md"
+    ambiguous_edits = _ambiguous_edits(draft, edits)
     outcome = apply_text_edits(draft, edits, label=label)
     if isinstance(outcome, RejectedTextEdits):
         return ToolResult(
@@ -162,7 +165,13 @@ def handle_edit_md_artifact(
 
     if bool(params.get("dry_run", False)):
         return _edit_result(
-            artifact_type, draft, outcome.diff, len(outcome.applied), "preview", submitted=False
+            artifact_type,
+            draft,
+            outcome.diff,
+            len(outcome.applied),
+            "preview",
+            ambiguous_edits=ambiguous_edits,
+            submitted=False,
         )
 
     save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
@@ -176,6 +185,7 @@ def handle_edit_md_artifact(
         outcome.diff,
         len(outcome.applied),
         "applied",
+        ambiguous_edits=ambiguous_edits,
         submitted=submitted,
         analysis=(diagnostics, overridden),
     )
@@ -412,6 +422,7 @@ def _edit_result(
     edits_applied: int,
     status: str,
     *,
+    ambiguous_edits: list[dict[str, int]],
     submitted: bool,
     analysis: tuple[list[Diagnostic], list[object]] | None = None,
 ) -> ToolResult:
@@ -426,10 +437,28 @@ def _edit_result(
     payload["status"] = status
     payload["diff"] = diff
     payload["edits_applied"] = edits_applied
+    payload["ambiguous_edits"] = ambiguous_edits
     payload["submitted"] = submitted
     if submitted:
         payload["persisted_document"] = _document_summary(draft)
     return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
+
+
+def _ambiguous_edits(draft: str, edits: list[TextEdit]) -> list[dict[str, int]]:
+    """Report sequential edits whose oldText has multiple current matches."""
+    current = draft
+    ambiguous: list[dict[str, int]] = []
+    for index, edit in enumerate(edits):
+        occurrences = current.count(edit.old_text)
+        if occurrences > 1:
+            ambiguous.append({"edit_index": index, "occurrences": occurrences})
+        match_index = current.find(edit.old_text)
+        if match_index == -1:
+            return ambiguous
+        current = (
+            current[:match_index] + edit.new_text + current[match_index + len(edit.old_text) :]
+        )
+    return ambiguous
 
 
 def _draft_status_payload(

@@ -439,6 +439,33 @@ def test_plan_regression_complete_or_ambiguous_eof_does_not_emit_plan001(suffix:
     ] == []
 
 
+@pytest.mark.parametrize(
+    ("suffix", "expect_error"),
+    [
+        ("### [S-2] Decide what the executor reads from", False),
+        ("Then run the following commands:", True),
+        ("-", True),
+    ],
+    ids=("heading_function_word", "trailing_colon", "dangling_dash"),
+)
+def test_plan_regression_eof_signal_classification_through_mcp_entry_point(
+    suffix: str, expect_error: bool
+) -> None:
+    """S-1: heading endings are complete; incomplete prose endings are rejected."""
+    text = (
+        "---\ntype: plan\n---\n## Steps\n\n"
+        "### [S-1] Preserve canonical plan persistence\n"
+        "Write the submitted plan through a durable atomic replacement so downstream readers\n"
+        "observe a complete document after an interrupted writer and can safely resume work.\n\n"
+        + suffix
+    )
+    _content, diagnostics, _overridden = analyze_plan_document(text)
+    errors = [
+        item for item in diagnostics if item.rule_id == "PLAN001" and item.severity == "error"
+    ]
+    assert bool(errors) is expect_error
+
+
 def test_analyze_plan_document_propagates_plan001_error() -> None:
     """The MCP wire-shape helper sees the same PLAN001 error."""
     content, diagnostics, _overridden = analyze_plan_document("")

@@ -111,9 +111,13 @@ def _clear_all_drafts(workspace: Workspace, artifacts_policy: ArtifactsPolicy) -
     must not, or an agent would repair the previous phase's text.
     """
     for required_artifact in build_required_artifacts(artifacts_policy).values():
-        draft_path = md_draft_workspace_path(required_artifact.artifact_type)
+        artifact_type = required_artifact.artifact_type
+        draft_path = md_draft_workspace_path(artifact_type)
         if workspace.exists(draft_path):
             workspace.remove(draft_path)
+        seeded_path = seeded_draft_workspace_path(artifact_type)
+        if workspace.exists(seeded_path):
+            workspace.remove(seeded_path)
 
 
 def _seed_drafts_from_canonical(workspace: Workspace, artifacts_policy: ArtifactsPolicy) -> None:

@@ -366,10 +366,11 @@ def evaluate_completion(
     # from a previous run could falsely mark the current run complete (see
     # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
     # cannot be determined from the artifact alone.
+    artifact_path = workspace / ra.artifact_path
     divergence = unsubmitted_draft_divergence(
-        workspace / ".agent" / "artifacts",
+        artifact_path.parent,
         ra.artifact_type,
-        workspace / ra.artifact_path,
+        artifact_path,
     )
     present = (
         is_artifact_submitted(

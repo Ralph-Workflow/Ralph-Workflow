@@ -604,6 +604,9 @@ existing tests in the regression suite continue to pass after the change.
 ## {section}
 - [alpha] Implement alpha across the existing endpoints and tests
   Directories:
+
+## Notes
+The plan continues after the incomplete field so the advisory parser can report it.
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)

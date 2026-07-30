@@ -479,7 +479,7 @@ def test_handle_planning_prepare_prompt_preserves_resumable_plan_draft(
     assert draft_path.exists()
 
 
-def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
+def test_handle_planning_prepare_prompt_keeps_draft_when_content_differs(
     tmp_path: Path,
 ) -> None:
     workspace = FsWorkspace(tmp_path)
@@ -504,7 +504,7 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
     effect = PreparePromptEffect(phase="planning", iteration=3)
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
-    assert not draft_path.exists()
+    assert draft_path.exists()
 
 
 def test_handle_planning_invokes_agent_successfully() -> None:
