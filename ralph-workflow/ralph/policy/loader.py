@@ -548,7 +548,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     )
 
 
-_DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []
+_DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []  # bounded-accumulator-ok: at most one cached default AgentsPolicy
 
 
 def _cached_default_agents_policy() -> AgentsPolicy:

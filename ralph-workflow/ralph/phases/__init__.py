@@ -72,7 +72,7 @@ PhaseHandler = Callable[["Effect", "PhaseContext"], list["Event"]]
 
 
 # Registry of built-in phase handlers
-HANDLERS: dict[str, PhaseHandler] = {}
+HANDLERS: dict[str, PhaseHandler] = {}  # bounded-accumulator-ok: bounded by configured phase definitions
 
 
 def register_handler(phase_name: str) -> Callable[[PhaseHandler], PhaseHandler]:

@@ -98,7 +98,7 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
     lock_fd: int | None = None
     while lock_fd is None:
         try:
-            lock_fd = os.open(
+            lock_fd = os.open(  # resource-lifecycle-ok: exclusive lock file via O_EXCL; fd closed before yield
                 lock_path,
                 os.O_CREAT | os.O_EXCL | os.O_WRONLY,
                 0o600,

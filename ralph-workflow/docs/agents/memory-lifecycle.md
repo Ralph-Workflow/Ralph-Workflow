@@ -172,6 +172,9 @@ Audit roots (the directories scanned by default):
 | `ralph/executor` | Sync + async process runners (`run_process`, `run_process_async`) |
 | `ralph/agents` | Subprocess agent executor (`SubprocessAgentExecutor`) |
 | `ralph/pro_support` | Bounded Pro heartbeat client (network I/O) |
+| `ralph/api` | Public API request handling |
+| `ralph/update_check` | Update-check network requests |
+| `ralph/contrib` | Contributor integration helpers |
 
 Adding a NEW unbounded call in any audited root fails `make verify`
 on the audit step. Inline `# mcp-timeout-ok: <reason>` markers are
@@ -338,9 +341,9 @@ to avoid false positives):
 - Single-element list literals `[X]` (Python's mutable-closure idiom
   for capturing a counter / flag / None sentinel — the list itself is
   NOT an accumulator; `lst[0] = ...` mutates in place).
-- Dict / set literals whose keys / elements are all static (strings,
-  names, attribute accesses) — static dispatch / handler / config
-  tables populated once at construction.
+- Dict / set literals whose keys / elements are all static (constants,
+  names, attribute accesses, or recursively static tuples) — static
+  dispatch / handler / config tables populated once at construction.
 - Local variables inside non-`__init__` functions (higher false-
   positive rate; the `BudgetState.failures` leak class was closed by
   dropping the field + the tracemalloc test, not by this AST contract).
@@ -361,6 +364,29 @@ Default audit roots (the directories scanned by `make verify`):
 | `ralph/display` | Per-unit display accumulators (`ParallelDisplay._active_block` / `_last_worker_states` / `_overflow_logs` / ...) drained by `ParallelDisplay.drop_unit` / `ActivityRouter.drop_unit` (the parallel coordinator finally block is the active drain). `_last_budget_progress` is phase-bounded (replaced wholesale each snapshot), not per-unit. |
 | `ralph/diagnostics` | Diagnostic child processes, which must route through `ProcessManager` |
 | `ralph/prompts` | Template registry caches (`_cache` / `_templates`) bounded by the immutable packaged-template file set and the workspace `template_dirs` lazily discovered by `_discover_template`. `register_template` has zero production callers so the bound is the file set, not a programmatic registry. |
+| `ralph/api` | Public API request-handling resources |
+| `ralph/update_check` | Update-check resources |
+| `ralph/contrib` | Contributor integration resources |
+| `ralph/git` | Git-operation resources |
+| `ralph/cli` | CLI process and resource entry points |
+| `ralph/telemetry` | Session telemetry resources |
+| `ralph/policy` | Cached policy resources |
+| `ralph/language_detector` | Detection-result resources |
+| `ralph/workspace` | Workspace implementations and test doubles |
+| `ralph/phases` | Configured phase registries |
+| `ralph/guidelines` | Immutable guidance definitions |
+| `ralph/checkpoint` | Checkpoint resources |
+| `ralph/config` | Configuration resources |
+| `ralph/exit_pause` | Exit-pause resources |
+| `ralph/files` | File-management resources |
+| `ralph/platform` | Platform-integration resources |
+| `ralph/project_policy` | Project-policy resources |
+| `ralph/skills` | Skill-management resources |
+| `ralph/interrupt` | Interrupt-handling resources |
+
+The default roots deliberately cover these production packages; adding a
+new production package with a long-lived resource requires adding it to the
+audit roots or documenting why the contract does not apply.
 
 Intentional exclusions (out of scope, documented to avoid false
 positives):

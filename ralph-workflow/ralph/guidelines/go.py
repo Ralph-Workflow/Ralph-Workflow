@@ -38,83 +38,83 @@ class GoGuidelines:
     )
 
     frameworks: tuple[str, ...]
-    quality_checks: list[str]
-    security_checks: list[str]
-    performance_checks: list[str]
-    testing_checks: list[str]
-    documentation_checks: list[str]
-    idioms: list[str]
-    anti_patterns: list[str]
-    concurrency_checks: list[str]
-    resource_checks: list[str]
-    observability_checks: list[str]
-    secrets_checks: list[str]
-    api_design_checks: list[str]
+    quality_checks: tuple[str, ...]
+    security_checks: tuple[str, ...]
+    performance_checks: tuple[str, ...]
+    testing_checks: tuple[str, ...]
+    documentation_checks: tuple[str, ...]
+    idioms: tuple[str, ...]
+    anti_patterns: tuple[str, ...]
+    concurrency_checks: tuple[str, ...]
+    resource_checks: tuple[str, ...]
+    observability_checks: tuple[str, ...]
+    secrets_checks: tuple[str, ...]
+    api_design_checks: tuple[str, ...]
 
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
         self.frameworks = normalized_frameworks
-        self.quality_checks = [
+        self.quality_checks = (
             "Run go fmt and golint.",
             "Check all error returns.",
             "Use defer for cleanup.",
             "Keep functions short and focused.",
-        ]
-        self.security_checks = [
+        )
+        self.security_checks = (
             "Validate input bounds before slice operations.",
             "Use crypto/rand for security-sensitive random numbers.",
             "Check for SQL injection in database queries.",
-        ]
-        self.performance_checks = [
+        )
+        self.performance_checks = (
             "Pre-allocate slices when size is known.",
             "Use sync.Pool for frequently allocated objects.",
             "Consider goroutine leaks.",
-        ]
-        self.testing_checks = [
+        )
+        self.testing_checks = (
             "Use table-driven tests.",
             "Test error paths explicitly.",
             "Use testify or similar for assertions when it improves clarity.",
-        ]
-        self.documentation_checks = [
+        )
+        self.documentation_checks = (
             "Document exported types, functions, and packages with Go-style comments.",
             "Explain concurrency expectations, ownership, and side effects in non-obvious code.",
             "Keep README and API examples aligned with actual package behavior.",
-        ]
-        self.idioms = [
+        )
+        self.idioms = (
             "Accept interfaces, return structs.",
             "Make the zero value useful.",
             "Don't communicate by sharing memory.",
-        ]
-        self.anti_patterns = [
+        )
+        self.anti_patterns = (
             "Don't ignore returned errors.",
             "Avoid init() when possible.",
             "Don't use panic for normal error handling.",
-        ]
-        self.concurrency_checks = [
+        )
+        self.concurrency_checks = (
             "Use context propagation and cancellation for goroutines and I/O boundaries.",
             "Protect shared state with clear synchronization strategy and avoid race-prone access.",
             "Ensure goroutines terminate cleanly on shutdown, timeout, or caller cancellation.",
-        ]
-        self.resource_checks = [
+        )
+        self.resource_checks = (
             "Close files, response bodies, and other resources on every path.",
             "Use defer near acquisition sites so cleanup is obvious and reliable.",
             "Check cleanup-related errors when they can change user-visible behavior.",
-        ]
-        self.observability_checks = [
+        )
+        self.observability_checks = (
             "Log errors with enough context to diagnose request, job, or goroutine failures.",
             "Avoid noisy logs inside hot paths and tight retry loops.",
             "Expose meaningful metrics or traces for latency-critical and concurrent operations.",
-        ]
-        self.secrets_checks = [
+        )
+        self.secrets_checks = (
             "Load secrets from environment or configuration, not source code.",
             "Do not log credentials, tokens, or sensitive request data.",
             "Review default configuration values for accidental secret exposure.",
-        ]
-        self.api_design_checks = [
+        )
+        self.api_design_checks = (
             "Keep package APIs small, consistent, and idiomatic for Go consumers.",
             "Return errors as the final result value and make failure modes explicit.",
             "Pass context.Context explicitly at request and I/O boundaries.",
-        ]
+        )
 
         for framework in normalized_frameworks:
             self._apply_framework(framework)
@@ -124,18 +124,18 @@ class GoGuidelines:
         framework_name = framework.casefold()
 
         if framework_name in {"gin", "chi", "fiber", "echo"}:
-            self.quality_checks.extend(
-                [
+            self.quality_checks += (
+                (
                     "Use proper error handling in handlers.",
                     "Use context for cancellation.",
                     "Structure handlers and middleware properly.",
-                ]
+                )
             )
-            self.security_checks.extend(
-                [
+            self.security_checks += (
+                (
                     "Set proper CORS headers.",
                     "Validate input in handlers.",
-                ]
+                )
             )
 
     def summary(self) -> str:

@@ -98,8 +98,7 @@ _PHASE_STATS: dict[
     str, dict[str, object]
 ] = {}  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
 
-# bounded-accumulator-ok: bounded by _AGENT_STATS_MAX_KEYS; drained at session finalize
-_AGENT_STATS: dict[str, dict[str, object]] = {}
+_AGENT_STATS: dict[str, dict[str, object]] = {}  # bounded-accumulator-ok: bounded by _AGENT_STATS_MAX_KEYS; drained at session finalize
 
 # Coarse UTC time-of-day buckets captured once at session start for aggregate
 # ``when`` analytics. ``None`` until set_session_wallclock_start() runs; the

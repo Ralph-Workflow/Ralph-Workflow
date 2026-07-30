@@ -362,10 +362,11 @@ def _default_roots() -> list[Path]:
     into synchronously, including ``ProcessManager`` and the rest of the
     tree), ``ralph/executor`` (the sync + async process runners
     ``run_process`` / ``run_process_async``), ``ralph/agents`` (the
-    subprocess agent executor), and ``ralph/pro_support`` (the bounded
-    Pro heartbeat client that performs network I/O). An unbounded call
-    in any of these can hang the agent just as badly, so all are held
-    to the same bounded-subprocess contract.
+    subprocess agent executor), ``ralph/pro_support`` (the bounded Pro
+    heartbeat client), and the API, update-check, and contrib packages.
+    ``ralph/recovery`` is deliberately excluded until event waits can be
+    distinguished from subprocess waits. An unbounded call in any covered
+    root can hang the agent, so all are held to the same contract.
     """
     package_root = Path(__file__).parent.parent
     return [
@@ -375,6 +376,9 @@ def _default_roots() -> list[Path]:
         package_root / "executor",
         package_root / "agents",
         package_root / "pro_support",
+        package_root / "api",
+        package_root / "update_check",
+        package_root / "contrib",
     ]
 
 

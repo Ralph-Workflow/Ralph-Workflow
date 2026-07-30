@@ -386,6 +386,12 @@ def test_default_roots_includes_pro_support() -> None:
     )
 
 
+def test_default_roots_cover_api_update_check_and_contrib() -> None:
+    """API-facing packages remain under the bounded-I/O timeout contract."""
+    root_names = {root.name for root in _default_roots()}
+    assert {"api", "update_check", "contrib"} <= root_names
+
+
 def test_default_roots_cover_executor_agents_process() -> None:
     """``_default_roots()`` MUST cover ralph/executor, ralph/agents, and ralph/process.
 

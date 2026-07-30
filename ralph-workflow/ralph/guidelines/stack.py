@@ -43,51 +43,51 @@ CATEGORY_FIELDS = (
     "api_design_checks",
 )
 
-BASE_QUALITY_CHECKS = [
+BASE_QUALITY_CHECKS = (
     "Code follows consistent style and formatting",
     "Functions have single responsibility",
     "Error handling is comprehensive",
     "No dead code or unused imports",
-]
-BASE_SECURITY_CHECKS = [
+)
+BASE_SECURITY_CHECKS = (
     "No hardcoded secrets or credentials",
     "Input validation on external data",
     "Proper authentication/authorization checks",
-]
-BASE_PERFORMANCE_CHECKS = [
+)
+BASE_PERFORMANCE_CHECKS = (
     "No obvious performance bottlenecks",
     "Efficient data structures used",
-]
-BASE_TESTING_CHECKS = [
+)
+BASE_TESTING_CHECKS = (
     "Tests cover main functionality",
     "Edge cases are tested",
-]
-BASE_DOCUMENTATION_CHECKS = [
+)
+BASE_DOCUMENTATION_CHECKS = (
     "Public APIs are documented",
     "Complex logic has explanatory comments",
-]
-BASE_IDIOMS = ["Code follows language conventions"]
-BASE_ANTI_PATTERNS = ["Avoid code duplication"]
-BASE_CONCURRENCY_CHECKS = [
+)
+BASE_IDIOMS = ("Code follows language conventions",)
+BASE_ANTI_PATTERNS = ("Avoid code duplication",)
+BASE_CONCURRENCY_CHECKS = (
     "Shared mutable state is properly synchronized",
     "No potential deadlocks (lock ordering)",
-]
-BASE_RESOURCE_CHECKS = [
+)
+BASE_RESOURCE_CHECKS = (
     "Resources are properly closed/released",
     "No resource leaks in error paths",
-]
-BASE_OBSERVABILITY_CHECKS = [
+)
+BASE_OBSERVABILITY_CHECKS = (
     "Errors are logged with context",
     "Critical operations have appropriate logging",
-]
-BASE_SECRETS_CHECKS = [
+)
+BASE_SECRETS_CHECKS = (
     "Secrets loaded from environment/config, not hardcoded",
     "Sensitive data not logged or exposed in errors",
-]
-BASE_API_DESIGN_CHECKS = [
+)
+BASE_API_DESIGN_CHECKS = (
     "API follows consistent naming conventions",
     "Breaking changes are clearly documented",
-]
+)
 
 LANGUAGE_FRAMEWORK_MAP: dict[str, tuple[str, ...]] = {
     "Python": ("Django", "FastAPI", "Flask"),

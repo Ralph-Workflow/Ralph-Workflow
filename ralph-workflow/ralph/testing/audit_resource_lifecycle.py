@@ -340,7 +340,9 @@ def _is_static_dict_key(node: ast.expr) -> bool:
     populated once at construction and never mutated thereafter, so
     they are dispatch / handler / config tables — NOT accumulators.
     """
-    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript))
+    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript)) or (
+        isinstance(node, ast.Tuple) and all(_is_static_dict_key(element) for element in node.elts)
+    )
 
 
 def _is_unbounded_accumulator_value(
@@ -884,19 +886,10 @@ def _default_roots() -> list[Path]:
     """Roots audited when no explicit root is given.
 
     Covers every production package the resource-lifecycle contract
-    applies to: ``ralph/mcp`` (HTTP client + daemon thread),
-    ``ralph/agents`` (subprocess agent executor + daemon threads),
-    ``ralph/executor`` (sync + async process runners),
-    ``ralph/process`` (centralized process lifecycle; the raw-fd
-    allowlist root), ``ralph/pipeline`` (run loop + interrupt threads),
-    ``ralph/runtime`` (runtime helper modules),
-    ``ralph/pro_support`` (Pro heartbeat client — daemon thread +
-    HTTP client), ``ralph/recovery`` (recovery control flow),
-    ``ralph/diagnostics`` (filesystem probes), ``ralph/display`` (per-unit display accumulators drained by
-    ``ParallelDisplay.drop_unit`` / ``ActivityRouter.drop_unit`` from
-    the parallel coordinator finally block), and ``ralph/prompts``
-    (template registry caches bounded by the packaged-template
-    file set).
+    applies to every production package with lifecycle-sensitive code.
+    ``ralph/process`` remains the raw-fd allowlist root; ``ralph/recovery``
+    is deliberately excluded only from the separate timeout audit because
+    its event waits need type-aware handling there.
     """
     package_root = Path(__file__).parent.parent
     return [
@@ -911,6 +904,25 @@ def _default_roots() -> list[Path]:
         package_root / "display",
         package_root / "prompts",
         package_root / "diagnostics",
+        package_root / "api",
+        package_root / "update_check",
+        package_root / "contrib",
+        package_root / "git",
+        package_root / "cli",
+        package_root / "telemetry",
+        package_root / "policy",
+        package_root / "language_detector",
+        package_root / "workspace",
+        package_root / "phases",
+        package_root / "guidelines",
+        package_root / "checkpoint",
+        package_root / "config",
+        package_root / "exit_pause",
+        package_root / "files",
+        package_root / "platform",
+        package_root / "project_policy",
+        package_root / "skills",
+        package_root / "interrupt",
     ]
 
 

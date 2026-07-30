@@ -150,14 +150,20 @@ the wired audits:
   blocking calls (`subprocess.run` / `.communicate` / `.wait`,
   `httpx.*`, `requests.*`, `urlopen`, `socket.create_connection`)
   without `timeout=` under `ralph/mcp/`, `ralph/git/`, `ralph/process/`,
-  `ralph/executor/`, `ralph/agents/`, and `ralph/pro_support/`. The
-  ONLY bypass is an inline `# mcp-timeout-ok: <reason>` marker for a
-  genuinely unbounded-by-design call.
+  `ralph/executor/`, `ralph/agents/`, `ralph/pro_support/`, `ralph/api/`,
+  `ralph/update_check/`, and `ralph/contrib/`. The ONLY bypass is an inline
+  `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design
+  call.
 * The resource-lifecycle audit (`audit_resource_lifecycle`) detects
   unbounded mutable accumulators (list / dict / set / deque WITHOUT
-  `maxlen=` assigned module-level or to `self.X` in `__init__`). The
-  ONLY bypass is an inline `# bounded-accumulator-ok: <reason>`
-  marker naming the cap or drain.
+  `maxlen=` assigned module-level or to `self.X` in `__init__`) across its
+  default production roots: `mcp`, `agents`, `executor`, `process`,
+  `pipeline`, `runtime`, `pro_support`, `recovery`, `display`, `prompts`,
+  `diagnostics`, `api`, `update_check`, `contrib`, `git`, `cli`, `telemetry`,
+  `policy`, `language_detector`, `workspace`, `phases`, `guidelines`,
+  `checkpoint`, `config`, `exit_pause`, `files`, `platform`, `project_policy`,
+  `skills`, and `interrupt`. The ONLY bypass is an inline
+  `# bounded-accumulator-ok: <reason>` marker naming the cap or drain.
 * The drift audit (`verify-drift` Makefile target, followed by
   `scripts/wt028-drift-check.sh`) catches new uses of the canonical
   Pro-contract surface (hardcoded PROMPT.md literals outside the

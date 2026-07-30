@@ -267,6 +267,13 @@ def test_default_roots_cover_required_packages() -> None:
     assert any(str(r).endswith("ralph/display") for r in roots)
     assert any(str(r).endswith("ralph/prompts") for r in roots)
     assert any(str(r).endswith("ralph/diagnostics") for r in roots)
+    required_expanded_roots = {
+        "api", "update_check", "contrib", "git", "cli", "telemetry", "policy",
+        "language_detector", "workspace", "phases", "guidelines", "checkpoint",
+        "config", "exit_pause", "files", "platform", "project_policy", "skills", "interrupt",
+    }
+    root_names = {root.name for root in roots}
+    assert required_expanded_roots <= root_names
 
 
 @pytest.mark.timeout_seconds(10)
@@ -504,6 +511,12 @@ def test_static_dispatch_table_with_string_keys_not_flagged(tmp_path: Path) -> N
     src = (
         "HANDLERS = {\n    'session': handle_session,\n    'message_end': handle_message_end,\n}\n"
     )
+    assert not _audit(tmp_path, src)
+
+
+def test_static_dispatch_table_with_tuple_keys_not_flagged(tmp_path: Path) -> None:
+    """Tuple keys composed of static values define a fixed dispatch table."""
+    src = "POLICY_MODES = {(True, False): strict, (False, True): lenient}\n"
     assert not _audit(tmp_path, src)
 
 
