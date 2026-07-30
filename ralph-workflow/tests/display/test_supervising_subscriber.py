@@ -82,6 +82,7 @@ def test_tracker_on_snapshot_view_shows_waiting_status(tmp_path: Path) -> None:
             suspect_threshold_seconds=600.0,
             diagnostic={"evidence": "time_only"},
             subagent_activity="scout exploring",
+            stall_active=False,
         )
     )
 
@@ -157,6 +158,7 @@ def test_tracker_view_keeps_activity_visible_during_waiting_state(tmp_path: Path
             ceiling_seconds=1800.0,
             suspect_threshold_seconds=600.0,
             diagnostic={},
+            stall_active=False,
         ),
         agent_name="opencode/minimax/MiniMax-M3",
     )

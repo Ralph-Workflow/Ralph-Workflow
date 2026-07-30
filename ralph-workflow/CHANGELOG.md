@@ -45,6 +45,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Fixed
 
+- **fix(display): keep watchdog stall attention live during conflict resolution and policy remediation** — pushed footer models leave `attention` to operator state so Live ticks mirror the watchdog assessment. Locked by `tests/pipeline/test_conflict_status_bar_stall_source.py` and `tests/project_policy/test_remediation_status_bar_stall_source.py`.
 - **fix(display): clear `STALLED` when its watchdog invocation ends** — the status slot now mirrors every watchdog event's authoritative stall assessment. Locked by `tests/agents/idle_watchdog/test_stall_lifetime.py` and `tests/display/test_subscriber_stall_mirror.py`.
 - **fix(agents): bound Claude text accumulators and partial transcript/PTY tails** — preserves healthy streams while retaining only bounded tails. Locked by `tests/test_bounded_text_buffer.py`, `tests/test_text_accumulator_bound.py`, `tests/test_claude_interactive_transcript_buffer_bound.py`, and `tests/test_pty_line_reader_pending_bound.py`.
 - **fix(mcp): cap saturated dispatch admission and use a 305.0s caller deadline** — requests beyond `max_workers` in-flight calls return saturation without queueing or invocation; the named deadline is above the 300s tool clamp and, with drain plus kill, below the 330s client timeout. Locked by `tests/test_mcp_saturated_dispatch_bounded_result.py`.

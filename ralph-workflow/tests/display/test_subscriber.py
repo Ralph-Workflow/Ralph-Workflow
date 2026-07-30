@@ -780,6 +780,7 @@ def test_stalled_line_uses_idle_elapsed_not_current_run(tmp_path: Path) -> None:
             ceiling_seconds=1800.0,
             suspect_threshold_seconds=600.0,
             diagnostic={},
+            stall_active=True,
         )
     )
     line = _last_line(sub)
@@ -800,6 +801,7 @@ def test_stall_resumed_line_uses_idle_elapsed_not_current_run(tmp_path: Path) ->
             ceiling_seconds=1800.0,
             suspect_threshold_seconds=600.0,
             diagnostic={},
+            stall_active=False,
         )
     )
     line = _last_line(sub)

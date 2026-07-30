@@ -310,7 +310,6 @@ def _run_rounds(
     run_started_monotonic = (
         display.run_started_monotonic if isinstance(display, ParallelDisplay) else None
     )
-    attention = display.watchdog_attention if isinstance(display, ParallelDisplay) else None
     surviving: tuple[str, ...] = ()
     prompt_path: Path | None = None
     try:
@@ -326,7 +325,6 @@ def _run_rounds(
                 replay_index=stop.replay_index if stop is not None else None,
                 replay_total=stop.replay_total if stop is not None else None,
                 run_started_monotonic=run_started_monotonic,
-                attention=attention,
             )
             prompt_path = render_conflict_prompt(
                 root=root,

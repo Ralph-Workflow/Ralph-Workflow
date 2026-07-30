@@ -610,10 +610,16 @@ for `HARD_STOP` (the kind dispatch is locked by
 
 ### Stall-label lifetime
 
-A `STALLED` label belongs to the invocation whose watchdog raised it. Both
-reader teardown paths call `record_invocation_end()` before removing their
-waiting listener, which publishes `STALL_RESUMED` only when a stall was
-active. A healthy invocation remains silent.
+A `STALLED` label belongs to the invocation whose watchdog raised it. The
+subscriber mirrors every `WaitingStatusEvent.stall_active` assessment; it does
+not latch transition kinds. Both reader teardown paths call
+`record_invocation_end()` before removing their waiting listener, so the final
+false assessment clears an active label. A healthy invocation remains silent.
+
+No consumer may copy `watchdog_attention` into a pushed
+`StatusBarModel.attention`: the Status Bar substitutes the host value on each
+Live tick only when the pushed operator attention is `None`. Conflict-resolution
+and policy-remediation status pushes follow that rule.
 
 ### Run cleanup
 

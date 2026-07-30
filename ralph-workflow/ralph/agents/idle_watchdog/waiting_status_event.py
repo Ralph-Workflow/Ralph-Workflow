@@ -45,16 +45,14 @@ class WaitingStatusEvent:
     - ``SUSPECTED_FROZEN`` -- cumulative wait crossed the suspect
       threshold; the child may be frozen.
     - ``EXITED`` -- transition out of a WAITING_ON_CHILD run. It remains a
-      waiting-run marker; ``STALL_RESUMED`` is the sole stall-clear signal
-      for the Status Bar slot.
+      waiting-run marker; consumers clear the Status Bar slot when this
+      event's required ``stall_active`` assessment is false.
     - ``HARD_STOP`` -- cumulative ceiling crossed; the watchdog is
       about to fire ``CHILDREN_PERSIST_TOO_LONG``.
-    - ``STALLED`` -- the watchdog's stall state has transitioned
-      ON. This is the **single source of truth** for the Status
-      Bar's ``STALLED`` slot: the watchdog is the sole owner of
-      in-stream stall decisions, and downstream consumers render
-      ``STALLED`` only from this event (or, equivalently, from the
-      watchdog's ``is_stalled`` property). Emitted exactly once
+    - ``STALLED`` -- the watchdog's stall state has transitioned ON.
+      It is a transition breadcrumb; every event's required
+      ``stall_active`` assessment is the single source of truth consumers
+      mirror for the Status Bar's ``STALLED`` slot. Emitted exactly once
       per transition into a stall (no per-tick spam) and deduped
       by the watchdog's runtime stall-state flag.
     - ``STALL_RESUMED`` -- the watchdog's stall state has
@@ -63,8 +61,8 @@ class WaitingStatusEvent:
       ``record_invocation_start`` / ``EXITED`` / a later tick
       where the SILENT_SUBAGENT gate no longer defers). Mirrors
       ``STALLED`` so subscribers can render explicit lines for
-      both transition markers without falling through to any
-      generic template.
+      both transition breadcrumbs without falling through to any
+      generic template; consumers clear from ``stall_active=False``.
 
     Attributes:
         kind: The type of event (one of the ``WaitingStatusKind`` values).
@@ -96,9 +94,9 @@ class WaitingStatusEvent:
             so both surfaces carry the same parsed value. Optional with
             a default so existing positional callers continue to work
             without changes.
-        stall_active: The watchdog's authoritative stall assessment at
-            emission time. Consumers mirror this value rather than
-            deriving independent stall state.
+        stall_active: Required keyword-only authoritative watchdog stall
+            assessment at emission time. Consumers mirror this value rather
+            than deriving independent stall state.
     """
 
     kind: WaitingStatusKind
@@ -111,7 +109,7 @@ class WaitingStatusEvent:
     subagent_activity: str | None = None
     last_subagent_progress_at: float | None = None
     current_subagent_tool_call: str | None = None
-    stall_active: bool = False
+    stall_active: bool = field(kw_only=True)
 
 
 WaitingStatusListener = Callable[[WaitingStatusEvent], None]

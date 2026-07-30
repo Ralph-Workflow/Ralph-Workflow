@@ -20,8 +20,10 @@ class WaitingStatusKind(StrEnum):
     ``TimeoutPolicy.watchdog_subagent_progress_interval_seconds`` so
     the new event does NOT introduce additional churn versus the
     existing PROGRESS cadence (both default to 30 s).
-    STALLED: transition into a stall (single source of truth for the
-    Status Bar's ``STALLED`` label). Emitted once on entry into a stall
+    STALLED: transition breadcrumb for entry into a stall. The required
+    per-event ``WaitingStatusEvent.stall_active`` assessment is the sole
+    source of truth for the Status Bar's ``STALLED`` label. Emitted once
+    on entry into a stall
     via the watchdog's own assessment (SUSPECTED_FROZEN, HARD_STOP, or
     a FIRE verdict for a non-absolute reason). Emitted ONLY on the
     initial transition (no per-tick spam); the watchdog's ``_set_stall``
@@ -29,8 +31,8 @@ class WaitingStatusKind(StrEnum):
     STALL_RESUMED: transition OUT of a stall. Emitted exactly once on
     the OFF transition (record_activity / record_invocation_start /
     EXITED). Mirrors STALLED so downstream consumers can render explicit
-    lines for both transition markers without falling through to the
-    HARD_STOP template.
+    lines for both transition breadcrumbs; they mirror ``stall_active`` for
+    label state without falling through to the HARD_STOP template.
     """
 
     ENTERED = "entered"

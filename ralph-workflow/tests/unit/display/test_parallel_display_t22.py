@@ -138,6 +138,7 @@ def test_injected_subscriber_receives_stalled_event(tmp_path: Path) -> None:
             ceiling_seconds=1800.0,
             suspect_threshold_seconds=600.0,
             diagnostic={},
+            stall_active=False,
         )
     )
     assert pd.watchdog_attention is None

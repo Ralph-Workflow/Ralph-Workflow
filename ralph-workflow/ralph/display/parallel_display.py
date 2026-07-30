@@ -526,9 +526,9 @@ class ParallelDisplay:
             monotonic if monotonic is not None else time.monotonic
         )
         # wt-047-stall-label: watchdog-sourced attention state for the Status
-        # Bar's STALLED slot. The subscriber forwards only STALLED /
-        # STALL_RESUMED transitions through its sink. The host substitutes this
-        # value only when pushed attention is None. Thread-safe below.
+        # Bar's STALLED slot. The subscriber mirrors every event's
+        # authoritative stall assessment through its sink. The host substitutes
+        # this value only when pushed attention is None. Thread-safe below.
         self._watchdog_attention: str | None = None
         self._watchdog_attention_lock = threading.Lock()
 
@@ -1987,8 +1987,8 @@ class ParallelDisplay:
         """Return the watchdog-sourced attention state, or ``None``.
 
         wt-047-stall-label: this is the Status Bar host's read of the
-        watchdog's STALLED / STALL_RESUMED transition stream. The subscriber
-        forwards those events as ``"stalled"`` / ``None`` and calls
+        watchdog's per-event stall assessment stream. The subscriber mirrors
+        each assessment as ``"stalled"`` / ``None`` and calls
         :meth:`set_watchdog_attention`. The host substitutes the value only
         when pushed ``attention`` is None; pushed ``waiting`` / ``retrying`` /
         ``terminated`` always win. Returns ``None`` when no stall transition
@@ -2000,8 +2000,8 @@ class ParallelDisplay:
     def set_watchdog_attention(self, value: str | None) -> None:
         """Set the watchdog-sourced attention state.
 
-        wt-047-stall-label: the subscriber's sink forwards only watchdog
-        STALLED / STALL_RESUMED transitions as ``"stalled"`` / ``None``.
+        wt-047-stall-label: the subscriber's sink mirrors every watchdog
+        event's authoritative assessment as ``"stalled"`` / ``None``.
         It is called from the subscriber thread (indirectly from the watchdog
         emit path), so the dedicated lock keeps Status Bar reads race-free.
         ``None`` clears the stall.

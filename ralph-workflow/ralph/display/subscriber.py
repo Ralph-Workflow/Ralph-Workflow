@@ -258,10 +258,10 @@ class PipelineSubscriber:
         self._pipeline_policy: PipelinePolicy | None = pipeline_policy
         self._plan_reader = _plan_reader
         self._plan_marker_reader = _plan_marker_reader
-        # wt-047-stall-label: the sink forwards the watchdog's STALLED /
-        # STALL_RESUMED transitions verbatim to the Status Bar host. It never
-        # derives stall state from other waiting-status events. The sink is
-        # wrapped defensively in ``record_waiting_status`` so a misbehaving
+        # wt-047-stall-label: the sink mirrors every watchdog event's
+        # authoritative ``stall_active`` assessment to the Status Bar host.
+        # The display owns no independent stall latch. The sink is wrapped
+        # defensively in ``record_waiting_status`` so a misbehaving
         # host does not break the snapshot path.
         self._watchdog_attention_sink: Callable[[str | None], None] | None = (
             watchdog_attention_sink
@@ -548,8 +548,8 @@ class PipelineSubscriber:
         lets a test / advanced caller supply a fully-constructed
         :class:`PipelineSubscriber`. Without this binder the supplied
         subscriber's ``watchdog_attention_sink`` slot stays unset and
-        the watchdog's STALLED / STALL_RESUMED transitions never reach
-        the host ``watchdog_attention`` surface -- the public constructor
+        per-event stall assessment never reaches the host
+        ``watchdog_attention`` surface -- the public constructor
         path would silently fail to render ``STALLED``.
 
         The constructor ``watchdog_attention_sink=`` parameter is

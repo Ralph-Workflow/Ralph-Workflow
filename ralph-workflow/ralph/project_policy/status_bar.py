@@ -32,7 +32,6 @@ def push_remediation_status_bar(
     elapsed_seconds: float | None = None,
     agent_name: str | None = None,
     run_started_monotonic: float | None = None,
-    attention: str | None = None,
 ) -> None:
     """Seed the persistent status bar for the remediation phase.
 
@@ -54,7 +53,6 @@ def push_remediation_status_bar(
             elapsed_seconds=elapsed_seconds,
             agent_name=agent_name,
             run_started_monotonic=run_started_monotonic,
-            attention=attention,
         )
         update_raw: object = getattr(display, "update_status_bar", None)
         update = cast("Callable[[object], None] | None", update_raw)
