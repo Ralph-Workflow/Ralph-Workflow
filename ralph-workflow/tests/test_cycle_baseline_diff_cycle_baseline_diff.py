@@ -60,6 +60,7 @@ class TestCycleBaselineDiff:
 
         assert read_cycle_baseline(root) == baseline_sha
 
+    @pytest.mark.timeout_seconds(5)
     def test_diff_includes_uncommitted_changes(self, git_repo: tuple[Path, Repo]) -> None:
         root, repo = git_repo
         baseline_sha = str(repo.head.commit.hexsha)
