@@ -6,12 +6,16 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
+from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.mcp.artifacts.md_draft_io import (
     md_draft_workspace_path,
+    save_md_draft,
     seeded_draft_workspace_path,
 )
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
+from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.pipeline.effects import PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.phase_entry_cleaner import clear_phase_entry_drains
@@ -63,6 +67,49 @@ def test_plan_draft_staleness_regression_clears_submitted_content(tmp_path: Path
     handle_phase(PreparePromptEffect(phase="planning", iteration=1), _context(tmp_path, policy))
 
     assert not workspace.exists(draft_path)
+
+
+def test_plan_draft_staleness_regression_fallback_promotion_checks_retained_draft(
+    tmp_path: Path,
+) -> None:
+    """S-1: promoted fallback cannot hide a longer staged draft."""
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    save_md_draft(
+        artifact_dir,
+        "plan",
+        "complete staged plan with all authored details and verification evidence " * 8,
+    )
+    fallback = tmp_path / ".agent" / "tmp" / "plan.md"
+    fallback.parent.mkdir(parents=True)
+    fallback.write_text(
+        """---
+type: plan
+---
+## Outcome
+Submit a shorter but valid fallback plan so the completion gate must compare it
+with the retained staged draft before allowing the planning phase to finish.
+
+### [S-1] Promote fallback
+Persist this fallback through the canonical submission path.
+""",
+        encoding="utf-8",
+    )
+    required = RequiredArtifact(
+        phase="planning",
+        artifact_type="plan",
+        artifact_path=PLAN_ARTIFACT_PATH,
+        markdown_path=".agent/PLAN.md",
+        normalizer=None,
+    )
+
+    state = RunStateDB(tmp_path)
+    state.upsert_completion_sentinel("plan-run", "sentinel")
+    state.close()
+
+    assert not completion_signals_terminal(
+        evaluate_completion(tmp_path, required_artifact=required, run_id="plan-run")
+    )
+    assert (artifact_dir / "plan.md").exists()
 
 
 def test_plan_draft_staleness_regression_fresh_entry_removes_seed_marker(tmp_path: Path) -> None:

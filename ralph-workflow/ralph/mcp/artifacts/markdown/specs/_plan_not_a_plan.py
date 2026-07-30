@@ -10,8 +10,8 @@ Closed-list classes:
 - Empty or effectively empty: nothing, whitespace only, or nothing but
   markup (a bare heading, a horizontal rule, an empty code fence).
 - Under 100 characters of actual content.
-- Recognizably truncated at EOF: an unclosed code fence or a dangling
-  plan field label with no value.
+- Recognizably truncated: an unterminated frontmatter block, an unclosed
+  code fence, or a dangling plan field label with no value.
 - Recognizably some other kind of text that arrived in the plan's
   place: a refusal or apology, a question back to the user, a bare
   status / progress message, raw tool output, a stack trace, or a
@@ -220,6 +220,12 @@ def _has_plan_shape(document: ParsedDocument) -> bool:
     return False
 
 
+def _has_unterminated_frontmatter(text: str) -> bool:
+    """Return whether an opening frontmatter delimiter consumes the document."""
+    lines = text.splitlines()
+    return bool(lines and lines[0] == "---" and "---" not in lines[1:])
+
+
 def _extract_body_text(text: str) -> str:
     """Return the text after the closing frontmatter ``---`` line.
 
@@ -406,6 +412,10 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
         message = _empty_message()
     elif content_chars < _MIN_CONTENT_CHARS:
         message = _too_short_message(content_chars)
+    elif _has_unterminated_frontmatter(text):
+        message = _truncation_message(
+            "an unterminated frontmatter block that swallows the rest of the document"
+        )
     elif truncation_reason := _is_recognizably_truncated(body_text):
         message = _truncation_message(truncation_reason)
     # Plan-shape evidence bypasses recognizably-other-text checks: doubt

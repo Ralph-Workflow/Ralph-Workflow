@@ -31,6 +31,16 @@ Expect: the validation parity tests pass with exit code 0
         "---\ntype: plan\n---\nI cannot produce the requested plan in this environment.\n",
         """---
 type: plan
+schema_version: 1
+## Outcome
+Keep both plan validator entry points aligned when an interrupted metadata
+block consumes otherwise complete plan content before the closing delimiter.
+
+### [S-1] Reject swallowed plan bodies
+Ensure canonical submission cannot accept this incomplete artifact form.
+""",
+        """---
+type: plan
 ---
 ## Intent
 This prose plan keeps the validator permissive for legitimate unconventional
@@ -39,7 +49,7 @@ plans while still rejecting documents that are recognizably incomplete.
 Run the focused validator suite and confirm every complete plan remains valid.
 """,
     ],
-    ids=("complete", "truncated", "noop", "refusal", "prose"),
+    ids=("complete", "truncated", "noop", "refusal", "unterminated_frontmatter", "prose"),
 )
 def test_plan_regression_validation_entry_points_emit_same_rule_severity_set(
     document: str,

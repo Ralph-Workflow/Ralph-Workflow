@@ -24,7 +24,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.mcp.artifacts.development_result import DevelopmentResult
-from ralph.mcp.artifacts.md_draft_io import md_draft_path, unsubmitted_draft_divergence
+from ralph.mcp.artifacts.md_draft_io import (
+    md_draft_path,
+    seeded_draft_workspace_path,
+    unsubmitted_draft_divergence,
+)
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PlanArtifactValidationError,
@@ -173,6 +177,9 @@ def _clear_stale_plan_draft_if_needed(ctx: PhaseContext) -> None:
     if ctx.workspace.read(draft_path) == ctx.workspace.read(PLAN_ARTIFACT_PATH):
         logger.info("Clearing submitted plan draft at {}", draft_path)
         ctx.workspace.remove(draft_path)
+        seeded_path = seeded_draft_workspace_path("plan")
+        if ctx.workspace.exists(seeded_path):
+            ctx.workspace.remove(seeded_path)
 
 
 def _validate_plan_output(

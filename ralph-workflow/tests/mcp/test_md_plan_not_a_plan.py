@@ -404,6 +404,17 @@ type: plan
         """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\nFiles:""",
         """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\nVerify:""",
         """---\ntype: plan\n---\n## Steps\n\n### [S-1] Preserve complete plan persistence\nWrite the canonical plan through an atomic replacement so a crashed writer leaves\nthe previous complete document available to downstream readers at all times.\n\nExpect:""",
+        """---
+type: plan
+schema_version: 1
+## Outcome
+Keep downstream plan consumers from accepting a document whose opening metadata
+block swallowed the complete execution body during an interrupted write.
+
+### [S-1] Preserve the entire plan
+Validate the opening delimiter before canonical persistence so analysis and
+execution receive the authored sections and their verification details.
+""",
     ],
 )
 def test_plan_regression_recognizable_eof_truncation_emits_plan001_error(text: str) -> None:
@@ -436,6 +447,37 @@ def test_plan_regression_complete_or_ambiguous_eof_does_not_emit_plan001(suffix:
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
     assert [
         d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
+    ] == []
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        """## Outcome
+Keep the plan validator permissive when a contributor intentionally omits
+metadata and still records enough work for analysis and execution to proceed.
+
+### [S-1] Preserve frontmatter-free plans
+Validate complete body text while allowing this deliberately metadata-free form.
+""",
+        """---
+type: plan
+---
+## Outcome
+Keep the plan validator permissive when a contributor supplies complete
+metadata and records enough work for analysis and execution to proceed.
+
+### [S-1] Preserve closed-frontmatter plans
+Validate complete body text after the opening metadata block closes normally.
+""",
+    ],
+    ids=("no_frontmatter", "closed_frontmatter"),
+)
+def test_complete_or_absent_frontmatter_does_not_emit_plan001(document: str) -> None:
+    """Only an opening delimiter without its closing mate is truncation."""
+    _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert [
+        item for item in diagnostics if item.rule_id == "PLAN001" and item.severity == "error"
     ] == []
 
 

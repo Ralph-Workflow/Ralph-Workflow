@@ -16,7 +16,10 @@ from ralph.phases import (
 )
 from ralph.phases.analysis import handle_generic_analysis_phase
 from ralph.phases.commit import handle_commit_phase
-from ralph.phases.execution import handle_execution_phase
+from ralph.phases.execution import (
+    _clear_stale_plan_draft_if_needed,
+    handle_execution_phase,
+)
 from ralph.pipeline.effects import (
     CommitEffect,
     Effect,
@@ -477,6 +480,20 @@ def test_handle_planning_prepare_prompt_preserves_resumable_plan_draft(
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
     assert draft_path.exists()
+
+
+def test_clear_stale_plan_draft_removes_seed_marker(tmp_path: Path) -> None:
+    """S-1: clearing a submitted draft also clears its seeded provenance."""
+    workspace = MemoryWorkspace()
+    workspace.write(".agent/artifacts/.plan.draft.md", "submitted plan")
+    workspace.write(".agent/artifacts/.plan.draft.seeded", "")
+    workspace.write(".agent/artifacts/plan.md", "submitted plan")
+    ctx = _mk_policy_context(workspace)
+
+    _clear_stale_plan_draft_if_needed(ctx)
+
+    assert not workspace.exists(".agent/artifacts/.plan.draft.md")
+    assert not workspace.exists(".agent/artifacts/.plan.draft.seeded")
 
 
 def test_handle_planning_prepare_prompt_keeps_draft_when_content_differs(

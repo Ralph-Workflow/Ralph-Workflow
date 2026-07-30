@@ -367,11 +367,6 @@ def evaluate_completion(
     # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
     # cannot be determined from the artifact alone.
     artifact_path = workspace / ra.artifact_path
-    divergence = unsubmitted_draft_divergence(
-        artifact_path.parent,
-        ra.artifact_type,
-        artifact_path,
-    )
     present = (
         is_artifact_submitted(
             workspace,
@@ -382,6 +377,11 @@ def evaluate_completion(
         )
         if (run_id is not None)
         else False
+    )
+    divergence = unsubmitted_draft_divergence(
+        artifact_path.parent,
+        ra.artifact_type,
+        artifact_path,
     )
     return CompletionSignals(
         explicit_complete=explicit,
