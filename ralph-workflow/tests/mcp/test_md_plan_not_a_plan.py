@@ -422,6 +422,9 @@ def test_plan_regression_recognizable_eof_truncation_emits_plan001_error(text: s
         "```python\nsubmit_plan()\n```",
         "This plan may end mid-prose without claiming a dangling field.",
         "## Verification\nThe focused plan tests pass.",
+        "## Verification\n",
+        "Verify: pytest tests/mcp/ -q",
+        "Files:\n- modify ralph/foo.py\n- modify tests/test_foo.py",
     ],
 )
 def test_plan_regression_complete_or_ambiguous_eof_does_not_emit_plan001(suffix: str) -> None:
