@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.md_draft_io import unsubmitted_draft_divergence
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
 
 if TYPE_CHECKING:
@@ -53,6 +54,8 @@ class CompletionSignals:
         artifact_required: True when policy requires a receipt for the phase's
             artifact before the durable completion sentinel can terminate the
             run.
+        unsubmitted_draft_present: True when a retained draft differs from the
+            canonical artifact, proving authored content was not submitted.
     """
 
     explicit_complete: bool
@@ -60,6 +63,7 @@ class CompletionSignals:
     artifact_types: tuple[str, ...]
     completion_sentinel_present: bool = False
     artifact_required: bool = False
+    unsubmitted_draft_present: bool = False
 
 
 def completion_signals_terminal(signals: CompletionSignals) -> bool:
@@ -70,7 +74,7 @@ def completion_signals_terminal(signals: CompletionSignals) -> bool:
     require their canonical submission receipt. Optional-artifact and
     artifact-free phases require no receipt.
     """
-    if not signals.completion_sentinel_present:
+    if not signals.completion_sentinel_present or signals.unsubmitted_draft_present:
         return False
     if signals.artifact_required:
         return signals.required_artifact_present
@@ -362,6 +366,11 @@ def evaluate_completion(
     # from a previous run could falsely mark the current run complete (see
     # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
     # cannot be determined from the artifact alone.
+    divergence = unsubmitted_draft_divergence(
+        workspace / ".agent" / "artifacts",
+        ra.artifact_type,
+        workspace / ra.artifact_path,
+    )
     present = (
         is_artifact_submitted(
             workspace,
@@ -379,6 +388,7 @@ def evaluate_completion(
         artifact_types=(ra.artifact_type,) if present else (),
         completion_sentinel_present=sentinel_present,
         artifact_required=ra.artifact_required,
+        unsubmitted_draft_present=divergence is not None,
     )
 
 

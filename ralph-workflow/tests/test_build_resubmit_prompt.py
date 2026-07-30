@@ -57,6 +57,13 @@ def test_hint_includes_example_document_when_given() -> None:
     assert "type: commit_message" in out
 
 
+def test_hint_for_unsubmitted_draft_names_resubmit_or_discard() -> None:
+    out = build_retry_hint("planning", "draft ahead", unsubmitted_draft=True)
+
+    assert "ralph_edit_md_artifact" in out
+    assert "ralph_discard_md_draft" in out
+
+
 def test_hint_without_registry_still_instructs_submit() -> None:
     out = build_retry_hint("commit", "missing", submit_tool_name="ralph_submit_md_artifact")
     assert "submit" in out.lower()

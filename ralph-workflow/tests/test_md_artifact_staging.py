@@ -105,6 +105,7 @@ def test_stage_appends_and_reports_non_gating_diagnostics(tmp_path: Path) -> Non
     assert payload["draft_chars"] == len(_HEAD)
     assert payload["sections"] == ["Title", "Scope"]
     assert payload["valid"] is False
+    assert payload["submitted"] is False
     # Missing-later-sections are diagnosable but never block staging.
     assert "SPEC008" in _diagnostic_rules(payload)
 
@@ -122,6 +123,7 @@ def test_stage_append_then_replace_all_controls_draft_content(tmp_path: Path) ->
     appended = _payload(handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"}))
     assert appended["content"] == _HEAD + _TAIL
     assert appended["valid"] is True
+    assert appended["submitted"] is False
 
     replaced = handle_stage_md_artifact(
         session,
@@ -184,6 +186,7 @@ def test_get_md_draft_reports_absence_without_error(tmp_path: Path) -> None:
     payload = _payload(result)
     assert payload["exists"] is False
     assert payload["content"] == ""
+    assert payload["submitted"] is False
 
 
 def test_discard_md_draft_drops_the_draft(tmp_path: Path) -> None:

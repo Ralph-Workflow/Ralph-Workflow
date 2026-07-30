@@ -10,6 +10,7 @@ Writes are atomic (temp write + replace).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -24,6 +25,39 @@ if TYPE_CHECKING:
 #: pin ``max_characters``. Matches ``PlanSizeLimits.DEFAULT.max_total_bytes``
 #: (the 4 MB artifact payload cap) so staging cannot outgrow submission.
 DEFAULT_MD_DRAFT_CHARACTER_CAP: int = PlanSizeLimits.DEFAULT.max_total_bytes
+
+
+@dataclass(frozen=True)
+class UnsubmittedDraftDivergence:
+    """A retained draft differs from the last canonically submitted document."""
+
+    draft_chars: int
+    canonical_chars: int
+
+
+def unsubmitted_draft_divergence(
+    artifact_dir: Path,
+    artifact_type: str,
+    canonical_path: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> UnsubmittedDraftDivergence | None:
+    """Return divergence when authored draft content was never submitted.
+
+    Missing drafts and canonical files are handled by their existing completion
+    gates, so this comparison only reports a readable draft ahead of a readable
+    canonical document.
+    """
+    draft = load_md_draft(artifact_dir, artifact_type, backend=backend)
+    if draft is None or not backend.exists(canonical_path):
+        return None
+    try:
+        canonical = backend.read_text(canonical_path, encoding="utf-8")
+    except OSError:
+        return None
+    if draft == canonical:
+        return None
+    return UnsubmittedDraftDivergence(len(draft), len(canonical))
 
 
 def md_draft_character_cap(spec: MdArtifactSpec) -> int:
@@ -139,4 +173,5 @@ __all__ = [
     "md_draft_path",
     "save_md_draft",
     "seeded_draft_workspace_path",
+    "unsubmitted_draft_divergence",
 ]

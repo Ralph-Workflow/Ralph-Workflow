@@ -15,5 +15,7 @@ Submit a complete plan with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 validates. Use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} with `mode="replace_all"`
 only for a wholesale rewrite. {{GET_MD_DRAFT_TOOL_REFERENCE}} shows the draft,
 and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} submits an assembled staged draft.
-Do not write canonical plan files directly. After a valid receipt, call
+Staging alone does not persist a plan: a draft that differs from the submitted
+document blocks phase completion until you resubmit it or deliberately discard
+it with `ralph_discard_md_draft`. Do not write canonical plan files directly. After a valid receipt, call
 {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action.

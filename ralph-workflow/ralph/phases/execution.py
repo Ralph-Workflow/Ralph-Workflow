@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.mcp.artifacts.development_result import DevelopmentResult
-from ralph.mcp.artifacts.md_draft_io import md_draft_path
+from ralph.mcp.artifacts.md_draft_io import md_draft_path, unsubmitted_draft_divergence
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PlanArtifactValidationError,
@@ -193,6 +193,15 @@ def _validate_plan_output(
         logger.warning("Planning agent completed without producing {}", ra.artifact_path)
         _write_retry_hint(ctx, phase, detail)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
+    divergence = unsubmitted_draft_divergence(
+        Path(ctx.workspace.absolute_path(".agent/artifacts")),
+        ra.artifact_type,
+        Path(ctx.workspace.absolute_path(ra.artifact_path)),
+    )
+    if divergence is not None:
+        detail = "The staged plan draft contains content that was never submitted."
+        _write_retry_hint(ctx, phase, detail, unsubmitted_draft=True)
+        return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
         raw_content = unwrap_phase_artifact_content(
@@ -358,6 +367,7 @@ def _write_retry_hint(
     detail: str,
     *,
     hint_path_override: str | None = None,
+    unsubmitted_draft: bool = False,
 ) -> None:
     hint_path = hint_path_override or retry_hint_path(phase)
     try:
@@ -368,6 +378,7 @@ def _write_retry_hint(
         phase,
         detail,
         registry=registry,
+        unsubmitted_draft=unsubmitted_draft,
     )
     with suppress(Exception):
         ctx.workspace.write(hint_path, hint)

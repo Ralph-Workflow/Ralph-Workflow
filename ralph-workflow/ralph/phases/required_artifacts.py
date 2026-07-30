@@ -127,6 +127,7 @@ def build_retry_hint(
     prior_output: list[str] | None = None,
     submit_tool_name: str | None = None,
     example_payload: str | None = None,
+    unsubmitted_draft: bool = False,
 ) -> str:
     """Build the retry hint for an agent that failed to submit a required artifact.
 
@@ -166,6 +167,12 @@ def build_retry_hint(
         artifact_type, artifact_path = ra.artifact_type, ra.artifact_path
 
     lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
+    if unsubmitted_draft:
+        lines.append(
+            "Your staged draft contains content that was never submitted. Resubmit it with "
+            "ralph_edit_md_artifact (it submits when valid), or deliberately abandon it with "
+            "ralph_discard_md_draft before declaring completion."
+        )
     tool = submit_tool_name or "the submit-artifact MCP tool"
     if artifact_path is not None and artifact_path.endswith(".md"):
         legacy_path = f"{artifact_path[:-3]}.json"

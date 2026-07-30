@@ -180,6 +180,10 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         """Decode the JSON-RPC request body. Returns (data, request, error_msg)."""
         length = int(self.headers.get("Content-Length", "0"))
         payload = self.rfile.read(length)
+        if len(payload) != length:
+            return None, None, (
+                f"Parse error: truncated request body (expected {length} bytes, received {len(payload)})"
+            )
         try:
             decoded: object = json.loads(payload or b"{}")
         except json.JSONDecodeError as exc:

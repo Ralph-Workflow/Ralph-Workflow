@@ -448,7 +448,7 @@ def _draft_status_payload(
     """
     document, _ = parse_markdown_document(draft)
     diagnostics, overridden = analysis or _validate_with_overrides(artifact_type, draft)
-    payload: dict[str, object] = {"artifact_type": artifact_type}
+    payload: dict[str, object] = {"artifact_type": artifact_type, "submitted": False}
     if exists is not None:
         payload["exists"] = exists
         payload["content"] = draft

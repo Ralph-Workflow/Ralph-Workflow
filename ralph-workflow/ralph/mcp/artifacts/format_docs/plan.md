@@ -68,7 +68,9 @@ For a similar revision, use `ralph_edit_md_artifact` on the staged draft. It
 submits automatically when the edited draft has no errors. Use
 `ralph_stage_md_artifact` with `mode="replace_all"` only for a wholesale rewrite;
 inspect with `ralph_get_md_draft` and submit an assembled draft with
-`ralph_finalize_md_artifact`.
+`ralph_finalize_md_artifact`. Staging is not submission: a retained draft that
+differs from the canonical document blocks phase completion until it is
+resubmitted or deliberately abandoned with `ralph_discard_md_draft`.
 
 Do not write `.agent/artifacts/plan.md` directly. After a valid submission,
 call `declare_complete` as the final action.
