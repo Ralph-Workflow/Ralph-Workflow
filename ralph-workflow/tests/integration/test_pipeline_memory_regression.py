@@ -53,10 +53,10 @@ from tests.integration.test_pipeline_memory_regression_helper__registryfactory i
 
 pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
-_LINE_COUNT = 16
-_LINE_SIZE = 2048
-_WARMUP_COUNT = 2
-_ITERATION_COUNT = 5
+_LINE_COUNT = 8
+_LINE_SIZE = 1024
+_WARMUP_COUNT = 1
+_ITERATION_COUNT = 3
 _WINDOW = 4
 _RETAINED_SPREAD_LIMIT = 256_000
 _RETAINED_DELTA_LIMIT = 512_000

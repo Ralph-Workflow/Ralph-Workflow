@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -25,8 +24,6 @@ from ralph.mcp.tools.workspace import (
 from ralph.workspace.fs import FsWorkspace
 from tests.mock_session import MockSession
 from tests.mock_session_with_manifest import MockSessionWithManifest
-
-pytestmark = pytest.mark.subprocess_e2e
 
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
@@ -108,37 +105,33 @@ class TestHandleReadImage:
             f"Expected ralph://media/ URI, got: {content.uri}"
         )
 
-    def test_returns_image_content_block_on_success(self) -> None:
+    def test_returns_image_content_block_on_success(self, tmp_path: Path) -> None:
         png_bytes = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
             "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         )
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(png_bytes)
-            temp_path = f.name
+        media_file = tmp_path / "test.png"
+        media_file.write_bytes(png_bytes)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
+        ws = MagicMock()
+        ws.absolute_path.return_value = str(media_file)
 
-            # MockSessionWithManifest with INLINE_IMAGE support (claude model)
-            result = handle_read_image(
-                MockSessionWithManifest(
-                    MEDIA_READ_CAPABILITY,
-                    model_identity=MultimodalModelIdentity(provider="claude"),
-                ),
-                ws,
-                {"path": "test.png"},
-            )
-            assert result.is_error is False
-            assert len(result.content) == 1
-            content = result.content[0]
-            assert isinstance(content, ImageContent)
-            assert content.type == "image"
-            assert content.mime_type == "image/png"
-        finally:
-            Path(temp_path).unlink()
+        # MockSessionWithManifest with INLINE_IMAGE support (claude model)
+        result = handle_read_image(
+            MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="claude"),
+            ),
+            ws,
+            {"path": "test.png"},
+        )
+        assert result.is_error is False
+        assert len(result.content) == 1
+        content = result.content[0]
+        assert isinstance(content, ImageContent)
+        assert content.type == "image"
+        assert content.mime_type == "image/png"
 
     def test_read_file_unchanged_text_only(self) -> None:
         ws = MagicMock()

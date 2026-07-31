@@ -37,7 +37,7 @@ import pytest
 # black-box entry point; excluded from the 60s combined ``make verify``
 # test budget (the script spawns python and walks the repo's link graph)
 # and tagged so the audit_test_policy subprocess gate allows the call.
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_route_page_links.py"

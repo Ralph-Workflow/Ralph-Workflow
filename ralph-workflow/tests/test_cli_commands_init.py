@@ -1,9 +1,4 @@
-"""Tests for ralph.cli.commands.init baseline capability integration.
-
-These tests are subprocess_e2e: they exercise the real `ralph --init` entry
-point and its full filesystem path. They cannot be mocked down to the
-per-test 1 s budget without losing the end-to-end contract they assert.
-"""
+"""Tests for ralph.cli.commands.init baseline capability integration."""
 
 from __future__ import annotations
 
@@ -26,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
+pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO:

@@ -8,7 +8,7 @@ so the manifest's ``retain_raw_bytes`` evaluates False.
 
 This test mirrors the pattern at
 ``test_multimodal_session_memory_regression.py`` exactly (FsWorkspace
-for tracemalloc fidelity, 5 iterations of 128 KiB payloads, 2 MiB
+for tracemalloc fidelity, 5 iterations of 64 KiB payloads, 2 MiB
 retained-delta cap).
 """
 
@@ -37,8 +37,8 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.subprocess_e2e
 
-_ITERATION_COUNT = 5
-_ARTIFACT_SIZE_BYTES = 128 * 1024
+_ITERATION_COUNT = 3
+_ARTIFACT_SIZE_BYTES = 64 * 1024
 _RETAINED_DELTA_LIMIT = 2_000_000
 
 

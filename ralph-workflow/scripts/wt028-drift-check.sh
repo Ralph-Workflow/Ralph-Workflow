@@ -111,7 +111,7 @@ trap cleanup EXIT
 # token separators, and CPython's tokenizer rejects non-ASCII
 # whitespace between tokens -- so no reachable .py drift can hide
 # in the gap.
-GREP_TIMEOUT_SECONDS=2
+GREP_TIMEOUT_SECONDS="${GREP_TIMEOUT_SECONDS:-2}"
 # Scan the tracked set with ``git grep -lIE`` (uses the git index --
 # ~0.5-0.9 s cold cache on this tree) and the untracked set with
 # ``git grep --no-index`` on the small untracked file list. The

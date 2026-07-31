@@ -1,4 +1,8 @@
-"""Tests for the Node upstream skill sync script."""
+"""Tests for the Node upstream skill sync script.
+
+JSON/manifest contract tests run in the default suite. Tests that spawn
+Node or a local HTTP fixture are marked ``subprocess_e2e``.
+"""
 
 from __future__ import annotations
 
@@ -15,8 +19,6 @@ from shutil import which
 import pytest
 
 from ralph.skills._content import BASELINE_SKILL_NAMES
-
-pytestmark = pytest.mark.subprocess_e2e
 
 PACKAGE_OWNED_SKILLS = frozenset(
     {
@@ -58,6 +60,7 @@ def test_upstream_manifest_covers_all_shipped_skills_and_declares_sources() -> N
             assert source_type == "upstream"
 
 
+@pytest.mark.subprocess_e2e
 def test_sync_script_fetches_upstream_content(tmp_path: Path) -> None:
     node_binary = which("node")
     assert node_binary is not None
@@ -123,6 +126,7 @@ def test_sync_script_fetches_upstream_content(tmp_path: Path) -> None:
     assert metadata["skill_sources"]["demo-skill"]["repo"] == "https://github.com/example/upstream"
 
 
+@pytest.mark.subprocess_e2e
 def test_sync_script_copies_package_owned_skill_content(tmp_path: Path) -> None:
     node_binary = which("node")
     assert node_binary is not None

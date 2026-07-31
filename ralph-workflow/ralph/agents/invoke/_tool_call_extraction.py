@@ -2,7 +2,7 @@
 
 Extracted from ``_process_reader.py`` to keep the line-reader module
 under the 1000-line policy cap enforced by
-``tests/integration/test_policy_file_rules.py``. The helpers are
+``ralph.testing.audit_repo_structure`` (wired into ``make verify``). The helpers are
 unchanged - they are best-effort extractors of
 ``(tool_name, tool_args)`` pairs from the canonical envelope
 shapes consumed by the tool-call repetition breaker

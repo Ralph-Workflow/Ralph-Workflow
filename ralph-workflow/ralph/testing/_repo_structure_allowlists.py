@@ -1132,7 +1132,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # newly wired repo-structure audit. The wt-047 change added
         # 13 lines to _NOQA_ALLOWLIST in audit_lint_bypass.py; the
         # _check_pyproject_config marker (PLR0912) therefore sits at
-        # Locked by tests/integration/test_policy_file_rules.py.
+        # Locked by ``make verify`` via ``ralph.testing.audit_repo_structure``.
         ("ralph/testing/audit_lint_bypass.py", 522),
         # wt-047-stall-label: subscriber._format_waiting_status_line
         # renders one explicit line per WaitingStatusKind (ENTERED /

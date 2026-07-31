@@ -1,10 +1,4 @@
-"""Black-box CLI tests verifying that ralph --diagnose renders PATH availability.
-
-These tests are subprocess_e2e: they exercise the real `ralph --diagnose`
-entry point and its full CLI rendering path. They cannot be mocked down
-to the per-test 1 s budget without losing the end-to-end contract they
-assert.
-"""
+"""CLI tests verifying that ralph --diagnose renders PATH availability."""
 
 from __future__ import annotations
 
@@ -29,7 +23,7 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
-pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 class BootstrapResultStub:

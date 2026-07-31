@@ -3,9 +3,12 @@
 Verifies that the module-level RuntimeError checks in ralph.verify
 cannot be stripped by ``python -O`` and fire on invariant violations.
 
-Uses subprocess-based tests because the invariants are checked at
-import time — modifying module globals after import is not possible
-since ``importlib.reload()`` re-executes the full module body.
+Uses two batched subprocesses (one normal interpreter, one ``python -O``)
+because the invariants are checked at import time — modifying module
+globals after import is not possible since ``importlib.reload()``
+re-executes the full module body. Each case still gets its own patched
+temp copy; the child loops cases in-process so the suite pays two cold
+Python startups instead of ~18.
 
 .. note::
 
@@ -20,132 +23,30 @@ since ``importlib.reload()`` re-executes the full module body.
 
 from __future__ import annotations
 
-import contextlib
+import json
 import subprocess
 import sys
-import tempfile
+import textwrap
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
-# Each test imports a patched module in a child interpreter; Python 3.14 startup exceeds 1s.
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+# Two cold starts (normal + -O); each child imports many patched copies.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
 
 
-def _get_verify_path() -> str:
+def _get_verify_path() -> Path:
     """Return the absolute path to ralph/verify.py."""
-    # Use relative to this test file
-    test_dir = Path(__file__).parent
-    return str(test_dir.parent / "ralph" / "verify.py")
+    return Path(__file__).parent.parent / "ralph" / "verify.py"
 
 
-def _run_patched_import(
-    constant_value: float, *, minus_o: bool = False
-) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess that patches verify.py's budget constant and imports it.
-
-    Creates a temporary copy of verify.py with the constant replaced,
-    then tries to import it. Returns the subprocess result.
-    """
-    verify_path = _get_verify_path()
-    repo_root = str(Path(verify_path).parent.parent)
-    original = Path(verify_path).read_text(encoding="utf-8")
-
-    # Patch the constant value
-    patched = original.replace(
-        "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0",
-        f"_TOTAL_TEST_BUDGET_SECONDS: Final = {constant_value}",
-    )
-
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", prefix="verify_patched_", delete=False
-    ) as f:
-        f.write(patched)
-        f.flush()
-        tmp_path = f.name
-
-    try:
-        # Create a runner script that imports the patched verify.py
-        runner = (
-            "import sys\n"
-            f"sys.path.insert(0, {repo_root!r})\n"
-            f"import importlib.util\n"
-            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
-            f"mod = importlib.util.module_from_spec(spec)\n"
-            f"spec.loader.exec_module(mod)\n"
-            "print('OK')\n"
-        )
-
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", runner])
-
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(Path(verify_path).parent.parent),
-            check=False,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(tmp_path).unlink()
-
-
-# --- Positive: clean import works ---
-
-
-def test_verify_import_clean_via_subprocess() -> None:
-    """Importing verify.py with correct constants (60.0) should succeed."""
-    result = _run_patched_import(60.0)
-    assert result.returncode == 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "OK" in result.stdout
-
-
-def test_verify_import_clean_under_minus_o() -> None:
-    """Importing verify.py under -O with correct constants should succeed."""
-    result = _run_patched_import(60.0, minus_o=True)
-    assert result.returncode == 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "OK" in result.stdout
-
-
-# --- Negative: budget constant violations ---
-
-
-def test_budget_must_be_positive() -> None:
-    """_TOTAL_TEST_BUDGET_SECONDS = -1.0 should raise RuntimeError."""
-    result = _run_patched_import(-1.0)
-    assert result.returncode != 0
-    assert "RuntimeError" in result.stderr
-    assert "must be positive" in result.stderr
-
-
-def test_budget_must_be_60() -> None:
-    """_TOTAL_TEST_BUDGET_SECONDS = 61.0 should raise RuntimeError."""
-    result = _run_patched_import(61.0)
-    assert result.returncode != 0
-    assert "RuntimeError" in result.stderr
-    assert "must be 60.0" in result.stderr
-
-
-# --- Negative: -O does not strip checks ---
-
-
-def test_budget_violation_survives_minus_o() -> None:
-    """Budget violation must still raise RuntimeError under python -O."""
-    result = _run_patched_import(-1.0, minus_o=True)
-    assert result.returncode != 0
-    assert "RuntimeError" in result.stderr
-    assert "must be positive" in result.stderr
-
-
-# --- Negative: label and budget integrity invariants ---
+class _CaseSpec(TypedDict):
+    name: str
+    patches: list[tuple[str, str]]
+    minus_o: bool
+    expect_ok: bool
+    stderr_substrings: list[str]
 
 
 def _replace_once(source: str, old: str, new: str) -> str:
@@ -162,412 +63,370 @@ def _replace_once(source: str, old: str, new: str) -> str:
             f"ralph/verify.py no longer contains the patch anchor {old!r};"
             " update this test's anchor to match the current source."
         )
-    return source.replace(old, new)
+    return source.replace(old, new, 1)
 
 
-def _run_label_patched_import(
-    known_test_step_labels: frozenset[str] | None = None,
-    budget_tracked_steps: frozenset[int] | None = None,
-    *,
-    minus_o: bool = False,
-) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess that patches verify.py's label/steps constants and imports it.
-
-    Creates a temporary copy of verify.py with the given constants replaced.
-    Only patches the constants that are provided (not None).
-    """
-    verify_path = _get_verify_path()
-    repo_root = str(Path(verify_path).parent.parent)
-    original = Path(verify_path).read_text(encoding="utf-8")
-    patched = original
-
-    if known_test_step_labels is not None:
-        old = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
-        # Build replacement with the given labels sorted.
-        labels_repr = sorted(known_test_step_labels)
-        new = f"_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({labels_repr!r})"
-        patched = _replace_once(patched, old, new)
-
-    if budget_tracked_steps is not None:
-        old = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
-        new = f"_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({sorted(budget_tracked_steps)!r})"
-        patched = _replace_once(patched, old, new)
-
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", prefix="verify_patched_", delete=False
-    ) as f:
-        f.write(patched)
-        f.flush()
-        tmp_path = f.name
-
-    try:
-        runner = (
-            "import sys\n"
-            f"sys.path.insert(0, {repo_root!r})\n"
-            f"import importlib.util\n"
-            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
-            f"mod = importlib.util.module_from_spec(spec)\n"
-            f"spec.loader.exec_module(mod)\n"
-            "print('OK')\n"
-        )
-
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", runner])
-
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(Path(verify_path).parent.parent),
-            check=False,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(tmp_path).unlink()
-
-
-def test_known_test_step_labels_must_not_be_empty() -> None:
-    """Empty _KNOWN_TEST_STEP_LABELS should raise RuntimeError."""
-    result = _run_label_patched_import(known_test_step_labels=frozenset())
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+def _invariant_cases() -> list[_CaseSpec]:
+    """All import-time invariant cases exercised by this module."""
+    empty_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset([])"
+    other_labels = (
+        "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(['other test'])"
     )
-    assert "RuntimeError" in result.stderr
-    assert "_KNOWN_TEST_STEP_LABELS must not be empty" in result.stderr
-
-
-def test_budget_tracked_steps_must_not_be_empty() -> None:
-    """Empty _BUDGET_TRACKED_STEPS should raise RuntimeError."""
-    result = _run_label_patched_import(budget_tracked_steps=frozenset())
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    empty_budget_steps = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset([])"
+    labels_anchor = (
+        '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
     )
-    assert "RuntimeError" in result.stderr
-    assert "_BUDGET_TRACKED_STEPS must not be empty" in result.stderr
-
-
-def test_make_test_must_be_in_known_labels() -> None:
-    """_KNOWN_TEST_STEP_LABELS without 'make test' should raise RuntimeError."""
-    result = _run_label_patched_import(known_test_step_labels=frozenset({"other test"}))
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    budget_steps_anchor = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
+    budget_anchor = "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0"
+    step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
+    integration_anchor = "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0"
+    resource_label_anchor = (
+        '"resource lifecycle audit (audit_resource_lifecycle)"'
     )
-    assert "RuntimeError" in result.stderr
-    assert "_KNOWN_TEST_STEP_LABELS must contain 'make test'" in result.stderr
+    resource_label_gone = '"resource lifecycle audit (REMOVED)"'
+
+    return [
+        {
+            "name": "clean_import",
+            "patches": [],
+            "minus_o": False,
+            "expect_ok": True,
+            "stderr_substrings": [],
+        },
+        {
+            "name": "clean_import_minus_o",
+            "patches": [],
+            "minus_o": True,
+            "expect_ok": True,
+            "stderr_substrings": [],
+        },
+        {
+            "name": "budget_must_be_positive",
+            "patches": [(budget_anchor, "_TOTAL_TEST_BUDGET_SECONDS: Final = -1.0")],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "budget_must_be_60",
+            "patches": [(budget_anchor, "_TOTAL_TEST_BUDGET_SECONDS: Final = 61.0")],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be 60.0"],
+        },
+        {
+            "name": "budget_violation_survives_minus_o",
+            "patches": [(budget_anchor, "_TOTAL_TEST_BUDGET_SECONDS: Final = -1.0")],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "known_labels_must_not_be_empty",
+            "patches": [(labels_anchor, empty_labels)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_KNOWN_TEST_STEP_LABELS must not be empty",
+            ],
+        },
+        {
+            "name": "budget_tracked_steps_must_not_be_empty",
+            "patches": [(budget_steps_anchor, empty_budget_steps)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_BUDGET_TRACKED_STEPS must not be empty",
+            ],
+        },
+        {
+            "name": "make_test_must_be_in_known_labels",
+            "patches": [(labels_anchor, other_labels)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_KNOWN_TEST_STEP_LABELS must contain 'make test'",
+            ],
+        },
+        {
+            "name": "label_invariant_survives_minus_o",
+            "patches": [(labels_anchor, empty_labels)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_KNOWN_TEST_STEP_LABELS must not be empty",
+            ],
+        },
+        {
+            "name": "budget_steps_invariant_survives_minus_o",
+            "patches": [(budget_steps_anchor, empty_budget_steps)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_BUDGET_TRACKED_STEPS must not be empty",
+            ],
+        },
+        {
+            "name": "verify_step_timeout_must_be_positive",
+            "patches": [
+                (step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "verify_step_timeout_must_be_minimum",
+            "patches": [
+                (step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 1.0")
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be at least 5.0"],
+        },
+        {
+            "name": "verify_step_timeout_survives_minus_o",
+            "patches": [
+                (step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")
+            ],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "integration_per_test_timeout_must_be_1",
+            "patches": [
+                (
+                    integration_anchor,
+                    "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 2.0",
+                )
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0",
+            ],
+        },
+        {
+            "name": "integration_per_test_timeout_survives_minus_o",
+            "patches": [
+                (
+                    integration_anchor,
+                    "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 2.0",
+                )
+            ],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0",
+            ],
+        },
+        {
+            "name": "audit_resource_lifecycle_step_must_be_present",
+            "patches": [(resource_label_anchor, resource_label_gone)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": [
+                "RuntimeError",
+                "audit_resource_lifecycle",
+                "must be present",
+            ],
+        },
+        {
+            "name": "audit_resource_lifecycle_survives_minus_o",
+            "patches": [(resource_label_anchor, resource_label_gone)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_resource_lifecycle"],
+        },
+    ]
 
 
-def test_label_invariant_survives_minus_o() -> None:
-    """Label invariants must still raise RuntimeError under python -O."""
-    result = _run_label_patched_import(
-        known_test_step_labels=frozenset(),
-        minus_o=True,
+def _child_script(verify_path: Path, repo_root: Path, cases: list[_CaseSpec]) -> str:
+    """Build a child that imports each patched verify copy in-process."""
+    cases_literal = repr(
+        [
+            {
+                "name": case["name"],
+                "patches": case["patches"],
+                "expect_ok": case["expect_ok"],
+                "stderr_substrings": case["stderr_substrings"],
+            }
+            for case in cases
+        ]
     )
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "_KNOWN_TEST_STEP_LABELS must not be empty" in result.stderr
+    return textwrap.dedent(
+        f"""\
+        import importlib.util
+        import io
+        import json
+        import sys
+        import tempfile
+        import traceback
+        from contextlib import redirect_stderr
+        from pathlib import Path
 
+        verify_path = Path({str(verify_path)!r})
+        repo_root = Path({str(repo_root)!r})
+        original = verify_path.read_text(encoding="utf-8")
+        cases = {cases_literal}
+        sys.path.insert(0, str(repo_root))
+        results = []
 
-def test_budget_steps_invariant_survives_minus_o() -> None:
-    """Budget steps invariants must still raise RuntimeError under python -O."""
-    result = _run_label_patched_import(
-        budget_tracked_steps=frozenset(),
-        minus_o=True,
-    )
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "_BUDGET_TRACKED_STEPS must not be empty" in result.stderr
+        def replace_once(source, old, new):
+            if old not in source:
+                raise AssertionError(f"missing patch anchor {{old!r}}")
+            return source.replace(old, new, 1)
 
+        for index, case in enumerate(cases):
+            patched = original
+            try:
+                for old, new in case["patches"]:
+                    patched = replace_once(patched, old, new)
+            except AssertionError as exc:
+                results.append({{
+                    "name": case["name"],
+                    "ok": False,
+                    "stderr": str(exc),
+                    "patch_error": True,
+                    "expect_ok": case["expect_ok"],
+                    "stderr_substrings": case["stderr_substrings"],
+                }})
+                continue
 
-# ---------------------------------------------------------------------------
-# _VERIFY_STEP_TIMEOUT_SECONDS invariant tests
-# ---------------------------------------------------------------------------
-
-
-def _run_step_timeout_patched_import(
-    step_timeout_value: float, *, minus_o: bool = False
-) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess that patches verify.py's _VERIFY_STEP_TIMEOUT_SECONDS.
-
-    Creates a temporary copy of verify.py with the constant replaced,
-    then tries to import it. Returns the subprocess result.
-    """
-    verify_path = _get_verify_path()
-    repo_root = str(Path(verify_path).parent.parent)
-    original = Path(verify_path).read_text(encoding="utf-8")
-
-    # Patch the _VERIFY_STEP_TIMEOUT_SECONDS constant value.
-    patched = original.replace(
-        "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0",
-        f"_VERIFY_STEP_TIMEOUT_SECONDS: Final = {step_timeout_value}",
-    )
-
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", prefix="verify_patched_", delete=False
-    ) as f:
-        f.write(patched)
-        f.flush()
-        tmp_path = f.name
-
-    try:
-        runner = (
-            "import sys\n"
-            f"sys.path.insert(0, {repo_root!r})\n"
-            f"import importlib.util\n"
-            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
-            f"mod = importlib.util.module_from_spec(spec)\n"
-            f"spec.loader.exec_module(mod)\n"
-            "print('OK')\n"
-        )
-
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", runner])
-
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(Path(verify_path).parent.parent),
-            check=False,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(tmp_path).unlink()
-
-
-def test_verify_step_timeout_must_be_positive() -> None:
-    """_VERIFY_STEP_TIMEOUT_SECONDS = 0.0 should raise RuntimeError."""
-    result = _run_step_timeout_patched_import(0.0)
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "must be positive" in result.stderr
-
-
-def test_verify_step_timeout_must_be_minimum() -> None:
-    """_VERIFY_STEP_TIMEOUT_SECONDS = 1.0 should raise RuntimeError (below 5.0)."""
-    result = _run_step_timeout_patched_import(1.0)
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "must be at least 5.0" in result.stderr
-
-
-def test_verify_step_timeout_invariant_survives_minus_o() -> None:
-    """_VERIFY_STEP_TIMEOUT_SECONDS invariants must survive python -O."""
-    result = _run_step_timeout_patched_import(0.0, minus_o=True)
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "must be positive" in result.stderr
-
-
-# ---------------------------------------------------------------------------
-# _INTEGRATION_PER_TEST_TIMEOUT_SECONDS invariant tests
-# ---------------------------------------------------------------------------
-
-
-def _run_integration_timeout_patched_import(
-    timeout_value: float, *, minus_o: bool = False
-) -> subprocess.CompletedProcess[str]:
-    verify_path = _get_verify_path()
-    repo_root = str(Path(verify_path).parent.parent)
-    original = Path(verify_path).read_text(encoding="utf-8")
-
-    patched = original.replace(
-        "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0",
-        f"_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = {timeout_value}",
-    )
-
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", prefix="verify_patched_", delete=False
-    ) as f:
-        f.write(patched)
-        f.flush()
-        tmp_path = f.name
-
-    try:
-        runner = (
-            "import sys\n"
-            f"sys.path.insert(0, {repo_root!r})\n"
-            f"import importlib.util\n"
-            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
-            f"mod = importlib.util.module_from_spec(spec)\n"
-            f"spec.loader.exec_module(mod)\n"
-            "print('OK')\n"
-        )
-
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", runner])
-
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(Path(verify_path).parent.parent),
-            check=False,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(tmp_path).unlink()
-
-
-def test_integration_per_test_timeout_must_be_1() -> None:
-    """_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 2.0 should raise RuntimeError."""
-    result = _run_integration_timeout_patched_import(2.0)
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr
-
-
-def test_integration_per_test_timeout_invariant_survives_minus_o() -> None:
-    """_INTEGRATION_PER_TEST_TIMEOUT_SECONDS invariant must survive python -O."""
-    result = _run_integration_timeout_patched_import(2.0, minus_o=True)
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr
-
-
-# ---------------------------------------------------------------------------
-# audit_resource_lifecycle containment invariant tests (wt-024 memory-perf AC-05)
-# ---------------------------------------------------------------------------
-
-
-def _run_resource_lifecycle_patched_import(
-    *,
-    drop_step: bool = False,
-    minus_o: bool = False,
-) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess that patches verify.py to remove the
-    ``audit_resource_lifecycle`` step label from ``_VERIFY_STEPS`` and
-    imports it. Mirrors the pattern at
-    ``_run_label_patched_import`` (the per-step label tests above)
-    but specifically targets the audit_resource_lifecycle
-    containment invariant added in step 8.
-
-    The patch is surgical: the ``resource lifecycle audit`` tuple
-    (the only step whose label contains ``audit_resource_lifecycle``)
-    is replaced with a label whose ``audit_resource_lifecycle`` substring
-    is removed (``"resource lifecycle audit (REMOVED)"``). The
-    invariant then fires because no remaining step carries the
-    ``audit_resource_lifecycle`` substring.
-
-    The other invariants (_BUDGET_TRACKED_STEPS, _KNOWN_TEST_STEP_LABELS,
-    audit_mcp_timeout) are NOT affected because they check different
-    subsets of the step labels and the tuple shape is unchanged.
-    """
-    verify_path = _get_verify_path()
-    repo_root = str(Path(verify_path).parent.parent)
-    original = Path(verify_path).read_text(encoding="utf-8")
-
-    if drop_step:
-        # Replace the resource-lifecycle step's label so the
-        # ``audit_resource_lifecycle`` substring is removed. Keep the
-        # rest of the tuple (command, args, timeout) intact.
-        patched = original.replace(
-            '"resource lifecycle audit (audit_resource_lifecycle)"',
-            '"resource lifecycle audit (REMOVED)"',
-        )
-        if patched == original:
-            raise AssertionError(
-                "patch could not find the resource-lifecycle step label; verify.py may have changed"
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".py",
+                prefix="verify_patched_",
+                delete=False,
+                encoding="utf-8",
             )
-    else:
+            try:
+                tmp.write(patched)
+                tmp.flush()
+                tmp_path = tmp.name
+            finally:
+                tmp.close()
+
+            err = io.StringIO()
+            ok = False
+            stderr_text = ""
+            try:
+                with redirect_stderr(err):
+                    mod_name = f"ralph.verify_invariant_case_{{index}}"
+                    spec = importlib.util.spec_from_file_location(mod_name, tmp_path)
+                    if spec is None or spec.loader is None:
+                        raise RuntimeError("failed to build import spec")
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[mod_name] = mod
+                    try:
+                        spec.loader.exec_module(mod)
+                        ok = True
+                    finally:
+                        sys.modules.pop(mod_name, None)
+            except Exception:
+                stderr_text = err.getvalue() + traceback.format_exc()
+            else:
+                stderr_text = err.getvalue()
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
+
+            results.append({{
+                "name": case["name"],
+                "ok": ok,
+                "stderr": stderr_text,
+                "patch_error": False,
+                "expect_ok": case["expect_ok"],
+                "stderr_substrings": case["stderr_substrings"],
+            }})
+
+        print("RESULTS_JSON:" + json.dumps(results))
+        """
+    )
+
+
+def _run_batch(cases: list[_CaseSpec], *, minus_o: bool) -> list[dict[str, object]]:
+    """Run ``cases`` in one child interpreter (optionally under ``-O``)."""
+    verify_path = _get_verify_path()
+    repo_root = verify_path.parent.parent
+    script = _child_script(verify_path, repo_root, cases)
+    cmd = [sys.executable]
+    if minus_o:
+        cmd.append("-O")
+    cmd.extend(["-c", script])
+    completed = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=str(repo_root),
+        check=False,
+    )
+    assert completed.returncode == 0, (
+        f"batch runner failed minus_o={minus_o} rc={completed.returncode}\n"
+        f"stdout={completed.stdout}\nstderr={completed.stderr}"
+    )
+    marker = "RESULTS_JSON:"
+    assert marker in completed.stdout, (
+        f"missing results marker minus_o={minus_o}\n"
+        f"stdout={completed.stdout}\nstderr={completed.stderr}"
+    )
+    payload = completed.stdout.rsplit(marker, 1)[1].strip().splitlines()[0]
+    results: list[dict[str, object]] = json.loads(payload)
+    return results
+
+
+def _assert_results(
+    cases: list[_CaseSpec], results: list[dict[str, object]]
+) -> None:
+    """Assert each case matched its expected import outcome."""
+    assert len(results) == len(cases)
+    failures: list[str] = []
+    for case, result in zip(cases, results, strict=True):
+        assert result["name"] == case["name"]
+        if result.get("patch_error"):
+            failures.append(f"{case['name']}: patch error: {result['stderr']}")
+            continue
+        if case["expect_ok"]:
+            if not result["ok"]:
+                failures.append(
+                    f"{case['name']}: expected OK import, stderr={result['stderr']!r}"
+                )
+            continue
+        if result["ok"]:
+            failures.append(f"{case['name']}: expected RuntimeError, got OK")
+            continue
+        stderr = str(result["stderr"])
+        missing = [s for s in case["stderr_substrings"] if s not in stderr]
+        if missing:
+            failures.append(
+                f"{case['name']}: missing {missing!r} in stderr={stderr!r}"
+            )
+    assert not failures, "\n".join(failures)
+
+
+def test_verify_import_time_invariants_batched() -> None:
+    """All verify.py import-time invariants in two cold Python startups.
+
+    Non-``-O`` cases share one interpreter; ``-O`` survival cases share
+    another. Each case still patches a fresh temp copy of verify.py.
+    """
+    verify_path = _get_verify_path()
+    original = verify_path.read_text(encoding="utf-8")
+    cases = _invariant_cases()
+    for case in cases:
         patched = original
+        for old, new in case["patches"]:
+            patched = _replace_once(patched, old, new)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", prefix="verify_patched_", delete=False
-    ) as f:
-        f.write(patched)
-        f.flush()
-        tmp_path = f.name
-
-    try:
-        runner = (
-            "import sys\n"
-            f"sys.path.insert(0, {repo_root!r})\n"
-            f"import importlib.util\n"
-            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
-            f"mod = importlib.util.module_from_spec(spec)\n"
-            f"spec.loader.exec_module(mod)\n"
-            "print('OK')\n"
-        )
-
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", runner])
-
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(Path(verify_path).parent.parent),
-            check=False,
-        )
-    finally:
-        with contextlib.suppress(OSError):
-            Path(tmp_path).unlink()
-
-
-def test_audit_resource_lifecycle_step_must_be_present() -> None:
-    """Removing the ``audit_resource_lifecycle`` step label MUST raise
-    RuntimeError — the contract cannot be silently dropped.
-
-    Mirrors the audit_mcp_timeout containment invariant added at
-    verify.py:317, this guards against a future commit that drops
-    the resource-lifecycle step from ``_VERIFY_STEPS`` and reopens
-    the unbounded-accumulator / non-daemon-thread / bare-HTTP-client
-    leak class.
-    """
-    result = _run_resource_lifecycle_patched_import(drop_step=True)
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "audit_resource_lifecycle" in result.stderr
-    assert "must be present" in result.stderr
-
-
-def test_audit_resource_lifecycle_invariant_survives_minus_o() -> None:
-    """The audit_resource_lifecycle containment invariant must survive
-    python -O (if/raise RuntimeError, NOT assert).
-    """
-    result = _run_resource_lifecycle_patched_import(
-        drop_step=True,
-        minus_o=True,
-    )
-    assert result.returncode != 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "RuntimeError" in result.stderr
-    assert "audit_resource_lifecycle" in result.stderr
-
-
-def test_audit_resource_lifecycle_step_present_passes() -> None:
-    """Sanity: when the step is NOT removed, the import succeeds cleanly."""
-    result = _run_resource_lifecycle_patched_import(drop_step=False)
-    assert result.returncode == 0, (
-        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
-    )
-    assert "OK" in result.stdout
+    normal = [case for case in cases if not case["minus_o"]]
+    under_o = [case for case in cases if case["minus_o"]]
+    _assert_results(normal, _run_batch(normal, minus_o=False))
+    _assert_results(under_o, _run_batch(under_o, minus_o=True))

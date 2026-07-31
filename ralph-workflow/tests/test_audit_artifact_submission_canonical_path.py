@@ -5,17 +5,11 @@ The canonical-path audit enforces that all artifact submission side effects
 submit/receipt helpers) route through ``submit_artifact_canonical``. These tests
 pin the detection rules and the allow-list behavior.
 
-The file is marked ``subprocess_e2e`` (via the file-level ``pytestmark``) because
-the ``test_audit_invariants_*`` tests spawn a fresh ``python`` / ``python -O``
-subprocess to verify that the audit module's import-time invariants survive
-the optimizer. That subprocess I/O exceeds the 1 s per-test timeout on
-``make test`` under parallel load (9200+ tests, ``PYTEST_WORKERS=auto``) and
-must run under the dedicated ``test-subprocess-e2e`` target with a sized
-per-test timeout instead. The non-invariant tests (parser / write-detection
-unit tests) do not spawn subprocesses but the file-level marker is correct
-because (a) they share the audit helper module surface that the invariants
-guard, and (b) keeping the entire file in one suite preserves the audit
-invariant that the in-process and subprocess paths stay in lock-step.
+Only the ``test_audit_invariants_*`` cases spawn a fresh ``python`` /
+``python -O`` subprocess to verify import-time invariants; those carry
+``subprocess_e2e`` + a sized per-test timeout. The parser / write-detection
+unit tests stay in the default suite (tmp_path AST fixtures, no real
+subprocess) so they do not inflate the 60 s ``test-subprocess-e2e`` cap.
 """
 
 from __future__ import annotations
@@ -36,13 +30,6 @@ from ralph.testing.audit_artifact_submission_canonical_path import (
     audit_file,
     main,
 )
-
-# File-level markers. ``subprocess_e2e`` excludes this file from ``make test``
-# (the budget-tracked 60 s step) because the audit-invariants tests spawn a
-# subprocess that can exceed 1 s under parallel load. ``timeout_seconds(5)``
-# gives the subprocess tests a sized per-test budget (5 s is 5x the default
-# 1 s budget and well under the 60 s per-suite cap on ``test-subprocess-e2e``).
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 def _write(tmp_path: Path, rel_path: str, src: str) -> Path:
@@ -365,7 +352,7 @@ def _run_patched_audit_import(
             cmd,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=5,
             cwd=repo_root,
             check=False,
         )
@@ -377,6 +364,8 @@ def _run_patched_audit_import(
 # --- Positive: clean import works ---
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_import_clean_via_subprocess() -> None:
     """Importing audit module with correct constants should succeed."""
     result = _run_patched_audit_import(
@@ -389,6 +378,8 @@ def test_audit_invariants_import_clean_via_subprocess() -> None:
     assert "OK" in result.stdout
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_import_clean_under_minus_o() -> None:
     """Importing audit module under -O with correct constants should succeed."""
     result = _run_patched_audit_import(
@@ -405,6 +396,8 @@ def test_audit_invariants_import_clean_under_minus_o() -> None:
 # --- Negative: invariant violations ---
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_canonical_types_is_empty() -> None:
     """_CANONICAL_TYPES = frozenset() should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
@@ -416,6 +409,8 @@ def test_audit_invariants_fire_when_canonical_types_is_empty() -> None:
     assert "_CANONICAL_TYPES must not be empty" in result.stderr
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_required_canonical_type_missing() -> None:
     """Missing 'commit_message' from _CANONICAL_TYPES should raise RuntimeError at import time."""
     # Replace the _CANONICAL_TYPES assignment with one missing 'commit_message'
@@ -428,6 +423,8 @@ def test_audit_invariants_fire_when_required_canonical_type_missing() -> None:
     assert "_CANONICAL_TYPES must contain 'commit_message'" in result.stderr
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
     """_FILE_ALLOWLIST = frozenset() should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
@@ -446,6 +443,8 @@ def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
     assert "_FILE_ALLOWLIST must not be empty" in result.stderr
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_fire_when_allowlist_file_missing() -> None:
     """Non-existent _FILE_ALLOWLIST entry should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
@@ -457,6 +456,8 @@ def test_audit_invariants_fire_when_allowlist_file_missing() -> None:
     assert "_FILE_ALLOWLIST entry does not exist" in result.stderr
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
 def test_audit_invariants_survive_minus_o() -> None:
     """Invariant violations must still raise RuntimeError under python -O."""
     result = _run_patched_audit_import(

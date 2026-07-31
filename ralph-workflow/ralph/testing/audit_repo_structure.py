@@ -2,8 +2,9 @@
 
 Single source of truth for the repository structure policy. It runs as a
 ``make verify`` step -- so a violation fails the gate on EVERY run, no matter who
-introduced it -- and ``tests/integration/test_policy_file_rules.py`` asserts on the
-same :func:`collect_violations` result.
+introduced it. Green-path coverage is the verify step itself (the same
+:func:`collect_violations` entry point); a second full-tree walk under
+``subprocess_e2e`` duplicated that cost under the 60s e2e suite cap.
 
 This check previously lived ONLY in a ``subprocess_e2e``-marked test, which
 ``make test`` excludes, so the policy rotted silently while the gate stayed green.

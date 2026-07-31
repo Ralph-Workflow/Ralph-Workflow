@@ -1,10 +1,9 @@
 """Tests for _sync_shipped_skills_on_pipeline_run in run.py.
 
-These tests are subprocess_e2e: they exercise the real
-``_sync_shipped_skills_on_pipeline_run`` entry point and its full
-filesystem + git + auto-commit path. They cannot be mocked down to
-the per-test 1 s budget without losing the end-to-end contract they
-assert.
+Most cases are MagicMock unit tests in the default suite. Only the
+real-git install/autocommit paths are marked ``subprocess_e2e``: they
+exercise the full filesystem + git + auto-commit path and cannot be
+mocked down without losing the end-to-end contract they assert.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
+pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
 def test_sync_calls_check_skills_for_updates_even_without_state_file(
@@ -801,7 +800,6 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
 
 
 @pytest.mark.timeout_seconds(3)
-@pytest.mark.subprocess_e2e
 def test_run_pipeline_threads_canonical_run_id_to_sweep(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

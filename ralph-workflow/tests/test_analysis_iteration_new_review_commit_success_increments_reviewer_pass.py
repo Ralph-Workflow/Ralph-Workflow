@@ -19,13 +19,9 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     PhaseCommitPolicy,
-    PhaseDecisionRoute,
     PhaseDefinition,
-    PhaseLoopPolicy,
     PhaseTransition,
     PipelinePolicy,
-    PostCommitRoute,
-    PostCommitRouteWhen,
 )
 
 if TYPE_CHECKING:
@@ -40,72 +36,14 @@ def _reduce(
     return reducer_reduce(state, event, policy)
 
 
-def _dev_analysis_policy() -> PipelinePolicy:
-    """Policy with analysis phases that route to correction on ordinary loopback.
-
-    This matches the intended default pipeline.toml behavior: ordinary analysis
-    loopbacks route to development/fix, and capped loopbacks still take one
-    final correction pass without letting the counter exceed the configured cap.
-    """
+def _review_commit_policy() -> PipelinePolicy:
+    """Minimal policy for review_commit counter accounting only."""
     return PipelinePolicy(
         phases={
-            "development": PhaseDefinition(
-                drain="development",
-                transitions=PhaseTransition(
-                    on_success="development_analysis",
-                    on_failure=None,
-                    on_loopback="development",
-                ),
-            ),
-            "development_analysis": PhaseDefinition(
-                drain="development_analysis",
-                role="analysis",
-                transitions=PhaseTransition(
-                    on_success="development_commit",
-                    on_failure=None,
-                    on_loopback="development",
-                ),
-                loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
-                decisions={
-                    "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
-                    "request_changes": PhaseDecisionRoute(target="development", reset_loop=False),
-                },
-            ),
-            "development_commit": PhaseDefinition(
-                drain="development_commit",
-                role="commit",
-                transitions=PhaseTransition(
-                    on_success="development",
-                    on_failure=None,
-                    on_loopback="development",
-                ),
-                commit_policy=PhaseCommitPolicy(
-                    increments_counter="iteration",
-                    loop_resets=["development_analysis_iteration"],
-                ),
-            ),
             "review": PhaseDefinition(
                 drain="review",
                 transitions=PhaseTransition(
-                    on_success="review_analysis",
-                    on_failure=None,
-                    on_loopback="review",
-                ),
-            ),
-            "review_analysis": PhaseDefinition(
-                drain="review_analysis",
-                role="analysis",
-                transitions=PhaseTransition(
                     on_success="review_commit",
-                    on_failure=None,
-                    on_loopback="fix",
-                ),
-                loop_policy=PhaseLoopPolicy(iteration_state_field="review_analysis_iteration"),
-            ),
-            "fix": PhaseDefinition(
-                drain="fix",
-                transitions=PhaseTransition(
-                    on_success="review_analysis",  # fix success goes to review_analysis
                     on_failure=None,
                     on_loopback="review",
                 ),
@@ -124,24 +62,8 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 ),
             ),
         },
-        entry_phase="development",
+        entry_phase="review",
         terminal_phase="complete",
-        post_commit_routes=[
-            PostCommitRoute(
-                when=PostCommitRouteWhen(
-                    phase="development_commit",
-                    budget_state="exhausted",
-                ),
-                target="development",
-            ),
-            PostCommitRoute(
-                when=PostCommitRouteWhen(
-                    phase="review_commit",
-                    budget_state="exhausted",
-                ),
-                target="review",
-            ),
-        ],
     )
 
 
@@ -154,6 +76,6 @@ class TestReviewCommitSuccessIncrementsReviewerPass:
             phase="review_commit",
             budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
-        policy = _dev_analysis_policy()
+        policy = _review_commit_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.get_outer_progress("reviewer_pass") == 1
