@@ -1,6 +1,6 @@
 Task: produce and submit a spec-compliant MCP commit_message artifact for the current pending work shown below. A valid artifact has a conventional subject, an explanatory body when the change needs one, and the matching commit or skip document shape.
 
-The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it, then stop.
+The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it without commentary, then stop. Do not ask the user for confirmation or “Would you like me to …” questions. Do not call bash; use only the declared artifact tools.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -14,7 +14,7 @@ Use the provided artifact tool; do not call bash.
 
 ## HOW TO WRITE THE SUBJECT
 
-Use one pass through these steps to produce the subject, then write the body.
+Use one pass through these steps to produce the subject, then write the body. Do not generate candidate subjects and compare them. The subject is finished. Do not look for a better one. Do not reconsider it.
 
 **Step 1 — pick the kind.** Take the first matching row:
 
