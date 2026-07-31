@@ -25,6 +25,8 @@ from ralph.display.theme import (
     SYNTAX_THEME_ON_LIGHT_BG,
     SYNTAX_THEME_ON_UNKNOWN_BG,
     contrast_ratio,
+    diff_fill_styles,
+    diff_token_foregrounds,
     syntax_theme_for_background,
 )
 
@@ -171,6 +173,25 @@ def test_diff_tokens_are_distinct_and_accessibly_colored(
     assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values() for background in backgrounds)
     for matrix in _CVD_MATRICES:
         assert len({theme._simulate_cvd(color, matrix) for color in colors.values()}) == 4
+
+
+@pytest.mark.parametrize("terminal_bg_is_light", [False, True])
+def test_derived_diff_fills_keep_their_matching_tokens_legible(
+    terminal_bg_is_light: bool,
+) -> None:
+    """Painted diff rows use the palette resolved for their terminal background."""
+    fills = diff_fill_styles(terminal_bg_is_light)
+    assert fills is not None
+    deleted, inserted = diff_token_foregrounds(terminal_bg_is_light)
+    assert contrast_ratio(deleted, fills[0]) >= 4.5
+    assert contrast_ratio(inserted, fills[1]) >= 4.5
+    for matrix in _CVD_MATRICES:
+        assert theme._simulate_cvd(fills[0], matrix) != theme._simulate_cvd(fills[1], matrix)
+
+
+def test_unknown_background_has_no_diff_fill_to_avoid_a_colour_guess() -> None:
+    """Unknown terminals retain transparent structured diffs rather than guessing a wash."""
+    assert diff_fill_styles(None) is None
 
 
 def test_result_preview_uses_the_same_transparent_palette_contract() -> None:
