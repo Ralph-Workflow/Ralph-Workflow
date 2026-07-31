@@ -208,6 +208,11 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             args=("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
             returncode=0, stdout="fenced artifact example audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing"),
+            returncode=0, stdout="prompt single-sourcing audit ok\n",
+        ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_cast_policy"),
@@ -257,6 +262,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
     ]
     assert all(
@@ -389,77 +395,10 @@ def test_run_verify_single_step_within_budget(
     """run_verify() with one test step that appears to finish in 1s → passes."""
     runner = StubRunner(_all_steps_success_responses())
 
-    # Twenty-six steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass,
-    # 4=typecheck_bypass, 5=test_policy audit, 6=mcp_timeout audit,
-    # 7=di_seam audit, 8=activity_aware_watchdog audit,
-    # 9=watchdog_drift audit, 10=parallelization_dormant audit,
-    # 11=artifact_submission_canonical_path audit,
-    # 12=agent_registry_sync audit, 13=agent_module_state audit,
-    # 14=agent_internal_paths audit, 15=social-proof gate,
-    # 16=resource_lifecycle audit, 17=skill_auto_commit audit,
-    # 18=public_docstrings audit, 19=terminal_escape_containment audit,
-    # 20=repo_structure audit, 21=fsevents_watch_consolidation audit,
-    # 22=log_sink_buffering audit, 23=idempotent_write_adoption audit,
-    # 24=template_render_integrity audit,
-    # 25=fenced_artifact_examples audit, 26=cast_policy audit).
-    # Each step calls time.monotonic() twice (start + end). make test takes 1s;
-    # all other steps take 0s. Total: 27 steps x 2 monotonic calls = 54 entries.
-    times = [
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        0.0,
-        0.0,
-    ]
+    # Derive the fixture from the real step list so a new non-test audit cannot
+    # desynchronize budget coverage. make test takes 1s; every other step 0s.
+    times = [0.0] * (2 * len(verify_module._VERIFY_STEPS))
+    times[5:] = [1.0] * (len(times) - 5)
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
@@ -609,68 +548,9 @@ def test_run_verify_non_test_steps_not_counted(
 
     runner = StubRunner(_all_steps_success_responses())
 
-    # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Twenty-six steps (ruff, mypy, make test, audits, social-proof gate,
-    # resource_lifecycle, skill_auto_commit, public_docstrings,
-    # terminal_escape_containment, repo_structure, fsevents_watch_consolidation,
-    # log_sink_buffering, idempotent_write_adoption, template render-integrity,
-    # fenced artifact examples) x 2 monotonic calls per step = 52 entries.
-    times = [
-        0.0,
-        100.0,
-        100.0,
-        200.0,
-        200.0,
-        300.0,
-        300.0,
-        400.0,
-        400.0,
-        500.0,
-        500.0,
-        600.0,
-        600.0,
-        700.0,
-        700.0,
-        800.0,
-        800.0,
-        900.0,
-        900.0,
-        1000.0,
-        1000.0,
-        1100.0,
-        1100.0,
-        1200.0,
-        1200.0,
-        1300.0,
-        1300.0,
-        1400.0,
-        1400.0,
-        1500.0,
-        1500.0,
-        1600.0,
-        1600.0,
-        1700.0,
-        1700.0,
-        1800.0,
-        1900.0,
-        1900.0,
-        2000.0,
-        2000.0,
-        2100.0,
-        2100.0,
-        2200.0,
-        2200.0,
-        2300.0,
-        2300.0,
-        2400.0,
-        2400.0,
-        2500.0,
-        2500.0,
-        2500.0,
-        2600.0,
-        2600.0,
-        2700.0,
-    ]
+    # Every non-test step takes 100s — all pass because nothing is tracked.
+    # Derive the fixture from the real step list so audit additions stay covered.
+    times = [100.0 * (index // 2) for index in range(2 * len(verify_module._VERIFY_STEPS))]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)

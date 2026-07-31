@@ -1240,6 +1240,13 @@ ralph.pipeline.run_loop
    :members:
    :show-inheritance:
 
+ralph.pipeline.run_time_report
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.run_time_report
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.state_init
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2071,6 +2078,12 @@ ralph.mcp.artifacts.markdown.specs
    :members:
 
 .. automodule:: ralph.mcp.artifacts.markdown.specs.issues
+   :members:
+
+ralph.mcp.artifacts.markdown.specs.run_time_report
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.markdown.specs.run_time_report
    :members:
 
 .. automodule:: ralph.mcp.artifacts.markdown.specs.plan
@@ -3962,6 +3975,13 @@ ralph.testing.audit_resource_lifecycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_resource_lifecycle
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_prompt_single_sourcing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_prompt_single_sourcing
    :members:
    :show-inheritance:
 

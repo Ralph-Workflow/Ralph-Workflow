@@ -37,6 +37,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
             "ralph/testing/audit_mcp_timeout.py",
             "ralph/testing/audit_parallelization_dormant.py",
             "ralph/testing/audit_public_docstrings.py",
+            "ralph/testing/audit_prompt_single_sourcing.py",
             "ralph/testing/audit_repo_structure.py",
             "ralph/testing/audit_resource_lifecycle.py",
             "ralph/testing/audit_skill_auto_commit.py",
