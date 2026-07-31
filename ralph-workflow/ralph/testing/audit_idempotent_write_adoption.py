@@ -55,6 +55,7 @@ _ALLOWLISTED_MODULES: tuple[str, ...] = (
     "cli/commands/run.py",
     "workspace/fs.py",
     "phases/review.py",
+    "recovery/controller.py",
 )
 
 

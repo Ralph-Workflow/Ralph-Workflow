@@ -2,16 +2,69 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
+from ralph.recovery.classifier import ClassifiedFailure, FailureCategory
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
+
+
+class _RecordingFileBackend(FileBackend):
+    """In-memory file backend that records physical writes."""
+
+    def __init__(self) -> None:
+        self.files: dict[Path, str] = {}
+        self.write_text_calls = 0
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del path, parents, exist_ok
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del encoding
+        return self.files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        del encoding
+        self.write_text_calls += 1
+        self.files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self.files[destination] = self.files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        del path
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        if missing_ok:
+            self.files.pop(path, None)
+            return
+        del self.files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        del path, pattern
+        return []
+
+
+def _session_reset_failure(session_id: str) -> ClassifiedFailure:
+    return ClassifiedFailure(
+        category=FailureCategory.AGENT,
+        reason="stale session",
+        attributed_agent="claude",
+        attributed_phase="development",
+        counts_against_budget=True,
+        original_exception=None,
+        raw_message=f"No conversation found with session ID: {session_id}",
+        reset_session=True,
+    )
 
 
 class _AgentInvocationError(Exception):
@@ -101,6 +154,37 @@ def test_stale_session_writes_retry_hint_file(
     content = hint_file.read_text(encoding="utf-8")
     assert "session" in content.lower()
     assert "No conversation found with session ID" in content
+
+
+def test_session_reset_hint_regression_skips_byte_identical_rewrite() -> None:
+    """S-3: repeated stale-session hints physically write once through the backend seam."""
+    backend = _RecordingFileBackend()
+    controller = RecoveryController()
+    failure = _session_reset_failure("same-session")
+
+    controller._write_session_reset_hint("development", failure, backend=backend)
+    controller._write_session_reset_hint("development", failure, backend=backend)
+
+    hint_path = Path(".agent/tmp/last_retry_error_development.txt")
+    assert backend.write_text_calls == 1
+    assert "same-session" in backend.files[hint_path]
+
+
+def test_session_reset_hint_regression_writes_changed_failure_detail() -> None:
+    """S-3: changed stale-session detail replaces the retry hint through the backend seam."""
+    backend = _RecordingFileBackend()
+    controller = RecoveryController()
+
+    controller._write_session_reset_hint(
+        "development", _session_reset_failure("first"), backend=backend
+    )
+    controller._write_session_reset_hint(
+        "development", _session_reset_failure("second"), backend=backend
+    )
+
+    hint_path = Path(".agent/tmp/last_retry_error_development.txt")
+    assert backend.write_text_calls == 2
+    assert "second" in backend.files[hint_path]
 
 
 def test_stale_session_debits_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

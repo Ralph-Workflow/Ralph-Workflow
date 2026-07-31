@@ -48,6 +48,8 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline import progress
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
@@ -839,6 +841,8 @@ class RecoveryController:
         self,
         phase: str,
         failure: ClassifiedFailure,
+        *,
+        backend: FileBackend = DEFAULT_FILE_BACKEND,
     ) -> None:
         """Write a retry hint file describing the stale-session failure.
 
@@ -855,8 +859,8 @@ class RecoveryController:
         hint_content = build_retry_hint(phase, detail)
         hint_file = Path(retry_hint_path(phase))
         try:
-            hint_file.parent.mkdir(parents=True, exist_ok=True)
-            hint_file.write_text(hint_content, encoding="utf-8")
+            backend.mkdir(hint_file.parent, parents=True, exist_ok=True)
+            write_text_if_changed(backend, hint_file, hint_content, encoding="utf-8")
         except OSError:
             logger.warning("Failed to write session reset hint to {}", hint_file)
 
