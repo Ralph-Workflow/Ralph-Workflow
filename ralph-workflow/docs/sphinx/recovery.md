@@ -1,9 +1,8 @@
 # Recovery
 
 This page documents the recovery controller: what gets retried, what gets surfaced as a partial result, and what marks a session non-recoverable.
+
 > **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) first. This page explains how Ralph Workflow behaves when a run is interrupted or something fails.
-
-
 
 Ralph Workflow treats recovery as a built-in part of the product, not an afterthought. In normal use, you do not need to turn anything on. Ralph Workflow retries transient failures, keeps checkpoints up to date, and can resume safely after interruptions.
 

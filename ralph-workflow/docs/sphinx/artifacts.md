@@ -265,6 +265,5 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 ## Related pages
 
-- {doc}`mcp-architecture` — the MCP server that exposes artifact submission tools
-- {doc}`concepts` — artifact types as first-class concepts
-- {py:mod}`ralph.mcp.artifacts` — full API reference
+- [MCP Architecture](mcp-architecture.md) — the MCP server that exposes artifact submission tools
+- [Concepts](concepts.md) — artifact types as first-class concepts

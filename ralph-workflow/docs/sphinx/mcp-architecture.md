@@ -108,7 +108,7 @@ Key submodules:
 
 ## MCP tools
 
-The full tool list is in {doc}`mcp-tools`. Tools are implemented in `ralph.mcp.tools.*`:
+The full tool list is in [MCP Tools](mcp-tools.md). Tools are implemented in `ralph.mcp.tools.*`:
 
 | Package | Tools provided |
 |---|---|
@@ -206,9 +206,8 @@ asserts observable behavior on the shipped path.
 
 ## Related pages
 
-- {doc}`mcp-tools` — full tool reference
-- {doc}`artifacts` — the artifact submission tools
-- {py:mod}`ralph.mcp` — full API reference
+- [MCP Tools](mcp-tools.md) — full tool reference
+- [Artifacts](artifacts.md) — the artifact submission tools
 
 ## Indexed exploration substrate
 

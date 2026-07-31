@@ -341,6 +341,14 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
 
 
+def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:
+    """Shard teardown owns lifecycle cleanup without per-shard background work."""
+    policy = test_suites_module._PYTEST_SHARD_PROCESS_MANAGER.policy
+
+    assert policy.log_events is False
+    assert policy.enable_zombie_reaper is False
+
+
 def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

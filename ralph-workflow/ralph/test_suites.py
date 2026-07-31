@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 from ralph.executor.process import TIMEOUT_EXIT_CODE
 from ralph.process._spawn_env import sanitize_process_environment
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,
@@ -72,6 +72,9 @@ if TYPE_CHECKING:
 #
 # This is a concurrency bound, not a budget change: the 60.0-second combined
 # budget and 1.0-second per-test timeout remain unchanged.
+_PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
+    policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
+)
 _DEFAULT_PYTEST_WORKERS = "auto"
 _MIN_PYTEST_WORKERS = 8
 _MAX_PYTEST_WORKERS = 12
@@ -262,7 +265,7 @@ def _default_spawner(
     cwd: Path,
     env: Mapping[str, str],
 ) -> ShardProcess:
-    return get_process_manager().spawn(
+    return _PYTEST_SHARD_PROCESS_MANAGER.spawn(
         command,
         SpawnOptions(
             cwd=str(cwd),
