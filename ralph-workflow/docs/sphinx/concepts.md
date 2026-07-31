@@ -34,17 +34,10 @@ The terms below help explain how Ralph Workflow does that.
 - **Verbosity** — controls how much output Ralph Workflow prints. Use `--quiet`, `--debug`, or `--verbosity <level>`.
 - **`ralph --explain-policy`** — from the human operator shell, prints a human-readable summary of the active workflow policy.
 
-**Interrupt dispatch.** When a user presses Ctrl+C during a run, the
-`InterruptDispatcher` (in `ralph.interrupt.dispatcher`) coordinates orderly
-shutdown: the first SIGINT routes through
-`InterruptController.begin_interrupt(kill_label='invoke:')` to send SIGTERM
-to the agent's process group, then a poll thread escalates to SIGKILL if
-the agent makes no CPU-time progress within `hard_kill_budget_s` (default
-1.5s). A second SIGINT calls `InterruptController.force_exit(bridge_pids=...)`
-which terminates tracked processes and exits with code 130. The CLI catches
-in `ralph.cli.commands.run` and `ralph.cli.main` also call the dispatcher
-with `block=True`, so the orderly shutdown happens even when the interrupt
-is raised outside the pipeline loop.
+**Interrupts.** Ctrl+C during a run starts an orderly shutdown. Press Ctrl+C
+a second time only when you need to force the run to exit. This two-step model
+tries to preserve a clean handoff before it stops work abruptly. For the
+signal-handling contract, see [Developer Internals](developer-internals.md).
 
 ---
 
@@ -168,9 +161,14 @@ A typical Ralph Workflow run looks like:
 
 The shape is declared entirely in policy. The runtime is a state machine that consults policy at each transition. If a transition is unspecified, the runtime fails closed with a policy validation error.
 
-### Reducers and effects
+### Runtime behavior
 
-The runtime has two complementary structures: **Reducers** — pure functions of `(state, event) -> state` that update the `PipelineState` in response to events; **Effects** — imperative actions the runtime performs in response to the new state. The split is intentional: reducers are testable in isolation (no I/O), effects are the integration points with the filesystem, agent subprocess, and MCP server. See `ralph/pipeline/reducers/` and `ralph/pipeline/effects/`.
+The runtime is a state machine over the policy you declared: each phase records
+an outcome, then Ralph Workflow chooses the next permitted action. This makes
+routing and recovery predictable, but it also means an invalid policy stops the
+run rather than being guessed at. Use `ralph --check-policy` before a run when
+you change policy. For the reducer and effect implementation, see
+[Developer Internals](developer-internals.md).
 
 ### Checkpoints
 
@@ -257,19 +255,19 @@ A clean `make verify` proves the Python code is lint-clean, type-clean, the unit
 
 A green `make verify` is a **necessary** precondition for declaring work done, but it is not sufficient: the runtime also verifies the run artifact against the phase's declared contract (see [Artifact lifecycle](#artifact-lifecycle)).
 
-### The 60-second combined test budget — immutable
+### The 60-second combined test budget
 
-The test budget is **60 seconds, combined, ABSOLUTE and IMMUTABLE**. This is enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 60.0` and tracked cumulatively across all `_BUDGET_TRACKED_STEPS` via `time.monotonic()`.
+The test budget is **60 seconds, combined, ABSOLUTE and IMMUTABLE**. It keeps
+feedback fast enough to trust, so a timeout means the test design needs repair,
+not a larger allowance. The same rule applies regardless of how tests are
+arranged or invoked.
 
-The budget cannot be circumvented by splitting tests into more suites, moving slow tests to a different suite/target/Makefile recipe, renaming test targets without updating `_KNOWN_TEST_STEP_LABELS`, raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`, setting `RALPH_PYTEST_SUITE_TIMEOUT_SECONDS` or `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`, raising `_TOTAL_TEST_BUDGET_SECONDS` (blocked by import-time `RuntimeError` checks — immune to `python -O`), emptying `_KNOWN_TEST_STEP_LABELS` to hide test steps, emptying `_BUDGET_TRACKED_STEPS` to disable enforcement, or removing `'make test'` from `_KNOWN_TEST_STEP_LABELS`.
+### The audit guardrails
 
-A timeout failure is a test design defect — fix the test, not the budget.
-
-### The audit invariant set
-
-Ralph Workflow ships with 14 audit scripts in `ralph/testing/audit_*.py` that detect circumvention: `audit_lint_bypass.py` (lint rule weakening), `audit_typecheck_bypass.py` (mypy rule weakening), `audit_test_policy.py` (real I/O or sleep in non-subprocess_e2e tests), `audit_mcp_timeout.py` (unbounded blocking calls in `ralph/mcp/`), `audit_resource_lifecycle.py` (unbounded accumulators), `audit_artifact_submission_canonical_path.py` (artifact writes not via canonical path), `audit_parallelization_dormant.py` (dormant parallel mode invariant violations), and 7 more. See `ralph/testing/audit_*.py` for the full set.
-
-Each audit has a documented allowlist. Adding an entry to an allowlist is the **only** way to weaken a check, and the entry must cite a real justification.
+Audits prevent checks from being weakened just to get a green result. Together
+with linting, type checking, and tests, they make `make verify` a dependable
+gate rather than a suggestion. See [Developer Internals](developer-internals.md)
+for the enforcement mechanism and audit inventory.
 
 ### Non-circumvention rules
 

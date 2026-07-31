@@ -307,7 +307,12 @@ If ``snapshot.run_id`` is ``None`` and no override is provided, a ``ValueError``
 
 This page does not define transport, storage, authentication, scheduling, fleet orchestration, or protocol details.
 
-## Event loop and reducers
+## Runtime guarantees
+
+For the operator-facing mental model, see [Concepts](concepts.md). This section
+documents the implementation contracts that make that model reliable.
+
+### Event loop and reducers
 
 The runtime has two complementary structures:
 
@@ -317,6 +322,36 @@ The runtime has two complementary structures:
 Effects are the integration points with the filesystem, agent subprocess, and MCP server. The split is intentional and protected by `audit_di_seam.py`. See `ralph/pipeline/reducers/` and `ralph/pipeline/effects/`.
 
 The orchestrator is a **pure** `determine_next_effect(state) -> Effect` function: given the current `PipelineState`, it consults the policy and returns the next effect to execute. The effect is then handed to the appropriate handler in `ralph/pipeline/effects/` and `ralph/phases/`.
+
+### Interrupt dispatch
+
+`InterruptDispatcher` in `ralph.interrupt.dispatcher` coordinates orderly
+shutdown. The first SIGINT routes through
+`InterruptController.begin_interrupt(kill_label='invoke:')`, which sends
+SIGTERM to the agent process group. A polling thread escalates to SIGKILL when
+there is no CPU-time progress within `hard_kill_budget_s` (default 1.5s).
+A second SIGINT calls `InterruptController.force_exit(bridge_pids=...)`,
+terminates tracked processes, and exits with code 130. The CLI paths in
+`ralph.cli.commands.run` and `ralph.cli.main` also invoke the dispatcher with
+`block=True`, so this contract applies outside the pipeline loop as well.
+
+### Verification-gate mechanics
+
+The 60-second combined test budget is enforced by
+`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 60.0`. `run_verify()` tracks
+elapsed time with `time.monotonic()` across `_BUDGET_TRACKED_STEPS`; the
+`_KNOWN_TEST_STEP_LABELS` set keeps every declared test step covered by that
+budget. Import-time `RuntimeError` guards pin the budget and its tracking
+invariants, including under `python -O`.
+
+The verification gate also runs the `ralph/testing/audit_*.py` invariant set,
+including `audit_lint_bypass.py`, `audit_typecheck_bypass.py`,
+`audit_test_policy.py`, `audit_mcp_timeout.py`,
+`audit_resource_lifecycle.py`, and
+`audit_artifact_submission_canonical_path.py`. These audits detect weakened
+checks and unsafe lifecycle behavior; their documented allowlists are the only
+approved exception path. See [Concepts](concepts.md#verification-model) for
+why operators should treat `make verify` as non-bypassable.
 
 ## Pipeline lifecycle (high level)
 
