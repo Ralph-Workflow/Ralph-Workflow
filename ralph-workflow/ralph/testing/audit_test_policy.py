@@ -723,5 +723,12 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+# The twelve-cycle pipeline memory harness compares early and late invocation
+# cost as its explicit no-drift contract; retained memory remains the separate
+# hard plateau assertion.
+_WALL_CLOCK_ALLOWLIST = _WALL_CLOCK_ALLOWLIST | frozenset(
+    {"test_pipeline_multi_cycle_memory_regression"}
+)
+
 if __name__ == "__main__":
     raise SystemExit(main())
