@@ -23,7 +23,7 @@ See the [Getting Started](getting-started.md) walkthrough — it takes you from 
 **Fix:** Install the agent binary and ensure it is on your `PATH`:
 
 - **Claude Code**: see <https://docs.claude.com/claude-code>
-- **Codex CLI**: see <https://platform.openai.com/docs/codex>
+- **Codex CLI**: see <https://github.com/openai/codex>
 - **opencode**: see <https://opencode.ai>
 - **Nanocoder**: see <https://docs.nanocollective.org/nanocoder/docs>
 - **Google Anti Gravity (agy)**: see <https://github.com/google-antigravity/antigravity-cli>

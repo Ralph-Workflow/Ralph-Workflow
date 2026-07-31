@@ -301,7 +301,7 @@ def test_diagnose_missing_agent_shows_install_link_and_config_section(
         assert check_agents(None, display_context=ctx) is True
 
     rendered = output.getvalue()
-    assert "https://codex.openai.com" in rendered
+    assert "https://github.com/openai/codex" in rendered
     assert "edit [agents.codex]" in rendered
     assert "ralph-workflow-agents.toml" in rendered
 

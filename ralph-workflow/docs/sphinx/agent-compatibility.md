@@ -26,6 +26,7 @@ availability remains the CLI provider's responsibility.
 ### Claude Code
 
 - **CLI**: `claude`
+- **Install / auth**: <https://docs.claude.com/claude-code>
 - **Transport**: `claude-interactive`
 - **Flags**: `--dangerously-skip-permissions`, `--verbose`, and `--resume {}`
 - **Constraint**: Use `claude-headless` when a non-interactive streaming command is required.
@@ -33,6 +34,7 @@ availability remains the CLI provider's responsibility.
 ### Claude headless
 
 - **CLI**: `claude -p`
+- **Install / auth**: <https://docs.claude.com/claude-code>
 - **Transport**: `claude`
 - **Flags**: `--print`, `--output-format=stream-json`, `--include-partial-messages`, `--permission-mode auto`, `--verbose`, and `--resume {}`
 - **Constraint**: This is the built-in non-interactive Claude transport.
@@ -40,6 +42,7 @@ availability remains the CLI provider's responsibility.
 ### Codex (OpenAI)
 
 - **CLI**: `codex exec`
+- **Install / auth**: <https://github.com/openai/codex>
 - **Transport**: `codex`
 - **Flags**: `--json` and `--dangerously-bypass-approvals-and-sandbox`
 - **Constraint**: Codex has no Ralph-managed session-resume flag.
@@ -47,6 +50,7 @@ availability remains the CLI provider's responsibility.
 ### OpenCode
 
 - **CLI**: `opencode run`
+- **Install / auth**: <https://opencode.ai>
 - **Transport**: `opencode`
 - **Flags**: `--format json` and `--session {}`
 - **Constraint**: Dynamic aliases emit `-m <model>`.
@@ -54,6 +58,7 @@ availability remains the CLI provider's responsibility.
 ### Nanocoder
 
 - **CLI**: `nanocoder --mode yolo --no-plain run`
+- **Install / auth**: <https://docs.nanocollective.org/nanocoder/docs>
 - **Transport**: `nanocoder`
 - **Flags**: `--mode yolo` and `--no-plain`
 - **Constraint**: Dynamic aliases require a provider and may select a model.
@@ -61,6 +66,7 @@ availability remains the CLI provider's responsibility.
 ### AGY
 
 - **CLI**: `agy`
+- **Install / auth**: <https://github.com/google-antigravity/antigravity-cli>
 - **Transport**: `agy`
 - **Flags**: `print_flag = "--print"`, `yolo_flag = "--dangerously-skip-permissions"`; v1.1.8 publishes model IDs and `--effort low|medium|high`. Live probes accepted both `gemini-3.6-flash-low` and `gemini-3.6-flash-high --effort high`.
 - **Parser**: `generic` (native AGY parser; plain-text, not NDJSON)
@@ -89,6 +95,7 @@ json_parser = "generic"
 ### Pi (Pi.dev)
 
 - **CLI**: `pi`
+- **Install / auth**: <https://pi.dev/docs/latest/usage>
 - **Transport**: `pi`
 - **Flags**: `--mode json`, `--approve`, and `--session {}`
 - **Constraint**: Ralph Workflow adds `--no-builtin-tools --extension <path>` when it configures Pi's MCP extension.
@@ -96,6 +103,7 @@ json_parser = "generic"
 ### Cursor (Cursor)
 
 - **CLI**: `agent`
+- **Install / auth**: <https://docs.cursor.com/agent>
 - **Transport**: `cursor`
 - **Flags**: `--print`, `--output-format stream-json`, `--stream-partial-output`, `--trust`, `--yolo`, `--approve-mcps`, and `--resume {}`
 - **Constraint**: The emitted `--trust` and `--approve-mcps` flags cover headless workspace-trust and MCP approval.

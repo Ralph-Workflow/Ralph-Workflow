@@ -25,7 +25,7 @@ def test_chain_availability_regression_fails_before_spawn_when_every_entry_is_mi
     assert "codex" in message
     assert "Install: codex:" in message
     assert "Install: codex/pi:" not in message
-    assert "https://codex.openai.com" in message
+    assert "https://github.com/openai/codex" in message
     assert "ralph-workflow.toml" in message
     assert "ralph-workflow-agents.toml" in message
     assert "ralph --diagnose" in message

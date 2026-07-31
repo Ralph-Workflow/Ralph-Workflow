@@ -82,7 +82,7 @@ In strict Ralph Workflow authority mode, the provider-visible `[mcp_servers]` se
 
 Do not rely on Codex for environments that require strict tool isolation. Ralph Workflow's best-effort for Codex is explicitly logged as a warning at runtime.
 
-Reference: https://platform.openai.com/docs/codex
+Reference: https://github.com/openai/codex
 
 ### Google Anti Gravity
 

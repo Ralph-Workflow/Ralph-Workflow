@@ -45,11 +45,11 @@ Ralph Workflow orchestrates one of the agent CLIs you already trust. Pick
 one and follow its native install + auth flow:
 
 - **Claude Code** (`claude`): <https://docs.claude.com/claude-code>
-- **Codex CLI** (`codex`): <https://codex.openai.com>
+- **Codex CLI** (`codex`): <https://github.com/openai/codex>
 - **OpenCode** (`opencode`): <https://opencode.ai>
 - **Nanocoder** (`nanocoder`), **Google Anti Gravity** (`agy`),
-  **Pi** (`pi`), **Cursor** (`agent`): see the per-agent install pages in
-  [Agent Compatibility](agent-compatibility.md).
+  **Pi** (`pi`), **Cursor** (`agent`): install and auth URLs for every agent
+  are listed in [Agent Compatibility → Supported agents](agent-compatibility.md).
 
 Verify the binary is on `PATH` before continuing:
 

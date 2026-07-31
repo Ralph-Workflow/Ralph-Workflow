@@ -263,7 +263,7 @@ def build_next_steps(
         steps.append(
             "Install at least one supported agent: "
             "Claude Code (https://docs.claude.com/claude-code), "
-            "Codex CLI (https://codex.openai.com), "
+            "Codex CLI (https://github.com/openai/codex), "
             "OpenCode (https://opencode.ai), "
             "or Google Anti Gravity (https://github.com/google-antigravity/antigravity-cli)."
         )

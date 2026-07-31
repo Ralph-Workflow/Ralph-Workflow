@@ -72,7 +72,7 @@ Ralph Workflow Diagnostics
 │                                                                              │
 │    • Install at least one supported agent: Claude Code                       │
 │  (https://docs.claude.com/claude-code), Codex CLI                            │
-│  (https://codex.openai.com), OpenCode (https://opencode.ai), or Google Anti  │
+│  (https://github.com/openai/codex), OpenCode (https://opencode.ai), or Google Anti  │
 │  Gravity (https://github.com/google-antigravity/antigravity-cli).            │
 │                                                                              │
 │  New to Ralph Workflow? docs/sphinx/getting-started.md — step-by-step        │

@@ -7,7 +7,7 @@ from typing import Final
 AGENT_INSTALL_URLS: Final[dict[str, str]] = {
     "claude": "https://docs.claude.com/claude-code",
     "claude-headless": "https://docs.claude.com/claude-code",
-    "codex": "https://codex.openai.com",
+    "codex": "https://github.com/openai/codex",
     "opencode": "https://opencode.ai",
     "nanocoder": "https://docs.nanocollective.org/nanocoder/docs",
     "agy": "https://github.com/google-antigravity/antigravity-cli",
