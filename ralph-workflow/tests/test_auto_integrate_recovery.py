@@ -1163,6 +1163,7 @@ def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     )
 
 
+@pytest.mark.timeout_seconds(20)
 def test_integrate_once_propagates_terminal_violation_on_exception_path(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

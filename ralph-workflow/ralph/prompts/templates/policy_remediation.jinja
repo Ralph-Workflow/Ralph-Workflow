@@ -12,6 +12,13 @@ Follow `{{ gate_script_policy_path }}` for gate plumbing: use strict, fail-close
 
 Approved tools: {{ approved_tools }}.
 
+{% if analysis_feedback_block %}
+## Previous analysis feedback
+
+{{ analysis_feedback_summary }}
+{{ analysis_feedback_block }}
+{% endif %}
+
 ## Machine marker vocabulary
 
 The readiness validator consumes these byte-exact forms:
