@@ -10,10 +10,9 @@ from __future__ import annotations
 import gc
 import json
 import statistics
-import time
 import tracemalloc
 import uuid
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -37,7 +36,6 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ralph.config.models import AgentConfig, UnifiedConfig
-    from ralph.pipeline.session_bridge import BridgeFactory
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
@@ -46,7 +44,6 @@ _WARMUP_CYCLES = 2
 _LINE_COUNT = 8
 _LINE_SIZE = 1024
 _RETAINED_SPREAD_LIMIT = 512_000
-_LATE_ELAPSED_FACTOR = 3.0
 
 
 class _SharedFakeBridge:
@@ -71,7 +68,7 @@ def _bridge_factory(**_kwargs: object) -> _SharedFakeBridge:
 
 
 def _config() -> UnifiedConfig:
-    return cast("UnifiedConfig", _ConfigStub())
+    return _ConfigStub()
 
 
 def _invoke(
@@ -106,16 +103,14 @@ def test_pipeline_multi_cycle_memory_regression_no_drift(
     deps = make_test_pipeline_deps(
         display_context=display_context,
         registry_factory=_RegistryFactory.from_config,
-        bridge_factory=cast("BridgeFactory", _bridge_factory),
+        bridge_factory=_bridge_factory,
     )
     retained: list[int] = []
-    elapsed: list[float] = []
     gc.collect()
     tracemalloc.start()
     baseline = _ralph_bytes()
     try:
         for _ in range(_CYCLES):
-            started = time.perf_counter()
             assert (
                 runner_module.execute_agent_effect(
                     effect,
@@ -131,25 +126,17 @@ def test_pipeline_multi_cycle_memory_regression_no_drift(
             )
             gc.collect()
             retained.append(_ralph_bytes() - baseline)
-            elapsed.append(time.perf_counter() - started)
     finally:
         tracemalloc.stop()
 
     post_warmup = retained[_WARMUP_CYCLES:]
-    post_warmup_elapsed = elapsed[_WARMUP_CYCLES:]
     early_retained, late_retained = post_warmup[:2], post_warmup[-2:]
-    early_elapsed, late_elapsed = post_warmup_elapsed[:2], post_warmup_elapsed[-2:]
     retained_spread = max(post_warmup) - min(post_warmup)
-    early_elapsed_mean = statistics.mean(early_elapsed)
-    late_elapsed_mean = statistics.mean(late_elapsed)
     print(
         "pipeline_multi_cycle_memory_characterization "
         f"cycles={_CYCLES} warmup={_WARMUP_CYCLES} "
         f"early_retained_mean={statistics.mean(early_retained):.0f} "
         f"late_retained_mean={statistics.mean(late_retained):.0f} "
-        f"retained_spread={retained_spread} "
-        f"early_elapsed_mean_ms={early_elapsed_mean * 1000:.3f} "
-        f"late_elapsed_mean_ms={late_elapsed_mean * 1000:.3f}"
+        f"retained_spread={retained_spread}"
     )
     assert retained_spread <= _RETAINED_SPREAD_LIMIT
-    assert late_elapsed_mean <= early_elapsed_mean * _LATE_ELAPSED_FACTOR

@@ -69,11 +69,11 @@ def _tool_update(step: dict[str, object]) -> tuple[str, dict[str, object], objec
         subagents = info.get("subagents")
         if isinstance(subagents, list) and len(subagents) == 1 and isinstance(subagents[0], dict):
             details = cast("dict[str, object]", subagents[0])
-            return "subagent", info, details.get("conversation_id")
+            return "subagent", info, details.get("conversation_id") or step.get("step_index")
         return None
     tool_name = info.get("name")
     if step_type == "tool" and isinstance(tool_name, str) and tool_name:
-        return tool_name, info, info.get("call_id") or info.get("id")
+        return tool_name, info, info.get("call_id") or info.get("id") or step.get("step_index")
     return None
 
 
@@ -185,8 +185,8 @@ class AgyParser(NdjsonParserBase):
             "subagent" if tool_name in {"invoke_subagent", "define_subagent"} else tool_name
         )
         metadata: dict[str, object] = {"tool": normalized_name, "tool_info": info}
-        if isinstance(call_id, str) and call_id:
-            metadata["tool_use_id"] = call_id
+        if isinstance(call_id, str | int) and str(call_id):
+            metadata["tool_use_id"] = str(call_id)
         if step.get("state") == "DONE":
             output = info.get("output", "")
             yield AgentOutputLine(
