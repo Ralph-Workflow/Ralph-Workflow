@@ -165,8 +165,8 @@ def test_partition_selected_files_balances_static_weights_deterministically() ->
     test_suites_module.validate_exact_file_assignment(selected, shards)
 
 
-def test_partition_selected_files_round_robins_required_e2e_files_across_shards() -> None:
-    """Each shard gets at least one required E2E file before LPT placement."""
+def test_partition_selected_files_minimizes_heavy_e2e_shard_load() -> None:
+    """The heaviest E2E file is isolated by deterministic LPT placement."""
     selected = (
         "tests/test_auto_integrate_recovery.py",
         "tests/test_auto_integrate_refresh_contract.py",
@@ -194,9 +194,18 @@ def test_partition_selected_files_round_robins_required_e2e_files_across_shards(
         file_weights=weights,
     )
 
-    e2e_set = frozenset(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-    e2e_per_shard = tuple(sum(1 for path in shard if path in e2e_set) for shard in shards)
-    assert e2e_per_shard == (2, 2, 1)
+    assert shards == (
+        ("tests/test_auto_integrate_recovery.py",),
+        ("tests/test_auto_integrate_refresh_contract.py",),
+        (
+            "tests/test_alpha.py",
+            "tests/test_auto_integrate_fleet_conflict_e2e.py",
+            "tests/test_auto_integrate_rebase_conflict_e2e.py",
+            "tests/test_auto_integrate_worktree_sync.py",
+            "tests/test_bravo.py",
+            "tests/test_charlie.py",
+        ),
+    )
     test_suites_module.validate_exact_file_assignment(selected, shards)
 
 

@@ -153,15 +153,11 @@ def partition_selected_files(
 ) -> tuple[tuple[str, ...], ...]:
     """Partition selected test files deterministically across workers.
 
-    DA-001 (wt-028-display): distribute selected
-    ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` round-robin across shards
-    before LPT placement of the remaining files. Round-robin pairs
-    the heaviest E2E with the lightest E2E in the overflow shards,
-    so no shard carries the heaviest alone with the 50 s wall-clock
-    penalty that broke the 60 s budget at 16 workers. The remaining
-    non-E2E files then LPT into whichever shard has the lowest
-    weight. Exact-once assignment and deterministic weighting are
-    preserved by sorting both passes by weight then path.
+    Required auto-integration E2E files and remaining files use the same
+    deterministic largest-processing-time (LPT) placement. This isolates a
+    heavy real-git file instead of round-robinning it onto an already loaded
+    shard, minimizing the maximum predicted shard load. Exact-once assignment
+    and deterministic weighting are preserved by sorting by weight then path.
     """
     if worker_count <= 0:
         raise ValueError("worker_count must be positive")
@@ -185,36 +181,13 @@ def partition_selected_files(
         dict(effective_weights) if file_weights is not None else dict.fromkeys(ordered_files, 1)
     )
 
-    # DA-001: round-robin distribute the required E2E files first so each
-    # shard carries at least one. E2E files are sorted weight-DESC then
-    # path so the deterministic ordering always pairs the heaviest with
-    # the lightest on the overflow shards.
-    e2e_set = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-    e2e_files: list[str] = [f for f in ordered_files if f in e2e_set]
-
-    def _e2e_sort_key(path: str) -> tuple[int, str]:
+    def _file_sort_key(path: str) -> tuple[int, str]:
         return (-weight_map[path], path)
-
-    e2e_files_sorted: list[str] = sorted(e2e_files, key=_e2e_sort_key)
-    for index, path in enumerate(e2e_files_sorted):
-        shard_index = index % shard_count
-        shards[shard_index].append(path)
-        shard_weights[shard_index] += weight_map[path]
-
-    # DA-001: LPT-place the remaining (non-E2E) files into whichever
-    # shard has the lowest weight. Tie-break by shard index so the
-    # assignment is deterministic.
-    remaining_files: list[str] = [f for f in ordered_files if f not in e2e_set]
-
-    def _remaining_sort_key(path: str) -> tuple[int, str]:
-        return (-weight_map[path], path)
-
-    remaining_sorted: list[str] = sorted(remaining_files, key=_remaining_sort_key)
 
     def _shard_sort_key(index: int) -> tuple[int, int]:
         return (shard_weights[index], index)
 
-    for path in remaining_sorted:
+    for path in sorted(ordered_files, key=_file_sort_key):
         shard_index = min(range(shard_count), key=_shard_sort_key)
         shards[shard_index].append(path)
         shard_weights[shard_index] += weight_map[path]
