@@ -25,7 +25,9 @@ Inspect the worktree and latest artifact with fresh source, caller, integration,
 
 Choose `completed` when no provable gap remains, `request_changes` for a concrete repairable gap, or `failed` when the result cannot be evaluated. The downstream validator reads the status and matching IDs.
 
-Use parallel or subagent evidence gathering when it improves the decision; retrieve PROMPT, PLAN, and the latest artifact first. Submit the final analysis artifact from this session.
+## SUBAGENTS AND PARALLEL WORK
+
+If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively when it improves the decision. Fan out read-only subagents to inspect independent source, test, and command evidence; run independent analysis or verification work in parallel. Retrieve PROMPT, PLAN, and the latest artifact first. Only you, in the main session, may submit the final analysis artifact.
 
 ## Decision artifact
 
