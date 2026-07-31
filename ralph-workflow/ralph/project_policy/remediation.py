@@ -109,6 +109,8 @@ def _render_prompt(
     the same findings and produce the same output.
     """
     feedback_lines = analysis_feedback.feedback_lines() if analysis_feedback is not None else []
+    if analysis_feedback is not None and analysis_feedback.summary:
+        feedback_lines.insert(0, f"- summary: {analysis_feedback.summary}")
     variables = {
         "findings_block": _serialize_findings(findings),
         "analysis_feedback_block": "\n".join(feedback_lines),

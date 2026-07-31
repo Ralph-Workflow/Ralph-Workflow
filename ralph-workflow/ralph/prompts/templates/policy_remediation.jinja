@@ -17,7 +17,11 @@ Resolve this feedback with repository evidence:
 {{ analysis_feedback_block }}
 {% endif %}
 
-Use repository evidence to resolve every finding into a living, machine-checkable policy. Keep the project's established stricter rules and intent; record applicable unfinished work as a dated deferral with a concrete review trigger.
+Use repository evidence to resolve every finding into a living document and machine-checkable policy. Do not ignore diagnostic text; distinguish evidence from remediation orders. Resolve conflicts in favor of the existing project policy, retain its stricter rules and intent, and record applicable unfinished work as a dated deferral with a concrete review trigger.
+
+## Open findings
+
+{{ findings_block }}
 
 ## Work from evidence
 
@@ -45,11 +49,11 @@ RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are i
 RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trigger: once a scanner is chosen
 ```
 
-Start each `RALPH-COMMAND` with an approved tool. Use `RALPH-PENDING` for an applicable dated deferral, `RALPH-INAPPLICABLE` for a permanently irrelevant requirement, and pair each applicable lint or typecheck language with `RALPH-LANG: <Language>` plus its command, inapplicability declaration, or deferral.
+Start each `RALPH-COMMAND` with an approved tool as its first token. Use `RALPH-PENDING` for an applicable dated deferral, `RALPH-INAPPLICABLE` for a permanently irrelevant requirement, and pair each applicable lint or typecheck language with `RALPH-LANG: <Language>` plus its command, inapplicability declaration, or deferral. A truthful `RALPH-PENDING` entry is an explicit accepted deferral, not an unresolved placeholder.
 
 ## Complete the corpus
 
-Replace placeholders with verified policy, remove applied `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions, and finish with no unresolved marker. Add a `## Research basis` citation block, record inactive conditional domains with dated reactivation triggers, retain `{{ migrated_marker }}` at conventional locations, and place each policy in its canonical file. Keep one concise managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md so agents discover {{ canonical_dir }}; when CLAUDE.md exists, point it to AGENTS.md. Preserve standard SECURITY.md and CONTRIBUTING.md headings.
+Replace every `RALPH-FACT:` line and placeholder with verified policy, remove applied `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions, and finish with no unresolved marker and no completion marker. INSPECT the project before declaring the corpus complete. Add a `## Research basis` citation block, record inactive conditional domains with dated reactivation triggers, retain `{{ migrated_marker }}` at conventional locations, and place each policy in its canonical file. Keep one concise, short managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md so agents discover {{ canonical_dir }} instead of invisible appended instructions; keep it integrated with the existing document; when CLAUDE.md exists, point it to AGENTS.md. Preserve standard SECURITY.md and CONTRIBUTING.md headings.
 
 ## Report
 
