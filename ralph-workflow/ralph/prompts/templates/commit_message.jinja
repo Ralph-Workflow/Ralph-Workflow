@@ -1,12 +1,14 @@
-Task: produce a spec-compliant MCP commit_message artifact for the current pending work shown below.
-The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD).
-Read the diff, choose the matching artifact shape, and submit it without commentary.
+Task: produce and submit a spec-compliant MCP commit_message artifact for the current pending work shown below. A valid artifact has a conventional subject, an explanatory body when the change needs one, and the matching commit or skip document shape.
+
+The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it, then stop.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
+
+Use the provided artifact tool; do not call bash.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
@@ -35,7 +37,7 @@ Use one pass through these steps to produce the subject, then write the body.
 
 **Step 4 — check the grammar, then stop.** Confirm `<kind>(<scope>)?!?: <description>`: kind is from the table; scope, when present, uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; description starts with a lowercase letter or digit; write the unquoted frontmatter value. Quotes become part of the subject and are rejected.
 
-The subject is finished; write the body.
+Select the first valid subject: do not generate candidate subjects and compare them. The subject is finished. Do not look for a better one. Do not reconsider it; write the body.
 
 ## HOW TO WRITE THE BODY
 
@@ -51,7 +53,7 @@ Choose the structure once: use one `## Body` item explaining why the change was 
 
 ## Submit the result
 
-Submit the artifact now, then stop. Use the submission tool before final text; it is the completion contract. For state changes, use only {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
+Submit the artifact now, then stop. Use the submission tool before final text; it is the completion contract. Do not ask the user for confirmation or “Would you like me to ...?” questions. For state changes, use only {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
 
 ## Document shape
 

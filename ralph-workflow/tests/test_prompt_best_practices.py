@@ -39,10 +39,16 @@ def test_prompt_templates_lead_with_the_work_not_a_mode_label() -> None:
         assert "YOUR ROLE AND GOAL" not in first_line, name
 
 
-def test_analysis_templates_share_one_evidence_decision_contract() -> None:
+def test_review_templates_share_one_evidence_decision_contract() -> None:
     templates = _templates()
-    for name in ("development_analysis.jinja", "review_analysis.jinja"):
+    for name in ("development_analysis.jinja", "review_analysis.jinja", "review.jinja"):
         assert "shared/_analysis_decision_contract.j2" in templates[name]
+
+
+def test_evidence_decision_contract_owns_shared_review_dimensions() -> None:
+    templates = _templates()
+    contract = templates["shared/_analysis_decision_contract"]
+    assert "plan compliance, security, correctness, performance, maintainability, and testing" in contract
 
 
 def test_verification_guidance_is_single_sourced() -> None:
