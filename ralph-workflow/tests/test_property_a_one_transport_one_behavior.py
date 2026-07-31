@@ -54,6 +54,9 @@ def _source_bytes(root: Path) -> tuple[tuple[Path, bytes], ...]:
     return tuple(sources)
 
 
+_RALPH_SOURCE_BYTES = _source_bytes(REPO / "ralph")
+
+
 def test_runtime_module_contains_no_fastmcp_symbols() -> None:
     """The runtime module must not export any FastMCP-only construction path."""
     text = (REPO / "ralph" / "mcp" / "server" / "runtime.py").read_text()
@@ -66,7 +69,7 @@ def test_runtime_module_contains_no_fastmcp_symbols() -> None:
 def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
     """The file-walk audit must find no hits in ralph/ outside the absence-asserting test."""
     hits: list[str] = []
-    for path, content in _source_bytes(REPO / "ralph"):
+    for path, content in _RALPH_SOURCE_BYTES:
         for token, token_bytes in zip(FORBIDDEN_TOKENS, FORBIDDEN_TOKEN_BYTES, strict=True):
             if token_bytes in content:
                 rel = path.relative_to(REPO)

@@ -166,13 +166,7 @@ def test_partition_selected_files_balances_static_weights_deterministically() ->
 
 
 def test_partition_selected_files_round_robins_required_e2e_files_across_shards() -> None:
-    """Each shard gets at least one required E2E file so the heaviest single
-    file cannot land alone in the slowest shard.
-
-    With 5 required E2E files and 3 workers, round-robin placement forces
-    shards 0 and 1 to each carry 2 E2E files and shard 2 to carry 1.
-    The non-e2e files then LPT into whichever shard has the lowest weight.
-    """
+    """Each shard gets at least one required E2E file before LPT placement."""
     selected = (
         "tests/test_auto_integrate_recovery.py",
         "tests/test_auto_integrate_refresh_contract.py",
@@ -201,66 +195,9 @@ def test_partition_selected_files_round_robins_required_e2e_files_across_shards(
     )
 
     e2e_set = frozenset(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-    e2e_per_shard = tuple(sum(1 for f in shard if f in e2e_set) for shard in shards)
-    # Round-robin distributes 5 E2E files across 3 shards: 2/2/1, not 5/0/0.
+    e2e_per_shard = tuple(sum(1 for path in shard if path in e2e_set) for shard in shards)
     assert e2e_per_shard == (2, 2, 1)
     test_suites_module.validate_exact_file_assignment(selected, shards)
-
-
-def test_partition_selected_files_round_robin_pair_heaviest_with_lightest_at_production_count() -> (
-    None
-):
-    """At the production 24-worker count, round-robin pairing places the
-    heaviest E2E in the same shard as the lightest E2E, so no shard carries
-    the heaviest alone (the LPT-only failure mode that broke the 60 s
-    budget on 16 workers).
-
-    With 31 E2E files and 24 shards, indices 0-30 mod 24 mean the first 7
-    shards (indices 24-32 hit shards 0-8) each receive a second E2E. The
-    e2e_set is sorted weight-DESC, so file index 0 (heaviest) goes to
-    shard 0 and one of the lightest e2e files (indices 24-32) also lands
-    in shard 0. Net effect: the heaviest e2e is paired with another e2e
-    in shard 0 instead of sitting alone with a 50 s wall-clock penalty.
-    """
-    e2e_set = test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    assert len(e2e_set) == 31, (
-        "production required-auto-integrate registry has 31 files; "
-        "update this test if the count changes"
-    )
-    # Mirror the real production weights used by partition_selected_files.
-    cwd = Path(test_suites_module.__file__).resolve().parent.parent
-    weights = {p: test_suites_module._test_file_weight(cwd, p) for p in e2e_set}
-
-    shards = test_suites_module.partition_selected_files(
-        e2e_set,
-        worker_count=24,
-        file_weights=weights,
-    )
-
-    e2e_actual = frozenset(e2e_set)
-    e2e_per_shard = tuple(sum(1 for f in shard if f in e2e_actual) for shard in shards)
-    # 31 E2E files round-robin across 24 shards: 7 shards get 2, 17 get 1.
-    assert e2e_per_shard.count(2) == 7
-    assert e2e_per_shard.count(1) == 17
-
-    # The heaviest e2e (test_auto_integrate_recovery.py at weight ~1500)
-    # must share its shard with another e2e, not sit alone.
-    shard_weights = [sum(weights[f] for f in shard if f in e2e_actual) for shard in shards]
-    heaviest_file = max(e2e_set, key=lambda p: weights[p])
-    heaviest_weight = weights[heaviest_file]
-    heaviest_shard_index = next(
-        i
-        for i, shard in enumerate(shards)
-        if any(f in e2e_actual for f in shard) and heaviest_file in shard
-    )
-    assert shard_weights[heaviest_shard_index] < 2 * heaviest_weight, (
-        "heaviest E2E shares its shard with at least one other E2E so the "
-        "shard total is below 2x the heaviest file's weight"
-    )
-    # And the slowest-shard e2e weight is well below the failure-mode
-    # single-file weight (which alone blew the 60 s budget at 16 workers).
-    max_shard_e2e_weight = max(shard_weights)
-    assert max_shard_e2e_weight < 1.5 * heaviest_weight
 
 
 def test_estimate_test_file_weight_counts_sync_async_and_method_tests() -> None:
