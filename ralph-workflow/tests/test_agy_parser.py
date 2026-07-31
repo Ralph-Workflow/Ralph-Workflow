@@ -104,6 +104,22 @@ def test_stream_json_subagent_updates_emit_correlated_events() -> None:
     assert parsed[2].content == "after"
 
 
+def test_agy_parser_regression_stream_json_subagent_step_index_correlates_result() -> None:
+    """S-3: live AGY adds conversation_id only to the DONE subagent update."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"role":"research"}]}}}',
+        '{"event":"step_update","step_update":{"step_index":6,"step_type":"subagent","state":"DONE","subagent_info":{"subagents":[{"conversation_id":"subagent-1","role":"research"}]}}}',
+    ]
+
+    parsed = list(parser.parse(iter(lines)))
+
+    assert [(line.type, line.metadata.get("tool_use_id")) for line in parsed] == [
+        ("tool_use", "6"),
+        ("tool_result", "6"),
+    ]
+
+
 def test_agy_parser_regression_stream_json_tool_step_index_correlates_result() -> None:
     """S-3: v1.1.9 tool updates use step_index, not a call_id."""
     parser = AgyParser()

@@ -69,7 +69,7 @@ def _tool_update(step: dict[str, object]) -> tuple[str, dict[str, object], objec
         subagents = info.get("subagents")
         if isinstance(subagents, list) and len(subagents) == 1 and isinstance(subagents[0], dict):
             details = cast("dict[str, object]", subagents[0])
-            return "subagent", info, details.get("conversation_id") or step.get("step_index")
+            return "subagent", info, step.get("step_index") or details.get("conversation_id")
         return None
     tool_name = info.get("name")
     if step_type == "tool" and isinstance(tool_name, str) and tool_name:

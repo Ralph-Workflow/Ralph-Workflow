@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.mcp.artifacts.plan import PlanSizeLimits
+from ralph.mcp.artifacts.plan._size_limits import PlanSizeLimits
 
 if TYPE_CHECKING:
     from pathlib import Path
