@@ -25,11 +25,13 @@ dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Final, cast
 
 from pydantic import Field, field_validator, model_validator
 
 from ralph.config.enums import PipelinePhase
+from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState
@@ -151,6 +153,9 @@ class PipelineState(_FrozenPipelineStateModel):
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)
+    # A run has a bounded number of policy phases and iterations, so this immutable
+    # tuple remains bounded by the workflow's existing execution limits.
+    phase_timings: tuple[PhaseTimingRecord, ...] = Field(default_factory=tuple)
 
     # Recovery observability fields — all have defaults so legacy checkpoints load cleanly
     recovery_cycle_count: int = 0
@@ -476,6 +481,10 @@ class PipelineState(_FrozenPipelineStateModel):
         """Return a copy with one additional fallover record, trimmed to cycle cap."""
         return self.copy_with(fallover_history=(*self.fallover_history, record))
 
+    def with_phase_timing(self, record: PhaseTimingRecord) -> PipelineState:
+        """Return a copy carrying one completed phase timing record."""
+        return self.copy_with(phase_timings=(*self.phase_timings, record))
+
     def with_parallel_execution_cleared(self) -> PipelineState:
         """Return a copy with completed fan-out tracking removed.
 
@@ -509,6 +518,8 @@ PipelineState.model_rebuild(
         "AgentRetryIntent": AgentRetryIntent,
         "WorkUnit": WorkUnit,
         "WorkerState": WorkerState,
+        "PhaseTimingRecord": PhaseTimingRecord,
+        "timedelta": timedelta,
     }
 )
 

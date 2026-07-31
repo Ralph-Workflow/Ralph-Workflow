@@ -27,17 +27,21 @@ final_phase: development
 - [T-4] Imposed-time rise: unavailable until two classified reports exist.
 
 ## Phases
-- [P-1] Final phase: development; per-phase timing is unavailable.
+- [P-1] Final phase: development.
+- [P-2] development: 9s.
+- [P-3] planning: 3s.
 
 ## Slowest Steps
-- [SS-1] Step timing is unavailable; no invented timing is reported.
+- [SS-1] development: 9s.
+- [SS-2] planning: 3s.
 
 ## Signals
 - [SG-1] Agent calls: 1; retries: 0; continuations: 0; fallbacks: 0.
 ```
 
-The reporting budget is 1,600 characters. Unavailable telemetry is stated
-rather than guessed.
+The reporting budget is 1,600 characters. Per-phase values use the maximum
+elapsed time for each phase across iterations; only the six slowest phases are
+listed. Unavailable telemetry is stated rather than guessed.
 
 See `.agent/artifact-formats/examples/run_time_report.md` for a complete
 example.

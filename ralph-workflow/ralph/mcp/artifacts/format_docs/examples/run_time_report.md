@@ -15,10 +15,13 @@ final_phase: development
 - [T-4] Imposed-time rise: unavailable until two classified reports exist.
 
 ## Phases
-- [P-1] Final phase: development; per-phase timing is unavailable.
+- [P-1] Final phase: development.
+- [P-2] development: 9s.
+- [P-3] planning: 3s.
 
 ## Slowest Steps
-- [SS-1] Step timing is unavailable; no invented timing is reported.
+- [SS-1] development: 9s.
+- [SS-2] planning: 3s.
 
 ## Signals
 - [SG-1] Agent calls: 1; retries: 0; continuations: 0; fallbacks: 0.

@@ -1077,6 +1077,10 @@ def _run_pipeline_step(
     )
     _phase_timer = PhaseTimer.start(state.phase)
     _phase_outcome = "crashed"
+
+    def _with_phase_timing(result: PipelineState | int) -> PipelineState | int:
+        return result.with_phase_timing(_phase_timer.finish()) if isinstance(result, PipelineState) else result
+
     try:
         effect = call_determine_effect_from_policy(
             state,
@@ -1126,7 +1130,7 @@ def _run_pipeline_step(
                 display_context=display_context,
             )
             _phase_outcome = "skipped"
-            return inline_result
+            return _with_phase_timing(inline_result)
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
@@ -1143,7 +1147,7 @@ def _run_pipeline_step(
                     display_context=display_context,
                 )
 
-            return execute_fan_out_sync(
+            fan_out_result = execute_fan_out_sync(
                 effect=effect,
                 state=state,
                 display=display,
@@ -1157,6 +1161,7 @@ def _run_pipeline_step(
                 pipeline_deps=pipeline_deps,
                 _on_successful_completion=integrate_after_successful_fan_out,
             )
+            return _with_phase_timing(fan_out_result)
 
         with process_phase_scope(state.phase):
             workspace = FsWorkspace(
@@ -1183,13 +1188,13 @@ def _run_pipeline_step(
                 )
             except MissingPlanHandoffError as exc:
                 _phase_outcome = "skipped"
-                return _recover_missing_plan_handoff(
+                return _with_phase_timing(_recover_missing_plan_handoff(
                     state=state,
                     pipeline_policy=policy_bundle.pipeline,
                     checkpoint_path=_checkpoint_path(workspace_scope),
                     subscriber=pipeline_subscriber,
                     exc=exc,
-                )
+                ))
             event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,
@@ -1265,7 +1270,7 @@ def _run_pipeline_step(
             ),
             path=_checkpoint_path(workspace_scope),
         )
-        return next_state
+        return _with_phase_timing(next_state)
     except KeyboardInterrupt:
         # Re-raise — the ``finally`` clause still records ``crashed`` first.
         raise
@@ -1295,15 +1300,16 @@ def _run_pipeline_step(
             message="Checkpoint save failed while recording recovery in phase={phase}: {err}",
             path=_checkpoint_path(workspace_scope),
         )
-        return recovered_state
+        return _with_phase_timing(recovered_state)
     finally:
         # SINGLE recording site for all exit paths (inline/FanOut/
         # MissingPlanHandoff/success/KeyboardInterrupt/BaseException).
         # Fail-soft: telemetry must never break the pipeline.
         with contextlib.suppress(Exception):
+            phase_timing = _phase_timer.finish()
             record_phase_execution(
                 role=_phase_role,
-                duration_s=_phase_timer.finish().elapsed_seconds,
+                duration_s=phase_timing.elapsed_seconds,
                 outcome=_phase_outcome,
             )
 

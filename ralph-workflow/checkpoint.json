@@ -50,6 +50,7 @@
   "post_commit_phase_override": null,
   "work_units": [],
   "worker_states": {},
+  "phase_timings": [],
   "recovery_cycle_count": 0,
   "fallover_history": [],
   "last_failure_category": null,
