@@ -152,7 +152,7 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
     tmpl = ctx.registry.get_template(template_name)
     caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
     base_vars: dict[str, str] = {
-        "PROMPT_PATH": "PROMPT.md",
+        "PRODUCT_CRITERIA_PATH": "PROMPT.md",
         "PLAN_PATH": ".agent/artifacts/plan.md",
         "LATEST_ARTIFACT": "",
         "LATEST_ARTIFACT_PATH": "",

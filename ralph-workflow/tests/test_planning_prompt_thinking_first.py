@@ -41,9 +41,9 @@ def test_planning_prompt_frames_the_request_before_mechanics_and_places_payload_
 
 def test_planning_variants_keep_thinking_before_submission_and_payload() -> None:
     payload_markers = {
-        "planning_fallback.jinja": "REQUEST (`{{PROMPT_PATH}}`):",
+        "planning_fallback.jinja": "REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):",
         "planning_edit.jinja": "ORIGINAL REQUEST:",
-        "planning_edit_fallback.jinja": "REQUEST (`{{PROMPT_PATH}}`):",
+        "planning_edit_fallback.jinja": "REQUEST (`{{PRODUCT_CRITERIA_PATH}}`):",
     }
     for name, payload in payload_markers.items():
         source = _source(name)

@@ -66,8 +66,8 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
     tmpl = context.registry.get_template(template_name)
     caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
     base_vars: dict[str, str] = {
-        "PROMPT": "",
-        "PROMPT_PATH": "PROMPT.md",
+        "PRODUCT_CRITERIA": "",
+        "PRODUCT_CRITERIA_PATH": "PROMPT.md",
         "PLAN": "",
         "PLAN_PATH": ".agent/artifacts/plan.md",
         "ANALYSIS_FEEDBACK": "",
@@ -90,8 +90,6 @@ def _render_phase(template_name: str, drain: SessionDrain) -> str:
         "DOCS_LOOKUP_PHASE": "development",
         "DOCS_LOOKUP_INTENT": "",
         "DOCS_LOOKUP_ACTION": "",
-        "PRODUCT_CRITERIA": "",
-        "PRODUCT_CRITERIA_PATH": "",
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "",
         "ISSUES": "",
         "ISSUES_PATH": "",
@@ -343,12 +341,12 @@ def _render_drain_template(template_stem: str, drain: SessionDrain) -> str:
         {
             "show_plan_edit_guidance": "true",
             "SKILLS_INLINE_CONTENT": "(inline skills)",
-            "PROMPT_PATH": ".agent/PRODUCT_CRITERIA.md",
+            "PRODUCT_CRITERIA": "",
+            "PRODUCT_CRITERIA_PATH": ".agent/PRODUCT_CRITERIA.md",
             "PLAN_PATH": ".agent/artifacts/plan.md",
             "ANALYSIS_FEEDBACK_PATH": ".agent/analysis_feedback.md",
             "LATEST_ARTIFACT_PATH": ".agent/artifacts/development_result.md",
             "ISSUES_PATH": ".agent/issues.md",
-            "PRODUCT_CRITERIA_PATH": ".agent/PRODUCT_CRITERIA.md",
             "WORKER_FALLBACK_PATH": ".agent/artifacts/worker_development_result.md",
             "ARTIFACT_HISTORY_DIR": ".agent/artifacts",
             "ARTIFACT_HISTORY_PATH": ".agent/artifacts/history.md",

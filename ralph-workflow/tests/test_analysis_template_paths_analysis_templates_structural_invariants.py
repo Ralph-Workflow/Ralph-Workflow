@@ -132,7 +132,8 @@ class TestAnalysisTemplatesStructuralInvariants:
         for template in self._analysis_templates():
             source = template.read_text(encoding="utf-8")
             uses_path = (
-                "render_payload_path('PROMPT'" in source or 'render_payload_path("PROMPT"' in source
+                "render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH)" in source
+                or 'render_payload_path("PROMPT", PRODUCT_CRITERIA_PATH)' in source
             )
             assert uses_path, f"{template.name}: PROMPT must use render_payload_path"
             assert "render_payload_section('PROMPT'" not in source, (

@@ -11,7 +11,7 @@ plan; do not grade document shape.
 {% include 'shared/_docs_lookup.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
 
-{{ render_payload_path('PROMPT', PROMPT_PATH) }}
+{{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}
 
 Read the current plan at `.agent/artifacts/plan.md` (or its staged draft with
 {{ GET_MD_DRAFT_TOOL_REFERENCE }} and `artifact_type="plan"`), the request,

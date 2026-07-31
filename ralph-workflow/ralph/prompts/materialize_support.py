@@ -80,7 +80,7 @@ def product_criteria_variables(
 ) -> dict[str, str]:
     """Return the prompt variables for the current prompt path."""
     del prompt_content
-    return {"PROMPT": "", "PROMPT_PATH": product_criteria_path}
+    return {"PRODUCT_CRITERIA": "", "PRODUCT_CRITERIA_PATH": product_criteria_path}
 
 
 def merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:

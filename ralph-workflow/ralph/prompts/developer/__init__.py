@@ -206,12 +206,12 @@ def prompt_planning_xml_with_context(
         )
         fallback_vars: dict[str, str] = {
             **capability_vars,
-            "PROMPT": inputs.prompt_content or "No requirements provided",
+            "PRODUCT_CRITERIA": inputs.prompt_content or "No requirements provided",
             "PLAN": inputs.plan_content or "(no plan available)",
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
             "LAST_RETRY_ERROR": inputs.last_retry_error,
             "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-            "PROMPT_PATH": product_criteria_path,
+            "PRODUCT_CRITERIA_PATH": product_criteria_path,
             "PLAN_PATH": inputs.plan_path or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
             or str(
@@ -263,4 +263,4 @@ def _product_criteria_variables(
     prompt_content: str | None, product_criteria_path: str
 ) -> dict[str, str]:
     del prompt_content
-    return {"PROMPT": "", "PROMPT_PATH": product_criteria_path}
+    return {"PRODUCT_CRITERIA": "", "PRODUCT_CRITERIA_PATH": product_criteria_path}

@@ -43,8 +43,8 @@ class TestRenderPayloadPath:
 
     def test_path_reference_includes_read_instruction(self) -> None:
         result = _render(
-            "{{ render_payload_path('PROMPT', PROMPT_PATH) }}",
-            {"PROMPT_PATH": ".agent/PROMPT.md"},
+            "{{ render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH) }}",
+            {"PRODUCT_CRITERIA_PATH": ".agent/PRODUCT_CRITERIA.md"},
         )
         assert "Read the complete prompt" in result
 

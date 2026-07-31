@@ -51,9 +51,9 @@ class TestAnalysisTemplatePayloadContract:
     def test_prompt_uses_render_payload_path_exact_form(self, name: str) -> None:
         source = _load(name)
         assert (
-            "render_payload_path('PROMPT', PROMPT_PATH)" in source
-            or 'render_payload_path("PROMPT", PROMPT_PATH)' in source
-        ), f"{name}: PROMPT must use render_payload_path('PROMPT', PROMPT_PATH)"
+            "render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH)" in source
+            or 'render_payload_path("PROMPT", PRODUCT_CRITERIA_PATH)' in source
+        ), f"{name}: PROMPT must use render_payload_path('PROMPT', PRODUCT_CRITERIA_PATH)"
 
     @pytest.mark.parametrize("name", _ANALYSIS_TEMPLATES)
     def test_prompt_does_not_use_render_payload_section(self, name: str) -> None:
