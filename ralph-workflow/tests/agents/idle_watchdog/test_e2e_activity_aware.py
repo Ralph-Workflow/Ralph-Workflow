@@ -206,7 +206,7 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         children = host_proc.children(recursive=False)
         if children:
             break
-        time.sleep(0.01)
+        time.sleep(0.005)
     try:
         assert len(children) >= 1
         child_pid = children[0].pid
@@ -268,15 +268,13 @@ def test_teardown_reaps_nested_subagents() -> None:
                 break
         except psutil.Error:
             pass
-        time.sleep(0.01)
+        time.sleep(0.005)
     assert host.poll() is None
 
     DefaultProcessTeardown(kill_escalation_ms=10.0).teardown_subtree(host.pid)
 
-    for _ in range(100):
-        if host.poll() is not None:
-            break
-        time.sleep(0.01)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        host.wait(timeout=0.5)
     assert host.poll() is not None
 
 

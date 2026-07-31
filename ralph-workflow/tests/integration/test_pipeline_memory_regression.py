@@ -7,7 +7,7 @@ fit the per-test 1 s budget.
 Characterization notes (wt-024 memory-perf):
 - Cycle count is sized to expose sub-kilobyte-per-cycle retention that
   would accumulate fatally over an hours-long run (detectable floor
-  ~512 B/cycle). Eight post-warmup cycles still yield ~4 KiB if
+  ~512 B/cycle). Five post-warmup cycles still yield ~2.5 KiB if
   retention were linear at that floor — well below the 256 KiB spread
   cap — while keeping suite wall-clock under the e2e budget.
 - Bridge factories used here MUST NOT retain per-call argument dicts;
@@ -56,7 +56,7 @@ pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 _LINE_COUNT = 32
 _LINE_SIZE = 2048
 _WARMUP_COUNT = 2
-_ITERATION_COUNT = 8
+_ITERATION_COUNT = 5
 _WINDOW = 4
 _RETAINED_SPREAD_LIMIT = 256_000
 _RETAINED_DELTA_LIMIT = 512_000

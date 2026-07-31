@@ -50,7 +50,7 @@ def _wait_for_pids_gone(pids: list[int], timeout_s: float = 0.5) -> bool:
     while time.monotonic() < deadline:
         if all(_pid_gone(pid) for pid in pids):
             return True
-        time.sleep(0.02)  # signal delivery requires a brief yield; Event is insufficient here
+        time.sleep(0.005)  # signal delivery requires a brief yield; Event is insufficient here
     return all(_pid_gone(pid) for pid in pids)
 
 

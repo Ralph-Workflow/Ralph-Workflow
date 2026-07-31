@@ -39,7 +39,7 @@ def _wait_for_descendants(
             last = []
         if len(last) >= min_count:
             return last
-        time.sleep(0.01)
+        time.sleep(0.005)
     return last
 
 

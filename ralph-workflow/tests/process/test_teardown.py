@@ -33,7 +33,7 @@ def _wait_for_descendants(
             last = []
         if len(last) >= min_count:
             return last
-        time.sleep(0.01)
+        time.sleep(0.005)
     return last
 
 
@@ -146,7 +146,7 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
             psutil.Process(child_pid)
         except psutil.NoSuchProcess:
             break
-        time.sleep(0.01)
+        time.sleep(0.005)
     else:
         pytest.fail(f"descendant {child_pid} survived process-group teardown")
 

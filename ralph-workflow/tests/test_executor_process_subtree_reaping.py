@@ -81,7 +81,7 @@ def _wait_gone(pid: int, timeout: float = 0.4) -> bool:
     while time.monotonic() < deadline:
         if not _alive(pid):
             return True
-        time.sleep(0.01)
+        time.sleep(0.005)
     return not _alive(pid)
 
 
@@ -92,7 +92,7 @@ def _reap_if_survived(pid: int) -> None:
             os.kill(pid, sig)
         except (ProcessLookupError, PermissionError):
             return
-        time.sleep(0.01)
+        time.sleep(0.005)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-tree semantics")
