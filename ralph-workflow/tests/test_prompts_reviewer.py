@@ -7,10 +7,10 @@ from ralph.prompts.template_registry import TemplateRegistry
 def test_review_prompt_includes_instructions_and_plan() -> None:
     prompt = render_review_prompt("Implementation plan", "Diff summary")
 
-    assert "REVIEW MODE" in prompt
+    assert "Review mode:" in prompt
     assert "Implementation plan" in prompt
     assert "Diff summary" in prompt
-    assert "Your only job" in prompt
+    assert "leave code and commits unchanged." in prompt
 
 
 def test_review_prompt_uses_custom_template_when_available() -> None:
@@ -35,12 +35,12 @@ def test_review_prompt_fans_out_independent_checks_when_supported() -> None:
     assert prompt.startswith(
         "Judge the implementation against the plan with fresh evidence and report material findings."
     )
-    assert "REVIEW MODE\nYour only job" in prompt
+    assert "Review mode: analyze the implementation and report findings; leave code and commits unchanged." in prompt
     assert "subagent" in prompt.lower()
     assert "parallel" in prompt.lower()
     assert "main session" in prompt.lower()
     assert "sequentially" in prompt.lower()
-    assert prompt.index("Grade the change") < prompt.rindex("## Submit")
+    assert prompt.index("## Fresh review evidence") < prompt.rindex("## Submit")
     assert '`declare_complete(summary="issues")`' in prompt
 
 

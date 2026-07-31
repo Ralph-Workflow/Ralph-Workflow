@@ -6,7 +6,7 @@ Resolve every finding from repository evidence. Keep each policy a living, machi
 
 ## Work from evidence
 
-INSPECT the project: inventory languages, manifests, contributor guidance, tools, and the authoritative verification entry point before declaring facts or commands. Distinguish diagnostic evidence from remediation orders, diagnose the actual failure, and edit from verified repository evidence. Use read-only subagents for independent policy or gate investigations when helpful; reconcile terminology and edit sequentially in the main session.
+INSPECT the project: inventory languages, manifests, contributor guidance, tools, and the authoritative verification entry point before declaring facts or commands. Do not ignore diagnostic text: distinguish diagnostic evidence from remediation orders, diagnose the actual failure, and edit from verified repository evidence. Use read-only subagents for independent policy or gate investigations when helpful; reconcile terminology and edit sequentially in the main session.
 
 For gate plumbing, follow `{{ gate_script_policy_path }}`: use strict, fail-closed scripts with installed tools and real paths; test passing and failing behavior; wire them into the authoritative verification entry point; protect secrets and keep remote execution safe. Attribute a product-code failure from a working gate accurately in policy rather than changing unrelated product code.
 
@@ -33,18 +33,6 @@ Start every `RALPH-COMMAND` with an approved first token. A truthful `RALPH-PEND
 ## Findings
 
 Replace every `RALPH-FACT:` line and placeholder with verified policy; remove applied `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions. Complete the corpus when no unresolved marker remains; there is no completion marker to add. Keep each policy a living document: resolve conflicts in favor of the existing project policy and preserve its intent. Add a `## Research basis` citation block, record each inactive conditional domain with its dated reactivation trigger, place policy in its canonical file, and retain `{{ migrated_marker }}` at conventional locations. Probe declared gates and attribute failures to plumbing or product code. Keep exactly one concise, short managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` integrated into AGENTS.md so agents discover {{ canonical_dir }} without an invisible bolted-on section. If CLAUDE.md exists, point it to AGENTS.md. Keep standard SECURITY.md and CONTRIBUTING.md headings and use the migrated marker.
-
-{{ findings_block }}
-{% if analysis_feedback_block %}
-
-## Accepted work and remaining feedback
-
-Keep accepted policy intact and resolve the remaining findings.
-
-> {{ analysis_feedback_summary }}
-
-{{ analysis_feedback_block }}
-{% endif %}
 
 ## Finish with a truthful report
 

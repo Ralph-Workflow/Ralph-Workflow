@@ -10,15 +10,12 @@ def _prompt() -> str:
     return analysis._render_prompt(MemoryWorkspace())
 
 
-def test_analysis_prompt_puts_role_before_unattended_constraints() -> None:
+def test_analysis_prompt_starts_with_the_review_instruction() -> None:
     prompt = _prompt()
 
     first_nonempty = next(line for line in prompt.splitlines() if line.strip())
 
-    assert first_nonempty == (
-        "You are the policy-remediation analysis reviewer. "
-        "Judge the policy build system with fresh evidence and submit one decision artifact."
-    )
+    assert first_nonempty == "Judge the policy build system with fresh evidence and submit one decision artifact."
     assert prompt.index(first_nonempty) < prompt.index("*** UNATTENDED MODE")
 
 
@@ -45,7 +42,7 @@ def test_analysis_prompt_names_every_supported_transport_tool() -> None:
 def test_analysis_prompt_accepts_truthful_pending_markers() -> None:
     prompt = _prompt()
 
-    assert "Do not run a `RALPH-PENDING:` gate" in prompt
+    assert "truthful deferral instead of probing its deferred gate" in prompt
     assert "A truthful `RALPH-PENDING` marker is compatible with `completed`" in prompt
     assert "resolved `RALPH-FACT:`" in prompt
 
@@ -71,32 +68,22 @@ def test_analysis_prompt_uses_subagents_for_independent_evidence() -> None:
     prompt = _prompt()
 
     assert "subagent" in prompt.lower()
-    assert "parallel" in prompt.lower()
+    assert "read-only subagents for independent evidence when helpful" in prompt
     assert "main session" in prompt.lower()
-    assert "sequentially" in prompt.lower()
 
 
 def test_analysis_prompt_teaches_complete_and_remediation_invariants() -> None:
     normalized = " ".join(_prompt().split())
 
-    assert (
-        "A completed decision must omit both remediation sections; any known "
-        "gap requires a non-completed status."
-    ) in normalized
-    assert (
-        "The two remediation ID sets must match exactly: no missing, extra, "
-        "or mismatched gap/fix IDs."
-    ) in normalized
-    assert (
-        "For both `request_changes` and `failed`, include non-empty "
-        "`## What Came Up Short` and `## How To Fix` sections."
-    ) in normalized
+    assert "A completed decision omits both remediation sections; every known gap uses a non-completed status." in normalized
+    assert "The two remediation ID sets must match exactly: no missing, extra, or mismatched gap/fix IDs." in normalized
+    assert "For `request_changes` and `failed`, include non-empty `## What Came Up Short` and `## How To Fix` sections" in normalized
 
 
 def test_analysis_prompt_keeps_declare_complete_as_the_final_action() -> None:
     prompt = _prompt()
     declaration_index = prompt.rindex("After a valid artifact submission receipt")
 
-    assert declaration_index > prompt.rindex("Do not report `completed`")
+    assert declaration_index > prompt.rindex("The two remediation ID sets must match exactly")
     assert "as your final explicit action" in prompt[declaration_index:]
     assert prompt[declaration_index:].rstrip().endswith("generic transports.")

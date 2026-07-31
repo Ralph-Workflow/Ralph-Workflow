@@ -43,6 +43,7 @@ from ralph.mcp.artifacts.plan.plan_artifact_validation_error import (
     PlanArtifactValidationError,
 )
 from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
+from ralph.pipeline.work_unit import WorkUnit
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.pydantic_validation_errors import (
     format_validation_error_messages,
@@ -52,7 +53,6 @@ from ralph.pydantic_validation_errors import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from ralph.pipeline.work_unit import WorkUnit
 
 # Shell-invocation denylist for VerificationStep.method. Each prefix is
 # startswith() matched; the trailing space on each entry ensures legitimate
@@ -88,7 +88,7 @@ class PlanArtifact(RalphBaseModel):
     design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(default_factory=list)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
-    work_units: "list[WorkUnit]" = Field(default_factory=list)
+    work_units: list[WorkUnit] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_depends_on_acyclic(self) -> PlanArtifact:
@@ -221,32 +221,6 @@ class PlanArtifact(RalphBaseModel):
         return self
 
 
-class _PlanArtifactRebuildState:
-    rebuilt: bool = False
-
-
-_PLAN_ARTIFACT_REBUILD_STATE = _PlanArtifactRebuildState()
-
-
-def _ensure_plan_artifact_rebuilt() -> None:
-    """Lazily resolve the TYPE_CHECKING forward reference to WorkUnit on PlanArtifact.
-
-    Pydantic needs the class itself (not just the string) to resolve a forward
-    reference used in a field annotation. We use import_module (deferred) to
-    avoid the ralph.pipeline -> ralph.phases -> ralph.mcp.artifacts.plan
-    circular import; the canonical WorkUnit lives in ralph.pipeline.work_unit.
-
-    Idempotent: subsequent calls are no-ops once the model has been rebuilt.
-    """
-    if _PLAN_ARTIFACT_REBUILD_STATE.rebuilt:
-        return
-    work_unit_cls: type[object] = import_module("ralph.pipeline.work_unit").WorkUnit
-    PlanArtifact.model_rebuild(
-        _types_namespace=cast("dict[str, object]", {"WorkUnit": work_unit_cls}),
-    )
-    _PLAN_ARTIFACT_REBUILD_STATE.rebuilt = True
-
-
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
     """Return True when ``artifact`` represents a planning no-op.
 
@@ -278,7 +252,6 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
     so the call site is a single ``if error is not None: raise`` with
     no try/except.
     """
-    _ensure_plan_artifact_rebuilt()
     if is_noop_plan(content):
         return {"noop": True}
     size_error = check_plan_size(content)
