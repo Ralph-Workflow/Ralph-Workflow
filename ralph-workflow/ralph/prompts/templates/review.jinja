@@ -1,7 +1,7 @@
 Judge the implementation against the plan with fresh evidence and report material findings.
 
 REVIEW MODE
-Your only job is to analyze the implementation and report findings; leave code and commits unchanged.
+Your only job is to grade the change from fresh evidence and report material findings; leave code and commits unchanged.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -20,11 +20,9 @@ Submit the required artifact on this attempt.
 
 Bring evidence the implementation phase did not have. Compare the changed files against the plan and requirements, follow callers, tests, and error paths as needed, and report only material findings with concrete cost and exact remediation; `no_issues` is a normal result.
 
-Grade the change on plan compliance, security, correctness, performance, maintainability, and test coverage. Record a specific not-applicable reason under `## Review Evidence` for a dimension without a relevant surface. The decision contract defines admissible evidence and how to record limits. Run the project's fast path before broader verification when available, then its meaningful full gate.
+Use the shared decision contract as the single source for review dimensions, admissible evidence, and limits. Record a specific not-applicable reason under `## Review Evidence` for a dimension without a relevant surface. Run the project's fast path before broader verification when available, then its meaningful full gate.
 
-## Parallel evidence
-
-Use independent read-only subagents for distinct review dimensions when they add evidence and improve evidence quality; run independent checks in parallel when supported, otherwise inspect sequentially. The main session reconciles the evidence, submits the `issues` artifact, and declares completion.
+Grade the change with independent read-only subagents and parallel checks when they add evidence; otherwise inspect sequentially. Reconcile the evidence and submit the `issues` artifact from this main session.
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 

@@ -8,7 +8,7 @@ The diff contains only the changes not yet committed — the current worktree vs
 
 {% include 'shared/_unattended_mode.j2' %}
 
-Use the provided artifact tool; do not call bash.
+Use the provided artifact tool to create the commit-message artifact; do not call bash.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
@@ -53,7 +53,7 @@ Choose the structure once: use one `## Body` item explaining why the change was 
 
 ## Submit the result
 
-Submit the artifact now, then stop. Use the submission tool before final text; it is the completion contract. Do not ask the user for confirmation or “Would you like me to ...?” questions. For state changes, use only {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
+Submit the artifact now, then stop. The submission tool is the completion contract. Continue directly to submission rather than asking the user for confirmation or “Would you like me to ...?” questions. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
 
 ## Document shape
 
