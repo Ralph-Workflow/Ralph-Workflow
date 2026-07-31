@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 
+from rich.console import Console
 from typer.testing import CliRunner
 
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.main import app
+from ralph.display.context import DisplayContext
+from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -96,10 +100,28 @@ class TestExplainCLI:
         assert "developer_iteration" in result.output
         assert "development_final_commit" in result.output
 
-    def test_check_policy_command_reports_block_summary(self, capsys: object) -> None:
-        rc = check_policy_command(_DEFAULT_POLICY_DIR)
+    def test_check_policy_command_reports_block_summary(self) -> None:
+        stream = StringIO()
+        context = DisplayContext(
+            console=Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME),
+            theme=RALPH_THEME,
+            width=80,
+            mode="default",
+            color_enabled=True,
+            glyphs_enabled=True,
+            headline_max_chars=120,
+            condenser_soft_limit=400,
+            condenser_hard_limit=4000,
+            streaming_checkpoint_chars=4000,
+            streaming_checkpoint_fragments=20,
+            streaming_dedup_enabled=True,
+            streaming_checkpoints_enabled=True,
+            thinking_preview_min_chars=80,
+            tool_result_headline_min_chars=80,
+        )
 
-        captured = capsys.readouterr()
+        rc = check_policy_command(_DEFAULT_POLICY_DIR, display_context=context)
+
         assert rc == 0
-        assert "blocks:" in captured.out
-        assert "lifecycle completion phases:" in captured.out
+        assert "blocks:" in stream.getvalue()
+        assert "lifecycle completion phases:" in stream.getvalue()
