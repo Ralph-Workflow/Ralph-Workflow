@@ -141,18 +141,18 @@ have worked. A good first task fits four criteria:
 4. **2-6 hours of work.** Micro-tasks do not exercise the loop.
    Multi-day monsters do not let you build a tight feedback cycle.
 
-Good candidates: bounded refactor with tests, mechanical migration with
-existing tests, test-coverage pass for an untested module, focused
-docs/onboarding improvement, small feature slice with a visible
-endpoint. Bad candidates: vague "improve performance" tasks,
-exploratory "rewrite the entire frontend" assignments, anything that
-needs credentials the agent cannot reach.
+- **Good candidates:** bounded refactor with tests, mechanical migration
+  with existing tests, test-coverage pass for an untested module, focused
+  docs/onboarding improvement, small feature slice with a visible endpoint.
+- **Bad candidates:** vague "improve performance" tasks, exploratory
+  "rewrite the entire frontend" assignments, anything that needs
+  credentials the agent cannot reach.
 
 For a worked reference of a small feature slice with a visible
 endpoint, see the
-[example-api proof page](../../../docs/examples/example-api.md) -- it
-is the canonical Ralph Workflow starter task (a Flask `/health` endpoint) and is
-the smallest possible end-to-end result the loop can produce.
+[example-api proof page](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/examples/example-api.md)
+— it is the canonical Ralph Workflow starter task (a Flask `/health`
+endpoint) and the smallest end-to-end result the loop can produce.
 
 ## Write the spec in five minutes
 
