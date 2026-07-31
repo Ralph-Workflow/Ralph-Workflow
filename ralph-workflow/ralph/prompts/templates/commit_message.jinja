@@ -1,6 +1,6 @@
 Task: produce and submit a spec-compliant MCP commit_message artifact for the current pending work shown below. A valid artifact has a conventional subject, an explanatory body when the change needs one, and the matching commit or skip document shape.
 
-The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it without commentary, then stop. Do not ask the user for confirmation or “Would you like me to …” questions. Do not call bash; use only the declared artifact tools.
+The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it through the declared artifact tools without commentary, then stop. Do not ask the user for confirmation or “Would you like me to …” questions. Do not call bash.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -8,13 +8,13 @@ The diff contains only the changes not yet committed — the current worktree vs
 
 {% include 'shared/_unattended_mode.j2' %}
 
-Use the provided artifact tool to create the commit-message artifact; do not call bash.
+Use the provided artifact tool to create the commit-message artifact.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 ## HOW TO WRITE THE SUBJECT
 
-Use one pass through these steps to produce the subject, then write the body. Do not generate candidate subjects and compare them. The subject is finished. Do not look for a better one. Do not reconsider it.
+Use one pass through these steps to produce the subject, then write the body. Do not generate candidate subjects and compare them. The subject is finished. Do not look for a better one. Do not reconsider it; select the first valid subject and continue to the body.
 
 **Step 1 — pick the kind.** Take the first matching row:
 
@@ -37,7 +37,7 @@ Use one pass through these steps to produce the subject, then write the body. Do
 
 **Step 4 — check the grammar, then stop.** Confirm `<kind>(<scope>)?!?: <description>`: kind is from the table; scope, when present, uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; description starts with a lowercase letter or digit; write the unquoted frontmatter value. Quotes become part of the subject and are rejected.
 
-Select the first valid subject: do not generate candidate subjects and compare them. The subject is finished. Do not look for a better one. Do not reconsider it; write the body.
+Select the first valid subject and write the body.
 
 ## HOW TO WRITE THE BODY
 
@@ -53,7 +53,7 @@ Choose the structure once: use one `## Body` item explaining why the change was 
 
 ## Submit the result
 
-Submit the artifact now, then stop. The submission tool is the completion contract. Continue directly to submission rather than asking the user for confirmation or “Would you like me to ...?” questions. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
+Submit the artifact now, then stop. The submission procedure below is the completion contract. For state changes, use {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
 
 ## Document shape
 
@@ -100,3 +100,4 @@ subject: fix(auth): prevent token expiry race
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 
 The artifact submission procedure above is authoritative for the completion contract.
+
