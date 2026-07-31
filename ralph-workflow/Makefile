@@ -2,7 +2,7 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: `auto` uses one worker per core, capped at twelve shards. The 1.0 s
+# Default: `auto` uses one worker per core, capped at sixteen shards. The 1.0 s
 # per-test SIGALRM budget charges wall clock; the prior 24-process profile
 # starved otherwise-fast tests and contended on temporary SQLite stores. The
 # capped profile keeps the maintained suite below the immutable 60 s budget.
