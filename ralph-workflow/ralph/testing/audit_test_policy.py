@@ -69,9 +69,10 @@ _IO_ALLOWLIST: set[str] = {
     # to a fake Path would defeat the regression assertion (which
     # specifically tests the on-disk change-detection contract).
     "test_mcp_file_backed_session_caching",
-    # Template rendering tests that read Jinja2 template files from the repo.
-    # These tests verify template logic against real template content; mocking
-    # the file reads would test nothing meaningful.
+    # Template rendering and source-invariant tests read Jinja2 template files
+    # from the repo. The template body is the subject under test, so mocking
+    # it would test nothing meaningful.
+    "test_prompt_best_practices",
     "test_analysis_context_partial_analysis_context_path_behavior",
     "test_analysis_context_partial_analysis_context_path_only_behavior",
     "test_analysis_context_partial_analysis_context_rendering",

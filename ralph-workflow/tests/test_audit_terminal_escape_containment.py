@@ -348,8 +348,8 @@ def test_audit_blocks_regression_when_spawn_options_drops_devnull(
     """Adversarial: revert SpawnOptions ``stdin=subprocess.DEVNULL`` back to ``stdin=None``.
 
     This is the critical regression -- re-introducing INHERIT means the
-    agent child can take over Ralph's TTY. Both the file-level invariant
-    and the SpawnOptions call-site invariant must fire.
+    agent child can take over Ralph's TTY. The SpawnOptions call-site
+    invariant must fire.
     """
     path = "agents/invoke/_process_reader.py"
 
@@ -360,13 +360,18 @@ def test_audit_blocks_regression_when_spawn_options_drops_devnull(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    callsite_invariant = next(
+        invariant
+        for invariant in audit_module._INVARIANTS
+        if isinstance(invariant, CallSiteInvariant) and invariant.rel_path == path
+    )
+    monkeypatch.setattr(audit_module, "_INVARIANTS", (callsite_invariant,))
 
     rc = audit_main([])
     captured = capsys.readouterr()
 
     assert rc == 1
     assert path in captured.out
-    # The call-site invariant must fire.
     assert "no SpawnOptions call passes" in captured.out
 
 
