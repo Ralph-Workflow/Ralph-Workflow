@@ -32,29 +32,18 @@ def _load(name: str) -> str:
 
 class TestAnalysisTemplatePayloadContract:
     @pytest.mark.parametrize("name,input_phrase", _SUBAGENT_ANALYSIS_INPUTS.items())
-    def test_analysis_templates_require_subagent_parallel_fanout_guidance(
+    def test_analysis_templates_use_single_sourced_parallel_evidence_guidance(
         self, name: str, input_phrase: str
     ) -> None:
         source = _load(name)
         normalized_source = " ".join(source.split())
-        assert "## SUBAGENTS AND PARALLEL WORK" in source, (
-            f"{name}: missing dedicated subagent/parallel work section"
-        )
-        required_intro = (
-            "If your runtime provides a subagent, task, or parallel-agent mechanism, "
-            "use it extensively"
-        )
-        assert required_intro in source, f"{name}: must explicitly require extensive subagent usage"
-        assert "Fan out read-only subagents" in source, (
-            f"{name}: must instruct read-only discovery/review fan-out"
-        )
-        assert "run independent analysis or verification work in parallel" in source, (
-            f"{name}: must instruct safe parallel execution"
-        )
         assert input_phrase in normalized_source, (
             f"{name}: must direct retrieval of the core analysis inputs"
         )
-        assert "Only you, in the main session, may submit the final analysis artifact" in source, (
+        assert "Use parallel or subagent evidence gathering when it improves the decision" in source, (
+            f"{name}: must direct evidence-driven parallel investigation"
+        )
+        assert "submit the final analysis artifact from this session" in source.lower(), (
             f"{name}: artifact submission must remain in the main session"
         )
 

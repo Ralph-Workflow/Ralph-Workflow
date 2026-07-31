@@ -68,7 +68,7 @@ def test_analysis_prompt_uses_subagents_for_independent_evidence() -> None:
     prompt = _prompt()
 
     assert "subagent" in prompt.lower()
-    assert "read-only subagents for independent evidence when helpful" in prompt
+    assert "reconcile independent evidence with read-only subagents when helpful" in prompt
     assert "main session" in prompt.lower()
 
 

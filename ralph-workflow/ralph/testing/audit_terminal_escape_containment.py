@@ -162,9 +162,9 @@ from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _READ_CACHE_LIMIT = 2048
-_PARSE_CACHE_LIMIT = 256
+_PARSE_CACHE_LIMIT = 2048
 _READ_CACHE: OrderedDict[str, str] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 2048
-_PARSE_CACHE: OrderedDict[str, ast.Module] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 256
+_PARSE_CACHE: OrderedDict[str, ast.Module] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 2048
 
 
 def _read(rel_path: str) -> str:
