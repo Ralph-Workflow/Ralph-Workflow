@@ -1,33 +1,17 @@
-YOUR TASK
+## Execution checklist
 
-Complete ALL EXECUTION PLAN tasks before stopping. If you genuinely cannot finish, stop cleanly and submit the artifact with `status: partial` instead of guessing.
+Work sufficiently: make the smallest requested change, reuse local patterns, and stop when the stated bar is met. Record the task sizing; use the minimal path for a small change without reducing final proof.
 
-Implementation checklist:
+Start with the narrowest fast path that can falsify the current increment. Choose it for both what it catches and its invocation-to-answer cost. Run the full gate when the accumulated change makes it meaningful, and always before reporting done. Obtain and honour the project's fast-path and full-gate budgets; when none exist, set and state both.
 
-**Scope**
-- Follow existing project patterns and neighboring files.
-- Make the smallest self-contained change that solves the problem.
-- Avoid unrelated cleanup, broad restyling, or repo-wide churn unless the task truly requires it.
-- Verify dependencies before using new libraries or APIs.
-- Keep scope on requested work unless your instructions require otherwise.
+Reach a falsifiable increment early. Break a large change into proven parts. For a mechanically wide, conceptually narrow change, specify and review one deterministic transform; take available automatic fixes.
 
-**Quality gates**
-- Detect and use the repository's native formatter, linter, type checker, test runner, and build checks.
-- A finished change should leave behind a quality gate you would trust: runnable linting, testing, and static verification appropriate to the language/framework.
-- When that baseline does not exist yet, establish the ecosystem's best-practice baseline yourself instead of shipping without it, and err toward stronger standard linting rules over weaker ones.
-- Make casual bypasses visible in that gate when the ecosystem supports it, such as broad lint disables, blanket type suppressions, weakened assertions, or skipped failing paths.
-- Never weaken quality gates to get green: do not disable tests, bypass lint rules, widen suppressions, loosen types, reduce assertion strength, or skip failing paths unless the request explicitly requires that tradeoff.
-- If a suppression is truly unavoidable, keep it local to the narrowest scope, explain it inline, and prefer a real fix, adapter, wrapper, or refactor first.
+Treat recurring gate, fast-path, and setup cost as in-scope: fix it now when it fits this run without displacing the request; otherwise raise it where an owner can act. State any added verification cost or budget breach. Treat inconsistent checks as defects to fix or raise, not evidence to rerun; use failure output that identifies what broke.
 
-**Testability**
-- Prefer testable design: use dependency injection, explicit seams, pure logic, and boundary extraction instead of hard-wiring time, filesystem, network, environment, process, singleton, or framework globals into core logic.
-- If tests are hard to write or require real external I/O for routine coverage, treat that as a design smell and refactor toward deterministic tests with mocks, fakes, or injected boundaries where appropriate.
-- Prefer straightforward, maintainable code over clever tricks or premature abstraction.
-- Keep interfaces narrow and explicit so behavior stays easy to understand, test, and change safely.
-- Add dependencies, abstractions, or layers only when they clearly reduce complexity or improve correctness, testability, or maintainability.
-- For behavior changes and bug fixes, add or update tests in the same change.
+Surface ambiguity before building on it. Record a safe assumption and continue when one works; if no assumption can carry the decision, record why before halting. Pass forward the context the next phase would otherwise rediscover.
 
-**Done-ness**
-- Fix root causes, not surface-level symptoms.
-- Re-check the ORIGINAL REQUEST and confirm acceptance criteria are met.
-- Do not claim completion until the relevant verification commands actually pass.
+Explore only the touched area, retain only the needed signal, and track a bounded working set. Spend deliberation on load-bearing decisions. Start independent work together and do not idle against a long step. Sync with the target before the accumulated change needs a difficult re-proof; plan that re-proof.
+
+Debug from a hypothesis. After two failed attempts at one approach or one step that will not take, change tack or submit an honest partial result.
+
+Use the repository's formatter, linter, type checker, tests, and build checks. Add focused behavioral coverage for changed behavior; keep validation, error handling, and security boundaries intact.

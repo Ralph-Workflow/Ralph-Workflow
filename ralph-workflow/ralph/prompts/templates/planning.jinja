@@ -20,6 +20,7 @@ This is read-only planning: inspect the repository and run only non-mutating
 commands. Do not edit files or install dependencies.
 
 {% include 'shared/_planning_submission_mechanics.j2' %}
+{% include 'shared/_verification_commitments.j2' %}
 
 USER REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}

@@ -64,6 +64,9 @@ bypass-detection rules.
     A project already comfortably under budget MUST NOT relax up toward
     the guide — the guide is a ceiling, never an entitlement.
 
+* A run is judged on **time to a correct, verified change**; speed never permits partial proof.
+* Prevent an extra pass first; within a pass, the cost of proving the change is the largest term; where they conflict, avoid the extra pass.
+* The four commitments are **fast path first**, **a slow gate is a defect**, **do not leave the loop slower**, and **checks answer consistently**. Non-compliance is a defect: fix it within the requested run when that fits its budget, or raise it to an owner who can act.
 * A slow gate is a DEFECT, not a cost of doing business. Verification
   time that grows superlinearly, or a step that hangs, is a HARD
   indicator of a real problem — most often an architectural one:
@@ -72,7 +75,9 @@ bypass-detection rules.
   tests coupled to internals rather than driving the system as a black
   box through its seams. Treat a performance regression in the gate with
   the same seriousness as a failing test: diagnose the coupling and fix
-  the design. NEVER raise the budget to make a slow gate fit.
+  the design. NEVER raise a budget to make a slow gate fit.
+* **Fast path first:** maintain a narrow check that catches the change's likely failures and run it before the full gate. **Do not leave the loop slower:** record and justify any verification cost added by a change. **Checks answer consistently:** fix or raise a flaky check; never normalize reruns. Measure all gate costs from invocation to answer, including startup.
+* The full gate remains required before done. Reducing recurring full-gate, fast-path, or setup cost is in scope when it fits the run budget without displacing the request; otherwise raise it where an owner can act. A raised cost must be actionable, not merely reported.
 
 ## Project facts to resolve
 
@@ -95,7 +100,7 @@ RALPH-FACT: bypass_detection_lint_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: verification_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: verification_time_budget: full gate and fast path measured invocation-to-answer; full gate hard cap 2 minutes and fast path hard cap 30 seconds until the project records tighter figures.
 RALPH-FACT: verification_time_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
