@@ -85,6 +85,7 @@ Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
 | `review_analysis_decision` | Review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
 | `policy_remediation_analysis_decision` | Project-policy remediation analysis decision | `.agent/artifact-formats/policy_remediation_analysis_decision.md` |
 | `smoke_test_result` | Manual runtime smoke-test outcome | `.agent/artifact-formats/smoke_test_result.md` |
+| `run_time_report` | Runtime-generated comparable time report | `.agent/artifact-formats/run_time_report.md` |
 | `product_spec` | Product specification | `.agent/artifact-formats/product_spec.md` |
 | `plan` | Structured execution plan | `.agent/artifact-formats/plan.md` |
 

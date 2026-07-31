@@ -8,6 +8,7 @@ from ralph.mcp.artifacts.markdown.specs.fix_result import FIX_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.issues import ISSUES_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.product_spec import PRODUCT_SPEC
+from ralph.mcp.artifacts.markdown.specs.run_time_report import RUN_TIME_REPORT_SPEC
 from ralph.mcp.artifacts.markdown.specs.smoke_test_result import SMOKE_TEST_RESULT_SPEC
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "ISSUES_SPEC",
     "PLAN_SPEC",
     "PRODUCT_SPEC",
+    "RUN_TIME_REPORT_SPEC",
     "SMOKE_TEST_RESULT_SPEC",
 ]

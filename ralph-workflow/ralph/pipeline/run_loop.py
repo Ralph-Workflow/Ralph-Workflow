@@ -42,6 +42,7 @@ from ralph.pipeline.phase_transition import (
     emit_final_summary,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.run_time_report import emit_run_time_report_safely
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -1662,6 +1663,7 @@ def _execute_with_cleanup(
     """Run the display block and guarantee cleanup; return exit_code."""
     exit_code = 0
     state = initial_state
+    started_at = time.monotonic()
     try:
         with loop_ctx.active_display:
             _emit_run_start(loop_ctx, state)
@@ -1685,14 +1687,17 @@ def _execute_with_cleanup(
             try:
                 state, prev_phase, early_exit = _run_inner_loop(state, loop_ctx, prev_phase)
                 if early_exit is not None:
-                    return early_exit
+                    exit_code = early_exit
+                    return exit_code
             except KeyboardInterrupt:
-                return _handle_keyboard_interrupt(state, loop_ctx)
+                exit_code = _handle_keyboard_interrupt(state, loop_ctx)
+                return exit_code
             if state.phase == loop_ctx.policy_bundle.pipeline.terminal_phase:
                 try:
                     state = _report_pending_remote_publication(state, loop_ctx)
                 except KeyboardInterrupt:
-                    return _handle_keyboard_interrupt(state, loop_ctx)
+                    exit_code = _handle_keyboard_interrupt(state, loop_ctx)
+                    return exit_code
                 loop_ctx.active_display.emit(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
@@ -1715,6 +1720,12 @@ def _execute_with_cleanup(
                 last_sig=None,
             )
     finally:
+        emit_run_time_report_safely(
+            loop_ctx.workspace_scope.root,
+            state=state,
+            outcome="completed" if exit_code == 0 else "failed",
+            elapsed_seconds=time.monotonic() - started_at,
+        )
         _cleanup_pipeline(loop_ctx, unsubscribe_bus, unsubscribe_display, display_stop, state)
     return exit_code
 

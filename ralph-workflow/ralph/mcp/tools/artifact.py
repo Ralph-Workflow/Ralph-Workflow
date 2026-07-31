@@ -57,6 +57,7 @@ KNOWN_ARTIFACT_TYPES: frozenset[str] = frozenset(
         "issues",
         "fix_result",
         "smoke_test_result",
+        "run_time_report",
         "commit_cleanup",
         "commit_message",
     }

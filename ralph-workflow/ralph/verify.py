@@ -409,6 +409,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "prompt single-sourcing audit (audit_prompt_single_sourcing)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # wt-045 typechecking: AST + literal-string audit that enforces the
         # ``Type assertions and casts`` section of
         # ``docs/ralph-workflow-policy/typechecking-policy.md``. The audit
