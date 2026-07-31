@@ -354,18 +354,19 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Twenty shards are the least-contentious measured profile below budget.
+    # One worker per core, capped at twelve, avoids oversubscribing the
+    # verified 12-core profile while retaining parallel budget headroom.
     for cores, expected in (
-        (4, "20"),
-        (5, "20"),
-        (6, "20"),
-        (7, "20"),
-        (8, "20"),
-        (12, "20"),
-        (16, "20"),
-        (20, "20"),
-        (21, "20"),
-        (64, "20"),
+        (4, "12"),
+        (5, "12"),
+        (6, "12"),
+        (7, "12"),
+        (8, "12"),
+        (12, "12"),
+        (16, "12"),
+        (20, "12"),
+        (21, "12"),
+        (64, "12"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected

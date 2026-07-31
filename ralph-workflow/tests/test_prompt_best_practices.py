@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ralph.prompts.template_context import packaged_template_root
+from ralph.prompts.template_context import TemplateContext
 
 _TEMPLATE_NAMES = (
     "planning.jinja", "planning_analysis.jinja", "worker_developer.jinja",
@@ -17,8 +15,12 @@ _TEMPLATE_NAMES = (
 )
 
 
-def _source(name: str) -> str:
-    return (Path(packaged_template_root()) / name).read_text(encoding="utf-8")
+def _templates() -> dict[str, str]:
+    context = TemplateContext.default()
+    return {
+        name: context.registry.get_template(name)
+        for name in _TEMPLATE_NAMES
+    } | context.partials
 
 
 def _first_text_line(source: str) -> str:
@@ -30,21 +32,23 @@ def _first_text_line(source: str) -> str:
 
 
 def test_prompt_templates_lead_with_the_work_not_a_mode_label() -> None:
+    templates = _templates()
     for name in _TEMPLATE_NAMES:
-        first_line = _first_text_line(_source(name)).upper()
+        first_line = _first_text_line(templates[name]).upper()
         assert not first_line.endswith(" MODE"), name
         assert "YOUR ROLE AND GOAL" not in first_line, name
 
 
 def test_analysis_templates_share_one_evidence_decision_contract() -> None:
+    templates = _templates()
     for name in ("development_analysis.jinja", "review_analysis.jinja"):
-        assert "shared/_analysis_decision_contract.j2" in _source(name)
+        assert "shared/_analysis_decision_contract.j2" in templates[name]
 
 
 def test_verification_guidance_is_single_sourced() -> None:
-    root = Path(packaged_template_root()) / "shared"
-    guidance = (root / "_developer_iteration_guidance.j2").read_text(encoding="utf-8")
-    commitments = (root / "_verification_commitments.j2").read_text(encoding="utf-8")
+    templates = _templates()
+    guidance = templates["shared/_developer_iteration_guidance"]
+    commitments = templates["shared/_verification_commitments"]
     assert "Discover the project's gate" in commitments
     assert "fast path" not in guidance.lower()
     assert "full gate" not in guidance.lower()
