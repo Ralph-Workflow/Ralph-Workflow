@@ -1,10 +1,8 @@
 Author and verify policy documents under {{ canonical_dir }} so the readiness validator accepts verified project reality.
 
-You are a documentation agent. Your role is to make the canonical policies discoverable and factual while preserving the project's established rules.
-
 {% include 'shared/_unattended_mode.j2' %}
 
-Resolve every finding below with current repository evidence. Good policy is a living document: durable, factual, machine-checkable where required, and names runnable verification commands. Preserve stricter established rules; resolve conflicts in favor of the existing project policy without weakening policy intent. Record unresolved but applicable work as a truthful dated deferral with a concrete review trigger.
+Resolve every finding from current repository evidence. Keep each policy a living document: preserve stricter established rules, resolve conflicts in favor of the existing project policy without weakening policy intent, keep facts machine-checkable where required, and record applicable unresolved work as a dated deferral with a concrete review trigger.
 
 ## Findings
 
@@ -22,13 +20,13 @@ Keep accepted policy intact and resolve the remaining findings.
 
 ## Work from evidence
 
-Inventory the repository's languages, manifests, existing contributor guidance, tools, and authoritative verification entry point before declaring facts or commands. Use read-only subagents for parallel investigation of independent policy files or gates when available; otherwise investigate sequentially. Reconcile terminology and edit in the main session.
+Inventory languages, manifests, contributor guidance, tools, and the authoritative verification entry point before declaring facts or commands. Use read-only subagents for independent policy or gate investigations when helpful; reconcile terminology and edit in the main session.
 
-If you add gate plumbing, read `{{ gate_script_policy_path }}` first. A gate script must fail closed, use its dialect's strict mode, invoke only installed tools and real paths, be tested for pass and fail behavior, and be wired into the authoritative verification entry point. Keep it portable to `supported_platforms`, protect secrets, and avoid remote code piped to a shell. When a probe reports a product-code failure through a working gate, record that result accurately rather than changing unrelated product code.
+When adding gate plumbing, follow `{{ gate_script_policy_path }}`: use strict, fail-closed scripts with installed tools and real paths; test their passing and failing behavior; wire them into the authoritative verification entry point; protect secrets and keep remote execution safe. Attribute a product-code failure from a working gate accurately in the policy instead of changing unrelated product code.
 
 ## Machine marker vocabulary
 
-Use these byte-exact forms; the readiness validator consumes them.
+The readiness validator consumes these byte-exact forms:
 
 - `RALPH-FACT: <key>: <value>` records a verified project fact.
 - `RALPH-FACT: <key>: RALPH-PENDING (assumed <date>); review trigger: <cond>` records a deferred fact.
@@ -37,23 +35,17 @@ Use these byte-exact forms; the readiness validator consumes them.
 - `RALPH-PENDING: <approved-tool …> (assumed <date>); review trigger: <cond>` records an applicable deferred gate.
 - `RALPH-REVIEW: <procedure>; evidence: <record>; owner: <role>` records required human review.
 
-Use `RALPH-PENDING` when a requirement applies but cannot yet be resolved; use `RALPH-INAPPLICABLE` only when it never applies. The examples below show the required deferred forms:
-
 ```text
 RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed
 RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trigger: once a scanner is chosen
 ```
 
-Every `RALPH-COMMAND` begins with an approved first token. Approved tools: {{ approved_tools }}. A truthful `RALPH-PENDING` entry is an explicit accepted deferral, not an unresolved placeholder. Declare each applicable typecheck or lint language with `RALPH-LANG: <Language>` followed by its command, inapplicable declaration, or deferral.
+Every `RALPH-COMMAND` begins with an approved first token: {{ approved_tools }}. Use `RALPH-PENDING` for an applicable unresolved requirement and `RALPH-INAPPLICABLE` only when it never applies. Each applicable typecheck or lint language has `RALPH-LANG: <Language>` followed by its command, inapplicable declaration, or deferral.
 
 ## Complete the policy corpus
 
-1. INSPECT the project before writing: inventory languages, frameworks, manifests, test tools, and existing contributor guidance. Reconcile older schemas into customized policies while retaining verified facts and stricter project rules. Replace every `RALPH-FACT:` line with a verified project fact. Replace placeholders, `RALPH-STARTER-TEMPLATE` banners, and `REPLACE-ME` instructions with verified policy; remove the instructions after applying them. There is no completion marker: completion is the absence of unresolved markers.
-2. Add a `## Research basis` citation block with publisher, title, URL, and review date. For an inactive conditional domain, record the dated decision and reactivation trigger in `{{ applicability_overrides_path }}` as `required; reason: ...; review trigger: ...` or `inactive; reason: ...; review trigger: ...`.
-3. Move policy-like content into its canonical policy file and leave `{{ migrated_marker }}` at retained conventional locations. Keep standard community files such as SECURITY.md and CONTRIBUTING.md with their recognized headings and use the migrated marker. Keep machine markers in the designated marker section.
-4. Wire each declared gate to a real command and probe that it resolves. Do not ignore diagnostic text: use it to distinguish broken plumbing from honest product-code failures, then record the attribution. Use a deferral for unavailable tools or young facts; use a real command when its prerequisites resolve.
-5. Integrate exactly one concise, short, natural managed block between the invisible HTML comments `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md. Its body references {{ canonical_dir }}, preserves user-authored non-policy content, and lets every AI agent discover the canonical policies. If CLAUDE.md exists, make it point to AGENTS.md.
+INSPECT the project before writing. Replace every `RALPH-FACT:` line and placeholder with verified policy; remove `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions after applying them. There is no completion marker: completion is the absence of unresolved markers. Add a `## Research basis` citation block and record each inactive conditional domain with its dated reactivation trigger. Move policy content into its canonical file and retain `{{ migrated_marker }}` at conventional locations. Probe declared gates, distinguish broken plumbing from product-code failures, and record the attribution. Keep exactly one concise managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md; if CLAUDE.md exists, point it to AGENTS.md.
 
 ## Finish with a truthful report
 
-Report changed files, migrations, research sources, probes, and unresolved risks. The validator re-runs after your response: completion means every finding is resolved, required markers are well formed, and no unresolved placeholder remains. Do not change unrelated product code, tests, types, or lint to make a policy probe pass; document what the working gate observed instead.
+Report changed files, migrations, research sources, probes, and unresolved risks. The validator re-runs after your response: completion means every finding is resolved, required markers are well formed, and no unresolved placeholder remains.

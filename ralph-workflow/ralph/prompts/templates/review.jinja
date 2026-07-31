@@ -7,29 +7,24 @@ Your only job is to analyze the implementation and report findings; leave code a
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
-
 {% include 'shared/_mcp_tools.j2' %}
-
 {% include 'shared/_verification_commitments.j2' %}
+{% include 'shared/_analysis_decision_contract.j2' %}
 
 {% if LAST_RETRY_ERROR %}
-IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
-
+Submit the required artifact on this attempt.
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
-## SUBAGENTS AND PARALLEL WORK
+## Fresh review evidence
 
-If your runtime provides subagents or a parallel-task mechanism, fan out
-independent read-only checks across plan compliance, security, correctness,
-performance, maintainability, and test coverage. Give each subagent a distinct
-scope, then reconcile its concrete evidence yourself. If no such mechanism is
-available, perform the same checks sequentially. Only the main session may decide
-the verdict, submit the `issues` artifact, or declare completion.
+Bring evidence the implementation phase did not have. Compare the changed files against the plan and requirements, follow callers, tests, and error paths as needed, and report only material findings with concrete cost and exact remediation; `no_issues` is a normal result.
 
-Bring fresh evidence the implementation phase did not have, read recorded assumptions, and compare the changed files against the plan and requirements. Return only material findings with their concrete cost and exact fix; `no_issues` is a normal result.
+Grade the change on plan compliance, security, correctness, performance, maintainability, and test coverage. Record a specific not-applicable reason under `## Review Evidence` for a dimension without a relevant surface. The decision contract defines admissible evidence and how to record limits. Run the project's fast path before broader verification when available, then its meaningful full gate.
 
-Grade the change on these review dimensions, which the downstream judge also reads: plan compliance, security, correctness, performance, maintainability, and test coverage. Record a specific not-applicable reason under `## Review Evidence` for a dimension with no relevant surface. Run the project's fast path before broader verification when one exists, then run the meaningful full gate; do not rely on the diff's claims.
+## Parallel evidence
+
+Use independent read-only subagents for distinct review dimensions when they improve evidence quality; otherwise inspect sequentially. The main session reconciles evidence, submits the `issues` artifact, and declares completion.
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
@@ -37,14 +32,14 @@ Grade the change on these review dimensions, which the downstream judge also rea
 
 {{ render_payload_section('FIX_RESULT', FIX_RESULT, FIX_RESULT_PATH) }}
 
-Submit review findings using `artifact_type="issues"`.
+## Submit issues artifact
 
-The downstream artifact validator reads this grammar: `.agent/artifact-formats/issues.md`. Submit `type: issues` with status `no_issues` or `issues_found`.
+Submit findings using `artifact_type="issues"`. The downstream artifact validator reads `.agent/artifact-formats/issues.md`.
 
 - `## Summary`: exactly one item.
 - `## Review Evidence`: `dimension or requirement | concrete evidence`; include one item per applicable review dimension and one item per plan requirement and acceptance criterion.
-- For `issues_found`, add non-empty `## Issues` (`path | high|medium|low | summary`), `## What Came Up Short`, and `## How To Fix` sections with concrete evidence and executable remediation.
-- When `status` is `no_issues`, `## Review Evidence` must be non-empty; omit those three remediation sections.
+- `issues_found`: add non-empty `## Issues` (`path | high|medium|low | summary`), `## What Came Up Short`, and `## How To Fix` sections with concrete evidence and executable remediation.
+- When `status` is `no_issues`, `## Review Evidence` must be non-empty; omit remediation sections.
 
 {% set issues_example %}
 ---

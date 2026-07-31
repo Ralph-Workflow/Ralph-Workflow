@@ -1,6 +1,6 @@
 Task: produce a spec-compliant MCP commit_message artifact for the current pending work shown below.
 The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD).
-Read the diff, select the matching artifact shape, and submit it without commentary.
+Read the diff, choose the matching artifact shape, and submit it without commentary.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -10,12 +10,11 @@ Read the diff, select the matching artifact shape, and submit it without comment
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
----
-## HOW TO WRITE THE SUBJECT — follow these four steps once, in order
+## HOW TO WRITE THE SUBJECT
 
 Do not generate candidate subjects and compare them. Use one pass through these steps to produce the subject, then write the body.
 
-**Step 1 — pick the kind.** Take the FIRST row that matches the diff:
+**Step 1 — pick the kind.** Take the first matching row:
 
 | The diff mainly... | kind |
 |---|---|
@@ -30,66 +29,35 @@ Do not generate candidate subjects and compare them. Use one pass through these 
 | restructures code with no behavior change | refactor |
 | changes code to make it faster | perf |
 
-**Step 2 — pick the scope.** If one directory or subsystem owns most of the
-diff, use its name. Otherwise omit the scope and the parentheses entirely.
-When scope is not obvious in one look, omit it.
+**Step 2 — pick the scope.** Use the directory or subsystem that owns most of the diff. Otherwise omit the scope and the parentheses entirely.
 
-**Step 3 — write the description.** Say what the change does, in one clause,
-in lowercase imperative mood. Describe behavior rather than files; use a precise imperative clause. There is no length limit; stop at its end.
+**Step 3 — write the description.** Write one lowercase imperative clause that describes behavior. There is no length limit; stop at its end.
 
-**Step 4 — check the grammar, then stop.** The subject must match exactly:
-
-```
-<kind>(<scope>)?!?: <description>
-```
-
-- `<kind>` is lowercase and from the table above.
-- `<scope>`, if present, is lowercase letters, digits, `/`, `_`, `-` only —
-  no dots, no uppercase.
-- `!` before the colon marks a breaking change.
-- Exactly one space follows the colon.
-- `<description>` starts with a lowercase letter or digit.
-- Write the value unquoted in frontmatter. Quotes become part of the subject
-  and are rejected.
+**Step 4 — check the grammar, then stop.** Confirm `<kind>(<scope>)?!?: <description>`: kind is from the table; scope, when present, uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; description starts with a lowercase letter or digit; write the unquoted frontmatter value. Quotes become part of the subject and are rejected.
 
 The subject is finished. Do not look for a better one.
 
 ## HOW TO WRITE THE BODY
 
-Omit the body only for a one-line typo, formatting, or comment change whose
-subject already states the whole change. Every other commit gets a body.
+Omit the body only for a one-line typo, formatting, or comment change whose subject states the whole change. Every other commit gets a body.
 
-Choose the structure with this rule, and do not reconsider it:
-
-- Default: one `## Body` item explaining WHY the change was needed and what
-  it affects.
-- Use `## Body Summary` + `## Body Details` + `## Body Footer` instead, never
-  alongside `## Body`, only when the change has migration steps, breaking
-  changes, or issue references to record in the footer.
-
-Body text explains rationale and impact. It does not list files or restate
-the diff.
+Choose the structure once: use one `## Body` item explaining why the change was needed and what it affects. For migration steps, breaking changes, or issue references, use `## Body Summary`, `## Body Details`, and `## Body Footer` instead; do not reconsider it.
 
 ## WORKED EXAMPLES
-- Bad: `chore: update files` → `feat(mcp): add structured commit retries`,
-  with a body explaining what structured retries solve.
-- Bad: `fix: stuff` → `fix(parser): preserve prefixed transcript lines`,
-  with a body explaining the edge case that dropped them.
-- Bad: `refactor: rename files` →
-  `refactor(auth): extract token validation to dedicated module`,
-  with a body explaining what callers must do differently.
+
+- Bad: `chore: update files` → `feat(mcp): add structured commit retries`, with a body explaining what structured retries solve.
+- Bad: `fix: stuff` → `fix(parser): preserve prefixed transcript lines`, with a body explaining the edge case that dropped them.
+- Bad: `refactor: rename files` → `refactor(auth): extract token validation to dedicated module`, with a body explaining what callers must do differently.
 
 ## Submit the result
-Submit the artifact now, then stop. Use the submission tool before any final text; it is the completion contract. Do not ask the user for confirmation or write “Would you like me to...” questions. Do not call Bash for this task.
 
-MCP REQUIREMENT:
-The only state-changing tools you may call for this task are {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
-If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
+Submit the artifact now, then stop. Do not ask the user for confirmation or write “Would you like me to...” questions. Do not call Bash for this task. Use the submission tool before final text; it is the completion contract. The only state-changing tools you may call are {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
 
-DOCUMENT SHAPE:
-The artifact is a markdown document. Frontmatter carries the decision; optional `##` sections carry the body. Valid shapes:
+## Document shape
 
-- Commit (frontmatter `type: commit` plus `subject:`), with optional sections `## Body` (one item, concise self-contained explanation) OR the detailed trio `## Body Summary` / `## Body Details` / `## Body Footer` (one item each; include only the sections that apply — never combine `Body` with the trio), plus optional `## Files` (one item per file to include) and `## Excluded Files` (one item per exclusion, text `path | reason`; valid reasons: internal_ignore, not_task_related, sensitive, deferred):
+The artifact is markdown. Frontmatter carries the decision; optional `##` sections carry the body. Choose a commit document for pending work or a skip document when no commit is needed.
+
+- Commit document: frontmatter `type: commit` and `subject:`. Include `## Body` (one concise self-contained item) or the detailed `## Body Summary` / `## Body Details` / `## Body Footer` set, plus optional `## Files` and `## Excluded Files` (`path | reason`, where valid reasons are internal_ignore, not_task_related, sensitive, deferred).
 
 ```markdown
 ---
@@ -107,7 +75,7 @@ subject: fix(auth): prevent token expiry race
 - [X-1] notes/todo.md | not_task_related
 ```
 
-- Skip (no commit needed):
+- Skip document when no commit is needed:
 
 ```markdown
 ---
@@ -115,8 +83,6 @@ type: skip
 reason: Only generated artifacts changed; nothing to commit.
 ---
 ```
-
-Read the diff and decide whether the correct result is a commit document or a skip document. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
 
 {% set commit_message_example %}
 ---
@@ -131,5 +97,4 @@ subject: fix(auth): prevent token expiry race
 
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 
-The artifact submission procedure above is authoritative for the completion contract;
-this template does NOT duplicate it.
+The artifact submission procedure above is authoritative for the completion contract.
