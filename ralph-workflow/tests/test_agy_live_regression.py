@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.invoke import run_pty_and_read_lines
+from ralph.agents.invoke import AgentInvocationError, run_pty_and_read_lines
 from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
@@ -407,13 +407,24 @@ def test_live_agy_pty_read_thread_sees_output(
     deadline = time.monotonic() + 120.0
     yielded: list[str] = []
     saw_hello = False
-    for line in run_pty_and_read_lines(cmd, ctx):
-        yielded.append(line)
-        if "hello" in line.lower():
-            saw_hello = True
-            break
-        if time.monotonic() >= deadline:
-            break
+    try:
+        for line in run_pty_and_read_lines(cmd, ctx):
+            yielded.append(line)
+            if "hello" in line.lower():
+                saw_hello = True
+                break
+            if time.monotonic() >= deadline:
+                break
+    except AgentInvocationError:
+        cli_log_tail = _read_cli_log_tail(_REAL_HOME)
+        upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+        if upstream_reason is not None:
+            pytest.xfail(
+                f"Live AGY --print is upstream-blocked ({upstream_reason}); "
+                "the canonical 'hello' response cannot be observed. "
+                f"cli.log tail: {cli_log_tail[-200:]!r}"
+            )
+        raise
 
     cli_log_tail = _read_cli_log_tail(_REAL_HOME)
 
