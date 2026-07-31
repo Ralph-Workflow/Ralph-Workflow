@@ -599,7 +599,7 @@ def test_production_replay_opencode_fixture_preserves_parser_events(
     tool_result_lines = [line for line in lines if "role=tool_result" in line]
     assert tool_call_lines, f"OpenCode calls lost their role marker:\n{rendered}"
     assert tool_result_lines, f"OpenCode results lost their role marker:\n{rendered}"
-    tool_names = ("bash", "read", "grep")
+    tool_names = ("bash", "read", "grep", "write", "edit")
     assert all(any(name in line for name in tool_names) for line in tool_call_lines), (
         f"OpenCode tool-call target missing from line:\n{rendered}"
     )

@@ -111,7 +111,7 @@ def test_pipeline_deps_replace_overrides_individual_fields() -> None:
     display_context = _fake_display_context()
     deps = build_default_pipeline_deps(config, display_context)
 
-    new_display_context = _fake_display_context()
+    new_display_context = dataclasses.replace(display_context)
     new_registry_factory = MagicMock()
     new_master_prompt_materializer = MagicMock(return_value="/fake/master_prompt.md")
     new_bridge_factory = MagicMock()
