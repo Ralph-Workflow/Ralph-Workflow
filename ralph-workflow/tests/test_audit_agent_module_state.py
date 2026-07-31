@@ -172,22 +172,8 @@ def test_agent_registry_class_not_flagged() -> None:
     assert violations == []
 
 
-# This whole-repo AST scan regularly exceeds the 1.0s per-test ceiling
-# under parallel xdist load (0.21s in isolation but starved past
-# DEFAULT_TEST_TIMEOUT_SECONDS=1.0 in `make test-subprocess-e2e`), so the
-# default 1-second per-test ceiling is unsafe for this single test.
-@pytest.mark.timeout_seconds(15)
-@pytest.mark.subprocess_e2e
-def test_run_audit_against_repo_finds_no_violations() -> None:
-    """Running the audit against the current repo must find zero violations.
-
-    This is the integration check: after the refactor, no module-level
-    dict with the forbidden names should exist under ralph/agents/.
-    """
-    package_root = Path(__file__).resolve().parent.parent
-    violations = run_audit(package_root)
-    assert violations == [], f"audit_agent_module_state found unexpected violations: {violations}"
-
+# Green-path production-tree coverage: ``make verify`` runs
+# ``python -m ralph.testing.audit_agent_module_state``.
 
 def test_run_audit_fails_closed_on_unreadable_file(
     tmp_path: Path,

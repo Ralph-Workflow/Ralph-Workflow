@@ -63,8 +63,8 @@ agent-output retention, recovery lineage/checkpoints, budget-debit
 paths, multimodal live-session media, and upstream embedded-media
 normalization. Representative retained spreads from the focused
 characterization (not CI wall-clock oracles): pipeline ≈136 B after
-16 cycles, multimodal ≈1–2 KiB after 5 cycles, recovery ≈3 KiB after
-8 cycles, recovery-budget ≈9.3 KiB after 64 × 8 KiB failure blobs,
+5 cycles, multimodal ≈1–2 KiB after 5 cycles, recovery ≈3 KiB after
+5 cycles, recovery-budget ≈9.3 KiB after 17 × 16 KiB failure blobs,
 upstream-media ≈704 B after 5 cycles. Early/late elapsed means are
 printed by each harness for drift inspection; late pipeline elapsed
 can jitter under host load without a proportional retained-byte step.

@@ -20,7 +20,7 @@ plus its ``original_exception`` traceback frame pinning the blob).
 After step 3 the failures field is dropped from ``BudgetState``
 entirely, so the FINAL object stays small.
 
-Fails today: the final ``AgentBudgetRegistry`` / ``FailureBudget`` retains
+Without the fix: the final ``AgentBudgetRegistry`` / ``FailureBudget`` retains
 ``_ITERATION_COUNT`` ClassifiedFailures; each carries a traceback frame
 holding the test's 16 KiB ``blob``. Worst-case retained bytes is
 ``_ITERATION_COUNT * _BLOB_SIZE_BYTES`` (17 x 16 KiB ~ 272 KiB, well

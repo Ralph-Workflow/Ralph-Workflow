@@ -276,28 +276,8 @@ def test_default_roots_cover_required_packages() -> None:
     assert required_expanded_roots <= root_names
 
 
-@pytest.mark.timeout_seconds(10)
-@pytest.mark.subprocess_e2e
-def test_real_production_tree_has_zero_violations() -> None:
-    """The real production ``ralph/`` tree MUST be clean (zero violations).
-
-    This is the canonical regression for AC-03: if any future commit
-    grows a non-daemon-thread, a bare httpx/requests client, or a
-    raw os fd outside ``ralph/process/``, this test fails before
-    ``make verify`` runs the production-tree scan. Mirrors the
-    style of ``test_real_production_tree_*`` in test_audit_mcp_timeout.
-    """
-    violations: list[ResourceLifecycleViolation] = []
-    for root in _default_roots():
-        v, _checked = audit_resource_lifecycle_directory(root)
-        violations.extend(v)
-    if violations:
-        formatted = "\n".join(f"  {v}" for v in violations)
-        pytest.fail(
-            f"Production tree has {len(violations)} resource-lifecycle violation(s); "
-            f"the contract MUST hold today:\n{formatted}"
-        )
-
+# Green-path production-tree coverage: ``make verify`` runs
+# ``python -m ralph.testing.audit_resource_lifecycle``.
 
 # ---------------------------------------------------------------------------
 # Resource accumulator contract (wt-024 memory-perf AC-04)

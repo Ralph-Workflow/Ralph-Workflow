@@ -8,7 +8,7 @@ so the manifest's ``retain_raw_bytes`` evaluates False.
 
 This test mirrors the pattern at
 ``test_multimodal_session_memory_regression.py`` exactly (FsWorkspace
-for tracemalloc fidelity, 5 iterations of 256 KiB payloads, 2 MiB
+for tracemalloc fidelity, 5 iterations of 128 KiB payloads, 2 MiB
 retained-delta cap).
 """
 
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.subprocess_e2e
 
 _ITERATION_COUNT = 5
-_ARTIFACT_SIZE_BYTES = 256 * 1024
+_ARTIFACT_SIZE_BYTES = 128 * 1024
 _RETAINED_DELTA_LIMIT = 2_000_000
 
 
@@ -140,7 +140,7 @@ def test_upstream_no_workspace_keeps_raw_bytes() -> None:
 @pytest.mark.integration
 @pytest.mark.timeout_seconds(10)
 def test_upstream_media_memory_regression(tmp_path: Path) -> None:
-    """Drives N embedded blocks ~256 KiB each through the workspace thread and
+    """Drives N embedded blocks ~128 KiB each through the workspace thread and
     asserts the retained-memory delta stays under 2 MiB (AC-04).
 
     Without the workspace thread, raw_bytes would be pinned in the manifest

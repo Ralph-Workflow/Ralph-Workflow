@@ -35,10 +35,6 @@ import pytest
 from ralph.testing import audit_public_docstrings as audit_module
 from ralph.testing.audit_public_docstrings import main
 
-# The maintained ralph/ tree (sibling of tests/ in ralph-workflow/).
-_RALPH_PKG_ROOT: Path = Path(audit_module.__file__).parent.parent.parent / "ralph"
-
-
 def _write(tmp_path: Path, rel: str, body: str) -> Path:
     """Write a file at ``tmp_path / rel`` with the given body and return the path."""
     target = tmp_path / rel
@@ -52,35 +48,9 @@ def _write(tmp_path: Path, rel: str, body: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.timeout_seconds(15)
-@pytest.mark.subprocess_e2e
-def test_real_ralph_tree_is_green() -> None:
-    """Every public .py under ralph/ — leaf modules and package __init__.py —
-    must carry a non-empty module docstring. The audit's main() should
-    return 0 when run against the real ralph-workflow/ralph/ tree.
-    """
-    if not _RALPH_PKG_ROOT.is_dir():
-        pytest.skip(f"ralph/ package root not found at {_RALPH_PKG_ROOT}")
-    assert main([str(_RALPH_PKG_ROOT)]) == 0, (
-        "Real ralph/ tree reports a public-docstring-floor violation. "
-        "The floor is green today (524/524 public .py files have a "
-        "non-empty module docstring); a regression here means a new "
-        "module landed without a docstring."
-    )
-
-
-@pytest.mark.timeout_seconds(15)
-@pytest.mark.subprocess_e2e
-def test_audit_function_returns_no_violations_for_real_tree() -> None:
-    """The internal audit function also reports zero violations on the real
-    tree, and reports a positive files_checked count.
-    """
-    if not _RALPH_PKG_ROOT.is_dir():
-        pytest.skip(f"ralph/ package root not found at {_RALPH_PKG_ROOT}")
-    violations, files_checked = audit_module.audit_public_docstrings_directory(_RALPH_PKG_ROOT)
-    assert violations == []
-    assert files_checked > 0, "audit did not inspect any public modules"
-
+# Green-path production-tree coverage lives in ``make verify`` via
+# ``python -m ralph.testing.audit_public_docstrings``. Keeping a second
+# full-tree walk in subprocess_e2e duplicated that cost under the 60s cap.
 
 # ---------------------------------------------------------------------------
 # (b) RED-LEAF — a public leaf module with no docstring IS flagged.

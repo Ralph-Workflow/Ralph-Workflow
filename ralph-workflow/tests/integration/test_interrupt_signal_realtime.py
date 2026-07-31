@@ -21,12 +21,12 @@ _STUBBORN_CHILD = (
 )
 
 
-def _pid_gone(pid: int, timeout_s: float = 0.5) -> bool:
+def _pid_gone(pid: int, timeout_s: float = 0.35) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if not psutil.pid_exists(pid):
             return True
-        time.sleep(0.01)
+        time.sleep(0.005)
     return not psutil.pid_exists(pid)
 
 

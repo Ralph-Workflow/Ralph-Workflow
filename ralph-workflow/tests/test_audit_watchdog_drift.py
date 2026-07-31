@@ -35,7 +35,6 @@ import pytest
 from ralph.testing import audit_watchdog_drift as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION_ROOT = REPO_ROOT / "ralph"
 
 
 # ponytail: each parametrized instance re-uses the same source+tree; caching
@@ -361,19 +360,8 @@ def test_audit_does_not_flag_canonical_owner_subagent_counting() -> None:
         )
 
 
-@pytest.mark.subprocess_e2e
-def test_audit_clean_tree_passes() -> None:
-    """Run the audit against the actual ralph-workflow tree and assert zero violations.
-
-    This is the negative test for the real codebase: the audit
-    is wired into ``make verify`` and MUST pass on the real tree.
-    The test must complete in <1s.
-    """
-    violations = audit.audit_watchdog_drift(PRODUCTION_ROOT, repo_root=REPO_ROOT)
-    assert violations == [], (
-        f"audit must be clean on the real ralph-workflow tree; got: {violations}"
-    )
-
+# Green-path production-tree coverage: ``make verify`` runs
+# ``python -m ralph.testing.audit_watchdog_drift``.
 
 def test_audit_module_imports_clean() -> None:
     """The audit module must not use ``time.sleep``, ``asyncio.sleep``,
@@ -435,18 +423,6 @@ def test_audit_module_imports_clean() -> None:
             all_violations.append(f"{path}:{lineno}: attribute access on {name}")
     assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
-
-@pytest.mark.subprocess_e2e
-def test_audit_module_main_function_returns_zero_on_clean_tree() -> None:
-    """Run the audit's main() in-process and assert exit 0 on the real tree.
-
-    This is the black-box proof that the audit works as a wired
-    verify step.  Calling ``main()`` directly (instead of via
-    ``subprocess``) keeps the test well under the 1s per-test
-    timeout while still validating the CLI entry-point contract.
-    """
-    rc = audit.main([])
-    assert rc == 0, f"audit main() must return 0 on clean tree; got {rc}"
 
 
 @pytest.mark.parametrize(

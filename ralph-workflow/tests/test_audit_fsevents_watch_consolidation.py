@@ -288,18 +288,6 @@ def test_audit_module_imports_clean() -> None:
     assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
 
-@pytest.mark.subprocess_e2e
-def test_audit_module_main_function_returns_zero_on_clean_tree() -> None:
-    """Run the audit's ``main()`` in-process and assert exit 0 on the real tree.
-
-    Black-box proof that the audit works as a wired verify step.
-    Calling ``main()`` directly (instead of via ``subprocess``)
-    keeps the test well under the per-test timeout while still
-    validating the CLI entry-point contract.
-    """
-    rc: int = audit.main([])
-    assert rc == 0, f"audit main() must return 0 on clean tree; got {rc}"
-
 
 @pytest.mark.parametrize(
     "forbidden_name",

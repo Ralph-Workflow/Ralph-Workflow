@@ -271,7 +271,7 @@ def test_teardown_reaps_nested_subagents() -> None:
         time.sleep(0.005)
     assert host.poll() is None
 
-    DefaultProcessTeardown(kill_escalation_ms=10.0).teardown_subtree(host.pid)
+    DefaultProcessTeardown(kill_escalation_ms=5.0).teardown_subtree(host.pid)
 
     with contextlib.suppress(subprocess.TimeoutExpired):
         host.wait(timeout=0.5)

@@ -287,17 +287,8 @@ def test_audit_flags_reader_missing_teardown_subtree_on_fire_path(tmp_path: Path
     assert "teardown_subtree" in categories, f"got {categories}"
 
 
-@pytest.mark.subprocess_e2e
-def test_audit_does_not_flag_production_call_sites() -> None:
-    """Running the audit against the real ``ralph/`` package produces zero
-    violations; the production readers satisfy all six invariants."""
-    package_root = Path(__file__).parent.parent / "ralph"
-    violations = audit.audit_activity_aware_watchdog(package_root)
-
-    assert violations == [], "expected zero violations against production code, got:\n" + "\n".join(
-        f"  {v}" for v in violations
-    )
-
+# Green-path production-tree coverage: ``make verify`` runs
+# ``python -m ralph.testing.audit_activity_aware_watchdog``.
 
 def test_audit_reader_file_per_file_interface(tmp_path: Path) -> None:
     """``audit_reader_file`` runs detectors 1-5 on a single file."""
