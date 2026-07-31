@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 _THEME_ARGUMENTS = {"theme", "code_theme", "inline_code_theme", "background_color"}
+_CANDIDATE_TOKENS = (*_THEME_ARGUMENTS, "Markdown")
 
 
 def _called_name(call: ast.Call) -> str | None:
@@ -44,7 +45,9 @@ def test_s1_display_code_uses_no_literal_theme_or_background() -> None:
         f"{path.relative_to(display)}:{violation}"
         for path in display.glob("*.py")
         if path.name != "theme.py"
-        for violation in _violations(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        for source in [path.read_text(encoding="utf-8")]
+        if any(token in source for token in _CANDIDATE_TOKENS)
+        for violation in _violations(ast.parse(source, filename=str(path)))
     ]
     assert not violations, f"literal themes/backgrounds bypass the selector: {violations}"
 
