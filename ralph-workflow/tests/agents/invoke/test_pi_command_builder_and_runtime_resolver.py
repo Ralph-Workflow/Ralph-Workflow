@@ -363,6 +363,7 @@ class TestPiRuntimeResolver:
             config,
             extra_env={"FOO": "bar"},
             workspace_path=tmp_path,
+            base_env={},
         )
         assert runtime.agent_env == {"FOO": "bar"}
         assert runtime.server_env is None
@@ -374,6 +375,7 @@ class TestPiRuntimeResolver:
             config,
             extra_env={"FOO": "bar", "BAZ": "qux"},
             workspace_path=tmp_path,
+            base_env={},
         )
         assert runtime.agent_env == {"FOO": "bar", "BAZ": "qux"}
         assert runtime.server_env is None

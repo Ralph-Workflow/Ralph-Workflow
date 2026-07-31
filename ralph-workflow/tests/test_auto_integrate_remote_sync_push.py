@@ -28,8 +28,6 @@ def _config(
     *,
     enabled: bool = True,
     remote: str = "origin",
-    push_timeout: float = 5.0,
-    fetch_timeout: float = 5.0,
 ):
     from ralph.config.models import UnifiedConfig
 

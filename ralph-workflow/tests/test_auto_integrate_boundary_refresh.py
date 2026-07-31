@@ -231,7 +231,7 @@ def _dirty_boundary_workspace(
     return WorkspaceScope(tmp_path)
 
 
-def _config(*, fetch_enabled: bool = False) -> UnifiedConfig:
+def _config() -> UnifiedConfig:
     payload: dict[str, object] = {
         "general": {
             "auto_integrate_enabled": True,

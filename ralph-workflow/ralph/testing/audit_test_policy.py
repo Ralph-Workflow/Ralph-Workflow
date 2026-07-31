@@ -205,6 +205,15 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # measurement IS the assertion; production paths inside the
     # cycle still use FakeClock for any timeout contract.
     "test_explore_real_codebase",
+    # Memory-plateau characterization harness (wt-024): prints
+    # early/late elapsed means via time.perf_counter() for drift
+    # inspection. Retained-byte plateau remains the hard assertion;
+    # elapsed timing is characterization evidence, not a brittle
+    # wall-clock oracle. Kept in the default suite (no
+    # subprocess_e2e) because the harness uses no real child
+    # processes; only the single-point timing measurement needs
+    # this allowlist.
+    "test_recovery_memory_regression",
 }
 
 # Path I/O methods that indicate real filesystem access.

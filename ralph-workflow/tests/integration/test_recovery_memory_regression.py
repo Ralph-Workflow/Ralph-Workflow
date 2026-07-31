@@ -1,7 +1,16 @@
-"""Regression harness for recovery-lineage memory retention and checkpoint growth."""
+"""Regression harness for recovery-lineage memory retention and checkpoint growth.
+
+Characterization notes (wt-024 memory-perf):
+- Cycle count exposes sub-kilobyte retained drift that would accumulate over
+  an hours-long run while staying under repository test budgets.
+- Early/late elapsed means are printed for drift inspection; retained-byte
+  plateau remains the hard assertion (not a brittle wall-clock threshold).
+"""
 
 from __future__ import annotations
 
+import statistics
+import time
 import tracemalloc
 from functools import lru_cache
 from pathlib import Path
@@ -17,7 +26,6 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
-
 
 _RECOVERY_CYCLE_CAP = 4
 _RECOVERY_ITERATION_COUNT = 8
@@ -97,12 +105,14 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
     state = _make_state()
     retained_deltas: list[int] = []
     checkpoint_sizes: list[int] = []
+    elapsed_seconds: list[float] = []
 
     tracemalloc.start()
     baseline_current, _ = tracemalloc.get_traced_memory()
     tracemalloc.reset_peak()
 
     for cycle in range(1, _RECOVERY_ITERATION_COUNT + 1):
+        started = time.perf_counter()
         controller = _make_controller()
         state, _, _ = controller.handle(
             state,
@@ -131,6 +141,7 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
         current_current, _ = tracemalloc.get_traced_memory()
         retained_deltas.append(current_current - baseline_current)
         checkpoint_sizes.append(checkpoint_path.stat().st_size)
+        elapsed_seconds.append(time.perf_counter() - started)
 
         if cycle >= _RECOVERY_CYCLE_CAP:
             assert len(state.fallover_history) == _RECOVERY_CYCLE_CAP
@@ -143,10 +154,29 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
 
     post_warmup_deltas = retained_deltas[_RECOVERY_CYCLE_CAP - 1 :]
     post_warmup_sizes = checkpoint_sizes[_RECOVERY_CYCLE_CAP - 1 :]
+    post_warmup_elapsed = elapsed_seconds[_RECOVERY_CYCLE_CAP - 1 :]
 
     assert post_warmup_deltas
     assert post_warmup_sizes
-    assert max(post_warmup_deltas) - min(post_warmup_deltas) <= _RETAINED_DELTA_SPREAD_LIMIT
+    assert post_warmup_elapsed
+    early_retained = post_warmup_deltas[:2]
+    late_retained = post_warmup_deltas[-2:]
+    early_elapsed = post_warmup_elapsed[:2]
+    late_elapsed = post_warmup_elapsed[-2:]
+    retained_spread = max(post_warmup_deltas) - min(post_warmup_deltas)
+    print(
+        "recovery_memory_characterization "
+        f"cycles={_RECOVERY_ITERATION_COUNT} warmup={_RECOVERY_CYCLE_CAP - 1} "
+        f"early_retained_mean={statistics.mean(early_retained):.0f} "
+        f"late_retained_mean={statistics.mean(late_retained):.0f} "
+        f"retained_spread={retained_spread} "
+        f"peak_delta={peak_current - baseline_current} "
+        f"early_elapsed_mean_ms={statistics.mean(early_elapsed) * 1000:.3f} "
+        f"late_elapsed_mean_ms={statistics.mean(late_elapsed) * 1000:.3f} "
+        f"early_elapsed_max_ms={max(early_elapsed) * 1000:.3f} "
+        f"late_elapsed_max_ms={max(late_elapsed) * 1000:.3f}"
+    )
+    assert retained_spread <= _RETAINED_DELTA_SPREAD_LIMIT
     assert peak_current - baseline_current <= _PEAK_DELTA_LIMIT
     assert max(post_warmup_sizes) - min(post_warmup_sizes) <= _CHECKPOINT_SIZE_SPREAD_LIMIT
     assert final_current - baseline_current <= _PEAK_DELTA_LIMIT

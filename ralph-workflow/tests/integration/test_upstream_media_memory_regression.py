@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import base64
 import gc
+import statistics
+import time
 import tracemalloc
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -151,6 +153,7 @@ def test_upstream_media_memory_regression(tmp_path: Path) -> None:
     payload = b"%PNG-FAKE\n" + b"x" * (_ARTIFACT_SIZE_BYTES - 10)
 
     retained_deltas: list[int] = []
+    elapsed_seconds: list[float] = []
 
     gc.collect()
     tracemalloc.start()
@@ -158,6 +161,7 @@ def test_upstream_media_memory_regression(tmp_path: Path) -> None:
     tracemalloc.reset_peak()
 
     for _ in range(_ITERATION_COUNT):
+        started = time.perf_counter()
         session = _SessionWithManifest()
         content_blocks: list[dict[str, object]] = [_make_embedded_image_block(payload)]
         result_content: list[dict[str, object]] = content_blocks
@@ -171,14 +175,33 @@ def test_upstream_media_memory_regression(tmp_path: Path) -> None:
         )
         current_current, _ = tracemalloc.get_traced_memory()
         retained_deltas.append(current_current - baseline_current)
+        elapsed_seconds.append(time.perf_counter() - started)
 
     tracemalloc.stop()
 
     post_warmup = retained_deltas[1:]
+    post_warmup_elapsed = elapsed_seconds[1:]
     assert post_warmup
+    assert post_warmup_elapsed
     # Use the max so a single noisy iteration fails loudly rather than the
     # average hiding a regression.
     worst = max(post_warmup)
+    early_retained = post_warmup[:2]
+    late_retained = post_warmup[-2:]
+    early_elapsed = post_warmup_elapsed[:2]
+    late_elapsed = post_warmup_elapsed[-2:]
+    print(
+        "upstream_media_memory_characterization "
+        f"cycles={_ITERATION_COUNT} warmup=1 "
+        f"early_retained_mean={statistics.mean(early_retained):.0f} "
+        f"late_retained_mean={statistics.mean(late_retained):.0f} "
+        f"retained_spread={max(post_warmup) - min(post_warmup)} "
+        f"worst_retained={worst} "
+        f"early_elapsed_mean_ms={statistics.mean(early_elapsed) * 1000:.3f} "
+        f"late_elapsed_mean_ms={statistics.mean(late_elapsed) * 1000:.3f} "
+        f"early_elapsed_max_ms={max(early_elapsed) * 1000:.3f} "
+        f"late_elapsed_max_ms={max(late_elapsed) * 1000:.3f}"
+    )
     assert worst <= _RETAINED_DELTA_LIMIT, (
         f"upstream-media retention regression: worst retained delta "
         f"{worst} bytes > {_RETAINED_DELTA_LIMIT}-byte budget after "

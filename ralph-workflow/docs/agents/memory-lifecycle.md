@@ -54,6 +54,41 @@ allocation on the hot path, it is caught by the audit (or the next
 audit extension) BEFORE it ships, not after a long-running session
 shows OOM in production**.
 
+### Confirmed plateau surfaces
+
+The integration tracemalloc harnesses under
+`tests/integration/test_*memory_regression.py` reconfirm post-warmup
+retained-byte plateaus (and early/late elapsed means) for pipeline
+agent-output retention, recovery lineage/checkpoints, budget-debit
+paths, multimodal live-session media, and upstream embedded-media
+normalization. Representative retained spreads from the focused
+characterization (not CI wall-clock oracles): pipeline ≈136 B after
+16 cycles, multimodal ≈1–2 KiB after 5 cycles, recovery ≈3 KiB after
+8 cycles, recovery-budget ≈9.3 KiB after 64 × 8 KiB failure blobs,
+upstream-media ≈704 B after 5 cycles. Early/late elapsed means are
+printed by each harness for drift inspection; late pipeline elapsed
+can jitter under host load without a proportional retained-byte step.
+
+Lifecycle owners and automated enforcement:
+
+| Surface | Owner | Enforcement |
+|---|---|---|
+| Agent output / parser buffers | `ralph/agents/` | `BoundedTextBuffer` / `TextAccumulator` + memory harness |
+| Per-unit display state | `ralph/display/` | `drop_unit` drains + ring buffers |
+| Recovery lineage / budgets | `ralph/recovery/` | cycle caps + budget memory harness |
+| Media manifests / upstream | `ralph/mcp/` | MediaManifest FIFO + upstream harness |
+| Process records / teardown | `ralph/process/` | ProcessManager caps + teardown suites |
+| Structural leak classes | `ralph/testing/audit_resource_lifecycle.py` | `make verify` AST scan of every production root |
+
+Searched without a new production bound (no measured growth curve):
+`ralph/{agents,display,mcp,pipeline,process,recovery,runtime,telemetry}/`
+plus `# bounded-accumulator-ok:` markers on the hot path. Deliberate
+non-fixes: do not pool the per-call stdio upstream client; do not add
+deadlines around healthy-agent `asyncio.gather` (activity-aware
+watchdog + finally teardown already own that bound). New production
+bounds belong only where those harnesses demonstrate a growth curve —
+not from AST suspicion alone.
+
 ## Single teardown path
 
 Every spawned child flows through `ProcessManager`

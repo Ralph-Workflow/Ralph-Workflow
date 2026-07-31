@@ -142,6 +142,12 @@ def test_agent_budget_registry_failures_do_not_grow() -> None:
     retained_delta_bytes = retained_bytes - baseline_bytes
     peak_delta_bytes = peak_bytes - baseline_bytes
 
+    print(
+        "recovery_budget_registry_characterization "
+        f"cycles={_ITERATION_COUNT} blob_bytes={_BLOB_SIZE_BYTES} "
+        f"retained_delta={retained_delta_bytes} peak_delta={peak_delta_bytes} "
+        f"limit={_RETAINED_DELTA_LIMIT}"
+    )
     assert retained_delta_bytes <= _RETAINED_DELTA_LIMIT, (
         f"AgentBudgetRegistry failure retention regression: retained delta "
         f"{retained_delta_bytes} bytes > {_RETAINED_DELTA_LIMIT}-byte budget "
@@ -185,6 +191,12 @@ def test_failure_budget_failures_do_not_grow() -> None:
     retained_delta_bytes = retained_bytes - baseline_bytes
     peak_delta_bytes = peak_bytes - baseline_bytes
 
+    print(
+        "recovery_budget_failure_budget_characterization "
+        f"cycles={_ITERATION_COUNT} blob_bytes={_BLOB_SIZE_BYTES} "
+        f"retained_delta={retained_delta_bytes} peak_delta={peak_delta_bytes} "
+        f"limit={_RETAINED_DELTA_LIMIT}"
+    )
     assert retained_delta_bytes <= _RETAINED_DELTA_LIMIT, (
         f"FailureBudget failure retention regression: retained delta "
         f"{retained_delta_bytes} bytes > {_RETAINED_DELTA_LIMIT}-byte budget "

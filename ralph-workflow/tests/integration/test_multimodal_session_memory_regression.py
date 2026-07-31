@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import gc
 import json
+import statistics
+import time
 import tracemalloc
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -60,6 +62,7 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
 
     retained_deltas: list[int] = []
     session_index_sizes: list[int] = []
+    elapsed_seconds: list[float] = []
 
     gc.collect()
     tracemalloc.start()
@@ -67,22 +70,44 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
     tracemalloc.reset_peak()
 
     for _ in range(_ITERATION_COUNT):
+        started = time.perf_counter()
         result = _read_media(session, workspace)
         assert result.is_error is False
 
         current_current, _ = tracemalloc.get_traced_memory()
         retained_deltas.append(current_current - baseline_current)
         session_index_sizes.append(index_path.stat().st_size)
+        elapsed_seconds.append(time.perf_counter() - started)
 
     final_current, peak_current = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
     post_warmup_deltas = retained_deltas[1:]
     post_warmup_sizes = session_index_sizes[1:]
+    post_warmup_elapsed = elapsed_seconds[1:]
     assert post_warmup_deltas
     assert post_warmup_sizes
+    assert post_warmup_elapsed
 
-    assert max(post_warmup_deltas) - min(post_warmup_deltas) <= _RETAINED_DELTA_SPREAD_LIMIT
+    early_retained = post_warmup_deltas[:2]
+    late_retained = post_warmup_deltas[-2:]
+    early_elapsed = post_warmup_elapsed[:2]
+    late_elapsed = post_warmup_elapsed[-2:]
+    retained_spread = max(post_warmup_deltas) - min(post_warmup_deltas)
+    print(
+        "multimodal_session_memory_characterization "
+        f"cycles={_ITERATION_COUNT} warmup=1 "
+        f"early_retained_mean={statistics.mean(early_retained):.0f} "
+        f"late_retained_mean={statistics.mean(late_retained):.0f} "
+        f"retained_spread={retained_spread} "
+        f"peak_delta={peak_current - baseline_current} "
+        f"early_elapsed_mean_ms={statistics.mean(early_elapsed) * 1000:.3f} "
+        f"late_elapsed_mean_ms={statistics.mean(late_elapsed) * 1000:.3f} "
+        f"early_elapsed_max_ms={max(early_elapsed) * 1000:.3f} "
+        f"late_elapsed_max_ms={max(late_elapsed) * 1000:.3f}"
+    )
+
+    assert retained_spread <= _RETAINED_DELTA_SPREAD_LIMIT
     assert peak_current - baseline_current <= _PEAK_DELTA_LIMIT
     assert final_current - baseline_current <= _FINAL_RETAINED_DELTA_LIMIT
     assert max(post_warmup_sizes) - min(post_warmup_sizes) <= _SESSION_INDEX_SIZE_SPREAD_LIMIT
