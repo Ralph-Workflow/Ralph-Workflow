@@ -29,10 +29,6 @@ Independently inspect the submitted review, relevant current code, diff context,
 
 Choose `completed` for a thorough, correct review, `request_changes` for a provable coverage or quality gap, or `failed` for an unusable review. Follow imports, callers, tests, and error paths as needed; run the project's fast path before broader verification when available, then its meaningful full gate.
 
-## SUBAGENTS AND PARALLEL WORK
-
-If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively when it improves evidence quality. Retrieve PROMPT, PLAN, and the latest artifact. Fan out read-only subagents for independent evidence and run independent analysis or verification work in parallel. Only you, in the main session, may submit the final analysis artifact.
-
 ## Decision artifact
 
 The downstream validator reads `.agent/artifact-formats/review_analysis_decision.md`: use one evidence-and-check-citing `## Summary` item for `completed`; otherwise use matching `RA-###` IDs in `## What Came Up Short` and `## How To Fix` with evidence, the missing or corrected review finding, and its proving check.
