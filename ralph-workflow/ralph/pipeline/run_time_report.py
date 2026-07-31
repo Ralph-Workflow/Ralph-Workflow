@@ -30,12 +30,16 @@ def _safe_text(value: str) -> str:
     return value.replace("\n", " ")[:_MAX_PHASE_NAME_CHARACTERS]
 
 
+def _safe_item_text(value: str) -> str:
+    return _safe_text(value).rstrip()
+
+
 def _memory_findings(getenv: Callable[[str], str | None]) -> list[str]:
     findings = getenv("RALPH_RUN_TIME_REPORT_MEMORY_FINDINGS") or ""
     return [
-        _safe_text(finding)
+        _safe_item_text(finding)
         for finding in findings.splitlines()
-        if finding.strip()
+        if _safe_item_text(finding)
     ][:_MAX_MEMORY_FINDINGS]
 
 

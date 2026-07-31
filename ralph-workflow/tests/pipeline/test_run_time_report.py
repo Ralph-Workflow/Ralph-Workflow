@@ -74,6 +74,19 @@ def test_run_time_report_regression_memory_findings_are_optional_and_validated()
     assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
 
 
+def test_run_time_report_regression_trims_clamped_memory_findings_for_validation() -> None:
+    report = render_run_time_report(
+        state=PipelineState(phase="development"),
+        outcome="completed",
+        elapsed_seconds=1,
+        getenv=lambda _key: "x" * 79 + " trailing text",
+    )
+
+    __import__("ralph.mcp.artifacts.markdown.specs")
+    _, diagnostics = parse_and_validate(report, get_spec("run_time_report"))
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+
+
 def test_run_time_report_regression_truncates_long_phase_names_within_budget() -> None:
     slowest_phase = "00-" + "x" * 67
     report = render_run_time_report(
