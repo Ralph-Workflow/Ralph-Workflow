@@ -27,7 +27,6 @@ from ralph.pipeline.effects import CommitEffect, Effect, InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.policy.models import PolicyBundle
 from ralph.workspace.scope import WorkspaceScope
 from tests.integration._commit_cleanup_always_loopback_invoker import (
     CommitCleanupAlwaysLoopbackInvoker,
@@ -47,6 +46,7 @@ if TYPE_CHECKING:
 
     from pytest import MonkeyPatch
 
+    from ralph.policy.models import PolicyBundle
     from ralph.workspace.memory import MemoryWorkspace
     from tests.integration._mock_agent_invoker import MockAgentInvoker
 

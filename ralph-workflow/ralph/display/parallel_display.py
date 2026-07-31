@@ -162,7 +162,7 @@ from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter, rendered_record_path
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.display.theme import detect_terminal_background_is_light
+from ralph.display.theme import detect_terminal_background_is_light, diff_fill_styles
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
@@ -2115,6 +2115,7 @@ class ParallelDisplay:
             terminal_bg_is_light=self._terminal_bg_is_light,
             overflow_ref=overflow_ref,
             glyphs_enabled=self._ctx.glyphs_enabled,
+            diff_fills=diff_fill_styles(self._terminal_bg_is_light),
         )
         if preview is None:
             return
@@ -2671,6 +2672,7 @@ class ParallelDisplay:
                 terminal_bg_is_light=self._terminal_bg_is_light,
                 overflow_ref=overflow_ref,
                     glyphs_enabled=self._ctx.glyphs_enabled,
+                    diff_fills=diff_fill_styles(self._terminal_bg_is_light),
                 )
                 is not None
             )

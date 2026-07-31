@@ -9,7 +9,12 @@ import pytest
 from rich.console import Console
 
 from ralph.display.edit_preview import build_edit_preview, render_markdown_preview
-from ralph.display.theme import contrast_ratio
+from ralph.display.theme import (
+    contrast_ratio,
+    diff_fill_styles,
+    diff_token_foregrounds,
+    pick_status_styles,
+)
 
 _RGB_SGR = re.compile(r"38;2;(\d+);(\d+);(\d+)")
 _SGR = re.compile(r"\x1b\[([0-9;]*)m")
@@ -82,6 +87,18 @@ def _shapes(background: bool | None) -> dict[str, object]:
             **common,
         ),
         "diff": build_edit_preview("git_diff", {"content": "@@ -1 +1 @@\n-old\n+new\n"}, **common),
+        "edit_painted": build_edit_preview(
+            "edit_file",
+            {"path": "a.py", "edits": [{"oldText": "x = 1", "newText": "x = 2"}]},
+            diff_fills=diff_fill_styles(background),
+            **common,
+        ),
+        "diff_painted": build_edit_preview(
+            "git_diff",
+            {"content": "@@ -1 +1 @@\n-old\n+new\n"},
+            diff_fills=diff_fill_styles(background),
+            **common,
+        ),
         "markdown": render_markdown_preview(
             "# Heading\n\n## Subheading\n\n*emphasis* and **strong** and `inline code`.\n\n"
             "> block quote\n\n---\n\n| left | right |\n| --- | --- |\n| one | two |\n\n"
@@ -108,7 +125,21 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
     for name, renderable in _shapes(terminal_bg_is_light).items():
         assert renderable is not None, name
         rendered = _render(renderable, color=True)
-        assert "48;2;" not in rendered and "48;5;" not in rendered, name
+        fills = diff_fill_styles(terminal_bg_is_light) if name.endswith("_painted") else None
+        if fills is None:
+            assert "48;2;" not in rendered and "48;5;" not in rendered, name
+        else:
+            fill_sgrs = {
+                f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
+                for fill in fills
+            }
+            assert all(sgr in rendered for sgr in fill_sgrs), name
+            markers = pick_status_styles(terminal_bg_is_light)
+            for color in (*diff_token_foregrounds(terminal_bg_is_light), *[
+                re.search(r"#[0-9A-Fa-f]{6}", markers[status][0]).group()
+                for status in ("error", "success")
+            ]):
+                assert all(contrast_ratio(color, fill) >= 4.5 for fill in fills)
         _assert_no_operator_palette_sgr(rendered, name)
         colors = _RGB_SGR.findall(rendered)
         assert colors, f"contrast sweep emitted no truecolour tokens for {name}"

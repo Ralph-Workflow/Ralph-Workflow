@@ -104,8 +104,6 @@ from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
     SYNTAX_BACKGROUND_TRANSPARENT,
-    diff_fill_styles,
-    diff_fill_styles,
     markdown_theme_context,
     pick_status_styles,
     syntax_theme_for_background,
@@ -588,6 +586,7 @@ def _build_edit_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    diff_fills: tuple[str, str] | None = None,
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
 ) -> RenderableType | None:
@@ -663,24 +662,36 @@ def _build_edit_preview(
             blocks.append(
                 Group(
                     Text(marker, style=style),
-                    _make_syntax(
+                    _apply_diff_fill(
+                        _make_syntax(
+                            "\n".join(head),
+                            lexer_name,
+                            is_markdown=is_markdown,
+                            terminal_bg_is_light=terminal_bg_is_light,
+                            start_line=start_line,
+                        ),
                         "\n".join(head),
-                        lexer_name,
-                        is_markdown=is_markdown,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=start_line,
+                        diff_fills[0] if marker == "-" and diff_fills is not None else (
+                            diff_fills[1] if diff_fills is not None else None
+                        ),
                     ),
                 )
             )
             if tail:
                 tail_start = start_line + len(head) + (omitted or 0)
                 blocks.append(
-                    _make_syntax(
+                    _apply_diff_fill(
+                        _make_syntax(
+                            "\n".join(tail),
+                            lexer_name,
+                            is_markdown=is_markdown,
+                            terminal_bg_is_light=terminal_bg_is_light,
+                            start_line=tail_start,
+                        ),
                         "\n".join(tail),
-                        lexer_name,
-                        is_markdown=is_markdown,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=tail_start,
+                        diff_fills[0] if marker == "-" and diff_fills is not None else (
+                            diff_fills[1] if diff_fills is not None else None
+                        ),
                     )
                 )
     if total_omitted:
@@ -695,6 +706,28 @@ def _build_edit_preview(
     return Group(*blocks)
 
 
+def _apply_diff_fill(syntax: Syntax, source: str, fill: str | None) -> Syntax:
+    """Paint only syntax content, leaving the line-number gutter transparent."""
+    if fill is None or not source:
+        return syntax
+    lines = source.splitlines()
+    syntax.stylize_range(f"on {fill}", (1, 0), (len(lines), len(lines[-1])))
+    return syntax
+
+
+def _apply_diff_line_fills(
+    syntax: Syntax, lines: list[str], diff_fills: tuple[str, str] | None
+) -> Syntax:
+    """Paint only added and removed source rows in an interleaved diff."""
+    if diff_fills is None:
+        return syntax
+    for row, line in enumerate(lines, start=1):
+        fill = diff_fills[0] if line.startswith("-") else diff_fills[1] if line.startswith("+") else None
+        if fill is not None:
+            syntax.stylize_range(f"on {fill}", (row, 0), (row, len(line)))
+    return syntax
+
+
 def _build_content_preview(
     bare: str,
     canonical: PreviewPayload,
@@ -704,6 +737,7 @@ def _build_content_preview(
     *,
     width: int,
     terminal_bg_is_light: bool | None,
+    diff_fills: tuple[str, str] | None,
     overflow_ref: str | None,
     glyphs_enabled: bool,
 ) -> RenderableType | None:
@@ -746,22 +780,30 @@ def _build_content_preview(
                 omitted_source.extend(body_lines[len(head) : len(body_lines) - len(tail)])
             if head:
                 blocks.append(
-                    _make_syntax(
-                        "\n".join(head),
-                        lexer_for_path(preview_path, body),
-                        is_markdown=False,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=int(hunk.group(1)),
+                    _apply_diff_line_fills(
+                        _make_syntax(
+                            "\n".join(head),
+                            lexer_for_path(preview_path, body),
+                            is_markdown=False,
+                            terminal_bg_is_light=terminal_bg_is_light,
+                            start_line=int(hunk.group(1)),
+                        ),
+                        head,
+                        diff_fills,
                     )
                 )
             if tail:
                 blocks.append(
-                    _make_syntax(
-                        "\n".join(tail),
-                        lexer_for_path(preview_path, body),
-                        is_markdown=False,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=int(hunk.group(1)) + len(head) + (omitted or 0),
+                    _apply_diff_line_fills(
+                        _make_syntax(
+                            "\n".join(tail),
+                            lexer_for_path(preview_path, body),
+                            is_markdown=False,
+                            terminal_bg_is_light=terminal_bg_is_light,
+                            start_line=int(hunk.group(1)) + len(head) + (omitted or 0),
+                        ),
+                        tail,
+                        diff_fills,
                     )
                 )
             remaining -= len(head) + len(tail)
@@ -803,6 +845,7 @@ def build_edit_preview(
     terminal_bg_is_light: bool | None,
     overflow_ref: str | None = None,
     glyphs_enabled: bool = True,
+    diff_fills: tuple[str, str] | None = None,
 ) -> RenderableType | None:
     """Return a rich renderable previewing the edit described by ``input_dict``.
 
@@ -873,6 +916,7 @@ def build_edit_preview(
             ],
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            diff_fills=diff_fills,
             overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,
         )
@@ -904,6 +948,7 @@ def build_edit_preview(
             start_line,
             width=width,
             terminal_bg_is_light=terminal_bg_is_light,
+            diff_fills=diff_fills,
             overflow_ref=overflow_ref,
             glyphs_enabled=glyphs_enabled,
         )

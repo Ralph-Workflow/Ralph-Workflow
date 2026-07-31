@@ -1,63 +1,9 @@
 """Okabe-Ito theme helpers for Ralph CLI display.
 
-Accessibility contract
-----------------------
+Fixed-RGB, background-aware Rich and Pygments theme helpers.
 
-The palette is Okabe-Ito (a colorblind-safe palette researched by Okabe
-& Ito, 2002 -- "Color Universal Design") so that no semantic state is
-distinguishable by hue alone under the common forms of color-vision
-deficiency (deuteranopia, protanopia, tritanopia). The pairing rules
-below make that explicit so an accessibility decision is made once
-here, not per call site:
-
-* ``STATUS_STYLES`` carries a 3-tuple ``(rich_style, unicode_icon,
-  ascii_label)`` per semantic state. Display code must always render
-  the icon and the ASCII label alongside the color so a colorblind
-  operator (or a no-color console) keeps every piece of meaning the
-  color was carrying.
-* ``success`` (BLUISH_GREEN, okabe-ito #009E73, lightness L*~52)
-  vs ``error`` (VERMILLION, okabe-ito #D55E00, lightness L*~54). The
-  lightnesses are similar in raw hex but visually distinct after
-  Okabe-Ito's perceptual tuning: red/green pairings are the classic
-  accessibility trap and the Okabe-Ito pair avoids it by using
-  blueish-green and vermillion (orange-red) which differ in lightness
-  AND hue. Display code MUST NOT use red/green as the sole
-  differentiator for any state pair -- the accessibility test in
-  ``tests/display/test_agent_output_accessibility.py`` asserts each
-  state also carries a non-color carrier.
-* Semantic roles are defined ONCE here: ``success``, ``running``,
-  ``warning``, ``error``, ``skipped``, ``pending``, ``info``. New
-  states must add a new entry here, never duplicate a hex string in
-  a renderer.
-
-Background-aware contrast contract (AC-10)
-------------------------------------------
-
-Okabe-Ito's perceptual tuning prioritises *hue distinction* over
-*lightness contrast*; on the canonical dark terminal background the
-palette clears 4.5:1 WCAG contrast for every state, but on a
-*light* background the lighter states (running, warning, skipped,
-info) drop below 4.5:1 against white. The accessibility contract
-mandates "sufficient contrast on both dark and light terminal
-themes" so the single source of truth now exposes two bg-aware
-named-role tables:
-
-* :data:`STATUS_STYLES` -- canonical dark-bg reference (the original
-  Okabe-Ito hex values, all of which pass 4.5:1 on a black
-  background; ``success`` and ``error`` happen to also pass on white
-  because their lightness is mid-range).
-* :data:`STATUS_STYLES_ON_LIGHT_BG` -- darker Okabe-Ito-derived
-  variants picked so each foreground clears 4.5:1 on white. Hue
-  identity is preserved: ``success`` stays bluish-green, ``error``
-  stays vermillion, etc. so a colourblind operator sees the same
-  hue family on either background.
-
-:func:`pick_status_styles` selects the right table at render time
-based on the resolved terminal background (light / dark / unknown
-auto-detect via :func:`terminal_background_is_light`). Display
-callers route through :func:`_state_payload_for_background` /
-:func:`status_styles_for_context` so the accessibility decision
-lives in this module, not per call site.
+All semantic colors are selected from the resolved terminal background and
+must preserve contrast and non-color structural carriers.
 """
 
 from __future__ import annotations
@@ -241,8 +187,18 @@ IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
 
 #: Mid-luminance identity colours proven readable on both black and white.
 IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
-    "#0070F0", "#0080A0", "#3070E0", "#308080", "#508040", "#6070C0",
-    "#608000", "#7060F0", "#807080", "#9060C0", "#907000", "#907030",
+    "#0070F0",
+    "#0080A0",
+    "#3070E0",
+    "#308080",
+    "#508040",
+    "#6070C0",
+    "#608000",
+    "#7060F0",
+    "#807080",
+    "#9060C0",
+    "#907000",
+    "#907030",
 )
 
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
@@ -251,7 +207,14 @@ _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
 # it collision-aware prevents a hash collision before a particular display
 # has observed every peer in the current run.
 _DISPLAY_IDENTITY_ACTIVE_SET: Final[tuple[str, ...]] = (
-    "claude", "claude-headless", "codex", "opencode", "nanocoder", "agy", "pi", "cursor",
+    "claude",
+    "claude-headless",
+    "codex",
+    "opencode",
+    "nanocoder",
+    "agy",
+    "pi",
+    "cursor",
 )
 
 
@@ -723,8 +686,6 @@ _DIFF_REMOVED_FILL_ON_DARK_BG: Final[str] = "#101112"
 _DIFF_ADDED_FILL_ON_DARK_BG: Final[str] = "#121110"
 _DIFF_REMOVED_FILL_ON_LIGHT_BG: Final[str] = "#F5F1F0"
 _DIFF_ADDED_FILL_ON_LIGHT_BG: Final[str] = "#F0F4F5"
-_DIFF_REMOVED_FILL_ON_UNKNOWN_BG: Final[str] = "#757575"
-_DIFF_ADDED_FILL_ON_UNKNOWN_BG: Final[str] = "#757575"
 
 
 def diff_token_foregrounds(terminal_bg_is_light: bool | None) -> tuple[str, str]:
@@ -744,18 +705,29 @@ def diff_fill_styles(terminal_bg_is_light: bool | None) -> tuple[str, str] | Non
         return _DIFF_REMOVED_FILL_ON_DARK_BG, _DIFF_ADDED_FILL_ON_DARK_BG
     return None
 
+
 # Rich's stock markdown theme uses ANSI slots, including a black inline-code
 # fill. Fixed-RGB styles keep markdown carriers background-derived and transparent.
-def _markdown_styles(default: str, accent: str, link: str, url: str, bullet: str, rule: str) -> dict[str, str]:
+def _markdown_styles(
+    default: str, accent: str, link: str, url: str, bullet: str, rule: str
+) -> dict[str, str]:
     return {
-        "markdown.code": f"bold {default}", "markdown.em": f"italic {default}",
-        "markdown.strong": f"bold {default}", "markdown.s": f"strike {default}",
-        "markdown.code_block": default, "markdown.table.border": accent,
-        "markdown.table.header": f"bold {default}", "markdown.block_quote": accent,
-        "markdown.link": f"underline {link}", "markdown.link_url": url,
+        "markdown.code": f"bold {default}",
+        "markdown.em": f"italic {default}",
+        "markdown.strong": f"bold {default}",
+        "markdown.s": f"strike {default}",
+        "markdown.code_block": default,
+        "markdown.table.border": accent,
+        "markdown.table.header": f"bold {default}",
+        "markdown.block_quote": accent,
+        "markdown.link": f"underline {link}",
+        "markdown.link_url": url,
         **{f"markdown.h{level}": f"bold {accent}" for level in range(1, 7)},
-        "markdown.item.bullet": bullet, "markdown.item.number": bullet,
-        "markdown.list": bullet, "markdown.kbd": f"bold {accent}", "markdown.hr": rule,
+        "markdown.item.bullet": bullet,
+        "markdown.item.number": bullet,
+        "markdown.list": bullet,
+        "markdown.kbd": f"bold {accent}",
+        "markdown.hr": rule,
     }
 
 
@@ -780,30 +752,16 @@ def markdown_styles_for_background(terminal_bg_is_light: bool | None) -> dict[st
 
 
 @contextmanager
-def markdown_theme_context(console: Console, *, terminal_bg_is_light: bool | None) -> Iterator[None]:
+def markdown_theme_context(
+    console: Console, *, terminal_bg_is_light: bool | None
+) -> Iterator[None]:
     """Temporarily apply resolved markdown styles to a display console."""
     with console.use_theme(Theme(markdown_styles_for_background(terminal_bg_is_light))):
         yield
 
 
 def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxTheme:
-    """Return the code-highlighting theme name for the given background.
-
-    All three returned themes are fixed RGB Pygments styles selected against
-    the resolved background. This makes token contrast and CVD separation
-    mechanically checkable; stock ANSI slots are operator-configurable and
-    cannot provide that guarantee.
-
-    An unknown background (``None``) resolves to a mid-luminance palette
-    whose tokens each clear the contrast floor on both black and white.
-
-    Parameters:
-        terminal_bg_is_light: ``True`` for light backgrounds,
-            ``False`` for dark, ``None`` for unknown.
-
-    Returns:
-        The Rich syntax theme to pass to ``rich.syntax.Syntax``.
-    """
+    """Return the fixed-RGB syntax theme resolved for this background."""
     if terminal_bg_is_light is True:
         return SYNTAX_THEME_ON_LIGHT_BG
     if terminal_bg_is_light is False:
@@ -902,8 +860,10 @@ def assert_status_styles_meet_contrast(
             contrast check.
     """
     table = pick_status_styles(terminal_bg_is_light)
-    backgrounds = (_LIGHT_BG_HEX,) if terminal_bg_is_light is True else (
-        (_DARK_BG_HEX,) if terminal_bg_is_light is False else (_DARK_BG_HEX, _LIGHT_BG_HEX)
+    backgrounds = (
+        (_LIGHT_BG_HEX,)
+        if terminal_bg_is_light is True
+        else ((_DARK_BG_HEX,) if terminal_bg_is_light is False else (_DARK_BG_HEX, _LIGHT_BG_HEX))
     )
     failures: list[str] = []
     for state, payload in table.items():
@@ -998,23 +958,21 @@ __all__ = [
     "STATUS_STYLES_ON_LIGHT_BG",
     "STATUS_STYLES_ON_UNKNOWN_BG",
     "SYNTAX_BACKGROUND_TRANSPARENT",
-    "_DIFF_ADDED_FILL_ON_DARK_BG",
-    "_DIFF_ADDED_FILL_ON_LIGHT_BG",
-    "_DIFF_ADDED_FILL_ON_UNKNOWN_BG",
-    "_DIFF_REMOVED_FILL_ON_DARK_BG",
-    "_DIFF_REMOVED_FILL_ON_LIGHT_BG",
-    "_DIFF_REMOVED_FILL_ON_UNKNOWN_BG",
     "SYNTAX_THEME_ON_DARK_BG",
     "SYNTAX_THEME_ON_LIGHT_BG",
     "SYNTAX_THEME_ON_UNKNOWN_BG",
     "UNICODE_GLYPHS",
     "VERMILLION",
     "YELLOW",
+    "_DIFF_ADDED_FILL_ON_DARK_BG",
+    "_DIFF_ADDED_FILL_ON_LIGHT_BG",
+    "_DIFF_REMOVED_FILL_ON_DARK_BG",
+    "_DIFF_REMOVED_FILL_ON_LIGHT_BG",
     "background_hex_is_light",
     "detect_glyph_capability",
+    "detect_terminal_background_is_light",
     "diff_fill_styles",
     "diff_token_foregrounds",
-    "detect_terminal_background_is_light",
     "format_status",
     "identity_color",
     "make_console",
