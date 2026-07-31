@@ -301,19 +301,19 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Sixteen shards keep the measured verification profile under the immutable
+    # Thirty-two shards keep the measured verification profile under the immutable
     # 60-second budget while retaining required real-git coverage.
     for cores, expected in (
-        (4, "16"),
-        (5, "16"),
-        (6, "16"),
-        (7, "16"),
-        (8, "16"),
-        (12, "16"),
-        (16, "16"),
-        (20, "16"),
-        (21, "16"),
-        (64, "16"),
+        (4, "32"),
+        (5, "32"),
+        (6, "32"),
+        (7, "32"),
+        (8, "32"),
+        (12, "32"),
+        (16, "32"),
+        (20, "32"),
+        (21, "32"),
+        (64, "32"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected

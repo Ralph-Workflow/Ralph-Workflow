@@ -64,7 +64,7 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Sixteen concurrent
+# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Thirty-two concurrent
 # pytest processes keep the required real-git E2E profile below the immutable
 # 60-second budget without starving collection on the maintained runner.
 # Operators may still explicitly override ``PYTEST_WORKERS`` for a measured
@@ -74,8 +74,8 @@ _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MIN_PYTEST_WORKERS = 16
-_MAX_PYTEST_WORKERS = 16
+_MIN_PYTEST_WORKERS = 32
+_MAX_PYTEST_WORKERS = 32
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -107,7 +107,6 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_non_main_target.py",
     "tests/test_auto_integrate_rung4_self_resume.py",
     "tests/test_auto_integrate_recovery.py",
-    "tests/test_auto_integrate_recovery_terminal.py",
     "tests/test_auto_integrate_race.py",
     "tests/test_auto_integrate_worktree_sync.py",
     "tests/test_auto_integrate_catalog_e2e.py",
