@@ -4,6 +4,13 @@ Fixed-RGB, background-aware Rich and Pygments theme helpers.
 
 All semantic colors are selected from the resolved terminal background and
 must preserve contrast and non-color structural carriers.
+
+The palette is Okabe-Ito, so semantic states are not distinguished by hue
+alone. ``STATUS_STYLES`` carries a ``(rich_style, unicode_icon, ascii_label)``
+tuple per semantic state so display code can retain every meaning carrier on
+colorblind and no-color consoles. Semantic roles are defined once here;
+background-aware role tables preserve contrast and hue identity on light,
+dark, and unknown terminal backgrounds.
 """
 
 from __future__ import annotations
@@ -11,7 +18,6 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
@@ -21,7 +27,7 @@ from rich.theme import Theme
 from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
 ORANGE: Final[str] = "#E69F00"
 SKY_BLUE: Final[str] = "#56B4E9"
@@ -706,60 +712,6 @@ def diff_fill_styles(terminal_bg_is_light: bool | None) -> tuple[str, str] | Non
     return None
 
 
-# Rich's stock markdown theme uses ANSI slots, including a black inline-code
-# fill. Fixed-RGB styles keep markdown carriers background-derived and transparent.
-def _markdown_styles(
-    default: str, accent: str, link: str, url: str, bullet: str, rule: str
-) -> dict[str, str]:
-    return {
-        "markdown.code": f"bold {default}",
-        "markdown.em": f"italic {default}",
-        "markdown.strong": f"bold {default}",
-        "markdown.s": f"strike {default}",
-        "markdown.code_block": default,
-        "markdown.table.border": accent,
-        "markdown.table.header": f"bold {default}",
-        "markdown.block_quote": accent,
-        "markdown.link": f"underline {link}",
-        "markdown.link_url": url,
-        **{f"markdown.h{level}": f"bold {accent}" for level in range(1, 7)},
-        "markdown.item.bullet": bullet,
-        "markdown.item.number": bullet,
-        "markdown.list": bullet,
-        "markdown.kbd": f"bold {accent}",
-        "markdown.hr": rule,
-    }
-
-
-_MARKDOWN_STYLES_ON_DARK_BG: Final[dict[str, str]] = _markdown_styles(
-    "#D0D0D0", "#6DDCF2", "#0CB9F2", "#C9D921", "#77D9B0", "#94D90B"
-)
-_MARKDOWN_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = _markdown_styles(
-    "#202020", "#3C7F85", "#251947", "#70703E", "#3E4712", "#330B03"
-)
-_MARKDOWN_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = _markdown_styles(
-    "#757575", "#408070", "#2070F0", "#608020", "#5070D0", "#7070A0"
-)
-
-
-def markdown_styles_for_background(terminal_bg_is_light: bool | None) -> dict[str, str]:
-    """Return fixed-RGB Rich markdown styles for the resolved background."""
-    if terminal_bg_is_light is True:
-        return _MARKDOWN_STYLES_ON_LIGHT_BG
-    if terminal_bg_is_light is False:
-        return _MARKDOWN_STYLES_ON_DARK_BG
-    return _MARKDOWN_STYLES_ON_UNKNOWN_BG
-
-
-@contextmanager
-def markdown_theme_context(
-    console: Console, *, terminal_bg_is_light: bool | None
-) -> Iterator[None]:
-    """Temporarily apply resolved markdown styles to a display console."""
-    with console.use_theme(Theme(markdown_styles_for_background(terminal_bg_is_light))):
-        yield
-
-
 def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> SyntaxTheme:
     """Return the fixed-RGB syntax theme resolved for this background."""
     if terminal_bg_is_light is True:
@@ -976,8 +928,6 @@ __all__ = [
     "format_status",
     "identity_color",
     "make_console",
-    "markdown_styles_for_background",
-    "markdown_theme_context",
     "pick_status_styles",
     "syntax_theme_for_background",
     "terminal_background_is_light",

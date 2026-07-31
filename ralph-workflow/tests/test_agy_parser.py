@@ -102,3 +102,17 @@ def test_stream_json_subagent_updates_emit_correlated_events() -> None:
     ]
     assert parsed[2].type == "text"
     assert parsed[2].content == "after"
+
+
+def test_stream_json_tool_update_emits_named_tool_use() -> None:
+    """S-3: a normal AGY tool update exposes its tool name to smoke plumbing."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_file","call_id":"tool-1"}}}',
+    ]
+
+    parsed = list(parser.parse(iter(lines)))
+
+    assert [(line.type, line.metadata.get("tool"), line.metadata.get("tool_use_id")) for line in parsed] == [
+        ("tool_use", "write_file", "tool-1")
+    ]

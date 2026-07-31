@@ -99,12 +99,12 @@ from rich.markdown import CodeBlock, Markdown, MarkdownElement
 from rich.syntax import Syntax
 from rich.text import Text
 
+from ralph._markdown_theme import markdown_theme_context
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
     SYNTAX_BACKGROUND_TRANSPARENT,
-    markdown_theme_context,
     pick_status_styles,
     syntax_theme_for_background,
 )
