@@ -1,6 +1,6 @@
 Task: produce and submit a spec-compliant MCP commit_message artifact for the current pending work shown below. A valid artifact has a conventional subject, an explanatory body when the change needs one, and the matching commit or skip document shape.
 
-The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it through the declared artifact tools without commentary, then stop. Do not ask the user for confirmation or “Would you like me to …” questions. Do not call bash.
+The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD). Read it, choose the matching artifact shape, submit it through the declared artifact tools without commentary, then stop. Proceed autonomously with the artifact tools; do not ask the user for confirmation or “Would you like me to …” questions. Do not call bash; it is outside this phase's tool path.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -35,9 +35,7 @@ Use one pass through these steps to produce the subject, then write the body. Do
 
 **Step 3 — write the description.** Write one lowercase imperative clause that describes behavior. There is no length limit; stop at its end.
 
-**Step 4 — check the grammar, then stop.** Confirm `<kind>(<scope>)?!?: <description>`: kind is from the table; scope, when present, uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; description starts with a lowercase letter or digit; write the unquoted frontmatter value. Quotes become part of the subject and are rejected.
-
-Select the first valid subject and write the body.
+**Step 4 — check the grammar, then write the body.** Confirm `<kind>(<scope>)?!?: <description>`: kind is from the table; scope, when present, uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; description starts with a lowercase letter or digit; write the unquoted frontmatter value. Quotes become part of the subject and are rejected.
 
 ## HOW TO WRITE THE BODY
 
