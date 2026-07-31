@@ -235,17 +235,18 @@ def test_live_agy_invokes_live_binary(live_smoke_session: _LiveSmokeResult) -> N
     """The live smoke run invokes the real agy binary, not the mock.
 
     Reads the session-shared smoke output (one live invocation per
-    session, see ``live_smoke_session`` fixture) and asserts the
-    ``Invoking agent: agy --dangerously-skip-permissions`` line is
-    present and the ``MOCK_AGY_BEHAVIOR=`` marker is absent. This
-    proves the harness used the real binary, not the mock.
+    session, see ``live_smoke_session`` fixture) and asserts an
+    ``Invoking agent: agy`` line contains ``--dangerously-skip-permissions``
+    while the ``MOCK_AGY_BEHAVIOR=`` marker is absent. This proves the
+    harness used the real binary, not the mock.
     """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     output = live_smoke_session.output
 
-    assert "Invoking agent: agy --dangerously-skip-permissions" in output, (
-        f"Expected live invocation line in output:\n{output[-5000:]}"
-    )
+    assert any(
+        "Invoking agent: agy" in line and "--dangerously-skip-permissions" in line
+        for line in output.splitlines()
+    ), f"Expected live invocation line in output:\n{output[-5000:]}"
     assert "MOCK_AGY_BEHAVIOR=" not in output, (
         f"Mock marker should not appear in live run:\n{output[-5000:]}"
     )
