@@ -72,10 +72,27 @@ def test_diff_preview_regression_is_transparent_by_default_and_paints_when_opted
             if fills is None:
                 assert "48;2;" not in painted_rendered and "48;5;" not in painted_rendered
             else:
-                assert all(
-                    f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}" in painted_rendered
+                removed, added = (
+                    f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
                     for fill in fills
                 )
+                assert removed in painted_rendered and added in painted_rendered
+                rendered_rows = painted_rendered.splitlines()
+                plain_rows = [_plain(row) for row in rendered_rows]
+                if tool_name == "git_diff":
+                    removed_row = next(row for row in rendered_rows if "-old" in _plain(row))
+                    added_row = next(row for row in rendered_rows if "+new" in _plain(row))
+                else:
+                    removed_marker = next(
+                        index for index, row in enumerate(plain_rows) if row.strip() == "-"
+                    )
+                    added_marker = next(
+                        index for index, row in enumerate(plain_rows) if row.strip() == "+"
+                    )
+                    removed_row = rendered_rows[removed_marker + 1]
+                    added_row = rendered_rows[added_marker + 1]
+                assert removed in removed_row and added not in removed_row
+                assert added in added_row and removed not in added_row
             plain = _plain(painted_rendered)
             assert "-" in plain and "+" in plain and "1" in plain
             if tool_name == "git_diff":
