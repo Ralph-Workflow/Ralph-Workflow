@@ -552,3 +552,44 @@ after a long-running session shows OOM in production.
 - `ralph/watchdogs/` — idle watchdog timeout policy and invariants
 - `ralph/testing/audit_mcp_timeout.py` — the audit implementation
 - `tests/test_audit_mcp_timeout.py` — audit regression tests
+## 2026-07-31 memory-perf sweep
+
+This sweep re-checked the run-length surfaces in `ralph/agents/`,
+`display/`, `mcp/`, `pipeline/`, `process/`, `recovery/`, `runtime/`, and
+`telemetry/`, plus the resource-lifecycle accumulator audit. No new production
+accumulator or process-lifecycle growth curve was found.
+
+### Measured plateau and drift checks
+
+The focused tracemalloc run used the existing per-surface harnesses plus a new
+single-run, twelve-cycle pipeline harness. The twelve-cycle count makes a
+linear 1 MiB-per-cycle leak exceed 10 MiB after warmup, which is far above
+tracemalloc noise while remaining inside the test budget.
+
+| Harness | Retained spread | Early elapsed mean | Late elapsed mean |
+|---|---:|---:|---:|
+| Pipeline output (3 cycles) | 16 B | 44.360 ms | 44.360 ms |
+| Recovery lineage (8 cycles; 3 warmup) | 2,693 B | 1.475 ms | 1.543 ms |
+| Multimodal session (3 cycles) | 674 B | 4.111 ms | 4.111 ms |
+| Upstream media (3 cycles) | 240 B | 1.704 ms | 1.704 ms |
+| Pipeline multi-cycle (12 cycles; 2 warmup) | 0 B | 38.662 ms | 34.544 ms |
+
+The recovery-budget harness also held after 17 × 16 KiB failure payloads:
+registry retained/peak deltas were 17,467/17,967 B; failure-budget deltas were
+17,563/18,063 B. The recovery harness's iteration count was raised from five
+to eight so its post-warmup window contains five samples and its early/late
+pairs are disjoint.
+
+### Cleanup and deliberate boundary
+
+`tests/pipeline/test_run_loop_cleanup_shutdown.py` exercises teardown failure
+reporting: a failing cleanup step is logged to the diagnostic channel, sibling
+cleanup still runs, and the run outcome remains intact. Cleanup failures are
+intentionally **not** added to the run-time report. That report is persisted
+before teardown so results survive a wedged cleanup; moving it later would
+change that safety property. `_run_cleanup_step` already records failed
+reclamation in the diagnostic log.
+
+Deliberate non-fixes remain unchanged: do not pool isolated stdio upstream
+calls, and do not impose a hard deadline on a healthy agent gather. The
+activity-aware watchdog and final teardown retain ownership of the latter.

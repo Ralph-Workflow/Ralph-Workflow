@@ -64,10 +64,9 @@ from ralph.workspace.scope import WorkspaceScope
 from tests.integration._commit_cleanup_always_loopback_invoker import (
     CommitCleanupAlwaysLoopbackInvoker,
 )
-from tests.plan_fixtures import commit_cleanup_markdown, commit_message_markdown
+from tests.plan_fixtures import commit_cleanup_markdown
 
 if TYPE_CHECKING:
-
     from pytest import MonkeyPatch
 
     from ralph.policy.models import PolicyBundle
@@ -100,8 +99,7 @@ def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict[str, ob
     """Write a commit_cleanup artifact to the workspace."""
     raw_actions = content["actions"]
     actions = [
-        (action["action"], action.get("path", action.get("pattern", "")))
-        for action in raw_actions
+        (action["action"], action.get("path", action.get("pattern", ""))) for action in raw_actions
     ]
     path = Path(workspace.root) / ".agent" / "artifacts" / "commit_cleanup.md"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,7 +110,22 @@ def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
     """Write the canonical commit-message Markdown artifact."""
     artifact_path = repo_root / ".agent" / "artifacts" / "commit_message.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(commit_message_markdown(subject), encoding="utf-8")
+    artifact_path.write_text(
+        "\n".join(
+            (
+                "---",
+                "type: commit",
+                f"subject: {subject}",
+                "---",
+                "## Body Summary",
+                "- [BS-1] Complete the requested repository change.",
+                "## Body Details",
+                "- [BD-1] The scoped implementation and focused verification are complete.",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
 
 
 def _track_and_commit(repo_root: Path, rel_paths: tuple[str, ...] | list[str] | str) -> None:
@@ -160,9 +173,7 @@ def _config() -> UnifiedConfig:
     # These tests prove final cleanup→commit, not auto-integrate. Disable
     # incidental integration so commit seams do not pay real git
     # rebase/backoff cost under the subprocess_e2e 60s suite budget.
-    return UnifiedConfig.model_validate(
-        {"general": {"auto_integrate_enabled": False}}
-    )
+    return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": False}})
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
@@ -226,11 +237,6 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
             ],
         },
     )
-    _write_commit_message_artifacts(
-        repo_root,
-        "fix(commit): harden final-cleanup -> final-commit transition",
-    )
-
     invoker = CommitCleanupAlwaysLoopbackInvoker(memory_workspace)
 
     saved_states: list[object] = []
@@ -308,6 +314,13 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
     _stub_prompt_materialization(monkeypatch)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(
+        runner,
+        "execute_effect_with_optional_display",
+        lambda effect, config, workspace_scope, **_kwargs: fake_execute_effect(
+            effect, config, workspace_scope
+        ),
+    )
     monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)

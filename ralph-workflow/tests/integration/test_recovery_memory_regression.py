@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _RECOVERY_CYCLE_CAP = 4
-_RECOVERY_ITERATION_COUNT = 5
+_RECOVERY_ITERATION_COUNT = 8
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 20_000_000
 _CHECKPOINT_SIZE_SPREAD_LIMIT = 2_048
@@ -156,9 +156,9 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
     post_warmup_sizes = checkpoint_sizes[_RECOVERY_CYCLE_CAP - 1 :]
     post_warmup_elapsed = elapsed_seconds[_RECOVERY_CYCLE_CAP - 1 :]
 
-    assert post_warmup_deltas
-    assert post_warmup_sizes
-    assert post_warmup_elapsed
+    assert len(post_warmup_deltas) >= 5
+    assert len(post_warmup_sizes) >= 5
+    assert len(post_warmup_elapsed) >= 5
     early_retained = post_warmup_deltas[:2]
     late_retained = post_warmup_deltas[-2:]
     early_elapsed = post_warmup_elapsed[:2]
