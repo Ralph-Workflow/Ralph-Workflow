@@ -295,6 +295,8 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[23][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[24][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[25][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[26][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[27][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
