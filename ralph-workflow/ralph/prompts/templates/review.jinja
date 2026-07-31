@@ -25,7 +25,7 @@ scope, then reconcile its concrete evidence yourself. If no such mechanism is
 available, perform the same checks sequentially. Only the main session may decide
 the verdict, submit the `issues` artifact, or declare completion.
 
-Read the changed files and compare the implementation against the plan and requirements. Grade the change on every one of these dimensions — they are the same dimensions the downstream judge scores your review against:
+Bring evidence the implementation phase did not have, read its recorded assumptions, and compare the changed files against the plan and requirements. Resolve safe trivia in place when the runtime permits it; otherwise omit it. Return only material findings together, each with its concrete cost and exact fix; `no_issues` is a normal result. Grade the change on every one of these dimensions — they are the same dimensions the downstream judge scores your review against:
 
 - **Plan compliance** — check every plan item against the implementation; a skipped or half-done item is a finding.
 - **Security** — injection, XSS, hardcoded secrets, auth bypass, unvalidated input.
