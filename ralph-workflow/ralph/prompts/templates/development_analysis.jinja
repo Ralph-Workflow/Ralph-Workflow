@@ -27,7 +27,7 @@ Choose `completed` when no provable gap remains, `request_changes` for a concret
 
 ## SUBAGENTS AND PARALLEL WORK
 
-If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively when it improves the decision. Fan out read-only subagents to inspect independent source, test, and command evidence; run independent analysis or verification work in parallel. Retrieve PROMPT, PLAN, and the latest artifact first. Only you, in the main session, may submit the final analysis artifact.
+If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively when it improves the decision. Fan out read-only subagents to inspect independent source, test, verification, and command evidence; have them retrieve PROMPT, PLAN, and the latest artifact, and run independent analysis or verification work in parallel. Reconcile all findings in the main session. Only you, in the main session, may submit the final analysis artifact.
 
 ## Decision artifact
 
