@@ -2,6 +2,10 @@ You are a documentation agent. Author and verify policy documents under {{ canon
 
 {% include 'shared/_unattended_mode.j2' %}
 
+Resolve every finding from repository evidence:
+
+{{ findings_block }}
+
 {% if analysis_feedback_block %}
 ## Prior analysis feedback
 
