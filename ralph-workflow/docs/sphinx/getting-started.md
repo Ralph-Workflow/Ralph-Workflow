@@ -2,8 +2,7 @@
 
 This page walks you from install to one honest unattended run in a
 repository you already care about. It is the canonical first-run page
-in the operator manual and the single source of truth for everything
-between a fresh install and the morning-after review.
+in the operator manual.
 
 ## Goal
 
@@ -22,10 +21,9 @@ Have these ready before you start:
 
 ## Exact steps
 
-The canonical install → init → diagnose → spec → run sequence is inlined
-below so a non-developer can copy-paste without bouncing between files.
-Run every command from a human-operated shell **outside any Ralph-managed
-agent session**.
+The install → init → diagnose → spec → run sequence is inlined below so
+you can copy-paste without bouncing between files. Run every command
+from a human-operated shell **outside any Ralph-managed agent session**.
 
 ### 1. Install Ralph Workflow
 
@@ -112,9 +110,11 @@ A small focused task fits four criteria (full guidance in
 ralph
 ```
 
-The run walks planning → development → commit. The terminal transcript
-is the live observability surface; the on-disk artifacts under
-`.agent/artifacts/` are the durable record.
+The run walks planning → development → commit. Watch the terminal for
+live progress; when the run finishes, Ralph Workflow leaves a short
+summary of what changed, which checks ran, and what to review. Durable
+run records also land under `.agent/` — see
+[Artifacts reference](artifacts.md) if you need the full layout.
 
 For deeper operator configuration, open
 [Configuration Reference](configuration.md). For per-agent CLI, transport,
@@ -185,12 +185,12 @@ wrong by describing what to do but not what to protect. That section
 makes the output reviewable — you scan the diff and check whether the
 protected things stayed intact.
 
-### Where the spec lives vs. what the engine renders
+### Where the spec lives
 
 `PROMPT.md` at the workspace root is the run specification you author.
-The engine materializes its own consumption copy at
-`.agent/PRODUCT_CRITERIA.md`; you never edit the materialised file.
-Override the spec location through `PROMPT_PATH`. See
+Ralph Workflow reads that file (or another path you set with
+`PROMPT_PATH`); keep edits in your authored spec, not in generated
+runtime copies under `.agent/`. See
 [Configuration Reference](configuration.md) for prompt-engine tuning.
 
 ### Picking the right depth preset
@@ -282,51 +282,6 @@ edit `.agent/ralph-workflow.toml` in the repo. That local file
 belongs to the opt-in override flow, not the default `ralph --init`
 path. The broader file layout is in [Configuration Reference](configuration.md).
 
-## Policy-driven migration note (historical)
-
-The pipeline is fully policy-driven: routing, retry rules, analysis
-loops, commit semantics, verification gates, recovery routing, and
-terminal behavior all come from `pipeline.toml`. Older assumptions
-about implicit phase names, loop counters, and pseudo-phase recovery
-aliases are no longer valid. To migrate an existing
-`.agent/pipeline.toml`, run the config-regenerate flag and diff
-against your existing file. The full reference for every config
-table, its fields, and the override precedence is in
-[Configuration Reference](configuration.md).
-
-## Proof: what a run leaves you
-
-This is the actual finish-receipt from a real bundled example — a real,
-unedited handoff you read in the morning instead of a transcript:
-
-```text
-# Development Result
-
-## Outcome
-Implemented empty-name validation in the CLI create flow and added
-test coverage for empty and whitespace-only input.
-
-## Changed files
-- cli/create.py
-- tests/test_create.py
-
-## Checks run
-- pytest tests/test_create.py        ✓ passed
-- project formatting / lint checks    ✓ passed
-
-## Reviewer focus
-- confirm validation happens before any file creation side effect
-- confirm the error message is clear enough for CLI users
-- confirm no unrelated flow changed
-```
-
-The live, inspectable example bundle sits at
-[`examples/first-review-bundle/`](https://github.com/Ralph-Workflow/Ralph-Workflow/tree/main/examples/first-review-bundle).
-Open the `PROMPT.md`, the `DEVELOPMENT_RESULT.md`, the
-`ISSUES.md`, the `FIX_RESULT.md`, and the Markdown artifacts to see the
-validated trail. The receipt tells you what changed, what
-checks ran, and what to inspect — without reconstructing the run.
-
 ## Expected result / success check
 
 A successful first run produces two concrete signals:
@@ -335,17 +290,18 @@ A successful first run produces two concrete signals:
    start. If any line is red, fix that line before you spend a real
    run on it. See [Diagnostics](diagnostics.md) for the failure-mode
    table.
-2. After `ralph` returns, open the finish-receipt artifact. It
-   names the change, the checks, and the reviewer focus in a form you
-   can read in under a minute.
+2. After `ralph` returns, read the run summary. It names the change,
+   the checks, and the reviewer focus in a form you can read in under
+   a minute. For the on-disk artifact shapes behind that summary, see
+   [Artifacts reference](artifacts.md).
 
 Then validate the result in reality — do not accept the run only
 because the transcript looks confident: run the program, tests, or
 checks yourself against real data or fixtures; exercise the changed
-feature with representative inputs; inspect the important files and
-artifacts the run produced; use code review as supporting evidence,
-not the only acceptance mechanism; decide the next action: push the
-branch, ask for changes, revert, rerun, or discard the result.
+feature with representative inputs; inspect the important files the
+run produced; use code review as supporting evidence, not the only
+acceptance mechanism; decide the next action: push the branch, ask for
+changes, revert, rerun, or discard the result.
 
 ## Next step
 

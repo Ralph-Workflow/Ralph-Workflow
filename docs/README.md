@@ -1,15 +1,17 @@
 # Documentation Map
 
-This page routes readers to the one maintained doc that matches their
-question, after [`README.md`](../README.md) and
-[`START_HERE.md`](../START_HERE.md).
+Use this page after [`README.md`](../README.md) and
+[`START_HERE.md`](../START_HERE.md) when you already know the question
+and need the one maintained doc that answers it.
 
-## Fastest first successful run
+## I want a successful first run
 
-- [Getting started](../ralph-workflow/docs/sphinx/getting-started.md)
-- [Run diagnostics](../ralph-workflow/docs/sphinx/diagnostics.md)
+- [Getting started](../ralph-workflow/docs/sphinx/getting-started.md) —
+  install → init → diagnose → spec → run → review
+- [Run diagnostics](../ralph-workflow/docs/sphinx/diagnostics.md) —
+  what `ralph --diagnose` checks and how to fix failures
 
-## Configure
+## I need to configure Ralph Workflow
 
 - [Configuration reference](../ralph-workflow/docs/sphinx/configuration.md)
 - [CLI reference](../ralph-workflow/docs/sphinx/cli.md)
@@ -17,14 +19,14 @@ question, after [`README.md`](../README.md) and
 - [Advanced MCP configuration](../ralph-workflow/docs/sphinx/advanced-mcp-configuration.md)
 - [Advanced artifact configuration](../ralph-workflow/docs/sphinx/advanced-artifact-configuration.md)
 
-## Understand
+## I want to understand how it works
 
 - [Concepts](../ralph-workflow/docs/sphinx/concepts.md)
 - [MCP architecture](../ralph-workflow/docs/sphinx/mcp-architecture.md)
 - [Artifacts reference](../ralph-workflow/docs/sphinx/artifacts.md)
 - [Recovery model](../ralph-workflow/docs/sphinx/recovery.md)
 
-## Operate
+## I am operating a running setup
 
 - [Troubleshooting](../ralph-workflow/docs/sphinx/troubleshooting.md)
 - [Agent compatibility](../ralph-workflow/docs/sphinx/agent-compatibility.md)
@@ -34,28 +36,27 @@ question, after [`README.md`](../README.md) and
 - [Versioning](../ralph-workflow/docs/sphinx/versioning.md)
 - [Pro support](../ralph-workflow/docs/sphinx/pro-support.md)
 
-## Develop
+## I want a worked example / proof
+
+- [Example Flask API starter](../example-api/README.md) — the canonical
+  Flask `/health` starter for a small first task
+- [Proof page](examples/example-api.md) — how to interpret that example
+
+## I want to extend or develop Ralph Workflow
 
 - [Developer internals](../ralph-workflow/docs/sphinx/developer-internals.md)
 - [Adding a new agent](../ralph-workflow/docs/agents/adding-a-new-agent.md)
 
-## Example apps
-
-- [Example Flask API starter](../example-api/README.md) -- the canonical
-  Flask `/health` starter used as the reference for a small first task;
-  see the [proof page](examples/example-api.md) for the rubric-style
-  interpretation.
-
-## Contribute
+## I am contributing code or docs
 
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 - [`docs/agents/`](agents/README.md) — verification, testing,
   type-ignore, workspace-trait, agent-support architecture, and the
   fabrication guard
-- [`docs/code-style/`](../code-style/index.md) — the maintained Python
+- [`docs/code-style/`](code-style/index.md) — the maintained Python
   style guide (canonical home; the legacy `CODE_STYLE.md` was removed)
 
-## Architecture
+## I need architecture notes
 
 - [`docs/architecture/`](architecture/README.md) — repo-root
   architecture index (one-paragraph pointer into the package's
@@ -63,7 +64,7 @@ question, after [`README.md`](../README.md) and
 - [`ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md) —
   the MADR-format ADR for the interrupt architecture
 
-## Retired Rust implementation
+## I am looking at the retired Rust implementation
 
 [`docs/legacy-rust/`](legacy-rust/README.md) is the quarantined pointer
 to the retired Rust implementation. Do not act on it for current

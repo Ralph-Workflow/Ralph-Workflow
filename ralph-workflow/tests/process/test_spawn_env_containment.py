@@ -60,11 +60,18 @@ def _parsed_modules() -> dict[str, ast.Module]:
         module.replace(".", "/") + ".py" for module in _script_module_names()
     }
     modules: dict[str, ast.Module] = {}
+    main_guard_markers = (
+        b'if __name__ == "__main__":',
+        b"if __name__ == '__main__':",
+    )
     for path in RALPH_ROOT.rglob("*.py"):
         relative_path = path.relative_to(PACKAGE_ROOT).as_posix()
-        source = path.read_text(encoding="utf-8")
-        if relative_path in script_paths or 'if __name__ == "__main__":' in source:
-            modules[relative_path] = ast.parse(source)
+        raw = path.read_bytes()
+        if relative_path not in script_paths and not any(
+            marker in raw for marker in main_guard_markers
+        ):
+            continue
+        modules[relative_path] = ast.parse(raw.decode("utf-8"))
     return modules
 
 
@@ -198,7 +205,9 @@ def _declared_entry_names(tree: ast.Module, module_name: str, attributes: set[st
     return entry_names
 
 
+@pytest.mark.timeout_seconds(5)
 def test_spawn_capable_entry_points_sanitize_before_work() -> None:
+    """Full-package entry-point sweep; 5s covers parallel-load I/O on slow disks."""
     modules = _parsed_modules()
     guard_paths = {path for path, tree in modules.items() if _has_main_guard(tree)}
     assert all(_GUARD_ALLOWLIST.values())

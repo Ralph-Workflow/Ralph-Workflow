@@ -6,6 +6,7 @@ import io
 import re
 import string
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from rich.console import Console
@@ -65,6 +66,7 @@ def test_preview_payload_accepts_bounded_large_json_envelopes() -> None:
     assert payload.content == content
 
 
+@pytest.mark.timeout_seconds(5)
 @settings(max_examples=10, deadline=None)
 @given(
     tool=st.sampled_from(("write_file", "edit_file", "Write", "Edit")),
@@ -74,7 +76,11 @@ def test_preview_payload_accepts_bounded_large_json_envelopes() -> None:
 def test_preview_builders_never_raise_for_arbitrary_parser_payloads(
     tool: str, body: str, path: str | None
 ) -> None:
-    """Recognized parser envelopes never escape preview construction."""
+    """Recognized parser envelopes never escape preview construction.
+
+    5s timeout: Hypothesis exploration plus preview construction can exceed
+    the default 1s wall-clock budget under parallel-suite load.
+    """
     payloads: tuple[dict[str, object], ...] = (
         {"path": path, "content": body},
         {"path": path, "edits": [{"oldText": body, "newText": body}]},

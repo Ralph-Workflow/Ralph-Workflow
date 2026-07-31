@@ -1,9 +1,13 @@
 # Ralph Workflow
 
-Ralph Workflow is a free, open-source orchestrator for AI coding
-agents. Hand it a well-specified task, let agents plan, build, verify,
-and fix, and come back to reviewable, tested work. The full operator
-manual lives under
+Ralph Workflow is a free, open-source AI agent orchestrator for coding
+work. It is built on a simple Ralph loop: you hand agents a
+well-specified task, they plan, build, verify, and fix, and you come
+back to inspect the result. That simple core ships with a strong
+default workflow for writing software — adopt it as-is first, then
+extend it when you need to.
+
+The full operator manual lives under
 [`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst).
 
 ## Who it's for
@@ -12,34 +16,27 @@ Ralph Workflow fits developers and small teams with work that is too big
 to babysit and too risky to trust blindly. It is not for vague prompts
 or repos without guardrails.
 
-## First run
+## Try it
 
-1. **Install Ralph.** Use `pipx install ralph-workflow` to keep it isolated from
-   other Python tools. If you do not use pipx, `pip install ralph-workflow` also works.
-2. **Start in your project.** Run `cd /path/to/your/project` and `ralph --init`.
-   It creates your user-global config and a `PROMPT.md`; project-local config is
-   optional later with `ralph --init-local-config`.
-3. **Confirm a coding agent.** Ralph looks for supported agents already on your
-   `PATH` and enables the ones it finds. Install and authenticate an agent first
-   if none are found.
-4. **Check the setup.** Run `ralph --diagnose` and fix any reported problem before
-   starting work.
-5. **Describe the task.** Edit `PROMPT.md` with the outcome and checks you expect.
-   For a task-shaped starter, use `ralph --init feature-spec`, `guardrail`,
-   `refactor`, `test-coverage`, or `docs` before a prompt file exists.
-6. **Run Ralph.** Run `ralph`, then read the finish-receipt artifact: it names the
-   change, checks run, and review focus before you decide what to do next.
+Shortest honest evaluation path:
 
-For the full walkthrough, see
+1. Install with `pipx install ralph-workflow` (or `pip install ralph-workflow`).
+2. In a real git repo, run `ralph --init`, then `ralph --diagnose`.
+3. Replace the starter `PROMPT.md` with one focused task and run `ralph`.
+4. When the run finishes, read the summary of what changed and which
+   checks passed, then exercise the feature yourself.
+
+Exact copy-paste steps, success checks, and task-picking guidance are in
+[`START_HERE.md`](START_HERE.md). The fuller tutorial is
 [`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
 
 ## Supported agents
 
-Ralph Workflow ships with built-in support for 8 agents: Claude Code
-(interactive + headless), Codex, OpenCode, Nanocoder, AGY (Google Anti
+Ralph Workflow ships eight built-in agent backends: Claude Code,
+Claude Code headless, Codex, OpenCode, Nanocoder, AGY (Google Anti
 Gravity), Pi, and Cursor. Pick one, authenticate it once on your
-machine, and Ralph Workflow uses it. The selection and trust-boundary
-story is in [`agents`](ralph-workflow/docs/sphinx/agents.md) and
+machine, and Ralph Workflow uses it. Selection and trust-boundary
+details are in [`agents`](ralph-workflow/docs/sphinx/agents.md) and
 [`agent-compatibility`](ralph-workflow/docs/sphinx/agent-compatibility.md).
 
 ## Documentation route

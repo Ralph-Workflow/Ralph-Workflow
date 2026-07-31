@@ -1,9 +1,15 @@
 # Documentation Map (package-side router)
 
-The maintained operator manual is at
-[`sphinx/index.rst`](sphinx/index.rst). That page is the single entry
-point for every public Sphinx page; use it to land on the tutorial,
-configuration reference, MCP / artifact / pipeline configuration,
-concepts, troubleshooting, agent compatibility, MCP tools, MCP tool
-restriction, diagnostics, versioning, recovery, developer internals,
-or agent CLI lifecycle.
+Start at the maintained operator manual:
+[`sphinx/index.rst`](sphinx/index.rst).
+
+From there, pick by job:
+
+| Job | Go to |
+|---|---|
+| First successful run | [`sphinx/getting-started.md`](sphinx/getting-started.md) |
+| Configure / CLI | [`sphinx/configuration.md`](sphinx/configuration.md), [`sphinx/cli.md`](sphinx/cli.md) |
+| Advanced pipeline / MCP / artifacts | [`sphinx/advanced-pipeline-configuration.md`](sphinx/advanced-pipeline-configuration.md), [`sphinx/advanced-mcp-configuration.md`](sphinx/advanced-mcp-configuration.md), [`sphinx/advanced-artifact-configuration.md`](sphinx/advanced-artifact-configuration.md) |
+| Understand concepts | [`sphinx/concepts.md`](sphinx/concepts.md), [`sphinx/mcp-architecture.md`](sphinx/mcp-architecture.md), [`sphinx/artifacts.md`](sphinx/artifacts.md), [`sphinx/recovery.md`](sphinx/recovery.md) |
+| Operate / troubleshoot | [`sphinx/diagnostics.md`](sphinx/diagnostics.md), [`sphinx/troubleshooting.md`](sphinx/troubleshooting.md), [`sphinx/agent-compatibility.md`](sphinx/agent-compatibility.md) |
+| Develop / extend | [`sphinx/developer-internals.md`](sphinx/developer-internals.md), [`sphinx/agents.md`](sphinx/agents.md) |

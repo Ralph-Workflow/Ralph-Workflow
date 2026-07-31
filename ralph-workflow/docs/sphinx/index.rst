@@ -5,19 +5,27 @@
 Ralph Workflow manual
 =====================
 
-Ralph Workflow is a free and open-source AI agent orchestrator for
-coding work. The product positioning is stated once in the
+This is the maintained operator manual for Ralph Workflow — the free,
+open-source AI agent orchestrator for coding work. Product positioning
+and the shortest evaluation path live in the
 `root README.md
-<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/README.md>`_.
+<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/README.md>`_;
+this manual covers how to start, configure, operate, understand, and
+extend the product.
 
 Where to go next
 ----------------
 
-- Tutorial: :doc:`getting-started`
-- Configure: :doc:`configuration`, :doc:`cli`
-- Understand: :doc:`concepts`, :doc:`mcp-architecture`, :doc:`artifacts`
+- Start here: :doc:`getting-started`
+- Configure: :doc:`configuration`, :doc:`cli`,
+  :doc:`advanced-pipeline-configuration`,
+  :doc:`advanced-mcp-configuration`,
+  :doc:`advanced-artifact-configuration`
+- Understand: :doc:`concepts`, :doc:`mcp-architecture`, :doc:`artifacts`,
+  :doc:`recovery`
 - Operate: :doc:`diagnostics`, :doc:`troubleshooting`,
-  :doc:`agent-compatibility`, :doc:`mcp-tools`, :doc:`mcp-tool-restriction`
+  :doc:`agent-compatibility`, :doc:`mcp-tools`, :doc:`mcp-tool-restriction`,
+  :doc:`versioning`, :doc:`pro-support`
 - Develop: :doc:`developer-internals`, :doc:`agents`
 
 .. note::
