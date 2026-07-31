@@ -134,6 +134,8 @@ def _extract_mcp_section(rendered: str) -> str:
 
 
 @pytest.mark.parametrize("template_name,phase_label,drain", _PHASE_PROFILE_FIXTURES)
+# ponytail: full-template render under xdist can exceed 1s; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_rendered_prompt_advertises_every_visible_tool(
     template_name: str,
     phase_label: str,
