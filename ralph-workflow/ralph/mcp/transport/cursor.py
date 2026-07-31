@@ -165,6 +165,7 @@ def cursor_workspace_mcp_endpoint(
                 _stage_path = config_path.with_suffix(
                     config_path.suffix + f".ralph-staging.{id(merged_config)}"
                 )
+                # filesystem-write-ok: unique-keyed Cursor config staging file (publish via replace below)
                 _stage_path.write_text(json.dumps(merged_config, indent=2), encoding="utf-8")
                 _stage_path.replace(config_path)
             yield
@@ -182,6 +183,7 @@ def cursor_workspace_mcp_endpoint(
                     _restore_path = config_path.with_suffix(
                         config_path.suffix + f".ralph-restore.{id(original_bytes)}"
                     )
+                    # filesystem-write-ok: unique-keyed restore staging file (publish via replace below)
                     _restore_path.write_bytes(original_bytes)
                     _restore_path.replace(config_path)
     finally:

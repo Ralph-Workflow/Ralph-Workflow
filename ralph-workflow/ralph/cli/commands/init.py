@@ -76,6 +76,8 @@ if TYPE_CHECKING:
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
@@ -127,7 +129,7 @@ def init_command(
         except ValueError as exc:
             display.emit_warning(str(exc))
             raise typer.Exit(code=1) from exc
-        prompt_path.write_text(prompt, encoding="utf-8")
+        write_text_if_changed(DEFAULT_FILE_BACKEND, prompt_path, prompt, encoding="utf-8")
         display.emit_status(f"Created: {prompt_path}")
     elif template:
         # PROMPT.md already exists. An explicit `--init <label>` is NEVER

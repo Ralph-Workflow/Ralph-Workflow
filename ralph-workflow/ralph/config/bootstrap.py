@@ -40,6 +40,8 @@ from loguru import logger
 from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
 from ralph.config.loader import load_toml
 from ralph.git.operations import _atomic_append_text, append_to_gitignore
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -774,7 +776,12 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     if backup.exists():
         backup.unlink()
     shutil.copy2(str(target), str(backup))
-    target.write_text(text[:insert_at] + insert_lines + text[insert_at:], encoding="utf-8")
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        target,
+        text[:insert_at] + insert_lines + text[insert_at:],
+        encoding="utf-8",
+    )
     return BootstrapResult(target, "regenerated", backup)
 
 

@@ -65,6 +65,7 @@ def _write_durable_media_cache(
     try:
         abs_path = Path(workspace.absolute_path(cache_path))
         abs_path.parent.mkdir(parents=True, exist_ok=True)
+        # filesystem-write-ok: artifact_id-keyed media cache (each call uses a distinct artifact_id path)
         abs_path.write_bytes(raw_bytes)
         prune_cache_files(
             abs_path.parent.glob("*"),

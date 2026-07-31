@@ -29,6 +29,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.smoke_plumbing import (
@@ -452,7 +454,9 @@ def smoke_harness_agent_command(
         config = config.model_copy(update={"agents": overridden_agents})
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
-    prompt_file.write_text(
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        prompt_file,
         _build_smoke_prompt(
             spec.output_file.as_posix(),
             submit_artifact_tool_name=submit_artifact_tool_name,

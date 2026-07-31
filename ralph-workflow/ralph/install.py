@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.process._spawn_env import sanitize_process_environment
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -69,7 +71,7 @@ def render_dev_launcher(package_dir: Path) -> str:
 def write_dev_launcher(path: Path, content: str) -> None:
     """Write ``content`` to ``path`` and mark it executable."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, path, content, encoding="utf-8")
     path.chmod(0o755)
 
 

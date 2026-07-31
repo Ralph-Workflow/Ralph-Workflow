@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -61,7 +64,9 @@ def save_state(path: Path, state: VersionCheckState) -> None:
             "last_checked": state.last_checked,
             "latest_version": state.latest_version,
         }
-        path.write_text(json.dumps(document), encoding="utf-8")
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND, path, json.dumps(document), encoding="utf-8"
+        )
     except OSError:
         pass
 

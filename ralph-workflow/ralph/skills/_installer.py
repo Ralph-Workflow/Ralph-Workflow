@@ -26,6 +26,8 @@ from ralph.skills._content import (
     managed_skill_marker,
     materialize_skills_to_claude_dir,
 )
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -279,8 +281,12 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         )
         if on_disk_hash == bundled_sha:
             return False
-        skill_file.write_text(bundled_content, encoding="utf-8")
-        marker_file.write_text(
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND, skill_file, bundled_content, encoding="utf-8"
+        )
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            marker_file,
             json.dumps(managed_skill_marker(skill_name, installed_sha256=bundled_sha), indent=2)
             + "\n",
             encoding="utf-8",

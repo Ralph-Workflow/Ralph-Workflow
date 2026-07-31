@@ -55,6 +55,8 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.artifacts.state_db import RunStateDB
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.multimodal import ImageContent
 
 from .capability_denied_error import CapabilityDeniedError
@@ -227,7 +229,7 @@ def _write_legacy_sentinel_fallback(workspace_root: Path, run_id: str, payload: 
     sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     try:
         sentinel_path.parent.mkdir(parents=True, exist_ok=True)
-        sentinel_path.write_text(payload, encoding="utf-8")
+        write_text_if_changed(DEFAULT_FILE_BACKEND, sentinel_path, payload, encoding="utf-8")
     except OSError:
         # Some filesystems can report a late write error after the complete
         # payload became visible. Resolve that uncertain outcome by reading

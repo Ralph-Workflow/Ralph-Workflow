@@ -1270,6 +1270,7 @@ def _write_retry_context_file(
     context_path = prompt_dir / f"agent_retry_context_{uuid.uuid4().hex}.md"
     condensed = _condense_recovery_context_lines(context_lines, untruncated=untruncated)
     summary = "\n".join(condensed) if condensed else "(no output captured)"
+    # filesystem-write-ok: UUID-keyed retry context file under .agent/tmp; each call writes a fresh path
     context_path.write_text(summary, encoding="utf-8")
     return context_path
 
@@ -1312,6 +1313,7 @@ def _write_agent_retry_prompt(
         # The stale-session block does NOT appear here -- resume path owns
         # the framing.
         tail = _resume_mode_tail(prompt_path)
+        # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
         retry_prompt_path.write_text(
             (f"{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
             encoding="utf-8",
@@ -1379,6 +1381,7 @@ def _write_agent_retry_prompt(
                 ),
             ]
         )
+    # filesystem-write-ok: UUID-keyed retry prompt under .agent/tmp; each call writes a fresh path
     retry_prompt_path.write_text(
         "\n".join(body_parts) + "\n",
         encoding="utf-8",

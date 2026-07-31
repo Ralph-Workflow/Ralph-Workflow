@@ -182,6 +182,75 @@ def test_whitespace_around_attr_does_not_evade(tmp_path: Path) -> None:
     assert len(violations) == 1
 
 
+def test_backend_write_text_is_not_flagged(tmp_path: Path) -> None:
+    """``backend.write_text(...)`` is already routed through the canonical abstraction.
+
+    The audit's job is to flag raw writes that bypass the shared
+    ``FileBackend`` primitive. Calls where the receiver is a
+    ``FileBackend`` parameter (or ``self``/``cls``) are part of
+    the abstraction itself and must not be flagged.
+    """
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "def archive(backend, dest, src):\n"
+            "    backend.write_text(dest, backend.read_text(src))\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert violations == []
+
+
+def test_self_write_text_is_not_flagged(tmp_path: Path) -> None:
+    """``self.write_text(...)`` (a ``FileBackend`` subclass) is part of the abstraction."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "class WrappedBackend:\n"
+            "    def persist(self, path, content):\n"
+            "        self.write_text(path, content)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert violations == []
+
+
+def test_arbitrary_name_write_text_is_flagged(tmp_path: Path) -> None:
+    """A call whose receiver is not a known-routed name IS flagged.
+
+    Only the canonical receiver names (``backend``, ``self``, ``cls``)
+    are exempt. Any other name — including ambiguous ones like
+    ``ctx`` or ``fs`` — is treated as a raw bypass and fails.
+    """
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(fs, path, content):\n    fs.write_text(path, content)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+
+
 def test_marker_on_prior_line_suppresses(tmp_path: Path) -> None:
     """Marker may appear on the immediately preceding source line."""
     module_rel = "alpha/example.py"

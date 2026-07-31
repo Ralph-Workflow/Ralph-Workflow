@@ -287,6 +287,7 @@ def _swap_staged_index(
     # until ``os.replace`` succeeds; a failure mid-swap leaves
     # the prior committed database on disk.
     try:
+        # filesystem-write-ok: atomic SQLite DB swap (bytes copied from staging; publish via replace)
         tmp_main.write_bytes(staging_db.read_bytes())
         tmp_main.replace(main_db)
     except BaseException:
@@ -331,6 +332,7 @@ def _swap_staged_index(
         try:
             if tmp_aux.exists():
                 tmp_aux.unlink()
+            # filesystem-write-ok: atomic WAL/SHM swap (bytes copied from staging; publish via replace)
             tmp_aux.write_bytes(src.read_bytes())
             tmp_aux.replace(dst)
         except OSError:

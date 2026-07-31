@@ -987,6 +987,7 @@ def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
     for stale_path in prompt_dir.glob("commit_prompt*.md"):
         stale_path.unlink(missing_ok=True)
     prompt_path = prompt_dir / f"commit_prompt_{uuid.uuid4().hex}.md"
+    # filesystem-write-ok: UUID-keyed commit prompt under .agent/tmp; each call writes a fresh path
     prompt_path.write_text(prompt, encoding="utf-8")
     return str(prompt_path)
 

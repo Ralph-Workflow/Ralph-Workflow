@@ -8,6 +8,9 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+
 PI_MCP_EXTENSION_ENV = "RALPH_PI_MCP_EXTENSION"
 CallableCleanup = Callable[[], None]
 
@@ -36,7 +39,12 @@ def write_pi_mcp_extension(
         cleanup = None
 
     extension_path.parent.mkdir(parents=True, exist_ok=True)
-    extension_path.write_text(_render_pi_mcp_extension(endpoint), encoding="utf-8")
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        extension_path,
+        _render_pi_mcp_extension(endpoint),
+        encoding="utf-8",
+    )
     return extension_path, cleanup
 
 

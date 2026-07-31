@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 from ralph.git.rebase._rebase_lock import RebaseLock
 from ralph.git.rebase._rebase_phase import RebasePhase
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -191,6 +193,7 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
     os.close(fd)
     temp_path = Path(temp_name)
     try:
+        # filesystem-write-ok: atomic temp+replace target for checkpoint persist
         temp_path.write_text(json.dumps(checkpoint.to_dict(), indent=2), encoding="utf-8")
         temp_path.replace(path)
     finally:
@@ -289,6 +292,7 @@ def acquire_rebase_lock() -> None:
             path.unlink()
         else:
             raise OSError("Rebase lock already held")
+    # filesystem-write-ok: rebase lock content embeds timestamp + pid; bytes differ per acquisition
     path.write_text(_lock_content())
 
 

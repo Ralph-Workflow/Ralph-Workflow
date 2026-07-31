@@ -473,7 +473,12 @@ def _persist_parallel_worker_manifests(
             workspace_root=str(repo_root),
         )
         manifest_path = worker_namespace / "worker-manifest.json"
-        manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            manifest_path,
+            manifest.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
         manifests[unit.unit_id] = manifest_path
     return manifests
 

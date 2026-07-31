@@ -12,6 +12,8 @@ from typing import Literal, cast
 
 from ralph.agents.builtin import builtin_supports
 from ralph.config.bootstrap import resolve_global_config_dir
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 
 def _binary_for(name: str, cmd: str) -> str:
@@ -82,7 +84,12 @@ def autowire_chains_to_detected_agent(
         replacement,
         match.group(),
     )
-    main_config_path.write_text(text[: match.start()] + rewritten + text[match.end() :], encoding="utf-8")
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND,
+        main_config_path,
+        text[: match.start()] + rewritten + text[match.end() :],
+        encoding="utf-8",
+    )
     return sorted(default_agents)
 
 
@@ -116,5 +123,5 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
         enabled.append(name)
 
     if enabled:
-        path.write_text(text, encoding="utf-8")
+        write_text_if_changed(DEFAULT_FILE_BACKEND, path, text, encoding="utf-8")
     return enabled

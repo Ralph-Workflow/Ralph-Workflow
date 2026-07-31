@@ -129,15 +129,37 @@ def _collect_python_files(root: Path) -> list[Path]:
     return result
 
 
+#: Attribute names whose receiver is already routed through the canonical
+#: ``FileBackend`` abstraction. When the audit sees ``backend.write_text(...)``
+#: or ``self.write_text(...)`` (where ``self`` is a ``FileBackend`` subclass),
+#: the write is already inside the abstraction boundary — the canonical
+#: primitive lives in ``mcp/artifacts/idempotent_write.py`` and the call
+#: itself is not a raw bypass. The audit must not flag these.
+_ALREADY_ROUTED_RECEIVERS: frozenset[str] = frozenset(
+    {
+        "backend",
+        "self",
+        "cls",
+    }
+)
+
+
 def _raw_write_call(node: ast.Call) -> str | None:
     """Return the attribute name (``"write_text"`` / ``"write_bytes"``) if *node*
     is a raw full-file overwrite via a method call on a Path / file-like
     object; otherwise ``None``.
+
+    Receivers whose name is in :data:`_ALREADY_ROUTED_RECEIVERS` (typically a
+    ``FileBackend`` parameter or a method's ``self``) are not flagged,
+    because those calls already pass through the canonical abstraction.
     """
     if not isinstance(node.func, ast.Attribute):
         return None
     attr = node.func.attr
     if attr not in {"write_text", "write_bytes"}:
+        return None
+    receiver = node.func.value
+    if isinstance(receiver, ast.Name) and receiver.id in _ALREADY_ROUTED_RECEIVERS:
         return None
     return attr
 

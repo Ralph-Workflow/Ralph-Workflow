@@ -43,6 +43,8 @@ from ralph.mcp.artifacts.product_spec import (
     read_product_spec_artifact,
     render_product_spec_as_prompt,
 )
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.fs import FsWorkspace
@@ -159,7 +161,7 @@ def _write_prompt_md(
     ctx = display_context or make_display_context()
     prompt_md_content = render_product_spec_as_prompt(spec)
     prompt_md_path = workspace_root / "PROMPT.md"
-    prompt_md_path.write_text(prompt_md_content, encoding="utf-8")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, prompt_md_path, prompt_md_content, encoding="utf-8")
     display = resolve_active_display(None, ctx)
     display.emit_status("PROMPT.md written from product specification.")
 
@@ -218,7 +220,7 @@ def _write_prompt_file(workspace_root: Path, prompt_content: str) -> Path:
     """Write prompt helper content to the canonical temp file."""
     prompt_file = workspace_root / PROMPT_HELPER_PROMPT_FILE
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text(prompt_content, encoding="utf-8")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, prompt_file, prompt_content, encoding="utf-8")
     return prompt_file
 
 

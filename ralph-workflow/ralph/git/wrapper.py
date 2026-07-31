@@ -6,6 +6,8 @@ from pathlib import Path
 
 from git import GitCommandError, Repo
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 
 #: Bound each GitPython subprocess (``repo.git.*``) so a held .git lock or a
@@ -288,11 +290,11 @@ def _ralph_dir_from_repo(repo: Repo) -> Path:
 
 
 def _write_marker(ralph_dir: Path) -> None:
-    (ralph_dir / MARKER_FILENAME).write_text("")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / MARKER_FILENAME, "")
 
 
 def _write_track_file(ralph_dir: Path) -> None:
-    (ralph_dir / TRACK_FILENAME).write_text(str(ralph_dir))
+    write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / TRACK_FILENAME, str(ralph_dir))
 
 
 def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
@@ -301,7 +303,7 @@ def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
     except (ValueError, GitCommandError):
         return
 
-    (ralph_dir / HEAD_OID_FILENAME).write_text(f"{oid}\n")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, ralph_dir / HEAD_OID_FILENAME, f"{oid}\n")
 
 
 def _set_hooks_path(repo: Repo, ralph_dir: Path) -> None:
@@ -331,9 +333,9 @@ def _store_previous_hooks_path(repo: Repo, ralph_dir: Path) -> None:
 
     hooks_value = _read_hooks_path(repo)
     if hooks_value is None:
-        state_path.write_text("missing\n")
+        write_text_if_changed(DEFAULT_FILE_BACKEND, state_path, "missing\n")
     else:
-        state_path.write_text(f"value\n{hooks_value}\n")
+        write_text_if_changed(DEFAULT_FILE_BACKEND, state_path, f"value\n{hooks_value}\n")
 
 
 def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:

@@ -20,6 +20,8 @@ from ralph.mcp.tools.names import (
 )
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 #: Sane upper bound for the in-process Codex-home registry. The deque
 #: provides FIFO eviction so a long-lived process that spawns many
@@ -221,7 +223,9 @@ def prepare_codex_home_with_upstreams(
     config_text = "\n\n".join(
         part for part in [prefix_text, base_config.rstrip(), config_suffix] if part
     )
-    (codex_root / "config.toml").write_text(config_text, encoding="utf-8")
+    write_text_if_changed(
+        DEFAULT_FILE_BACKEND, codex_root / "config.toml", config_text, encoding="utf-8"
+    )
     return str(codex_root), upstreams
 
 

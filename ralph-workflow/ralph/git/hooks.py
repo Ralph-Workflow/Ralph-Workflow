@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 import contextlib
 
 from ralph.git.operations import find_repo_root
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 HOOK_MARKER = "RALPH_RUST_MANAGED_HOOK"
 """Marker string embedded in every Ralph-managed hook."""
@@ -293,7 +295,7 @@ def _write_hook_file(hook_path: Path, content: str) -> None:
         _make_writable(hook_path)
         with contextlib.suppress(OSError):
             hook_path.unlink()
-    hook_path.write_text(content)
+    write_text_if_changed(DEFAULT_FILE_BACKEND, hook_path, content)
     _make_executable(hook_path)
 
 

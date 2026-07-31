@@ -108,6 +108,7 @@ def agy_workspace_mcp_endpoint(
         _stage_path = config_path.with_suffix(
             config_path.suffix + f".ralph-staging.{id(config_payload)}"
         )
+        # filesystem-write-ok: unique-keyed AGY config staging file (publish via replace below)
         _stage_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
         _stage_path.replace(config_path)
         try:
@@ -123,6 +124,7 @@ def agy_workspace_mcp_endpoint(
                 _restore_path = config_path.with_suffix(
                     config_path.suffix + f".ralph-restore.{id(original_bytes)}"
                 )
+                # filesystem-write-ok: unique-keyed restore staging file (publish via replace below)
                 _restore_path.write_bytes(original_bytes)
                 _restore_path.replace(config_path)
     finally:

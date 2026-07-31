@@ -835,6 +835,7 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json", dir=session_dir)
     os.close(fd)
     path = Path(temp_path)
+    # filesystem-write-ok: unique-keyed MCP session file (mkstemp ensures distinct path per invocation)
     path.write_text(session_payload_json(session), encoding="utf-8")
     return path
 
