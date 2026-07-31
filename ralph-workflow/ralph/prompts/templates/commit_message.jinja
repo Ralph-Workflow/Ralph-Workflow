@@ -12,7 +12,7 @@ Read the diff, choose the matching artifact shape, and submit it without comment
 
 ## HOW TO WRITE THE SUBJECT
 
-Do not generate candidate subjects and compare them. Use one pass through these steps to produce the subject, then write the body.
+Use one pass through these steps to produce the subject, then write the body.
 
 **Step 1 — pick the kind.** Take the first matching row:
 
@@ -35,13 +35,13 @@ Do not generate candidate subjects and compare them. Use one pass through these 
 
 **Step 4 — check the grammar, then stop.** Confirm `<kind>(<scope>)?!?: <description>`: kind is from the table; scope, when present, uses lowercase letters, digits, `/`, `_`, or `-` only — no dots, no uppercase; `!` marks a breaking change; one space follows the colon; description starts with a lowercase letter or digit; write the unquoted frontmatter value. Quotes become part of the subject and are rejected.
 
-The subject is finished. Do not look for a better one.
+The subject is finished; write the body.
 
 ## HOW TO WRITE THE BODY
 
 Omit the body only for a one-line typo, formatting, or comment change whose subject states the whole change. Every other commit gets a body.
 
-Choose the structure once: use one `## Body` item explaining why the change was needed and what it affects. For migration steps, breaking changes, or issue references, use `## Body Summary`, `## Body Details`, and `## Body Footer` instead; do not reconsider it.
+Choose the structure once: use one `## Body` item explaining why the change was needed and what it affects. For migration steps, breaking changes, or issue references, use `## Body Summary`, `## Body Details`, and `## Body Footer` instead.
 
 ## WORKED EXAMPLES
 
@@ -51,7 +51,7 @@ Choose the structure once: use one `## Body` item explaining why the change was 
 
 ## Submit the result
 
-Submit the artifact now, then stop. Do not ask the user for confirmation or write “Would you like me to...” questions. Do not call Bash for this task. Use the submission tool before final text; it is the completion contract. The only state-changing tools you may call are {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
+Submit the artifact now, then stop. Use the submission tool before final text; it is the completion contract. For state changes, use only {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}. If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and {{ WRITE_FILE_TOOL_REFERENCE }} is available, use its documented fallback once.
 
 ## Document shape
 

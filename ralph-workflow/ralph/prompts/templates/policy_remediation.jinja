@@ -2,7 +2,7 @@ Author and verify policy documents under {{ canonical_dir }} so the readiness va
 
 {% include 'shared/_unattended_mode.j2' %}
 
-Resolve every finding from current repository evidence. Keep each policy a living document: preserve stricter established rules, resolve conflicts in favor of the existing project policy without weakening policy intent, keep facts machine-checkable where required, and record applicable unresolved work as a dated deferral with a concrete review trigger.
+Resolve every finding from repository evidence. Preserve stricter established rules, keep each policy living and machine-checkable where required, and record applicable unresolved work as a dated deferral with a concrete review trigger.
 
 ## Findings
 
@@ -22,7 +22,7 @@ Keep accepted policy intact and resolve the remaining findings.
 
 Inventory languages, manifests, contributor guidance, tools, and the authoritative verification entry point before declaring facts or commands. Use read-only subagents for independent policy or gate investigations when helpful; reconcile terminology and edit in the main session.
 
-When adding gate plumbing, follow `{{ gate_script_policy_path }}`: use strict, fail-closed scripts with installed tools and real paths; test their passing and failing behavior; wire them into the authoritative verification entry point; protect secrets and keep remote execution safe. Attribute a product-code failure from a working gate accurately in the policy instead of changing unrelated product code.
+For gate plumbing, follow `{{ gate_script_policy_path }}`: use strict, fail-closed scripts with installed tools and real paths; test passing and failing behavior; wire them into the authoritative verification entry point; protect secrets and keep remote execution safe. Attribute a product-code failure from a working gate accurately in policy rather than changing unrelated product code.
 
 ## Machine marker vocabulary
 
@@ -44,8 +44,8 @@ Every `RALPH-COMMAND` begins with an approved first token: {{ approved_tools }}.
 
 ## Complete the policy corpus
 
-INSPECT the project before writing. Replace every `RALPH-FACT:` line and placeholder with verified policy; remove `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions after applying them. There is no completion marker: completion is the absence of unresolved markers. Add a `## Research basis` citation block and record each inactive conditional domain with its dated reactivation trigger. Move policy content into its canonical file and retain `{{ migrated_marker }}` at conventional locations. Probe declared gates, distinguish broken plumbing from product-code failures, and record the attribution. Keep exactly one concise managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md; if CLAUDE.md exists, point it to AGENTS.md.
+Replace every `RALPH-FACT:` line and placeholder with verified policy, remove `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions after applying them, and use absence of unresolved markers as the completion condition. Add a `## Research basis` citation block, record each inactive conditional domain with its dated reactivation trigger, move policy content into its canonical file, and retain `{{ migrated_marker }}` at conventional locations. Probe declared gates and record whether a failure is plumbing or product code. Keep one concise managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md; if CLAUDE.md exists, point it to AGENTS.md.
 
 ## Finish with a truthful report
 
-Report changed files, migrations, research sources, probes, and unresolved risks. The validator re-runs after your response: completion means every finding is resolved, required markers are well formed, and no unresolved placeholder remains.
+Report changed files, migrations, research sources, probes, and unresolved risks. The validator re-runs after your response: success means every finding is resolved, required markers are well formed, and no unresolved placeholder remains.
