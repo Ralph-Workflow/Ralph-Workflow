@@ -43,7 +43,6 @@ from tests.integration._planning_analysis_request_changes_once_invoker import (
 )
 
 if TYPE_CHECKING:
-
     from pytest import MonkeyPatch
 
     from ralph.policy.models import PolicyBundle

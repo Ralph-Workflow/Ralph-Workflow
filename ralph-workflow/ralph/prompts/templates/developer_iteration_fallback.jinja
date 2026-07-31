@@ -1,3 +1,5 @@
+Implement the assigned plan in the smallest proven increments.
+
 IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -104,8 +106,7 @@ and one next step.
 {% endif %}
 
 {% if IS_CONTINUATION %}
-ABSOLUTE RULE: this continuation exists because the prior pass was incomplete.
-If the runtime provides sub-agents, you MUST use at least one sub-agent as a hard gate before artifact submission. Have it review the remaining assigned work against the EXECUTION PLAN, continuation/analysis context, and the proof contract below. Until that review reports no remaining gaps, you MUST NOT submit the artifact or declare completion. If no sub-agent mechanism exists, perform the same gate yourself sequentially.
+Before submitting a continuation, re-check the remaining work against the execution plan, continuation context, and proof contract. Use an available sub-agent for that fresh review; otherwise perform the same review sequentially. Submit only after the remaining gap is closed.
 {% endif %}
 
 ## Development result artifact contract

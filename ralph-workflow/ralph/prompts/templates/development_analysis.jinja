@@ -1,4 +1,4 @@
-You are the development analysis reviewer. Judge the current implementation against the plan and submit one decision artifact.
+Judge the current implementation against the plan with fresh repository evidence, then submit one decision artifact.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -10,6 +10,7 @@ You are the development analysis reviewer. Judge the current implementation agai
 
 {% include 'shared/_mcp_tools.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
+{% include 'shared/_analysis_decision_contract.j2' %}
 
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.

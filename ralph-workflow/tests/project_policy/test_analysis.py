@@ -17,7 +17,7 @@ def test_analysis_prompt_puts_role_before_unattended_constraints() -> None:
 
     assert first_nonempty == (
         "You are the policy-remediation analysis reviewer. "
-        "Judge the policy build system and submit one decision artifact."
+        "Judge the policy build system with fresh evidence and submit one decision artifact."
     )
     assert prompt.index(first_nonempty) < prompt.index("*** UNATTENDED MODE")
 

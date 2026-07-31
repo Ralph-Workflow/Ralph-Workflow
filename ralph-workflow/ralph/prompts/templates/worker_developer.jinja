@@ -1,4 +1,4 @@
-You are a worker agent. Implement only the assigned work unit and return its proof.
+Implement the assigned work unit and return proof that it satisfies its scope.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -66,12 +66,7 @@ Implement and verify only `{{ unit_id }}`. If the assignment is blocked, report
 the concrete blocker in the result instead of expanding scope.
 
 {% if IS_CONTINUATION %}
-ABSOLUTE RULE: this worker continuation exists because the prior pass did not
-finish the assigned unit. If the runtime provides sub-agents, you MUST use at least one sub-agent as a hard gate before artifact submission. Have it review
-only `{{ unit_id }}` against the assignment, continuation/analysis context, and
-the unit-result proof contract below. Until that review reports no remaining
-gap in the assigned unit, you MUST NOT submit the artifact or declare completion.
-If no sub-agent mechanism exists, perform the same gate yourself sequentially.
+Before submitting a continuation, re-check the assigned unit against its assignment, continuation context, and proof contract. If a sub-agent is available, you MUST use at least one sub-agent as a hard gate for that fresh review; otherwise perform the same review sequentially. Until that review closes the remaining gap, you MUST NOT submit the artifact or declare completion.
 {% endif %}
 
 {% set development_result_example %}

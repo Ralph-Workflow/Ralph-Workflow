@@ -1,17 +1,3 @@
-## Execution checklist
+## Increment loop
 
-Work sufficiently: make the smallest requested change, reuse local patterns, and stop when the stated bar is met. Record the task sizing; use the minimal path for a small change without reducing final proof.
-
-Start with the narrowest fast path that can falsify the current increment. Choose it for both what it catches and its invocation-to-answer cost. Run the full gate when the accumulated change makes it meaningful, and always before reporting done. Obtain and honour the project's fast-path and full-gate budgets; when none exist, set and state both.
-
-Reach a falsifiable increment early. Break a large change into proven parts. For a mechanically wide, conceptually narrow change, specify and review one deterministic transform; take available automatic fixes.
-
-Treat recurring gate, fast-path, and setup cost as in-scope: fix it now when it fits this run without displacing the request; otherwise raise it where an owner can act. State any added verification cost or budget breach. Treat inconsistent checks as defects to fix or raise, not evidence to rerun; use failure output that identifies what broke.
-
-Surface ambiguity before building on it. Record a safe assumption and continue when one works; if no assumption can carry the decision, record why before halting. Pass forward the context the next phase would otherwise rediscover.
-
-Explore only the touched area, avoid retrieving material already held, retain only the needed signal, and size exploration to the change within a tracked working-set bound. Spend deliberation on load-bearing decisions. Start independent work together, record it, and keep it moving while a long step runs. Prefer steps that do not need asking; group unavoidable requests. Sync after one proven increment or before a second unverified increment; plan that re-proof.
-
-Debug from a hypothesis. After two failed attempts at one approach or one step that will not take, change tack or submit an honest partial result.
-
-Use the repository's formatter, linter, type checker, tests, and build checks. Add focused behavioral coverage for changed behavior; keep validation, error handling, and security boundaries intact.
+Make the smallest requested change and prove it. State any safe assumption, use the verification commitments for each increment, and complete the discovered gate before reporting done. Debug from a hypothesis; after a failed approach, change tack or report an honest partial result.

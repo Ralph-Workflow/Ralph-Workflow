@@ -994,7 +994,6 @@ def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> Non
     )
     assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered
     assert rendered.startswith(
-        "COMMIT CLEANUP MODE\n"
-        "You are a commit cleanup agent. Your only job is to keep unsafe or "
-        "machine-local files out of the pending commit."
+        "Keep unsafe and machine-local files out of the pending commit without "
+        "changing what the commit means.\n\nCOMMIT CLEANUP MODE"
     )

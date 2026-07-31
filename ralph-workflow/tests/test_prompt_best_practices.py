@@ -1,0 +1,50 @@
+"""Regression checks for concise, work-first prompt templates."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ralph.prompts.template_context import packaged_template_root
+
+_TEMPLATE_NAMES = (
+    "planning.jinja", "planning_analysis.jinja", "worker_developer.jinja",
+    "developer_iteration.jinja", "review.jinja", "development_analysis.jinja",
+    "review_analysis.jinja", "fix_mode.jinja", "commit_cleanup.jinja",
+    "commit_message.jinja", "commit_simplified.jinja", "conflict_resolution.jinja",
+    "policy_remediation.jinja", "policy_remediation_analysis.jinja",
+    "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja",
+    "developer_iteration_fallback.jinja", "developer_iteration_continuation.jinja",
+)
+
+
+def _source(name: str) -> str:
+    return (Path(packaged_template_root()) / name).read_text(encoding="utf-8")
+
+
+def _first_text_line(source: str) -> str:
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith(("{%", "{{", "{#")):
+            return stripped
+    raise AssertionError("template has no text")
+
+
+def test_prompt_templates_lead_with_the_work_not_a_mode_label() -> None:
+    for name in _TEMPLATE_NAMES:
+        first_line = _first_text_line(_source(name)).upper()
+        assert not first_line.endswith(" MODE"), name
+        assert "YOUR ROLE AND GOAL" not in first_line, name
+
+
+def test_analysis_templates_share_one_evidence_decision_contract() -> None:
+    for name in ("development_analysis.jinja", "review_analysis.jinja"):
+        assert "shared/_analysis_decision_contract.j2" in _source(name)
+
+
+def test_verification_guidance_is_single_sourced() -> None:
+    root = Path(packaged_template_root()) / "shared"
+    guidance = (root / "_developer_iteration_guidance.j2").read_text(encoding="utf-8")
+    commitments = (root / "_verification_commitments.j2").read_text(encoding="utf-8")
+    assert "Discover the project's gate" in commitments
+    assert "fast path" not in guidance.lower()
+    assert "full gate" not in guidance.lower()

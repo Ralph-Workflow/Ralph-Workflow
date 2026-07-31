@@ -33,9 +33,9 @@ def test_review_prompt_fans_out_independent_checks_when_supported() -> None:
     prompt = render_review_prompt("Implementation plan", "Diff summary")
 
     assert prompt.startswith(
-        "REVIEW MODE\n"
-        "Your only job is to analyze the implementation, not to edit code or commit changes."
+        "Judge the implementation against the plan with fresh evidence and report material findings."
     )
+    assert "REVIEW MODE\nYour only job" in prompt
     assert "subagent" in prompt.lower()
     assert "parallel" in prompt.lower()
     assert "main session" in prompt.lower()
