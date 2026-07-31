@@ -104,6 +104,8 @@ from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
     SYNTAX_BACKGROUND_TRANSPARENT,
+    diff_fill_styles,
+    diff_fill_styles,
     markdown_theme_context,
     pick_status_styles,
     syntax_theme_for_background,

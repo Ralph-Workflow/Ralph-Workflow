@@ -717,6 +717,33 @@ SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxTheme
 #: Named here so syntax-preview call sites never hard-code the literal.
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
+# Diff washes are intentionally resolved alongside the syntax palette. The
+# unknown-background path remains transparent rather than assuming a terminal.
+_DIFF_REMOVED_FILL_ON_DARK_BG: Final[str] = "#101112"
+_DIFF_ADDED_FILL_ON_DARK_BG: Final[str] = "#121110"
+_DIFF_REMOVED_FILL_ON_LIGHT_BG: Final[str] = "#F5F1F0"
+_DIFF_ADDED_FILL_ON_LIGHT_BG: Final[str] = "#F0F4F5"
+_DIFF_REMOVED_FILL_ON_UNKNOWN_BG: Final[str] = "#757575"
+_DIFF_ADDED_FILL_ON_UNKNOWN_BG: Final[str] = "#757575"
+
+
+def diff_token_foregrounds(terminal_bg_is_light: bool | None) -> tuple[str, str]:
+    """Return the deleted and inserted token colours for the resolved theme."""
+    if terminal_bg_is_light is True:
+        return "#330B03", "#3E4712"
+    if terminal_bg_is_light is False:
+        return "#94D90B", "#0CB9F2"
+    return "#2070F0", "#408070"
+
+
+def diff_fill_styles(terminal_bg_is_light: bool | None) -> tuple[str, str] | None:
+    """Return derived removed/added diff fills, or transparent for unknown backgrounds."""
+    if terminal_bg_is_light is True:
+        return _DIFF_REMOVED_FILL_ON_LIGHT_BG, _DIFF_ADDED_FILL_ON_LIGHT_BG
+    if terminal_bg_is_light is False:
+        return _DIFF_REMOVED_FILL_ON_DARK_BG, _DIFF_ADDED_FILL_ON_DARK_BG
+    return None
+
 # Rich's stock markdown theme uses ANSI slots, including a black inline-code
 # fill. Fixed-RGB styles keep markdown carriers background-derived and transparent.
 def _markdown_styles(default: str, accent: str, link: str, url: str, bullet: str, rule: str) -> dict[str, str]:
@@ -971,6 +998,12 @@ __all__ = [
     "STATUS_STYLES_ON_LIGHT_BG",
     "STATUS_STYLES_ON_UNKNOWN_BG",
     "SYNTAX_BACKGROUND_TRANSPARENT",
+    "_DIFF_ADDED_FILL_ON_DARK_BG",
+    "_DIFF_ADDED_FILL_ON_LIGHT_BG",
+    "_DIFF_ADDED_FILL_ON_UNKNOWN_BG",
+    "_DIFF_REMOVED_FILL_ON_DARK_BG",
+    "_DIFF_REMOVED_FILL_ON_LIGHT_BG",
+    "_DIFF_REMOVED_FILL_ON_UNKNOWN_BG",
     "SYNTAX_THEME_ON_DARK_BG",
     "SYNTAX_THEME_ON_LIGHT_BG",
     "SYNTAX_THEME_ON_UNKNOWN_BG",
@@ -979,6 +1012,8 @@ __all__ = [
     "YELLOW",
     "background_hex_is_light",
     "detect_glyph_capability",
+    "diff_fill_styles",
+    "diff_token_foregrounds",
     "detect_terminal_background_is_light",
     "format_status",
     "identity_color",
