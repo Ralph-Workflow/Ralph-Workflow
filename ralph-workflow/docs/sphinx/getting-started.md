@@ -2,7 +2,9 @@
 
 This page walks you from install to one honest unattended run in a
 repository you already care about. It is the canonical first-run page
-in the operator manual.
+in the operator manual. For the shortest copy-paste path without task
+templates, use the repo-root `START_HERE.md` first, then return here
+when you need task-picking or `PROMPT.md` guidance.
 
 ## Goal
 
@@ -61,7 +63,7 @@ From inside the git repo you want Ralph Workflow to operate on, run
 `ralph --init`. The command:
 
 1. Detects which agent CLIs are on `PATH` and enables them.
-2. Materialises the user-global config (`~/.config/ralph-workflow.toml`)
+2. Creates the user-global config (`~/.config/ralph-workflow.toml`)
    and the policy defaults.
 3. Writes a starter `PROMPT.md` (with a sentinel comment marking it as
    the starter template — Ralph Workflow refuses to run until you replace it).
@@ -110,10 +112,11 @@ A small focused task fits four criteria (full guidance in
 ralph
 ```
 
-The run walks planning → development → commit. Watch the terminal for
-live progress; when the run finishes, Ralph Workflow leaves a short
-summary of what changed, which checks ran, and what to review. Durable
-run records also land under `.agent/` — see
+The run walks the default phases: planning → development → commit
+(see [Concepts](concepts.md) for the Ralph-loop mental model). Watch
+the terminal for live progress; when the run finishes, Ralph Workflow
+leaves a short summary of what changed, which checks ran, and what to
+review. Durable run records also land under `.agent/` — see
 [Artifacts reference](artifacts.md) if you need the full layout.
 
 For deeper operator configuration, open
@@ -195,8 +198,10 @@ runtime copies under `.agent/`. See
 
 ### Picking the right depth preset
 
-Depth presets (`-Q` quick, default standard, `-L` long, `-T` thorough) live in
-[CLI Reference](cli.md). Most first-run tasks fit the default.
+Depth presets trade wall-clock budget and thoroughness: `-Q` quick,
+default standard, `-L` long, `-T` thorough. Details live in
+[CLI Reference](cli.md). Most first-run tasks fit the default — skip
+this until a short run feels under-scoped or over-long.
 
 ## First-task prompt templates
 
@@ -284,16 +289,13 @@ path. The broader file layout is in [Configuration Reference](configuration.md).
 
 ## Expected result / success check
 
-A successful first run produces two concrete signals:
+Before you start, step 5's diagnostic should be fully green (see
+[Diagnostics](diagnostics.md) if it is not).
 
-1. The pre-flight diagnostic should report every line green before you
-   start. If any line is red, fix that line before you spend a real
-   run on it. See [Diagnostics](diagnostics.md) for the failure-mode
-   table.
-2. After `ralph` returns, read the run summary. It names the change,
-   the checks, and the reviewer focus in a form you can read in under
-   a minute. For the on-disk artifact shapes behind that summary, see
-   [Artifacts reference](artifacts.md).
+After `ralph` returns, the run summary should name the change, the
+checks, and the reviewer focus in a form you can read in under a
+minute. For the on-disk artifact shapes behind that summary, see
+[Artifacts reference](artifacts.md).
 
 Then validate the result in reality — do not accept the run only
 because the transcript looks confident: run the program, tests, or

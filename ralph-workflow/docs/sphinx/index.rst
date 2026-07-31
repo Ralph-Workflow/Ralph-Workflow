@@ -9,20 +9,22 @@ This is the maintained operator manual for Ralph Workflow — the free,
 open-source AI agent orchestrator for coding work. Product positioning
 and the shortest evaluation path live in the
 `root README.md
-<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/README.md>`_;
+<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/README.md>`_
+and `START_HERE.md
+<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/START_HERE.md>`_;
 this manual covers how to start, configure, operate, understand, and
 extend the product.
 
 Where to go next
 ----------------
 
-- Start here: :doc:`getting-started`
+- Start here: :doc:`getting-started` — install through one honest first run
 - Configure: :doc:`configuration`, :doc:`cli`,
   :doc:`advanced-pipeline-configuration`,
   :doc:`advanced-mcp-configuration`,
   :doc:`advanced-artifact-configuration`
-- Understand: :doc:`concepts`, :doc:`mcp-architecture`, :doc:`artifacts`,
-  :doc:`recovery`
+- Understand: :doc:`concepts` (glossary and Ralph loop),
+  :doc:`mcp-architecture`, :doc:`artifacts`, :doc:`recovery`
 - Operate: :doc:`diagnostics`, :doc:`troubleshooting`,
   :doc:`agent-compatibility`, :doc:`mcp-tools`, :doc:`mcp-tool-restriction`,
   :doc:`versioning`, :doc:`pro-support`
@@ -31,7 +33,8 @@ Where to go next
 .. note::
 
    New here? Start with :doc:`getting-started` before you dive into the
-   rest of the manual.
+   rest of the manual. Come back here when you need configuration,
+   troubleshooting, or concepts.
 
 .. toctree::
    :hidden:

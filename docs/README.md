@@ -2,26 +2,35 @@
 
 Use this page after [`README.md`](../README.md) and
 [`START_HERE.md`](../START_HERE.md) when you already know the question
-and need the one maintained doc that answers it.
+and need the one maintained doc that answers it. Each section is one
+reader job; pick the first link that matches, then stop.
 
 ## I want a successful first run
 
+- [`START_HERE.md`](../START_HERE.md) — shortest runnable path
+  (install → init → diagnose → one task → review)
 - [Getting started](../ralph-workflow/docs/sphinx/getting-started.md) —
-  install → init → diagnose → spec → run → review
+  fuller tutorial with task picking and `PROMPT.md` templates
 - [Run diagnostics](../ralph-workflow/docs/sphinx/diagnostics.md) —
   what `ralph --diagnose` checks and how to fix failures
+- [Agent CLI lifecycle](../ralph-workflow/docs/sphinx/agents.md) —
+  install, authenticate, and confirm the agent Ralph Workflow will use
 
 ## I need to configure Ralph Workflow
 
-- [Configuration reference](../ralph-workflow/docs/sphinx/configuration.md)
-- [CLI reference](../ralph-workflow/docs/sphinx/cli.md)
-- [Advanced pipeline configuration](../ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md)
-- [Advanced MCP configuration](../ralph-workflow/docs/sphinx/advanced-mcp-configuration.md)
-- [Advanced artifact configuration](../ralph-workflow/docs/sphinx/advanced-artifact-configuration.md)
+- [Configuration reference](../ralph-workflow/docs/sphinx/configuration.md) —
+  `ralph-workflow.toml` and project-local overrides
+- [CLI reference](../ralph-workflow/docs/sphinx/cli.md) — flags and depth presets
+- [Advanced pipeline configuration](../ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md) —
+  `pipeline.toml` phases and routing
+- [Advanced MCP configuration](../ralph-workflow/docs/sphinx/advanced-mcp-configuration.md) —
+  `mcp.toml` tool surface
+- [Advanced artifact configuration](../ralph-workflow/docs/sphinx/advanced-artifact-configuration.md) —
+  `artifacts.toml` expectations
 
 ## I want to understand how it works
 
-- [Concepts](../ralph-workflow/docs/sphinx/concepts.md)
+- [Concepts](../ralph-workflow/docs/sphinx/concepts.md) — glossary and Ralph-loop mental model
 - [MCP architecture](../ralph-workflow/docs/sphinx/mcp-architecture.md)
 - [Artifacts reference](../ralph-workflow/docs/sphinx/artifacts.md)
 - [Recovery model](../ralph-workflow/docs/sphinx/recovery.md)
@@ -29,7 +38,8 @@ and need the one maintained doc that answers it.
 ## I am operating a running setup
 
 - [Troubleshooting](../ralph-workflow/docs/sphinx/troubleshooting.md)
-- [Agent compatibility](../ralph-workflow/docs/sphinx/agent-compatibility.md)
+- [Agent compatibility](../ralph-workflow/docs/sphinx/agent-compatibility.md) —
+  per-agent model strings and transport notes
 - [Agent CLI lifecycle](../ralph-workflow/docs/sphinx/agents.md)
 - [MCP tools](../ralph-workflow/docs/sphinx/mcp-tools.md)
 - [MCP tool restriction](../ralph-workflow/docs/sphinx/mcp-tool-restriction.md)

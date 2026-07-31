@@ -1,34 +1,33 @@
 # Ralph Workflow
 
 Ralph Workflow is a free, open-source AI agent orchestrator for coding
-work. It is built on a simple Ralph loop: you hand agents a
-well-specified task, they plan, build, verify, and fix, and you come
-back to inspect the result. That simple core ships with a strong
+work. You give it one well-specified task; it runs a **Ralph loop**
+(plan → build → verify → fix) with your chosen coding agent, then you
+come back to inspect the result. That simple core ships with a strong
 default workflow for writing software — adopt it as-is first, then
 extend it when you need to.
-
-The full operator manual lives under
-[`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst).
 
 ## Who it's for
 
 Ralph Workflow fits developers and small teams with work that is too big
 to babysit and too risky to trust blindly. It is not for vague prompts
-or repos without guardrails.
+or repos without tests or other guardrails.
 
-## Try it
+## Next step
 
-Shortest honest evaluation path:
+For the shortest honest first run — install, diagnose, one focused task,
+and what success looks like — open [`START_HERE.md`](START_HERE.md).
 
-1. Install with `pipx install ralph-workflow` (or `pip install ralph-workflow`).
-2. In a real git repo, run `ralph --init`, then `ralph --diagnose`.
-3. Replace the starter `PROMPT.md` with one focused task and run `ralph`.
-4. When the run finishes, read the summary of what changed and which
-   checks passed, then exercise the feature yourself.
+In short: `pipx install ralph-workflow` (or `pip install
+ralph-workflow`), then in a real git repo run `ralph --init`,
+`ralph --diagnose`, replace the starter `PROMPT.md`, and run `ralph`.
+When it finishes, read the summary of what changed and which checks
+passed, then verify the feature yourself.
 
-Exact copy-paste steps, success checks, and task-picking guidance are in
-[`START_HERE.md`](START_HERE.md). The fuller tutorial is
+The fuller tutorial is
 [`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
+The full operator manual lives under
+[`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst).
 
 ## Supported agents
 
@@ -41,10 +40,10 @@ details are in [`agents`](ralph-workflow/docs/sphinx/agents.md) and
 
 ## Documentation route
 
-1. [`START_HERE.md`](START_HERE.md) — first-run walkthrough
-2. [`docs/README.md`](docs/README.md) — docs map by intent
+1. [`START_HERE.md`](START_HERE.md) — runnable first-run walkthrough
+2. [`docs/README.md`](docs/README.md) — docs map by reader question
 3. [`ralph-workflow/docs/sphinx/index.rst`](ralph-workflow/docs/sphinx/index.rst) —
-   the maintained operator manual
+   maintained operator manual (configure, operate, extend)
 
 ## Project home
 

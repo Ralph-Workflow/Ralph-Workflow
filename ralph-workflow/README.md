@@ -1,9 +1,14 @@
 # ralph-workflow
 
 Ralph Workflow is a free, open-source AI agent orchestrator for coding
-work. It is built on a simple Ralph loop: hand agents a well-specified
-task, let them plan, build, verify, and fix, then come back to inspect
-the result. Adopt the default workflow as-is first; extend it later.
+work. You give it one well-specified task; it runs a **Ralph loop**
+(plan → build → verify → fix) with your chosen coding agent, then you
+come back to inspect the result. Adopt the default workflow as-is
+first; extend it later.
+
+It fits developers and small teams with work that is too big to babysit
+and too risky to trust blindly. It is not for vague prompts or repos
+without tests or other guardrails.
 
 ## Install
 
@@ -22,17 +27,24 @@ version. `pip install ralph-workflow` also works.
 2. In your project: `ralph --init` — creates user-global config and a
    starter `PROMPT.md`. Project-local config is optional later via
    `ralph --init-local-config`.
-3. Confirm a supported agent CLI is on your `PATH` and authenticated.
-4. Run `ralph --diagnose` and fix any reported problem.
-5. Edit `PROMPT.md` with the outcome and checks you expect (or seed a
+3. Confirm a supported agent CLI is on your `PATH` and authenticated
+   (`ralph --list-agents`).
+4. Run `ralph --diagnose` and fix any reported problem until every line
+   is green.
+5. Edit `PROMPT.md` with the outcome and checks you expect. Remove the
+   `<!-- ralph:starter-prompt ... -->` sentinel at the top — Ralph Workflow
+   refuses to run while it remains. Or, before `PROMPT.md` exists, seed a
    task-shaped starter with `ralph --init feature-spec`, `guardrail`,
-   `refactor`, `test-coverage`, or `docs`).
+   `refactor`, `test-coverage`, or `docs`.
 6. Run `ralph`. When it finishes, read the summary of what changed and
-   which checks passed, then exercise the feature yourself.
+   which checks passed, then verify the feature yourself.
 
-The canonical first-run walkthrough is [Getting started](docs/sphinx/getting-started.md).
-For agent-specific model-string formats, see
-[Agent compatibility](docs/sphinx/agent-compatibility.md).
+The canonical first-run walkthrough is
+[Getting started](docs/sphinx/getting-started.md). For agent-specific
+model-string formats, see
+[Agent compatibility](docs/sphinx/agent-compatibility.md). For
+configuration after the first run, open the
+[operator manual](docs/sphinx/index.rst).
 
 ## Supported agents
 
