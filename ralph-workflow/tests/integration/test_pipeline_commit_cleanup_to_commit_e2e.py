@@ -311,6 +311,10 @@ def test_pipeline_cleanup_to_commit_end_to_end(
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
         if effect.phase in ("development_commit", "development_final_commit"):
+            _write_commit_message_artifacts(
+                repo_root,
+                "fix(commit): harden cleanup -> commit transition end-to-end",
+            )
             ctx = PhaseContext.model_construct(
                 workspace=workspace,
                 registry=AgentRegistry.from_config(config),
@@ -322,8 +326,8 @@ def test_pipeline_cleanup_to_commit_end_to_end(
             )
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
-        commit_event_for = getattr(invoker, "commit_event_for", None),
-        if commit_event_for is not None:
+        commit_event_for = getattr(invoker, "commit_event_for", None)
+        if callable(commit_event_for):
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
@@ -500,6 +504,11 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
             "development_commit",
             "development_final_commit",
         ):
+            if effect.phase in {"development_commit", "development_final_commit"}:
+                _write_commit_message_artifacts(
+                    repo_root,
+                    "fix(commit): cleanup rejects symlink deletes end-to-end",
+                )
             ctx = PhaseContext.model_construct(
                 workspace=workspace,
                 registry=AgentRegistry.from_config(config),
@@ -511,8 +520,8 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
             )
             events = handle_phase(effect, ctx)
             return events[0] if events else PipelineEvent.AGENT_SUCCESS
-        commit_event_for = getattr(invoker, "commit_event_for", None),
-        if commit_event_for is not None:
+        commit_event_for = getattr(invoker, "commit_event_for", None)
+        if callable(commit_event_for):
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
