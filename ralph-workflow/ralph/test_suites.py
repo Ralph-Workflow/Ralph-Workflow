@@ -127,7 +127,7 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # before SIGKILL; shorter drain values produce empty ``pytest shard
 # did not exit after termination`` banners.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
-_REQUIRED_E2E_WEIGHT_MULTIPLIER = 60
+_REQUIRED_E2E_WEIGHT_MULTIPLIER = 120
 _TEST_DEFINITION_PATTERN = re.compile(r"^\s*(?:async\s+)?def\s+test_", re.MULTILINE)
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:

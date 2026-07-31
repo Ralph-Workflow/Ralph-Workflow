@@ -153,7 +153,8 @@ def _emit_normal_stdout(model: str | None) -> None:
             "step_update": {
                 "state": "ACTIVE",
                 "step_type": "tool",
-                "tool_info": {"name": "createTodoList", "call_id": "tool-1"},
+                "step_index": 1,
+                "tool_info": {"name": "createTodoList"},
             },
         },
         {
@@ -161,9 +162,9 @@ def _emit_normal_stdout(model: str | None) -> None:
             "step_update": {
                 "state": "DONE",
                 "step_type": "tool",
+                "step_index": 1,
                 "tool_info": {
                     "name": "createTodoList",
-                    "call_id": "tool-1",
                     "output": "File created at tmp/interactive-agy-smoke/todo-list.js.",
                 },
             },
