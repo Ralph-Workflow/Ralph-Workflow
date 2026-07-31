@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -12,12 +13,14 @@ from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.pipeline.state import PipelineState
 
 _REPORTING_BUDGET_CHARACTERS = 1_600
 _MAX_REPORTED_PHASES = 6
+_MAX_MEMORY_FINDINGS = 8
 _MAX_PHASE_NAME_CHARACTERS = 80
 _MAX_FIXED_POINT_ELAPSED_CHARACTERS = 24
 _MAX_DIRECT_COUNT_BITS = 64
@@ -25,6 +28,15 @@ _MAX_DIRECT_COUNT_BITS = 64
 
 def _safe_text(value: str) -> str:
     return value.replace("\n", " ")[:_MAX_PHASE_NAME_CHARACTERS]
+
+
+def _memory_findings(getenv: Callable[[str], str | None]) -> list[str]:
+    findings = getenv("RALPH_RUN_TIME_REPORT_MEMORY_FINDINGS") or ""
+    return [
+        _safe_text(finding)
+        for finding in findings.splitlines()
+        if finding.strip()
+    ][:_MAX_MEMORY_FINDINGS]
 
 
 def _format_elapsed(elapsed_seconds: float) -> str:
@@ -56,12 +68,19 @@ def _slowest_phases(state: PipelineState) -> list[tuple[str, str]]:
     ]
 
 
-def render_run_time_report(*, state: PipelineState, outcome: str, elapsed_seconds: float) -> str:
+def render_run_time_report(
+    *,
+    state: PipelineState,
+    outcome: str,
+    elapsed_seconds: float,
+    getenv: Callable[[str], str | None] = os.environ.get,
+) -> str:
     """Return the stable, bounded Markdown report for one pipeline execution."""
     safe_phase = _safe_text(state.phase)
     elapsed = max(0.0, elapsed_seconds)
     elapsed_text = _format_elapsed(elapsed)
     reported_phases = _slowest_phases(state)
+    memory_findings = _memory_findings(getenv)
     truncated = False
     while True:
         phase_lines = [f"- [P-1] Final phase: {safe_phase}."]
@@ -98,6 +117,15 @@ def render_run_time_report(*, state: PipelineState, outcome: str, elapsed_second
             + "\n".join(phase_lines)
             + "\n\n## Slowest Steps\n"
             + "\n".join(slowest_lines)
+            + (
+                "\n\n## Memory Findings\n"
+                + "\n".join(
+                    f"- [MF-{index}] {finding}"
+                    for index, finding in enumerate(memory_findings, start=1)
+                )
+                if memory_findings
+                else ""
+            )
             + "\n\n## Signals\n"
             + "- [SG-1] Agent calls: "
             + _format_count(state.metrics.total_agent_calls)
@@ -115,6 +143,9 @@ def render_run_time_report(*, state: PipelineState, outcome: str, elapsed_second
             reported_phases.pop()
             truncated = True
             continue
+        if memory_findings:
+            memory_findings.pop()
+            continue
         raise RuntimeError("run_time_report fixed content exceeds its reporting budget")
 
 
@@ -124,11 +155,17 @@ def emit_run_time_report(
     state: PipelineState,
     outcome: str,
     elapsed_seconds: float,
+    getenv: Callable[[str], str | None] = os.environ.get,
 ) -> None:
     """Validate and persist a report without changing the pipeline's outcome."""
     __import__("ralph.mcp.artifacts.markdown.specs")
 
-    markdown = render_run_time_report(state=state, outcome=outcome, elapsed_seconds=elapsed_seconds)
+    markdown = render_run_time_report(
+        state=state,
+        outcome=outcome,
+        elapsed_seconds=elapsed_seconds,
+        getenv=getenv,
+    )
     if len(markdown) > _REPORTING_BUDGET_CHARACTERS:
         raise ValueError("run_time_report exceeds its reporting budget")
     content, diagnostics = parse_and_validate(markdown, get_spec("run_time_report"))
@@ -149,6 +186,7 @@ def emit_run_time_report_safely(
     state: PipelineState,
     outcome: str,
     elapsed_seconds: float,
+    getenv: Callable[[str], str | None] = os.environ.get,
 ) -> None:
     """Write the report while preserving the original pipeline exit status."""
     try:
@@ -157,6 +195,7 @@ def emit_run_time_report_safely(
             state=state,
             outcome=outcome,
             elapsed_seconds=elapsed_seconds,
+            getenv=getenv,
         )
     except Exception as exc:
         logger.error("run_time_report emission failed: {}", exc)

@@ -23,5 +23,8 @@ final_phase: development
 - [SS-1] development: 9s.
 - [SS-2] planning: 3s.
 
+## Memory Findings
+- [MF-1] Bounded buffers verified; no additional growth surface found.
+
 ## Signals
 - [SG-1] Agent calls: 1; retries: 0; continuations: 0; fallbacks: 0.

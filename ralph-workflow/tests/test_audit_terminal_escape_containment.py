@@ -691,7 +691,11 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
     # Use the audit's _read so the invariant reads our fake source everywhere;
     # the package file list (cached) still drives which rel_paths are scanned.
     monkeypatch.setattr(audit_module, "_read", lambda rel_path: fake_source)
-    audit_module.PackageWideCallSiteInvariant.reset_cache()
+    monkeypatch.setattr(
+        audit_module.PackageWideCallSiteInvariant,
+        "_package_files",
+        classmethod(lambda cls: ["fake.py"]),
+    )
 
     violations = inv.violations()
     # We don't assert on the absolute number (depends on file count), only

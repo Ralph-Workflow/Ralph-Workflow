@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.run_time_report import render_run_time_report
 from ralph.pipeline.state import PipelineState, RunMetrics
@@ -43,6 +45,33 @@ def test_run_time_report_has_stable_sections_and_real_metrics() -> None:
     assert "development: 5s" in report
     assert "## Signals" in report
     assert len(report) <= 1_600
+
+
+def test_run_time_report_regression_memory_findings_are_optional_and_validated() -> None:
+    state = PipelineState(phase="development")
+    baseline = render_run_time_report(state=state, outcome="completed", elapsed_seconds=1)
+    without_findings = render_run_time_report(
+        state=state,
+        outcome="completed",
+        elapsed_seconds=1,
+        getenv=lambda _key: None,
+    )
+    report = render_run_time_report(
+        state=state,
+        outcome="completed",
+        elapsed_seconds=1,
+        getenv=lambda _key: "bounded buffers verified\n\nlate phases held steady",
+    )
+
+    assert baseline == without_findings
+    assert "## Memory Findings" not in baseline
+    assert "## Memory Findings" in report
+    assert "- [MF-1] bounded buffers verified" in report
+    assert "- [MF-2] late phases held steady" in report
+    assert len(report) <= 1_600
+    __import__("ralph.mcp.artifacts.markdown.specs")
+    _, diagnostics = parse_and_validate(report, get_spec("run_time_report"))
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
 
 
 def test_run_time_report_regression_truncates_long_phase_names_within_budget() -> None:

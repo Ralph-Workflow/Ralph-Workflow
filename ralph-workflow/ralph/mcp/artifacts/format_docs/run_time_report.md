@@ -6,8 +6,9 @@ A runtime-generated summary of one pipeline run. It is written to
 
 The report has frontmatter `type: run_time_report`, `outcome:`,
 `elapsed_seconds:`, and `final_phase:`, plus these sections: `Summary`,
-`Timing`, `Phases`, `Slowest Steps`, and `Signals`. Each section has stable-ID
-list items. Its fixed shape makes runs comparable without reading logs.
+`Timing`, `Phases`, `Slowest Steps`, `Signals`, and optional `Memory Findings`.
+Each section has stable-ID list items. Its fixed shape makes runs comparable
+without reading logs.
 
 ```markdown
 ---
@@ -35,13 +36,19 @@ final_phase: development
 - [SS-1] development: 9s.
 - [SS-2] planning: 3s.
 
+## Memory Findings
+- [MF-1] Bounded buffers verified; no additional growth surface found.
+
 ## Signals
 - [SG-1] Agent calls: 1; retries: 0; continuations: 0; fallbacks: 0.
 ```
 
 The reporting budget is 1,600 characters. Per-phase values use the maximum
 elapsed time for each phase across iterations; only the six slowest phases are
-listed. Unavailable telemetry is stated rather than guessed.
+listed. Unavailable telemetry is stated rather than guessed. The optional
+`Memory Findings` section is populated only from newline-delimited
+`RALPH_RUN_TIME_REPORT_MEMORY_FINDINGS`; blank entries are dropped and at most
+eight findings are retained. Leave it unset for the normal fixed report.
 
 See `.agent/artifact-formats/examples/run_time_report.md` for a complete
 example.
