@@ -53,10 +53,13 @@ def _match_transport_text_session_id(stripped: str) -> str | None:
 
 def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
     event_type = parsed.get("type")
-    if (isinstance(event_type, str) and event_type in _TRANSPORT_JSON_TYPES) or (
-        _is_cursor_system_init_event(parsed)
+    is_agy_init = parsed.get("event") == "init"
+    if (
+        (isinstance(event_type, str) and event_type in _TRANSPORT_JSON_TYPES)
+        or _is_cursor_system_init_event(parsed)
+        or is_agy_init
     ):
-        for key in ("session_id", "sessionId", "id"):
+        for key in ("session_id", "sessionId", "conversation_id", "id"):
             session_id = parsed.get(key)
             if isinstance(session_id, str) and session_id:
                 return session_id

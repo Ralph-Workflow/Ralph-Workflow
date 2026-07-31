@@ -20,6 +20,8 @@ import_module("ralph.mcp.artifacts.markdown.specs")
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 _DEFAULT_ARGS = (
+    "--output-format",
+    "stream-json",
     "--print",
     "--dangerously-skip-permissions",
     "--model",
@@ -89,11 +91,7 @@ def _run_mock_agy_batch(
         check=False,
     )
     if proc.returncode != 0:
-        msg = (
-            "mock AGY batch driver failed\n"
-            f"stdout: {proc.stdout}\n"
-            f"stderr: {proc.stderr}"
-        )
+        msg = f"mock AGY batch driver failed\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
         raise AssertionError(msg)
     raw = json.loads(proc.stdout)
     return {
@@ -157,6 +155,8 @@ def mock_agy_batch(
                 "gemini_model",
                 "normal",
                 (
+                    "--output-format",
+                    "stream-json",
                     "--print",
                     "--dangerously-skip-permissions",
                     "--model",
@@ -169,6 +169,8 @@ def mock_agy_batch(
                 "bad_model",
                 "normal",
                 (
+                    "--output-format",
+                    "stream-json",
                     "--print",
                     "--dangerously-skip-permissions",
                     "--model",
@@ -184,28 +186,23 @@ def mock_agy_batch(
 def test_mock_normal_prints_and_writes_artifact(
     mock_agy_batch: dict[str, _MockAgyCaseResult],
 ) -> None:
-    """Normal behavior emits stdout with a tool-use line and writes the artifact.
-
-    The mock never emits a spoofable transcript completion marker. In the
-    harness, ``RALPH_MCP_RUN_ID`` also makes it write the durable declaration
-    sentinel; this standalone call intentionally omits that run id. The
-    authoritative tool-activity signal is the
-    ``[plain] tool: NAME`` line that the GenericParser classifies as
-    ``type='tool_use'``.
-    """
+    """Normal behavior emits stream-json tool-use evidence and writes the artifact."""
     result = mock_agy_batch["normal"]
     assert result.returncode == 0
     assert result.stdout.strip()
     lines = result.stdout.strip().splitlines()
-    assert any(line == "[plain] tool: createTodoList" for line in lines), (
-        f"Expected a parser-classifiable tool-use line, got: {lines!r}"
-    )
+    assert any(
+        '"step_type":"tool"' in line and '"name":"createTodoList"' in line for line in lines
+    ), f"Expected a stream-json tool-use event, got: {lines!r}"
     assert "Task declared complete:" not in result.stdout, (
         "Mock should NOT emit the transcript completion marker; the AGY "
         "prompt no longer asks the agent to print one and the harness must "
         "not trust it"
     )
-    assert any(line.startswith("Session ID: interactive-agy-smoke-") for line in lines)
+    assert any(
+        '"event":"init"' in line and '"conversation_id":"interactive-agy-smoke-' in line
+        for line in lines
+    )
     artifact_path = result.artifact_dir / ".agent" / "tmp" / "smoke_test_result.md"
     assert artifact_path.exists()
 
@@ -243,7 +240,8 @@ def test_mock_different_canonical_model_name(
     """The mock accepts any published model ID from ``agy models``."""
     result = mock_agy_batch["gemini_model"]
     assert result.returncode == 0
-    assert "[plain] tool: createTodoList" in result.stdout
+    assert '"step_type":"tool"' in result.stdout
+    assert '"name":"createTodoList"' in result.stdout
     artifact_path = result.artifact_dir / ".agent" / "tmp" / "smoke_test_result.md"
     assert artifact_path.exists()
 

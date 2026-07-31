@@ -66,3 +66,39 @@ def test_empty_input_produces_zero_events() -> None:
     parsed = list(parser.parse(iter(lines)))
 
     assert parsed == []
+
+
+def test_stream_json_step_updates_emit_text_and_stop() -> None:
+    """S-3: AGY's measured stream-json text delta is observable."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"init","conversation_id":"conv-1"}',
+        '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"hello"}}',
+        '{"event":"result","result":{"status":"SUCCESS"}}',
+    ]
+
+    parsed = list(parser.parse(iter(lines)))
+
+    assert [(line.type, line.content) for line in parsed] == [("text", "hello"), ("stop", "")]
+
+
+def test_stream_json_subagent_updates_emit_correlated_events() -> None:
+    """S-3: tool and subagent updates preserve tool name and call id."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"step_update","step_update":{"step_type":"subagent","state":"ACTIVE","subagent_info":{"subagents":[{"conversation_id":"call-1","role":"research"}]}}}',
+        '{"event":"step_update","step_update":{"step_type":"subagent","state":"DONE","subagent_info":{"subagents":[{"conversation_id":"call-1","role":"research"}]}}}',
+        '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"after"}}',
+    ]
+
+    parsed = list(parser.parse(iter(lines)))
+
+    assert [
+        (line.type, line.metadata.get("tool"), line.metadata.get("tool_use_id"))
+        for line in parsed[:2]
+    ] == [
+        ("tool_use", "subagent", "call-1"),
+        ("tool_result", "subagent", "call-1"),
+    ]
+    assert parsed[2].type == "text"
+    assert parsed[2].content == "after"

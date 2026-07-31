@@ -47,12 +47,16 @@ def _run_agy_smoke_plumbing(
     *,
     behavior: str = "normal",
     agent_name: str = "agy/gemini-3.6-flash-low",
+    subagents: bool = False,
 ) -> SmokeRunResult:
     """Drive ``run_smoke_plumbing`` with the mock AGY binary in ``tmp_path``."""
     mock_path = _mock_agy_path()
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
     monkeypatch.setenv("MOCK_AGY_BEHAVIOR", behavior)
     monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
+    if subagents:
+        monkeypatch.setenv("MOCK_AGY_SUBAGENT", "1")
+
     def resolve_scope(*_args: object, **_kwargs: object) -> WorkspaceScope:
         return WorkspaceScope(tmp_path)
 
@@ -86,6 +90,7 @@ def _run_agy_smoke_plumbing(
         output_file=smoke_dir / "todo-list.js",
         display_context=display_context,
         pipeline_deps=deps,
+        subagents=subagents,
     )
 
 
@@ -166,6 +171,20 @@ def test_agy_harness_produces_real_output_with_mock(
         f"Expected at least one text-classified line with non-empty content, "
         f"got: {result.meaningful_output_lines}"
     )
+
+
+def test_agy_harness_subagent_stream_json_is_observed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """S-6: mock stream-json dispatch/result satisfies the subagent smoke contract."""
+    result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, subagents=True)
+
+    assert result.subagent_dispatch_count == 1
+    assert result.subagent_dispatch_seen is True
+    assert result.subagent_result_seen is True
+    assert result.post_subagent_activity_seen is True
+    assert "subagent dispatch was not observed" not in result.errors
 
 
 def test_agy_harness_writes_artifact_with_correct_schema(

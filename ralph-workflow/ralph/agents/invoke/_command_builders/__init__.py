@@ -566,7 +566,7 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
     SPEC = CommandBuilderSpec(
         base_argv=("agy",),
         format_flag=None,
-        output_flag=None,
+        output_flag="--output-format stream-json",
         yolo_flag="--dangerously-skip-permissions",
         model_flag_template=None,
         positional_prompt=True,

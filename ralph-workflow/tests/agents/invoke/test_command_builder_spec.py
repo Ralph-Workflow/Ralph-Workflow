@@ -273,8 +273,7 @@ def test_agy_command_builder_parity(tmp_path: Path) -> None:
         model_flag="--model claude-3",
     )
 
-    # Old logic:
-    # cmd = ["agy"]
+    # cmd = ["agy", "--output-format", "stream-json"]
     # yolo -> "--skip-perms"
     # session -> "--session", "sess-agy"
     # workspace -> "--add-dir", str(tmp_path)
@@ -284,6 +283,8 @@ def test_agy_command_builder_parity(tmp_path: Path) -> None:
     # prompt -> "hello world"
     expected = [
         "agy",
+        "--output-format",
+        "stream-json",
         "--skip-perms",
         "--session",
         "sess-agy",

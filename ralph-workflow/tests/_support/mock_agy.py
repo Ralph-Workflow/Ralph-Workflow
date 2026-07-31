@@ -12,6 +12,7 @@ Controlled by environment variables:
 * ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/tmp/``,
   ``.agent/artifacts/``, the completion sentinel, and ``tmp/`` are written.
   Defaults to the current working directory.
+* ``MOCK_AGY_SUBAGENT`` - when ``1``, emit one subagent tool dispatch/result.
 
 The simulator honors the flag set measured from the real binary:
 ``--print``/``-p``, ``--dangerously-skip-permissions``, ``--model``,
@@ -22,6 +23,7 @@ single positional prompt argument.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -56,6 +58,7 @@ RUN_ID_ENV = "RALPH_MCP_RUN_ID"
 def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agy")
     parser.add_argument("--print", "-p", action="store_true", dest="print_mode")
+    parser.add_argument("--output-format", choices=("text", "json", "stream-json"), default="text")
     parser.add_argument("--dangerously-skip-permissions", action="store_true")
     parser.add_argument("--model", default=None)
     parser.add_argument("--add-dir", action="append", default=[])
@@ -131,26 +134,82 @@ def _write_completion_sentinel(artifact_dir: Path) -> None:
     sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
 
-def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
-    print("I will create the todo list implementation.")
-    print("Using module.exports for CommonJS compatibility.")
-    print("Adding add, list, complete, remove methods.")
-    # The ``[plain] tool: NAME`` convention is the GenericParser contract for
-    # tool-use events. The AGY smoke harness requires authoritative parser
-    # / transport evidence for tool activity — not the
-    # ``headless_guide_checks`` field in the model-authored artifact — so the
-    # mock emits a real tool-use line that the parser classifies as
-    # ``type='tool_use'`` (see
-    # ``ralph-workflow/ralph/agents/parsers/generic.py::_classify_plaintext_tool_line``).
-    print("[plain] tool: createTodoList")
-    print("File created at tmp/interactive-agy-smoke/todo-list.js.")
-    print("Writing smoke_test_result artifact ...")
+def _emit_normal_stdout(model: str | None) -> None:
+    """Emit the measured v1.1.9 stream-json vocabulary deterministically."""
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
-    print(f"Session ID: {session_id}")
-    # The mock omits a spoofable transcript marker. ``main`` writes the same
-    # durable sentinel that the real ``declare_complete`` tool would produce
-    # in this no-HMAC test harness.
+    events: list[dict[str, object]] = [
+        {"event": "init", "conversation_id": session_id, "init": {"cwd": "."}},
+        {
+            "event": "step_update",
+            "step_update": {
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "I will create the todo list implementation.\n",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "state": "ACTIVE",
+                "step_type": "tool",
+                "tool_info": {"name": "createTodoList", "call_id": "tool-1"},
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "state": "DONE",
+                "step_type": "tool",
+                "tool_info": {
+                    "name": "createTodoList",
+                    "call_id": "tool-1",
+                    "output": "File created at tmp/interactive-agy-smoke/todo-list.js.",
+                },
+            },
+        },
+    ]
+    if os.environ.get("MOCK_AGY_SUBAGENT") == "1":
+        subagent = {
+            "conversation_id": "subagent-1",
+            "role": "research",
+            "initial_prompt": "Inspect two edge cases.",
+        }
+        events.extend(
+            [
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "state": "ACTIVE",
+                        "step_type": "subagent",
+                        "subagent_info": {"subagents": [subagent]},
+                    },
+                },
+                {
+                    "event": "step_update",
+                    "step_update": {
+                        "state": "DONE",
+                        "step_type": "subagent",
+                        "subagent_info": {"subagents": [subagent]},
+                    },
+                },
+            ]
+        )
+    events.extend(
+        [
+            {
+                "event": "step_update",
+                "step_update": {
+                    "state": "DONE",
+                    "step_type": "agent_response",
+                    "text_delta": "Writing smoke_test_result artifact.\n",
+                },
+            },
+            {"event": "result", "result": {"conversation_id": session_id, "status": "SUCCESS"}},
+        ]
+    )
+    for event in events:
+        print(json.dumps(event, separators=(",", ":")))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -178,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_prompt_received(artifact_dir, args.prompt)
     _write_smoke_test_result_artifact(artifact_dir)
     _write_completion_sentinel(artifact_dir)
-    _emit_normal_stdout(args.model, args.prompt)
+    _emit_normal_stdout(args.model)
     return 0
 
 

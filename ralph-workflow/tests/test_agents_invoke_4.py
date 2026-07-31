@@ -970,6 +970,8 @@ def test_build_agy_command_all_flags_precede_print_and_prompt(tmp_path: Path) ->
 
     assert result == [
         "agy",
+        "--output-format",
+        "stream-json",
         "--dangerously-skip-permissions",
         "--conversation",
         "sess-1",

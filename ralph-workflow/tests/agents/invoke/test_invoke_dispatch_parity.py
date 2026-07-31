@@ -531,6 +531,8 @@ class TestResolveInvocationRuntimeParity:
                 "--print",
                 [
                     "agy",
+                    "--output-format",
+                    "stream-json",
                     "--skip-perms",
                     "--session",
                     "sess-123",
