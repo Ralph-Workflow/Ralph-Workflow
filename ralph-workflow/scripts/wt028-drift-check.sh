@@ -138,7 +138,17 @@ UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
     git ls-files -z -- ralph tests docs \
         | tr '\0' '\n' \
         > "$TRACKED_OUT"
-    git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- ralph tests docs \
+    git grep -lzIF --threads 8 \
+        -e NARROW_THRESHOLD \
+        -e MEDIUM_THRESHOLD \
+        -e ctx.mode \
+        -e RALPH_FORCE_NARROW \
+        -e force_mode \
+        -e DISPLAY_MODE \
+        -- ralph tests docs \
+        | while IFS= read -r -d '' candidate; do
+            git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- "$candidate"
+        done \
         2>>"$GREP_DIR/scan.err" \
         > "$TRACKED_OUT"
     # Finish untracked enumeration before deciding there are no probes.

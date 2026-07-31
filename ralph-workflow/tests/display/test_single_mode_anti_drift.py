@@ -446,6 +446,14 @@ def test_drift_check_passes_on_the_clean_real_tree_without_raising_its_bound() -
         "measured runs and turned make verify red at verify-drift. Keep the "
         "scan to a single compiled pass per file."
     )
+    assert "git grep -lzIF --threads 8" in script_text, (
+        "the tracked scan must use a fast fixed-string prefilter before the "
+        "precise regex check; the full regex scan exceeded the 2s gate bound"
+    )
+    assert "git grep -lzIF --threads 8" in script_text, (
+        "the tracked scan must use a fast fixed-string prefilter before the "
+        "precise regex check; the full regex scan exceeded the 2s gate bound"
+    )
 
 
 # ---------------------------------------------------------------------------
