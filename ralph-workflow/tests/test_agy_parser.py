@@ -82,6 +82,27 @@ def test_stream_json_step_updates_emit_text_and_stop() -> None:
     assert [(line.type, line.content) for line in parsed] == [("text", "hello"), ("stop", "")]
 
 
+def test_agy_parser_regression_stream_json_transcript_is_not_collapsed() -> None:
+    """S-2: mock stream-json keeps text and correlated tool activity distinct."""
+    parser = AgyParser()
+    lines = [
+        '{"event":"init","conversation_id":"conv-1"}',
+        '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"creating artifact"}}',
+        '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"ACTIVE","tool_info":{"name":"write_to_file"}}}',
+        '{"event":"step_update","step_update":{"step_index":1,"step_type":"tool","state":"DONE","tool_info":{"name":"write_to_file","output":"artifact written"}}}',
+        '{"event":"result","result":{"status":"SUCCESS"}}',
+    ]
+
+    parsed = list(parser.parse(iter(lines)))
+
+    assert [(line.type, line.content) for line in parsed] == [
+        ("text", "creating artifact"),
+        ("tool_use", "write_to_file"),
+        ("tool_result", "artifact written"),
+        ("stop", ""),
+    ]
+
+
 def test_stream_json_subagent_updates_emit_correlated_events() -> None:
     """S-3: tool and subagent updates preserve tool name and call id."""
     parser = AgyParser()
