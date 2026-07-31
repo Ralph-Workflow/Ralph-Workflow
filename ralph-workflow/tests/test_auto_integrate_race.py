@@ -28,6 +28,8 @@ from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
+_NO_INTEGRATION_BACKOFF = {"sleep": lambda _seconds: None, "jitter": lambda: 0.0}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -147,7 +149,7 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(
-        config, scope, RebaseState(), sleep=lambda _seconds: None, jitter=lambda: 0.0
+        config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF
     )
     assert outcome is not None
     assert outcome.fast_forwarded is False, (
@@ -205,7 +207,7 @@ def test_clean_target_worktree_fast_forward_succeeds(tmp_git_repo: Path) -> None
         config = _build_config(tmp_git_repo, target=wt_branch)
         scope = WorkspaceScope(tmp_git_repo)
         outcome = auto_integrate_after_commit(
-            config, scope, RebaseState(), sleep=lambda _seconds: None, jitter=lambda: 0.0
+            config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF
         )
         assert outcome is not None
         # Integration reached the ff phase (rebase replay
@@ -408,8 +410,7 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
             _build_config(tmp_path, target=base),
             WorkspaceScope(tmp_path),
             RebaseState(),
-            sleep=lambda _seconds: None,
-            jitter=lambda: 0.0,
+            **_NO_INTEGRATION_BACKOFF,
         )
     finally:
         logger.remove(sink_id)
@@ -569,7 +570,9 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
         )
         config = _build_config(tmp_git_repo, target=wt_branch)
         scope = WorkspaceScope(tmp_git_repo)
-        outcome = auto_integrate_after_commit(config, scope, RebaseState())
+        outcome = auto_integrate_after_commit(
+            config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF
+        )
         assert outcome is not None
         # The integration rebase replay produced a feature tip that
         # IS a fast-forward of wt_branch; the live worktree's
@@ -635,7 +638,7 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
             f"preflight: worktree must be clean before next-seam test, got {wt_status_clean!r}"
         )
         outcome_clean = auto_integrate_after_commit(
-            config, scope, RebaseState(), sleep=lambda _seconds: None, jitter=lambda: 0.0
+            config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF
         )
         assert outcome_clean is not None
         assert outcome_clean.fast_forwarded is True, (

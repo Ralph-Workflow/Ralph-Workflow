@@ -31,6 +31,8 @@ from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
+_NO_INTEGRATION_BACKOFF = {"sleep": lambda _seconds: None, "jitter": lambda: 0.0}
+
 
 def _run(repo_root: Path, *args: str, timeout: float = 15.0) -> subprocess.CompletedProcess[str]:
     """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
@@ -119,6 +121,7 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
         _build_config(base),
         WorkspaceScope(tmp_git_repo),
         RebaseState(),
+        **_NO_INTEGRATION_BACKOFF,
     )
     assert outcome is not None, (
         "rung-4 condition must surface a recorded skip, "
@@ -138,6 +141,7 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
         _build_config(base),
         WorkspaceScope(tmp_git_repo),
         RebaseState(),
+        **_NO_INTEGRATION_BACKOFF,
     )
     assert outcome_second is not None, (
         "after clearing rung-4 the next seam must produce a "

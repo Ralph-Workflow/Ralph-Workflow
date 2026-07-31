@@ -197,14 +197,17 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    # 100ms is the minimum sleep needed for the spawned child subprocess to
-    # be reliably visible via psutil on macOS; the previous 300ms value left
-    # no headroom under the 1.0s per-test timeout once psutil's tree walk and
-    # the teardown were accounted for.
-    time.sleep(0.1)
-    try:
-        host_proc = psutil.Process(host.pid)
+    # Poll for the child instead of a fixed sleep so healthy machines finish
+    # well under the 1.0s per-test budget while slow hosts still wait briefly.
+    deadline = time.monotonic() + 0.5
+    children: list[psutil.Process] = []
+    host_proc = psutil.Process(host.pid)
+    while time.monotonic() < deadline:
         children = host_proc.children(recursive=False)
+        if children:
+            break
+        time.sleep(0.01)
+    try:
         assert len(children) >= 1
         child_pid = children[0].pid
 
@@ -257,10 +260,17 @@ def test_teardown_reaps_nested_subagents() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.3)
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        try:
+            if psutil.Process(host.pid).children(recursive=False):
+                break
+        except psutil.Error:
+            pass
+        time.sleep(0.01)
     assert host.poll() is None
 
-    DefaultProcessTeardown(kill_escalation_ms=300.0).teardown_subtree(host.pid)
+    DefaultProcessTeardown(kill_escalation_ms=200.0).teardown_subtree(host.pid)
 
     for _ in range(30):
         if host.poll() is not None:

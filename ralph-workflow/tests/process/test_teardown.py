@@ -14,6 +14,28 @@ from ralph.process.teardown import DefaultProcessTeardown, verified_child_sessio
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
+def _wait_for_descendants(
+    host: subprocess.Popen[bytes],
+    *,
+    min_count: int = 1,
+    timeout: float = 0.5,
+) -> list[psutil.Process]:
+    """Poll until nested children exist instead of sleeping a fixed delay."""
+    deadline = time.monotonic() + timeout
+    last: list[psutil.Process] = []
+    while time.monotonic() < deadline:
+        if host.poll() is not None:
+            break
+        try:
+            last = psutil.Process(host.pid).children(recursive=True)
+        except psutil.Error:
+            last = []
+        if len(last) >= min_count:
+            return last
+        time.sleep(0.01)
+    return last
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_teardown_subtree_reaps_nested_children() -> None:
     """DefaultProcessTeardown kills the host and all descendants transitively."""
@@ -37,16 +59,12 @@ def test_teardown_subtree_reaps_nested_children() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.4)
+    children = _wait_for_descendants(host, min_count=2)
     assert host.poll() is None
-
-    # Verify both child and grandchild exist before teardown.
-    host_proc = psutil.Process(host.pid)
-    children = host_proc.children(recursive=True)
     assert len(children) >= 2, f"expected nested descendants, got {len(children)}"
     child_pids = {p.pid for p in children}
 
-    teardown = DefaultProcessTeardown(kill_escalation_ms=500.0)
+    teardown = DefaultProcessTeardown(kill_escalation_ms=200.0)
     teardown.teardown_subtree(host.pid)
 
     for _ in range(40):
@@ -102,11 +120,8 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-    time.sleep(0.4)
+    children = _wait_for_descendants(host, min_count=1)
     assert host.poll() is None
-
-    host_proc = psutil.Process(host.pid)
-    children = host_proc.children(recursive=True)
     assert len(children) >= 1, f"expected at least one descendant, got {len(children)}"
     child_pid = children[0].pid
 
@@ -123,7 +138,7 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
 
     # Now teardown_subtree cannot enumerate via psutil, but it should fall
     # back to signaling the host's process group and reap the child.
-    teardown = DefaultProcessTeardown(kill_escalation_ms=500.0)
+    teardown = DefaultProcessTeardown(kill_escalation_ms=200.0)
     teardown.teardown_subtree(host.pid, pgid=host_pgid)
 
     for _ in range(40):

@@ -408,6 +408,60 @@ def test_write_dev_launcher_creates_executable_script(tmp_path: Path) -> None:
     assert os.access(target, os.X_OK), "launcher must be executable"
 
 
+_PLAIN_RALPH_BOOTSTRAP_SCRIPT = """\
+import subprocess
+import sys
+from pathlib import Path
+
+from ralph.config.loader import load_config
+from ralph.policy.loader import load_policy
+from ralph.workspace.scope import WorkspaceScope
+
+plain = subprocess.run(
+    [sys.executable, "-m", "ralph"],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+print(f"PLAIN_RC={plain.returncode}")
+print("---PLAIN_STDOUT---")
+print(plain.stdout, end="")
+print("---PLAIN_STDERR---")
+print(plain.stderr, end="")
+
+scope = WorkspaceScope(Path.cwd())
+cfg = load_config(workspace_scope=scope)
+bundle = load_policy(Path.cwd() / ".agent", config=cfg)
+print("---DRAINS---")
+print(sorted(bundle.agents.agent_drains))
+"""
+
+
+def _parse_plain_ralph_bootstrap_output(combined: subprocess.CompletedProcess[str]) -> None:
+    assert combined.returncode == 0, combined.stderr or combined.stdout
+    text = combined.stdout
+    rc_line, _, rest = text.partition("\n")
+    assert rc_line.startswith("PLAIN_RC="), text
+    assert rc_line.removeprefix("PLAIN_RC=") == "2", text
+    assert "---PLAIN_STDOUT---" in rest, text
+    stdout_part, _, tail = rest.partition("---PLAIN_STDOUT---")
+    del stdout_part
+    plain_stdout, _, tail = tail.partition("---PLAIN_STDERR---")
+    plain_stderr, _, drains_part = tail.partition("---DRAINS---")
+    assert "not initialized" in plain_stdout.lower(), plain_stdout
+    assert "Preflight error:" not in plain_stdout, plain_stdout
+    assert "unbound drains" not in plain_stdout, plain_stdout
+    assert "unbound drains" not in plain_stderr, plain_stderr
+    for drain in (
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_analysis",
+        "development_commit",
+    ):
+        assert drain in drains_part, drains_part
+
+
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
 def test_installed_wheel_plain_ralph_bootstraps_without_unbound_drain_failure(
@@ -425,38 +479,12 @@ def test_installed_wheel_plain_ralph_bootstraps_without_unbound_drain_failure(
     env["XDG_CONFIG_HOME"] = str(xdg)
     env["HOME"] = str(home)
 
-    plain = _run_subprocess((str(installed_wheel_python), "-m", "ralph"), cwd=project, env=env)
-    assert plain.returncode == 2, plain.stderr or plain.stdout
-    assert "not initialized" in plain.stdout.lower(), plain.stdout
-    assert "Preflight error:" not in plain.stdout, plain.stdout
-    assert "unbound drains" not in plain.stdout, plain.stdout
-    assert "unbound drains" not in plain.stderr, plain.stderr
-
-    load = _run_subprocess(
-        (
-            str(installed_wheel_python),
-            "-c",
-            "from pathlib import Path; "
-            "from ralph.config.loader import load_config; "
-            "from ralph.policy.loader import load_policy; "
-            "from ralph.workspace.scope import WorkspaceScope; "
-            "scope = WorkspaceScope(Path.cwd()); "
-            "cfg = load_config(workspace_scope=scope); "
-            "bundle = load_policy(Path.cwd() / '.agent', config=cfg); "
-            "print(sorted(bundle.agents.agent_drains))",
-        ),
+    combined = _run_subprocess(
+        (str(installed_wheel_python), "-c", _PLAIN_RALPH_BOOTSTRAP_SCRIPT),
         cwd=project,
         env=env,
     )
-    assert load.returncode == 0, load.stderr or load.stdout
-    for drain in (
-        "planning",
-        "planning_analysis",
-        "development",
-        "development_analysis",
-        "development_commit",
-    ):
-        assert drain in load.stdout, load.stdout
+    _parse_plain_ralph_bootstrap_output(combined)
 
 
 @pytest.mark.subprocess_e2e
@@ -479,11 +507,12 @@ def test_installed_wheel_migrates_legacy_global_config_before_plain_ralph(
     env["XDG_CONFIG_HOME"] = str(xdg)
     env["HOME"] = str(home)
 
-    plain = _run_subprocess((str(installed_wheel_python), "-m", "ralph"), cwd=project, env=env)
-    assert plain.returncode == 2, plain.stderr or plain.stdout
-    assert "not initialized" in plain.stdout.lower(), plain.stdout
-    assert "unbound drains" not in plain.stdout, plain.stdout
-    assert "unbound drains" not in plain.stderr, plain.stderr
+    combined = _run_subprocess(
+        (str(installed_wheel_python), "-c", _PLAIN_RALPH_BOOTSTRAP_SCRIPT),
+        cwd=project,
+        env=env,
+    )
+    _parse_plain_ralph_bootstrap_output(combined)
 
     migrated = config_path.read_text(encoding="utf-8")
     for line in (

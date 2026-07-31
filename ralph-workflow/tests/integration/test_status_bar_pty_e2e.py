@@ -28,8 +28,8 @@ The probes exercise the EXACT same production code path as
 - They sleep briefly so the Live region's refresh thread emits frames.
 
 This means the test pins the production entry point end-to-end
-without paying the agent-invocation latency. The 60 s per-test
-timeout (``@pytest.mark.timeout_seconds(60)``) is enforced so the
+without paying the agent-invocation latency. The 5 s per-test
+timeout (``@pytest.mark.timeout_seconds(5)``) is enforced so the
 test cannot run past the budget even if a probe stalls.
 
 Six assertions across four tests:
@@ -50,7 +50,7 @@ Six assertions across four tests:
 
 The tests are marked ``subprocess_e2e`` (loads via existing
 pytest.ini registration) AND ``integration`` (loads via existing
-pytest.ini registration) AND ``timeout_seconds(60)`` so the test is
+pytest.ini registration) AND ``timeout_seconds(5)`` so the test is
 excluded from ``make test`` (which uses
 ``-m 'not subprocess_e2e and not smoke'``) AND so the per-test
 timeout caps the wall-clock budget. The captured stream is stored in
@@ -79,6 +79,7 @@ import subprocess
 import tempfile
 import termios
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -86,8 +87,8 @@ import pytest
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.integration]
 
 _READ_CHUNK_SIZE = 4096
-_TIMEOUT_SECONDS = 10.0
-_POLL_INTERVAL = 0.05
+_TIMEOUT_SECONDS = 3.0
+_POLL_INTERVAL = 0.02
 _PTY_COLS = 120
 _PTY_ROWS = 40
 
@@ -97,7 +98,7 @@ _ANSI_ESCAPE_RE = re.compile(
     r"|\x1b[=>78]"
 )
 
-_PROBE_BODY_TEMPLATE = """\
+_PROBE_POLL_BODY_TEMPLATE = """\
 import time
 import sys
 from ralph.display.context import make_display_context
@@ -116,7 +117,9 @@ pd.update_status_bar(StatusBarModel(
     inner_analysis_cap={inner_analysis_cap!r},
 ))
 with pd:
-    time.sleep({sleep_seconds})
+    deadline = time.monotonic() + {max_wait_seconds}
+    while time.monotonic() < deadline:
+        time.sleep({poll_interval})
 sys.stdout.write('CHILD_DONE\\n')
 sys.stdout.flush()
 """
@@ -131,9 +134,10 @@ def _render_probe(
     outer_dev_cap: int | None = None,
     inner_analysis: int | None = None,
     inner_analysis_cap: int | None = None,
-    sleep_seconds: float = 0.8,
+    max_wait_seconds: float = 0.2,
+    poll_interval: float = _POLL_INTERVAL,
 ) -> str:
-    return _PROBE_BODY_TEMPLATE.format(
+    return _PROBE_POLL_BODY_TEMPLATE.format(
         workspace_root=workspace_root,
         phase_label=phase_label,
         phase_style=phase_style,
@@ -141,8 +145,35 @@ def _render_probe(
         outer_dev_cap=outer_dev_cap,
         inner_analysis=inner_analysis,
         inner_analysis_cap=inner_analysis_cap,
-        sleep_seconds=sleep_seconds,
+        max_wait_seconds=max_wait_seconds,
+        poll_interval=poll_interval,
     )
+
+
+def _pty_child_env(
+    *,
+    ralph_workflow_root: Path,
+    allow_color: bool = True,
+) -> dict[str, str]:
+    """Build child env for PTY / pipe probes.
+
+    ``NO_COLOR`` forces ``make_display_context`` onto the
+    ``force_terminal=False`` path, which closes the Status Bar
+    real-TTY gate even inside a real PTY. Strip it for TTY probes so
+    they exercise the same auto-detect path production uses on a TTY.
+
+    Non-TTY pipe probes keep ``NO_COLOR=1`` so Rich.Live does not try
+    to open a refresh thread against a pipe (which can hang the child).
+    """
+    child_env = dict(os.environ)
+    if allow_color:
+        child_env.pop("NO_COLOR", None)
+    else:
+        child_env["NO_COLOR"] = "1"
+    child_env["TERM"] = "xterm-256color"
+    child_env["PYTHONUNBUFFERED"] = "1"
+    child_env["PYTHONPATH"] = str(ralph_workflow_root)
+    return child_env
 
 
 def _set_winsize(fd: int, *, rows: int, cols: int) -> None:
@@ -179,14 +210,7 @@ def _spawn_script_in_pty(
             if slave_fd > 2:
                 os.close(slave_fd)
             os.chdir(str(ralph_workflow_root))
-            child_env = dict(os.environ)
-            child_env["TERM"] = "xterm-256color"
-            child_env["PYTHONUNBUFFERED"] = "1"
-            # Force PYTHONPATH to this project's root so the child
-            # imports ``ralph`` from the worktree under test (NOT
-            # from any outer worktree that ``PYTHONPATH`` may
-            # currently point at via the host shell).
-            child_env["PYTHONPATH"] = str(ralph_workflow_root)
+            child_env = _pty_child_env(ralph_workflow_root=ralph_workflow_root)
             os.execvpe(
                 str(python_executable),
                 [str(python_executable), str(script_path)],
@@ -198,8 +222,13 @@ def _spawn_script_in_pty(
     return master_fd, pid
 
 
-def _read_until_eof_or_deadline(master_fd: int, deadline: float) -> collections.deque[bytes]:
-    """Read chunks from master_fd until EOF or deadline.
+def _read_until_eof_or_deadline(
+    master_fd: int,
+    deadline: float,
+    *,
+    stop_when: Callable[[bytes], bool] | None = None,
+) -> collections.deque[bytes]:
+    """Read chunks from master_fd until EOF, deadline, or ``stop_when``.
 
     bounded-accumulator-ok: 200KB cap on captured PTY bytes
     """
@@ -207,6 +236,8 @@ def _read_until_eof_or_deadline(master_fd: int, deadline: float) -> collections.
     while True:
         now = time.monotonic()
         if now >= deadline:
+            break
+        if stop_when is not None and stop_when(b"".join(buffer)):
             break
         try:
             readable, _, _ = select.select([master_fd], [], [], min(deadline - now, _POLL_INTERVAL))
@@ -221,6 +252,8 @@ def _read_until_eof_or_deadline(master_fd: int, deadline: float) -> collections.
         if not chunk:
             break
         buffer.append(chunk)
+        if stop_when is not None and stop_when(b"".join(buffer)):
+            break
     return buffer
 
 
@@ -278,7 +311,7 @@ def workspace_root_basename(ralph_workflow_root: Path) -> str:
     return ralph_workflow_root.name
 
 
-@pytest.mark.timeout_seconds(60)
+@pytest.mark.timeout_seconds(5)
 def test_status_bar_pty_renders_workspace_phase_and_omits_dash_placeholder(
     ralph_workflow_root: Path,
     python_executable: Path,
@@ -314,7 +347,6 @@ def test_status_bar_pty_renders_workspace_phase_and_omits_dash_placeholder(
         outer_dev_cap=None,
         inner_analysis=None,
         inner_analysis_cap=None,
-        sleep_seconds=0.8,
     )
     probe_path = _write_probe_script(probe_body)
     try:
@@ -325,7 +357,9 @@ def test_status_bar_pty_renders_workspace_phase_and_omits_dash_placeholder(
         )
         try:
             buffer = _read_until_eof_or_deadline(
-                master_fd, deadline=time.monotonic() + _TIMEOUT_SECONDS
+                master_fd,
+                deadline=time.monotonic() + _TIMEOUT_SECONDS,
+                stop_when=lambda raw: b"CHILD_DONE" in raw,
             )
         finally:
             with contextlib.suppress(OSError):
@@ -394,7 +428,7 @@ def test_status_bar_pty_renders_workspace_phase_and_omits_dash_placeholder(
     )
 
 
-@pytest.mark.timeout_seconds(60)
+@pytest.mark.timeout_seconds(5)
 def test_status_bar_pty_console_is_terminal_true_in_real_tty(
     ralph_workflow_root: Path,
     python_executable: Path,
@@ -429,7 +463,11 @@ def test_status_bar_pty_console_is_terminal_true_in_real_tty(
             python_executable=python_executable,
         )
         try:
-            buffer = _read_until_eof_or_deadline(master_fd, deadline=time.monotonic() + 8.0)
+            buffer = _read_until_eof_or_deadline(
+                master_fd,
+                deadline=time.monotonic() + 3.0,
+                stop_when=lambda raw: b"DONE" in raw,
+            )
         finally:
             with contextlib.suppress(OSError):
                 os.close(master_fd)
@@ -460,7 +498,7 @@ def test_status_bar_pty_console_is_terminal_true_in_real_tty(
     )
 
 
-@pytest.mark.timeout_seconds(60)
+@pytest.mark.timeout_seconds(5)
 def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     ralph_workflow_root: Path,
     python_executable: Path,
@@ -479,8 +517,16 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
         outer_dev_cap=3,
         inner_analysis=None,
         inner_analysis_cap=None,
-        sleep_seconds=0.8,
     )
+    dev_iter_patterns = (
+        r"Cycle\s+\d+/\d+",
+        r"C\s+\d+/\d+",
+    )
+
+    def _cycle_label_visible(raw: bytes) -> bool:
+        stripped_probe = _ANSI_ESCAPE_RE.sub("", raw.decode("utf-8", errors="replace"))
+        return any(re.search(pat, stripped_probe) for pat in dev_iter_patterns)
+
     probe_path = _write_probe_script(probe_body)
     try:
         master_fd, child_pid = _spawn_script_in_pty(
@@ -490,7 +536,9 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
         )
         try:
             buffer = _read_until_eof_or_deadline(
-                master_fd, deadline=time.monotonic() + _TIMEOUT_SECONDS
+                master_fd,
+                deadline=time.monotonic() + _TIMEOUT_SECONDS,
+                stop_when=lambda raw: b"CHILD_DONE" in raw or _cycle_label_visible(raw),
             )
         finally:
             with contextlib.suppress(OSError):
@@ -504,10 +552,6 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     stream_text = raw_bytes.decode("utf-8", errors="replace")
     stripped = _ANSI_ESCAPE_RE.sub("", stream_text)
 
-    dev_iter_patterns = (
-        r"Cycle\s+\d+/\d+",
-        r"C\s+\d+/\d+",
-    )
     assert any(re.search(pat, stripped) for pat in dev_iter_patterns), (
         f"AC-03: outer-dev iteration label 'Cycle 1/3' (or compact "
         f"'C1/3') must appear in the captured PTY stream when "
@@ -516,7 +560,7 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     )
 
 
-@pytest.mark.timeout_seconds(60)
+@pytest.mark.timeout_seconds(5)
 def test_status_bar_pty_non_tty_subprocess_pipe_suppresses_live(
     ralph_workflow_root: Path,
     python_executable: Path,
@@ -536,19 +580,15 @@ def test_status_bar_pty_non_tty_subprocess_pipe_suppresses_live(
         outer_dev_cap=3,
         inner_analysis=2,
         inner_analysis_cap=5,
-        sleep_seconds=0.8,
     )
     probe_path = _write_probe_script(probe_body)
     try:
         pipe_proc = subprocess.run(
             [str(python_executable), str(probe_path)],
             cwd=str(ralph_workflow_root),
-            env={
-                **os.environ,
-                "TERM": "xterm-256color",
-                "PYTHONUNBUFFERED": "1",
-                "PYTHONPATH": str(ralph_workflow_root),
-            },
+            env=_pty_child_env(
+                ralph_workflow_root=ralph_workflow_root, allow_color=False
+            ),
             capture_output=True,
             timeout=_TIMEOUT_SECONDS,
             check=False,

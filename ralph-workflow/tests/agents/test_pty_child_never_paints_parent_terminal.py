@@ -91,8 +91,8 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
         sys.stdout.write('child_sid=' + str(os.getsid(0)) + chr(10))
         sys.stdout.flush()
         # Brief keep-alive so the parent's master_fd read sees both lines;
-        # 0.2s is comfortably under the 1.0s per-test SIGALRM cap.
-        time.sleep(0.2)
+        # keep well under the 1.0s per-test SIGALRM cap.
+        time.sleep(0.05)
         """
     )
     command = [sys.executable, "-c", script]

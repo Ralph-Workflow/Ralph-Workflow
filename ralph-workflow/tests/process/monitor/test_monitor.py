@@ -20,6 +20,29 @@ from ralph.process.monitor import (
 pytestmark = pytest.mark.subprocess_e2e
 
 
+def _wait_for_descendants(
+    host: subprocess.Popen[bytes],
+    *,
+    min_count: int = 1,
+    recursive: bool = False,
+    timeout: float = 0.5,
+) -> list[psutil.Process]:
+    """Poll until the host has enough children instead of sleeping a fixed delay."""
+    deadline = time.monotonic() + timeout
+    last: list[psutil.Process] = []
+    while time.monotonic() < deadline:
+        if host.poll() is not None:
+            break
+        try:
+            last = psutil.Process(host.pid).children(recursive=recursive)
+        except psutil.Error:
+            last = []
+        if len(last) >= min_count:
+            return last
+        time.sleep(0.01)
+    return last
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="psutil cross-platform tests")
 def test_default_monitor_default_classifier_is_conservative() -> None:
     """Without an injected role_classifier, no descendant is promoted to subagent.
@@ -41,7 +64,7 @@ def test_default_monitor_default_classifier_is_conservative() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.3)
+    assert _wait_for_descendants(host, min_count=1), "host child did not appear"
 
     try:
         monitor = DefaultProcessMonitor(host.pid, poll_interval_seconds=0.0)
@@ -71,7 +94,7 @@ def test_default_monitor_classifies_subagent_with_injected_classifier() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.3)
+    assert _wait_for_descendants(host, min_count=1), "host child did not appear"
 
     try:
         monitor_with_role = DefaultProcessMonitor(
@@ -106,7 +129,7 @@ def test_default_monitor_includes_host_classification() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.3)
+    assert _wait_for_descendants(host, min_count=1), "host child did not appear"
 
     try:
         monitor = DefaultProcessMonitor(
@@ -193,13 +216,11 @@ def test_default_monitor_classifies_subagent_via_child_liveness_registry() -> No
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.3)
+    children = _wait_for_descendants(host, min_count=1, recursive=False)
+    assert len(children) >= 1, "host should have spawned at least one child"
 
     try:
         # Find the real child PID spawned by host_script.
-        host_proc = psutil.Process(host.pid)
-        children = host_proc.children(recursive=False)
-        assert len(children) >= 1, "host should have spawned at least one child"
         child_pid = children[0].pid
 
         registry = ChildLivenessRegistry(
