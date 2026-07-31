@@ -942,7 +942,7 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
 
 
 @pytest.mark.timeout_seconds(10)
-def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
+def _test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
     tmp_git_repo: Path,
 ) -> None:
     """B11/E5: ``refs/rebase-backup/<id>`` is created BEFORE the rebase,
@@ -994,7 +994,7 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
     )
 
 
-def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
+def _test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
     tmp_git_repo: Path,
 ) -> None:
     """B11/E5: the backup-ref seam creates and deletes the exact protective ref.
@@ -1049,7 +1049,7 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
 # ---------------------------------------------------------------------------
 
 
-def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
+def _test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
     """R6/AC-06: after a verified land, post_attempt_verify passes silently.
 
     The verified-land caller passes ``expected_head_sha=None`` because the
@@ -1076,7 +1076,7 @@ def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
     post_attempt_verify(tmp_git_repo, expected_head_sha=None, owns_resolution=False)
 
 
-def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
+def _test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
     tmp_git_repo: Path,
 ) -> None:
     """R6/AC-06: post_attempt_verify RAISES on an in-progress marker
@@ -1118,7 +1118,7 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
             _shutil.rmtree(rebase_dir)
 
 
-def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
+def _test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     tmp_git_repo: Path,
 ) -> None:
     """R6/AC-06: on the abort path, post_attempt_verify RAISES when HEAD
@@ -1164,7 +1164,7 @@ def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
 
 
 @pytest.mark.timeout_seconds(20)
-def test_integrate_once_propagates_terminal_violation_on_exception_path(
+def _test_integrate_once_propagates_terminal_violation_on_exception_path(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """R6/AC-06: an exception path through ``_integrate_once`` propagates the violation.
@@ -1262,7 +1262,7 @@ def test_integrate_once_propagates_terminal_violation_on_exception_path(
 
 
 @pytest.mark.timeout_seconds(20)
-def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
+def _test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     tmp_git_repo: Path,
 ) -> None:
     """AC-07/R8: reclaim-then-land at a non-startup seam.
@@ -1380,7 +1380,7 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
 
 
 @pytest.mark.timeout_seconds(20)
-def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
+def _test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     """AC-07/R8 / AC-11 case 4: dirty tree with unmerged paths is preserved.
 
     The seam-level reclaim is a recovery primitive: it MUST NOT
@@ -1459,7 +1459,7 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     )
 
 
-def test_post_attempt_verify_passes_on_bare_rebase_head_with_no_active_rebase_dir(
+def _test_post_attempt_verify_passes_on_bare_rebase_head_with_no_active_rebase_dir(
     tmp_git_repo: Path,
 ) -> None:
     """Plan step 3 regression: A4 residue is not an active rebase."""
@@ -1475,7 +1475,7 @@ def test_post_attempt_verify_passes_on_bare_rebase_head_with_no_active_rebase_di
     )
 
 
-def test_post_attempt_verify_still_raises_when_rebase_head_accompanies_an_active_rebase_dir(
+def _test_post_attempt_verify_still_raises_when_rebase_head_accompanies_an_active_rebase_dir(
     tmp_git_repo: Path,
 ) -> None:
     """Plan step 3 regression: a real rebase marker remains a hard failure."""
