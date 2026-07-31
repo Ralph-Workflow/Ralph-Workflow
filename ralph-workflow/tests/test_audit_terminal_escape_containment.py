@@ -495,6 +495,7 @@ def test_audit_blocks_regression_when_a_new_spawn_options_call_passes_stdin_none
     assert "stdin=None" in captured.out
 
 
+@pytest.mark.timeout_seconds(5)
 def test_audit_blocks_regression_when_logging_configure_logging_drops_console_sink(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
