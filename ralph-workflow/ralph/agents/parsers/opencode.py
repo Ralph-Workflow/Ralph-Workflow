@@ -264,6 +264,35 @@ class OpenCodeParser(NdjsonParserBase):
         self._stream_counter = 0
         self._dispatcher = _OpenCodeDispatch(self)
 
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
+        """Handle OpenCode framing while keeping it out of visible output."""
+        if event_type == "step_start":
+            step_id = obj.get("id")
+            if not isinstance(step_id, str):
+                part = obj.get("part")
+                step_id = part.get("id") if isinstance(part, dict) else None
+            if isinstance(step_id, str) and step_id:
+                self._current_part_id = step_id
+        elif event_type in {"step_finish", "done"}:
+            return self._flush_lifecycle(event_type)
+        return iter(())
+
+    def _flush_lifecycle(self, event_type: str) -> Iterator[AgentOutputLine]:
+        """Flush pending text and emit stop only for OpenCode's terminal event."""
+        if event_type == "step_finish":
+            current = self._current_part_id
+            if current and current in self._accumulators:
+                yield from self._dispatcher._flush_accumulator(current)
+            self._current_part_id = None
+            return
+        yield from self.flush_accumulators()
+        self._current_part_id = None
+        yield AgentOutputLine(type="stop", raw=event_type, metadata={"type": event_type})
+
     def _dispatch_json_object(
         self,
         obj: dict[str, object],

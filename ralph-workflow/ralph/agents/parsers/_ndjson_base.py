@@ -290,7 +290,7 @@ class NdjsonParserBase(ParserTemplateBase):
             return stripped[5:].strip()
         return stripped
 
-    def _classify_after_strip(self, stripped: str) -> Iterator[AgentOutputLine]:
+    def _classify_after_strip(self, stripped: str) -> Iterator[AgentOutputLine]:  # noqa: PLR0911
         """Dispatch the already-stripped line through the NDJSON state machine."""
         if stripped == "[DONE]":
             yield AgentOutputLine(type="stop", raw=stripped)
@@ -336,8 +336,27 @@ class NdjsonParserBase(ParserTemplateBase):
             return
 
         event_type = str(obj.get("type", ""))
+        if (
+            event_type == "content_block_start"
+            and isinstance(obj.get("content_block"), dict)
+        ):
+            # Claude's stream events use this framing marker for tool calls;
+            # it is lifecycle only when it contains no content block.
+            yield from self._dispatch_with_timestamp(
+                obj, stripped, source_timestamp, None
+            )
+            return
         if event_type and is_lifecycle_event(event_type):
             lifecycle_result = self._handle_lifecycle_event(obj, event_type)
+            # A subclass may explicitly handle a lifecycle event (for
+            # example OpenCode uses step_finish to flush text). The default
+            # is suppression; never dispatch an unhandled lifecycle marker as
+            # a visible raw event.
+            if lifecycle_result is None:
+                yield from self._dispatch_with_timestamp(
+                    obj, stripped, source_timestamp, None
+                )
+                return
             yield from self._dispatch_with_timestamp(
                 obj,
                 stripped,

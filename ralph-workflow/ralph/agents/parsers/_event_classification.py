@@ -64,6 +64,13 @@ LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
         "user",
         "assistant",
         "thinking",
+        # OpenCode's JSON stream uses these as step/message framing events;
+        # they are parser-owned lifecycle markers rather than user-visible
+        # output. In particular, ``step_finish`` must reach the OpenCode
+        # parser only when an accumulator needs flushing, not as a raw event.
+        "step_start",
+        "step_finish",
+        "done",
     }
 )
 
