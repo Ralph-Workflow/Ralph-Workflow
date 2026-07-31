@@ -6,8 +6,6 @@ import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from ralph.testing import audit_agent_module_state as audit_mod
 from ralph.testing.audit_agent_module_state import (
     _FORBIDDEN_NAME_PREFIXES,

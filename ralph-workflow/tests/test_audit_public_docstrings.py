@@ -29,11 +29,14 @@ These tests pin:
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.testing import audit_public_docstrings as audit_module
 from ralph.testing.audit_public_docstrings import main
+
+if TYPE_CHECKING:
+    import pytest
+
 
 def _write(tmp_path: Path, rel: str, body: str) -> Path:
     """Write a file at ``tmp_path / rel`` with the given body and return the path."""

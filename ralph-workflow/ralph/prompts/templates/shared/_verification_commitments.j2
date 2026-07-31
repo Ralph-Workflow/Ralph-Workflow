@@ -6,4 +6,4 @@ Prevent an extra pass first; within a pass, the cost of proving the change is th
 
 The four commitments are: **fast path first**, **a slow gate is a defect**, **do not leave the loop slower**, and **checks answer consistently**. Use the project's policy when it is authoritative: honour its gate and report its cost rather than routing around it. No change is done until the full gate passes.
 
-Phase order, wait permissions, and phase-granted capabilities are workflow-owned constraints; follow the runtime surface that supplies them.
+Phase order, wait permissions, and phase-granted capabilities are workflow-owned constraints; follow the runtime surface that supplies them. Workflow machinery outside these surfaces sets per-phase thinking, capability, and spending settings; report them alongside phase time when the runtime exposes them. The run-time report separates agent-controlled from imposed time when the runtime can classify it.

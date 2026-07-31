@@ -19,6 +19,12 @@ per-step timeouts (see `ralph/verify.py:_VERIFY_STEPS` /
 
 ## Default requirements
 
+A run is judged on **time to a correct, verified change**; speed never permits partial proof.
+
+Prevent an extra pass first; within a pass, the cost of proving the change is the largest term; where they conflict, avoid the extra pass.
+
+The four commitments are: **fast path first**, **a slow gate is a defect**, **do not leave the loop slower**, and **checks answer consistently**. Non-compliance is a defect: fix it within the requested run when that fits its budget, or raise it to an owner who can act.
+
 * A single authoritative verification entry point MUST exist (`make
   verify` invoked from `ralph-workflow/`). Its declared gate list MUST
   match the `_VERIFY_STEPS` tuple in `ralph/verify.py` exactly; a

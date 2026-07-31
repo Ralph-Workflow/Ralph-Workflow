@@ -28,8 +28,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from ralph.testing.audit_resource_lifecycle import (
     ResourceLifecycleViolation,
     _default_roots,
