@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
 import time
@@ -67,10 +68,8 @@ def test_teardown_subtree_reaps_nested_children() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=10.0)
     teardown.teardown_subtree(host.pid)
 
-    for _ in range(100):
-        if host.poll() is not None:
-            break
-        time.sleep(0.01)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        host.wait(timeout=0.5)
     assert host.poll() is not None
 
     # Confirm no descendants survived.
@@ -141,7 +140,8 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     teardown = DefaultProcessTeardown(kill_escalation_ms=10.0)
     teardown.teardown_subtree(host.pid, pgid=host_pgid)
 
-    for _ in range(100):
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
         try:
             psutil.Process(child_pid)
         except psutil.NoSuchProcess:

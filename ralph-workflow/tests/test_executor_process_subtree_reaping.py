@@ -36,7 +36,7 @@ from ralph.executor.process import TIMEOUT_EXIT_CODE, run_process
 # to PID 1), so a fake clock / fake subprocess cannot stand in
 # for the system under test. Wall-clock and sleep() are part
 # of the contract.
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 # A grandchild that outlives its parent: the parent forks it, prints its PID,
 # and exits immediately. Nothing but a transitive reaper reaches it.
@@ -81,7 +81,7 @@ def _wait_gone(pid: int, timeout: float = 0.4) -> bool:
     while time.monotonic() < deadline:
         if not _alive(pid):
             return True
-        time.sleep(0.02)
+        time.sleep(0.01)
     return not _alive(pid)
 
 
@@ -92,7 +92,7 @@ def _reap_if_survived(pid: int) -> None:
             os.kill(pid, sig)
         except (ProcessLookupError, PermissionError):
             return
-        time.sleep(0.05)
+        time.sleep(0.01)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-tree semantics")

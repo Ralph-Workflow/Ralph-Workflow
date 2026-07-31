@@ -32,6 +32,9 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
 )
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_on_phase_transition as _auto_integrate_on_phase_transition,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -43,6 +46,13 @@ def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
     kwargs.setdefault("sleep", lambda _seconds: None)
     kwargs.setdefault("jitter", lambda: 0.0)
     return _auto_integrate_after_commit(*args, **kwargs)
+
+
+def auto_integrate_on_phase_transition(*args: Any, **kwargs: Any) -> Any:
+    """Test-only wrapper that skips real CAS backoff sleeps."""
+    kwargs.setdefault("sleep", lambda _seconds: None)
+    kwargs.setdefault("jitter", lambda: 0.0)
+    return _auto_integrate_on_phase_transition(*args, **kwargs)
 
 
 def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
@@ -346,8 +356,6 @@ def test_ff_race_retries_integration_onto_moved_target(
 
 def test_phase_transition_integrates_when_target_moved(tmp_git_repo: Path) -> None:
     """A clean worktree + moved target at a phase boundary re-integrates."""
-    from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
-
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
@@ -389,8 +397,6 @@ def test_phase_transition_records_a_skip_on_a_dirty_worktree(
     The repository must still be byte-identical afterwards: recording a
     diagnostic is not permission to mutate anything.
     """
-    from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
-
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
@@ -417,8 +423,6 @@ def test_phase_transition_silent_when_nothing_to_integrate(
     tmp_git_repo: Path,
 ) -> None:
     """Target at feature tip: the boundary hook does nothing, silently."""
-    from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
-
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     # feature == target tip exactly.

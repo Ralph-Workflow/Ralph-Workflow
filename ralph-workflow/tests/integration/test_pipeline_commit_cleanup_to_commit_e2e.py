@@ -187,7 +187,12 @@ def _default_policy_bundle() -> PolicyBundle:
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig()
+    # These tests prove cleanup→commit, not auto-integrate. Disable
+    # incidental integration so commit seams do not pay real git
+    # rebase/backoff cost under the subprocess_e2e 60s suite budget.
+    return UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": False}}
+    )
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
