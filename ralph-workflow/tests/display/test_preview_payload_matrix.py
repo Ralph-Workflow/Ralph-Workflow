@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -123,8 +124,13 @@ def test_cursor_nested_args_envelope_reaches_preview_payload() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_notebook_edit_uses_the_kernel_lexer_despite_notebook_path() -> None:
-    """DA-001: Notebook cell code follows its declared kernel, not .ipynb guessing."""
+    """DA-001: Notebook cell code follows its declared kernel, not .ipynb guessing.
+
+    Pygments lazily compiles Julia's lexer, which can exceed the default
+    one-second test cap on a cold Python 3.14 worker.
+    """
     for kernel, source, lexer_name in (
         ("python", "1\n", "PythonLexer"),
         ("julia", "f(x) = x + 1\n", "JuliaLexer"),

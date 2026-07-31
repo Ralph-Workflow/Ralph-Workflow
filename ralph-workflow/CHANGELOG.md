@@ -84,6 +84,8 @@ Carries the process-spawn and display fixes below.
 
 - **test(display): replay parser-native captures through the shared presentation path** — Claude, Claude Headless, Claude Interactive, Codex, OpenCode, Pi, Cursor, AGY, Nanocoder, Gemini, and generic/malformed fallback captures now pass through parser, normalizer, live display, and rendered record together. Locked by `tests/display/test_universality_replay.py`.
 
+- **fix(opencode): render bare write/edit/append file tools through the shared preview contract** — OpenCode file activity now joins the existing syntax-highlighted and themed preview path without a transport-specific renderer. OpenCode 1.17.x still emits whole text events rather than stream deltas, and subagent work still arrives as `task` calls rather than `child_*` lifecycle events; both are supported current-runtime behaviors. Locked by `tests/display/test_opencode_preview_parity.py` and `tests/display/test_agent_parity_matrix.py`.
+
 - **fix(display): collapse duplicate pi tool-call aliases into one presentation entry** — parser aliases sharing a tool-call id now emit one shared call entry. Commit `3c7d9ef79`. Locked by `tests/display/test_record_surface_residuals.py` and `tests/display/test_real_corpus_regression.py`.
 
 - **fix(display): route successful tool results through the shared preview seam** — successful result previews use the same accessible syntax and contrast path as tool calls; obsolete result-only syntax code was removed. Commit `854eec941`. Locked by `tests/display/test_edit_preview.py`, `tests/display/test_preview_contrast_sweep.py`, and `tests/display/test_syntax_palette_accessibility.py`.

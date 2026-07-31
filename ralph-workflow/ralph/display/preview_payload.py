@@ -200,8 +200,10 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
         "git_log": "read",
         "exec": "read",
         "write_file": "write",
+        "write": "write",
         "Write": "write",
         "append_file": "append",
+        "append": "append",
         "Append": "append",
         "ralph_stage_md_artifact": "write",
         "ralph_submit_md_artifact": "write",
@@ -218,7 +220,7 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
             if bare != "exec"
             else None
         )
-    if bare in {"edit_file", "Edit", "str_replace", "ralph_edit_md_artifact"}:
+    if bare in {"edit_file", "edit", "Edit", "str_replace", "ralph_edit_md_artifact"}:
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=False))
     if bare == "MultiEdit":
         return _PreviewPayload(path, None, "replace", _edit_hunks(payload, multiple=True))

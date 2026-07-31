@@ -40,6 +40,7 @@ from ralph.display.agent_event_renderer import (
     render_event_kind_text,
 )
 from ralph.display.presented_entry import PresentedEntry, build_presented_entry
+from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.theme import IDENTITY_PALETTE, identity_color
 
 # All agents declared in ralph/agents/builtin.py:61-155 plus the
@@ -402,6 +403,10 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
         # An errored tool surfaces the dispatch BEFORE its error: the call is
         # real and must stay on the tool timeline (see OpenCodeParser).
         ActivityEventKind.TOOL_USE,
+        ActivityEventKind.TOOL_RESULT,
+        ActivityEventKind.TOOL_USE,
+        ActivityEventKind.TOOL_RESULT,
+        ActivityEventKind.TOOL_USE,
         ActivityEventKind.ERROR,
         ActivityEventKind.ERROR,
         ActivityEventKind.TEXT,
@@ -414,9 +419,16 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
     assert entries[0].body.endswith("Inspecting the display.")
     assert entries[5].body == "read"
     assert entries[6].body == "read ok renderer source"
-    assert entries[9].body == "bash"
-    assert entries[10].body == "exit status 1"
-    assert entries[11].body == "upstream disconnected"
+    assert entries[9].body == "write"
+    assert entries[11].body == "edit"
+    assert entries[13].body == "bash"
+    assert entries[14].body == "exit status 1"
+    assert entries[15].body == "upstream disconnected"
+    write_preview = payload_from_tool_event("write", events[9].metadata)
+    edit_preview = payload_from_tool_event("edit", events[11].metadata)
+    assert write_preview is not None and write_preview.path == "ralph/display/example.py"
+    assert edit_preview is not None and edit_preview.path == "ralph/display/example.py"
+    assert edit_preview.hunks and edit_preview.hunks[0].new_text == "value = 2"
 
 
 def _replay_fixture_through_parallel_display(
