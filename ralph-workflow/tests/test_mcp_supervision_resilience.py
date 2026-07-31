@@ -245,6 +245,9 @@ def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
     attempts: list[int] = []
 
     def always_failing_probe(endpoint: str, timeout: timedelta) -> None:
+        del endpoint, timeout
+        if second_restart_reached.is_set():
+            return
         msg = "probe timed out"
         raise TimeoutError(msg)
 
