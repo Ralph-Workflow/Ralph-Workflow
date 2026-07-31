@@ -2,9 +2,11 @@
 
 > **New to Ralph Workflow?** See [Getting Started](getting-started.md) first if you want the setup flow before the terminology.
 
-This page explains the terms and mental models you will see most often when running Ralph Workflow. The original six concept pages were merged into this single home so each topic lives in exactly one place.
+This page explains the terms and mental models you will see most often when running Ralph Workflow.
 
 ## The simplest mental model
+
+The core Ralph loop is **plan → build → verify → fix**; see [Ralph loop](#ralph-loop) for the deeper explanation.
 
 A normal run looks like this:
 

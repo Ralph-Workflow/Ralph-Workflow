@@ -18,12 +18,6 @@ or repos without tests or other guardrails.
 For the shortest honest first run — install, diagnose, one focused task,
 and what success looks like — open [`START_HERE.md`](START_HERE.md).
 
-In short: `pipx install ralph-workflow` (or `pip install
-ralph-workflow`), then in a real git repo run `ralph --init`,
-`ralph --diagnose`, replace the starter `PROMPT.md`, and run `ralph`.
-When it finishes, read the summary of what changed and which checks
-passed, then verify the feature yourself.
-
 The fuller tutorial is
 [`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
 The full operator manual lives under
