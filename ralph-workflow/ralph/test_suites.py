@@ -64,20 +64,18 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Sixteen concurrent
+# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Eight concurrent
 # pytest processes keep the required real-git E2E profile below the immutable
-# 60-second budget on the maintained runner; twelve shards leave one heavy shard
-# past the deadline. Operators may still explicitly override ``PYTEST_WORKERS``
-# for a measured environment.
-#
-# This is a concurrency bound, not a budget change: the 60.0-second combined
-# budget and 1.0-second per-test timeout remain unchanged.
+# 60-second budget without starving collection on the maintained runner.
+# Operators may still explicitly override ``PYTEST_WORKERS`` for a measured
+# environment. This is a concurrency bound, not a budget change: the 60.0-
+# second combined budget and 1.0-second per-test timeout remain unchanged.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MIN_PYTEST_WORKERS = 16
-_MAX_PYTEST_WORKERS = 16
+_MIN_PYTEST_WORKERS = 8
+_MAX_PYTEST_WORKERS = 8
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
