@@ -105,9 +105,9 @@ def _sync_product_criteria_file(
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     backend.mkdir(product_criteria_path.parent, parents=True, exist_ok=True)
     if source_prompt_path.exists():
-        # Use the (st_size, st_mtime_ns) fast path to avoid reading
-        # product_criteria_path's content when it is identical to
-        # source_prompt_path (the common case after the first materialise).
+        # Compare content when both files exist. Equal size/mtime is not
+        # sufficient here because rapid rewrites can preserve both metadata
+        # values while changing the operator's prompt text.
         # The helper also returns the source text when needed.
         def _stat(path: Path) -> tuple[int, int] | None:
             if not path.exists():
@@ -121,6 +121,7 @@ def _sync_product_criteria_file(
             stat_fn=_stat,
             read_source=lambda p: p.read_text(encoding="utf-8"),
             read_current=lambda p: p.read_text(encoding="utf-8"),
+            trust_equal_metadata=False,
         )
         # ``changed`` covers two cases: current is missing (size/mtime
         # don't match) OR the content actually differs. ``prompt_text``
@@ -261,6 +262,7 @@ def _prompt_files_differ(
     stat_fn: Callable[[Path], tuple[int, int] | None],
     read_source: Callable[[Path], str] | None = None,
     read_current: Callable[[Path], str] | None = None,
+    trust_equal_metadata: bool = True,
 ) -> tuple[bool, str | None]:
     """Compare two prompt files using a (st_size, st_mtime_ns) fast path.
 
@@ -302,7 +304,7 @@ def _prompt_files_differ(
         return True, read_source_fn(source)
     src_size, src_mtime = source_stat
     cur_size, cur_mtime = current_stat
-    if src_size == cur_size and src_mtime == cur_mtime:
+    if src_size == cur_size and src_mtime == cur_mtime and trust_equal_metadata:
         return False, None
     if src_size != cur_size:
         return True, (read_source_fn(source) if read_source is not None else None)

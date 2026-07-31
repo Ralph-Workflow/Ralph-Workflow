@@ -25,8 +25,9 @@ version. `pip install ralph-workflow` also works.
 
 1. Install Ralph Workflow (`pipx` or `pip`, above).
 2. In your project: `ralph --init` — creates user-global config and a
-   starter `PROMPT.md`. Project-local config is optional later via
-   `ralph --init-local-config`.
+   starter `PROMPT.md`; it does not create `.agent/`. Advanced project-local
+   overrides are explicit opt-in via `ralph --init-local-config` (alias:
+   `ralph --generate-local-config`).
 3. Confirm a supported agent CLI is on your `PATH` and authenticated
    (`ralph --list-agents`).
 4. Run `ralph --diagnose` and fix any reported problem until every line

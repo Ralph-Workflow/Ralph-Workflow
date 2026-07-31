@@ -6,18 +6,22 @@ Auto-creates the user-global Ralph config set on first run, including
 and ~/.config/ralph-workflow-artifacts.toml from bundled templates.
 Also supports regenerating configs with .bak backups via --regenerate-config.
 
-Bootstrap creates the standard first-run config set:
-  - User-global: ~/.config/ralph-workflow.toml,
-                 ~/.config/ralph-workflow-agents.toml,
-                 ~/.config/ralph-workflow-mcp.toml,
-                 ~/.config/ralph-workflow-pipeline.toml,
-                 ~/.config/ralph-workflow-artifacts.toml
-  - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml,
-                   .agent/pipeline.toml, .agent/artifacts.toml
-  - Advanced optional: .agent/agents.toml (only regenerated when already present)
-  - Batteries-included .gitignore: Ralph-local, Python, Node, Rust, Go, Ruby,
-    PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, IDE,
-    and OS metadata patterns (see _DEFAULT_GITIGNORE_PATTERNS)
+Bootstrap creates the standard user-global config set:
+  - ~/.config/ralph-workflow.toml
+  - ~/.config/ralph-workflow-agents.toml
+  - ~/.config/ralph-workflow-mcp.toml
+  - ~/.config/ralph-workflow-pipeline.toml
+  - ~/.config/ralph-workflow-artifacts.toml
+
+Project-local overrides are created only by the explicit local-config flow.
+General regeneration refreshes only local TOMLs that already exist, including
+.agent/ralph-workflow.toml, .agent/mcp.toml, .agent/pipeline.toml,
+.agent/artifacts.toml, and the optional advanced .agent/agents.toml.
+
+The explicit local-config flow also seeds a batteries-included .gitignore with
+Ralph-local, Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter,
+Elixir, Scala, Terraform, IDE, and OS metadata patterns (see
+_DEFAULT_GITIGNORE_PATTERNS).
 """
 
 from __future__ import annotations
@@ -648,20 +652,29 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
     return list(missing)
 
 
-def _regenerate_existing_advanced_local_configs(agent_dir: Path) -> list[BootstrapResult]:
-    """Regenerate advanced local configs only when they already exist."""
-    results: list[BootstrapResult] = []
-    for policy_filename in _ADVANCED_LOCAL_POLICY_FILENAMES:
-        target = agent_dir / policy_filename
-        if target.exists():
-            results.append(
-                _copy_with_backup(
-                    _get_bundled_defaults_dir() / policy_filename,
-                    target,
-                    True,
-                )
+def _regenerate_existing_local_configs(
+    agent_dir: Path, *, global_dir: Path
+) -> list[BootstrapResult]:
+    """Regenerate project-local configs only when they already exist."""
+    sources = {
+        _LOCAL_CONFIG_FILENAME: _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
+        _LOCAL_MCP_FILENAME: _get_bundled_defaults_dir() / "mcp.toml",
+        **{
+            policy_filename: _resolve_global_policy_source(
+                global_dir, policy_filename, force=False
             )
-    return results
+            for policy_filename in _LOCAL_POLICY_FILENAMES
+        },
+        **{
+            policy_filename: _get_bundled_defaults_dir() / policy_filename
+            for policy_filename in _ADVANCED_LOCAL_POLICY_FILENAMES
+        },
+    }
+    return [
+        _copy_with_backup(source, target, True)
+        for filename, source in sources.items()
+        if (target := agent_dir / filename).exists()
+    ]
 
 
 def regenerate_all(
@@ -669,24 +682,29 @@ def regenerate_all(
     global_dir: Path | None = None,
     agent_dir: Path | None = None,
 ) -> list[BootstrapResult]:
-    """Regenerate all configs from bundled defaults, backing up existing files.
+    """Regenerate global configs and refresh existing local overrides.
+
+    Missing global files are created. Project-local files are rewritten only
+    when already present; use :func:`ensure_local_configs` to create them.
 
     Args:
         global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
-        agent_dir: The .agent directory to regenerate local configs in. Skipped when None.
+        agent_dir: The .agent directory whose existing local configs may be refreshed.
 
     Returns:
         Flat list of BootstrapResult for every file touched.
     """
+    resolved_global_dir = global_dir or resolve_global_config_dir()
     results: list[BootstrapResult] = [
-        ensure_global_config(global_dir, force=True),
-        ensure_global_agents_config(global_dir, force=True),
-        ensure_global_mcp_config(global_dir, force=True),
-        *ensure_global_policy_configs(global_dir, force=True),
+        ensure_global_config(resolved_global_dir, force=True),
+        ensure_global_agents_config(resolved_global_dir, force=True),
+        ensure_global_mcp_config(resolved_global_dir, force=True),
+        *ensure_global_policy_configs(resolved_global_dir, force=True),
     ]
     if agent_dir is not None:
-        results.extend(ensure_local_configs(agent_dir, force=True))
-        results.extend(_regenerate_existing_advanced_local_configs(agent_dir))
+        results.extend(
+            _regenerate_existing_local_configs(agent_dir, global_dir=resolved_global_dir)
+        )
     return results
 
 

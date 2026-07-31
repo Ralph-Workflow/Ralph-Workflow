@@ -83,7 +83,9 @@ def test_load_policy_reports_agent_validation_failure(tmp_path: Path) -> None:
     assert excinfo.value.source == "agents"
 
 
-def test_load_policy_read_error_distinct_from_parse_error(tmp_path: Path) -> None:
+def test_load_policy_read_error_distinct_from_parse_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """An OSError opening the file must surface as a read error, not a parse error.
 
     Before the fix the loader caught ``Exception`` and labelled every
@@ -95,24 +97,26 @@ def test_load_policy_read_error_distinct_from_parse_error(tmp_path: Path) -> Non
     """
     target = tmp_path / "agents.toml"
     target.write_text("placeholder = 1\n")
-    # Remove read permission so ``open()`` raises PermissionError
-    # (a subclass of OSError) on POSIX.
-    target.chmod(0o000)
-    try:
-        with pytest.raises(LoaderPolicyValidationError) as excinfo:
-            load_policy(tmp_path)
-        message = excinfo.value.message
-        assert "Could not read TOML" in message, (
-            f"Read-failure envelope MUST distinguish itself from parse failures; got: {message!r}"
-        )
-        assert "Failed to parse TOML" not in message, (
-            f"Read-failure envelope MUST NOT be labelled as a parse failure; got: {message!r}"
-        )
-        assert "WHY:" in message and "FIX:" in message
-        assert excinfo.value.source == "agents.toml"
-    finally:
-        # Restore permissions so tmp_path cleanup can remove the file.
-        target.chmod(0o644)
+    original_open = Path.open
+
+    def fail_target_open(self: Path, *args: object, **kwargs: object) -> object:
+        if self == target:
+            raise PermissionError("permission denied")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_target_open)
+
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy(tmp_path)
+    message = excinfo.value.message
+    assert "Could not read TOML" in message, (
+        f"Read-failure envelope MUST distinguish itself from parse failures; got: {message!r}"
+    )
+    assert "Failed to parse TOML" not in message, (
+        f"Read-failure envelope MUST NOT be labelled as a parse failure; got: {message!r}"
+    )
+    assert "WHY:" in message and "FIX:" in message
+    assert excinfo.value.source == "agents.toml"
 
 
 def test_load_policy_reports_unknown_transition_target(tmp_path: Path) -> None:

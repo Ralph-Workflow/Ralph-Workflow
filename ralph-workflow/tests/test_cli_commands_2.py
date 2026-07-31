@@ -18,6 +18,7 @@ import pytest
 import typer
 from rich.console import Console
 
+from ralph.cli import main as main_module
 from ralph.cli.commands import check_policy as check_policy_module
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
@@ -949,6 +950,66 @@ def test_init_command_writes_only_global_configs(
 
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow-mcp.toml").read_text()), dict)
+
+
+def test_regenerate_config_does_not_create_missing_project_local_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    monkeypatch.chdir(tmp_path)
+    stream = StringIO()
+    display_context = make_display_context(
+        console=Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME),
+        env={},
+    )
+
+    main_module._handle_regenerate_config(display_context=display_context)
+
+    assert not (tmp_path / ".agent").exists()
+    assert (xdg_dir / "ralph-workflow.toml").exists()
+
+
+def test_regenerate_config_refreshes_existing_local_file_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    monkeypatch.chdir(tmp_path)
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    existing = agent_dir / "mcp.toml"
+    existing.write_text("# old", encoding="utf-8")
+    stream = StringIO()
+    display_context = make_display_context(
+        console=Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME),
+        env={},
+    )
+
+    main_module._handle_regenerate_config(display_context=display_context)
+
+    assert existing.with_suffix(".toml.bak").read_text(encoding="utf-8") == "# old"
+    assert isinstance(tomllib.loads(existing.read_text(encoding="utf-8")), dict)
+    assert not (agent_dir / "ralph-workflow.toml").exists()
+    assert not (agent_dir / "pipeline.toml").exists()
+    assert not (agent_dir / "artifacts.toml").exists()
+
+
+def test_init_local_config_creates_complete_project_local_override_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    stream = StringIO()
+    display_context = make_display_context(
+        console=Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME),
+        env={},
+    )
+
+    main_module._handle_generate_local_config(display_context=display_context)
+
+    assert {
+        path.name for path in (tmp_path / ".agent").glob("*.toml")
+    } == {"ralph-workflow.toml", "mcp.toml", "pipeline.toml", "artifacts.toml"}
 
 
 def test_init_command_feature_spec_writes_distinct_prompt(

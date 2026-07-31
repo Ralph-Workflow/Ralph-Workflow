@@ -281,11 +281,13 @@ without guessing.
 ## Project-local configuration overrides
 
 The default `ralph --init` flow installs the bundled skill bundle and
-seeds `.gitignore` coverage. For explicit project-local overrides of
-the main `ralph-workflow.toml`, run `ralph --init-local-config` and
-edit `.agent/ralph-workflow.toml` in the repo. That local file
-belongs to the opt-in override flow, not the default `ralph --init`
-path. The broader file layout is in [Configuration Reference](configuration.md).
+seeds `.gitignore` coverage without creating `.agent/`. Project-local
+configuration is advanced and optional. To create the complete local override
+set explicitly, run `ralph --init-local-config` (alias:
+`ralph --generate-local-config`), then edit `.agent/ralph-workflow.toml` in the
+repo. `ralph --regenerate-config` refreshes local TOMLs only when they already
+exist; it never opts a project into local configuration. The broader file
+layout is in [Configuration Reference](configuration.md).
 
 ## Expected result / success check
 

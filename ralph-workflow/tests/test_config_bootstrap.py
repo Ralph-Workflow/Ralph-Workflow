@@ -33,6 +33,7 @@ _EXPECTED_LOCAL_CONFIG_COUNT = 4
 #: Nine files regenerated before ``ralph-workflow-agents.toml`` was split
 #: out of the main config; ten after.
 _EXPECTED_REGENERATE_COUNT = 10
+_EXPECTED_GLOBAL_REGENERATE_COUNT = 5
 _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     # Ralph-local
     ".agent/",
@@ -345,6 +346,37 @@ def test_ensure_local_configs_includes_runtime_policy_files(tmp_path: Path) -> N
         f"Policy files {policy_files} not all in results {result_names}"
     )
     assert "agents.toml" not in result_names
+
+
+def test_regenerate_all_does_not_create_missing_local_configs(tmp_path: Path) -> None:
+    global_dir = tmp_path / "global"
+    agent_dir = tmp_path / ".agent"
+
+    results = regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
+
+    assert len(results) == _EXPECTED_GLOBAL_REGENERATE_COUNT
+    assert not agent_dir.exists()
+
+
+def test_regenerate_all_refreshes_only_existing_local_configs(tmp_path: Path) -> None:
+    global_dir = tmp_path / "global"
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    sentinel = "# SENTINEL"
+    existing = agent_dir / "mcp.toml"
+    existing.write_text(sentinel, encoding="utf-8")
+
+    results = regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
+
+    local_results = [result for result in results if result.path.parent == agent_dir]
+    assert [result.path.name for result in local_results] == ["mcp.toml"]
+    assert local_results[0].action == "regenerated"
+    assert local_results[0].backup is not None
+    assert local_results[0].backup.read_text(encoding="utf-8") == sentinel
+    assert isinstance(tomllib.loads(existing.read_text(encoding="utf-8")), dict)
+    assert not (agent_dir / "ralph-workflow.toml").exists()
+    assert not (agent_dir / "pipeline.toml").exists()
+    assert not (agent_dir / "artifacts.toml").exists()
 
 
 def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
@@ -715,11 +747,10 @@ def test_ensure_local_configs_bootstraps_a_valid_policy_bundle(tmp_path: Path) -
     assert bundle.pipeline.phases["development"].parallelization is not None
 
 
-def test_regenerate_all_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None:
+def test_regenerate_all_refreshes_an_existing_valid_policy_bundle(tmp_path: Path) -> None:
     global_dir = tmp_path / "g"
     agent_dir = tmp_path / "a"
-    global_dir.mkdir()
-    agent_dir.mkdir()
+    ensure_local_configs(agent_dir)
 
     regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
 

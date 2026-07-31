@@ -9,7 +9,8 @@ If your immediate question is **"Where do I edit `ralph-workflow.toml`?"**, the 
 - **Global defaults for all projects** → `~/.config/ralph-workflow.toml`
 - **Project-specific override for just this repo** → `.agent/ralph-workflow.toml`
 
-If `.agent/ralph-workflow.toml` does not exist yet, create it with:
+Project-local configuration is an advanced, optional override. If the local
+set does not exist yet, create it explicitly with:
 
 ```bash
 ralph --init-local-config
@@ -52,7 +53,7 @@ Ralph Workflow manages a standard config set across two scopes.
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
 | `.agent/ralph-workflow.toml` | Optional project-specific overrides for agents, chains, drains, and main settings |
 
-`ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create project-local config files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
+`ralph --init` creates `PROMPT.md`, installs bundled skills, and prepares `.gitignore`; it does not create project-local config files. Use `ralph --init-local-config` (alias: `ralph --generate-local-config`) only when you explicitly want the advanced project-local override set.
 
 ## Advanced config map
 
@@ -275,7 +276,10 @@ Run `ralph --check-policy` followed by `ralph --explain-policy`.
 
 ### I broke my config and want to get back to a known-good baseline
 
-Run `ralph --regenerate-config`. Ralph Workflow backs up overwritten files with a `.bak` suffix.
+Run `ralph --regenerate-config`. Ralph Workflow rewrites user-global files and
+backs up overwritten files with a `.bak` suffix. Existing project-local TOMLs
+are refreshed too, but missing `.agent/` files are not created. To create the
+local override set, use `ralph --init-local-config` explicitly.
 
 ## `pipeline.toml` in plain language
 

@@ -376,7 +376,7 @@ def _handle_init(*, template: str | None, config: str | None, display_context: D
 
 
 def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
-    """Regenerate global and local configs from bundled defaults, backing up existing files."""
+    """Regenerate globals and refresh only project-local configs already present."""
     display = resolve_active_display(None, display_context)
     agent_dir: RuntimePath | None
     try:
@@ -546,8 +546,8 @@ Args:
         the run finishes successfully.
     pr_target: ``--pr-target`` target branch for the auto-PR.
     worktree_path: ``--worktree-path`` custom worktree path override.
-    init: ``--init`` scaffold ``.agent/`` and ``PROMPT.md`` in the
-        current project.
+    init: ``--init`` scaffold ``PROMPT.md`` and user-global config for
+        the current project; it does not create project-local config.
     init_force_skills: ``--force-init-skills`` reinstall baseline skills.
     init_skills: ``--init-skills`` install bundled skills into the
         supported agent roots.
@@ -748,8 +748,8 @@ def main(
         bool,
         typer.Option(
             "--regenerate-config",
-            help="Rewrite global and local configs from bundled defaults"
-            " (existing files are backed up to <name>.bak)",
+            help="Rewrite global configs and refresh existing local configs only"
+            " (overwritten files are backed up to <name>.bak)",
         ),
     ] = False,
     force_init_skills: Annotated[
@@ -942,14 +942,15 @@ def main(
         diagnose: ``--diagnose`` / ``-d`` pre-flight check.
         check_config: ``--check-config`` / ``-C`` validate config.
         check_mcp: ``--check-mcp`` validate custom MCP servers.
-        init: ``--init [PATH]`` scaffold ``.agent/`` + ``PROMPT.md``.
-        regenerate_config: ``--regenerate-config`` rewrite config from
-            bundled defaults (backs up to ``<name>.bak``).
+        init: ``--init [PATH]`` scaffold ``PROMPT.md`` and global config.
+        regenerate_config: ``--regenerate-config`` rewrite global config
+            and refresh only local config files already present (backs up
+            overwritten files to ``<name>.bak``).
         force_init_skills: ``--force-init-skills`` re-run baseline
             skill install.
         generate_local_config: ``--init-local-config`` /
-            ``--generate-local-config`` write a project-local
-            ``ralph-workflow.toml``.
+            ``--generate-local-config`` create the complete advanced
+            project-local config override set.
         generate_commit_msg: ``--generate-commit-msg`` build commit
             message artifact.
         generate_commit: ``--generate-commit`` build and apply commit.

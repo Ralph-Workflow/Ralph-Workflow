@@ -164,7 +164,7 @@ def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
 
 
 def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
-    """Quickstart must keep `--init` and `--init-local-config` contracts aligned with runtime."""
+    """Quickstart must keep local-config command boundaries aligned with runtime."""
     content = QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "ralph --init-local-config" in content, (
         "docs/sphinx/quickstart.md must document `ralph --init-local-config` as the explicit "
@@ -174,9 +174,13 @@ def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
         "docs/sphinx/quickstart.md must explain that `.agent/ralph-workflow.toml` belongs to the "
         "explicit local override flow."
     )
+    assert "ralph --generate-local-config" in content
+    assert "advanced and optional" in content
+    assert "refreshes local TOMLs only when they already" in content
+    assert "never opts a project into local configuration" in content
     forbidden_claim = "local config files (`ralph-workflow.toml`, `mcp.toml`,"
     assert forbidden_claim not in content, (
-        "docs/sphinx/quickstart.md must not claim `ralph --init` creates "
+        "docs/sphinx/getting-started.md must not claim `ralph --init` creates "
         "`.agent/ralph-workflow.toml` by default."
     )
 

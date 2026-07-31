@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.raw_overflow import RawOverflowLog
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_append_writes_lines(tmp_path: Path) -> None:
@@ -217,7 +221,9 @@ def test_is_disabled_true_after_max_bytes(tmp_path: Path) -> None:
     assert log.is_disabled is True
 
 
-def test_is_disabled_true_after_io_error(tmp_path: Path) -> None:
+def test_is_disabled_true_after_io_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     raw_dir = agent_dir / "raw"
@@ -225,7 +231,14 @@ def test_is_disabled_true_after_io_error(tmp_path: Path) -> None:
 
     raw_file = raw_dir / "unit-1.log"
     raw_file.write_text("content", encoding="utf-8")
-    raw_file.chmod(0o000)
+    original_open = Path.open
+
+    def fail_target_open(self: Path, *args: object, **kwargs: object) -> object:
+        if self == raw_file:
+            raise PermissionError("permission denied")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_target_open)
 
     log = RawOverflowLog(tmp_path, "unit-1")
     log.append("new content")

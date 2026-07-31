@@ -43,6 +43,10 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(config): keep project-local configuration explicit opt-in** — `ralph --regenerate-config` now rewrites global configuration and refreshes only local TOMLs already present; missing `.agent/` files remain absent and are created only by `ralph --init-local-config` / `--generate-local-config`. Locked by `tests/test_config_bootstrap.py` and `tests/test_cli_commands_2.py`.
+
 ## [0.9.7] - 2026-07-29
 
 Patch release. `__version__` moved from `0.9.6` to `0.9.7` in
