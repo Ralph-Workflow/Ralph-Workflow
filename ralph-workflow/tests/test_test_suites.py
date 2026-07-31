@@ -354,19 +354,19 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Eight shards leave headroom for the real-git E2E children that the
-    # default profile must retain alongside the pytest worker processes.
+    # Twelve shards keep the default real-git E2E profile inside its
+    # immutable wall-clock budget on the maintained runner.
     for cores, expected in (
-        (4, "8"),
-        (5, "8"),
-        (6, "8"),
-        (7, "8"),
-        (8, "8"),
-        (12, "8"),
-        (16, "8"),
-        (20, "8"),
-        (21, "8"),
-        (64, "8"),
+        (4, "12"),
+        (5, "12"),
+        (6, "12"),
+        (7, "12"),
+        (8, "12"),
+        (12, "12"),
+        (16, "12"),
+        (20, "12"),
+        (21, "12"),
+        (64, "12"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected

@@ -568,17 +568,20 @@ tracemalloc noise while remaining inside the test budget.
 
 | Harness | Retained spread | Early elapsed mean | Late elapsed mean |
 |---|---:|---:|---:|
-| Pipeline output (3 cycles) | 16 B | 44.360 ms | 44.360 ms |
-| Recovery lineage (8 cycles; 3 warmup) | 2,693 B | 1.475 ms | 1.543 ms |
-| Multimodal session (3 cycles) | 674 B | 4.111 ms | 4.111 ms |
-| Upstream media (3 cycles) | 240 B | 1.704 ms | 1.704 ms |
-| Pipeline multi-cycle (12 cycles; 2 warmup) | 0 B | 38.662 ms | 34.544 ms |
+| Pipeline output (3 cycles) | 16 B | 170.601 ms | 170.601 ms |
+| Recovery lineage (8 cycles; 3 warmup) | 2,774 B | 1.498 ms | 1.647 ms |
+| Multimodal session (3 cycles) | 615 B | 6.538 ms | 6.538 ms |
+| Upstream media (3 cycles) | 240 B | 2.138 ms | 2.138 ms |
+| Pipeline multi-cycle (12 cycles; 2 warmup) | 80 B | 177.046 ms | 151.325 ms |
 
 The recovery-budget harness also held after 17 × 16 KiB failure payloads:
 registry retained/peak deltas were 17,467/17,967 B; failure-budget deltas were
 17,563/18,063 B. The recovery harness's iteration count was raised from five
 to eight so its post-warmup window contains five samples and its early/late
-pairs are disjoint.
+pairs are disjoint. The twelve-cycle harness fails when the late elapsed mean
+exceeds three times the early mean; this documented shared-CI jitter band makes
+an adverse drift observable without turning normal host scheduling noise into a
+false regression.
 
 ### Cleanup and deliberate boundary
 

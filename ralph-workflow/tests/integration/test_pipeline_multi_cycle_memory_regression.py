@@ -10,6 +10,7 @@ from __future__ import annotations
 import gc
 import json
 import statistics
+import time
 import tracemalloc
 import uuid
 from typing import TYPE_CHECKING
@@ -44,6 +45,8 @@ _WARMUP_CYCLES = 2
 _LINE_COUNT = 8
 _LINE_SIZE = 1024
 _RETAINED_SPREAD_LIMIT = 512_000
+# ponytail: a 3x band tolerates shared-CI jitter; tighten only with stable runners.
+_MAX_ELAPSED_DRIFT_FACTOR = 3.0
 
 
 class _SharedFakeBridge:
@@ -106,11 +109,13 @@ def test_pipeline_multi_cycle_memory_regression_no_drift(
         bridge_factory=_bridge_factory,
     )
     retained: list[int] = []
+    elapsed_seconds: list[float] = []
     gc.collect()
     tracemalloc.start()
     baseline = _ralph_bytes()
     try:
         for _ in range(_CYCLES):
+            started = time.perf_counter()
             assert (
                 runner_module.execute_agent_effect(
                     effect,
@@ -126,17 +131,30 @@ def test_pipeline_multi_cycle_memory_regression_no_drift(
             )
             gc.collect()
             retained.append(_ralph_bytes() - baseline)
+            elapsed_seconds.append(time.perf_counter() - started)
     finally:
         tracemalloc.stop()
 
     post_warmup = retained[_WARMUP_CYCLES:]
+    post_warmup_elapsed = elapsed_seconds[_WARMUP_CYCLES:]
     early_retained, late_retained = post_warmup[:2], post_warmup[-2:]
+    early_elapsed, late_elapsed = post_warmup_elapsed[:2], post_warmup_elapsed[-2:]
     retained_spread = max(post_warmup) - min(post_warmup)
+    early_elapsed_mean = statistics.mean(early_elapsed)
+    late_elapsed_mean = statistics.mean(late_elapsed)
     print(
         "pipeline_multi_cycle_memory_characterization "
         f"cycles={_CYCLES} warmup={_WARMUP_CYCLES} "
         f"early_retained_mean={statistics.mean(early_retained):.0f} "
         f"late_retained_mean={statistics.mean(late_retained):.0f} "
-        f"retained_spread={retained_spread}"
+        f"retained_spread={retained_spread} "
+        f"early_elapsed_mean_ms={early_elapsed_mean * 1000:.3f} "
+        f"late_elapsed_mean_ms={late_elapsed_mean * 1000:.3f}"
     )
     assert retained_spread <= _RETAINED_SPREAD_LIMIT
+    assert late_elapsed_mean <= early_elapsed_mean * _MAX_ELAPSED_DRIFT_FACTOR, (
+        "late-cycle elapsed mean exceeded the shared-CI jitter band "
+        f"(early={early_elapsed_mean * 1000:.3f}ms, "
+        f"late={late_elapsed_mean * 1000:.3f}ms, "
+        f"factor={_MAX_ELAPSED_DRIFT_FACTOR})"
+    )
