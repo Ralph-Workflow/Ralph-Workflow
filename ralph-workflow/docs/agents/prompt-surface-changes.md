@@ -1,10 +1,11 @@
 # Prompt surface change record
 
 This is the focused record for the speed-of-verified-delivery increment: commits
-`a92a31941` through `cf800b26f`, plus the planning-template order correction in
-this change. It records the stated and recorded criteria that a surface edit can
-prove. The baseline and observed criteria require a separate measured task set;
-they are not claimed here.
+`a92a31941` through `cf800b26f`, plus the planning-template order correction.
+The stated (S) and recorded (R) criteria are complete and verified. The baseline
+(B) is frozen. The observed (O) criteria are staged but unrun: they require the
+operator-owned measurement campaign defined by the baseline and are not claimed
+by this unattended in-repository pass.
 
 ## Scope, effect, and proof
 
