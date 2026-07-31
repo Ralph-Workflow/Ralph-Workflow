@@ -744,6 +744,7 @@ def _atomic_append_text(
     _staging_pid = os.getpid()
     staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
     try:
+        # filesystem-write-ok: temp staging file (atomic replace target below)
         staging.write_bytes(existing + separator + payload.encode(encoding))
         staging.replace(path)
     except BaseException:
