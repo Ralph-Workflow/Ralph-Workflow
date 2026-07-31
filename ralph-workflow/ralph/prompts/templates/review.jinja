@@ -20,7 +20,9 @@ Submit the required artifact on this attempt.
 
 Bring evidence the implementation phase did not have. Compare the changed files against the plan and requirements, follow callers, tests, and error paths as needed, and report only material findings with concrete cost and exact remediation; `no_issues` is a normal result.
 
-Use the decision contract's dimensions. Record a specific not-applicable reason under `## Review Evidence` for a dimension without a relevant surface; the decision contract defines admissible evidence and how to record limits. Run the project's fast path before broader verification when available, then its meaningful full gate.
+Grade the change on plan compliance, security, correctness, performance, maintainability, and test coverage. Record a specific not-applicable reason under `## Review Evidence` for a dimension without a relevant surface. The decision contract defines admissible evidence and how to record limits. Run the project's fast path before broader verification when available, then its meaningful full gate.
+
+## Parallel evidence
 
 Use independent read-only subagents for distinct review dimensions when they add evidence and improve evidence quality; run independent checks in parallel when supported, otherwise inspect sequentially. The main session reconciles the evidence, submits the `issues` artifact, and declares completion.
 
