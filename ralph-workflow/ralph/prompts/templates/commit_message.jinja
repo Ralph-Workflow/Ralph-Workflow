@@ -1,6 +1,6 @@
 Task: produce a spec-compliant MCP commit_message artifact for the current pending work shown below.
 The diff contains only the changes not yet committed — the current worktree vs the last commit (HEAD).
-Read the diff silently. Do not write an analysis.
+Read the diff, select the matching artifact shape, and submit it without commentary.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
@@ -13,9 +13,7 @@ Read the diff silently. Do not write an analysis.
 ---
 ## HOW TO WRITE THE SUBJECT — follow these four steps once, in order
 
-Do not generate candidate subjects and compare them. Do not revise a subject
-that already satisfies step 4. One pass through these steps produces the
-subject; then move on to the body.
+Do not generate candidate subjects and compare them. Use one pass through these steps to produce the subject, then write the body.
 
 **Step 1 — pick the kind.** Take the FIRST row that matches the diff:
 
@@ -34,13 +32,10 @@ subject; then move on to the body.
 
 **Step 2 — pick the scope.** If one directory or subsystem owns most of the
 diff, use its name. Otherwise omit the scope and the parentheses entirely.
-Do not deliberate between two candidate scopes: if it is not obvious in one
-look, omit it.
+When scope is not obvious in one look, omit it.
 
 **Step 3 — write the description.** Say what the change does, in one clause,
-in lowercase imperative mood. Do not say that files changed. Do not use
-"update", "misc", "stuff", or file counts. There is no length limit; stop at
-the end of the clause.
+in lowercase imperative mood. Describe behavior rather than files; use a precise imperative clause. There is no length limit; stop at its end.
 
 **Step 4 — check the grammar, then stop.** The subject must match exactly:
 
@@ -57,14 +52,14 @@ the end of the clause.
 - Write the value unquoted in frontmatter. Quotes become part of the subject
   and are rejected.
 
-If it matches, the subject is finished. Do not look for a better one.
+The subject is finished. Do not look for a better one.
 
 ## HOW TO WRITE THE BODY
 
 Omit the body only for a one-line typo, formatting, or comment change whose
 subject already states the whole change. Every other commit gets a body.
 
-Pick the structure with this rule, and do not reconsider it:
+Choose the structure with this rule, and do not reconsider it:
 
 - Default: one `## Body` item explaining WHY the change was needed and what
   it affects.
@@ -84,13 +79,8 @@ the diff.
   `refactor(auth): extract token validation to dedicated module`,
   with a body explaining what callers must do differently.
 
-## OUTPUT RULES
-Do not output additional explanation, markdown, bullets, or prose after the
-completion action.
-Do not ask the user for confirmation or write "Would you like me to..." questions.
-Submit the artifact now, not as a proposal for later approval.
-Call the tool before emitting any final text. If you skip the tool call, the task has failed.
-Do not call Bash.
+## Submit the result
+Submit the artifact now, then stop. Use the submission tool before any final text; it is the completion contract. Do not ask the user for confirmation or write “Would you like me to...” questions. Do not call Bash for this task.
 
 MCP REQUIREMENT:
 The only state-changing tools you may call for this task are {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.

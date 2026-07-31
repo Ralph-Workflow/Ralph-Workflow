@@ -1,7 +1,7 @@
 Judge the implementation against the plan with fresh evidence and report material findings.
 
 REVIEW MODE
-Your only job is to analyze the implementation, not to edit code or commit changes.
+Your only job is to analyze the implementation and report findings; leave code and commits unchanged.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
@@ -27,19 +27,9 @@ scope, then reconcile its concrete evidence yourself. If no such mechanism is
 available, perform the same checks sequentially. Only the main session may decide
 the verdict, submit the `issues` artifact, or declare completion.
 
-Bring evidence the implementation phase did not have, read its recorded assumptions, and compare the changed files against the plan and requirements. Resolve safe trivia in place when the runtime permits it; otherwise omit it. Return only material findings together, each with its concrete cost and exact fix; `no_issues` is a normal result. Grade the change on every one of these dimensions — they are the same dimensions the downstream judge scores your review against:
+Bring fresh evidence the implementation phase did not have, read recorded assumptions, and compare the changed files against the plan and requirements. Return only material findings with their concrete cost and exact fix; `no_issues` is a normal result.
 
-- **Plan compliance** — check every plan item against the implementation; a skipped or half-done item is a finding.
-- **Security** — injection, XSS, hardcoded secrets, auth bypass, unvalidated input.
-- **Correctness** — error paths, edge cases, race conditions.
-- **Performance** — N+1 queries, inefficient algorithms.
-- **Maintainability** — structure, clarity, and duplication that will hurt future changes.
-- **Test coverage** — new behavior without tests, and regressions the suite would not catch.
-
-When a dimension has no relevant code in the change, record an explicit
-not-applicable reason under `## Review Evidence` instead of skipping it
-silently. Run tests, lint, and type checks yourself when verification matters
-— do not take the diff's word for it.
+Grade the change on these review dimensions, which the downstream judge also reads: plan compliance, security, correctness, performance, maintainability, and test coverage. Record a specific not-applicable reason under `## Review Evidence` for a dimension with no relevant surface. Run the project's fast path before broader verification when one exists, then run the meaningful full gate; do not rely on the diff's claims.
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
@@ -49,20 +39,12 @@ silently. Run tests, lint, and type checks yourself when verification matters
 
 Submit review findings using `artifact_type="issues"`.
 
-The `issues` artifact is a markdown document (grammar: `.agent/artifact-formats/issues.md`):
-`---` frontmatter with `type: issues` and `status: no_issues|issues_found`, then:
-- `## Summary` — exactly one item: a one-sentence summary of the review.
-- `## Review Evidence` — evidence items formatted `dimension or requirement | concrete evidence`. Include one item per applicable review dimension and one item per plan requirement and acceptance criterion.
-- `## Issues` — one item per finding, text formatted `path | severity | summary` (severity: `high`, `medium`, or `low`).
-- `## What Came Up Short` — one item per defect, regression, missing requirement, unsafe change, or verification gap. This is the prose account of the same defects listed in `## Issues` — the two sections cover the same findings.
-- `## How To Fix` — one item per gap: ordered, concrete remediation the fixer can execute directly (exact files, changes, checks to run, expected outcomes).
+The downstream artifact validator reads this grammar: `.agent/artifact-formats/issues.md`. Submit `type: issues` with status `no_issues` or `issues_found`.
 
-Rules:
-- When `status` is `no_issues`, omit `## Issues`, `## What Came Up Short`, and `## How To Fix` (or leave them empty).
-- When `status` is `no_issues`, `## Review Evidence` must be non-empty. A clean verdict without recorded evidence is not acceptable.
-- Consider all six dimensions. Use `Dimension | not applicable — <specific reason>` when a dimension has no relevant surface instead of silently omitting it.
-- When `status` is `issues_found`, all three sections must be non-empty.
-- Cite concrete evidence in every gap: file paths, failing tests, missing checks, or behavior mismatches. No vague summaries.
+- `## Summary`: exactly one item.
+- `## Review Evidence`: `dimension or requirement | concrete evidence`; include one item per applicable review dimension and one item per plan requirement and acceptance criterion.
+- For `issues_found`, add non-empty `## Issues` (`path | high|medium|low | summary`), `## What Came Up Short`, and `## How To Fix` sections with concrete evidence and executable remediation.
+- When `status` is `no_issues`, `## Review Evidence` must be non-empty; omit those three remediation sections.
 
 {% set issues_example %}
 ---
