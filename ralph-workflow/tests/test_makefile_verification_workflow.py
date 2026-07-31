@@ -4,6 +4,8 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 from ralph import test_suites as test_suites_module
 from ralph import verify as verify_module
 
@@ -112,6 +114,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     ]
 
 
+@pytest.mark.timeout_seconds(5)
 def test_make_verify_excludes_paid_agy_markers() -> None:
     """The immutable default profile cannot collect manual paid AGY runs."""
     expression = test_suites_module._VERIFICATION_MARK_EXPRESSION
