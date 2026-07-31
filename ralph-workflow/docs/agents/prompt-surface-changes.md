@@ -1,45 +1,66 @@
-# Prompt surface changes
+# Prompt surface change record
 
-This record covers the narrow prompt and policy increment in PLAN S-1 through
-S-5. It is a change record for the reviewing phase, not a new policy surface.
+This is the focused record for the speed-of-verified-delivery increment: commits
+`a92a31941` through `cf800b26f`, plus the planning-template order correction in
+this change. It records the stated and recorded criteria that a surface edit can
+prove. The baseline and observed criteria require a separate measured task set;
+they are not claimed here.
 
-## S26 sampling
+## Scope, effect, and proof
 
-Sampled the artifact and capability instructions that the changed execution and
-judging phases render:
+| Surface | Criteria | Expected effect | Evidence and actual outcome |
+| --- | --- | --- | --- |
+| `shared/_verification_commitments.j2` and the templates that include it | S1, S2, S6, S10, S11, S15, S28 | Keep the verified-delivery goal, precedence rule, and four commitments salient in each phase without phase-local variants. | `audit_prompt_single_sourcing` literal-checks the three deliberate cross-surface statements. The shared block names workflow-owned phase order, waits, and grants rather than claiming the templates configure them. |
+| `shared/_developer_iteration_guidance.j2`, `_run_budget.j2`, and development/fix templates | S3–S5, S7–S9, S12–S21 | Reach a cheap falsifiable increment first, honour the applicable gate, bound exploration and retries, and report an honest partial outcome when the run budget is spent. | Template render-integrity validates included templates; the fenced-artifact example audit checks the retained submission examples. The guidance records independent work, avoids re-fetching held material, and sets the sync point at one proven increment. |
+| `review.jinja`, `development_analysis.jinja`, and `review_analysis.jinja` | S22, S26 | Make review add fresh evidence, read assumptions, resolve safe trivia where permitted, and return material findings with cost and fix. | Render-integrity and artifact-example audits keep the prompt and validator-facing artifact grammar aligned. The output requirements name the issues or decision-artifact consumer. |
+| `planning.jinja` | S23, S24 | Put the work framing before planning mechanics while keeping stable instructions before the volatile request payload. | `tests/test_planning_prompt_thinking_first.py` checks request framing before `PLANNING MODE`, stable thinking before submission mechanics, and the payload last. |
+| `docs/ralph-workflow-policy/verification-policy.md` and `ralph/project_policy/starters/verification-policy.md` | S1–S3, S6–S10, S13, S28 | Make fast, complete verification a durable project obligation: 10-second fast path, recorded full-gate figure, recurring-cost ownership, actionable failures, and durable orientation. | `audit_prompt_single_sourcing` checks shared wording; `make verify` exercises the documented gate and policy checks. The starter preserves the same obligations for projects that adopt it. |
+| `ralph/testing/audit_prompt_single_sourcing.py` and `ralph/verify.py` wiring | R1, R2, S27 | Prevent the goal, precedence rule, and four commitment names from drifting between the two surfaces. | The audit is a mandatory `make verify` step and fails if either surface lacks a canonical statement. |
+| `ralph/pipeline/run_time_report.py` and its markdown artifact contract | O9 reporting surface | Leave a bounded, comparable report of elapsed time, phases, signals, and slowest steps. | `tests/pipeline/test_run_time_report.py` covers the generated report and its bounds. This is reporting machinery, not an additional standard-setting surface. |
 
-- `shared/_artifact_submission.j2` — consumer named: its format document,
-  submission validator, and completion gate consume the document and receipt.
-- `shared/_mcp_tools.jinja` — consumer named: the artifact format document,
-  validator diagnostics, staged draft, and submission tool consume the stated
-  arguments and edits.
-- `fix_mode.jinja` — consumer named: its `fix_result` format document and
-  completion gate consume the stated grammar and transport contract.
-- `review.jinja` — consumer named: `.agent/artifact-formats/issues.md` and the
-  issues-artifact validator consume the required headings, items, and statuses.
-- `review_analysis.jinja` — consumer named: the
-  `review_analysis_decision` format document and validator consume its decision
-  shape; no extra output-shape instruction was added.
+## Instruction funding and retention (R1–R3)
 
-No sampled requirement lacked a consumer, so none was removed.
+Method: count distinct obligation-style bullets and standalone imperatives at a
+rendered include site; shared partials count once at each site. The retained
+instructions change agent or project behaviour: the shared commitments select a
+fast path and require the full gate; developer guidance bounds retrieval,
+retries, and waits; review guidance requires independent evidence; policy text
+makes gate cost actionable.
 
-## Instruction count (R1)
+The additions were funded by consolidation rather than new phase-specific
+copies. `_verification_commitments.j2` replaced separate goal/precedence and
+commitment wording in review, analysis, development, and fix prompts.
+`_developer_iteration_guidance.j2` replaced scattered execution directions in
+iteration templates. Planning submission mechanics remains one shared block
+rather than being copied into variants. Superseded duplicated wording was
+removed from those templates as the shared blocks landed; no new template,
+phase, output grammar, dependency, or verification check was added.
 
-Method: for each touched rendered surface, count distinct top-level bullet
-items in its obligation-style lists plus standalone imperative sentences. An
-included partial is counted once at each rendered include site. Baseline is the
-pre-step revision; after is this change.
+The planning-order correction adds no instruction: it moves the existing
+request framing before mechanics and keeps the existing payload at the volatile
+tail. The focused regression test retains that ordering. The shared block's
+workflow-boundary sentence is intentionally retained because removing it would
+make templates imply control over phase order, wait permissions, or phase grants
+that belongs to runtime machinery.
 
-| Surface | Before | After | Funding |
-| --- | ---: | ---: | --- |
-| `review.jinja` | 32 | 38 | Required S-1 shared partial; reused rather than copied. |
-| `review_analysis.jinja` | 77 | 83 | Required S-1 shared partial; reused rather than copied. |
-| `fix_mode.jinja` | 13 | 21 | Required S-1/S-2 execution guidance; both existing partials are reused. |
-| `shared/_verification_commitments.j2` | 5 | 7 | Required S-3 boundary; extends its existing boundary statement. |
-| `docs/ralph-workflow-policy/verification-policy.md` default requirements | 14 | 16 | Required S-2 named commitments; the policy is the durable project example. |
+## Sampling and boundaries
 
-The additions are either required by the named plan criteria or reuse the
-existing shared partial. No new standalone prompt partial or output grammar was
-introduced. The S-3 boundary adds two instructions; this required, unfunded
-increase is recorded here for review because it names the workflow/runtime
-boundary that the prompt otherwise left implicit.
+Sampled consumers for retained output shape: `_artifact_submission.j2` routes
+submitted Markdown through its validator and completion gate; `review.jinja`
+feeds the `issues` format and validator; analysis templates feed their decision
+formats and validators. Render-integrity and fenced-artifact-example audits
+cover these rendered relationships.
+
+No check was removed or weakened; the full gate's proof inventory is unchanged.
+Phase existence and order, wait permissions, and per-phase capability or
+thinking grants remain runtime-owned and are explicitly described as such in the
+shared commitments and policy. This record does not claim the brief's baseline
+or observed measurements, which need the separately agreed task-set harness.
+
+## Verification
+
+Expected: prompt ordering makes the work legible before mechanics, shared
+statements stay identical, and the docs build has no warning. Actual: `make
+verify` passed; it ran Sphinx, lint, type checking, render-integrity,
+artifact-example, prompt-single-sourcing, and the remaining mandatory audits.
+Its combined test elapsed time was 37.90 seconds of the 60-second budget.

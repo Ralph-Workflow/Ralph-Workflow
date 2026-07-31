@@ -1,4 +1,6 @@
-You are in PLANNING MODE. Produce the current best execution plan for the request.
+USER REQUEST: produce the current best execution plan for the request.
+
+You are in PLANNING MODE.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 {% include 'shared/_planning_thinking.j2' %}
@@ -22,9 +24,6 @@ commands. Do not edit files or install dependencies.
 {% include 'shared/_planning_submission_mechanics.j2' %}
 {% include 'shared/_verification_commitments.j2' %}
 
-USER REQUEST:
-{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
-
 {% if ARTIFACT_HISTORY_PATH %}
 Prior plan history is available at `{{ARTIFACT_HISTORY_PATH}}` when it helps.
 {% endif %}
@@ -32,3 +31,5 @@ Prior plan history is available at `{{ARTIFACT_HISTORY_PATH}}` when it helps.
 Use subagents only when independent repository discovery genuinely reduces
 uncertainty. A compact linear plan is valid; use work units only for disjoint
 implementation work.
+
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}

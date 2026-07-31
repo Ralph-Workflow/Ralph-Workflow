@@ -29,9 +29,18 @@ def test_shared_thinking_contract_prefers_evidence_to_guesses() -> None:
     assert "turn unknowns into a discovery step" in source
 
 
-def test_planning_variants_put_thinking_first_and_submission_before_payload() -> None:
+def test_planning_prompt_frames_the_request_before_mechanics_and_places_payload_last() -> None:
+    source = _source("planning.jinja")
+
+    assert source.index("USER REQUEST: produce") < source.index("PLANNING MODE")
+    assert source.index("PLANNING MODE") < source.index("shared/_planning_thinking.j2")
+    assert source.index("shared/_planning_thinking.j2") < source.index(
+        "shared/_planning_submission_mechanics.j2"
+    ) < source.rindex("render_payload_section('PROMPT'")
+
+
+def test_planning_variants_keep_thinking_before_submission_and_payload() -> None:
     payload_markers = {
-        "planning.jinja": "USER REQUEST:",
         "planning_fallback.jinja": "REQUEST (`{{PROMPT_PATH}}`):",
         "planning_edit.jinja": "ORIGINAL REQUEST:",
         "planning_edit_fallback.jinja": "REQUEST (`{{PROMPT_PATH}}`):",
