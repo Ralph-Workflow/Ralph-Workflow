@@ -16,9 +16,11 @@ the artifact called out in
 and the gate-script policy requires a black-box test that proves both
 the pass and fail paths.
 
-Each invocation is bounded by ``timeout=15`` so a hung probe cannot
-stall the suite; the script itself honours
-``EXTERNAL_LINK_TIMEOUT_SECONDS = 10.0`` per request.
+Invocations are bounded by ``timeout=5`` so a hung probe cannot
+stall the suite; these fixtures use only local files (no external
+HTTP), so the script finishes in milliseconds. The script itself
+honours ``EXTERNAL_LINK_TIMEOUT_SECONDS = 10.0`` per request when
+external links are present.
 """
 
 from __future__ import annotations
@@ -41,6 +43,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_route_page_links.py"
 
 
+_LINKCHECK_TIMEOUT_SECONDS = 5
+
+
 def _run_linkcheck(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     """Run the route-page linkchecker from ``cwd`` (defaults to repo root).
 
@@ -48,6 +53,11 @@ def _run_linkcheck(*args: str, cwd: Path | None = None) -> subprocess.CompletedP
     code, stdout, and stderr. ``check=True`` is intentionally omitted:
     a failing linkcheck must surface its returncode to the assertion
     rather than raising in the helper.
+
+    Pass multiple file paths in one call when scenarios share ``cwd``
+    and all must succeed — ``main()`` checks each file in one process
+    startup, which is behaviourally equivalent to separate invocations
+    for independent pass paths.
     """
     assert _SCRIPT_PATH.is_file(), (
         f"check_route_page_links.py not found at {_SCRIPT_PATH!r}; "
@@ -56,7 +66,7 @@ def _run_linkcheck(*args: str, cwd: Path | None = None) -> subprocess.CompletedP
     return subprocess.run(
         [sys.executable, str(_SCRIPT_PATH), *args],
         cwd=str(cwd) if cwd is not None else str(_REPO_ROOT),
-        timeout=15,
+        timeout=_LINKCHECK_TIMEOUT_SECONDS,
         capture_output=True,
         text=True,
         check=False,
@@ -64,16 +74,10 @@ def _run_linkcheck(*args: str, cwd: Path | None = None) -> subprocess.CompletedP
     )
 
 
-@pytest.mark.timeout_seconds(20)
-def test_anchored_internal_link_passes_when_target_file_exists(tmp_path: Path) -> None:
-    """A relative link carrying a fragment resolves via the path part only.
+def _write_passing_link_fixtures(tmp_path: Path) -> tuple[str, ...]:
+    """Lay out three independent pass scenarios under ``tmp_path``.
 
-    The script MUST strip the ``#anchor`` fragment before path
-    resolution. ``README.md#first-run`` is a link to ``README.md``
-    with a Markdown anchor; the script must NOT treat ``README.md#first-run``
-    as a literal filename. This was the regression fixed at
-    wt-038: the pre-fix script reported every anchored internal
-    link as broken because ``Path.exists()`` rejected the fragment.
+    Returns relative paths for a single batched ``main()`` invocation.
     """
     (tmp_path / "README.md").write_text(
         textwrap.dedent(
@@ -84,31 +88,6 @@ def test_anchored_internal_link_passes_when_target_file_exists(tmp_path: Path) -
         ),
         encoding="utf-8",
     )
-    result = _run_linkcheck("README.md", cwd=tmp_path)
-    assert result.returncode == 0, (
-        f"anchored internal link must pass; "
-        f"rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
-    )
-    assert "OK" in result.stdout, (
-        f"anchored internal link must emit OK marker; "
-        f"stdout={result.stdout!r}"
-    )
-
-
-@pytest.mark.timeout_seconds(20)
-def test_docs_relative_internal_link_passes_when_resolved_from_source_dir(
-    tmp_path: Path,
-) -> None:
-    """A docs-relative link resolves from the source document's directory.
-
-    The script MUST resolve ``../code-style/index.md`` from the
-    source document's parent directory (``docs/``), not from the
-    repository root. This was the regression reported at wt-038: the
-    pre-fix script was suspected of resolving from the repository
-    root. The post-fix script resolves relative to the source
-    document, so a valid ``docs/code-style/index.md`` link from
-    ``docs/README.md`` passes.
-    """
     docs = tmp_path / "docs"
     docs.mkdir()
     code_style = docs / "code-style"
@@ -123,14 +102,49 @@ def test_docs_relative_internal_link_passes_when_resolved_from_source_dir(
         ),
         encoding="utf-8",
     )
-    result = _run_linkcheck("docs/README.md", cwd=tmp_path)
+    fragment_dir = tmp_path / "fragment"
+    fragment_dir.mkdir()
+    (fragment_dir / "START_HERE.md").write_text(
+        textwrap.dedent(
+            """\
+            # Start
+            See [later section](#later).
+            """
+        ),
+        encoding="utf-8",
+    )
+    return ("README.md", "docs/README.md", "fragment/START_HERE.md")
+
+
+@pytest.mark.timeout_seconds(10)
+def test_passing_internal_links_batch(tmp_path: Path) -> None:
+    """Anchored, docs-relative, and fragment-only internal links pass in one run.
+
+    Batches three independent pass fixtures into a single ``main()``
+    invocation (one Python startup) because ``check_route_page_links.py``
+    accepts multiple FILE arguments and reports all errors before exiting.
+    Each scenario remains a distinct assertion target:
+
+    - anchored fragment: ``README.md#first-run`` resolves via path only
+      (wt-038 regression)
+    - docs-relative: ``code-style/index.md`` from ``docs/README.md``
+    - fragment-only: bare ``#later`` is not a filesystem path
+    """
+    paths = _write_passing_link_fixtures(tmp_path)
+    result = _run_linkcheck(*paths, cwd=tmp_path)
     assert result.returncode == 0, (
-        f"docs-relative link must pass; "
+        f"batched internal links must pass; "
         f"rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
+    )
+    assert "OK" in result.stdout, (
+        f"batched pass path must emit OK marker; stdout={result.stdout!r}"
+    )
+    assert str(len(paths)) in result.stdout, (
+        f"OK line must report file count; stdout={result.stdout!r}"
     )
 
 
-@pytest.mark.timeout_seconds(20)
+@pytest.mark.timeout_seconds(10)
 def test_missing_target_file_fails_with_per_line_diagnostic(tmp_path: Path) -> None:
     """A relative link to a missing file fails with a per-file, per-line report.
 
@@ -162,7 +176,7 @@ def test_missing_target_file_fails_with_per_line_diagnostic(tmp_path: Path) -> N
     )
 
 
-@pytest.mark.timeout_seconds(20)
+@pytest.mark.timeout_seconds(10)
 def test_missing_source_file_reports_missing_route_file(tmp_path: Path) -> None:
     """A source file that does not exist is reported as missing.
 
@@ -182,26 +196,3 @@ def test_missing_source_file_reports_missing_route_file(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.timeout_seconds(20)
-def test_fragment_only_link_is_not_a_broken_link(tmp_path: Path) -> None:
-    """A bare ``#anchor`` link is treated as an in-page fragment, not a path.
-
-    The script MUST NOT attempt to resolve a fragment-only link to a
-    filesystem path. ``#section`` is a valid Markdown anchor that
-    points into the same page; the script must ignore it rather
-    than flag it as broken.
-    """
-    (tmp_path / "START_HERE.md").write_text(
-        textwrap.dedent(
-            """\
-            # Start
-            See [later section](#later).
-            """
-        ),
-        encoding="utf-8",
-    )
-    result = _run_linkcheck("START_HERE.md", cwd=tmp_path)
-    assert result.returncode == 0, (
-        f"fragment-only link must pass; "
-        f"rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
-    )

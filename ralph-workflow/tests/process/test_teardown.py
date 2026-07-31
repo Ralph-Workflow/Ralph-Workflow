@@ -64,13 +64,13 @@ def test_teardown_subtree_reaps_nested_children() -> None:
     assert len(children) >= 2, f"expected nested descendants, got {len(children)}"
     child_pids = {p.pid for p in children}
 
-    teardown = DefaultProcessTeardown(kill_escalation_ms=200.0)
+    teardown = DefaultProcessTeardown(kill_escalation_ms=10.0)
     teardown.teardown_subtree(host.pid)
 
-    for _ in range(40):
+    for _ in range(100):
         if host.poll() is not None:
             break
-        time.sleep(0.05)
+        time.sleep(0.01)
     assert host.poll() is not None
 
     # Confirm no descendants survived.
@@ -138,15 +138,15 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
 
     # Now teardown_subtree cannot enumerate via psutil, but it should fall
     # back to signaling the host's process group and reap the child.
-    teardown = DefaultProcessTeardown(kill_escalation_ms=200.0)
+    teardown = DefaultProcessTeardown(kill_escalation_ms=10.0)
     teardown.teardown_subtree(host.pid, pgid=host_pgid)
 
-    for _ in range(40):
+    for _ in range(100):
         try:
             psutil.Process(child_pid)
         except psutil.NoSuchProcess:
             break
-        time.sleep(0.05)
+        time.sleep(0.01)
     else:
         pytest.fail(f"descendant {child_pid} survived process-group teardown")
 

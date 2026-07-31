@@ -223,6 +223,7 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         monitor = DefaultProcessMonitor(
             host.pid,
             subagent_pid_source=pid_source,
+            poll_interval_seconds=0.0,
         )
         assert monitor.live_subagent_count() == 1
         processes = monitor.classified_processes()
@@ -270,12 +271,12 @@ def test_teardown_reaps_nested_subagents() -> None:
         time.sleep(0.01)
     assert host.poll() is None
 
-    DefaultProcessTeardown(kill_escalation_ms=200.0).teardown_subtree(host.pid)
+    DefaultProcessTeardown(kill_escalation_ms=10.0).teardown_subtree(host.pid)
 
-    for _ in range(30):
+    for _ in range(100):
         if host.poll() is not None:
             break
-        time.sleep(0.05)
+        time.sleep(0.01)
     assert host.poll() is not None
 
 

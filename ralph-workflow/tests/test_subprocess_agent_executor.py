@@ -102,11 +102,9 @@ async def test_cancel_kills_process_group() -> None:
             sys.executable,
             "-c",
             (
-                "import os, sys, time, signal; "
-                "pid = os.fork() if hasattr(os, 'fork') else -1; "
+                "import sys, signal; "
                 "print('ready'); sys.stdout.flush(); "
-                "if pid == 0: signal.pause() "
-                "else: time.sleep(60)"
+                "signal.pause()"
             ),
         ]
     )

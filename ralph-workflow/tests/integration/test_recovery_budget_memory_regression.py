@@ -23,7 +23,9 @@ entirely, so the FINAL object stays small.
 Fails today: the final ``AgentBudgetRegistry`` / ``FailureBudget`` retains
 ``_ITERATION_COUNT`` ClassifiedFailures; each carries a traceback frame
 holding the test's 8 KiB ``blob``. Worst-case retained bytes is
-``_ITERATION_COUNT * _BLOB_SIZE_BYTES`` (well past the 256 KiB cap).
+``_ITERATION_COUNT * _BLOB_SIZE_BYTES`` (48 x 8 KiB ~ 384 KiB, well
+past the 256 KiB cap). Forty-eight debits still exceed the leak
+floor while saving sixteen iterations per test.
 
 These tests are subprocess_e2e: they exercise the real
 ``AgentBudgetRegistry`` / ``FailureBudget`` accumulator path with
@@ -46,7 +48,7 @@ from ralph.recovery.failure_category import FailureCategory
 
 pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
-_ITERATION_COUNT = 64
+_ITERATION_COUNT = 48
 _BLOB_SIZE_BYTES = 8 * 1024
 _RETAINED_DELTA_LIMIT = 256 * 1024
 
@@ -83,7 +85,7 @@ def _make_classified_failure(index: int) -> ClassifiedFailure:
 
     Without the fix (step 3) every ``debit`` appends the
     ClassifiedFailure to ``BudgetState.failures``, so the FINAL
-    registry holds all 64 distinct blobs → ~512 KiB retained. With
+    registry holds all debited blobs (~384 KiB at 48 cycles). With
     the fix the failures field is dropped and retained memory stays
     flat.
     """
@@ -112,8 +114,8 @@ def test_agent_budget_registry_failures_do_not_grow() -> None:
     holds the cumulative ``BudgetState.failures`` tuple. Without the
     fix (step 3), ``failures=(*current.failures, failure)`` keeps every
     ``ClassifiedFailure`` (and its traceback frame pinning the blob)
-    alive for the lifetime of the registry, so a 64-debit loop
-    inflates retained bytes well past the 256 KiB cap. With the fix,
+    alive for the lifetime of the registry, so a 48-debit loop
+    inflates retained bytes well past the 256 KiB cap (48 x 8 KiB). With the fix,
     the failures field is dropped from ``BudgetState`` entirely.
     """
     gc.collect()
@@ -167,7 +169,7 @@ def test_failure_budget_failures_do_not_grow() -> None:
 
     The ``FailureBudget`` wrapper composes onto ``BudgetState``; the
     same leak pattern (every debit appends to ``failures``) applies.
-    Without the fix, the final ``FailureBudget`` retains all 64
+    Without the fix, the final ``FailureBudget`` retains all 48
     failures and their traceback frames. With the fix, the failures
     field is dropped from ``BudgetState`` entirely.
     """

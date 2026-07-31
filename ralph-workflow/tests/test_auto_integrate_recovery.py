@@ -46,14 +46,17 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import (
     IntegrationRecord,
-    auto_integrate_after_commit,
     recover_incomplete_integration,
+)
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit as _auto_integrate_after_commit,
 )
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
@@ -63,6 +66,13 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+
+
+def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+    """Test-only wrapper that skips real CAS backoff sleeps."""
+    kwargs.setdefault("sleep", lambda _seconds: None)
+    kwargs.setdefault("jitter", lambda: 0.0)
+    return _auto_integrate_after_commit(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------

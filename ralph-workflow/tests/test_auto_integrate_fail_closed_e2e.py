@@ -77,6 +77,8 @@ def test_head_read_failure_names_the_git_operation(
         _config(),
         WorkspaceScope(Path("/workspace")),
         RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
     )
 
     assert outcome is not None

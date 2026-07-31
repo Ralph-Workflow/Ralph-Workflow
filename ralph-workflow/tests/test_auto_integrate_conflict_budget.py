@@ -34,12 +34,14 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit as _auto_integrate_after_commit,
+)
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 )
@@ -50,6 +52,13 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+
+
+def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+    """Test-only wrapper that skips real CAS backoff sleeps."""
+    kwargs.setdefault("sleep", lambda _seconds: None)
+    kwargs.setdefault("jitter", lambda: 0.0)
+    return _auto_integrate_after_commit(*args, **kwargs)
 
 
 def _run(

@@ -31,19 +31,28 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import (
     IntegrationRecord,
-    auto_integrate_after_commit,
     recover_incomplete_integration,
+)
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit as _auto_integrate_after_commit,
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+
+# Test-only: skip real 0.5-4.0s CAS backoff; callers may still override sleep/jitter.
+def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+    kwargs.setdefault("sleep", lambda _seconds: None)
+    kwargs.setdefault("jitter", lambda: 0.0)
+    return _auto_integrate_after_commit(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------

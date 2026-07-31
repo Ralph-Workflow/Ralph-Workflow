@@ -87,8 +87,8 @@ import pytest
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.integration]
 
 _READ_CHUNK_SIZE = 4096
-_TIMEOUT_SECONDS = 3.0
-_POLL_INTERVAL = 0.02
+_TIMEOUT_SECONDS = 2.0
+_POLL_INTERVAL = 0.01
 _PTY_COLS = 120
 _PTY_ROWS = 40
 
@@ -134,7 +134,7 @@ def _render_probe(
     outer_dev_cap: int | None = None,
     inner_analysis: int | None = None,
     inner_analysis_cap: int | None = None,
-    max_wait_seconds: float = 0.2,
+    max_wait_seconds: float = 0.1,
     poll_interval: float = _POLL_INTERVAL,
 ) -> str:
     return _PROBE_POLL_BODY_TEMPLATE.format(

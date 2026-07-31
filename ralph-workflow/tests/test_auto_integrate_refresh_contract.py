@@ -87,7 +87,11 @@ def test_auto_integrate_passes_freshness_to_the_landing_runner(
     events = _inject_integration_runner(monkeypatch, initial_refresh=REFRESH_UNREACHABLE)
 
     outcome = auto_integrate.auto_integrate_after_commit(
-        _build_config(), WorkspaceScope(_ROOT), RebaseState()
+        _build_config(),
+        WorkspaceScope(_ROOT),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
     )
 
     assert outcome is not None

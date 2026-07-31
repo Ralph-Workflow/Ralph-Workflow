@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,13 +14,22 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
 from ralph.git.operations import get_head_sha
 from ralph.pipeline import run_loop, runner
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit as _auto_integrate_after_commit,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+
+def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+    """Test-only wrapper that skips real CAS backoff sleeps."""
+    kwargs.setdefault("sleep", lambda _seconds: None)
+    kwargs.setdefault("jitter", lambda: 0.0)
+    return _auto_integrate_after_commit(*args, **kwargs)
 
 
 def _config() -> UnifiedConfig:
