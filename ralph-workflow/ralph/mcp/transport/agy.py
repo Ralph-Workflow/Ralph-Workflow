@@ -8,7 +8,7 @@ Research-confirmed facts:
 - Yolo flag: --dangerously-skip-permissions
 - MCP config path: ~/.gemini/antigravity-cli/mcp_config.json
 - HTTP JSON key: serverUrl
-- Output format: plain text (not NDJSON) - uses JsonParserType.GENERIC
+- Print output: stream-json emits NDJSON; AgyParser is selected by transport.
 
 Ralph reads existing AGY upstream servers from the user config files at
 ~/.gemini/antigravity-cli/mcp_config.json and workspace .agents/mcp_config.json.
