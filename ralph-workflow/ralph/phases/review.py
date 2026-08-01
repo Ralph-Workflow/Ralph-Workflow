@@ -86,8 +86,12 @@ def _persist_review_baseline(
     on any read uncertainty or content mismatch.
     """
     try:
-        backend.mkdir(marker_path.parent, parents=True, exist_ok=True)
-        write_text_if_changed(backend, marker_path, sha)
+        write_text_if_changed(
+            backend,
+            marker_path,
+            sha,
+            prepare_write=lambda: backend.mkdir(marker_path.parent, parents=True, exist_ok=True),
+        )
     except OSError as exc:
         logger.debug("Failed to write review baseline marker: {}", exc)
 

@@ -22,12 +22,14 @@ class RecordingFileBackend(FileBackend):
     def __init__(self) -> None:
         self.files: dict[Path, str] = {}
         self.write_text_calls = 0
+        self.mkdir_calls = 0
 
     def exists(self, path: Path) -> bool:
         return path in self.files
 
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
         del path, parents, exist_ok
+        self.mkdir_calls += 1
 
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         del encoding
@@ -188,6 +190,7 @@ def test_review_baseline_regression_skips_byte_identical_rewrite() -> None:
     persist(marker_path, "deadbeef", backend=backend)
 
     assert backend.write_text_calls == 1
+    assert backend.mkdir_calls == 1
     assert backend.files[marker_path] == "deadbeef"
 
 
