@@ -213,9 +213,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     stable, version, from_path = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
 
-    _resolve_install_conflict(run=_run_command)
-
     if stable or version is not None or from_path is not None:
+        _resolve_install_conflict(run=_run_command)
         install_stable_release(
             run=_run_command,
             uv_executable=shutil.which("uv"),

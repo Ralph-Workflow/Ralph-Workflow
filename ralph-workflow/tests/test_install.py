@@ -296,6 +296,21 @@ def test_main_default_installs_dev_checkout(monkeypatch: pytest.MonkeyPatch) -> 
     }
 
 
+def test_main_default_install_does_not_preflight_non_shadowing_rdev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dev snapshots install `rdev`, so an existing global `ralph` is not a conflict."""
+    monkeypatch.setattr(
+        install_module,
+        "_resolve_install_conflict",
+        lambda **_kwargs: pytest.fail("rdev must not preflight the global ralph command"),
+    )
+    monkeypatch.setattr(install_module, "install_dev_checkout", lambda **_kwargs: None)
+    monkeypatch.setattr(install_module.shutil, "which", lambda _name: "/opt/bin/uv")
+
+    assert install_module.main([]) == 0
+
+
 def test_write_build_flavor_changes_only_the_runtime_suffix(tmp_path: Path) -> None:
     package_dir = tmp_path / "snapshot"
     build_meta = package_dir / "ralph" / "_build_meta.py"
@@ -343,6 +358,21 @@ def test_main_stable_flag_installs_pinned_release(monkeypatch: pytest.MonkeyPatc
         "cwd": Path(install_module.__file__).resolve().parents[1],
         "version": None,
     }
+
+
+def test_main_stable_install_preflights_global_ralph(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stable installation owns `ralph`, so it keeps the global conflict guard."""
+    preflight_calls: list[object] = []
+    monkeypatch.setattr(
+        install_module,
+        "_resolve_install_conflict",
+        lambda **kwargs: preflight_calls.append(kwargs["run"]),
+    )
+    monkeypatch.setattr(install_module, "install_stable_release", lambda **_kwargs: None)
+    monkeypatch.setattr(install_module.shutil, "which", lambda _name: "/opt/bin/uv")
+
+    assert install_module.main(["--stable"]) == 0
+    assert preflight_calls == [install_module._run_command]
 
 
 def test_main_version_implies_stable(monkeypatch: pytest.MonkeyPatch) -> None:
