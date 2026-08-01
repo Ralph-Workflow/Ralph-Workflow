@@ -234,6 +234,13 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
         return None
     tool_error = _tool_state_error_message(obj)
     if tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS:
+        part = obj.get("part")
+        state = part.get("state") if isinstance(part, dict) else None
+        status = state.get("status") if isinstance(state, dict) else None
+        if status in {"completed", "error"}:
+            return AgentActivitySignal(
+                AgentActivityKind.CHILD_TERMINAL_ACK, raw=line, error_message=tool_error
+            )
         return AgentActivitySignal(
             AgentActivityKind.CHILD_PROGRESS, raw=line, error_message=tool_error
         )

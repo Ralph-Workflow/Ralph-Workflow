@@ -24,8 +24,9 @@ Two blind spots this pins:
    dispatches by ``type == "tool_use"``, so a real subagent dispatch was
    reported as "subagent dispatch was not observed".
 
-A subagent tool call is a genuine child-scope signal, so it maps to
-CHILD_PROGRESS (which reaches the watchdog's subagent channel). Non-subagent
+A running subagent tool call is genuine child-scope progress, so it maps to
+CHILD_PROGRESS (which reaches the watchdog's subagent channel); terminal task
+results map to CHILD_TERMINAL_ACK. Non-subagent
 tools map to TOOL_USE. Bare provider frames still classify as neither -- the
 strict-classifier contract in ``_helpers`` is preserved.
 """
@@ -77,14 +78,14 @@ def _strategy():
     return strategy_for_command("opencode", AgentTransport.OPENCODE)
 
 
-def test_task_tool_classifies_as_child_progress() -> None:
-    """OpenCode's native subagent tool MUST reach the watchdog's subagent channel.
+def test_running_task_tool_classifies_as_child_progress() -> None:
+    """A running OpenCode task MUST reach the watchdog's subagent channel.
 
-    ``task`` is OpenCode's subagent dispatch. Classifying it as a plain
-    OUTPUT_LINE left the watchdog's ``subagent_output`` channel empty for the
-    entire run, so it had no idea a subagent existed.
+    ``task`` is OpenCode's subagent dispatch. Classifying its running frame as
+    a plain OUTPUT_LINE left the watchdog's ``subagent_output`` channel empty
+    while the child was working.
     """
-    signal = _strategy().classify_activity_line(_tool_event("task"))
+    signal = _strategy().classify_activity_line(_tool_event("task", status="running"))
     assert signal is not None, "a task (subagent) dispatch must produce a signal"
     assert signal.kind == AgentActivityKind.CHILD_PROGRESS, (
         f"OpenCode 'task' is a native subagent dispatch and MUST classify as"
@@ -136,15 +137,35 @@ def test_native_task_call_id_spelling_regression_keeps_parser_sink_and_registry_
         assert registry.snapshot("agent:parent:").active_count == 1
 
 
-def test_task_tool_observe_line_refreshes_subagent_activity_sink() -> None:
-    """S-4: Native ``task`` calls MUST refresh the watchdog sink without child lifecycle IDs."""
+def test_native_task_terminal_result_regression_releases_watchdog_child_evidence() -> None:
+    """S-2: a completed task closes its child instead of refreshing progress.
+
+    The terminal envelope is a result, not evidence that the child remains
+    active. Refreshing the subagent channel here can mask a quiet parent after
+    the child has completed.
+    """
     sink_calls: list[str] = []
-    line = _tool_event("task", call_id="call_real_task")
-    strategy = OpenCodeExecutionStrategy(subagent_activity_sink=sink_calls.append)
+    clock = FakeClock()
+    registry = ChildLivenessRegistry(
+        progress_ttl=30.0,
+        heartbeat_ttl=30.0,
+        stale_label_ttl=30.0,
+        exit_reconcile=30.0,
+        now=clock.monotonic,
+    )
+    strategy = OpenCodeExecutionStrategy(
+        label_scope="parent",
+        registry=registry,
+        subagent_activity_sink=sink_calls.append,
+    )
 
-    strategy.observe_line(line)
+    strategy.observe_line(_tool_event("task", status="running", call_id="call_real_task"))
+    strategy.observe_line(_tool_event("task", status="completed", call_id="call_real_task"))
 
-    assert sink_calls == [line]
+    assert sink_calls == [_tool_event("task", status="running", call_id="call_real_task")]
+    assert strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe(active=False)) == (
+        AgentExecutionState.ACTIVE
+    )
 
 
 def test_native_task_regression_prefers_call_id_over_unrelated_envelope_id() -> None:

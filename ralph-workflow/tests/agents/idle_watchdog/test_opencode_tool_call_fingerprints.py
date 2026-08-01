@@ -143,10 +143,12 @@ def test_opencode_strategy_regression_classifies_untyped_tool_part_as_tool_use()
     )
 
 
-def test_opencode_strategy_regression_classifies_untyped_task_part_as_child_progress() -> None:
-    """S-2: a native task dispatch without part.type keeps child work visible."""
+def test_opencode_strategy_regression_classifies_untyped_running_task_as_child_progress() -> None:
+    """S-2: a native running task without part.type keeps child work visible."""
     strategy = strategy_for_transport(AgentTransport.OPENCODE)
-    line = _opencode_tool_line("task", {"prompt": "inspect"}, include_part_type=False)
+    line = _opencode_tool_line(
+        "task", {"prompt": "inspect"}, status="running", include_part_type=False
+    )
 
     signal = strategy.classify_activity_line(line)
 
@@ -222,15 +224,15 @@ def test_opencode_repeated_failing_tool_trips_the_breaker() -> None:
     assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
 
 
-def test_opencode_errored_subagent_keeps_its_child_progress_signal() -> None:
-    """An errored ``task`` must not go dark on the subagent-activity sink."""
+def test_opencode_errored_subagent_releases_its_child_progress_signal() -> None:
+    """An errored ``task`` is terminal rather than fresh child work."""
     strategy = strategy_for_transport(AgentTransport.OPENCODE)
     line = _opencode_tool_line("task", {"prompt": "inspect"}, status="error")
 
     signal = strategy.classify_activity_line(line)
 
     assert signal is not None
-    assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+    assert signal.kind == AgentActivityKind.CHILD_TERMINAL_ACK
 
 
 def test_opencode_strategy_classifies_tool_result_as_tool_result() -> None:
