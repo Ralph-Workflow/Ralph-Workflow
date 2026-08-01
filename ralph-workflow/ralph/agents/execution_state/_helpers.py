@@ -576,18 +576,12 @@ def _classify_generic_child_signal_from_text(
 
 
 def parse_opencode_child_id(line: str) -> str | None:
-    """Return the child_id (or ``id``) carried in an OpenCode NDJSON line.
+    """Return an explicit OpenCode child or native-task call identifier.
 
-    Returns ``None`` when the line is not valid JSON, the parsed
-    object is not a dict, or no ``child_id`` / ``id`` field is
-    present. Used by both the registry-routing path
-    (:func:`_route_opencode_line_to_registry`) and the watchdog
-    activity-sink path so the two surfaces consume the SAME
-    evidence model: a line without a child id is dropped from
-    BOTH the registry AND the sink, eliminating the parity gap
-    where the watchdog treated the line as fresh subagent
-    activity while the registry-backed liveness view stayed
-    stale.
+    Child lifecycle frames use top-level ``child_id`` or ``id``. Native
+    OpenCode ``task`` tools instead identify the logical subagent call as
+    ``part.callID``. Both forms are attributable activity for the watchdog;
+    only lifecycle frame types are routed into the child-liveness registry.
     """
     stripped = line.strip()
     if not stripped:
@@ -600,7 +594,14 @@ def parse_opencode_child_id(line: str) -> str | None:
         return None
     obj = cast("dict[str, object]", parsed)
     child_id = str(obj.get("child_id") or obj.get("id") or "")
-    return child_id or None
+    if child_id:
+        return child_id
+    part = obj.get("part")
+    if isinstance(part, dict):
+        call_id = part.get("callID")
+        if isinstance(call_id, str) and call_id:
+            return call_id
+    return None
 
 
 def _route_opencode_line_to_registry(

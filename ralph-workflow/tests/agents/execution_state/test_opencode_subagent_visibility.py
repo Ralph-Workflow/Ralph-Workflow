@@ -36,6 +36,7 @@ import json
 
 from ralph.agents.agent_activity_kind import AgentActivityKind
 from ralph.agents.execution_state import strategy_for_command
+from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
 from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import get_parser
 from ralph.config.enums import AgentTransport
@@ -78,6 +79,17 @@ def test_task_tool_classifies_as_child_progress() -> None:
         f"OpenCode 'task' is a native subagent dispatch and MUST classify as"
         f" CHILD_PROGRESS so the watchdog's subagent channel is fed; got {signal.kind}"
     )
+
+
+def test_task_tool_observe_line_refreshes_subagent_activity_sink() -> None:
+    """S-4: Native ``task`` calls MUST refresh the watchdog sink without child lifecycle IDs."""
+    sink_calls: list[str] = []
+    line = _tool_event("task", call_id="call_real_task")
+    strategy = OpenCodeExecutionStrategy(subagent_activity_sink=sink_calls.append)
+
+    strategy.observe_line(line)
+
+    assert sink_calls == [line]
 
 
 def test_ordinary_tool_classifies_as_tool_use() -> None:

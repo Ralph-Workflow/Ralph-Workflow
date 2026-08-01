@@ -203,6 +203,10 @@ def test_parse_opencode_child_id_returns_parsed_id() -> None:
             "xyz",
         ),
         (
+            '{"type":"child_progress","child_id":7,"phase":"p"}',
+            "7",
+        ),
+        (
             '{"type":"child_progress","phase":"p"}',
             None,
         ),

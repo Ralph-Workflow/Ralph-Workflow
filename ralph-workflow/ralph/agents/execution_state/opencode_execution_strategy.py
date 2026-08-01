@@ -95,9 +95,10 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify OpenCode output for idle-watchdog activity."""
-        # A failed tool remains a TOOL_USE with error_message evidence: both
-        # the identical-tool and repeated-error breakers need that signal.
-        # Only error envelopes that are not tool events become ERROR_LINE.
+        # A tool envelope remains tool activity even when its embedded state
+        # reports an error. The tool dimension correlates repeated identical
+        # calls; routing it through ERROR_LINE loses that evidence. Top-level
+        # error envelopes still take the error path below.
         signal = _classify_opencode_child_signal(line)
         if signal is not None:
             return signal

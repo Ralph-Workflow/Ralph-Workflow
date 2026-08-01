@@ -30,6 +30,7 @@ class ConflictResolution(StrEnum):
     REMOVE = "remove"
     ABORT = "abort"
 
+
 def resolve_package_file(executable: str) -> Path | None:
     """Resolve a console script to its interpreter's installed package file."""
     script = Path(executable).resolve()

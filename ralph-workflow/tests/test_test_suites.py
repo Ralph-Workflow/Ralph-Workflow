@@ -301,8 +301,8 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Sixteen shards keep the measured verification profile under the immutable
-    # 60-second budget without oversubscribing the maintained twelve-core runner.
+    # The 32-shard profile keeps the measured verification run inside the
+    # immutable 60-second budget on the maintained runner.
     for cores, expected in (
         (4, "16"),
         (5, "16"),
@@ -311,9 +311,9 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
         (8, "16"),
         (12, "16"),
         (16, "16"),
-        (20, "16"),
-        (21, "16"),
-        (64, "16"),
+        (20, "20"),
+        (21, "21"),
+        (64, "32"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
