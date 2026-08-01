@@ -214,6 +214,32 @@ def test_event_renderer_resolves_semantic_style_for_context_background(
     assert any(expected_style in str(span.style) for span in rendered.spans)
 
 
+@pytest.mark.parametrize(
+    "kind",
+    (
+        ActivityEventKind.TEXT,
+        ActivityEventKind.STATUS,
+        ActivityEventKind.LIFECYCLE,
+        ActivityEventKind.PROGRESS,
+        ActivityEventKind.UNKNOWN,
+    ),
+)
+def test_semantic_event_body_uses_the_resolved_meaning_style(kind: ActivityEventKind) -> None:
+    """S-3 regression: production body traffic is not default-foreground text."""
+    import io as _io
+
+    context = make_display_context(
+        console=Console(file=_io.StringIO(), force_terminal=True, color_system="truecolor"),
+        env={"RALPH_TERMINAL_BG": "dark"},
+    )
+    rendered = render_event(_event(kind, "operator-visible body"), context)
+    body_start = rendered.plain.index("operator-visible body")
+    assert any(
+        span.start <= body_start < span.end and "#" in str(span.style)
+        for span in rendered.spans
+    )
+
+
 def test_lifecycle_renders_message() -> None:
     ctx = _ctx()
     rendered = render_event(_event(ActivityEventKind.LIFECYCLE, "phase=development"), ctx)

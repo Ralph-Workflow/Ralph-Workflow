@@ -233,11 +233,11 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
         f"Joined passage must appear exactly once, got {out.count(joined)}:\n{out}"
     )
 
-    # One logical close entry may use a header and body row; each repeats its
-    # grep-critical carrier rather than relying on surrounding context.
+    # One logical close entry keeps the summary and passage together when the
+    # available width permits; narrow continuations retain the same carrier.
     thinking_lines = [line for line in out.splitlines() if "[reasoning][main]" in line]
-    assert len(thinking_lines) == 2, (
-        f"Expected header and body rows for one thinking entry, got {len(thinking_lines)}:\n{out}"
+    assert len(thinking_lines) == 1, (
+        f"Expected one coalesced thinking entry, got {len(thinking_lines)}:\n{out}"
     )
     _assert_no_internal_vocabulary(out)
 
@@ -295,9 +295,9 @@ def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -
 
     assert "deep reasoning here" in out, f"thinking content not found in:\n{out}"
 
-    # One logical close entry uses a header and body row with repeated carrier.
+    # One logical close entry keeps its summary and body together at this width.
     thinking_lines = [line for line in out.splitlines() if "[reasoning][main]" in line]
-    assert len(thinking_lines) == 2, (
-        f"Expected header and body rows for one thinking entry, got {len(thinking_lines)}:\n{out}"
+    assert len(thinking_lines) == 1, (
+        f"Expected one coalesced thinking entry, got {len(thinking_lines)}:\n{out}"
     )
     _assert_no_internal_vocabulary(out)

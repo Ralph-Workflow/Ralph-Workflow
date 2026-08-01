@@ -396,6 +396,22 @@ environment after that.
      - Set to ``0``/``false``/``no``/``off`` to disable AI-based headline
        generation for long content blocks.
 
+Closing summary
+---------------
+
+A completed run emits two durable closing surfaces. ``[run-end]`` is the
+compact operational recap; ``[run-completion]`` is the standalone final summary
+and remains visible in ``--quiet`` mode. Both success and failure use the same
+rule-delimited family and canonical ``key=value`` values. The summary leads with
+its outcome and exit trigger. On failure it then shows ``failed_phase=<name>``
+and the labelled error cause before elapsed time, metrics, decisions, review,
+activity, and any ``raw_overflow=`` recovery destination. Explicit labels keep
+warnings and failures distinguishable when colour is disabled.
+
+At the 12-row floor, structural rules and secondary sections condense rather
+than producing an empty frame; outcome, failure context, and every available
+recovery destination remain the essential closing record.
+
 Responsive Status Bar
 ---------------------
 

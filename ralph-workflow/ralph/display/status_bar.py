@@ -1462,6 +1462,7 @@ class StatusBar:
         "_live_frame_rendered",
         "_lock",
         "_model",
+        "_started",
         "_ticker",
         "_ticker_stop",
     )
@@ -1479,6 +1480,7 @@ class StatusBar:
         self._lock = threading.RLock()
         self._fallback_rendered = False
         self._fallback_frame: str | None = None
+        self._started = False
         self._durable_frame: str | None = None
         self._last_live_frame: str | None = None
         self._live_frame_rendered = False
@@ -1617,7 +1619,11 @@ class StatusBar:
         the plain-text comparison suppresses repeated pushes while preserving
         phase, attention, elapsed, and identity transitions for later review.
         """
-        if self._real_tty() or bool(self._display._is_quiet):
+        # A force-terminal capture backed by StringIO is a renderer probe, not
+        # a durable destination. It must not receive footer bytes: unlike a
+        # real redirect it has no cold transcript contract and Rich reports it
+        # as terminal-capable solely because the caller requested colour.
+        if self._real_tty() or (self._started and self._ctx().console.is_terminal) or bool(self._display._is_quiet):
             return
         renderable = self._renderable()
         if renderable.plain == self._durable_frame:
@@ -1697,6 +1703,7 @@ class StatusBar:
         later ``start()`` retry still succeeds and ``stop()`` on an
         unstarted bar remains a no-op.
         """
+        self._started = True
         if not self._gate():
             return
         with contextlib.suppress(Exception):

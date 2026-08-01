@@ -172,16 +172,17 @@ def test_group_cause_section_shown_on_failure() -> None:
     assert "boom" in out
 
 
-def test_completion_summary_regression_failure_cause_precedes_metrics() -> None:
-    """S-6: a failed standalone summary puts its cause before secondary metrics."""
+def test_completion_summary_regression_failure_phase_and_cause_precede_metrics() -> None:
+    """S-6: failure context is visible before secondary metrics in cold output."""
     out = _render_group(
         _make_snapshot(
-            phase="failed",
+            phase="verification",
             last_error="verification failed",
             is_terminal_success=False,
             is_terminal_failure=True,
         )
     )
+    assert out.index("failed_phase=verification") < out.index("verification failed")
     assert out.index("verification failed") < out.index("Metrics")
 
 

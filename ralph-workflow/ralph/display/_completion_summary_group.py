@@ -228,8 +228,9 @@ def render_completion_summary_group(
     renderables: list[Rule | Text] = [Rule(title, style=style)]
     renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}"))
     if failed:
+        renderables.append(Text(f"  failed_phase={snapshot.phase}", style=style))
         renderables.append(Rule("Error Cause", style=style))
-        renderables.append(Text(f"  {snapshot.last_error or 'unknown failure'}"))
+        renderables.append(Text(f"  {snapshot.last_error or 'unknown failure'}", style=style))
         diagnostic = _children_persist_diagnostic_line(snapshot.last_error or "")
         if diagnostic:
             renderables.append(Text(f"  {diagnostic}"))

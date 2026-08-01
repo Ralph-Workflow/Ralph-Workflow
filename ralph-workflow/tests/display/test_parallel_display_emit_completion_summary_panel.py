@@ -336,7 +336,23 @@ def test_emit_completion_panel_degrades_at_12_rows() -> None:
     assert "sections condensed" in output
     assert "chars" in output
     assert "<id>" not in output
-    assert ".agent/raw/" not in output
+
+
+def test_short_failure_completion_keeps_phase_cause_and_recovery_path() -> None:
+    """S-6: the 12-row closing record retains actionable failure essentials."""
+    pd, buf = _height_aware_display(height=12)
+    failed = dataclasses.replace(
+        _make_snapshot(phase="verification", is_terminal_success=False, is_terminal_failure=True),
+        last_error="verification failed",
+    )
+    pd.emit_completion_summary_panel(
+        failed,
+        options=CompletionSummaryOptions(overflow_path=".agent/raw/verification.log"),
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert output.index("failed_phase=verification") < output.index("error: verification failed")
+    assert "raw_overflow=.agent/raw/verification.log" in output
 
 
 def test_short_completion_marker_counts_condensed_panel_content(tmp_path: Path) -> None:

@@ -67,9 +67,6 @@ if TYPE_CHECKING:
 # --- Type-ignore-policy: no Any in production code; the Protocol is strict. ---
 
 _STYLE_KEY = "style"
-#: Sentinel theme key used for plain-text body segments (no semantic role).
-DEFAULT_STYLE = "default"
-
 _ICON_KEY = "icon"
 _LABEL_KEY = "label"
 
@@ -340,7 +337,7 @@ def _render_text_event(
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, ctx=ctx, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     return text
 
 
@@ -369,7 +366,7 @@ def _render_status_event(
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     return text
 
 
@@ -579,7 +576,7 @@ def _render_lifecycle_event(
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     return text
 
 
@@ -601,7 +598,7 @@ def _render_progress_event(
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     return text
 
 
@@ -649,7 +646,7 @@ def _render_unknown_event(
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     if body:
-        _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
+        _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     summary = _metadata_summary(event.metadata)
     if summary:
         text.append(

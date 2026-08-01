@@ -1590,12 +1590,14 @@ class ParallelDisplay:
             # embedded-newline string and only the first embedded
             # line carried the prefix).
             close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
-            body_chunks = body.split("\n")
+            flattened_body = body.replace("\n", " · ")
             wrapped_first = self._wrap_body_with_hanging_indent(
                 close_badge_prefix,
-                body_chunks[0],
+                flattened_body,
                 total_width=self._ctx.width,
-                body_measure=self._ctx.body_measure(),
+                body_measure=max(
+                    self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)
+                ),
             )
             self._console.print(
                 self._activity_text(
@@ -1610,33 +1612,6 @@ class ParallelDisplay:
                 no_wrap=True,
                 overflow="ignore",
             )
-            for continuation in body_chunks[1:]:
-                wrapped_cont = self._wrap_body_with_hanging_indent(
-                    close_badge_prefix,
-                    continuation,
-                    total_width=self._ctx.width,
-                    body_measure=self._ctx.body_measure(),
-                )
-                # Each embedded line in ``wrapped_cont`` must
-                # carry the hang prefix so the body stays at the
-                # badge column on wrap. Print each line as its
-                # own console.write so the prefix lands on every
-                # row, not just the first (the pre-fix bug).
-                for cont_line in wrapped_cont.split("\n"):
-                    self._console.print(
-                        self._activity_text(
-                            timestamp,
-                            display_tag,
-                            rendered_unit_id,
-                            cont_line,
-                            kind="thinking" if base_tag == "think" else "text",
-                        ),
-                        markup=False,
-                        highlight=False,
-                        no_wrap=True,
-                        overflow="ignore",
-                    )
-
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
         # also the single record entry for the streaming block. Map the
         # base_tag back to an ``ActivityEventKind`` so the record line
@@ -3874,9 +3849,20 @@ class ParallelDisplay:
                         style="theme.text.muted",
                     )
                 )
-                if snapshot.is_terminal_failure and snapshot.last_error:
+                if snapshot.is_terminal_failure:
+                    self._console.print(Text(f"  failed_phase={snapshot.phase}", style=style))
                     self._console.print(
-                        Text(f"  error: {snapshot.last_error}", style="theme.level.error")
+                        Text(
+                            f"  error: {snapshot.last_error or 'unknown failure'}",
+                            style="theme.level.error",
+                        )
+                    )
+                if resolved_options.overflow_path is not None:
+                    self._console.print(
+                        Text(
+                            f"  raw_overflow={resolved_options.overflow_path}",
+                            style="theme.text.muted",
+                        )
                     )
                 # DA-005 (S-6 / AC-05): on a height-constrained console
                 # the bordered layout drops Plan / Metrics / Decisions /
