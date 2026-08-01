@@ -94,7 +94,6 @@ import contextlib
 import json
 import queue
 import re
-import textwrap
 import threading
 import time
 import uuid
@@ -106,6 +105,7 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+from rich.cells import cell_len
 from rich.console import Group
 from rich.padding import Padding
 from rich.panel import Panel
@@ -830,10 +830,11 @@ class ParallelDisplay:
         the matching ``hang_prefix``, so a built-in indent would
         double-count (the pre-fix bug doubled the indent at 40 cols).
 
-        The available column count for the body is
-        ``min(total_width - len(prefix), body_measure - len(prefix))``
-        with a floor of 20 cols so a single token wider than the
-        budget still flows through ``textwrap`` without crashing on
+        The available column count for the body is measured in terminal display
+        cells: ``min(total_width - cell_len(prefix), body_measure -
+        cell_len(prefix))``. This keeps wide and combining Unicode from shifting
+        the continuation column. A single token wider than the
+        budget still wraps without crashing on
         a zero-or-negative effective measure. Rules, tables, and
         aligned columns that need the full terminal width go
         through a different emit path (``_console.print`` with
@@ -849,12 +850,12 @@ class ParallelDisplay:
         """
         if not body:
             return body
-        prefix_len = len(prefix)
-        # Cap by both terminal width and the body measure; both
-        # subtract the prefix so a long prefix can't push the body
-        # below the floor on a short terminal.
-        budget_terminal = total_width - prefix_len
-        budget_measure = body_measure - prefix_len
+        prefix_width = cell_len(prefix)
+        # Cap by both terminal width and the body measure; both subtract the
+        # display-cell width of the prefix so wide/combining chrome cannot push
+        # the body beyond the right edge on a short terminal.
+        budget_terminal = total_width - prefix_width
+        budget_measure = body_measure - prefix_width
         # DA-004 (S-4): the floor is the available budget itself, not a
         # fixed ``max(20, ...)``. On a 40-column terminal with a 33-col
         # chrome prefix the available body width is 7 cols; the previous
@@ -862,53 +863,26 @@ class ParallelDisplay:
         # overflowed the terminal and broke the hanging-indent column.
         # A body that fits a single token flows through unchanged.
         budget = max(1, min(budget_terminal, budget_measure))
-        if budget <= 0 or len(body) <= budget:
+        if budget <= 0 or cell_len(body) <= budget:
             return body
-        # DA-003 (wt-028-display S-4): prefer ``break_long_words=False``
-        # so chrome tokens such as ``PASS``, ``read_file``, or the
-        # ``↳ read_file`` result marker survive a narrow-terminal wrap
-        # intact (the pre-fix ``break_long_words=True`` broke those
-        # tokens into 1-2 char fragments at the 40-col floor, e.g.
-        # ``↳ re``, ``ad_f``, ``ile`` for ``↳ read_file`` -- a
-        # 40-column tool_result header that did not name the tool or
-        # its outcome). When the body has a single token longer than
-        # the budget (an oversized file path or a single word wider
-        # than the floor), fall back to ``break_long_words=True`` so
-        # the line still flows through rather than overflowing past
-        # the terminal width -- the single long token is the only
-        # thing that gets broken, and the surrounding chrome tokens
-        # (``PASS``, ``read_file``, the result marker) are preserved
-        # on the line that introduces them.
-        wrapped = [
-            chunk
-            for line in body.split("\n")
-            for chunk in (
-                textwrap.wrap(
-                    line,
-                    width=budget,
-                    initial_indent="",
-                    subsequent_indent="",
-                    break_long_words=False,
-                    break_on_hyphens=False,
-                )
-                or [line]
-            )
-        ]
-        if not wrapped:
-            # All chrome tokens survived but the longest one
-            # overflowed the budget; allow ``break_long_words`` for
-            # this single edge case so the line still flows.
-            wrapped = textwrap.wrap(
-                body,
-                width=budget,
-                initial_indent="",
-                subsequent_indent="",
-                break_long_words=True,
-                break_on_hyphens=False,
-            )
-        if not wrapped:
-            return body
-        return "\n".join(wrapped)
+
+        def wrap_line(line: str) -> list[str]:
+            if not line:
+                return [line]
+            rows: list[str] = []
+            row = ""
+            for token in line.split():
+                candidate = token if not row else f"{row} {token}"
+                if row and cell_len(candidate) > budget:
+                    rows.append(row)
+                    row = token
+                else:
+                    row = candidate
+            if row:
+                rows.append(row)
+            return rows or [line]
+
+        return "\n".join(chunk for line in body.split("\n") for chunk in wrap_line(line))
 
     @staticmethod
     def _build_agents_parts(orientation: RunStartOrientation) -> list[str]:
@@ -1139,7 +1113,7 @@ class ParallelDisplay:
             # line for the timestamp. The wrap budget below still
             # uses the FULL prefix so the body lands at the same
             # column on the first line.
-            hang_prefix = level_indent + " " * len(full_chrome_prefix)
+            hang_prefix = level_indent + " " * cell_len(full_chrome_prefix)
             # DA-002 (S-4): wrap the body against the FULL
             # chrome+badge prefix so the first body token column
             # on the first line equals the hang column on every
@@ -1523,7 +1497,7 @@ class ParallelDisplay:
             # embedded-newline string and only the first embedded
             # line carried the prefix).
             close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
-            close_hang_prefix = " " * len(close_badge_prefix)
+            close_hang_prefix = " " * cell_len(close_badge_prefix)
             body_chunks = body.split("\n")
             wrapped_first = self._wrap_body_with_hanging_indent(
                 close_badge_prefix,

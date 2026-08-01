@@ -88,6 +88,25 @@ def test_any_terminal_width_preserves_width(width: int) -> None:
     assert ctx.width == width
 
 
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    (
+        ("界界界 x", "界界界\nx"),
+        ("café café café", "café\ncafé\ncafé"),
+        ("PASS read_file", "PASS\nread_file"),
+        ("line one\n\nline two", "line\none\n\nline\ntwo"),
+    ),
+)
+def test_parallel_display_regression_wraps_body_by_display_cells(
+    body: str, expected: str
+) -> None:
+    """S-5: cell-aware wrapping preserves Unicode, words, and explicit rows."""
+    wrapped = ParallelDisplay._wrap_body_with_hanging_indent(
+        "00:00:00 [x] ", body, total_width=20, body_measure=20
+    )
+    assert wrapped == expected
+
+
 def test_parallel_display_initializes_with_console() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={})
