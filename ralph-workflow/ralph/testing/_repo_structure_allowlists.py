@@ -1000,6 +1000,14 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/phases/commit_cleanup.py", 732),
         ("ralph/display/parallel_display.py", 1967),
         ("ralph/display/parallel_display.py", 1968),
+        # wt-04-improve-display: _wrap_close_body fans out across 8 chrome-prefix
+        # / continuation-budget / trailer branches (fits/head/trailer/single-word/
+        # over-budget/over-budget-2x/short-after-over/short-after-over-2x). The
+        # audit_lint_bypass allowlist already authorises ``parallel_display.PLR0911``
+        # for the same fan-out; refactoring the branches into a single accumulator
+        # would complicate the per-row width-preservation contract that the existing
+        # tests pin (see tests/display/test_parallel_display_close_markers.py).
+        ("ralph/display/parallel_display.py", 879),
         ("ralph/mcp/server/_metrics.py", 77),
         ("ralph/mcp/server/_metrics.py", 86),
         # process-lifetime memo of an immutable terminal probe (OSC 11)
