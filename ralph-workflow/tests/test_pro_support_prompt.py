@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import stat as stat_mod
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -102,14 +101,15 @@ def test_engine_does_not_modify_prompt_md_under_pro_mode(
         prompt_path.chmod(stat_mod.S_IRUSR | stat_mod.S_IWUSR)
 
 
-def test_resolver_uses_os_environ_when_env_arg_omitted(tmp_path: Path) -> None:
+def test_resolver_uses_os_environ_when_env_arg_omitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When no env mapping is passed, the resolver consults ``os.environ``."""
-    os.environ["PROMPT_PATH"] = "/tmp/from_os_environ.md"
-    try:
-        result = resolve_effective_prompt_path(tmp_path)
-        assert result == Path("/tmp/from_os_environ.md").resolve()
-    finally:
-        del os.environ["PROMPT_PATH"]
+    monkeypatch.setenv("PROMPT_PATH", "/tmp/from_os_environ.md")
+
+    result = resolve_effective_prompt_path(tmp_path)
+
+    assert result == Path("/tmp/from_os_environ.md").resolve()
 
 
 def test_engine_sync_uses_resolver_under_pro_mode(

@@ -223,6 +223,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             from_path=from_path,
         )
     else:
+        _resolve_install_conflict(run=_run_command)
         install_dev_checkout(
             run=_run_command,
             uv_executable=shutil.which("uv"),
