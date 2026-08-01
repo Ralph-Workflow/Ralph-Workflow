@@ -9,16 +9,11 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from rich.console import Console
 
-from rich.syntax import Syntax
 from rich.text import Text
 
+from ralph.display.edit_preview import build_edit_preview
 from ralph.display.surface_catalog import SURFACE_CATALOG, SurfaceSpec
-from ralph.display.theme import (
-    make_console,
-    pick_status_styles,
-    preview_background_for_background,
-    syntax_theme_for_background,
-)
+from ralph.display.theme import diff_fill_styles, make_console, pick_status_styles
 
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
@@ -93,9 +88,10 @@ def render_scene(
     """Render one deterministic reference scene through a real Rich console.
 
     This is intentionally a compact probe rather than a replacement display
-    path. It exercises the canonical semantic palette and syntax theme for all
-    declared destination modes, giving floor tests generated output instead of
-    stored captures. Real pipeline scenes retain their focused display tests.
+    path. It exercises the canonical semantic palette plus production write and
+    diff preview builders for all declared destination modes, giving floor tests
+    generated output instead of stored captures. Real pipeline scenes retain
+    their focused display tests.
     """
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
@@ -113,17 +109,32 @@ def render_scene(
     styles = pick_status_styles(terminal_bg_is_light)
     console.print(Text(f"SCENE {scene_name}", style=styles["info"][0]))
     _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs, width=case.width)
-    console.print(
-        Syntax(
-            "def cafe\u0301(value: str) -> int:\n    return len(value)",
-            "python",
-            theme=syntax_theme_for_background(terminal_bg_is_light),
-            line_numbers=True,
-            word_wrap=True,
-            background_color=preview_background_for_background(terminal_bg_is_light),
-        )
-    )
+    _render_scene_previews(console, terminal_bg_is_light=terminal_bg_is_light)
     return stream.getvalue()
+
+
+def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | None) -> None:
+    """Render real write and diff previews through the production preview builder."""
+    write_preview = build_edit_preview(
+        "write_file",
+        {"path": "café.py", "content": "def café(value: str) -> int:\n    return len(value)"},
+        width=console.width,
+        terminal_bg_is_light=terminal_bg_is_light,
+    )
+    diff_preview = build_edit_preview(
+        "edit_file",
+        {
+            "path": "café.py",
+            "edits": [{"oldText": "return 0", "newText": "return len(value)", "start_line": 2}],
+        },
+        width=console.width,
+        terminal_bg_is_light=terminal_bg_is_light,
+        diff_fills=diff_fill_styles(terminal_bg_is_light),
+    )
+    if write_preview is not None:
+        console.print(write_preview)
+    if diff_preview is not None:
+        console.print(diff_preview)
 
 
 def _render_scene_narrative(
