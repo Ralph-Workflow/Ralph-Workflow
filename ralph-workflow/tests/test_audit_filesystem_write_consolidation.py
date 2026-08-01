@@ -289,6 +289,20 @@ def test_marker_on_same_line_suppresses(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_default_scope_walks_only_production_package(tmp_path: Path) -> None:
+    """Default audit scope finds ralph/ but ignores unrelated test fixtures."""
+    repo_root = tmp_path / "repo"
+    production = repo_root / "ralph"
+    production.mkdir(parents=True)
+    (production / "good.py").write_text("VALUE = 1\n", encoding="utf-8")
+    tests_dir = repo_root / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "fixture.py").write_text(
+        "def persist(path):\n    path.write_text('fixture')\n", encoding="utf-8"
+    )
+    assert audit.audit_filesystem_write_consolidation(repo_root) == []
+
+
 def test_cli_returns_clean_when_no_violations(tmp_path: Path) -> None:
     """CLI returns 0 when the scanned tree is clean."""
     clean_root = tmp_path / "ralph"
@@ -321,3 +335,329 @@ def test_cli_returns_violation_count_when_dirty(tmp_path: Path) -> None:
 def test_cli_returns_bad_root_when_missing(tmp_path: Path) -> None:
     """CLI returns 2 when the package root does not exist."""
     assert audit.main([str(tmp_path / "missing")]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Raw qualified-mutation detection (DA-001: open/write/rename/replace/...).
+# Each test exercises one entry in the audit's qualified-mutation table.
+# ---------------------------------------------------------------------------
+
+
+def test_flags_raw_os_replace(tmp_path: Path) -> None:
+    """``os.replace(src, dst)`` is a raw atomic move outside the canonical primitive."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os\ndef swap(src, dst):\n    os.replace(src, dst)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_replace"
+
+
+def test_flags_raw_os_rename(tmp_path: Path) -> None:
+    """``os.rename(src, dst)`` is a raw atomic move."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os\ndef swap(src, dst):\n    os.rename(src, dst)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_rename"
+
+
+def test_flags_raw_path_unlink(tmp_path: Path) -> None:
+    """``Path.unlink()`` is a raw delete."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def drop(p):\n    Path(p).unlink()\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_unlink"
+
+
+def test_flags_raw_os_remove(tmp_path: Path) -> None:
+    """``os.remove(path)`` is a raw delete."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os\ndef drop(p):\n    os.remove(p)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_remove"
+
+
+def test_flags_raw_path_mkdir(tmp_path: Path) -> None:
+    """``Path.mkdir()`` is a raw directory creation."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def make(p):\n    Path(p).mkdir()\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_mkdir"
+
+
+def test_flags_raw_os_makedirs(tmp_path: Path) -> None:
+    """``os.makedirs(path)`` is a raw directory creation."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os\ndef make(p):\n    os.makedirs(p)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_makedirs"
+
+
+def test_flags_raw_shutil_rmtree(tmp_path: Path) -> None:
+    """``shutil.rmtree(path)`` is a raw tree delete."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import shutil\ndef drop_tree(p):\n    shutil.rmtree(p)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_rmtree"
+
+
+def test_flags_raw_shutil_copy2(tmp_path: Path) -> None:
+    """``shutil.copy2(src, dst)`` is a raw copy."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import shutil\ndef duplicate(src, dst):\n    shutil.copy2(src, dst)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_copy2"
+
+
+def test_flags_raw_shutil_move(tmp_path: Path) -> None:
+    """``shutil.move(src, dst)`` is a raw move."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import shutil\ndef relocate(src, dst):\n    shutil.move(src, dst)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_move"
+
+
+def test_flags_raw_os_fsync(tmp_path: Path) -> None:
+    """``os.fsync(fd)`` outside the canonical primitive is a raw durability barrier."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os\ndef flush(fd):\n    os.fsync(fd)\n",
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_fsync"
+
+
+def test_flags_raw_path_touch(tmp_path: Path) -> None:
+    """``Path.touch()`` is a raw mtime bump."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def bump(p):\n    Path(p).touch()\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_touch"
+
+
+def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
+    """``open(path, "w")`` is a raw write that bypasses the canonical primitive."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'def persist(path, content):\n    f = open(path, "w")\n    f.write(content)\n    f.close()\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert any(v.kind == "raw_open_write" for v in violations)
+
+
+def test_does_not_flag_builtin_open_read_mode(tmp_path: Path) -> None:
+    """``open(path, "r")`` is a read, not a write, and must not be flagged."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'def load(path):\n    return open(path, "r").read()\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert violations == []
+
+
+def test_does_not_flag_builtin_open_binary_read(tmp_path: Path) -> None:
+    """``open(path, "rb")`` is a binary read, not a write."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'def load(path):\n    return open(path, "rb").read()\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert violations == []
+
+
+def test_does_not_flag_builtin_open_default_or_keyword_read_mode(tmp_path: Path) -> None:
+    """Default and keyword read modes are reads, never false-positive mutations."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'def load(path):\n    return open(path).read() + open(path, mode="r").read()\n',
+    )
+    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+
+
+@pytest.mark.parametrize("mode", ["rb+", "r+b", "w+b"])
+def test_flags_all_plus_open_modes(tmp_path: Path, mode: str) -> None:
+    """Every update mode mutates and must be rejected (DA-001)."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        f'def persist(path):\n    return open(path, "{mode}")\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,))
+    assert [violation.kind for violation in violations] == ["raw_open_write"]
+
+
+def test_marker_suppresses_raw_os_replace(tmp_path: Path) -> None:
+    """A ``# filesystem-write-ok:`` marker suppresses ``os.replace`` too."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "import os\n"
+            "def swap(src, dst):\n"
+            "    # filesystem-write-ok: atomic-replace boundary for the canonical primitive\n"
+            "    os.replace(src, dst)\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert violations == []
+
+
+def test_marker_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
+    """A ``# filesystem-write-ok:`` marker suppresses ``shutil.rmtree``."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "import shutil\n"
+            "def drop(p):\n"
+            "    # filesystem-write-ok: bounded retention cleanup of agent home directory\n"
+            "    shutil.rmtree(p)\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert violations == []
+
+
+def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
+    """DA-001 invariant: a synthetic unknown ``os.replace`` call must be flagged.
+
+    This is the regression test that proves the audit cannot be
+    silently bypassed by introducing a new writer that uses a
+    mutation form not previously seen by the audit.
+    """
+    module_rel = "sneaky/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "import os\n"
+            "def install(tmp, final):\n"
+            "    os.replace(tmp, final)\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert any(v.kind == "raw_replace" for v in violations)
+    # D2: diagnostic names the sanctioned primitive.
+    assert any("idempotent_write" in v.message for v in violations)
+
+
+def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
+    """``pathlib.Path.unlink`` (chained attribute) is detected."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "import pathlib\n"
+            "def drop(p):\n    pathlib.Path(p).unlink()\n"
+        ),
+    )
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+    assert any(v.kind == "raw_unlink" for v in violations)

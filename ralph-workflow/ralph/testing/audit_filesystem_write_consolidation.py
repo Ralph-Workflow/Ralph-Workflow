@@ -2,16 +2,35 @@
 
 Replaces the curated allowlist of ``audit_idempotent_write_adoption.py``
 with a fail-closed, package-wide AST walk that rejects every raw
-``write_text`` / ``write_bytes`` call on a Path or file-like object
-under ``ralph/`` unless the call site carries an explicit
-``# filesystem-write-ok: <reason>`` marker naming the behavioral
-contract (transient scratch, deliberately timestamped, genuine
-append-only stream, etc.).
+filesystem mutation under ``ralph/`` unless the call site carries
+an explicit ``# filesystem-write-ok: <reason>`` marker naming the
+behavioral contract (transient scratch, deliberately timestamped,
+genuine append-only stream, etc.).
 
 The audit walks every ``.py`` file under ``package_root`` by
 default, prunes only the audit / testing / vendor roots, and treats
 newly added production modules as in scope automatically. Sanctioned
 deviations require a local marker; no blanket path allowlists.
+
+The audit detects the following raw mutation classes:
+
+  * ``Path.write_text`` / ``Path.write_bytes`` (raw full-file overwrite)
+  * ``open(path, mode)`` with a write/append/extend mode
+    (``"w"``, ``"a"``, ``"x"``, ``"wb"``, ``"ab"``, ``"r+"``, ``"w+"``,
+    ``"a+"`` and their ``b``/``t`` variants)
+  * ``os.replace`` / ``os.rename`` / ``os.renames`` / ``Path.replace`` /
+    ``Path.rename`` (atomic moves)
+  * ``Path.unlink`` / ``os.remove`` / ``os.unlink`` / ``Path.rmdir``
+    (raw deletes)
+  * ``Path.mkdir`` / ``os.mkdir`` / ``os.makedirs`` (raw directory
+    creation)
+  * ``shutil.rmtree`` / ``shutil.copy`` / ``shutil.copy2`` /
+    ``shutil.copyfile`` / ``shutil.copymode`` / ``shutil.move``
+    (raw copies / moves / tree deletes)
+  * ``os.fsync`` / ``os.sync`` (raw durability barriers outside
+    the canonical primitive)
+  * ``Path.touch`` (raw mtime bumps)
+  * ``truncate`` (raw truncation)
 
 The audit uses only ``ast`` and ``Path.read_text`` over source
 files. It does not start subprocesses, sleep, access the network,
@@ -44,7 +63,7 @@ if TYPE_CHECKING:
 #: Module roots that always participate in the package-wide walk.
 #: These are the production-only roots; we deliberately exclude
 #: testing / audit / vendor / generated paths.
-_DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ()
+_DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ("ralph",)
 
 #: Files inside the package that are exempt from the audit: they
 #: define the shared primitive itself, or are responsible for
@@ -59,6 +78,11 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
         # destination for all consolidated writes.
         "mcp/artifacts/idempotent_write.py",
         "mcp/artifacts/file_backend.py",
+        # The concrete backend implementation that uses ``os.fsync``,
+        # ``Path.replace``, ``Path.unlink`` etc. as part of the
+        # canonical primitive boundary. Anything inside
+        # ``_path_file_backend.py`` IS the abstraction.
+        "mcp/artifacts/_path_file_backend.py",
         # The audit module itself + the curated audit module that
         # this one replaces.
         "testing/audit_filesystem_write_consolidation.py",
@@ -71,6 +95,78 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
 #: explicit and local). The format is fixed; an empty reason is
 #: treated as drift.
 _MARKER_TOKEN = "filesystem-write-ok:"
+
+#: Attribute names whose receiver is already routed through the canonical
+#: ``FileBackend`` abstraction. When the audit sees ``backend.write_text(...)``
+#: or ``self.write_text(...)`` (where ``self`` is a ``FileBackend`` subclass),
+#: the write is already inside the abstraction boundary — the canonical
+#: primitive lives in ``mcp/artifacts/idempotent_write.py`` and the call
+#: itself is not a raw bypass. The audit must not flag these.
+_ALREADY_ROUTED_RECEIVERS: frozenset[str] = frozenset(
+    {
+        "backend",
+        "self",
+        "cls",
+    }
+)
+
+#: Module-level qualifiers (typically ``shutil``, ``os``, ``pathlib``)
+#: whose free-function calls are considered raw filesystem mutation
+#: when they target writes/mutations we want the consolidation to
+#: own. These qualifiers are matched against the AST ``ast.Call``
+#: whose function is an ``ast.Attribute`` whose value is an
+#: ``ast.Name`` whose ``id`` is in this set.
+_RAW_MUTATION_QUALIFIERS: frozenset[str] = frozenset(
+    {
+        "os",
+        "shutil",
+        "pathlib",
+    }
+)
+
+#: Attribute names that are recognised as raw filesystem mutation
+#: when called on one of :data:`_RAW_MUTATION_QUALIFIERS`. Each entry
+#: pairs the attribute name with the primitive hint or guidance the
+#: diagnostic cites (D2 — actionable, not merely "a check failed").
+#:
+#: ``open`` is special: only flag when the first argument is a
+#: write-mode constant; see :func:`_is_write_mode_open`.
+_RAW_MUTATION_ATTRS: dict[str, str] = {
+    "replace": "raw atomic-replace bypasses the canonical primitives; "
+    "route through ralph.mcp.artifacts.idempotent_write",
+    "rename": "raw rename bypasses the canonical primitives; "
+    "route through ralph.mcp.artifacts.idempotent_write",
+    "renames": "raw renames bypasses the canonical primitives; "
+    "route through ralph.mcp.artifacts.idempotent_write",
+    "unlink": "raw unlink bypasses the canonical delete primitive; "
+    "delete only under a `# filesystem-write-ok: <reason>` marker",
+    "remove": "raw os.remove bypasses the canonical delete primitive; "
+    "delete only under a `# filesystem-write-ok: <reason>` marker",
+    "mkdir": "raw mkdir bypasses the canonical directory creation primitive; "
+    "use workspace.fs.mkdirs or annotate the call",
+    "makedirs": "raw makedirs bypasses the canonical directory creation primitive; "
+    "use workspace.fs.mkdirs or annotate the call",
+    "rmdir": "raw rmdir bypasses the canonical delete primitive",
+    "rmtree": "raw rmtree bypasses the canonical delete primitive",
+    "fsync": "raw fsync bypasses the canonical durability primitive; "
+    "use ralph.mcp.artifacts.idempotent_write or mark with a reason",
+    "sync": "raw os.sync bypasses the canonical durability primitive; "
+    "use ralph.mcp.artifacts.idempotent_write or mark with a reason",
+    "copy": "raw shutil.copy bypasses the canonical copy primitive; "
+    "use ralph.mcp.artifacts.idempotent_write.copy_file_if_changed or mark",
+    "copy2": "raw shutil.copy2 bypasses the canonical copy primitive; "
+    "use ralph.mcp.artifacts.idempotent_write.copy_file_if_changed or mark",
+    "copyfile": "raw shutil.copyfile bypasses the canonical copy primitive; "
+    "use ralph.mcp.artifacts.idempotent_write.copy_file_if_changed or mark",
+    "copymode": "raw shutil.copymode bypasses the canonical copy primitive; "
+    "mark with a reason or route through the canonical primitive",
+    "move": "raw shutil.move bypasses the canonical move primitive; "
+    "use ralph.mcp.artifacts.idempotent_write.replace_if_changed or mark",
+    "touch": "raw touch bumps mtime without content change; "
+    "annotate with `# filesystem-write-ok: <reason>` or remove the call",
+    "truncate": "raw truncate bypasses the canonical truncation primitive; "
+    "mark with a reason or route through the canonical primitive",
+}
 
 
 @dataclass(frozen=True)
@@ -106,6 +202,13 @@ def _coerce_package_roots(
     ``package_root``. When ``package_roots`` is supplied, the walk
     targets each ``package_root / rel`` directory.
     """
+    if package_roots is None:
+        # ``main(["ralph"])`` receives the package directory itself;
+        # whereas callers scanning a repository root provide a sibling
+        # ``ralph/`` directory. Support both public invocation forms.
+        if package_root.name == "ralph":
+            return [package_root]
+        package_roots = _DEFAULT_PACKAGE_ROOTS
     if not package_roots:
         return [package_root]
     return [package_root / str(rel) for rel in package_roots]
@@ -129,29 +232,32 @@ def _collect_python_files(root: Path) -> list[Path]:
     return result
 
 
-#: Attribute names whose receiver is already routed through the canonical
-#: ``FileBackend`` abstraction. When the audit sees ``backend.write_text(...)``
-#: or ``self.write_text(...)`` (where ``self`` is a ``FileBackend`` subclass),
-#: the write is already inside the abstraction boundary — the canonical
-#: primitive lives in ``mcp/artifacts/idempotent_write.py`` and the call
-#: itself is not a raw bypass. The audit must not flag these.
-_ALREADY_ROUTED_RECEIVERS: frozenset[str] = frozenset(
-    {
-        "backend",
-        "self",
-        "cls",
-    }
-)
+def _is_write_mode_open(call: ast.Call) -> bool:
+    """True if ``call`` is an ``open(...)`` whose mode is write/append/extend.
+
+    Inspects the second positional argument (the mode after the
+    path). When the mode is missing, the audit fails closed by
+    treating the call as a write — a conservative choice that is
+    safer than the inverse. Read modes (``"r"``, ``"rb"``, ``"rt"``)
+    are explicitly NOT flagged.
+    """
+    mode_arg: ast.expr | None = call.args[1] if len(call.args) >= 2 else None
+    if mode_arg is None:
+        mode_arg = next((keyword.value for keyword in call.keywords if keyword.arg == "mode"), None)
+    if mode_arg is None:
+        return False  # builtin open() defaults to read mode.
+    if not isinstance(mode_arg, ast.Constant) or not isinstance(mode_arg.value, str):
+        return True  # Unknown mode fails closed.
+    return any(flag in mode_arg.value for flag in ("w", "a", "x", "+"))
 
 
-def _raw_write_call(node: ast.Call) -> str | None:
-    """Return the attribute name (``"write_text"`` / ``"write_bytes"``) if *node*
-    is a raw full-file overwrite via a method call on a Path / file-like
-    object; otherwise ``None``.
+def _raw_write_text_call(node: ast.Call) -> str | None:
+    """Return ``"write_text"`` / ``"write_bytes"`` if *node* is a raw full-file overwrite.
 
-    Receivers whose name is in :data:`_ALREADY_ROUTED_RECEIVERS` (typically a
-    ``FileBackend`` parameter or a method's ``self``) are not flagged,
-    because those calls already pass through the canonical abstraction.
+    Receivers whose name is in :data:`_ALREADY_ROUTED_RECEIVERS`
+    (typically a ``FileBackend`` parameter or a method's ``self``)
+    are not flagged, because those calls already pass through the
+    canonical abstraction.
     """
     if not isinstance(node.func, ast.Attribute):
         return None
@@ -162,6 +268,110 @@ def _raw_write_call(node: ast.Call) -> str | None:
     if isinstance(receiver, ast.Name) and receiver.id in _ALREADY_ROUTED_RECEIVERS:
         return None
     return attr
+
+
+def _raw_builtin_open_call(node: ast.Call) -> bool:
+    """True if ``node`` is a builtin ``open(path, mode, ...)`` with write/append mode.
+
+    ``open`` is the only commonly-used write primitive whose
+    function is a bare :class:`ast.Name` rather than an
+    :class:`ast.Attribute`. Other module-qualified calls (``io.open``,
+    ``builtins.open``) are also detected: when the receiver is an
+    ``ast.Attribute`` whose deepest name is ``open``, we treat it
+    as the builtin too.
+    """
+    if isinstance(node.func, ast.Name) and node.func.id == "open":
+        return _is_write_mode_open(node)
+    if isinstance(node.func, ast.Attribute) and node.func.attr == "open":
+        receiver = node.func.value
+        if isinstance(receiver, ast.Name) and receiver.id in {"builtins", "io"}:
+            return _is_write_mode_open(node)
+    return False
+
+
+def _call_root_name(node: ast.AST) -> str | None:
+    """Return the deepest name on the call chain rooted at *node*.
+
+    Used to detect patterns like ``Path(...).unlink()``,
+    ``pathlib.Path(...).mkdir()``, ``os.path.join(...).replace(...)``
+    (the last form is uncommon for filesystem mutations but the
+    resolver is general enough to handle it). Returns ``None`` when
+    the chain does not terminate in a name we recognise.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _call_root_name(node.value)
+    if isinstance(node, ast.Call):
+        # ``Path(p)`` — the call's function name is the root.
+        return _call_root_name(node.func)
+    return None
+
+
+def _raw_qualified_mutation_call(node: ast.Call) -> str | None:
+    """Return the attribute name if *node* is a raw qualified mutation.
+
+    Matches ``os.replace``, ``shutil.copy``, ``pathlib.Path.unlink``,
+    ``Path(...).unlink()`` (a call returning a Path with a
+    subsequent method call), etc. against :data:`_RAW_MUTATION_QUALIFIERS`
+    and :data:`_RAW_MUTATION_ATTRS`.
+
+    The receiver chain is resolved to its deepest name so that:
+
+    * ``os.replace(src, dst)`` — ``os`` is the root.
+    * ``shutil.copy2(src, dst)`` — ``shutil`` is the root.
+    * ``pathlib.Path(p).unlink()`` — ``pathlib`` is the root.
+    * ``Path(p).unlink()`` (after ``from pathlib import Path``) —
+      the receiver is a ``Call`` to ``Path``; the root name is
+      ``Path`` which is recognised as a pathlib primitive alias.
+
+    Returns:
+        The matched attribute name (``"replace"``, ``"copy"``,
+        ``"unlink"``, ...) when the call is a flagged raw mutation,
+        ``None`` otherwise.
+    """
+    if not isinstance(node.func, ast.Attribute):
+        return None
+    attr = node.func.attr
+    if attr not in _RAW_MUTATION_ATTRS:
+        return None
+    receiver = node.func.value
+    root = _call_root_name(receiver)
+    if root is None:
+        return None
+    if root in _RAW_MUTATION_QUALIFIERS:
+        # ``os.environ.copy()`` and similar attribute-chain calls are not
+        # filesystem mutations. ``os``/``shutil`` primitives must be called
+        # directly on the imported module; pathlib path construction is
+        # deliberately allowed to be chained (``pathlib.Path(p).unlink()``).
+        if root in {"os", "shutil"} and not (
+            isinstance(receiver, ast.Name) and receiver.id == root
+        ):
+            return None
+        return attr
+    # ``Path`` / ``PurePath`` / ``PosixPath`` / ``WindowsPath`` are
+    # typically imported from ``pathlib``; treat them as pathlib
+    # aliases when the import alias is in scope. The audit cannot
+    # resolve imports exhaustively, so it uses the heuristic that
+    # any call whose receiver is one of these names AND whose
+    # method is a pathlib primitive is flagged. This catches the
+    # common ``from pathlib import Path`` case; imports behind
+    # ``import pathlib as pl`` etc. fall back to the qualifier
+    # detection above (root name ``pl`` is not in the qualifier
+    # set, so they are NOT flagged — accepted limitation).
+    if root in {"Path", "PurePath", "PosixPath", "WindowsPath"} and attr in {
+        "write_text",
+        "write_bytes",
+        "replace",
+        "rename",
+        "unlink",
+        "mkdir",
+        "rmdir",
+        "touch",
+        "truncate",
+    }:
+        return attr
+    return None
 
 
 def _violation_message(attr: str) -> str:
@@ -177,6 +387,17 @@ def _violation_message(attr: str) -> str:
         f"or annotate the call with `# filesystem-write-ok: <reason>` "
         f"naming the behavioral contract (transient scratch, "
         f"deliberately timestamped, append-only stream, etc.)"
+    )
+
+
+def _qualified_violation_message(qualifier: str, attr: str) -> str:
+    """Build the actionable diagnostic for a raw qualified mutation."""
+    guidance = _RAW_MUTATION_ATTRS[attr]
+    return (
+        f"{qualifier}.{attr}(): {guidance}; "
+        f"or annotate the call with `# filesystem-write-ok: <reason>` "
+        f"naming the behavioral contract (transient scratch, "
+        f"deliberately timestamped, atomic-replace boundary, etc.)"
     )
 
 
@@ -247,19 +468,56 @@ def _scan_module(
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        attr = _raw_write_call(node)
-        if attr is None:
-            continue
-        if _has_marker_on_or_before(node.lineno, marker_lines):
-            continue
-        violations.append(
-            FilesystemWriteViolation(
-                kind="raw_write_text",
-                file_path=rel_path,
-                line=node.lineno,
-                message=_violation_message(attr),
+        # Path.write_text / Path.write_bytes
+        attr = _raw_write_text_call(node)
+        if attr is not None:
+            if _has_marker_on_or_before(node.lineno, marker_lines):
+                continue
+            violations.append(
+                FilesystemWriteViolation(
+                    kind="raw_write_text",
+                    file_path=rel_path,
+                    line=node.lineno,
+                    message=_violation_message(attr),
+                )
             )
-        )
+            continue
+        # builtin open(path, "w" / "a" / ...)
+        if _raw_builtin_open_call(node):
+            if _has_marker_on_or_before(node.lineno, marker_lines):
+                continue
+            violations.append(
+                FilesystemWriteViolation(
+                    kind="raw_open_write",
+                    file_path=rel_path,
+                    line=node.lineno,
+                    message=(
+                        "raw builtin open() with a write/append mode bypasses the "
+                        "stable-path mutation guard; route through "
+                        "ralph.mcp.artifacts.idempotent_write "
+                        "(write_text_if_changed / write_bytes_if_changed) "
+                        "or annotate the call with "
+                        "`# filesystem-write-ok: <reason>` naming the "
+                        "behavioral contract (deliberate binary append, "
+                        "deliberately timestamped, atomic-create, etc.)"
+                    ),
+                )
+            )
+            continue
+        # os.* / shutil.* / pathlib.Path.* raw mutation
+        qattr = _raw_qualified_mutation_call(node)
+        if qattr is not None:
+            if _has_marker_on_or_before(node.lineno, marker_lines):
+                continue
+            qualifier = _call_root_name(node.func.value) or "?"
+            violations.append(
+                FilesystemWriteViolation(
+                    kind=f"raw_{qattr}",
+                    file_path=rel_path,
+                    line=node.lineno,
+                    message=_qualified_violation_message(qualifier, qattr),
+                )
+            )
     return violations
 
 
