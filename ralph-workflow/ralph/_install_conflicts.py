@@ -31,6 +31,21 @@ class ConflictResolution(StrEnum):
     ABORT = "abort"
 
 
+def _interpreter_from_shebang(first_line: str) -> str | None:
+    if not first_line.startswith("#!"):
+        return None
+    interpreter_parts = first_line[2:].split()
+    if not interpreter_parts:
+        return None
+    interpreter = interpreter_parts[0]
+    if Path(interpreter).name != "env":
+        return interpreter
+    interpreter_parts = interpreter_parts[1:]
+    if interpreter_parts[:1] == ["-S"]:
+        interpreter_parts = interpreter_parts[1:]
+    return interpreter_parts[0] if interpreter_parts else None
+
+
 def resolve_package_file(executable: str) -> Path | None:
     """Resolve a console script to its interpreter's installed package file."""
     script = Path(executable).resolve()
@@ -38,9 +53,9 @@ def resolve_package_file(executable: str) -> Path | None:
         first_line = script.read_text(encoding="utf-8").splitlines()[0]
     except (OSError, IndexError, UnicodeDecodeError):
         return None
-    if not first_line.startswith("#!"):
+    interpreter = _interpreter_from_shebang(first_line)
+    if interpreter is None:
         return None
-    interpreter = first_line[2:].split(" ", 1)[0]
     try:
         result = run_process(
             interpreter,

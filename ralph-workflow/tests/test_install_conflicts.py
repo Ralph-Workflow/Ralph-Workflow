@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +15,8 @@ from ralph._install_conflicts import (
     prompt_for_conflict,
 )
 from ralph.update_check._install_kind import InstallKind
+
+conflicts = import_module("ralph._install_conflicts")
 
 
 def test_install_conflict_regression_resolves_console_script_to_pipx_package() -> None:
@@ -88,6 +92,46 @@ def test_install_conflict_non_tty_aborts_without_prompt() -> None:
         prompt_for_conflict(
             existing, input_fn=lambda _prompt: pytest.fail("must not prompt"), is_tty=False
         )
+
+
+def test_install_conflict_regression_resolves_env_shebang_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "ralph"
+    script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+    def fake_run(executable: str, arguments: tuple[str, ...], *, options: object) -> object:
+        assert executable == "python3"
+        assert arguments == ("-c", conflicts._PACKAGE_FILE_SCRIPT)
+        assert options is not None
+        return SimpleNamespace(succeeded=True, stdout="/venv/site-packages/ralph/__init__.py\n")
+
+    monkeypatch.setattr(conflicts, "run_process", fake_run)
+
+    assert conflicts.resolve_package_file(str(script)) == Path(
+        "/venv/site-packages/ralph/__init__.py"
+    )
+
+
+def test_install_conflict_regression_resolves_env_split_string_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "ralph"
+    script.write_text("#!/usr/bin/env -S python3 -I\n", encoding="utf-8")
+
+    def fake_run(executable: str, arguments: tuple[str, ...], *, options: object) -> object:
+        assert executable == "python3"
+        assert arguments == ("-c", conflicts._PACKAGE_FILE_SCRIPT)
+        assert options is not None
+        return SimpleNamespace(succeeded=True, stdout="/venv/site-packages/ralph/__init__.py\n")
+
+    monkeypatch.setattr(conflicts, "run_process", fake_run)
+
+    assert conflicts.resolve_package_file(str(script)) == Path(
+        "/venv/site-packages/ralph/__init__.py"
+    )
 
 
 def test_install_conflict_missing_executable_returns_none() -> None:
