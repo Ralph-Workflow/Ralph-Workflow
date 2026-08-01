@@ -34,7 +34,6 @@ from ralph.config.agent_config import AgentConfig
 from ralph.config.config_error_messages import format_config_validation_error
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
-from ralph.config.prompt_helper_config import PromptHelperConfig
 from ralph.pydantic_validation_errors import suggest_canonical_field
 
 if TYPE_CHECKING:
@@ -60,13 +59,12 @@ _USER_KEYED_TABLES: tuple[tuple[str, type[object] | None], ...] = (
 )
 
 # Closed nested subtables whose field names we DO want to detect typos on.
-# ``general.workflow`` and ``prompt_helper`` carry specific leaf fields,
-# so a misspelled leaf is a real bug the operator probably wants to see.
+# ``general.workflow`` carries specific leaf fields, so a misspelled leaf is a
+# real bug the operator probably wants to see.
 # Reference the classes directly so the Any-free ``RalphBaseModel`` facade
 # in ``ralph.pydantic_compat`` does not force a type-ignore suppression here.
 _CLOSED_SUBTABLE_LEAVES: tuple[tuple[str, type[RalphBaseModel]], ...] = (
     ("workflow", GeneralWorkflowFlags),
-    ("agent", PromptHelperConfig),
 )
 
 
@@ -123,7 +121,7 @@ def load_toml(path: Path) -> dict[str, object]:
 def warn_unknown_fields(data: dict[str, object], path: Path) -> None:
     """Emit warning logs for every misspelled field discovered under *data*.
 
-    Walks the closed main-config schema (general, ccs, prompt_helper),
+    Walks the closed main-config schema (general, ccs),
     the open user-keyed maps (agents, ccs_aliases, agent_chains,
     agent_drains) at one level of depth, and the leaf fields under each
     user-defined agent name. Top-level typos are caught, nested typos
@@ -200,7 +198,7 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
         suggester=emit,
     )
 
-    # 2. Closed nested subtables (general, ccs, prompt_helper)
+    # 2. Closed nested subtables (general, ccs)
     general = data.get("general")
     if isinstance(general, dict):
         _collect_unknown_leaves(
@@ -233,16 +231,6 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
             known_fields=set(CcsConfig.model_fields),
             path=path,
             prefix="ccs.",
-            suggester=emit,
-        )
-
-    prompt_helper = data.get("prompt_helper")
-    if isinstance(prompt_helper, dict):
-        _collect_unknown_leaves(
-            prompt_helper,
-            known_fields=set(PromptHelperConfig.model_fields),
-            path=path,
-            prefix="prompt_helper.",
             suggester=emit,
         )
 

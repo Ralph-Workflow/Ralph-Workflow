@@ -59,13 +59,11 @@ RUN rm -f /opt/ralph/.venv/bin/python /opt/ralph/.venv/bin/python3 && \
 # Fix shebangs that reference the builder path
 RUN sed -i '1s|^#!/build/.venv/bin/python|#!/opt/ralph/.venv/bin/python|' \
       /opt/ralph/.venv/bin/ralph \
-      /opt/ralph/.venv/bin/ralph-mcp \
-      /opt/ralph/.venv/bin/ralph-prompt 2>/dev/null || true
+      /opt/ralph/.venv/bin/ralph-mcp 2>/dev/null || true
 
 # Symlink entrypoints into PATH
 RUN ln -s /opt/ralph/.venv/bin/ralph /usr/local/bin/ralph && \
-    ln -s /opt/ralph/.venv/bin/ralph-mcp /usr/local/bin/ralph-mcp && \
-    ln -s /opt/ralph/.venv/bin/ralph-prompt /usr/local/bin/ralph-prompt
+    ln -s /opt/ralph/.venv/bin/ralph-mcp /usr/local/bin/ralph-mcp
 
 WORKDIR /workspace
 

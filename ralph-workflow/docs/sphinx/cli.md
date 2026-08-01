@@ -68,26 +68,6 @@ ralph -Q -P "add a /healthz endpoint"
 
 `--prompt` also accepts the short alias `-P`.
 
-## Prompt helper
-
-The `--prompt-helper` flag launches a dedicated interactive prompt-refinement flow. Unlike the normal pipeline, this mode is simpler and does not use multi-stage workflows, drain configuration, or fallback agents. Instead, it runs a single PM-style agent that asks you what you want to build and helps you refine the idea into a structured `PROMPT.md`.
-
-```bash
-ralph --prompt-helper
-```
-
-The helper asks follow-up questions about users, goals, constraints, success criteria, product behavior, and UX/UI expectations. It periodically shows you a polished draft and asks for review. When you approve, it writes a structured `PROMPT.md` to the workspace root.
-
-This is a simpler alternative to writing `PROMPT.md` by hand, not the standard pipeline. The resulting `PROMPT.md` can be used directly with the next `ralph` run.
-
-The `ralph-prompt` executable is an alternate entrypoint for the same experience. Both `ralph --prompt-helper` and `ralph-prompt` launch identical interactive sessions:
-
-```bash
-ralph-prompt
-```
-
-`ralph-prompt` ships with Ralph Workflow and is installed automatically by `pip install ralph-workflow`. No separate install is needed.
-
 `ralph-mcp` is the standalone MCP server entrypoint (declared in `pyproject.toml` as `ralph.mcp.server.runtime:main`). It starts Ralph Workflow's local MCP server outside of a full pipeline run, which is useful for debugging tool calls or connecting an agent manually:
 
 ```bash

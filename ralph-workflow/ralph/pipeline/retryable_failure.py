@@ -75,7 +75,7 @@ def retryable_agent_failure_reason(
         # still a recoverable wedge: the model connected, produced no actionable
         # output, and another attempt may succeed. This mirrors the pipeline
         # classifier treating an empty response as a recoverable agent failure,
-        # so the direct-MCP recovery path (commit/prompt-helper/smoke) does not
+        # so the direct-MCP recovery path (commit/smoke) does not
         # drift from the pipeline by hard-failing where the pipeline would retry.
         (
             contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS),

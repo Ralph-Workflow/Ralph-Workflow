@@ -16,7 +16,6 @@ from typer.testing import CliRunner
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.config.prompt_helper_config import PromptHelperConfig
 from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.pipeline import effect_executor
 from ralph.pipeline._runner_session import set_last_captured_session_id
@@ -561,12 +560,11 @@ def workspace_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def config_with_helper_agent() -> UnifiedConfig:
-    """Return a UnifiedConfig with prompt-helper-agent in the agents dict."""
+def config_with_test_agent() -> UnifiedConfig:
+    """Return a UnifiedConfig with one interactive test agent."""
     return UnifiedConfig(
-        prompt_helper=PromptHelperConfig(agent="prompt-helper-agent"),
         agents={
-            "prompt-helper-agent": AgentConfig(
+            "test-agent": AgentConfig(
                 cmd="claude",
                 transport=AgentTransport.CLAUDE_INTERACTIVE,
             )

@@ -86,14 +86,6 @@ commit = "commit"
 
 
 # -----------------------------------------------------------------------------
-# PROMPT HELPER -- which agent refines PROMPT.md. Rarely changed.
-# -----------------------------------------------------------------------------
-# Default: the first agent in ralph-workflow-agents.toml's [agents.*], or the built-in "opencode" agent if
-# none is configured. Uncomment both lines to force a specific one.
-# [prompt_helper]
-# agent = "claude"
-
-# -----------------------------------------------------------------------------
 # REFERENCE -- how the config files fit together. Nothing to edit here.
 # -----------------------------------------------------------------------------
 # Nine files: five user-global, four project-local.

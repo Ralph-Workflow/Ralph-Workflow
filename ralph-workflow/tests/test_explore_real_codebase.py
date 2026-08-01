@@ -39,6 +39,8 @@ from ralph.mcp.tools.workspace._read_handlers import (
     handle_search_files,
 )
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class _FakeSession:
     """Minimal session stub for handler calls."""

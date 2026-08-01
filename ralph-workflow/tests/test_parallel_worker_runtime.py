@@ -115,7 +115,7 @@ def test_worker_runtime_paths_are_namespaced(tmp_path: Path) -> None:
     )
 
 
-def test_worker_prompt_helpers_are_namespaced(tmp_path: Path) -> None:
+def test_worker_prompt_paths_are_namespaced(tmp_path: Path) -> None:
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
 
     debug_dump_module = importlib.import_module("ralph.prompts.debug_dump")

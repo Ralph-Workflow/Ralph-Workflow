@@ -19,7 +19,7 @@ import typer
 import typer.testing
 from loguru import logger
 
-from ralph import __version__
+from ralph._build_meta import flavored_version
 from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli._capability_summary import print_capability_summary
 from ralph.cli._cli_override_input import CLIOverrideInput
@@ -30,7 +30,6 @@ from ralph.cli.commands.contribute import contribute
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
-from ralph.cli.commands.prompt_helper import run_prompt_helper
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import (
     smoke_interactive_agy_command,
@@ -269,7 +268,7 @@ def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
 
         resolved_ctx = ctx if ctx is not None else _get_cli_context()
         display = resolve_active_display(None, resolved_ctx)
-        display.emit_welcome_banner(version=__version__)
+        display.emit_welcome_banner(version=flavored_version())
         raise typer.Exit()
 
 
@@ -462,18 +461,6 @@ def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
         emit_first_run_welcome(results, display_context=display_context)
         return
     display.emit_status(f"Local config files already exist in: {scope.local_config_path.parent}")
-
-
-def _handle_prompt_helper(
-    config: str | None,
-    cli_overrides: dict[str, object],
-) -> None:
-    """Handle --prompt-helper early-exit before pipeline."""
-    config_path = _config_path(config)
-    workspace_scope = None if config_path is not None else resolve_workspace_scope()
-    workspace_root = workspace_scope.root if workspace_scope else RuntimePath.cwd()
-    cfg = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-    run_prompt_helper(cfg, workspace_root)
 
 
 def _handle_early_exit_flags(
@@ -862,16 +849,6 @@ def main(
             ),
         ),
     ] = False,
-    prompt_helper: Annotated[
-        bool,
-        typer.Option(
-            "--prompt-helper",
-            help=(
-                "Launch interactive prompt-refinement helper. "
-                "Starts a PM-style agent that helps turn a vague idea into PROMPT.md."
-            ),
-        ),
-    ] = False,
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation.
 
@@ -881,7 +858,7 @@ def main(
     (``--version``, ``--init``, ``--diagnose``, ``--check-mcp``,
     ``--check-config``, ``--init-local-config``, ``--inspect-checkpoint``,
     ``--list-agents``, ``--list-providers``, ``--generate-commit*``,
-    ``--explain-policy``, ``--check-policy``, ``--prompt-helper``) and
+    ``--explain-policy``, ``--check-policy``) and
     then to the main pipeline invocation.
 
     Primary flags:
@@ -965,8 +942,6 @@ def main(
         parallel_worker_manifest: ``--parallel-worker-manifest`` (hidden)
             internal worker bootstrap manifest path.
         check_policy: ``--check-policy`` validate active policy and exit.
-        prompt_helper: ``--prompt-helper`` launch the interactive
-            prompt-refinement helper.
 
     Returns:
         ``None``. The handler exits via ``typer.Exit`` or via the
@@ -1104,11 +1079,6 @@ def main(
     )
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
-
-    # Handle --prompt-helper before pipeline
-    if prompt_helper:
-        _handle_prompt_helper(config, cli_overrides)
-        raise typer.Exit()
 
     # If a subcommand was invoked, we're done
     if ctx.invoked_subcommand:

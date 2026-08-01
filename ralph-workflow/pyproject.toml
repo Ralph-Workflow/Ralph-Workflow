@@ -86,7 +86,6 @@ bundle = ["pyinstaller>=6.0"]
 [project.scripts]
 ralph = "ralph.cli.main:app"
 ralph-mcp = "ralph.mcp.server.runtime:main"
-ralph-prompt = "ralph.cli._prompt_helper_entry:main"
 
 [project.urls]
 Homepage = "https://ralphworkflow.com"
@@ -207,7 +206,7 @@ max-args = 41
 # main() in cli/main.py is a single typer callback that fans out to ~12 early-exit
 # branches (--init, --regenerate-config, --force-init-skills, --diagnose, --check-mcp,
 # --check-config, --init-local-config, --inspect-checkpoint, --list-agents,
-# --list-providers, --generate-commit*, --prompt-helper) plus the main pipeline
+# --list-providers, --generate-commit*) plus the main pipeline
 # invocation. The ruff default of 50 statements / 12 branches is too low for this
 # entry point. The 60 / 14 caps here still keep main() under the auditor's per-step
 # complexity review (PLR0911/PLR0912) and the auditor's allowlist of acceptable

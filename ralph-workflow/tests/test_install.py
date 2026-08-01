@@ -74,12 +74,23 @@ def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
 
     package_dir = Path("/tmp/ralph-workflow")
     bin_dir = Path("/home/u/.local/bin")
+    flavors: list[tuple[Path, str]] = []
+
+    def fake_copy(source: Path, destination: Path) -> Path:
+        assert source == package_dir
+        return destination
+
+    def fake_flavor(path: Path, flavor: str) -> None:
+        flavors.append((path, flavor))
 
     install_module.install_dev_checkout(
         run=fake_run,
         uv_executable="/usr/local/bin/uv",
         cwd=package_dir,
         launcher_dir=bin_dir,
+        install_root=Path("/install"),
+        copy_tree=fake_copy,
+        write_flavor=fake_flavor,
         write_launcher=fake_write_launcher,
     )
 
@@ -87,14 +98,15 @@ def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
     # dev extras), then writes an `rdev` launcher so the dev build has a stable
     # command name that never shadows the stable `ralph`.
     assert commands == [
-        (("/usr/local/bin/uv", "sync", "--extra", "dev"), package_dir),
+        (("/usr/local/bin/uv", "sync", "--extra", "dev"), Path("/install/current")),
     ]
     assert len(launchers) == 1
     launcher_path, content = launchers[0]
     assert launcher_path == bin_dir / "rdev"
     assert "uv run --project" in content
-    assert str(package_dir) in content
+    assert str(Path("/install/current")) in content
     assert content.endswith('ralph "$@"\n')
+    assert flavors == [(Path("/install/current"), "-dev")]
 
 
 def test_install_dev_checkout_requires_uv() -> None:
@@ -262,6 +274,7 @@ def test_main_stable_flag_installs_pinned_release(monkeypatch: pytest.MonkeyPatc
         uv_executable: str | None,
         cwd: Path,
         version: str | None,
+        **_kwargs: object,
     ) -> None:
         captured["uv_executable"] = uv_executable
         captured["cwd"] = cwd
@@ -291,6 +304,7 @@ def test_main_version_implies_stable(monkeypatch: pytest.MonkeyPatch) -> None:
         uv_executable: str | None,
         cwd: Path,
         version: str | None,
+        **_kwargs: object,
     ) -> None:
         captured["version"] = version
 

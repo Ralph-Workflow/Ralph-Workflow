@@ -248,7 +248,6 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
             checked_entries.add(f"{module_name}.{entry_name}")
 
     assert checked_entries == {
-        "ralph.cli._prompt_helper_entry.main",
         "ralph.cli.main.main",
         "ralph.install.main",
         "ralph.mcp.server.runtime.main",

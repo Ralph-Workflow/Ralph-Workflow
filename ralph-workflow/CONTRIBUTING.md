@@ -76,21 +76,21 @@ make dev
 
 ### Dev build vs stable build
 
-You can keep a live **dev build** (your working tree) and a pinned **stable build**
-side by side. They never collide because the dev build registers no global command.
+You can keep a self-contained **dev build** and a pinned **stable build** side by
+side. They never collide because the dev build registers no global `ralph` command.
 
 | | Command to run it | How to install / refresh | Tracks |
 |---|---|---|---|
-| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` | your working tree, live — no reinstall after edits |
+| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` | a self-contained snapshot (`-dev`); rerun after edits |
 | **Stable build** | `ralph …` (anywhere) | `make stable` | a pinned release, isolated via `uv tool` |
 
-- **Dev build** — `make install` syncs the project's uv environment (editable
-  project + dev extras) and writes an `rdev` launcher to `~/.local/bin/rdev`.
-  `rdev` runs the working tree from anywhere (it's `uv run ralph` against this
-  checkout) and picks up edits with no reinstall. From inside the repo you can
-  also just use `uv run ralph`. There is deliberately **no global `ralph`** for
-  the dev build — the distinct `rdev` name is what keeps it from shadowing the
-  stable one. (`make dev` does only the env sync, without the launcher.)
+- **Dev build** — `make install` copies this checkout to
+  `~/.local/share/ralph-workflow-dev/current`, syncs that copy, and writes an
+  `rdev` launcher to `~/.local/bin/rdev`. Its `--version` ends in `-dev`; rerun
+  `make install` after edits to refresh the snapshot. From inside the repo you
+  can still use `uv run ralph`. There is deliberately **no global `ralph`** for
+  the dev build — the distinct `rdev` name keeps it from shadowing the stable
+  one. (`make dev` only syncs the checkout environment.)
 - **Stable build** — `make stable` runs `uv tool install --force --upgrade
   ralph-workflow`, putting an isolated `ralph` on your `PATH`
   (`~/.local/bin/ralph`), independent of the working tree. Re-running `make

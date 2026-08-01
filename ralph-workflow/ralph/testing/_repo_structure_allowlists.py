@@ -322,11 +322,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_pm_state",),
         ),
         (
-            "tests/test_prompt_helper_run.py",
-            "ralph.cli.commands.prompt_helper",
-            ("_run_single_invoke",),
-        ),
-        (
             "tests/test_property_a_one_transport_one_behavior.py",
             "ralph.mcp.server",
             ("_fallback_http_handler",),

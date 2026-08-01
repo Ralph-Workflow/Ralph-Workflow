@@ -433,7 +433,7 @@ Command-path guard
 ------------------
 
 The main run, commit plumbing, policy check, diagnose, explain, init,
-prompt-helper, cleanup, star, contribute, smoke, and conflict resolution use
+cleanup, star, contribute, smoke, and conflict resolution use
 ``ParallelDisplay.emit_*`` methods for operator-facing output. The smoke
 command's literal ``EXIT_CODE=N`` line is the single machine-readable
 exception. ``tests/display/test_parallel_display_drift_prevention.py`` and

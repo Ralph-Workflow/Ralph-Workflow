@@ -294,7 +294,6 @@ class GeminiParser(NdjsonParserBase):
         """Flush the text accumulator and yield a stop line."""
         yield from self.flush_accumulators()
         yield AgentOutputLine(type="stop", raw=str(event_type), metadata=obj)
-
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         if self._text_accumulator is None:
             return

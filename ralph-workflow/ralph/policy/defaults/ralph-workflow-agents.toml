@@ -136,11 +136,3 @@ subagent_capability = true
 # display_name = "Cursor"
 # @AGENT-BLOCK-END
 
-# [agents.prompt-helper-agent]
-# cmd = "claude"
-# transport = "claude_interactive"
-# yolo_flag = "--dangerously-skip-permissions"
-# verbose_flag = "--verbose"
-# json_parser = "claude"
-# session_flag = "--resume {}"
-# can_commit = false

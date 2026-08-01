@@ -171,7 +171,7 @@ shipped agent plus the generic fallback, so this contract is verified at the
 record and live-display seam rather than inferred from individual renderers.
 
 All command output follows the same display boundary: run, commit plumbing,
-policy check, diagnose, explain, init, prompt-helper, cleanup, star,
+policy check, diagnose, explain, init, cleanup, star,
 contribute, smoke, and conflict resolution emit through
 ``ParallelDisplay.emit_*``. The smoke ``EXIT_CODE=N`` line remains the sole
 machine-readable exception and is explicitly guarded.

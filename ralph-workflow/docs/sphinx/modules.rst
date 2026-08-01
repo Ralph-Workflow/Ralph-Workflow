@@ -271,7 +271,7 @@ CLI
 
 The CLI is a Typer application built on :doc:`cli`. It exposes every
 subcommand a user runs day to day: ``init``, ``diagnose``, ``run``,
-``commit``, ``cleanup``, ``explain``, ``prompt-helper``, ``smoke``, and
+``commit``, ``cleanup``, ``explain``, ``smoke``, and
 ``star`` — plus policy helpers (``check-policy``, ``contribute``).
 Each command lives in its own submodule so the CLI surface stays
 discoverable and individual commands can be tested in isolation.
@@ -364,20 +364,6 @@ ralph.cli.commands.explain
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.cli.commands.explain
-   :members:
-   :show-inheritance:
-
-ralph.cli.commands.prompt_helper
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.cli.commands.prompt_helper
-   :members:
-   :show-inheritance:
-
-ralph.cli.commands.prompt_helper_prompt
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.cli.commands.prompt_helper_prompt
    :members:
    :show-inheritance:
 
@@ -509,13 +495,6 @@ ralph.config.pause_on_exit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.config.pause_on_exit
-   :members:
-   :show-inheritance:
-
-ralph.config.prompt_helper_config
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.config.prompt_helper_config
    :members:
    :show-inheritance:
 

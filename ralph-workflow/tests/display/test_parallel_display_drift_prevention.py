@@ -79,13 +79,9 @@ _COMMIT_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "commit.py"
 _DIAGNOSE_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "diagnose.py"
 _EXPLAIN_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "explain.py"
 _INIT_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "init.py"
-_PROMPT_HELPER_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "prompt_helper.py"
 _RUN_PATH = _REPO_ROOT / "ralph" / "cli" / "commands" / "run.py"
 _CONFLICT_STATUS_PATH = _REPO_ROOT / "ralph" / "pipeline" / "conflict_resolution" / "status.py"
-_CLI_ENTRY_PATHS = (
-    _REPO_ROOT / "ralph" / "cli" / "main.py",
-    _REPO_ROOT / "ralph" / "cli" / "_prompt_helper_entry.py",
-)
+_CLI_ENTRY_PATHS = (_REPO_ROOT / "ralph" / "cli" / "main.py",)
 
 
 # Per-test pytest marker: the AST-walking and parallel-display
@@ -365,7 +361,6 @@ _FOLD_TARGETS: tuple[tuple[Path, tuple[str, ...], str], ...] = (
     (_DIAGNOSE_PATH, ("emit_status", "emit_renderable"), "diagnose"),
     (_EXPLAIN_PATH, ("emit_status", "emit_warning"), "explain"),
     (_INIT_PATH, ("emit_status", "emit_warning"), "init"),
-    (_PROMPT_HELPER_PATH, ("emit_status", "emit_warning"), "prompt-helper"),
     (_RUN_PATH, ("emit_warning", "emit_info_panel"), "run"),
     (_CONFLICT_STATUS_PATH, ("emit_warn_line",), "conflict resolution"),
 )

@@ -190,7 +190,7 @@ build: clean-dist
 	uv run --with hatchling hatch build
 
 build-wheel: clean-dist
-	uv run --with hatchling hatch build --wheel
+	uv run --with hatchling hatch build -t wheel
 
 build-sdist: clean-dist
 	uv run --with hatchling hatch build -t sdist
@@ -268,8 +268,6 @@ verify-drift:
 	    | grep -v "\.agent/" \
 	    | grep -v "cli/main.py" \
 	    | grep -v "cli/commands/init.py" \
-	    | grep -v "cli/commands/prompt_helper.py" \
-	    | grep -v "cli/commands/prompt_helper_prompt.py" \
 	    | grep -v "cli/commands/diagnose.py" \
 	    | grep -v "cli/commands/run.py" \
 	    | grep -v "cli/commands/smoke.py" \
@@ -351,9 +349,6 @@ packaging-smoke:
 	@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 	@python -m venv --without-pip $(shell realpath .)/../tmp/packaging-smoke
 	@PYTHONPATH="" uv pip install --quiet --python $(shell realpath .)/../tmp/packaging-smoke/bin/python $(shell realpath .)/../ralph-workflow/
-	@ls -la $(shell realpath .)/../tmp/packaging-smoke/bin/ralph-prompt
-	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
-	@uv run pytest -q tests/test_ralph_prompt_entry.py
 	-@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 
 dist-binary:

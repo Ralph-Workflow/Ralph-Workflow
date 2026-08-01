@@ -14,17 +14,26 @@ See ``CONTRIBUTING.md`` (§"Dev build vs stable build") for the workflow.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph._install_conflicts import (
+    ConflictResolution,
+    detect_existing_ralph,
+    prompt_for_conflict,
+    real_environment,
+    resolve_package_file,
+)
+from ralph._install_copy_tree import copy_install_tree
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.process._spawn_env import sanitize_process_environment
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 STABLE_PACKAGE_NAME = "ralph-workflow"
 DEV_LAUNCHER_NAME = "rdev"
@@ -75,29 +84,40 @@ def write_dev_launcher(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
+def _write_build_flavor(package_dir: Path, flavor: str) -> None:
+    build_meta = package_dir / "ralph" / "_build_meta.py"
+    content = build_meta.read_text(encoding="utf-8")
+    build_meta.write_text(content.replace('BUILD_FLAVOR: str = ""', f'BUILD_FLAVOR: str = "{flavor}"'), encoding="utf-8")
+
+
 def install_dev_checkout(
     *,
     run: RunCommand = _run_command,
     uv_executable: str | None,
     cwd: Path,
     launcher_dir: Path,
+    install_root: Path | None = None,
+    copy_tree: Callable[[Path, Path], Path] = copy_install_tree,
+    write_flavor: Callable[[Path, str], None] = _write_build_flavor,
     write_launcher: LauncherWriter = write_dev_launcher,
 ) -> None:
     """Set up the current checkout as a dev build via ``uv sync``.
 
-    Syncs the project's own uv environment (``.venv``) so it holds the editable
-    project plus the ``dev`` extra, then writes an ``rdev`` launcher into
-    ``launcher_dir`` so the dev build has a stable command name. ``rdev`` runs
-    the working tree with ``uv run`` and never shadows the stable ``ralph``
-    installed via :func:`install_stable_release`.
+    Copies the checkout to a stable location, syncs that snapshot's uv
+    environment, and writes an ``rdev`` launcher aimed at the copy.  The copy
+    retains package data such as templates and policy defaults after the source
+    checkout is deleted.
     """
     if uv_executable is None:
         raise RuntimeError(
             "uv is required to set up the dev build. Install uv first: "
             "https://docs.astral.sh/uv/getting-started/installation/"
         )
-    run((uv_executable, "sync", "--extra", "dev"), cwd=cwd)
-    write_launcher(launcher_dir / DEV_LAUNCHER_NAME, render_dev_launcher(cwd))
+    destination = (install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev") / "current"
+    copied_dir = copy_tree(cwd, destination)
+    write_flavor(copied_dir, "-dev")
+    run((uv_executable, "sync", "--extra", "dev"), cwd=copied_dir)
+    write_launcher(launcher_dir / DEV_LAUNCHER_NAME, render_dev_launcher(copied_dir))
 
 
 def install_stable_release(
@@ -106,6 +126,8 @@ def install_stable_release(
     uv_executable: str | None,
     cwd: Path,
     version: str | None = None,
+    from_path: Path | None = None,
+    write_flavor: Callable[[Path, str], None] = _write_build_flavor,
 ) -> None:
     """Install a stable release as the isolated global ``ralph`` command.
 
@@ -125,12 +147,16 @@ def install_stable_release(
             "https://docs.astral.sh/uv/getting-started/installation/"
         )
     command = [uv_executable, "tool", "install", "--force"]
-    if version is None:
-        command.append("--upgrade")
-        command.append(STABLE_PACKAGE_NAME)
+    if from_path is not None:
+        command.append(str(from_path))
+    elif version is None:
+        command.extend(("--upgrade", STABLE_PACKAGE_NAME))
     else:
         command.append(f"{STABLE_PACKAGE_NAME}=={version}")
     run(tuple(command), cwd=cwd)
+    if from_path is not None:
+        # uv tool environments are outside the checkout; infer its standard location.
+        write_flavor(Path.home() / ".local" / "share" / "uv" / "tools" / STABLE_PACKAGE_NAME, "-build")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -148,10 +174,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Pin the stable release to this version (implies --stable).",
     )
+    parser.add_argument(
+        "--from",
+        dest="from_path",
+        type=Path,
+        default=None,
+        help="Install a locally built wheel and mark it as a manual build.",
+    )
     return parser
 
 
-def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None]:
+def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None, Path | None]:
     parsed = _build_parser().parse_args(argv)
     stable = cast(
         "bool", parsed.stable
@@ -159,21 +192,25 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None]:
     version = cast(
         "str | None", parsed.version
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    return stable, version
+    from_path = cast("Path | None", parsed.from_path)
+    return stable, version, from_path
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Install the dev build by default, or the stable build with ``--stable``."""
     sanitize_process_environment()
-    stable, version = _parse_args(argv)
+    stable, version, from_path = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
 
-    if stable or version is not None:
+    _resolve_install_conflict(run=_run_command)
+
+    if stable or version is not None or from_path is not None:
         install_stable_release(
             run=_run_command,
             uv_executable=shutil.which("uv"),
             cwd=package_dir,
             version=version,
+            from_path=from_path,
         )
     else:
         install_dev_checkout(
@@ -183,6 +220,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             launcher_dir=Path.home() / ".local" / "bin",
         )
     return 0
+
+
+def _resolve_install_conflict(*, run: RunCommand) -> None:
+    existing = detect_existing_ralph(
+        which_fn=shutil.which,
+        environ=real_environment(),
+        resolve_package_file=resolve_package_file,
+    )
+    if existing is None:
+        return
+    resolution = prompt_for_conflict(existing, input_fn=input, is_tty=os.isatty(0))
+    if resolution is ConflictResolution.ABORT:
+        raise RuntimeError(f"Installation aborted because {existing.executable} already exists.")
+    if resolution is ConflictResolution.REMOVE:
+        command = existing.remove_command
+        if command is None:
+            raise RuntimeError(f"Cannot remove existing {existing.kind} install automatically.")
+        run(command, cwd=Path.cwd())
 
 
 if __name__ == "__main__":

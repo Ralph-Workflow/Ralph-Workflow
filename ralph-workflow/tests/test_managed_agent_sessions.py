@@ -34,7 +34,7 @@ def _make_fake_bridge() -> tuple[object, dict[str, int]]:
 
 def test_invoke_prompt_file_uses_managed_runtime_contract(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
@@ -66,14 +66,14 @@ def test_invoke_prompt_file_uses_managed_runtime_contract(
     )
 
     with _session_runtime().ManagedAgentSessionRuntime.open(
-        config=config_with_helper_agent,
+        config=config_with_test_agent,
         workspace_root=tmp_path,
-        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        agent_config=config_with_test_agent.agents["test-agent"],
         request=_session_runtime().ManagedAgentSessionRequest(
-            session_id_prefix="prompt-helper",
+            session_id_prefix="managed-agent",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            master_prompt_name="prompt-helper",
+            master_prompt_name="managed-agent",
         ),
         deps=deps,
     ) as runtime:
@@ -95,7 +95,7 @@ def test_invoke_prompt_file_uses_managed_runtime_contract(
 
 def test_runtime_builds_session_plan_when_request_omits_explicit_capabilities(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
@@ -121,11 +121,11 @@ def test_runtime_builds_session_plan_when_request_omits_explicit_capabilities(
     )
 
     with _session_runtime().ManagedAgentSessionRuntime.open(
-        config=config_with_helper_agent,
+        config=config_with_test_agent,
         workspace_root=tmp_path,
-        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        agent_config=config_with_test_agent.agents["test-agent"],
         request=_session_runtime().ManagedAgentSessionRequest(
-            session_id_prefix="prompt-helper",
+            session_id_prefix="managed-agent",
             drain="standalone",
         ),
         deps=deps,
@@ -141,7 +141,7 @@ def test_runtime_builds_session_plan_when_request_omits_explicit_capabilities(
 
 def test_invoke_prompt_file_does_not_allow_reserved_runtime_env_overrides(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
@@ -170,14 +170,14 @@ def test_invoke_prompt_file_does_not_allow_reserved_runtime_env_overrides(
     )
 
     with _session_runtime().ManagedAgentSessionRuntime.open(
-        config=config_with_helper_agent,
+        config=config_with_test_agent,
         workspace_root=tmp_path,
-        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        agent_config=config_with_test_agent.agents["test-agent"],
         request=_session_runtime().ManagedAgentSessionRequest(
-            session_id_prefix="prompt-helper",
+            session_id_prefix="managed-agent",
             drain="standalone",
             capabilities=frozenset({"workspace.read"}),
-            master_prompt_name="prompt-helper",
+            master_prompt_name="managed-agent",
         ),
         deps=deps,
     ) as runtime:
@@ -204,7 +204,7 @@ def test_invoke_prompt_file_does_not_allow_reserved_runtime_env_overrides(
 
 def test_runtime_open_shuts_down_bridge_when_master_prompt_setup_fails(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     bridge, bridge_state = _make_fake_bridge()
 
@@ -221,14 +221,14 @@ def test_runtime_open_shuts_down_bridge_when_master_prompt_setup_fails(
 
     with pytest.raises(RuntimeError, match="boom"):
         _session_runtime().ManagedAgentSessionRuntime.open(
-            config=config_with_helper_agent,
+            config=config_with_test_agent,
             workspace_root=tmp_path,
-            agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+            agent_config=config_with_test_agent.agents["test-agent"],
             request=_session_runtime().ManagedAgentSessionRequest(
-                session_id_prefix="prompt-helper",
+                session_id_prefix="managed-agent",
                 drain="standalone",
                 capabilities=frozenset({"workspace.read"}),
-                master_prompt_name="prompt-helper",
+                master_prompt_name="managed-agent",
             ),
             deps=deps,
         )
@@ -238,7 +238,7 @@ def test_runtime_open_shuts_down_bridge_when_master_prompt_setup_fails(
 
 def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
@@ -287,14 +287,14 @@ def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
     )
 
     with _session_runtime().ManagedAgentSessionRuntime.open(
-        config=config_with_helper_agent,
+        config=config_with_test_agent,
         workspace_root=tmp_path,
-        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        agent_config=config_with_test_agent.agents["test-agent"],
         request=_session_runtime().ManagedAgentSessionRequest(
-            session_id_prefix="prompt-helper",
+            session_id_prefix="managed-agent",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            master_prompt_name="prompt-helper",
+            master_prompt_name="managed-agent",
         ),
         deps=deps,
     ) as runtime:
@@ -308,7 +308,7 @@ def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
 
 def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
@@ -336,14 +336,14 @@ def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
     )
 
     with _session_runtime().ManagedAgentSessionRuntime.open(
-        config=config_with_helper_agent,
+        config=config_with_test_agent,
         workspace_root=tmp_path,
-        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        agent_config=config_with_test_agent.agents["test-agent"],
         request=_session_runtime().ManagedAgentSessionRequest(
-            session_id_prefix="prompt-helper",
+            session_id_prefix="managed-agent",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            master_prompt_name="prompt-helper",
+            master_prompt_name="managed-agent",
         ),
         deps=deps,
     ) as runtime:
@@ -356,7 +356,7 @@ def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
 
 def test_managed_runtime_reports_observed_session_id_on_success(
     tmp_path: Path,
-    config_with_helper_agent: UnifiedConfig,
+    config_with_test_agent: UnifiedConfig,
 ) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Describe a notes app.", encoding="utf-8")
@@ -383,14 +383,14 @@ def test_managed_runtime_reports_observed_session_id_on_success(
     )
 
     with _session_runtime().ManagedAgentSessionRuntime.open(
-        config=config_with_helper_agent,
+        config=config_with_test_agent,
         workspace_root=tmp_path,
-        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        agent_config=config_with_test_agent.agents["test-agent"],
         request=_session_runtime().ManagedAgentSessionRequest(
-            session_id_prefix="prompt-helper",
+            session_id_prefix="managed-agent",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            master_prompt_name="prompt-helper",
+            master_prompt_name="managed-agent",
         ),
         deps=deps,
     ) as runtime:

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from rich.text import Text
 
-from ralph import __version__
+from ralph._build_meta import flavored_version
 from ralph.agents.agent_install_links import AGENT_INSTALL_URLS
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.display.context import DisplayContext
@@ -159,7 +159,7 @@ def emit_first_run_welcome(
     from ralph.display.parallel_display import resolve_active_display
 
     display = resolve_active_display(None, display_context)
-    display.emit_welcome_banner(version=__version__)
+    display.emit_welcome_banner(version=flavored_version())
 
     content: list[RenderableType] = []
 
