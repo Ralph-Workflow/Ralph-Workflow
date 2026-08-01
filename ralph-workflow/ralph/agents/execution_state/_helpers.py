@@ -754,7 +754,10 @@ def _registry_check_for_exit(
         reg_snap = registry.snapshot(scope_prefix)
         verdict = classify_child_snapshot(reg_snap)
         if verdict.all_children_terminal:
-            return AgentExecutionState.TERMINAL_COMPLETE, False
+            # Child acknowledgement proves only that there is no child left to
+            # wait for. Parent completion remains a durable sentinel/receipt
+            # decision owned by ``completion_signals_terminal`` below.
+            return None, had_scoped_records
         if verdict.deferral_allowed:
             return AgentExecutionState.WAITING_ON_CHILD, False
         return None, had_scoped_records
@@ -797,12 +800,11 @@ def _evidence_precedence(
 
     Priority:
       1. durable phase completion evidence -> TERMINAL_COMPLETE
-      2. registry: all children acked with no remaining active -> TERMINAL_COMPLETE
-      3. registry: deferral_allowed -> WAITING_ON_CHILD
-      4. probe: deferral_allowed -> WAITING_ON_CHILD
-      5. scoped Ralph child evidence exists but is stale -> RESUMABLE_CONTINUE
-      6. OS descendants (only when no scoped Ralph evidence exists at all) -> WAITING_ON_CHILD
-      7. else -> RESUMABLE_CONTINUE
+      2. registry: deferral_allowed -> WAITING_ON_CHILD
+      3. probe: deferral_allowed -> WAITING_ON_CHILD
+      4. scoped Ralph child evidence exists but is stale or terminal -> RESUMABLE_CONTINUE
+      5. OS descendants (only when no scoped Ralph evidence exists at all) -> WAITING_ON_CHILD
+      6. else -> RESUMABLE_CONTINUE
     """
     if completion_signals_terminal(completion_signals):
         return AgentExecutionState.TERMINAL_COMPLETE

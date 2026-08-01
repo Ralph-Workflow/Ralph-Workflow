@@ -78,7 +78,7 @@ def render_scene(
     scene_name: str,
     case: SupportCase,
     *,
-    terminal_bg_is_light: bool | None = None,
+    terminal_bg_is_light: bool | None,
 ) -> str:
     """Render one deterministic reference scene through a real Rich console.
 
@@ -89,10 +89,7 @@ def render_scene(
     """
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
-    resolved_background = (
-        case.terminal_background_is_light if terminal_bg_is_light is None else terminal_bg_is_light
-    )
-    if resolved_background != case.terminal_background_is_light:
+    if terminal_bg_is_light != case.terminal_background_is_light:
         raise ValueError("terminal background must match the support case")
     stream = StringIO()
     console = make_console(
@@ -103,14 +100,14 @@ def render_scene(
         width=case.width,
         height=case.height,
     )
-    styles = pick_status_styles(resolved_background)
+    styles = pick_status_styles(terminal_bg_is_light)
     console.print(Text(f"SCENE {scene_name}", style=styles["info"][0]))
     _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs)
     console.print(
         Syntax(
             "def cafe\u0301(value: str) -> int:\\n    return len(value)",
             "python",
-            theme=syntax_theme_for_background(resolved_background),
+            theme=syntax_theme_for_background(terminal_bg_is_light),
             line_numbers=True,
             word_wrap=True,
         )

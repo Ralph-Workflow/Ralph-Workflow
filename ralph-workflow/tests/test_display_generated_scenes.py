@@ -76,8 +76,12 @@ def test_generated_scene_context_no_color_wins_over_forced_ci_capture() -> None:
     assert "\x1b[" not in stream.getvalue()
 
 
-def test_generated_scene_renderer_uses_the_case_background_when_not_overridden() -> None:
-    rendered = render_scene("clean_run", SupportCase("dark", "none", "unicode", 80, "redirect"))
+def test_generated_scene_renderer_requires_the_resolved_case_background() -> None:
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
     assert "PASS success" in rendered
 
 

@@ -83,8 +83,8 @@ class TestRegistryBackedClassifyExit:
         assert snap.terminal_count == 1
         assert snap.active_count == 0
 
-    def test_classify_exit_terminal_complete_when_all_children_acked(self) -> None:
-        """classify_exit returns TERMINAL_COMPLETE when registry shows all children done."""
+    def test_classify_exit_regression_terminal_child_does_not_complete_parent(self) -> None:
+        """S-5: terminal child evidence cannot replace the parent's durable sentinel."""
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -106,8 +106,9 @@ class TestRegistryBackedClassifyExit:
 
         state = strategy.classify_exit(handle, signals, liveness_probe=probe)
 
-        assert state == AgentExecutionState.TERMINAL_COMPLETE, (
-            f"Expected TERMINAL_COMPLETE after all children acked; got {state!r}"
+        assert state == AgentExecutionState.RESUMABLE_CONTINUE, (
+            "A completed child cannot complete its parent without the parent's "
+            f"durable completion evidence; got {state!r}"
         )
 
     def test_classify_exit_waiting_when_child_has_fresh_progress(self) -> None:

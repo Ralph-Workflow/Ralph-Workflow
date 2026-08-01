@@ -7,6 +7,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 from __future__ import annotations
 
 import io
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -24,6 +25,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.invoke import _completion as completion_module
 from ralph.phases.required_artifacts import RequiredArtifact
+from ralph.process.child_liveness import ChildLivenessRegistry
 from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
@@ -103,6 +105,45 @@ class TestCheckProcessResultCompletionSeam:
         assert seen_errors == []
         assert seen_warnings != []
 
+    def test_terminal_native_task_regression_still_requires_parent_completion(
+        self, tmp_path: Path
+    ) -> None:
+        """S-4: a finished native task cannot turn an incomplete parent into success."""
+        registry = ChildLivenessRegistry(
+            progress_ttl=30.0,
+            heartbeat_ttl=30.0,
+            stale_label_ttl=30.0,
+            exit_reconcile=30.0,
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
+        strategy.observe_line(
+            json.dumps(
+                {
+                    "type": "tool_use",
+                    "part": {
+                        "type": "tool",
+                        "tool": "task",
+                        "callID": "native-task",
+                        "state": {"status": "completed", "output": "done"},
+                    },
+                }
+            )
+        )
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                _FakeHandle(returncode=0),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None, parent_exit_grace_seconds=0.0
+                    ),
+                ),
+            )
+
     def test_no_artifact_requirement_still_requires_explicit_completion(
         self, tmp_path: Path
     ) -> None:
@@ -150,7 +191,26 @@ class TestCheckProcessResultCompletionSeam:
             encoding="utf-8",
         )
 
-        strategy = OpenCodeExecutionStrategy()
+        registry = ChildLivenessRegistry(
+            progress_ttl=30.0,
+            heartbeat_ttl=30.0,
+            stale_label_ttl=30.0,
+            exit_reconcile=30.0,
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
+        strategy.observe_line(
+            json.dumps(
+                {
+                    "type": "tool_use",
+                    "part": {
+                        "type": "tool",
+                        "tool": "task",
+                        "callID": "completed-native-task",
+                        "state": {"status": "completed", "output": "done"},
+                    },
+                }
+            )
+        )
         handle = _FakeHandle(returncode=0)
 
         options = _CompletionCheckOptions(
