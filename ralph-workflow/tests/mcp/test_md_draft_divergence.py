@@ -8,6 +8,8 @@ from ralph.agents.completion_signals import completion_signals_terminal, evaluat
 from ralph.mcp.artifacts.completion_receipts import write_artifact_receipt
 from ralph.mcp.artifacts.md_draft_io import (
     UnsubmittedDraftDivergence,
+    is_md_draft_seeded,
+    mark_md_draft_seeded,
     save_md_draft,
     unsubmitted_draft_divergence,
 )
@@ -45,6 +47,22 @@ def test_unsubmitted_draft_divergence_handles_every_persistence_branch() -> None
     assert unsubmitted_draft_divergence(artifact_dir, "plan", canonical, backend=backend) == (
         UnsubmittedDraftDivergence(draft_chars=5, canonical_chars=9)
     )
+
+
+def test_md_draft_save_regression_identical_seeded_replay_preserves_provenance() -> None:
+    """S-3: replaying an unchanged seeded draft does not remove its provenance marker."""
+    backend = MemoryBackend()
+    artifact_dir = Path("/virtual/.agent/artifacts")
+
+    save_md_draft(artifact_dir, "plan", "canonical content", backend=backend)
+    mark_md_draft_seeded(artifact_dir, "plan", backend=backend)
+
+    save_md_draft(artifact_dir, "plan", "canonical content", backend=backend)
+
+    assert is_md_draft_seeded(artifact_dir, "plan", backend=backend)
+    assert unsubmitted_draft_divergence(
+        artifact_dir, "plan", artifact_dir / "plan.md", backend=backend
+    ) is None
 
 
 def test_md_draft_divergence_regression_worker_artifact_uses_its_own_directory(

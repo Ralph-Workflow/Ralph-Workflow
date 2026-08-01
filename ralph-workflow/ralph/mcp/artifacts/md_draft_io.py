@@ -119,7 +119,7 @@ def save_md_draft(
     """Atomically persist the staged draft (temp write + replace)."""
     draft_path = md_draft_path(artifact_dir, artifact_type)
     tmp_path = draft_path.with_suffix(".md.tmp")
-    atomic_write_text_if_changed(
+    changed = atomic_write_text_if_changed(
         backend,
         draft_path,
         content,
@@ -128,8 +128,11 @@ def save_md_draft(
         sync_directory=True,
         prepare_write=lambda: backend.mkdir(artifact_dir, parents=True, exist_ok=True),
     )
+    # An identical replay did not author a new draft. Preserve seeded provenance
+    # and avoid its otherwise redundant deletion mutation; a changed publication
+    # becomes authored content and must clear the marker as before.
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
-    if backend.exists(seeded_path):
+    if changed and backend.exists(seeded_path):
         backend.unlink(seeded_path)
 
 
