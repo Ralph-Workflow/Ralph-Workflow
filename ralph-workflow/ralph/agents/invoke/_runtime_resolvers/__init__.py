@@ -40,6 +40,62 @@ if TYPE_CHECKING:
 
 
 @runtime_checkable
+class _InvokeModule(Protocol):
+    """Structural compatibility seam retained for runtime resolver tests."""
+
+    def _apply_upstream_env(
+        self,
+        upstreams: tuple[object, ...],
+        workspace_path: Path | None,
+        runtime_env: dict[str, str],
+        server_env: dict[str, str],
+    ) -> None: ...
+
+    def discover_http_mcp_tool_names(self, endpoint: str) -> list[str]: ...
+
+    def build_opencode_provider_config(
+        self, existing: str | None, endpoint: str, *, unsafe_mode: bool = False
+    ) -> tuple[str, tuple[object, ...]]: ...
+
+    def build_nanocoder_mcp_config(
+        self,
+        existing: str | None,
+        endpoint: str,
+        *,
+        always_allow: tuple[str, ...] = (),
+        unsafe_mode: bool = False,
+        workspace_path: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> tuple[str, tuple[object, ...]]: ...
+
+    def load_existing_nanocoder_upstream_servers(
+        self, workspace_path: Path | None, *, env: dict[str, str] | None = None
+    ) -> tuple[object, ...]: ...
+
+    def prepare_codex_home_with_upstreams(
+        self,
+        endpoint: str | None,
+        *,
+        workspace_path: Path | None,
+        existing_home: str | None,
+        master_prompt_file: str | None,
+        unsafe_mode: bool = False,
+    ) -> tuple[str, tuple[object, ...]]: ...
+
+    def load_existing_claude_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[object, ...]: ...
+
+    def load_existing_agy_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[object, ...]: ...
+
+    def load_existing_cursor_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[object, ...]: ...
+
+
+@runtime_checkable
 class RuntimeResolver(Protocol):
     """Protocol for per-transport runtime environment wiring.
 
@@ -74,65 +130,10 @@ class RuntimeResolver(Protocol):
         ...
 
 
-class _InvokeCompatibilitySeam(Protocol):
-    """Typed package seam retained for transport resolver monkeypatch tests."""
-
-    def _apply_upstream_env(
-        self,
-        upstreams: tuple[object, ...],
-        workspace_path: Path | None,
-        runtime_env: dict[str, str],
-        server_env: dict[str, str],
-    ) -> None: ...
-
-    def discover_http_mcp_tool_names(self, endpoint: str) -> list[str]: ...
-
-    def build_opencode_provider_config(
-        self,
-        config: str | None,
-        endpoint: str,
-        *,
-        unsafe_mode: bool,
-    ) -> tuple[str, tuple[object, ...]]: ...
-
-    def build_nanocoder_mcp_config(
-        self,
-        config: str | None,
-        endpoint: str,
-        **kwargs: object,
-    ) -> tuple[str, tuple[object, ...]]: ...
-
-    def load_existing_nanocoder_upstream_servers(
-        self,
-        workspace_path: Path | None,
-        **kwargs: object,
-    ) -> tuple[object, ...]: ...
-
-    def prepare_codex_home_with_upstreams(
-        self,
-        endpoint: str | None,
-        **kwargs: object,
-    ) -> tuple[str, tuple[object, ...]]: ...
-
-    def load_existing_claude_upstream_servers(
-        self,
-        workspace_path: Path | None,
-    ) -> tuple[object, ...]: ...
-
-    def load_existing_agy_upstream_servers(
-        self,
-        workspace_path: Path | None,
-    ) -> tuple[object, ...]: ...
-
-    def load_existing_cursor_upstream_servers(
-        self,
-        workspace_path: Path,
-    ) -> tuple[object, ...]: ...
-
-
-def _invoke_module() -> _InvokeCompatibilitySeam:
+def _invoke_module() -> _InvokeModule:
     """Return the package-level compatibility seam used by runtime tests."""
-    return cast("_InvokeCompatibilitySeam", sys.modules["ralph.agents.invoke"])
+    return cast("_InvokeModule", sys.modules["ralph.agents.invoke"])
+
 
 
 def _apply_upstream_env(
