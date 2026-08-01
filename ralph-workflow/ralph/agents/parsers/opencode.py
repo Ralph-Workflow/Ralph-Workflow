@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+from collections import deque
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from ._ndjson_base import NdjsonParserBase
@@ -153,14 +155,12 @@ class _OpenCodeDispatch:
         status = str(state_obj.get("status", ""))
         if status == "completed":
             # OpenCode collapses the call and its result into ONE terminal
-            # event, so a completed tool carries BOTH. Emitting only the
-            # ``tool_result`` erased the dispatch: consumers that count
-            # dispatches by ``type == "tool_use"`` (e.g.
-            # ``_subagent_smoke_evidence``) saw zero, and a real ``task``
-            # subagent run was reported as "subagent dispatch was not
-            # observed". Surface the dispatch first, then the result, so the
-            # ordered dispatch -> result -> post-activity lifecycle holds.
-            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+            # event, so a completed tool carries BOTH. A preceding ``running``
+            # event already exposed the dispatch, however; emit it only once
+            # per call ID while still retaining the terminal result.
+            if not self._owner._tool_call_was_dispatched(part):
+                yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+            self._owner._finish_tool_call(part)
             output = state_obj.get("output", "")
             yield AgentOutputLine(
                 type="tool_result",
@@ -171,16 +171,16 @@ class _OpenCodeDispatch:
             return
 
         if status == "error":
-            # Same reasoning as the ``completed`` branch above: the dispatch
-            # itself is real and MUST stay visible. Emitting only the error
-            # erased the call from the tool timeline, so an errored ``task``
-            # dispatch reported "subagent dispatch was not observed" even
-            # though the subagent was genuinely dispatched.
-            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+            # Keep an errored dispatch visible, but do not duplicate a prior
+            # running event for the same call.
+            if not self._owner._tool_call_was_dispatched(part):
+                yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
+            self._owner._finish_tool_call(part)
             err = str(state_obj.get("error", "tool error"))
             yield AgentOutputLine(type="error", content=err, raw=raw, metadata=metadata)
             return
 
+        self._owner._record_tool_dispatch(part)
         yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
 
     def _parse_tool_result(
@@ -260,6 +260,7 @@ class OpenCodeParser(NdjsonParserBase):
         self._subagent_pid_registry = subagent_pid_registry
         self._subagent_source_label = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
+        self._dispatched_tool_call_ids: deque[str] = deque(maxlen=256)
         self._current_part_id: str | None = None
         self._stream_counter = 0
         self._dispatcher = _OpenCodeDispatch(self)
@@ -305,6 +306,33 @@ class OpenCodeParser(NdjsonParserBase):
         # dispatcher itself does not need to thread the parameter.
         del source_timestamp  # accepted for override compatibility; ignored
         yield from self._dispatcher.dispatch(obj, raw)
+
+    @staticmethod
+    def _tool_call_id(part: dict[str, object]) -> str | None:
+        """Return OpenCode's native tool-call identity when present."""
+        for key in ("callID", "callId"):
+            value = part.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _record_tool_dispatch(self, part: dict[str, object]) -> None:
+        """Remember an in-flight tool dispatch so its terminal frame is not duplicated."""
+        call_id = self._tool_call_id(part)
+        if call_id is not None and call_id not in self._dispatched_tool_call_ids:
+            self._dispatched_tool_call_ids.append(call_id)
+
+    def _tool_call_was_dispatched(self, part: dict[str, object]) -> bool:
+        """Return whether this terminal frame follows a streamed dispatch."""
+        call_id = self._tool_call_id(part)
+        return call_id is not None and call_id in self._dispatched_tool_call_ids
+
+    def _finish_tool_call(self, part: dict[str, object]) -> None:
+        """Forget a terminal call ID so a future call cannot be suppressed."""
+        call_id = self._tool_call_id(part)
+        if call_id is not None:
+            with contextlib.suppress(ValueError):
+                self._dispatched_tool_call_ids.remove(call_id)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         for key in list(self._accumulators.keys()):

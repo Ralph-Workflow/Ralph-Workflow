@@ -164,6 +164,30 @@ def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> N
     assert handle._terminated is True
 
 
+def test_opencode_regression_verified_completion_stops_parent_after_stdout_eof() -> None:
+    """S-4: durable completion reaps a still-live OpenCode parent after stdout EOF."""
+    handle = _FakeManagedHandle(
+        iter(['{"type":"text","part":{"text":"complete"}}\n'])
+    )
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=5.0,
+        max_session_seconds=5.0,
+        idle_poll_interval_seconds=0.01,
+        drain_window_seconds=0.0,
+    )
+    ctx = ProcessReaderCtx(
+        config=AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE),
+        policy=policy,
+        execution_strategy=OpenCodeExecutionStrategy(),
+        completion_is_terminal=lambda: True,
+    )
+
+    lines = list(read_lines_from_process(handle, ctx=ctx, _clock=FakeClock()))
+
+    assert lines == ['{"type":"text","part":{"text":"complete"}}\n']
+    assert handle._terminated is True
+
+
 def test_session_ceiling_fires_under_continuous_output() -> None:
     """SESSION_CEILING_EXCEEDED fires even when the agent produces continuous output.
 

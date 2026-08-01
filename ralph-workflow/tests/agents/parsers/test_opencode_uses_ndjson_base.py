@@ -84,6 +84,24 @@ class TestOpenCodeUsesNdjsonBase:
         assert results[0].content == "task"
         assert results[1].content == "MCP error -32001: Request timed out"
 
+    def test_streamed_completed_tool_does_not_repeat_its_dispatch(self) -> None:
+        """A running -> completed native call has one dispatch and one result."""
+        parser = OpenCodeParser()
+        running = (
+            '{"type":"tool_use","part":{"type":"tool","tool":"task",'
+            '"callID":"call_1","state":{"status":"running","input":{}}}}'
+        )
+        completed = (
+            '{"type":"tool_use","part":{"type":"tool","tool":"task",'
+            '"callID":"call_1","state":{"status":"completed","input":{},'
+            '"output":"done"}}}'
+        )
+
+        results = list(parser.parse(_lines(running, completed)))
+
+        assert [result.type for result in results] == ["tool_use", "tool_result"]
+        assert [result.content for result in results] == ["task", "done"]
+
     def test_integer_epoch_timestamp_is_preserved(self) -> None:
         """OpenCode stamps events with an integer epoch-ms.
 

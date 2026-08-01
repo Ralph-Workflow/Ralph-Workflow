@@ -821,6 +821,18 @@ class _ProcessLineReader:
                 return None
             self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
+    def _finish_reader_done(
+        self, watchdog: IdleWatchdog
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        """Stop on durable completion or drain remaining process shutdown evidence."""
+        if self._finish_terminal_completion():
+            return None
+        drain_secs = self._policy.drain_window_seconds or 0
+        if drain_secs > 0 and self._policy.idle_timeout_seconds is not None:
+            drain_secs += self._policy.idle_poll_interval_seconds
+        drain_deadline = self._clock.monotonic() + drain_secs if drain_secs > 0 else None
+        return self._run_drain_window(watchdog, drain_deadline)
+
     def _build_process_monitor(self) -> ProcessMonitor | None:
         """Build the monitor with transport-scoped child evidence."""
         subagent_pid_source = self._build_subagent_pid_source()
@@ -894,13 +906,7 @@ class _ProcessLineReader:
                     continue
 
                 if is_done:
-                    drain_secs = self._policy.drain_window_seconds or 0
-                    if drain_secs > 0 and self._policy.idle_timeout_seconds is not None:
-                        drain_secs += self._policy.idle_poll_interval_seconds
-                    drain_deadline = (
-                        self._clock.monotonic() + drain_secs if drain_secs > 0 else None
-                    )
-                    result = self._run_drain_window(watchdog, drain_deadline)
+                    result = self._finish_reader_done(watchdog)
                     if result is not None:
                         pending_lines, exc = result
                         yield from pending_lines
