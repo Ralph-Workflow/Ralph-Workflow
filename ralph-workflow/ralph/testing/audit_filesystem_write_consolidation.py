@@ -64,6 +64,7 @@ if TYPE_CHECKING:
 #: These are the production-only roots; we deliberately exclude
 #: testing / audit / vendor / generated paths.
 _DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ("ralph",)
+_MODE_POSITION: int = 1
 
 #: Files inside the package that are exempt from the audit: they
 #: define the shared primitive itself, or are responsible for
@@ -343,6 +344,11 @@ def _raw_qualified_mutation_call(node: ast.Call) -> str | None:
     root = _call_root_name(receiver)
     if root is None:
         return None
+    return _qualified_mutation_attr(attr, receiver, root)
+
+
+def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | None:
+    """Return a flagged mutation attribute when its receiver is a known filesystem API."""
     if root in _RAW_MUTATION_QUALIFIERS:
         # ``os.environ.copy()`` and similar attribute-chain calls are not
         # filesystem mutations. ``os``/``shutil`` primitives must be called
@@ -494,10 +500,7 @@ def _scan_module(
         if qattr is not None:
             if _has_marker_on_or_before(node.lineno, marker_lines):
                 continue
-            func = node.func
-            if not isinstance(func, ast.Attribute):
-                continue
-            qualifier = _call_root_name(func.value) or "?"
+            qualifier = _call_receiver_root(node) or "?"
             violations.append(
                 FilesystemWriteViolation(
                     kind=f"raw_{qattr}",
@@ -507,6 +510,13 @@ def _scan_module(
                 )
             )
     return violations
+
+
+def _call_receiver_root(node: ast.Call) -> str | None:
+    """Return the root receiver name of an attribute call."""
+    if not isinstance(node.func, ast.Attribute):
+        return None
+    return _call_root_name(node.func.value)
 
 
 def _has_named_marker_for_line(source: str, line_idx: int, marker_lines: set[int]) -> bool:

@@ -190,14 +190,6 @@ class GenericParser(NdjsonParserBase):
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         yield from self._flush_accumulator()
 
-    def _handle_lifecycle_event(
-        self, obj: dict[str, object], event_type: str
-    ) -> Iterator[AgentOutputLine] | None:
-        """Flush buffered text when a generic stream marks a message complete."""
-        if event_type not in self._STOP_TYPES:
-            return iter(())
-        return self._classify_parsed_json(obj, stripped="")
-
     def _is_short_content(self, content: str) -> bool:
         if len(content) >= _SHORT_CONTENT_THRESHOLD:
             return False

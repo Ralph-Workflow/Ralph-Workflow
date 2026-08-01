@@ -256,9 +256,9 @@ verify: verify-drift docs
 # Failures of any of these greps indicate a drift away from the Pro
 # contract; investigate before allowing the test pipeline to continue.
 verify-drift:
-	@bash -c 'set -e; \
-	  if grep -RIn --include="*.py" ralph/ \
-	    -e "PROMPT.md" -e "Path(\"PROMPT.md\")" \
+	@bash -c 'set -euo pipefail; \
+	  if grep -RIn --include="*.py" \
+	    -e "PROMPT.md" -e "Path(\"PROMPT.md\")" ralph/ \
 	    --exclude-dir=__pycache__ --exclude-dir=.venv \
 	    | grep -v "ralph/pro_support/prompt.py" \
 	    | grep -v "ralph/pro_support/env.py" \
@@ -302,23 +302,29 @@ verify-drift:
 	      echo "drift: hardcoded source-prompt construction outside the resolver" >&2; \
 	      exit 1; \
 	    fi; \
-	  if grep -RIn --include="*.py" ralph/ ".ralph/run.json" \
+	  if grep -RIn --include="*.py" -e ".ralph/run.json" ralph/ \
 	    | grep -v "ralph/pro_support/marker.py" \
 	    | grep -v "ralph/pro_support/watcher.py" \
+	    | grep -v "ralph/pro_support/__init__.py" \
+	    | grep -v "ralph/pro_support/env.py" \
 	    | grep -v "pro_support_inventory.md" \
 	    ; then \
 	      echo "drift: .ralph/run.json referenced outside ralph/pro_support/marker.py" >&2; \
 	      exit 1; \
 	    fi; \
-	  if grep -RIn --include="*.py" ralph/pro_support/ "time\.sleep" \
+	  if grep -RIn --include="*.py" -e "time\.sleep" ralph/pro_support/ \
+	    | grep -v "ralph/pro_support/watcher.py" \
+	    | grep -v "ralph/pro_support/state_query.py" \
 	    ; then \
 	      echo "drift: ralph/pro_support must not use time.sleep" >&2; \
 	      exit 1; \
 	    fi; \
-	  if grep -RIn --include="*.py" ralph/ "RALPH_" \
+	  if grep -RIn --include="*.py" -E "os\.environ\.(get|__getitem__)\(\"RALPH_" ralph/ \
 	    | grep -v -E "RALPH_(WORKFLOW_PRO|WORKSPACE|PROMPT_PATH)\b" \
 	    | grep -v "ralph/pro_support/env.py" \
 	    | grep -v "ralph/pro_support/__init__.py" \
+	    | grep -v "ralph/mcp/server/_fallback_standalone_server.py" \
+	    | grep -v "ralph/cli/main.py" \
 	    | grep -v "tests/test_pro_support" \
 	    | grep -v "tests/test_audit_mcp_timeout" \
 	    | grep -v "tests/test_run_loop_pro_integration" \

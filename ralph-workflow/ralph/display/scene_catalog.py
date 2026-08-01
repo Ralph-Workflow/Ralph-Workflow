@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
 from typing import Final, Literal
+
+from rich.syntax import Syntax
+from rich.text import Text
+
+from ralph.display.theme import make_console, pick_status_styles, syntax_theme_for_background
 
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
@@ -35,6 +41,20 @@ class SupportCase:
     glyphs: GlyphMode
     width: int
     destination: Destination
+
+    @property
+    def color_system(self) -> Literal["standard", "truecolor"] | None:
+        """Return the Rich colour system for this declared colour mode."""
+        if self.colour == "truecolour":
+            return "truecolor"
+        if self.colour == "reduced":
+            return "standard"
+        return None
+
+    @property
+    def height(self) -> int:
+        """Return the declared narrow-height floor for deterministic captures."""
+        return GRACEFUL_HEIGHT_FLOOR
 
 
 SCENE_NAMES: Final[tuple[str, ...]] = (
@@ -71,7 +91,12 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
 )
 
 
-def render_scene(scene_name: str, case: SupportCase) -> str:
+def render_scene(
+    scene_name: str,
+    case: SupportCase,
+    *,
+    terminal_bg_is_light: bool | None,
+) -> str:
     """Render one deterministic reference scene through a real Rich console.
 
     This is intentionally a compact probe rather than a replacement display
@@ -82,16 +107,15 @@ def render_scene(scene_name: str, case: SupportCase) -> str:
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
     stream = StringIO()
-    console = Console(
+    console = make_console(
         file=stream,
         force_terminal=case.destination == "tty" and case.colour != "none",
         color_system=case.color_system,
         no_color=case.colour == "none",
         width=case.width,
         height=case.height,
-        highlight=False,
     )
-    styles = pick_status_styles(case.terminal_background_is_light)
+    styles = pick_status_styles(terminal_bg_is_light)
     console.print(Text(f"[{scene_name}] ", style=styles["info"][0]), end="")
     for state in ("running", "pending", "warning", "success", "error"):
         style, glyph, label = styles[state]
@@ -102,7 +126,7 @@ def render_scene(scene_name: str, case: SupportCase) -> str:
         Syntax(
             "def café(value: str) -> int:\\n    return len(value)",
             "python",
-            theme=syntax_theme_for_background(case.terminal_background_is_light),
+            theme=syntax_theme_for_background(terminal_bg_is_light),
             line_numbers=True,
             word_wrap=True,
             background_color="default",
@@ -142,5 +166,6 @@ __all__ = [
     "SURFACE_CATALOG",
     "SupportCase",
     "SurfaceSpec",
+    "render_scene",
     "support_matrix",
 ]

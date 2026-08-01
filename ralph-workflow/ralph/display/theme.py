@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
 from rich.console import Console
 from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
@@ -28,6 +28,7 @@ from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
+    from typing import IO
 
 ORANGE: Final[str] = "#E69F00"
 SKY_BLUE: Final[str] = "#56B4E9"
@@ -861,9 +862,12 @@ def format_status(status_name: str) -> str:
 
 def make_console(
     *,
+    file: IO[str] | None = None,
     no_color: bool | None = None,
     force_terminal: bool | None = None,
     width: int | None = None,
+    height: int | None = None,
+    color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = None,
 ) -> Console:
     """Construct a Rich ``Console`` wired with the Ralph theme.
 
@@ -875,10 +879,13 @@ def make_console(
     the colour behaviour consistent.
 
     Parameters:
+        file: Optional text stream receiving rendered output.
         no_color: When ``True``, strip colour from the console.
         force_terminal: When ``True``, treat the console as a
             TTY even when it is not (useful for tests).
         width: Override the console width (default: auto-detect).
+        height: Override the console height (default: auto-detect).
+        color_system: Rich colour system override for deterministic captures.
 
     Returns:
         A ``rich.console.Console`` instance with the Ralph theme.
@@ -886,10 +893,13 @@ def make_console(
     resolved_no_color = no_color if no_color is not None else False
     resolved_force_terminal = force_terminal
     return Console(
+        file=file,
         theme=RALPH_THEME,
         no_color=resolved_no_color,
         force_terminal=resolved_force_terminal,
         width=width,
+        height=height,
+        color_system=color_system,
         highlight=False,
     )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ralph.display.scene_catalog import (
     CONTRAST_FLOOR,
     FULL_LAYOUT_WIDTH,
@@ -9,6 +11,8 @@ from ralph.display.scene_catalog import (
     GRACEFUL_WIDTH_FLOOR,
     SCENE_NAMES,
     SURFACE_CATALOG,
+    SupportCase,
+    render_scene,
     support_matrix,
 )
 
@@ -62,6 +66,26 @@ def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None
     assert FULL_LAYOUT_WIDTH == 80
     assert GRACEFUL_WIDTH_FLOOR == 40
     assert GRACEFUL_HEIGHT_FLOOR == 12
+
+
+@pytest.mark.parametrize("case", support_matrix())
+@pytest.mark.parametrize("scene_name", SCENE_NAMES)
+def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matrix(
+    scene_name: str,
+    case: SupportCase,
+) -> None:
+    """S-2: generated scenes are executable, destination-safe, and nonempty."""
+    rendered = render_scene(
+        scene_name,
+        case,
+        terminal_bg_is_light={"dark": False, "light": True, "unknown": None}[case.background],
+    )
+    assert rendered
+    assert scene_name in rendered
+    if case.colour == "none":
+        assert "\x1b[" not in rendered
+    if case.destination == "redirect":
+        assert "\r" not in rendered
 
 
 def test_generated_scene_frames_are_rationed_to_identity_surfaces() -> None:
