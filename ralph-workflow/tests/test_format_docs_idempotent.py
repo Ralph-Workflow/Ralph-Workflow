@@ -30,12 +30,14 @@ class _CountingBackend(FileBackend):
     def __init__(self) -> None:
         self._files: Dict[Path, str] = {}
         self.write_text_calls: list[Path] = []
+        self.mkdir_calls: list[Path] = []
 
     def exists(self, path: Path) -> bool:
         return path in self._files
 
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
-        del path, parents, exist_ok
+        del parents, exist_ok
+        self.mkdir_calls.append(path)
 
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         del encoding
@@ -90,6 +92,7 @@ def test_second_materialize_all_writes_nothing() -> None:
     assert backend.write_text_calls == [workspace_root / path for path in first_paths]
     assert len(backend.write_text_calls) == len(first_paths)
     assert second_paths == first_paths
+    assert backend.mkdir_calls == [(workspace_root / path).parent for path in first_paths]
 
 
 def test_differing_on_disk_doc_is_rewritten_to_bundled_content() -> None:

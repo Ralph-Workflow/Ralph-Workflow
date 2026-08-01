@@ -75,8 +75,13 @@ def materialize_example(
     if content is None:
         return None
     dest = workspace_root / EXAMPLES_WORKSPACE_DIR / f"{artifact_type}.md"
-    backend.mkdir(dest.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, dest, content, encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        dest,
+        content,
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(dest.parent, parents=True, exist_ok=True),
+    )
     return example_workspace_path(artifact_type)
 
 
@@ -109,8 +114,13 @@ def materialize_format_doc(
     if content is None:
         return None
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{artifact_type}.md"
-    backend.mkdir(dest.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, dest, content, encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        dest,
+        content,
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(dest.parent, parents=True, exist_ok=True),
+    )
     return format_doc_workspace_path(artifact_type)
 
 
@@ -125,8 +135,13 @@ def materialize_format_index(
     """
     content = load_bundled_format_index()
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
-    backend.mkdir(dest.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, dest, content, encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        dest,
+        content,
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(dest.parent, parents=True, exist_ok=True),
+    )
     return format_index_workspace_path()
 
 
