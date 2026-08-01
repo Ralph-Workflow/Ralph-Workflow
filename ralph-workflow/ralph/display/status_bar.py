@@ -1453,6 +1453,7 @@ class StatusBar:
     __slots__ = (
         "_clock",
         "_display",
+        "_durable_frame",
         "_fallback_frame",
         "_fallback_rendered",
         "_home",
@@ -1478,6 +1479,7 @@ class StatusBar:
         self._lock = threading.RLock()
         self._fallback_rendered = False
         self._fallback_frame: str | None = None
+        self._durable_frame: str | None = None
         self._last_live_frame: str | None = None
         self._live_frame_rendered = False
         self._ticker: threading.Thread | None = None
@@ -1606,6 +1608,22 @@ class StatusBar:
         self._ctx().console.print(renderable)
         self._fallback_rendered = True
         self._fallback_frame = renderable.plain
+
+    def _emit_durable_transition_if_changed(self) -> None:
+        """Append a cold-readable footer transition when no live region is allowed.
+
+        Redirected, piped, and CI destinations cannot safely repaint a footer.
+        They instead receive one permanent line for each meaningful model change;
+        the plain-text comparison suppresses repeated pushes while preserving
+        phase, attention, elapsed, and identity transitions for later review.
+        """
+        if self._real_tty() or bool(self._display._is_quiet):
+            return
+        renderable = self._renderable()
+        if renderable.plain == self._durable_frame:
+            return
+        self._ctx().console.print(renderable)
+        self._durable_frame = renderable.plain
 
     def _fallback_cleanup(self) -> None:
         if not self._fallback_rendered:
@@ -1747,3 +1765,5 @@ class StatusBar:
         if self._live is not None:
             with contextlib.suppress(Exception):
                 self._fallback_render_once()
+            return
+        self._emit_durable_transition_if_changed()

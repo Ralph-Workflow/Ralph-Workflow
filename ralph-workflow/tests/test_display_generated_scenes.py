@@ -163,6 +163,8 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
         assert all(cell_len(line) <= case.width for line in visible.splitlines())
     if case.destination in {"redirect", "ci"}:
         assert "\r" not in rendered
+        assert "\x1b[1A" not in rendered
+        assert "\x1b[2K" not in rendered
 
 
 @pytest.mark.parametrize(

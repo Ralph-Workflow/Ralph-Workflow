@@ -399,10 +399,10 @@ def handle_read_file(
 
     if file_type == "file" and isinstance(size_bytes, int) and size_bytes > max_bytes:
         head_value = max(1, max_bytes // 256)
-        partial_content, _meta = workspace.read_lines(normalized, head=head_value)
+        preview_content, _meta = workspace.read_lines(normalized, head=head_value)
         payload = {
             "path": path,
-            "content": partial_content,
+            "content": preview_content,
             "truncated": True,
             "total_bytes": size_bytes,
             "max_bytes": max_bytes,
@@ -413,21 +413,21 @@ def handle_read_file(
             payload["content_hash"] = None
         return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
 
-    content = snapshot_content
-    if content is None:
+    file_content = snapshot_content
+    if file_content is None:
         raise ToolError(f"Failed to read file '{path}': file not found")
     if return_metadata:
         payload = {
             "path": path,
-            "content": content,
-            "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "content": file_content,
+            "content_hash": hashlib.sha256(file_content.encode("utf-8")).hexdigest(),
         }
         payload.update(_freshness_for_read(session))
         return ToolResult(
             content=[ToolContent.text_content(_tool_json(payload))],
             is_error=False,
         )
-    return ToolResult(content=[ToolContent.text_content(content)], is_error=False)
+    return ToolResult(content=[ToolContent.text_content(file_content)], is_error=False)
 
 
 def _read_via_evidence(

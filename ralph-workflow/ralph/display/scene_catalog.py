@@ -20,7 +20,7 @@ from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.phase_entry_model import PhaseEntryModel
 from ralph.display.phase_exit_model import PhaseExitModel
 from ralph.display.snapshot import PipelineSnapshot
-from ralph.display.status_bar import StatusBarModel, render_status_bar
+from ralph.display.status_bar import StatusBarModel
 from ralph.display.surface_catalog import SURFACE_CATALOG, SurfaceSpec
 from ralph.display.theme import diff_fill_styles, make_console
 
@@ -234,13 +234,9 @@ def _drive_production_scene(
             agent_name="pi",
             attention="waiting",
         )
-        # Exercise the public push seam first. StatusBar intentionally emits no
-        # Live region to redirected/CI streams, so the catalog then uses its
-        # production pure renderer to capture the documented durable cold view.
-        # This is not a second formatter: render_status_bar is StatusBar's sole
-        # layout owner and shares the stored model above.
+        # The public push seam writes a durable state transition on redirected
+        # and CI streams; real TTYs retain the sole transient Live footer.
         display.update_status_bar(model)
-        console.print(render_status_bar(model, context, home="/work", now_monotonic=123.0))
     else:
         display.emit_run_end(phase="complete", total_agent_calls=3)
         display.emit_completion_summary_panel(

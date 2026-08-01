@@ -1528,6 +1528,42 @@ def test_status_bar_clean_buffer_under_flow() -> None:
     )
 
 
+def test_status_bar_non_tty_emits_durable_state_transitions_without_repaint_controls() -> None:
+    """Redirected output records meaningful footer state changes as durable lines."""
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
+    pd = ParallelDisplay(make_display_context(console=console, env={"FORCE_COLOR": "1"}))
+
+    pd.update_status_bar(
+        StatusBarModel(
+            workspace_root="/work/project",
+            phase_label="Development",
+            phase_style="theme.phase.development",
+            elapsed_seconds=1.0,
+            attention="waiting",
+        )
+    )
+    pd.update_status_bar(
+        StatusBarModel(
+            workspace_root="/work/project",
+            phase_label="Review",
+            phase_style="theme.phase.review",
+            elapsed_seconds=2.0,
+            attention="waiting",
+        )
+    )
+    pd.stop()
+
+    output = buf.getvalue()
+    visible = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    assert "WAITING" in visible
+    assert "Development" in visible
+    assert "Review" in visible
+    assert "\r" not in output
+    assert "\x1b[1A" not in output
+    assert "\x1b[2K" not in output
+
+
 # ---------------------------------------------------------------------------
 # StatusBar lifecycle — tty-like stream surfaces the live-rendered model
 # ---------------------------------------------------------------------------
