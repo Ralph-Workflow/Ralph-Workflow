@@ -296,24 +296,24 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
     assert policy.enable_zombie_reaper is False
 
 
-def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
+def test_auto_worker_count_uses_the_verified_safe_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: resource contention must not revive the failed 32-shard
-    # profile; auto resolution uses the measured safe 16-shard profile.
+    # Regression: 16 shards contend with bounded cold-index reindexes;
+    # auto resolution uses the measured safe eight-shard profile.
     for cores, expected in (
-        (4, "16"),
-        (5, "16"),
-        (6, "16"),
-        (7, "16"),
-        (8, "16"),
-        (12, "16"),
-        (16, "16"),
-        (20, "16"),
-        (21, "16"),
-        (64, "16"),
+        (4, "8"),
+        (5, "8"),
+        (6, "8"),
+        (7, "8"),
+        (8, "8"),
+        (12, "8"),
+        (16, "8"),
+        (20, "8"),
+        (21, "8"),
+        (64, "8"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
