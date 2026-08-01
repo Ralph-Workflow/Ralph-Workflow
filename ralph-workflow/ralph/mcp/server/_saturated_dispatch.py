@@ -168,9 +168,7 @@ class _SaturatedDispatch:
             raise
         try:
             if self._dispatch_timeout_seconds is None:
-                return (
-                    future.result()
-                )  # mcp-timeout-ok: explicitly injected None disables the caller deadline
+                return future.result()  # mcp-timeout-ok: explicitly injected None disables the caller deadline
             return future.result(timeout=self._dispatch_timeout_seconds)
         except concurrent.futures.TimeoutError:
             # cancel() frees queued work only. A running thread cannot be

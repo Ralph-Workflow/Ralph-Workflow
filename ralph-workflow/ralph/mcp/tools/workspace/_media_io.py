@@ -31,19 +31,12 @@ MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 #: cache files were evicted. The dedup-by-artifact_id list comprehension
 #: still runs every add, so same-id replacement is immediate (AC-10).
 _MEDIA_PRUNE_INTERVAL: int = 32
-_media_add_counter: Iterator[int] | int = count(1)
+_media_add_counter: Iterator[int] = count(1)
 
 
 def _advance_media_prune_counter() -> bool:
     """Advance the injectable prune counter and report whether this is a tick."""
-    global _media_add_counter
-    counter = _media_add_counter
-    if isinstance(counter, int):
-        next_count = counter + 1
-        _media_add_counter = next_count
-    else:
-        next_count = next(counter)
-    return next_count % _MEDIA_PRUNE_INTERVAL == 0
+    return next(_media_add_counter) % _MEDIA_PRUNE_INTERVAL == 0
 
 
 def _media_session_identity(entry: dict[str, str]) -> str:

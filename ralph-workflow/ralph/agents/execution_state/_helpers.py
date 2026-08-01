@@ -82,17 +82,11 @@ def _tool_state_error_message(obj: dict[str, object]) -> str | None:
 def _error_output_signal(line: str) -> AgentActivitySignal | None:
     """Return an ERROR_LINE signal when the line is a JSON error event.
 
-    Covers BOTH shapes an opencode error can take so the repeated-error circuit
-    breaker sees the retry storm regardless of wire form:
-
-    - a top-level ``{"type":"error", ...}`` event, and
-    - a ``tool_use``/``tool_result`` event whose ``part.state.status == "error"``
-      (how an MCP tool-call failure such as ``MCP error -32001: Request timed
-      out`` actually surfaces).
-
     The signal's ``raw`` carries the extracted error message (not the full JSON
-    envelope) so fingerprinting is stable across occurrences. Returns None for
-    non-error or non-JSON lines so callers fall through to normal classification.
+    envelope) so fingerprinting is stable across occurrences. Tool-state errors
+    stay ``TOOL_USE`` signals with ``error_message`` attached; that preserves the
+    identical-call evidence while feeding the repeated-error breaker. Returns None
+    for non-error or non-JSON lines so callers fall through to normal classification.
     """
     stripped = line.strip()
     if not stripped:
@@ -109,10 +103,6 @@ def _error_output_signal(line: str) -> AgentActivitySignal | None:
         return AgentActivitySignal(
             AgentActivityKind.ERROR_LINE, raw=_error_message_from_error_field(obj)
         )
-    if event_type in {"tool_use", "tool_result"}:
-        tool_error = _tool_state_error_message(obj)
-        if tool_error is not None:
-            return AgentActivitySignal(AgentActivityKind.ERROR_LINE, raw=tool_error)
     return None
 
 
