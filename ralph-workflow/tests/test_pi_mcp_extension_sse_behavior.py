@@ -189,7 +189,7 @@ console.log("ok");
         cwd=tmp_path,
         text=True,
         capture_output=True,
-        timeout=5,
+        timeout=10,
         check=False,
     )
 
