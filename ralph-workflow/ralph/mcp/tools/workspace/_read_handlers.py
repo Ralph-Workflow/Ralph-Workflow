@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import sqlite3
 import time
@@ -120,6 +121,27 @@ def _freshness_for_read(session: object) -> dict[str, object]:
         "dirty_paths_count": len(dirty),
         "stale_paths_count": 0,
     }
+
+
+def _workspace_snapshot(
+    workspace: Workspace, path: str, *, max_bytes: int | None = None
+) -> tuple[dict[str, object], str | None]:
+    """Observe metadata and text once, retaining legacy workspace compatibility."""
+    snapshot_fn = getattr(workspace, "snapshot", None)
+    if callable(snapshot_fn):
+        try:
+            snapshot = snapshot_fn(path, max_bytes=max_bytes)
+        except TypeError:
+            snapshot = snapshot_fn(path)
+        stat = getattr(snapshot, "stat", None)
+        content = getattr(snapshot, "content", None)
+        if isinstance(stat, dict) and (content is None or isinstance(content, str)):
+            return stat, content
+    stat_result = workspace.stat(path)
+    try:
+        return stat_result, workspace.read(path)
+    except FileNotFoundError:
+        return stat_result, None
 
 
 def _hash_file(workspace: Workspace, path: str) -> str | None:
@@ -278,9 +300,24 @@ def handle_read_file(
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
 
+    # One snapshot is reused for hashing and full-file rendering. Partial and
+    # indexed reads retain their bounded specialised operations below.
+    sel = _ReadSelector.from_params(params)
+    max_bytes = _int_param(params, "max_bytes", FULL_READ_DEFAULT_MAX_BYTES)
+    snapshot_stat: dict[str, object] | None = None
+    snapshot_content: str | None = None
+    if expected_hash is not None or not sel.is_active():
+        snapshot_stat, snapshot_content = _workspace_snapshot(
+            workspace, normalized, max_bytes=max_bytes
+        )
+
     # Expected-content-hash precondition (no evidence/span selector).
     if expected_hash is not None:
-        actual_hash = _hash_file(workspace, normalized)
+        actual_hash = (
+            None
+            if snapshot_content is None
+            else hashlib.sha256(snapshot_content.encode("utf-8")).hexdigest()
+        )
         if actual_hash is None:
             return ToolResult(
                 content=[
@@ -315,7 +352,6 @@ def handle_read_file(
                 is_error=True,
             )
 
-    sel = _ReadSelector.from_params(params)
     if sel.is_active():
         result = _dispatch_partial_read(workspace, normalized, path, sel)
         if return_metadata:
@@ -338,11 +374,7 @@ def handle_read_file(
                 return result
         return result
 
-    max_bytes = _int_param(params, "max_bytes", FULL_READ_DEFAULT_MAX_BYTES)
-    try:
-        stat_result: dict[str, object] = workspace.stat(normalized)
-    except Exception:
-        stat_result = {}
+    stat_result = snapshot_stat if snapshot_stat is not None else {}
 
     file_type = stat_result.get("type", "")
     size_bytes = stat_result.get("size_bytes")
@@ -360,28 +392,17 @@ def handle_read_file(
         }
         if return_metadata:
             payload.update(_freshness_for_read(session))
-            payload["content_hash"] = _hash_file(workspace, normalized)
+            payload["content_hash"] = None
         return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
 
-    try:
-        content = workspace.read(normalized)
-    except UnicodeDecodeError as exc:
-        payload = {
-            "status": "binary_or_invalid_utf8",
-            "path": path,
-            "error": str(exc),
-            "byte_offset": exc.start,
-        }
-        return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=True)
-    except FileNotFoundError as exc:
-        raise ToolError(f"Failed to read file '{path}': {exc}") from exc
-    except Exception as exc:
-        raise ToolError(f"Failed to read file '{path}': {exc}") from exc
+    content = snapshot_content
+    if content is None:
+        raise ToolError(f"Failed to read file '{path}': file not found")
     if return_metadata:
         payload = {
             "path": path,
             "content": content,
-            "content_hash": _hash_file(workspace, normalized),
+            "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
         }
         payload.update(_freshness_for_read(session))
         return ToolResult(

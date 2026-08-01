@@ -15,6 +15,7 @@ from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
     handle_read_file,
 )
+from ralph.workspace import MemoryWorkspace, WorkspaceSnapshot
 from tests.mock_session import MockSession
 
 MEDIA_READ_CAPABILITY = "media.read"
@@ -29,6 +30,39 @@ class TestHandleReadFile:
         result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
         assert "file contents" in result.content[0].text
         assert result.is_error is False
+
+    def test_full_read_reuses_one_snapshot_for_metadata_and_content(self) -> None:
+        class RecordingWorkspace(MemoryWorkspace):
+            def __init__(self) -> None:
+                super().__init__()
+                self.snapshot_count = 0
+                self.read_count = 0
+                self.stat_count = 0
+
+            def snapshot(
+                self, path: str, *, max_bytes: int | None = None
+            ) -> WorkspaceSnapshot:
+                self.snapshot_count += 1
+                return super().snapshot(path, max_bytes=max_bytes)
+
+            def read(self, path: str) -> str:
+                self.read_count += 1
+                return super().read(path)
+
+            def stat(self, path: str) -> dict[str, object]:
+                self.stat_count += 1
+                return super().stat(path)
+
+        ws = RecordingWorkspace()
+        ws.write("file.txt", "file contents")
+
+        result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
+
+        assert result.is_error is False
+        assert "file contents" in result.content[0].text
+        assert ws.snapshot_count == 1
+        assert ws.read_count == 0
+        assert ws.stat_count == 1
 
     def test_missing_capability_raises(self) -> None:
         ws = MagicMock()

@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 _HISTORY_SUBDIR = "history"
 _TIMESTAMP_PATTERN = re.compile(r"^(\d{8}T\d{6})_")
 _TIMESTAMP_LENGTH = 15
+#: Maximum archived Markdown entries retained per artifact type.  Canonical
+#: current artifacts remain outside this bounded bookkeeping directory.
+HISTORY_RETENTION_LIMIT = 64
 
 
 def history_dir_for_artifact(artifact_dir: Path, artifact_type: str) -> Path:
@@ -124,7 +127,8 @@ def archive_artifact_before_overwrite(
             write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
 
-    # Rebuild the index to include the new entry
+    # Bound engine bookkeeping before rebuilding the derived index.
+    prune_artifact_history(artifact_dir, artifact_type, backend=backend)
     rebuild_history_index(artifact_dir, artifact_type, backend=backend)
 
     return created
@@ -175,8 +179,33 @@ def snapshot_current_artifact(
             write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
 
+    prune_artifact_history(artifact_dir, artifact_type, backend=backend)
     rebuild_history_index(artifact_dir, artifact_type, backend=backend)
     return created
+
+
+def prune_artifact_history(
+    artifact_dir: Path,
+    artifact_type: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    limit: int = HISTORY_RETENTION_LIMIT,
+) -> list[Path]:
+    """Prune oldest archived entries, leaving the newest ``limit`` entries.
+
+    The operation is a no-op while retention is already satisfied.  ``index.md``
+    is deliberately excluded: it is rebuilt only when archive membership changed.
+    """
+    if limit < 0:
+        raise ValueError("history retention limit must be non-negative")
+    hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
+    if not backend.exists(hist_dir):
+        return []
+    archives = sorted(p for p in backend.glob(hist_dir, "*.md") if _TIMESTAMP_PATTERN.match(p.name))
+    removed = archives[:-limit] if limit else archives
+    for path in removed:
+        backend.unlink(path)
+    return removed
 
 
 def rebuild_history_index(
@@ -247,6 +276,7 @@ __all__ = [
     "clear_artifact_history",
     "history_dir_for_artifact",
     "history_index_path",
+    "prune_artifact_history",
     "rebuild_history_index",
     "snapshot_current_artifact",
 ]

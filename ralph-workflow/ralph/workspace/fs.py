@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.workspace.protocol import WorkspaceSnapshot
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 #: Default maximum file size in bytes for ``read_lines`` (any mode).
@@ -99,6 +100,53 @@ class FsWorkspace:
             FileNotFoundError: If file doesn't exist.
         """
         return self._backend.read_text(self._abs(path), encoding="utf-8")
+
+    def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
+        """Return metadata and text from a single open/read observation.
+
+        The file descriptor stat and bytes are obtained together, avoiding a
+        separate metadata probe followed by a second open in request handlers.
+        """
+        abs_path = self._abs(path)
+        try:
+            initial_stat = abs_path.stat()
+        except FileNotFoundError:
+            return WorkspaceSnapshot(stat={"type": "missing"}, content=None)
+        if abs_path.is_dir():
+            return WorkspaceSnapshot(
+                stat={
+                    "type": "dir",
+                    "size_bytes": 0,
+                    "created_unix": initial_stat.st_ctime,
+                    "modified_unix": initial_stat.st_mtime,
+                    "mode": initial_stat.st_mode,
+                },
+                content=None,
+            )
+        if max_bytes is not None and initial_stat.st_size > max_bytes:
+            return WorkspaceSnapshot(
+                stat={
+                    "type": "file",
+                    "size_bytes": initial_stat.st_size,
+                    "created_unix": initial_stat.st_ctime,
+                    "modified_unix": initial_stat.st_mtime,
+                    "mode": initial_stat.st_mode,
+                },
+                content=None,
+            )
+        with abs_path.open("rb") as fh:
+            raw = fh.read()
+            st = os.fstat(fh.fileno())
+        return WorkspaceSnapshot(
+            stat={
+                "type": "file",
+                "size_bytes": st.st_size,
+                "created_unix": st.st_ctime,
+                "modified_unix": st.st_mtime,
+                "mode": st.st_mode,
+            },
+            content=raw.decode("utf-8"),
+        )
 
     def write(self, path: str, content: str) -> None:
         """Write content to file.

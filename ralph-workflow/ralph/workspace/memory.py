@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
 
+from ralph.workspace.protocol import WorkspaceSnapshot
+
 
 class MemoryWorkspace:
     """In-memory workspace for test isolation.
@@ -83,6 +85,15 @@ class MemoryWorkspace:
             msg = f"File not found: {path}"
             raise FileNotFoundError(msg)
         return self._storage[normalized]
+
+    def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
+        """Return one coherent in-memory observation for a logical request."""
+        normalized = self._normalize(path)
+        stat = self.stat(normalized)
+        content = self._storage.get(normalized) if stat.get("type") == "file" else None
+        if max_bytes is not None and isinstance(content, str) and len(content.encode("utf-8")) > max_bytes:
+            content = None
+        return WorkspaceSnapshot(stat=stat, content=content)
 
     def write(self, path: str, content: str) -> None:
         """Write content to file.

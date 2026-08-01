@@ -6,7 +6,20 @@ test doubles and in-memory implementations for testing.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class WorkspaceSnapshot:
+    """One coherent workspace observation used within a logical request.
+
+    ``content`` is populated only for regular UTF-8 files.  Callers reuse it
+    for hashing and response rendering rather than opening the path again.
+    """
+
+    stat: dict[str, object]
+    content: str | None
 
 
 @runtime_checkable
@@ -32,6 +45,10 @@ class Workspace(Protocol):
         Raises:
             FileNotFoundError: If file doesn't exist.
         """
+        ...
+
+    def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
+        """Return metadata and text, without loading files above ``max_bytes``."""
         ...
 
     def write(self, path: str, content: str) -> None:
@@ -237,3 +254,6 @@ class Workspace(Protocol):
     #: workspaces that never opted into indexed exploration remain
     #: compatible without an explicit cast.
     explore_index: object | None
+
+
+__all__ = ["Workspace", "WorkspaceSnapshot"]
