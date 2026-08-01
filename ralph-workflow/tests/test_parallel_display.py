@@ -299,11 +299,11 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
     assert "see .agent/raw/unit-1.log" in rendered
     # The full 500 chars do NOT appear (condenser truncated head-only).
     assert soft_limit_content not in rendered
-    # Exactly one close entry per block.
+    # One logical close entry may span multiple physical rows; every row repeats
+    # the grep-critical tag and unit carrier rather than relying on prior context.
     content_lines = [line for line in rendered.splitlines() if "[output][unit-1]" in line]
-    assert len(content_lines) == 1, (
-        f"Expected exactly 1 [output] entry, got {len(content_lines)}:\n{rendered}"
-    )
+    assert len(content_lines) > 1, f"expected a wrapped close entry:\n{rendered}"
+    assert all("[output][unit-1]" in line for line in content_lines)
 
 
 def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:

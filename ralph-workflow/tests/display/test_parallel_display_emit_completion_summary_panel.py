@@ -336,7 +336,7 @@ def test_emit_completion_panel_degrades_at_12_rows() -> None:
     assert "sections condensed" in output
     assert "chars" in output
     assert "<id>" not in output
-    assert ".agent/raw/unknown.rendered.log" in output
+    assert ".agent/raw/" not in output
 
 
 def test_short_completion_marker_counts_condensed_panel_content(tmp_path: Path) -> None:
@@ -360,9 +360,7 @@ def test_short_completion_marker_counts_condensed_panel_content(tmp_path: Path) 
         return int(marker.split(" · ")[1].split()[0])
 
     assert condensed_size(detailed_buffer.getvalue()) > condensed_size(short_buffer.getvalue())
-    assert str(tmp_path / ".agent/raw/unknown.rendered.log") in detailed_buffer.getvalue().replace(
-        "\n", ""
-    )
+    assert ".agent/raw/" not in detailed_buffer.getvalue()
 
 
 def test_emit_completion_panel_degrades_at_11_rows() -> None:

@@ -120,12 +120,10 @@ from ralph.display._phase_close_options import PhaseCloseOptions
 from ralph.display._phase_counters import PhaseCounters as _PhaseCounters
 from ralph.display._plain_constants import (
     _EMPTY_PLAN_SIGNATURE,
-    _KIND_TO_LEVEL,
     _KIND_TO_TAG,
     _STREAMING_BLOCK_TAGS,
     _STREAMING_KINDS,
     LEVELS,
-    TAG_CATEGORY,
     _sanitize,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
@@ -160,9 +158,14 @@ from ralph.display.phase_status import (
 from ralph.display.presented_entry import outcome_is_failure
 from ralph.display.preview_payload import payload_from_tool_event
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
-from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter, rendered_record_path
+from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.display.theme import detect_terminal_background_is_light, diff_fill_styles
+from ralph.display.theme import (
+    detect_terminal_background_is_light,
+    diff_fill_styles,
+    identity_color,
+    pick_status_styles,
+)
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
@@ -809,6 +812,47 @@ class ParallelDisplay:
         t.append(suffix)
         return t
 
+    def _activity_text(
+        self,
+        timestamp: str,
+        tag: str,
+        unit_id: str,
+        body: str,
+        *,
+        kind: str,
+        leading_indent: str = "",
+    ) -> Text:
+        """Build the semantic-colour activity grid without relying on markup parsing.
+
+        The live activity stream is the dominant production surface.  Every
+        meaning carrier therefore receives an explicit fixed-RGB span: chrome
+        timestamp, state tag, identity, and body.  Bracket labels remain when
+        colour is unavailable, so the same line remains independently useful
+        in a plain transcript.
+        """
+        statuses = pick_status_styles(self._terminal_bg_is_light)
+        state = {
+            "error": "error",
+            "warning": "warning",
+            "tool_use": "running",
+            "tool_result": "success",
+            "thinking": "pending",
+        }.get(kind, "info")
+        state_style = statuses[state][0]
+        chrome_style = statuses["info"][0]
+        unit_style = identity_color(
+            unit_id,
+            terminal_bg_is_light=self._terminal_bg_is_light,
+        )
+        text = Text(leading_indent)
+        text.append(timestamp, style=chrome_style)
+        text.append(" ")
+        text.append(f"[{tag}]", style=state_style)
+        text.append(f"[{unit_id}]", style=unit_style)
+        text.append(" ")
+        text.append(body, style=state_style)
+        return text
+
     @staticmethod
     def _wrap_body_with_hanging_indent(
         prefix: str,
@@ -1001,8 +1045,6 @@ class ParallelDisplay:
             timestamp = self._format_timestamp(self._clock())
         rendered_unit_id = _render_unit_id(unit_id)
         base_tag = _KIND_TO_TAG.get(kind, "content")
-        level = _KIND_TO_LEVEL.get(kind, "INFO")
-        cat = TAG_CATEGORY.get(base_tag, "META")
         # raw kind is the transcript/log sink path: preserve literal markup
         # so copy-pasteable raw payloads survive verbatim. Other kinds render
         # to the visible console and reduce valid Rich markup to plain text.
@@ -1048,7 +1090,7 @@ class ParallelDisplay:
                 else None,
             )
 
-        self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
+        self._emit_activity_supplements(unit_id, timestamp, base_tag, opts)
 
         # S-7 (wt-028-display P1 / AC-07): quiet mode suppresses the
         # terminal surface only. The rendered record append below
@@ -1143,7 +1185,6 @@ class ParallelDisplay:
             # than replacing them with whitespace on structured continuations.
             # The repeated prefix also keeps the continuation body in its stable
             # grid column without relying on surrounding context.
-            hang_prefix = level_indent + full_chrome_prefix
             # DA-002 (S-4): wrap the body against the FULL
             # chrome+badge prefix so the first body token column
             # on the first line equals the hang column on every
@@ -1166,11 +1207,12 @@ class ParallelDisplay:
             chunks = wrapped_body.split("\n")
             first_chunk = chunks[0]
             self._console.print(
-                self._build_line(
+                self._activity_text(
                     timestamp,
-                    level,
-                    cat,
-                    f"{badge_prefix}{first_chunk}",
+                    display_tag,
+                    rendered_unit_id,
+                    first_chunk,
+                    kind=kind,
                     leading_indent=level_indent,
                 ),
                 markup=False,
@@ -1192,11 +1234,16 @@ class ParallelDisplay:
                 # Rich cannot re-wrap our already-wrapped continuation
                 # (the pre-fix bug dropped continuations to column 0
                 # on a 40-col console).
-                continuation = f"{hang_prefix}{chunk}"
-                if kind == "tool_use":
-                    continuation += " ↳"
+                continuation_body = chunk + (" ↳" if kind == "tool_use" else "")
                 self._console.print(
-                    continuation,
+                    self._activity_text(
+                        timestamp,
+                        display_tag,
+                        rendered_unit_id,
+                        continuation_body,
+                        kind=kind,
+                        leading_indent=level_indent,
+                    ),
                     markup=False,
                     highlight=False,
                     no_wrap=True,
@@ -1312,16 +1359,16 @@ class ParallelDisplay:
         user's scrollback.
         """
         timestamp = self._format_timestamp(self._clock())
-        cat = TAG_CATEGORY.get(tag, "META")
         rendered_unit_id = _render_unit_id(unit_id)
         sanitized_tag = _strip_control_chars_for_render(tag)
         sanitized_message = _strip_control_chars_for_render(message)
         self._console.print(
-            self._build_line(
+            self._activity_text(
                 timestamp,
-                "WARN",
-                cat,
-                f"[{sanitized_tag}][{rendered_unit_id}] {sanitized_message}",
+                sanitized_tag,
+                rendered_unit_id,
+                sanitized_message,
+                kind="warning",
             ),
             markup=False,
             highlight=False,
@@ -1355,7 +1402,6 @@ class ParallelDisplay:
         unit_id: str,
         timestamp: str,
         tag: str,
-        cat: str,
         opts: _ActivityLineOptions,
     ) -> None:
         """Emit optional summary and ai-summary lines before the main activity line."""
@@ -1367,7 +1413,7 @@ class ParallelDisplay:
                     self._build_line(
                         timestamp,
                         "INFO",
-                        cat,
+                        "",
                         f"[{tag}][{rendered_unit_id}] \u21b3 summary: {summary_text}",
                     ),
                     markup=False,
@@ -1380,7 +1426,7 @@ class ParallelDisplay:
                     self._build_line(
                         timestamp,
                         "INFO",
-                        cat,
+                        "",
                         f"[{tag}][{rendered_unit_id}] \u21b3 summary: (no headline available)",
                     ),
                     markup=False,
@@ -1394,7 +1440,7 @@ class ParallelDisplay:
                 self._build_line(
                     timestamp,
                     "INFO",
-                    cat,
+                    "",
                     f"[{tag}][{rendered_unit_id}] \u21b3 ai-summary: {ai_text}",
                 ),
                 markup=False,
@@ -1534,7 +1580,6 @@ class ParallelDisplay:
             # embedded-newline string and only the first embedded
             # line carried the prefix).
             close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
-            close_hang_prefix = " " * cell_len(close_badge_prefix)
             body_chunks = body.split("\n")
             wrapped_first = self._wrap_body_with_hanging_indent(
                 close_badge_prefix,
@@ -1543,11 +1588,12 @@ class ParallelDisplay:
                 body_measure=self._ctx.body_measure(),
             )
             self._console.print(
-                self._build_line(
+                self._activity_text(
                     timestamp,
-                    "INFO",
-                    "",
-                    f"{close_badge_prefix}{wrapped_first}",
+                    display_tag,
+                    rendered_unit_id,
+                    wrapped_first,
+                    kind="thinking" if base_tag == "think" else "text",
                 ),
                 markup=False,
                 highlight=False,
@@ -1568,7 +1614,13 @@ class ParallelDisplay:
                 # row, not just the first (the pre-fix bug).
                 for cont_line in wrapped_cont.split("\n"):
                     self._console.print(
-                        f"{close_hang_prefix}{cont_line}",
+                        self._activity_text(
+                            timestamp,
+                            display_tag,
+                            rendered_unit_id,
+                            cont_line,
+                            kind="thinking" if base_tag == "think" else "text",
+                        ),
                         markup=False,
                         highlight=False,
                         no_wrap=True,
@@ -3836,16 +3888,13 @@ class ParallelDisplay:
                     "Commit",
                     "auto-integrate",
                 )
-                record_path = rendered_record_path(
-                    resolved_options.workspace_root or Path(), snapshot.active_agent or "unknown"
-                )
                 condensed_chars = len(
                     render_completion_summary(snapshot, options=resolved_options).plain
                 )
                 self._console.print(
                     Text(
                         f"  -- {len(condensed_sections)} sections condensed · "
-                        f"{condensed_chars} chars · in {record_path}",
+                        f"{condensed_chars} chars",
                         style="theme.text.muted",
                     )
                 )
