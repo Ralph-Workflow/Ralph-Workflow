@@ -3971,13 +3971,6 @@ ralph.testing.audit_resource_lifecycle
    :members:
    :show-inheritance:
 
-ralph.testing.audit_filesystem_write_consolidation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_write_consolidation
-   :members:
-   :show-inheritance:
-
 ralph.testing.audit_prompt_single_sourcing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

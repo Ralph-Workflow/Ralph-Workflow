@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 _THEME_ARGUMENTS = {"theme", "code_theme", "inline_code_theme", "background_color"}
-_CANDIDATE_TOKENS = (*_THEME_ARGUMENTS, "Markdown")
+_CANDIDATE_CALL = re.compile(
+    r"\bMarkdown\s*\(|\b(?:theme|code_theme|inline_code_theme|background_color)\s*="
+)
 
 
 def _called_name(call: ast.Call) -> str | None:
@@ -46,7 +49,7 @@ def test_s1_display_code_uses_no_literal_theme_or_background() -> None:
         for path in display.glob("*.py")
         if path.name != "theme.py"
         for source in [path.read_text(encoding="utf-8")]
-        if any(token in source for token in _CANDIDATE_TOKENS)
+        if _CANDIDATE_CALL.search(source)
         for violation in _violations(ast.parse(source, filename=str(path)))
     ]
     assert not violations, f"literal themes/backgrounds bypass the selector: {violations}"
