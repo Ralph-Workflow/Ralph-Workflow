@@ -163,6 +163,16 @@ def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
         ), f"{path} must describe the maintained no-plugin Pydantic typing contract."
 
 
+def test_cli_callback_docs_do_not_claim_init_scaffolds_local_config() -> None:
+    """Plan S-3: callback guidance keeps local TOML creation explicit-only."""
+    source = (REPO_ROOT / "ralph" / "cli" / "main.py").read_text(encoding="utf-8")
+    stale_claim = "``--init`` and the skill subcommands mutate the\n    workspace (``.agent/``, ``.gitignore``)"
+    assert stale_claim not in source, (
+        "ralph/cli/main.py must not imply ordinary `--init` scaffolds `.agent/`; "
+        "only the explicit local-config aliases may create local TOMLs."
+    )
+
+
 def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
     """Quickstart must keep local-config command boundaries aligned with runtime."""
     content = QUICKSTART_PATH.read_text(encoding="utf-8")

@@ -572,9 +572,10 @@ Returns:
 Side effects:
     Invokes the configured pipeline (planning, development, review, fix
     cycles) which spawns agent subprocesses and writes artifacts under
-    ``.agent/``. ``--init`` and the skill subcommands mutate the
-    workspace (``.agent/``, ``.gitignore``) and the supported agent
-    roots. ``--diagnose`` prints but does not mutate. ``--version``
+    ``.agent/``. ``--init`` creates ``PROMPT.md`` and seeds ``.gitignore``;
+    it never creates project-local TOMLs. The explicit local-config aliases
+    and skill subcommands may respectively mutate ``.agent/`` and supported
+    agent roots. ``--diagnose`` prints but does not mutate. ``--version``
     and ``--help`` are read-only.
 """
 
