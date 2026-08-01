@@ -32,6 +32,14 @@ class FileBackend(Protocol):
         """Write `content` to `path` using `encoding`, replacing any existing file."""
         ...
 
+    def read_bytes(self, path: Path) -> bytes:
+        """Read and return the exact bytes stored at `path`."""
+        ...
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        """Durably write exact `content` bytes to `path`, replacing any existing file."""
+        ...
+
     def replace(self, source: Path, destination: Path) -> None:
         """Atomically move `source` to `destination`, replacing any existing file."""
         ...

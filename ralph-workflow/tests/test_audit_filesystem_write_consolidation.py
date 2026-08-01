@@ -84,6 +84,46 @@ def test_ignores_guarded_write_via_canonical_helper(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_ignores_byte_write_via_canonical_helper(tmp_path: Path) -> None:
+    """S-3: the audited byte-specific persistence boundary is available to new writers."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from ralph.mcp.artifacts.idempotent_write import write_bytes_if_changed\n"
+            "def persist(backend, path, content):\n"
+            "    write_bytes_if_changed(backend, path, content)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert violations == []
+
+
+def test_raw_byte_write_diagnostic_names_existing_atomic_byte_primitive(tmp_path: Path) -> None:
+    """D2: rejected byte writes name a real direct and atomic replacement path."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    path.write_bytes(content)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert "write_bytes_if_changed" in violations[0].message
+    assert "atomic_write_bytes_if_changed" in violations[0].message
+
+
 def test_explicit_marker_suppresses_violation(tmp_path: Path) -> None:
     """A raw ``write_text`` with a ``# filesystem-write-ok:`` marker passes.
 

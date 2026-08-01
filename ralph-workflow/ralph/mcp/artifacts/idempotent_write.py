@@ -2,9 +2,12 @@
 
 Exposes two behavior-preserving helpers:
 
-* :func:`write_text_if_changed` — direct write with read-compare skip.
-* :func:`atomic_write_text_if_changed` — atomic temp + replace with
+* :func:`write_text_if_changed` — direct text write with read-compare skip.
+* :func:`atomic_write_text_if_changed` — atomic text temp + replace with
   read-compare skip on the destination.
+* :func:`write_bytes_if_changed` — direct byte write with byte-compare skip.
+* :func:`atomic_write_bytes_if_changed` — atomic byte temp + replace with
+  byte-compare skip on the destination.
 
 Both helpers skip a byte-identical rewrite of an existing file,
 keeping the filesystem mutation rate down (notably macOS fseventsd
@@ -89,6 +92,31 @@ def write_text_if_changed(
     return True
 
 
+def write_bytes_if_changed(
+    backend: FileBackend,
+    path: Path,
+    content: bytes,
+    *,
+    prepare_write: Callable[[], None] | None = None,
+) -> bool:
+    """Write exact ``content`` bytes only when they differ at ``path``.
+
+    A missing or unreadable destination fails open to preserve the post-condition
+    that the requested bytes are published. An identical destination skips both
+    ``prepare_write`` and the physical write.
+    """
+    try:
+        existing = backend.read_bytes(path)
+    except (KeyError, OSError):
+        existing = None
+    if existing is not None and existing == content:
+        return False
+    if prepare_write is not None:
+        prepare_write()
+    backend.write_bytes(path, content)
+    return True
+
+
 def atomic_write_text_if_changed(
     backend: FileBackend,
     destination: Path,
@@ -151,7 +179,39 @@ def atomic_write_text_if_changed(
     return True
 
 
+def atomic_write_bytes_if_changed(
+    backend: FileBackend,
+    destination: Path,
+    content: bytes,
+    *,
+    tmp_path: Path,
+    sync_directory: bool = False,
+    prepare_write: Callable[[], None] | None = None,
+) -> bool:
+    """Atomically publish exact ``content`` bytes unless ``destination`` already matches.
+
+    A changed or unreadable destination is staged at ``tmp_path`` and atomically
+    replaced. An identical destination skips staging, replacement, preparation,
+    and the optional directory durability barrier.
+    """
+    try:
+        existing = backend.read_bytes(destination)
+    except (KeyError, OSError):
+        existing = None
+    if existing is not None and existing == content:
+        return False
+    if prepare_write is not None:
+        prepare_write()
+    backend.write_bytes(tmp_path, content)
+    backend.replace(tmp_path, destination)
+    if sync_directory:
+        backend.sync_directory(destination.parent)
+    return True
+
+
 __all__ = [
+    "atomic_write_bytes_if_changed",
     "atomic_write_text_if_changed",
+    "write_bytes_if_changed",
     "write_text_if_changed",
 ]

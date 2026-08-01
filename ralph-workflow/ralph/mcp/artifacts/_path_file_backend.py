@@ -29,6 +29,17 @@ class PathFileBackend:
             if isinstance(descriptor, int):
                 os.fsync(descriptor)
 
+    def read_bytes(self, path: Path) -> bytes:
+        return path.read_bytes()
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        with path.open("wb") as stream:
+            stream.write(content)
+            stream.flush()
+            descriptor = stream.fileno()
+            if isinstance(descriptor, int):
+                os.fsync(descriptor)
+
     def replace(self, source: Path, destination: Path) -> None:
         source.replace(destination)
 

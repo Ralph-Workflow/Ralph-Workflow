@@ -141,16 +141,16 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "use ralph.mcp.artifacts.idempotent_write or mark with a reason",
     "sync": "raw os.sync bypasses the canonical durability primitive; "
     "use ralph.mcp.artifacts.idempotent_write or mark with a reason",
-    "copy": "raw shutil.copy bypasses the canonical copy primitive; "
-    "use ralph.mcp.artifacts.idempotent_write.copy_file_if_changed or mark",
-    "copy2": "raw shutil.copy2 bypasses the canonical copy primitive; "
-    "use ralph.mcp.artifacts.idempotent_write.copy_file_if_changed or mark",
-    "copyfile": "raw shutil.copyfile bypasses the canonical copy primitive; "
-    "use ralph.mcp.artifacts.idempotent_write.copy_file_if_changed or mark",
+    "copy": "raw shutil.copy bypasses the canonical copy boundary; "
+    "route through an approved persistence primitive appropriate to the copy or mark",
+    "copy2": "raw shutil.copy2 bypasses the canonical copy boundary; "
+    "route through an approved persistence primitive appropriate to the copy or mark",
+    "copyfile": "raw shutil.copyfile bypasses the canonical copy boundary; "
+    "route through an approved persistence primitive appropriate to the copy or mark",
     "copymode": "raw shutil.copymode bypasses the canonical copy primitive; "
     "mark with a reason or route through the canonical primitive",
-    "move": "raw shutil.move bypasses the canonical move primitive; "
-    "use ralph.mcp.artifacts.idempotent_write.replace_if_changed or mark",
+    "move": "raw shutil.move bypasses the canonical move boundary; "
+    "route through an approved persistence primitive appropriate to the move or mark",
     "touch": "raw touch bumps mtime without content change; "
     "annotate with `# filesystem-write-ok: <reason>` or remove the call",
     "open": "raw os.open bypasses the canonical file-creation boundary; "
@@ -415,7 +415,7 @@ def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | 
 def _violation_message(attr: str) -> str:
     """Build the actionable diagnostic for a raw full-file write."""
     if attr == "write_bytes":
-        primitive_hint = "write_bytes_if_changed"
+        primitive_hint = "write_bytes_if_changed or atomic_write_bytes_if_changed"
     else:
         primitive_hint = "write_text_if_changed or atomic_write_text_if_changed"
     return (
@@ -534,7 +534,8 @@ def _scan_module(
                         "raw builtin open() with a write/append mode bypasses the "
                         "stable-path mutation guard; route through "
                         "ralph.mcp.artifacts.idempotent_write "
-                        "(write_text_if_changed / write_bytes_if_changed) "
+                        "(write_text_if_changed / atomic_write_text_if_changed / "
+                        "write_bytes_if_changed / atomic_write_bytes_if_changed) "
                         "or annotate the call with "
                         "`# filesystem-write-ok: <reason>` naming the "
                         "behavioral contract (deliberate binary append, "
