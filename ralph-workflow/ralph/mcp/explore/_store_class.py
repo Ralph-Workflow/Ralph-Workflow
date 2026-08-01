@@ -746,18 +746,22 @@ class ExploreStore(_ContentCacheMethods):
                     error_summary,
                 ),
             )
-            # Enforce bounded retention. Two queries because SQLite
-            # does not allow ``DELETE ... LIMIT`` in older builds.
-            cur.execute(
-                """
-                DELETE FROM jobs WHERE job_id IN (
-                    SELECT job_id FROM jobs
-                    ORDER BY started_at DESC
-                    LIMIT -1 OFFSET ?
+            # Batch cap pruning: deleting on every insert after the cap turns
+            # a bounded history into repeated full-table scans. Keep at most a
+            # ten-record slack, then prune back to the canonical cap.
+            count_row: sqlite3.Row | None = cur.execute("SELECT COUNT(*) FROM jobs").fetchone()
+            job_count = _row_int_opt(count_row, 0) if count_row is not None else 0
+            if job_count > JOB_HISTORY_CAP + 10:
+                cur.execute(
+                    """
+                    DELETE FROM jobs WHERE job_id IN (
+                        SELECT job_id FROM jobs
+                        ORDER BY started_at DESC
+                        LIMIT -1 OFFSET ?
+                    )
+                    """,
+                    (JOB_HISTORY_CAP,),
                 )
-                """,
-                (JOB_HISTORY_CAP,),
-            )
             cur.execute(
                 "DELETE FROM jobs WHERE started_at < ?",
                 (now_seconds - JOB_HISTORY_RETENTION_SECONDS,),
