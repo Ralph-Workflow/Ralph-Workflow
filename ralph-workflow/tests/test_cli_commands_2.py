@@ -1102,6 +1102,30 @@ def test_init_command_regression_does_not_create_missing_explicit_config_path(
     assert (xdg_dir / "ralph-workflow.toml").exists()
 
 
+def test_cli_init_with_missing_custom_config_keeps_local_config_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Plan S-1: the public ``--init --config`` route is not a local-config generator."""
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    _stub_baseline_capabilities(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    custom = tmp_path / ".agent" / "custom.toml"
+
+    result = typer.testing.CliRunner().invoke(
+        main_module.app,
+        ["--init", "--config", str(custom)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert not custom.exists()
+    assert not custom.parent.exists()
+    assert "does not create project-local configuration" in result.output
+    assert "ralph --init-local-config" in result.output
+    assert (tmp_path / "PROMPT.md").exists()
+    assert (xdg_dir / "ralph-workflow.toml").exists()
+
+
 @pytest.mark.parametrize("alias", ("--init-local-config", "--generate-local-config"))
 def test_local_config_aliases_create_the_complete_parseable_override_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, alias: str

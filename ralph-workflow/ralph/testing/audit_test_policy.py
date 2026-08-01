@@ -106,6 +106,10 @@ _IO_ALLOWLIST: set[str] = {
     "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
+    # Documentation command-sync tests inspect repository documentation and
+    # source assertions. Those files are the subject under test; replacing
+    # the reads with fixtures would fail to detect documentation drift.
+    "test_documentation_command_sync",
     # AC-08 silent-skip audit that reads auto_integrate.py source to
     # enforce that the AC-01 disabled-path and the
     # phase-transition-pre-check surface both remain byte-identical
