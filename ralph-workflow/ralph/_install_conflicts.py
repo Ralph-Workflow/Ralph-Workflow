@@ -13,7 +13,7 @@ from os import environ as process_environ
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.executor.process import ProcessRunOptions, run_process
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.update_check._install_kind import InstallKind
 from ralph.update_check.environment import detect_install
 
@@ -65,7 +65,7 @@ def resolve_package_file(executable: str) -> Path | None:
             ("-c", _PACKAGE_FILE_SCRIPT),
             options=ProcessRunOptions(timeout=5),
         )
-    except OSError:
+    except ProcessExecutionError:
         return None
     if not result.succeeded:
         return None

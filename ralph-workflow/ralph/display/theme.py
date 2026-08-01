@@ -284,7 +284,7 @@ _TRITANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
 )
 
 
-def _simulate_cvd(hex_color: str, matrix: Sequence[Sequence[float]]) -> str:
+def _simulate_cvd(hex_color: str, matrix: tuple[tuple[float, float, float], ...]) -> str:
     r, g, b = (channel / 255.0 for channel in _rgb(hex_color))
     out_r = matrix[0][0] * r + matrix[0][1] * g + matrix[0][2] * b
     out_g = matrix[1][0] * r + matrix[1][1] * g + matrix[1][2] * b
@@ -326,6 +326,7 @@ def identity_color(
     base_slot = _identity_slot(name)
     if active is None:
         return palette[base_slot]
+    active_names = frozenset(active)
     cvd_matrices = (
         _DEUTERANOPIA_MATRIX,
         _PROTANOPIA_MATRIX,
@@ -371,7 +372,7 @@ def identity_color(
             resolved[other] = chosen
         return resolved
 
-    resolved_active = _resolve_hexes(list(active))
+    resolved_active = _resolve_hexes(active_names)
     if name in resolved_active:
         return resolved_active[name]
     # ``name`` is not in the active set: nudge away from the
