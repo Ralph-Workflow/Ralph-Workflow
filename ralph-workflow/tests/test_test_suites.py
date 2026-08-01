@@ -301,19 +301,19 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: 16 shards contend with bounded cold-index reindexes;
-    # auto resolution uses the measured safe eight-shard profile.
+    # Regression: eight shards exceed the immutable 60-second suite budget
+    # on the maintained profile; auto uses the measured safe six-shard profile.
     for cores, expected in (
-        (4, "8"),
-        (5, "8"),
-        (6, "8"),
-        (7, "8"),
-        (8, "8"),
-        (12, "8"),
-        (16, "8"),
-        (20, "8"),
-        (21, "8"),
-        (64, "8"),
+        (4, "6"),
+        (5, "6"),
+        (6, "6"),
+        (7, "6"),
+        (8, "6"),
+        (12, "6"),
+        (16, "6"),
+        (20, "6"),
+        (21, "6"),
+        (64, "6"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
