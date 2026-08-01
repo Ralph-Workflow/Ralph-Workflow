@@ -250,7 +250,7 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
 
 def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
     """Remove live-only residue while preserving a tool name on every record call."""
-    body = body.rstrip().removesuffix("↳").rstrip()
+    body = body.lstrip("↳ ").rstrip()
     raw_tool = next(
         (
             value

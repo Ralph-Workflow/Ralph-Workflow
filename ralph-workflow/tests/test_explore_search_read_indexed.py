@@ -182,6 +182,7 @@ def test_read_file_evidence_id_fails_closed_on_stale_hash(tmp_path: Path) -> Non
         store.close()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_read_file_evidence_id_unknown(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")

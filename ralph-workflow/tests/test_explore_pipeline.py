@@ -1312,6 +1312,7 @@ def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
         store.close()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_swap_post_publish_cancel_reports_success_published_generation(
     tmp_path: Path,
 ) -> None:
@@ -1408,6 +1409,7 @@ def test_swap_post_publish_cancel_reports_success_published_generation(
         store.close()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_swap_post_publish_deadline_reports_success_published_generation(
     tmp_path: Path,
 ) -> None:

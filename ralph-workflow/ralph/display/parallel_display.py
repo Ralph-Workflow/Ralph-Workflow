@@ -1175,8 +1175,11 @@ class ParallelDisplay:
                 # Rich cannot re-wrap our already-wrapped continuation
                 # (the pre-fix bug dropped continuations to column 0
                 # on a 40-col console).
+                continuation = f"{hang_prefix}{chunk}"
+                if kind == "tool_use":
+                    continuation += " ↳"
                 self._console.print(
-                    f"{hang_prefix}{chunk} {'↳' if self._ctx.glyphs_enabled else '->'}",
+                    continuation,
                     markup=False,
                     highlight=False,
                     no_wrap=True,

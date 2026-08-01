@@ -137,7 +137,12 @@ def test_resolve_display_defaults_to_legacy_console_display() -> None:
 
 def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_planning_entry(
     tmp_path: Path,
+    monkeypatch: MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        "ralph.prompts.materialize.SkillManager.get_docs_mcp_available",
+        lambda _manager, *, workspace_root: False,
+    )
     policy_bundle = _load_default_policy_bundle()
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Create a fresh plan")
