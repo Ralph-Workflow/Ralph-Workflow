@@ -127,21 +127,23 @@ def _workspace_snapshot(
     workspace: Workspace, path: str, *, max_bytes: int | None = None
 ) -> tuple[dict[str, object], str | None]:
     """Observe metadata and text once, retaining legacy workspace compatibility."""
-    snapshot_fn = getattr(workspace, "snapshot", None)
+    snapshot_fn: object = getattr(workspace, "snapshot", None)
     if callable(snapshot_fn):
         try:
-            snapshot = snapshot_fn(path, max_bytes=max_bytes)
+            snapshot: object = snapshot_fn(path, max_bytes=max_bytes)
         except TypeError:
             snapshot = snapshot_fn(path)
-        stat = getattr(snapshot, "stat", None)
-        content = getattr(snapshot, "content", None)
+        stat = cast("object", getattr(snapshot, "stat", None))
+        content = cast("object", getattr(snapshot, "content", None))
         if isinstance(stat, dict) and (content is None or isinstance(content, str)):
             return stat, content
     stat_result = workspace.stat(path)
     try:
         return stat_result, workspace.read(path)
-    except FileNotFoundError:
-        return stat_result, None
+    except UnicodeDecodeError:
+        raise
+    except (FileNotFoundError, IsADirectoryError, OSError, RuntimeError) as exc:
+        raise ToolError(f"Failed to read file '{path}': {exc}") from exc
 
 
 def _hash_file(workspace: Workspace, path: str) -> str | None:
@@ -306,9 +308,25 @@ def handle_read_file(
     max_bytes = _int_param(params, "max_bytes", FULL_READ_DEFAULT_MAX_BYTES)
     snapshot_stat: dict[str, object] | None = None
     snapshot_content: str | None = None
-    if expected_hash is not None or not sel.is_active():
-        snapshot_stat, snapshot_content = _workspace_snapshot(
-            workspace, normalized, max_bytes=max_bytes
+    try:
+        if expected_hash is not None or not sel.is_active():
+            snapshot_stat, snapshot_content = _workspace_snapshot(
+                workspace, normalized, max_bytes=max_bytes
+            )
+    except UnicodeDecodeError as exc:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "binary_or_invalid_utf8",
+                            "path": path,
+                            "byte_offset": exc.start,
+                        }
+                    )
+                )
+            ],
+            is_error=True,
         )
 
     # Expected-content-hash precondition (no evidence/span selector).
@@ -381,10 +399,10 @@ def handle_read_file(
 
     if file_type == "file" and isinstance(size_bytes, int) and size_bytes > max_bytes:
         head_value = max(1, max_bytes // 256)
-        content, _meta = workspace.read_lines(normalized, head=head_value)
+        partial_content, _meta = workspace.read_lines(normalized, head=head_value)
         payload = {
             "path": path,
-            "content": content,
+            "content": partial_content,
             "truncated": True,
             "total_bytes": size_bytes,
             "max_bytes": max_bytes,

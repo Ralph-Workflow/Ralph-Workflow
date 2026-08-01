@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.artifacts.idempotent_write import (
     atomic_write_bytes_if_changed,
     write_bytes_if_changed,
@@ -62,6 +64,18 @@ class _UnreadableByteBackend(_ByteBackend):
     def read_bytes(self, path: Path) -> bytes:
         del path
         raise OSError("permission denied")
+
+
+class _CleanupFailingByteBackend(_ByteBackend):
+    """Publication boundary whose best-effort staging cleanup also fails."""
+
+    def replace(self, source: Path, destination: Path) -> None:
+        del source, destination
+        raise OSError("publication failed")
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        del path, missing_ok
+        raise OSError("staging cleanup failed")
 
 
 def test_byte_write_regression_identical_replay_has_no_mutation() -> None:
@@ -144,6 +158,21 @@ def test_atomic_byte_write_regression_fails_open_when_destination_is_unreadable(
     assert staging_path.parent == temporary.parent
     assert staging_path.name.startswith(f"{temporary.name}.")
     assert backend.files[destination] == b"recovered"
+
+
+def test_atomic_byte_write_regression_preserves_publication_error_when_cleanup_fails() -> None:
+    """S-3: failed transient cleanup does not hide the atomic publication error."""
+    backend = _CleanupFailingByteBackend()
+    destination = Path("/workspace/state.db")
+    temporary = Path("/workspace/state.db.tmp")
+
+    with pytest.raises(OSError, match="publication failed"):
+        atomic_write_bytes_if_changed(
+            backend,
+            destination,
+            b"recovered",
+            tmp_path=temporary,
+        )
 
 
 def test_atomic_byte_write_regression_changed_content_publishes_exact_bytes_once() -> None:

@@ -111,6 +111,14 @@ class _InterruptedReplaceBackend(_ReplacingCountingBackend):
         raise KeyboardInterrupt
 
 
+class _CleanupFailingReplaceBackend(_FailingReplaceBackend):
+    """Publication boundary whose best-effort staging cleanup also fails."""
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        del path, missing_ok
+        raise OSError("staging cleanup failed")
+
+
 def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -> None:
     """AC-01: fresh destination performs one tmp-write plus one replace returning True.
 
@@ -231,6 +239,16 @@ def test_atomic_write_regression_removes_unique_staging_file_when_publication_fa
         atomic_write_text_if_changed(backend, destination, "fresh", tmp_path=tmp_path)
 
     assert backend._files == {}
+
+
+def test_atomic_write_regression_preserves_publication_error_when_staging_cleanup_fails() -> None:
+    """S-3: a failed best-effort cleanup cannot mask the publication failure."""
+    backend = _CleanupFailingReplaceBackend()
+    destination = Path("/virtual-ws/checkpoint.json")
+    tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
+
+    with pytest.raises(OSError, match="publication failed"):
+        atomic_write_text_if_changed(backend, destination, "fresh", tmp_path=tmp_path)
 
 
 def test_atomic_write_regression_cleans_unique_staging_file_when_interrupted() -> None:

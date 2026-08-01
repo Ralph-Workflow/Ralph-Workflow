@@ -33,6 +33,7 @@ occurs.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -195,7 +196,10 @@ def atomic_write_text_if_changed(
         backend.write_text(staging_path, content, encoding=encoding)
         backend.replace(staging_path, destination)
     except BaseException:
-        backend.unlink(staging_path, missing_ok=True)
+        # Cleanup is best effort: preserve the publication failure so callers
+        # receive the actionable error that caused their requested update to fail.
+        with suppress(OSError):
+            backend.unlink(staging_path, missing_ok=True)
         raise
     if sync_directory:
         backend.sync_directory(destination.parent)
@@ -230,7 +234,10 @@ def atomic_write_bytes_if_changed(
         backend.write_bytes(staging_path, content)
         backend.replace(staging_path, destination)
     except BaseException:
-        backend.unlink(staging_path, missing_ok=True)
+        # Cleanup is best effort: preserve the publication failure so callers
+        # receive the actionable error that caused their requested update to fail.
+        with suppress(OSError):
+            backend.unlink(staging_path, missing_ok=True)
         raise
     if sync_directory:
         backend.sync_directory(destination.parent)

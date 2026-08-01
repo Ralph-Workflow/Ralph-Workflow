@@ -14,7 +14,7 @@ __all__ = [
     "FsWorkspace",
     "MemoryWorkspace",
     "Workspace",
-    "WorkspaceSnapshot",
     "WorkspaceScope",
+    "WorkspaceSnapshot",
     "resolve_workspace_scope",
 ]
