@@ -97,6 +97,7 @@ def atomic_write_text_if_changed(
     tmp_path: Path,
     encoding: str = "utf-8",
     sync_directory: bool = False,
+    prepare_write: Callable[[], None] | None = None,
 ) -> bool:
     """Atomic temp+replace write of ``content`` to ``destination``, skipping on identity.
 
@@ -122,12 +123,16 @@ def atomic_write_text_if_changed(
         * If the read-back content equals ``content``: returns
           ``False`` without calling ``backend.write_text`` or
           ``backend.replace`` (the skip).
-        * Otherwise: writes ``tmp_path``, replaces onto
-          ``destination``, returns ``True``.
+        * Otherwise: calls ``prepare_write`` when supplied, writes ``tmp_path``,
+          replaces onto ``destination``, and returns ``True``.
 
-    The helper never creates parent directories. ``mkdir`` is the
-    caller's responsibility so directory-creation semantics at every
-    converted call site are unchanged.
+    Args:
+        prepare_write: Optional pre-write action such as creating the destination
+            parent directory. It is never called for a skipped identical write.
+
+    The helper never creates parent directories itself. ``mkdir`` stays in the
+    caller's responsibility so directory-creation semantics at every converted
+    call site are unchanged.
     """
     try:
         existing = backend.read_text(destination, encoding=encoding)
@@ -137,6 +142,8 @@ def atomic_write_text_if_changed(
         existing = None
     if existing is not None and existing == content:
         return False
+    if prepare_write is not None:
+        prepare_write()
     backend.write_text(tmp_path, content, encoding=encoding)
     backend.replace(tmp_path, destination)
     if sync_directory:

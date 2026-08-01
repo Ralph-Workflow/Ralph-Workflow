@@ -117,7 +117,6 @@ def save_md_draft(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
     """Atomically persist the staged draft (temp write + replace)."""
-    backend.mkdir(artifact_dir, parents=True, exist_ok=True)
     draft_path = md_draft_path(artifact_dir, artifact_type)
     tmp_path = draft_path.with_suffix(".md.tmp")
     atomic_write_text_if_changed(
@@ -127,6 +126,7 @@ def save_md_draft(
         tmp_path=tmp_path,
         encoding="utf-8",
         sync_directory=True,
+        prepare_write=lambda: backend.mkdir(artifact_dir, parents=True, exist_ok=True),
     )
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
     if backend.exists(seeded_path):

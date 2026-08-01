@@ -39,6 +39,7 @@ class _ReplacingCountingBackend(FileBackend):
         self._files: Dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
         self.replace_calls: list[tuple[Path, Path]] = []
+        self.sync_directory_calls: list[Path] = []
 
     def exists(self, path: Path) -> bool:
         return path in self._files
@@ -58,6 +59,9 @@ class _ReplacingCountingBackend(FileBackend):
     def replace(self, source: Path, destination: Path) -> None:
         self.replace_calls.append((source, destination))
         self._files[destination] = self._files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        self.sync_directory_calls.append(path)
 
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         if missing_ok:
@@ -132,6 +136,30 @@ def test_atomic_write_regression_skips_write_and_replace_when_content_identical(
     assert backend.write_text_calls == []
     assert backend.replace_calls == []
     assert backend._files[destination] == "alpha"
+
+
+def test_atomic_write_skips_deferred_preparation_and_directory_sync_when_identical() -> None:
+    """An identical replay causes neither parent mutation nor durability barrier."""
+    backend = _ReplacingCountingBackend()
+    destination = Path("/virtual-ws/checkpoint.json")
+    tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
+    backend._files[destination] = "same"
+    prepared: list[str] = []
+
+    result = atomic_write_text_if_changed(
+        backend,
+        destination,
+        "same",
+        tmp_path=tmp_path,
+        sync_directory=True,
+        prepare_write=lambda: prepared.append("parent-ready"),
+    )
+
+    assert result is False
+    assert prepared == []
+    assert backend.write_text_calls == []
+    assert backend.replace_calls == []
+    assert backend.sync_directory_calls == []
 
 
 def test_atomic_write_regression_writes_and_replaces_when_content_changed() -> None:
