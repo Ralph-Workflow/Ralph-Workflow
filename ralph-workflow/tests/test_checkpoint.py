@@ -123,20 +123,16 @@ def test_checkpoint_roundtrip_preserves_current_drain() -> None:
 
 
 def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Ensure failed saves clean up the temporary file."""
+    """A failed checkpoint publication leaves no temporary file behind."""
 
     path = tmp_path / "checkpoint.json"
     tmp_prefix = f"{path.with_suffix('.tmp').name}."
     state = PipelineState(phase="planning")
 
-    original_replace = Path.replace
+    def raise_on_replace(self: Path, _target: Path) -> Path:
+        raise RuntimeError("disk busy")
 
-    def raise_on_tmp(self: Path, target: Path) -> Path:
-        if self.parent == path.parent and self.name.startswith(tmp_prefix):
-            raise RuntimeError("disk busy")
-        return original_replace(self, target)
-
-    monkeypatch.setattr(Path, "replace", raise_on_tmp)
+    monkeypatch.setattr(Path, "replace", raise_on_replace)
 
     with pytest.raises(RuntimeError):
         ckpt.save(state, path)
