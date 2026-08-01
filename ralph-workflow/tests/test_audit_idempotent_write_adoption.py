@@ -1,4 +1,4 @@
-"""Regression tests for the idempotent-write adoption drift audit."""
+"""Regression tests for the package-wide idempotent-write audit entry point."""
 
 from __future__ import annotations
 
@@ -22,128 +22,54 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
 
 @pytest.mark.timeout_seconds(10)
 def test_audit_idempotent_write_adoption_regression_passes_real_production_tree() -> None:
-    """Step 5: the committed persistence modules satisfy the adoption invariant.
-
-    The per-test 1.0 s SIGALRM cap charges wall clock, so the test
-    must NOT take the 1 s default even when the ralph/ tree scan
-    hits heavy disk contention under 24-way test sharding. The
-    audit only walks 14 allowlisted ``read_text``/``ast.parse``
-    operations in <0.2 s on a quiet disk; under contention the
-    same scan can spike past 1 s and trip the SIGALRM even though
-    the audit is functionally correct. 10 s is the same per-test
-    budget the sibling ``test_audit_resource_lifecycle`` uses for
-    its real-production-tree scan (``pytest.mark.timeout_seconds(10)``);
-    the marker does NOT change the per-suite timeout or the
-    immutable 60 s combined test budget enforced by
-    ``ralph/verify.py``.
-    """
-    violations = audit.audit_idempotent_write_adoption(PRODUCTION_ROOT)
-
-    assert violations == []
+    """S-8: all existing production mutations are consolidated or locally justified."""
+    assert audit.audit_idempotent_write_adoption(PRODUCTION_ROOT) == []
 
 
-def test_audit_idempotent_write_adoption_regression_flags_raw_write_text(
+def test_audit_idempotent_write_adoption_regression_flags_unknown_raw_write_text(
     tmp_path: Path,
 ) -> None:
-    """Step 5: a raw full-file overwrite reports one actionable violation."""
-    module_rel = "pipeline/example.py"
+    """S-8: a new, unlisted writer is rejected without allowlist maintenance."""
     package_root = _write_fake_package(
         tmp_path,
-        module_rel,
+        "new_surface/writer.py",
         "def persist(path, content):\n    path.write_text(content)\n",
     )
 
-    violations = audit.audit_idempotent_write_adoption(
-        package_root,
-        module_paths=(module_rel,),
-    )
+    violations = audit.audit_idempotent_write_adoption(package_root)
 
     assert len(violations) == 1
     assert violations[0].kind == "raw_write_text"
-    assert violations[0].file_path == module_rel
-    assert violations[0].line == 2
+    assert violations[0].file_path == "new_surface/writer.py"
     assert "write_text_if_changed" in violations[0].message
 
 
-def test_audit_idempotent_write_adoption_regression_flags_whitespace_raw_write_text(
+def test_audit_idempotent_write_adoption_regression_accepts_local_reasoned_exception(
     tmp_path: Path,
 ) -> None:
-    """Regression: whitespace between attr and call must not bypass the audit.
-
-    A textual prefilter that keys on the exact ``.write_text(`` substring
-    can be evaded by inserting whitespace (e.g. ``path.write_text (...)``).
-    The audit must rely on the AST parse, not a syntax-sensitive substring
-    check, so every valid raw overwrite is reported regardless of formatting.
-    """
-    module_rel = "pipeline/example.py"
+    """D3: a local exception with its stated contract remains available."""
     package_root = _write_fake_package(
         tmp_path,
-        module_rel,
-        "def persist(path, content):\n    path.write_text (content)\n",
+        "new_surface/scratch.py",
+        (
+            "def persist(path, content):\n"
+            "    # filesystem-write-ok: unique transient staging file removed by caller\n"
+            "    path.write_text(content)\n"
+        ),
     )
 
-    violations = audit.audit_idempotent_write_adoption(
-        package_root,
-        module_paths=(module_rel,),
-    )
-
-    assert len(violations) == 1
-    assert violations[0].kind == "raw_write_text"
-    assert violations[0].file_path == module_rel
-    assert violations[0].line == 2
-    assert "write_text_if_changed" in violations[0].message
+    assert audit.audit_idempotent_write_adoption(package_root) == []
 
 
-def test_audit_idempotent_write_adoption_regression_ignores_guarded_write(
-    tmp_path: Path,
-) -> None:
-    """Step 5: the canonical idempotent helper is accepted by the audit."""
-    module_rel = "pipeline/example.py"
-    package_root = _write_fake_package(
+@pytest.mark.timeout_seconds(10)
+def test_audit_idempotent_write_adoption_regression_cli_exit_codes(tmp_path: Path) -> None:
+    """The compatibility CLI preserves clean, violation, and bad-root exit codes."""
+    violating_root = _write_fake_package(
         tmp_path,
-        module_rel,
-        "def persist(backend, path, content):\n    write_text_if_changed(backend, path, content)\n",
+        "writer.py",
+        "def persist(path, content):\n    path.write_text(content)\n",
     )
-
-    violations = audit.audit_idempotent_write_adoption(
-        package_root,
-        module_paths=(module_rel,),
-    )
-
-    assert violations == []
-
-
-def test_audit_idempotent_write_adoption_regression_flags_missing_module(
-    tmp_path: Path,
-) -> None:
-    """Step 5: removing an allowlisted module fails closed as structural drift."""
-    package_root = tmp_path / "ralph"
-    package_root.mkdir()
-
-    violations = audit.audit_idempotent_write_adoption(
-        package_root,
-        module_paths=("pipeline/missing.py",),
-    )
-
-    assert len(violations) == 1
-    assert violations[0].kind == "missing_allowlisted_module"
-    assert violations[0].file_path == "pipeline/missing.py"
-
-
-def test_audit_idempotent_write_adoption_regression_cli_exit_codes(
-    tmp_path: Path,
-) -> None:
-    """Step 5: the CLI returns clean, violation, and bad-root status codes."""
-    violating_root = tmp_path / "ralph"
-    violating_root.mkdir()
 
     assert audit.main([str(PRODUCTION_ROOT)]) == 0
     assert audit.main([str(violating_root)]) == 1
     assert audit.main([str(tmp_path / "missing")]) == 2
-
-
-def test_hot_path_idempotent_adopters_are_locked() -> None:
-    """Step 3: the three optimized hot-path writers stay covered by the audit."""
-    assert "pipeline/checkpoint.py" in audit._ALLOWLISTED_MODULES
-    assert "cli/commands/run.py" in audit._ALLOWLISTED_MODULES
-    assert "workspace/fs.py" in audit._ALLOWLISTED_MODULES

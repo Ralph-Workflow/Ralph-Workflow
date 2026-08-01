@@ -265,6 +265,32 @@ def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) 
     assert "WorkspaceMonitor.start" in violations[0].message
 
 
+def test_audit_flags_schedule_call_in_testing_module(tmp_path: Path) -> None:
+    """S-8: modules under a testing-named directory cannot evade watch ownership."""
+    package_root: Path = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    extra_module = package_root / "testing" / "extra_watch.py"
+    extra_module.parent.mkdir(parents=True)
+    extra_module.write_text(
+        "def start(observer, handler, root):\n"
+        "    observer.schedule(handler, root, recursive=True)\n",
+        encoding="utf-8",
+    )
+
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
+    )
+
+    assert [violation.kind for violation in violations] == ["unowned_watch_schedule"]
+    assert violations[0].file_path == "testing/extra_watch.py"
+
+
 def test_audit_flags_invalid_workspace_module(tmp_path: Path) -> None:
     """An unparsable canonical owner fails closed instead of silently passing."""
     package_root: Path = _write_fake_package(

@@ -252,7 +252,7 @@ class MemoryWorkspace:
             if total_lines > head:
                 truncated = True
         elif tail is not None:
-            returned_lines = all_lines[-tail:]
+            returned_lines = [] if tail == 0 else all_lines[-tail:]
             if total_lines > tail:
                 truncated = True
         elif start is not None or end is not None:
