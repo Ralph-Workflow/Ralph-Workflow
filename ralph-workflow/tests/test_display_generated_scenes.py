@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
+from io import StringIO
 
+import pytest
+from rich.console import Console
+
+from ralph.display.context import make_display_context
 from ralph.display.scene_catalog import (
     CONTRAST_FLOOR,
     FULL_LAYOUT_WIDTH,
@@ -53,12 +57,28 @@ def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> No
 
 def test_generated_scene_support_matrix_declares_all_dimensions() -> None:
     matrix = support_matrix()
-    assert len(matrix) == 108
     assert {case.background for case in matrix} == {"dark", "light", "unknown"}
     assert {case.colour for case in matrix} == {"truecolour", "reduced", "none"}
     assert {case.glyphs for case in matrix} == {"unicode", "ascii"}
     assert {case.width for case in matrix} == {40, 80, 120}
-    assert {case.destination for case in matrix} == {"tty", "redirect"}
+    assert {case.destination for case in matrix} == {"tty", "redirect", "ci"}
+    assert len(matrix) == 162
+
+
+def test_generated_scene_context_no_color_wins_over_forced_ci_capture() -> None:
+    stream = StringIO()
+    context = make_display_context(
+        console=Console(file=stream, force_terminal=True, color_system="truecolor"),
+        env={"CI": "1", "FORCE_COLOR": "1", "NO_COLOR": "1"},
+    )
+    context.console.print("status")
+    assert not context.color_enabled
+    assert "\x1b[" not in stream.getvalue()
+
+
+def test_generated_scene_renderer_uses_the_case_background_when_not_overridden() -> None:
+    rendered = render_scene("clean_run", SupportCase("dark", "none", "unicode", 80, "redirect"))
+    assert "PASS success" in rendered
 
 
 def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None:
@@ -84,8 +104,10 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
     assert scene_name in rendered
     if case.colour == "none":
         assert "\x1b[" not in rendered
-    if case.destination == "redirect":
+    if case.destination in {"redirect", "ci"}:
         assert "\r" not in rendered
+    if case.destination == "ci" and case.colour != "none":
+        assert "\x1b[" in rendered
 
 
 @pytest.mark.parametrize(
@@ -109,6 +131,16 @@ def test_generated_scene_renderer_preserves_scene_specific_cold_read_carriers(
     )
     for carrier in required_carriers:
         assert carrier in rendered
+
+
+def test_generated_scene_catalog_declares_canonical_value_and_structure_formats() -> None:
+    formats = {surface.name: surface.format for surface in SURFACE_CATALOG}
+    assert formats["run_open"] == "frame: outcome-first run identity"
+    assert formats["phase_open"] == "rule: phase, state, duration"
+    assert formats["agent_text"] == "grid: timestamp | category | unit | body"
+    assert formats["syntax_preview"] == "indent: shared unit; numbered source rows"
+    assert formats["elision"] == "marker: count, bytes, recovery destination"
+    assert formats["completion_success"] == "frame: outcome, metrics, recovery"
 
 
 def test_generated_scene_frames_are_rationed_to_identity_surfaces() -> None:

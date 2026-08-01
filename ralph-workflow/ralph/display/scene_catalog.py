@@ -22,7 +22,7 @@ from ralph.display.theme import (
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
 GlyphMode = Literal["unicode", "ascii"]
-Destination = Literal["tty", "redirect"]
+Destination = Literal["tty", "redirect", "ci"]
 RichColorSystem = Literal["auto", "standard", "256", "truecolor", "windows"]
 
 CONTRAST_FLOOR: Final[float] = 4.5
@@ -78,7 +78,7 @@ def render_scene(
     scene_name: str,
     case: SupportCase,
     *,
-    terminal_bg_is_light: bool | None,
+    terminal_bg_is_light: bool | None = None,
 ) -> str:
     """Render one deterministic reference scene through a real Rich console.
 
@@ -89,23 +89,28 @@ def render_scene(
     """
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
+    resolved_background = (
+        case.terminal_background_is_light if terminal_bg_is_light is None else terminal_bg_is_light
+    )
+    if resolved_background != case.terminal_background_is_light:
+        raise ValueError("terminal background must match the support case")
     stream = StringIO()
     console = make_console(
         file=stream,
         no_color=case.colour == "none",
-        force_terminal=case.destination == "tty" and case.colour != "none",
+        force_terminal=case.destination in {"tty", "ci"} and case.colour != "none",
         color_system=case.color_system,
         width=case.width,
         height=case.height,
     )
-    styles = pick_status_styles(terminal_bg_is_light)
+    styles = pick_status_styles(resolved_background)
     console.print(Text(f"SCENE {scene_name}", style=styles["info"][0]))
     _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs)
     console.print(
         Syntax(
             "def cafe\u0301(value: str) -> int:\\n    return len(value)",
             "python",
-            theme=syntax_theme_for_background(terminal_bg_is_light),
+            theme=syntax_theme_for_background(resolved_background),
             line_numbers=True,
             word_wrap=True,
         )
@@ -186,7 +191,7 @@ def support_matrix() -> tuple[SupportCase, ...]:
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
     glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
-    destinations: tuple[Destination, ...] = ("tty", "redirect")
+    destinations: tuple[Destination, ...] = ("tty", "redirect", "ci")
     return tuple(
         SupportCase(background, colour, glyphs, width, destination)
         for background in backgrounds
