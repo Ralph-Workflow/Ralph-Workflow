@@ -314,6 +314,7 @@ def test_reindex_changed_runs_and_records(tmp_path: Path) -> None:
         handle.store.close()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_reindex_full_rebuilds(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     handle = build_explore_index(workspace)
@@ -479,6 +480,7 @@ def test_reindex_accepts_string_integer_timeout(tmp_path: Path) -> None:
         handle.store.close()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_reindex_accepts_at_max_timeout(tmp_path: Path) -> None:
     """AC-05: the boundary value ``timeout_ms = max`` is accepted."""
     workspace = _seed_workspace(tmp_path)

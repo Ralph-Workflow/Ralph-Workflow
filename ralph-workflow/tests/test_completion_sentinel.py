@@ -5,6 +5,8 @@ import hmac
 import json
 from pathlib import Path
 
+import pytest
+
 from ralph.agents import completion_signals as completion_signals_module
 from ralph.agents.completion_signals import CompletionSignals, evaluate_completion
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, RunStateDB
@@ -128,6 +130,7 @@ def test_check_completion_sentinel_db_with_secret_rejects_forged(tmp_path: Path)
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_check_completion_sentinel_db_with_secret_accepts_valid(tmp_path: Path) -> None:
     """A DB row with a valid HMAC is accepted when sentinel_secret is set."""
     secret = "real-secret"

@@ -58,9 +58,8 @@ def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> No
 def test_end_agent_phase_restores_hooks_path(tmp_git_repo: Path) -> None:
     """Ending the agent phase should restore the previous hooksPath setting."""
 
-    with Repo(tmp_git_repo) as repo:
-        start_agent_phase(tmp_git_repo)
-        end_agent_phase(tmp_git_repo)
+    start_agent_phase(tmp_git_repo)
+    end_agent_phase(tmp_git_repo)
 
-        with pytest.raises(GitCommandError):
-            read_hooks_path(repo)
+    with Repo(tmp_git_repo) as repo, pytest.raises(GitCommandError):
+        read_hooks_path(repo)

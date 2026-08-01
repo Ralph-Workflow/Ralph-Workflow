@@ -157,15 +157,6 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
 
     slept: list[float] = []
     ctx.sleep = slept.append
-    ctx.active_display = MagicMock()
-    ctx.display_context = MagicMock()
-    ctx.effective_verbosity = 0
-    ctx.registry = MagicMock()
-    ctx.effective_pipeline_subscriber = None
-    ctx.controller = MagicMock()
-    ctx.config_path = None
-    ctx.cli_overrides = {}
-    ctx.monitor_stop = None
     ctx.pipeline_deps = None
 
     chain_state = AgentChainState(agents=["claude"], current_index=0, retries=0)

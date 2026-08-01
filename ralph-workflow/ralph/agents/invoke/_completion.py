@@ -661,15 +661,12 @@ def _check_process_result(
                 if agent_name == "agy" or agent_name.startswith("agy/")
                 else None
             )
-            raise AgentInvocationError(
-                agent_name,
-                0,
-                diagnostic
-                or (
-                    "agent exited without required completion evidence "
-                    "(completion sentinel missing, or required artifact receipt missing)"
-                ),
+            canonical = (
+                "agent exited without required completion evidence "
+                "(completion sentinel missing, or required artifact receipt missing)"
             )
+            message = f"{diagnostic}\n{canonical}" if diagnostic else canonical
+            raise AgentInvocationError(agent_name, 0, message)
 
 
 #: Canonical session-id character class, shared with the parsers in

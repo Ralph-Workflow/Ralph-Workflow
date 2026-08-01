@@ -49,8 +49,10 @@ def _completion_failure_invoke(
     workspace_root: Path,
     *,
     write_artifact: bool = False,
-) -> tuple[object, list[int]]:
+    agy_cli_log_path: Path | None = None,
+) -> tuple[object, list[int], list[str]]:
     invoke_count = [0]
+    failure_messages: list[str] = []
 
     def fake_invoke_agent(
         config: AgentConfig,
@@ -69,21 +71,29 @@ def _completion_failure_invoke(
 
         def generate() -> Iterator[str]:
             yield "agent output"
-            check_process_result(
-                types.SimpleNamespace(returncode=0),
-                transport.value,
-                [],
-                CompletionCheckOptions(
-                    execution_strategy=strategy_for_transport(transport),
-                    workspace_path=workspace_root,
-                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
-                    completion_run_id=transport.value,
-                ),
-            )
+            try:
+                check_process_result(
+                    types.SimpleNamespace(returncode=0),
+                    transport.value,
+                    [],
+                    CompletionCheckOptions(
+                        execution_strategy=strategy_for_transport(transport),
+                        workspace_path=workspace_root,
+                        policy=TimeoutPolicy(
+                            idle_timeout_seconds=None,
+                            parent_exit_grace_seconds=0.0,
+                        ),
+                        completion_run_id=transport.value,
+                        agy_cli_log_path=agy_cli_log_path,
+                    ),
+                )
+            except AgentInvocationError as exc:
+                failure_messages.append(str(exc))
+                raise
 
         return generate()
 
-    return fake_invoke_agent, invoke_count
+    return fake_invoke_agent, invoke_count, failure_messages
 
 
 @pytest.mark.parametrize(
@@ -99,7 +109,11 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
     _RegistryFactory._agent_config = AgentConfig(cmd=agent_name, transport=transport)
-    invoke, invoke_count = _completion_failure_invoke(transport, tmp_path)
+    invoke, invoke_count, failure_messages = _completion_failure_invoke(
+        transport,
+        tmp_path,
+        agy_cli_log_path=tmp_path / "missing-agy-cli.log",
+    )
     display_context = make_display_context()
     deps = make_test_pipeline_deps(
         display_context=display_context,
@@ -122,6 +136,8 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
     hint = tmp_path / retry_hint_path("development")
     assert result == PipelineEvent.AGENT_FAILURE
     assert invoke_count == [1]
+    assert len(failure_messages) == 1
+    assert "required artifact receipt missing" in failure_messages[0]
     assert hint.exists()
     assert "development_result" in hint.read_text(encoding="utf-8")
     assert ".agent/artifacts/development_result.md" in hint.read_text(encoding="utf-8")
@@ -135,7 +151,7 @@ def test_completion_enforcing_agent_regression_missing_sentinel_does_not_resubmi
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
     _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
-    invoke, _ = _completion_failure_invoke(AgentTransport.AGY, tmp_path, write_artifact=True)
+    invoke, _, _ = _completion_failure_invoke(AgentTransport.AGY, tmp_path, write_artifact=True)
     display_context = make_display_context()
     deps = make_test_pipeline_deps(
         display_context=display_context,

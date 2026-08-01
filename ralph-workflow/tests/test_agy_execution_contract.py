@@ -45,6 +45,39 @@ def test_agy_strategy_enforces_completion_evidence() -> None:
     assert strategy.supports_completion_enforcement() is True
 
 
+def test_agy_empty_output_diagnostic_retains_missing_artifact_signal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An AGY operator diagnosis supplements, rather than hides, completion failure."""
+    monkeypatch.setattr(
+        "ralph.agents.invoke._completion.agy_empty_output_reason",
+        lambda _output, *, cli_log_path: "AGY authentication failed",
+    )
+
+    with pytest.raises(AgentInvocationError) as excinfo:
+        _check_process_result(
+            _FakeHandle(returncode=0),
+            "agy",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy_for_transport(AgentTransport.AGY),
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    artifact_path=".agent/artifacts/development_result.md",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
+                agy_cli_log_path=tmp_path / "unused.log",
+            ),
+        )
+
+    assert "authentication failed" in str(excinfo.value)
+    assert "required artifact receipt missing" in str(excinfo.value)
+
+
 def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
     tmp_path: Path,
 ) -> None:
