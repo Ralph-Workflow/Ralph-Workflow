@@ -217,7 +217,7 @@ class PipelineCore:
 _UNSET: object = object()
 
 
-@dataclasses.dataclass(frozen=True, slots=True, init=False)
+@dataclasses.dataclass(frozen=True, init=False)
 class PipelineDeps:
     """Injectable dependency bundle for the pipeline and plumbing commands.
 
