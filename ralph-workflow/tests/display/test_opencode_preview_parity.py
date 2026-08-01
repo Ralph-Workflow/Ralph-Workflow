@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.preview_payload import payload_from_tool_event
 
@@ -56,3 +59,55 @@ def test_opencode_preview_regression_bare_file_tools_use_shared_preview_contract
         assert len(payload.hunks) == 1
         assert payload.hunks[0].old_text == old_text
         assert payload.hunks[0].new_text == new_text
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "input_payload", "expected_operation"),
+    (
+        ("write", {"path": "src/example.py", "content": "value = 1\n"}, "write"),
+        (
+            "edit",
+            {
+                "path": "src/example.py",
+                "old_string": "value = 1",
+                "new_string": "value = 2",
+            },
+            "replace",
+        ),
+    ),
+)
+def test_opencode_preview_regression_parser_native_state_input_uses_shared_contract(
+    tool_name: str,
+    input_payload: dict[str, str],
+    expected_operation: str,
+) -> None:
+    """S-2: captured OpenCode state.input reaches the transport-neutral renderer."""
+    raw = json.dumps(
+        {
+            "type": "tool_use",
+            "part": {
+                "type": "tool",
+                "tool": tool_name,
+                "callID": f"call_{tool_name}",
+                "state": {
+                    "status": "completed",
+                    "input": input_payload,
+                    "output": "done",
+                },
+            },
+        }
+    )
+
+    parsed = list(OpenCodeParser().parse(iter([raw])))
+
+    assert [line.type for line in parsed] == ["tool_use", "tool_result"]
+    payload = payload_from_tool_event(parsed[0].content, parsed[0].metadata)
+    assert payload is not None
+    assert payload.operation == expected_operation
+    assert payload.path == "src/example.py"
+    assert build_edit_preview(parsed[0].content, payload, width=80, terminal_bg_is_light=False)
+    assert build_edit_preview(parsed[0].content, payload, width=80, terminal_bg_is_light=True)
+    if tool_name == "edit":
+        assert [(hunk.old_text, hunk.new_text) for hunk in payload.hunks] == [
+            ("value = 1", "value = 2")
+        ]
