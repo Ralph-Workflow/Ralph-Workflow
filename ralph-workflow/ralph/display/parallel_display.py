@@ -3344,7 +3344,7 @@ class ParallelDisplay:
         capture`` marker at the end of the block.
         """
         rendered = f"{key}={value}"
-        if len(rendered) <= body_budget:
+        if cell_len(rendered) <= body_budget:
             line = self._build_line(timestamp, "INFO", "META", f"[run-start]   {rendered}")
             return line
         # Leave room for ``key=`` plus the elision glyph and the
@@ -3353,19 +3353,21 @@ class ParallelDisplay:
         # caller counts this row in the block-level marker.
         keep_suffix = "\u2026"
         key_prefix = f"{key}="
-        available = body_budget - len(key_prefix) - len(keep_suffix)
+        available = body_budget - cell_len(key_prefix) - cell_len(keep_suffix)
         if available <= 0:
             return None
-        elided = f"{keep_suffix}{value[-available:]}" if available > 0 else keep_suffix
+        suffix_chars: list[str] = []
+        suffix_width = 0
+        for char in reversed(value):
+            char_width = cell_len(char)
+            if suffix_width + char_width > available:
+                break
+            suffix_chars.append(char)
+            suffix_width += char_width
+        elided = f"{keep_suffix}{''.join(reversed(suffix_chars))}"
         rendered = f"{key_prefix}{elided}"
-        if len(rendered) > body_budget:
-            # Final safety net -- extremely tight budget. We still
-            # emit the row with whatever fits rather than silently
-            # dropping the field; this branch is unreachable under
-            # the ``available > 0`` check above in practice but
-            # preserves the no-silent-drop guarantee if the budget
-            # arithmetic changes.
-            rendered = rendered[:body_budget]
+        if cell_len(rendered) > body_budget:
+            raise RuntimeError("run-start field exceeded its cell-width budget")
         return self._build_line(timestamp, "INFO", "META", f"[run-start]   {rendered}")
 
     def begin_phase(self, phase: str) -> None:

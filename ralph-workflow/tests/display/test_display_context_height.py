@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import io
 
+from rich.cells import cell_len
 from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
@@ -279,6 +280,36 @@ def test_run_start_preserves_every_field_at_12_rows_120_cols() -> None:
         assert key in plain, (
             f"run-start field {key!r} missing from 12-row / 120-col output:\n{plain!r}"
         )
+
+
+def test_run_start_wide_value_regression_fits_the_cell_width_budget() -> None:
+    """S-5: wide identifiers are measured in cells before a stream column commits."""
+    from ralph.display._run_start_orientation import RunStartOrientation
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.theme import RALPH_THEME
+
+    stream = io.StringIO()
+    console = Console(file=stream, force_terminal=False, width=60, height=12, theme=RALPH_THEME)
+    display = ParallelDisplay(
+        make_display_context(console=console, force_width=60, force_height=12), is_quiet=False
+    )
+    display.emit_run_start(
+        RunStartOrientation(
+            prompt_path=".agent/PROMPT.md",
+            workspace_root="/界界界界界界界界界界界界界界界界界界界界",
+            developer_agent="pi",
+            developer_model=None,
+            developer_iters=None,
+            parallel_max_workers=None,
+            plan_present=None,
+            verbosity=None,
+        )
+    )
+    rows = stream.getvalue().splitlines()
+    workspace_row = next(row for row in rows if "workspace=" in row)
+    assert cell_len(workspace_row) <= 60
+    assert "…" in workspace_row
+    assert "/界界界界界界界界界界界界界界界界界界界界" not in workspace_row
 
 
 def test_run_start_long_value_left_elides_not_clipped() -> None:
