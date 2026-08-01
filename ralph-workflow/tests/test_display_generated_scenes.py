@@ -87,6 +87,9 @@ def test_generated_scene_renderer_requires_the_resolved_case_background() -> Non
         terminal_bg_is_light=False,
     )
     assert "[output][pi]" in rendered
+    assert "Pipeline Metrics" in rendered
+    assert "Production note" in rendered
+    assert "(no plan artifact on disk)" in rendered
 
 
 @pytest.mark.parametrize(("background", "rgb"), ((False, "16;20;23"), (True, "247;249;251")))
@@ -202,6 +205,17 @@ def test_generated_scene_catalog_declares_canonical_value_and_structure_formats(
     assert formats["syntax_preview"] == "indent: shared unit; numbered source rows"
     assert formats["elision"] == "marker: count, bytes, recovery destination"
     assert formats["completion_success"] == "frame: outcome, metrics, recovery"
+
+
+def test_generated_scene_clean_run_reaches_catalogued_table_panel_and_artifact_surfaces() -> None:
+    """S-1: catalogued production owners are exercised, not merely declared."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+    for carrier in ("Pipeline Metrics", "Production note", "[plan]", "(no plan artifact on disk)"):
+        assert carrier in rendered
 
 
 def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_every_surface() -> None:

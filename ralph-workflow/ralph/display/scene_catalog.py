@@ -202,6 +202,9 @@ def _drive_production_scene(
         display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
         display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
         display.emit_phase_transition("development", "review")
+        display.emit_metrics_table({"events": 2, "artifacts": 1})
+        display.emit_info_panel(title="Production note", content="Preview and records stay recoverable.")
+        display.emit_missing_plan_hint()
         display.emit_phase_close_from_exit(
             PhaseExitModel(
                 "development", "execution", "pi", artifact_outcome="artifacts ready", content_blocks=1

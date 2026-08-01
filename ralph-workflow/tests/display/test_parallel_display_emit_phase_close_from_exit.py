@@ -51,6 +51,35 @@ def test_emit_phase_close_from_exit_renders_phase_label() -> None:
     assert "phase=development" in output, f"missing phase= tag: {output!r}"
 
 
+def test_emit_phase_close_from_exit_folds_all_unique_counters_at_80_columns() -> None:
+    """S-5 regression: narrow phase recaps preserve every counter on greppable rows."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, width=80, color_system=None, theme=RALPH_THEME)
+    display = ParallelDisplay(make_display_context(console=console, env={}))
+    display.begin_phase("development")
+    display.emit_phase_close_from_exit(
+        PhaseExitModel(
+            phase_name="development",
+            phase_role="execution",
+            agent_name="claude/sonnet",
+            artifact_outcome="artifacts ready for the long-running production display scenario",
+            content_blocks=12,
+            thinking_blocks=34,
+            tool_calls=56,
+            errors=7,
+        )
+    )
+    display.stop()
+
+    rows = [row for row in buf.getvalue().splitlines() if "[phase-close]" in row]
+    assert len(rows) > 1
+    assert all("phase=development" in row for row in rows)
+    assert all(len(row) <= 80 for row in rows)
+    joined = " ".join(rows)
+    for carrier in ("content_blocks=12", "thinking_blocks=34", "tool_calls=56", "errors=7"):
+        assert carrier in joined
+
+
 def test_emit_phase_close_from_exit_quiet_mode_emits_nothing() -> None:
     """AC-05: quiet mode produces no output."""
     pd, buf = _display()

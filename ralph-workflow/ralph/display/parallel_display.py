@@ -2425,7 +2425,6 @@ class ParallelDisplay:
         # ``phase`` / ``cycle`` / ``iter_`` fields with the live run
         # state instead of leaving them ``None``. The cache is keyed
         # per unit and bounded by ``drop_unit``.
-        self._last_phase_per_unit.clear()
         for unit_id in self._rendered_writers:
             self._last_phase_per_unit[unit_id] = (phase, cycle, iter_)
         if not self._rendered_writers:
@@ -3582,18 +3581,23 @@ class ParallelDisplay:
             iter_labels = " " + " ".join(
                 f"[{label}]" for label, _ in opts.iteration_context.context_labels()
             )
-        if clean_produced:
-            line_suffix = (
-                f"[phase-close] {glyph_prefix}phase={phase}{iter_labels} {clean_produced}{suffix}"
+        carrier = f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}"
+        payload_parts = [part for part in (clean_produced, suffix.strip()) if part]
+        payload = " ".join(payload_parts)
+        prefix = f"{timestamp} {carrier} "
+        folded_rows = self._wrap_body_with_hanging_indent(
+            prefix,
+            payload,
+            total_width=self._ctx.width,
+            body_measure=self._ctx.width,
+        ).split("\n")
+        for row in folded_rows:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"{carrier} {row}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
             )
-        else:
-            line_suffix = f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}{suffix}"
-        self._console.print(
-            self._build_line(timestamp, "INFO", "META", line_suffix),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
         self._last_phase_saved_counters = counters
         self._last_phase_elapsed_seconds = elapsed_s
         self._phase_counters = None

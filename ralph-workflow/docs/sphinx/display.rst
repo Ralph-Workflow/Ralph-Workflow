@@ -39,7 +39,8 @@ captures, but motion is restricted to a real TTY. Redirected output is durable,
 has no repaint debris, and uses the rendered record plus the unabridged raw
 transcript as recovery destinations when content is condensed. Every wrapped
 activity row repeats its timestamp, event/category label, and unit identifier;
-long unbroken values fold at cell boundaries rather than silently clipping their
+phase-close rows repeat the same carrier on every folded physical row. Long
+unbroken values fold at cell boundaries rather than silently clipping their
 recovery tail.
 
 Syntax and diff previews use complete background-aware token palettes for
