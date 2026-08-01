@@ -125,17 +125,13 @@ class GoGuidelines:
 
         if framework_name in {"gin", "chi", "fiber", "echo"}:
             self.quality_checks += (
-                (
-                    "Use proper error handling in handlers.",
-                    "Use context for cancellation.",
-                    "Structure handlers and middleware properly.",
-                )
+                "Use proper error handling in handlers.",
+                "Use context for cancellation.",
+                "Structure handlers and middleware properly.",
             )
             self.security_checks += (
-                (
-                    "Set proper CORS headers.",
-                    "Validate input in handlers.",
-                )
+                "Set proper CORS headers.",
+                "Validate input in handlers.",
             )
 
     def summary(self) -> str:

@@ -146,7 +146,9 @@ def test_parallel_display_start_stop_do_not_raise() -> None:
     pd.stop()
 
 
-def test_parallel_display_default_mode_reduces_rich_markup_and_streams_copy_pasteable_lines() -> None:
+def test_parallel_display_default_mode_reduces_rich_markup_and_streams_copy_pasteable_lines() -> (
+    None
+):
     console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
 
@@ -219,8 +221,7 @@ def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: 
 
     overflow_log = tmp_path / ".agent" / "raw" / "unit-tool-result.log"
     assert overflow_log.exists(), (
-        f"overflow log should be created for the condensed tool result; "
-        f"expected at {overflow_log}"
+        f"overflow log should be created for the condensed tool result; expected at {overflow_log}"
     )
     written = overflow_log.read_text(encoding="utf-8")
     z_count = written.count("Z")

@@ -173,7 +173,7 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
     )
 
     assert completed.returncode == 0, completed.stderr
-    payload = json.loads(result_path.read_text(encoding="utf-8")),
+    payload = (json.loads(result_path.read_text(encoding="utf-8")),)
     assert payload["runner_exit_code"] == INTERRUPT_EXIT_CODE
     assert payload["records"], payload
     for record in payload["records"]:

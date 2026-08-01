@@ -191,17 +191,13 @@ def test_keyboard_interrupt_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) ->
         _run(MemoryWorkspace())
 
 
-@pytest.mark.parametrize(
-    "mode", [PolicyMode.REDO_ONLY, PolicyMode.RUN_AGENTS_ONLY], ids=str
-)
+@pytest.mark.parametrize("mode", [PolicyMode.REDO_ONLY, PolicyMode.RUN_AGENTS_ONLY], ids=str)
 def test_only_modes_do_report_failure_through_their_exit_code(
     mode: PolicyMode,
 ) -> None:
     """The one exception. An --*-only invocation has no development run to
     proceed to, so its exit code is the only signal it can give a CI job."""
-    exit_code = _run(
-        MemoryWorkspace(), mode=mode, invoke=_agent_that_never_fixes_anything
-    )
+    exit_code = _run(MemoryWorkspace(), mode=mode, invoke=_agent_that_never_fixes_anything)
 
     assert exit_code == _EXIT_PREFLIGHT
 
@@ -214,8 +210,6 @@ def test_only_modes_do_report_failure_through_their_exit_code(
 def test_no_continuing_mode_can_ever_return_nonzero(mode: PolicyMode) -> None:
     """Every mode that continues into the development run exits 0 on a policy
     failure. This is the invariant, stated once over every such mode."""
-    exit_code = _run(
-        MemoryWorkspace(), mode=mode, invoke=_agent_that_never_fixes_anything
-    )
+    exit_code = _run(MemoryWorkspace(), mode=mode, invoke=_agent_that_never_fixes_anything)
 
     assert exit_code == _EXIT_SUCCESS

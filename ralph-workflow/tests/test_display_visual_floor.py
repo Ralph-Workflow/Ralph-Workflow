@@ -28,7 +28,9 @@ _REQUIRED_TOKENS = (
 )
 
 
-def _assert_palette_contrast(styles: Mapping[str, tuple[str, str, str]], backgrounds: tuple[str, ...]) -> None:
+def _assert_palette_contrast(
+    styles: Mapping[str, tuple[str, str, str]], backgrounds: tuple[str, ...]
+) -> None:
     failures: list[str] = []
     for role, (style, _glyph, _label) in styles.items():
         foreground = theme._extract_hex(style)

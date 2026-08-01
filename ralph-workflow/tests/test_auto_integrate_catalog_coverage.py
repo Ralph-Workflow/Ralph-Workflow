@@ -705,8 +705,7 @@ def test_catalog_entry_has_evidence(entry: CatalogEntry) -> None:
         # so this branch is exercised only by future test
         # evidence that names a dedicated test.
         assert (Path(__file__).resolve().parent / entry.locator).exists(), (
-            f"catalog entry {entry.entry_id} names a non-existent "
-            f"test file: {entry.locator}"
+            f"catalog entry {entry.entry_id} names a non-existent test file: {entry.locator}"
         )
     else:
         pytest.fail(f"catalog entry {entry.entry_id} has unknown kind {entry.kind!r}")
@@ -750,9 +749,7 @@ def test_catalog_does_not_overlap() -> None:
     for entry in CATALOG:
         seen[entry.entry_id] = seen.get(entry.entry_id, 0) + 1
     duplicates = sorted(eid for eid, count in seen.items() if count > 1)
-    assert not duplicates, (
-        "duplicate entry ids in catalog: " + ", ".join(duplicates)
-    )
+    assert not duplicates, "duplicate entry ids in catalog: " + ", ".join(duplicates)
 
 
 def test_synthetic_missing_entry_is_detected() -> None:
@@ -812,17 +809,14 @@ def test_real_entry_with_real_file_strips_marker_fails_audit(
     marker to a registry and removes it from the production
     file is exactly the failure mode this canary catches.
     """
-    a1_entry = next(
-        entry for entry in CATALOG if entry.entry_id == "A1"
-    )
+    a1_entry = next(entry for entry in CATALOG if entry.entry_id == "A1")
     assert a1_entry.locator == "ralph/pipeline/auto_integrate_recovery.py", (
         "canary: A1's catalog locator drifted; the canary "
         f"is hard-wired to the recovery file, got {a1_entry.locator!r}"
     )
     real_source = _read_production_file(a1_entry.locator)
     assert real_source, (
-        "canary: the real production file is empty; the "
-        "canary's setup cannot proceed"
+        "canary: the real production file is empty; the canary's setup cannot proceed"
     )
     # Strip the ``# AC-14 rationale: A1`` marker from the
     # source. We do this by re-formatting the regex match
@@ -841,9 +835,7 @@ def test_real_entry_with_real_file_strips_marker_fails_audit(
         "setup is wrong (the test was supposed to strip a "
         "marker that exists)"
     )
-    assert not _rationale_marker_present(
-        stripped_source, a1_entry.entry_id
-    ), (
+    assert not _rationale_marker_present(stripped_source, a1_entry.entry_id), (
         "canary: stripping the marker did not actually "
         "remove it; the canary cannot prove the audit "
         "catches the regression"
@@ -852,9 +844,7 @@ def test_real_entry_with_real_file_strips_marker_fails_audit(
     # the canary is independent of the parametrized
     # test -- a future change that loosens the
     # parametrized test would not hide this canary.
-    assert not _rationale_marker_present(
-        stripped_source, a1_entry.entry_id
-    ), (
+    assert not _rationale_marker_present(stripped_source, a1_entry.entry_id), (
         f"AUDIT ROT: catalog entry {a1_entry.entry_id} "
         "would pass the marker-present check even after "
         "the marker was stripped from the production file. "
@@ -892,12 +882,8 @@ def test_centralized_rationale_registry_is_not_substitute_evidence(
     shape -- the marker must be in the LOCATED file, not
     somewhere else in the tree.
     """
-    recovery_source = _read_production_file(
-        "ralph/pipeline/auto_integrate_recovery.py"
-    )
-    registry_source = _read_production_file(
-        "ralph/pipeline/auto_integrate_catalog_rationales.py"
-    )
+    recovery_source = _read_production_file("ralph/pipeline/auto_integrate_recovery.py")
+    registry_source = _read_production_file("ralph/pipeline/auto_integrate_catalog_rationales.py")
     assert recovery_source, "canary: recovery source is empty"
     assert registry_source, "canary: registry source is empty"
     # Strip the A1 marker from the recovery file (the
@@ -907,17 +893,16 @@ def test_centralized_rationale_registry_is_not_substitute_evidence(
         "\n# AC-14 rationale: A1_STRIPPED_BY_AUDIT_CANARY",
         recovery_source,
     )
-    assert not _rationale_marker_present(
-        stripped_recovery, "A1"
-    ), "canary: stripping A1 from recovery.py did not work"
+    assert not _rationale_marker_present(stripped_recovery, "A1"), (
+        "canary: stripping A1 from recovery.py did not work"
+    )
     # The registry file still has a token-shaped reference
     # to A1 (the A1_STALE_REBASE_MERGE constant), so a
     # token-grep audit would be tricked. The per-entry
     # check MUST be scoped to the locator file, not the
     # whole tree.
     assert "A1" in registry_source, (
-        "canary: the registry file is supposed to contain "
-        "A1 references; the canary is set up wrong"
+        "canary: the registry file is supposed to contain A1 references; the canary is set up wrong"
     )
     # The per-entry audit's marker check is scoped to the
     # locator file (see ``_rationale_marker_present``),

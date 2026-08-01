@@ -101,11 +101,7 @@ async def test_cancel_kills_process_group() -> None:
         [
             sys.executable,
             "-c",
-            (
-                "import sys, signal; "
-                "print('ready'); sys.stdout.flush(); "
-                "signal.pause()"
-            ),
+            ("import sys, signal; print('ready'); sys.stdout.flush(); signal.pause()"),
         ]
     )
 

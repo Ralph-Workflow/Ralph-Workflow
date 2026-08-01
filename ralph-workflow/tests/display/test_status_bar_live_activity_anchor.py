@@ -283,8 +283,7 @@ def test_elapsed_fixed_column_uses_recomputed_value_at_width_120() -> None:
         f"baseline render must include Time 00:00, got {text_t0.plain!r}"
     )
     assert "Time 01:01" in text_t61.plain, (
-        f"fixed column at width 120 must have advanced to Time 01:01; "
-        f"got {text_t61.plain!r}"
+        f"fixed column at width 120 must have advanced to Time 01:01; got {text_t61.plain!r}"
     )
 
 
@@ -347,7 +346,7 @@ def test_elapsed_first_occurrence_is_recomputed_at_width_120() -> None:
     # not the stale snapshot (0:00).
     first_time_idx = plain.find("Time ")
     assert first_time_idx >= 0, f"no 'Time' label found in {plain!r}"
-    first_time_value = plain[first_time_idx:first_time_idx + 12]
+    first_time_value = plain[first_time_idx : first_time_idx + 12]
     assert "01:01" in first_time_value, (
         f"S-1: first 'Time' label at width 120 must be the recomputed "
         f"value (Time 01:01); got first_time_value={first_time_value!r} "
@@ -364,6 +363,7 @@ def test_elapsed_first_occurrence_is_recomputed_at_width_120() -> None:
 def test_elapsed_survives_at_width_40_floor() -> None:
     """S-1 / S-3: the 40-col floor MUST keep the elapsed segment."""
     import re as _re
+
     ctx = _ctx(width=40)
     model = _elapsed_model(started_at=0.0)
     plain = render_status_bar(model, ctx, now_monotonic=761.0).plain
@@ -387,8 +387,10 @@ def test_liveness_glyph_between_phase_and_elapsed_at_width_120() -> None:
     time_idx = plain.find("Time ")
     assert phase_idx >= 0
     assert time_idx >= 0
-    between = plain[phase_idx + len("Development"):time_idx]
-    non_space = [c for c in between if not c.isspace() and c not in chr(9670) + chr(9632) + chr(9646)]
+    between = plain[phase_idx + len("Development") : time_idx]
+    non_space = [
+        c for c in between if not c.isspace() and c not in chr(9670) + chr(9632) + chr(9646)
+    ]
     assert len(non_space) >= 1, (
         f"S-3: a liveness glyph must sit between phase and elapsed; "
         f"between={between!r} plain={plain!r}"

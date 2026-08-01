@@ -68,7 +68,9 @@ def test_prompt_catalog_reuses_profile_without_leaking_mutations() -> None:
     first = visible_tool_names_for_capabilities(_CAPABILITIES, drain="development")
     first.clear()
 
-    second = visible_tool_names_for_capabilities(reversed(tuple(_CAPABILITIES)), drain="development")
+    second = visible_tool_names_for_capabilities(
+        reversed(tuple(_CAPABILITIES)), drain="development"
+    )
 
     assert "read_file" in second
     assert WEB_SEARCH_TOOL in second

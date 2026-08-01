@@ -47,7 +47,9 @@ class TestThoroughModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
+        monkeypatch.setattr(
+            "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
+        )
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
@@ -68,7 +70,9 @@ class TestThoroughModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
+        monkeypatch.setattr(
+            "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
+        )
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()

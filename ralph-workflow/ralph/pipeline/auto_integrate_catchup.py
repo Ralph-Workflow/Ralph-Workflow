@@ -142,7 +142,6 @@ def _local_head(repo: Repo, name: str) -> Head | None:
         return None
 
 
-
 def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:
     """Read ``refs/heads/<name>``'s tip SHA in-process.
 
@@ -206,7 +205,9 @@ def _worktree_is_clean(root: Path) -> bool:
         repo = Repo(root)
         # ``repo.git.<cmd>`` is GitPython's dynamic dispatch and types
         # as Any; the cast is the sanctioned disallow_any_expr wrapper.
-        status_out = cast("str", repo.git.status("--porcelain", "--untracked-files=no"))  # cast-policy: seam: GitPython dynamic dispatch (repo.git.status returns Any)
+        status_out = cast(
+            "str", repo.git.status("--porcelain", "--untracked-files=no")
+        )  # cast-policy: seam: GitPython dynamic dispatch (repo.git.status returns Any)
         return not status_out.strip()
     except Exception:
         return False

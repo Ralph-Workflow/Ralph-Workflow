@@ -34,9 +34,7 @@ _RESOLVED_FACTS = {
 
 
 def _stack() -> ProjectStack:
-    return ProjectStack(
-        primary_language="Python", secondary_languages=[], frameworks=[]
-    )
+    return ProjectStack(primary_language="Python", secondary_languages=[], frameworks=[])
 
 
 def _complete_gate_script_policy() -> str:
@@ -57,7 +55,9 @@ def _complete_gate_script_policy() -> str:
         "RALPH-COMMAND: shellcheck scripts/",
     )
     # Strip the starter banner and every REPLACE-ME guidance comment.
-    return re.sub(r"<!--\s*(RALPH-STARTER-TEMPLATE|REPLACE-ME):.*?-->", "", content, flags=re.DOTALL)
+    return re.sub(
+        r"<!--\s*(RALPH-STARTER-TEMPLATE|REPLACE-ME):.*?-->", "", content, flags=re.DOTALL
+    )
 
 
 def test_gate_script_policy_is_a_core_starter() -> None:

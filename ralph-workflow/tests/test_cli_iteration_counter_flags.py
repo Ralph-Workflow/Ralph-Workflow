@@ -33,7 +33,9 @@ def _make_display_context_for_console(console: Console) -> DisplayContext:
 
 class TestIterationCounterFlags:
     def test_developer_iters_flag_sets_config_override(self) -> None:
-        overrides = must_mapping(build_cli_overrides(CLIOverrideInput(developer_iters=3)),)
+        overrides = must_mapping(
+            build_cli_overrides(CLIOverrideInput(developer_iters=3)),
+        )
         general = must_mapping(overrides["general"])
         assert general["developer_iters"] == 3
 
@@ -48,7 +50,9 @@ class TestIterationCounterFlags:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None)
+        monkeypatch.setattr(
+            "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
+        )
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()

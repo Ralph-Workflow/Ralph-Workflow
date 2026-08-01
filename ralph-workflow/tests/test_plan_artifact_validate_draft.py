@@ -78,22 +78,13 @@ def test_get_draft_reports_cross_reference_warning_without_mutating_content(
         {"artifact_type": "plan", "content": invalid},
     )
 
-    first = _payload(
-        handle_get_md_draft(
-            _session(), workspace, {"artifact_type": "plan"}
-        )
-    )
-    second = _payload(
-        handle_get_md_draft(
-            _session(), workspace, {"artifact_type": "plan"}
-        )
-    )
+    first = _payload(handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"}))
+    second = _payload(handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"}))
 
     diagnostics = must_dict_list(first["diagnostics"])
     assert first["valid"] is True
     assert any(
-        item["rule_id"] == "PLAN021" and item["severity"] == "warning"
-        for item in diagnostics
+        item["rule_id"] == "PLAN021" and item["severity"] == "warning" for item in diagnostics
     )
     assert first["content"] == invalid
     assert second["content"] == invalid

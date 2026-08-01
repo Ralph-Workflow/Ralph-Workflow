@@ -107,7 +107,10 @@ def _abort_or_retain_record(
     except Exception:
         pass
     if rebase_in_progress(owner):
-        return False, f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}"
+        return (
+            False,
+            f"reconciliation of {target} with {remote}/{target} retained for recovery: {detail}",
+        )
     clear_record(repo_root)
     return False, f"reconciliation of {target} with {remote}/{target} failed: {detail}"
 

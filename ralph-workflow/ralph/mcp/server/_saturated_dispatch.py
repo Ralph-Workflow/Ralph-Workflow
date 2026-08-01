@@ -143,7 +143,8 @@ class _SaturatedDispatch:
                 now = time.monotonic()
                 if (
                     self._last_saturation_warning_at is None
-                    or now - self._last_saturation_warning_at >= _SATURATION_WARNING_INTERVAL_SECONDS
+                    or now - self._last_saturation_warning_at
+                    >= _SATURATION_WARNING_INTERVAL_SECONDS
                 ):
                     _log.warning("MCP dispatch saturated at max_workers=%s", self._max_workers)
                     self._last_saturation_warning_at = now
@@ -167,15 +168,15 @@ class _SaturatedDispatch:
             raise
         try:
             if self._dispatch_timeout_seconds is None:
-                return future.result()  # mcp-timeout-ok: explicitly injected None disables the caller deadline
+                return (
+                    future.result()
+                )  # mcp-timeout-ok: explicitly injected None disables the caller deadline
             return future.result(timeout=self._dispatch_timeout_seconds)
         except concurrent.futures.TimeoutError:
             # cancel() frees queued work only. A running thread cannot be
             # reclaimed and is released when its callable returns.
             future.cancel()
-            _log.warning(
-                "MCP dispatch timed out after %s seconds", self._dispatch_timeout_seconds
-            )
+            _log.warning("MCP dispatch timed out after %s seconds", self._dispatch_timeout_seconds)
             return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
         except concurrent.futures.CancelledError:
             return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)

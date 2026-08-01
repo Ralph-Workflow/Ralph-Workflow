@@ -361,7 +361,7 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "count-objects, var). State-mutating git (push, stash, checkout, commit, "
                                 "apply, tag, ...) is denied. For repository-state reads, prefer the "
                                 "dedicated git_status, git_diff, git_log, and git_show MCP tools. "
-                                "(example values: \"make build\", \"npm test && npm lint\")."
+                                '(example values: "make build", "npm test && npm lint").'
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),
@@ -400,7 +400,7 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "count-objects, var). State-mutating git (push, stash, checkout, commit, "
                                 "apply, tag, ...) is denied. For repository-state reads, prefer the "
                                 "dedicated git_status, git_diff, git_log, and git_show MCP tools. "
-                                "(example values: \"make build\", \"npm test && npm lint\")."
+                                '(example values: "make build", "npm test && npm lint").'
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),

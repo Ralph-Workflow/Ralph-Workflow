@@ -148,9 +148,7 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
 
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
-    outcome = auto_integrate_after_commit(
-        config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF
-    )
+    outcome = auto_integrate_after_commit(config, scope, RebaseState(), **_NO_INTEGRATION_BACKOFF)
     assert outcome is not None
     assert outcome.fast_forwarded is False, (
         f"AC-08 race: fast_forwarded must be False when the target"

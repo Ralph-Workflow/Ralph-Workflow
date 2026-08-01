@@ -46,21 +46,15 @@ def _bundle_with_development_bound_remediation() -> PolicyBundle:
         agents=["dev-agent", "codex"], max_retries=2, retry_delay_ms=1000
     )
     drains = dict(bundle.agents.agent_drains)
-    drains["policy_remediation"] = AgentDrainConfig(
-        chain="development", drain_class="development"
-    )
-    agents = bundle.agents.model_copy(
-        update={"agent_chains": chains, "agent_drains": drains}
-    )
+    drains["policy_remediation"] = AgentDrainConfig(chain="development", drain_class="development")
+    agents = bundle.agents.model_copy(update={"agent_chains": chains, "agent_drains": drains})
     return bundle.model_copy(update={"agents": agents})
 
 
 def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
     return _LoadResult(
         config=UnifiedConfig(),
-        workspace_scope=WorkspaceScope(
-            root="/test/project", allowed_roots=["/test/project"]
-        ),
+        workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
         initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
         policy_bundle=bundle,
         run_id="test-run-id",
@@ -110,9 +104,7 @@ def test_production_closure_forwards_display_context(
 
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(
-        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),  # non-None pipeline deps sentinel
@@ -148,9 +140,7 @@ def test_production_closure_falls_back_across_chain_agents(
             return PipelineEvent.AGENT_FAILURE
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(
-        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),
@@ -192,9 +182,7 @@ def test_ready_preflight_triggers_policy_auto_commit(
         del pre_run_dirty, authored_paths
         committed_roots.append(repo_root)
 
-    monkeypatch.setattr(
-        policy_auto_commit_module, "commit_policy_updates", fake_commit
-    )
+    monkeypatch.setattr(policy_auto_commit_module, "commit_policy_updates", fake_commit)
 
     load_result = _load_result(load_policy(default_dir()))
     rc = cli_integration.run_project_policy_readiness(
@@ -284,9 +272,7 @@ def test_remediation_runs_inside_started_display_with_status_bar(
 
     ws = MemoryWorkspace()  # unseeded -> remediation required
     fake_display = _FakeDisplay()
-    monkeypatch.setattr(
-        cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display
-    )
+    monkeypatch.setattr(cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display)
 
     observed_opts: list[dict[str, object]] = []
 
@@ -303,9 +289,7 @@ def test_remediation_runs_inside_started_display_with_status_bar(
         _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(
-        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
     from ralph.project_policy import _auto_commit as policy_auto_commit_module
 
     monkeypatch.setattr(
@@ -378,9 +362,7 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
             raise RuntimeError("this agent's binary is missing")
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(
-        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),
@@ -402,9 +384,7 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
     def always_crash(*_args: object, **_opts: object) -> object:
         raise RuntimeError("no agent binaries at all")
 
-    monkeypatch.setattr(
-        effect_executor_module, "execute_agent_effect", always_crash
-    )
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", always_crash)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),

@@ -98,9 +98,7 @@ def test_gate_fires_on_silent_subagent() -> None:
     now = _wedge(watchdog, clock, silent_for=181.0)
 
     # Precondition: the classifier really does name this SILENT_SUBAGENT.
-    assert watchdog._classify_stuck_now(now=now, idle_elapsed=181.0) == (
-        StuckKind.SILENT_SUBAGENT
-    )
+    assert watchdog._classify_stuck_now(now=now, idle_elapsed=181.0) == (StuckKind.SILENT_SUBAGENT)
 
     gate_verdict = watchdog._gate_fire(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
@@ -123,9 +121,7 @@ def test_silent_subagent_fire_is_not_recorded_as_a_deferral() -> None:
     watchdog, clock = _make_watchdog()
     now = _wedge(watchdog, clock, silent_for=181.0)
 
-    watchdog._gate_fire(
-        WatchdogFireReason.NO_OUTPUT_DEADLINE, now=now, idle_elapsed=181.0
-    )
+    watchdog._gate_fire(WatchdogFireReason.NO_OUTPUT_DEADLINE, now=now, idle_elapsed=181.0)
     assert watchdog.last_deferred_kind is None, (
         "A FIRE is not a deferral; last_deferred_kind must not be stamped."
         f" Got {watchdog.last_deferred_kind}."

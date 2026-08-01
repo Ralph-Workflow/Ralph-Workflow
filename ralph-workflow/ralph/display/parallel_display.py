@@ -196,9 +196,7 @@ _MIN_COALESCE_REPEAT = 2
 _MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
 _TOOL_RESULT_CHANNEL_RE = re.compile(r"\[tool-result\]\s*")
 _TOOL_RESULT_RUNNING_RE = re.compile(r"\s*\(running\.\.\.\)")
-_TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE = re.compile(
-    r"\b(severity=\S+)\s+\1\s+(\S+)\s+\2\b"
-)
+_TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE = re.compile(r"\b(severity=\S+)\s+\1\s+(\S+)\s+\2\b")
 
 
 def _clean_tool_result_content(content: str, unit_id: str) -> str:
@@ -1033,7 +1031,9 @@ class ParallelDisplay:
                 tool_name,
                 tool_path,
                 str(pattern or ""),
-                line_start if isinstance(line_start, int) and not isinstance(line_start, bool) else None,
+                line_start
+                if isinstance(line_start, int) and not isinstance(line_start, bool)
+                else None,
             )
 
         self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
@@ -2131,7 +2131,9 @@ class ParallelDisplay:
                     Group(
                         Padding(
                             preview_header(
-                                tool_name, path or "artifact", glyphs_enabled=self._ctx.glyphs_enabled
+                                tool_name,
+                                path or "artifact",
+                                glyphs_enabled=self._ctx.glyphs_enabled,
                             ),
                             (0, 0, 0, _INDENT_WIDTH),
                         ),
@@ -2468,7 +2470,15 @@ class ParallelDisplay:
         """Remove file-preview content from the generic tool-call header."""
         if payload_from_tool_event(tool_name, {"input": input_dict}) is None:
             return None
-        preview_keys = {"content", "patch", "oldText", "newText", "old_string", "new_string", "edits"}
+        preview_keys = {
+            "content",
+            "patch",
+            "oldText",
+            "newText",
+            "old_string",
+            "new_string",
+            "edits",
+        }
         header_metadata = dict(metadata)
         header_metadata["input"] = {
             key: value for key, value in input_dict.items() if key not in preview_keys
@@ -2666,11 +2676,11 @@ class ParallelDisplay:
                 unit_id in self._last_emitted_tool_signature
                 and result_previewable
                 and build_edit_preview(
-                result_preview_tool_name,
-                result_preview_input,
-                width=self._ctx.width,
-                terminal_bg_is_light=self._terminal_bg_is_light,
-                overflow_ref=overflow_ref,
+                    result_preview_tool_name,
+                    result_preview_input,
+                    width=self._ctx.width,
+                    terminal_bg_is_light=self._terminal_bg_is_light,
+                    overflow_ref=overflow_ref,
                     glyphs_enabled=self._ctx.glyphs_enabled,
                     diff_fills=diff_fill_styles(self._terminal_bg_is_light),
                 )
@@ -2964,10 +2974,15 @@ class ParallelDisplay:
         """Return whether adjacent results arrived within one second."""
         if previous is not None and current is not None:
             with contextlib.suppress(ValueError):
-                return abs(
-                    (datetime.fromisoformat(current.replace("Z", "+00:00"))
-                    - datetime.fromisoformat(previous.replace("Z", "+00:00"))).total_seconds()
-                ) <= 1.0
+                return (
+                    abs(
+                        (
+                            datetime.fromisoformat(current.replace("Z", "+00:00"))
+                            - datetime.fromisoformat(previous.replace("Z", "+00:00"))
+                        ).total_seconds()
+                    )
+                    <= 1.0
+                )
         return current_arrival - previous_arrival <= 1.0
 
     def _flush_pending_tool_results(self) -> None:
@@ -2979,7 +2994,9 @@ class ParallelDisplay:
         if pending is None:
             return
         content, metadata, timestamp, _last_timestamp, _last_arrival, count = pending
-        self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, content, metadata, timestamp)
+        self._emit_parsed_event_now(
+            unit_id, ActivityEventKind.TOOL_RESULT, content, metadata, timestamp
+        )
         if count >= _MIN_TOOL_RESULT_COLLAPSE_COUNT:
             hidden_count = count - 1
             hidden_bytes = hidden_count * len(content.encode())
@@ -2990,7 +3007,9 @@ class ParallelDisplay:
                 f"… {hidden_count} more identical results ({hidden_bytes} B) "
                 f"[see {overflow.relative_reference(self._workspace_root)}]"
             )
-            self._emit_parsed_event_now(unit_id, ActivityEventKind.TOOL_RESULT, marker, metadata, timestamp)
+            self._emit_parsed_event_now(
+                unit_id, ActivityEventKind.TOOL_RESULT, marker, metadata, timestamp
+            )
 
     def _emit_parsed_event_now(
         self,
@@ -3039,17 +3058,23 @@ class ParallelDisplay:
             if call_id in recent:
                 return
             self._recorded_tool_call_ids[unit_id] = (*recent, call_id)[-64:]
-        elif kind in (ActivityEventKind.TOOL_RESULT, ActivityEventKind.ERROR) and content is not None:
+        elif (
+            kind in (ActivityEventKind.TOOL_RESULT, ActivityEventKind.ERROR) and content is not None
+        ):
             self._last_tool_result_content[unit_id] = (call_id, content)
         elif kind is ActivityEventKind.TEXT and content is not None:
             previous = self._last_tool_result_content.pop(unit_id, None)
             if previous is not None:
                 previous_id, previous_content = previous
                 same_call = call_id is not None and call_id == previous_id
-                idless_companion = call_id is None and bool(previous_content) and (
-                    content == previous_content
-                    or content in previous_content
-                    or previous_content in content
+                idless_companion = (
+                    call_id is None
+                    and bool(previous_content)
+                    and (
+                        content == previous_content
+                        or content in previous_content
+                        or previous_content in content
+                    )
                 )
                 if (same_call and content == previous_content) or idless_companion:
                     return
@@ -3059,9 +3084,7 @@ class ParallelDisplay:
         emitted_content = content
         if kind is ActivityEventKind.TOOL_USE and not call_id:
             input_obj = record_metadata.get("input", record_metadata.get("args"))
-            input_dict = (
-                cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
-            )
+            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
             if not any(input_dict.get(key) for key in ("path", "command", "pattern")):
                 # ponytail: a global call ordinal is enough to make unknown-target calls skimmable.
                 target = f"call {self._run_counters.tool_calls + 1}"

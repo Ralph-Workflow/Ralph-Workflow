@@ -132,7 +132,9 @@ def _patch_runner_seams(
     # deterministic within the 1.0 s per-test policy limit without
     # weakening the black-box contract.
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
-    monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None
+    )
 
 
 def _monitor_that_reconnects_on_pause(

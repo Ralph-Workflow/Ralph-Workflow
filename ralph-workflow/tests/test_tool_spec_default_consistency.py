@@ -111,9 +111,7 @@ def test_read_file_schema_models_oneof_selector_alternatives() -> None:
     one_of = schema.get("oneOf")
     assert isinstance(one_of, list)
     required_keys = {
-        tuple(branch.get("required", ()))
-        for branch in one_of
-        if isinstance(branch, dict)
+        tuple(branch.get("required", ())) for branch in one_of if isinstance(branch, dict)
     }
     assert ("path",) in required_keys
     assert ("evidence_id",) in required_keys
@@ -138,16 +136,15 @@ def test_read_multiple_files_schema_models_oneof_paths_or_items() -> None:
     from ralph.mcp.tools.names import READ_MULTIPLE_FILES_TOOL
 
     spec = next(
-        spec for spec in file_read_specs()
+        spec
+        for spec in file_read_specs()
         if spec.metadata.definition.name == READ_MULTIPLE_FILES_TOOL
     )
     schema = spec.metadata.definition.input_schema
     one_of = schema.get("oneOf")
     assert isinstance(one_of, list)
     required_keys = {
-        tuple(branch.get("required", ()))
-        for branch in one_of
-        if isinstance(branch, dict)
+        tuple(branch.get("required", ())) for branch in one_of if isinstance(branch, dict)
     }
     assert ("paths",) in required_keys
     assert ("items",) in required_keys

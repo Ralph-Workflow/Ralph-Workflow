@@ -49,7 +49,9 @@ def test_plan_draft_staleness_regression_keeps_different_content_despite_older_m
     workspace.write(PLAN_ARTIFACT_PATH, "submitted plan")
 
     register_role_handlers(policy.pipeline)
-    events = handle_phase(PreparePromptEffect(phase="planning", iteration=1), _context(tmp_path, policy))
+    events = handle_phase(
+        PreparePromptEffect(phase="planning", iteration=1), _context(tmp_path, policy)
+    )
 
     assert events == [PipelineEvent.PROMPT_PREPARED]
     assert workspace.read(draft_path) == "authored repair"

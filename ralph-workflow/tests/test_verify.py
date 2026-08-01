@@ -85,143 +85,184 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
     """
     return {
         ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
-            command="uv", args=("run", "ruff", "check", "ralph/", "tests/"), returncode=0,
+            command="uv",
+            args=("run", "ruff", "check", "ralph/", "tests/"),
+            returncode=0,
             stdout="lint ok\n",
         ),
         ("uv", ("run", "python", "-m", "mypy", "ralph/")): _result(
-            command="uv", args=("run", "python", "-m", "mypy", "ralph/"), returncode=0,
+            command="uv",
+            args=("run", "python", "-m", "mypy", "ralph/"),
+            returncode=0,
             stdout="typecheck ok\n",
         ),
         ("make", ("test",)): _result(
-            command="make", args=("test",), returncode=0, stdout="tests ok\n",
+            command="make",
+            args=("test",),
+            returncode=0,
+            stdout="tests ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_lint_bypass")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_lint_bypass"),
-            returncode=0, stdout="lint bypass audit ok\n",
+            returncode=0,
+            stdout="lint bypass audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_typecheck_bypass")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_typecheck_bypass"),
-            returncode=0, stdout="typecheck bypass audit ok\n",
+            returncode=0,
+            stdout="typecheck bypass audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_test_policy"),
-            returncode=0, stdout="audit ok\n",
+            returncode=0,
+            stdout="audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_mcp_timeout")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_mcp_timeout"),
-            returncode=0, stdout="mcp timeout audit ok\n",
+            returncode=0,
+            stdout="mcp timeout audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_di_seam")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_di_seam"),
-            returncode=0, stdout="di seam audit ok\n",
+            returncode=0,
+            stdout="di seam audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog"),
-            returncode=0, stdout="activity-aware watchdog audit ok\n",
+            returncode=0,
+            stdout="activity-aware watchdog audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_watchdog_drift"),
-            returncode=0, stdout="watchdog drift audit ok\n",
+            returncode=0,
+            stdout="watchdog drift audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
-            returncode=0, stdout="parallelization dormant audit ok\n",
+            returncode=0,
+            stdout="parallelization dormant audit ok\n",
         ),
         ("uv", _ARTIFACT_SUBMISSION_AUDIT_ARGS): _result(
-            command="uv", args=_ARTIFACT_SUBMISSION_AUDIT_ARGS, returncode=0,
+            command="uv",
+            args=_ARTIFACT_SUBMISSION_AUDIT_ARGS,
+            returncode=0,
             stdout="artifact submission canonical-path audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_registry_sync")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_agent_registry_sync"),
-            returncode=0, stdout="agent registry sync audit ok\n",
+            returncode=0,
+            stdout="agent registry sync audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_module_state")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_agent_module_state"),
-            returncode=0, stdout="agent module state audit ok\n",
+            returncode=0,
+            stdout="agent module state audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_internal_paths")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_agent_internal_paths"),
-            returncode=0, stdout="agent internal paths audit ok\n",
+            returncode=0,
+            stdout="agent internal paths audit ok\n",
         ),
         ("python3", _SOCIAL_PROOF_ARGS): _result(
-            command="python3", args=_SOCIAL_PROOF_ARGS, returncode=0,
+            command="python3",
+            args=_SOCIAL_PROOF_ARGS,
+            returncode=0,
             stdout="social-proof gate ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_resource_lifecycle"),
-            returncode=0, stdout="resource lifecycle audit ok\n",
+            returncode=0,
+            stdout="resource lifecycle audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
-            returncode=0, stdout="skill auto-commit audit ok\n",
+            returncode=0,
+            stdout="skill auto-commit audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
-            returncode=0, stdout="public docstring audit ok\n",
+            returncode=0,
+            stdout="public docstring audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
-            returncode=0, stdout="terminal escape containment audit ok\n",
+            returncode=0,
+            stdout="terminal escape containment audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_repo_structure"),
-            returncode=0, stdout="repo structure audit ok\n",
+            returncode=0,
+            stdout="repo structure audit ok\n",
         ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")): _result(
+        (
+            "uv",
+            ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
+        ): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
-            returncode=0, stdout="fsevents watch consolidation audit ok\n",
+            returncode=0,
+            stdout="fsevents watch consolidation audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_log_sink_buffering"),
-            returncode=0, stdout="log sink buffering audit ok\n",
+            returncode=0,
+            stdout="log sink buffering audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
-            returncode=0, stdout="idempotent write adoption audit ok\n",
+            returncode=0,
+            stdout="idempotent write adoption audit ok\n",
         ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation")): _result(
+        (
+            "uv",
+            ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation"),
+        ): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation"),
-            returncode=0, stdout="filesystem write consolidation audit ok\n",
+            returncode=0,
+            stdout="filesystem write consolidation audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_template_render_integrity"),
-            returncode=0, stdout="template render-integrity audit ok\n",
+            returncode=0,
+            stdout="template render-integrity audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
-            returncode=0, stdout="fenced artifact example audit ok\n",
+            returncode=0,
+            stdout="fenced artifact example audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing"),
-            returncode=0, stdout="prompt single-sourcing audit ok\n",
+            returncode=0,
+            stdout="prompt single-sourcing audit ok\n",
         ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_cast_policy"),
-            returncode=0, stdout="cast policy audit ok\n",
+            returncode=0,
+            stdout="cast policy audit ok\n",
         ),
     }
 
@@ -271,10 +312,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_cast_policy")),
     ]
-    assert all(
-        args != ("test-auto-integrate-e2e",)
-        for _command, args, *_rest in runner.calls
-    )
+    assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS

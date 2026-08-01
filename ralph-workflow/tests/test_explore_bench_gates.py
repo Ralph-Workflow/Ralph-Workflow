@@ -66,9 +66,7 @@ def _seed_workspace(tmp_path: Path) -> Path:
     (workspace / "ralph").mkdir()
     (workspace / "tests").mkdir()
     (workspace / "ralph" / "tools").mkdir()
-    (workspace / "ralph" / "tools" / "foo.py").write_text(
-        "def hello():\n    return 'world'\n"
-    )
+    (workspace / "ralph" / "tools" / "foo.py").write_text("def hello():\n    return 'world'\n")
     (workspace / "ralph" / "tools" / "registry.py").write_text(
         "from ralph.tools.foo import hello\n"
     )
@@ -154,9 +152,9 @@ def _build_q123_workspace(tmp_path: Path) -> Path:
     return workspace
 
 
-def _build_q123_real_session(tmp_path: Path) -> tuple[
-    _FakeSessionWithIndex, _StubWorkspace, ExploreStore
-]:
+def _build_q123_real_session(
+    tmp_path: Path,
+) -> tuple[_FakeSessionWithIndex, _StubWorkspace, ExploreStore]:
     """Build a real indexed store over all Q1/Q2/Q3 fixture content.
 
     The three fixtures share one workspace + store so the harness
@@ -323,16 +321,10 @@ def _derive_expected_evidence_ids(
                 evidence.add(chunk_id)
                 continue
             path = str(chunk["path"])
-            chunk_start = (
-                int(chunk["start_line"])
-                if isinstance(chunk["start_line"], int)
-                else 0
-            )
+            chunk_start = int(chunk["start_line"]) if isinstance(chunk["start_line"], int) else 0
             text_hash = str(chunk["text_hash"])
             file_row = store.get_file(path)
-            content_hash = (
-                file_row.content_hash if file_row is not None else text_hash
-            )
+            content_hash = file_row.content_hash if file_row is not None else text_hash
             text_row = store._conn.execute(
                 "SELECT text FROM chunks_fts WHERE chunk_id = ?",
                 (chunk_id,),
@@ -353,11 +345,7 @@ def _derive_expected_evidence_ids(
                 haystack = line_text if case_sensitive else line_text.lower()
                 if needle not in haystack:
                     continue
-                file_line = (
-                    chunk_start + in_chunk_line - 1
-                    if chunk_start
-                    else in_chunk_line
-                )
+                file_line = chunk_start + in_chunk_line - 1 if chunk_start else in_chunk_line
                 evidence.add(
                     derive_evidence_id(
                         path=path,
@@ -437,9 +425,7 @@ def test_evidence_recall_is_one_for_all_required_fixtures(
             expected_evidence_ids=expected,
             visible_tool_catalog=derive_visible_catalog(),
         )
-        assert result.indexed.evidence_recall == 1.0, _format_counters(
-            fixture.question_id, result
-        )
+        assert result.indexed.evidence_recall == 1.0, _format_counters(fixture.question_id, result)
 
 
 # --- Byte-saving gate (real handlers) -------------------------------------
@@ -496,12 +482,10 @@ def test_indexed_bytes_are_at_least_20_percent_smaller(
         if baseline_bytes == 0:
             pytest.skip(f"{fixture.question_id}: zero baseline bytes")
         ratio = indexed_bytes / baseline_bytes
-        ceiling = per_fixture_ceiling.get(
-            fixture.question_id, _REAL_HANDLER_BYTES_RATIO_CEILING
+        ceiling = per_fixture_ceiling.get(fixture.question_id, _REAL_HANDLER_BYTES_RATIO_CEILING)
+        assert ratio <= ceiling, _format_counters(fixture.question_id, result) + (
+            f"\n  ratio={ratio:.3f} ceiling={ceiling:.3f}"
         )
-        assert ratio <= ceiling, _format_counters(
-            fixture.question_id, result
-        ) + (f"\n  ratio={ratio:.3f} ceiling={ceiling:.3f}")
 
 
 # --- Tool-call budget gate (real handlers) --------------------------------
@@ -518,9 +502,7 @@ def test_indexed_tool_calls_do_not_exceed_baseline(
             indexed_executor=_real_handler_executor,
             clock=FakeClock(),
         )
-        assert result.calls_within_budget(), _format_counters(
-            fixture.question_id, result
-        )
+        assert result.calls_within_budget(), _format_counters(fixture.question_id, result)
 
 
 # --- AC-12 graph negative controls (synthetic executors) ------------------
@@ -596,9 +578,7 @@ def test_evidence_precision_is_one_for_indexed_flow(
         assert result.indexed.evidence_precision == 1.0, _format_counters(
             fixture.question_id, result
         )
-        assert result.indexed.evidence_recall == 1.0, _format_counters(
-            fixture.question_id, result
-        )
+        assert result.indexed.evidence_recall == 1.0, _format_counters(fixture.question_id, result)
 
 
 # --- Synthetic executors used by the harness unit-test negatives -----------
@@ -649,20 +629,14 @@ def test_q3_negative_omitting_test_evidence_fails_recall() -> None:
     per-call expected ids drops recall, regardless of how the
     real handler eventually returns evidence.
     """
-    fixture = next(
-        f for f in REQUIRED_FIXTURES if f.question_id == "Q3"
+    fixture = next(f for f in REQUIRED_FIXTURES if f.question_id == "Q3")
+    assert "ev:ref/open_index/test" in fixture.expected_evidence_ids, (
+        "Q3 fixture must include test evidence in its truth set"
     )
-    assert (
-        "ev:ref/open_index/test" in fixture.expected_evidence_ids
-    ), "Q3 fixture must include test evidence in its truth set"
 
     def omitting_test_executor(call: ScriptedCall) -> Mapping[str, object]:
         """Indexed executor that omits the test evidence id."""
-        ids = [
-            ev_id
-            for ev_id in call.expected_evidence_ids
-            if ev_id != "ev:ref/open_index/test"
-        ]
+        ids = [ev_id for ev_id in call.expected_evidence_ids if ev_id != "ev:ref/open_index/test"]
         return {
             "text": "x" * 32,
             "evidence_id": ids[0] if ids else "ev:placeholder",
@@ -679,9 +653,7 @@ def test_q3_negative_omitting_test_evidence_fails_recall() -> None:
     )
     # The negative script returns one of two truth ids; recall must
     # drop below 1.0 so the gate can detect the omission.
-    assert result.indexed.evidence_recall < 1.0, _format_counters(
-        fixture.question_id, result
-    )
+    assert result.indexed.evidence_recall < 1.0, _format_counters(fixture.question_id, result)
 
 
 # --- Reindex efficiency gates ---------------------------------------------

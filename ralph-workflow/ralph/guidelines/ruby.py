@@ -102,43 +102,33 @@ class RubyGuidelines:
 
         if framework_name == "rails":
             self.quality_checks += (
-                (
-                    "Follow Rails conventions and favor the conventional project structure.",
-                    "Use Active Record validations for domain constraints that"
-                    " belong at the model layer.",
-                    "Keep controllers thin by pushing business logic into models,"
-                    " services, or query objects.",
-                )
+                "Follow Rails conventions and favor the conventional project structure.",
+                "Use Active Record validations for domain constraints that"
+                " belong at the model layer.",
+                "Keep controllers thin by pushing business logic into models,"
+                " services, or query objects.",
             )
             self.security_checks += (
-                (
-                    "Use strong parameters consistently.",
-                    "Protect against mass assignment and avoid permissive parameter whitelists.",
-                    "Keep Rails CSRF protection enabled for state-changing requests.",
-                )
+                "Use strong parameters consistently.",
+                "Protect against mass assignment and avoid permissive parameter whitelists.",
+                "Keep Rails CSRF protection enabled for state-changing requests.",
             )
             self.performance_checks += (
-                (
-                    "Review Active Record queries for unnecessary eager"
-                    " loading, callbacks, and repeated database access.",
-                    "Use background jobs for slow external I/O and long-running"
-                    " work outside the request cycle.",
-                )
+                "Review Active Record queries for unnecessary eager"
+                " loading, callbacks, and repeated database access.",
+                "Use background jobs for slow external I/O and long-running"
+                " work outside the request cycle.",
             )
             return
 
         if framework_name == "sinatra":
             self.quality_checks += (
-                (
-                    "Use modular Sinatra style for larger applications.",
-                    "Organize routes logically and keep route handlers small.",
-                )
+                "Use modular Sinatra style for larger applications.",
+                "Organize routes logically and keep route handlers small.",
             )
             self.security_checks += (
-                (
-                    "Enable rack-protection or equivalent request hardening middleware.",
-                    "Set the session secret securely and keep it out of source control.",
-                )
+                "Enable rack-protection or equivalent request hardening middleware.",
+                "Set the session secret securely and keep it out of source control.",
             )
             self.documentation_checks += (
                 "Document middleware, extensions, and route organization when"

@@ -149,9 +149,7 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         session = _FakeSession(explore_index=build_sqlite_index_handle(store))
         # Locate the indexed ``hello`` symbol row.
-        hello_symbols = [
-            sym for sym in store.iter_symbols() if sym.name == "hello"
-        ]
+        hello_symbols = [sym for sym in store.iter_symbols() if sym.name == "hello"]
         assert len(hello_symbols) == 1
         sym = hello_symbols[0]
         # The MagicMock must mirror the workspace file the index was
@@ -175,9 +173,7 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
                 "impact_preview": True,
             },
         )
-        preview_payload = json.loads(
-            preview_result.content[0].text
-        )
+        preview_payload = json.loads(preview_result.content[0].text)
         assert preview_payload["status"] == "preview"
         assert "impact_preview" in preview_payload
         assert preview_payload["impact_preview"]["available"] is True
@@ -193,9 +189,7 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
                 "return_evidence_updates": True,
             },
         )
-        apply_payload = json.loads(
-            apply_result.content[0].text
-        )
+        apply_payload = json.loads(apply_result.content[0].text)
         assert apply_payload["status"] == "applied"
         assert "evidence_updates" in apply_payload
         assert apply_payload["evidence_updates"]["dirty_path"] == "module.py"
@@ -358,7 +352,9 @@ def test_edit_file_stale_target_hash_fails_closed_before_mutation(tmp_path: Path
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         hello_rows = [sym for sym in store.iter_symbols() if sym.name == "hello"]
         assert len(hello_rows) == 1
-        original_file = "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
+        original_file = (
+            "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
+        )
         ws = MagicMock()
         # The on-disk file has changed since the indexed hash; the
         # handler must refuse to mutate because the row is stale.
@@ -404,7 +400,9 @@ def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -
         reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         hello_rows = [sym for sym in store.iter_symbols() if sym.name == "hello"]
         assert len(hello_rows) == 1
-        file_text = "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
+        file_text = (
+            "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
+        )
         ws = MagicMock()
         ws.read.return_value = file_text
         ws.is_path_git_tracked.return_value = False

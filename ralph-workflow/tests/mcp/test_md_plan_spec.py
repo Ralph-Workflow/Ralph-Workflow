@@ -1,7 +1,5 @@
 """Pure behavior tests for the JSON-free plan markdown grammar."""
 
-
-
 import pytest
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -191,9 +189,7 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
     ]
     assert steps[1]["depends_on"] == [1]
     assert steps[1]["verify_command"] == "pytest tests/mcp/test_md_plan_spec.py -q"
-    assert steps[1]["expected_outcome"] == (
-        "the focused markdown-plan tests pass with exit code 0"
-    )
+    assert steps[1]["expected_outcome"] == ("the focused markdown-plan tests pass with exit code 0")
 
     critical = must_mapping(content["critical_files"])
     assert critical["primary_files"] == [
@@ -316,8 +312,10 @@ def test_dangling_step_and_criterion_references_are_line_anchored_warnings() -> 
     what the agent authored; the warning is line-anchored so the agent
     can see which step / criterion broke the reference.
     """
-    document = _plan_document().replace("Depends on: S-1", "Depends on: S-9").replace(
-        "Satisfied by: S-1", "Satisfied by: S-8"
+    document = (
+        _plan_document()
+        .replace("Depends on: S-1", "Depends on: S-9")
+        .replace("Satisfied by: S-1", "Satisfied by: S-8")
     )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
@@ -392,9 +390,11 @@ def test_step_type_contracts_advisely_emit_step_anchored_diagnostics() -> None:
 
 
 def test_only_consumed_verification_expectation_is_advisory_at_the_item_line() -> None:
-    document = _plan_document().replace(
-        "  Mitigation: Reuse the canonical plan normalizer on the mapped content.\n", ""
-    ).replace("  Expect: focused tests pass\n", "")
+    document = (
+        _plan_document()
+        .replace("  Mitigation: Reuse the canonical plan normalizer on the mapped content.\n", "")
+        .replace("  Expect: focused tests pass\n", "")
+    )
 
     _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -412,15 +412,16 @@ def test_only_consumed_verification_expectation_is_advisory_at_the_item_line() -
 
 
 def test_malformed_and_duplicate_step_ids_are_rejected() -> None:
-    duplicate = _plan_document().replace("### [S-2] Verify the focused suites", "### [S-1] Verify the focused suites")
+    duplicate = _plan_document().replace(
+        "### [S-2] Verify the focused suites", "### [S-1] Verify the focused suites"
+    )
     malformed = _plan_document().replace("### [S-2]", "### [STEP-2]")
 
     _, duplicate_diagnostics = parse_and_validate(duplicate, PLAN_SPEC)
     _, malformed_diagnostics = parse_and_validate(malformed, PLAN_SPEC)
 
     assert any(
-        diagnostic.rule_id == "PLAN022"
-        and "duplicate step ID 'S-1'" in diagnostic.message
+        diagnostic.rule_id == "PLAN022" and "duplicate step ID 'S-1'" in diagnostic.message
         for diagnostic in duplicate_diagnostics
     )
     assert any(

@@ -63,8 +63,7 @@ def test_rebase_merge_module_documents_resolution_before_the_fallback() -> None:
     fallback_at = doc.lower().find("fall back")
     assert fallback_at != -1, f"the docstring must still describe the fallback: {doc!r}"
     assert resolve_at < fallback_at, (
-        "in-place resolution must be described BEFORE the endpoint-merge "
-        f"fallback, got: {doc!r}"
+        f"in-place resolution must be described BEFORE the endpoint-merge fallback, got: {doc!r}"
     )
 
 
@@ -104,8 +103,7 @@ def test_auto_integrate_module_documents_resolve_in_place_before_merge() -> None
     assert resolve_at != -1, "auto_integrate must document resolve-in-place"
     assert merge_at != -1, "auto_integrate must document the unresolved-conflict merge"
     assert resolve_at < merge_at, (
-        "resolve-in-place must precede the endpoint-merge fallback in the "
-        "numbered workflow"
+        "resolve-in-place must precede the endpoint-merge fallback in the numbered workflow"
     )
 
 
@@ -121,8 +119,7 @@ def test_resolver_docstring_attributes_merge_commit_to_endpoint_merge_only() -> 
         claim_at = lowered.find("merge commit")
         qualifier_at = lowered.rfind("endpoint-merge", 0, claim_at)
         assert qualifier_at != -1, (
-            "any merge-commit claim must be attributed to the endpoint-merge "
-            f"mode, got: {doc!r}"
+            f"any merge-commit claim must be attributed to the endpoint-merge mode, got: {doc!r}"
         )
 
 
@@ -132,6 +129,5 @@ def test_refresh_module_documents_local_observation_without_remote_io() -> None:
     assert doc, "refresh_target must carry a docstring"
     assert "without contacting a remote" in doc
     assert "no-op" not in doc.lower(), (
-        "refresh_target is no longer a no-op when fetching is disabled, "
-        f"got: {doc!r}"
+        f"refresh_target is no longer a no-op when fetching is disabled, got: {doc!r}"
     )

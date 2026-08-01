@@ -94,9 +94,7 @@ class TestAutoIntegrateCatchup:
     """Catch-up tick gates and bounded worker lifecycle."""
 
     def test_disabled_short_circuits_before_any_git(self, tmp_path: Path) -> None:
-        outcome = catchup.attempt_catchup_fast_forward(
-            _config(enabled=False), tmp_path
-        )
+        outcome = catchup.attempt_catchup_fast_forward(_config(enabled=False), tmp_path)
         assert outcome == catchup.CATCHUP_DISABLED
 
     def test_no_target(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -108,48 +106,34 @@ class TestAutoIntegrateCatchup:
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_NO_TARGET
 
-    def test_detached_head(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_detached_head(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _open_all_gates(monkeypatch, current=None)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_NOT_ON_BRANCH
 
-    def test_already_on_target(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_already_on_target(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _open_all_gates(monkeypatch, current="main")
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_ON_TARGET
 
-    def test_dirty_worktree(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_dirty_worktree(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         ff_calls = _open_all_gates(monkeypatch, clean=False)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_DIRTY
         assert ff_calls == []
 
-    def test_target_unreadable(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_target_unreadable(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _open_all_gates(monkeypatch, target_sha=None)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_TARGET_UNREADABLE
 
-    def test_head_unreadable(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_head_unreadable(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _open_all_gates(monkeypatch, current_sha=None)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_HEAD_UNREADABLE
 
-    def test_up_to_date(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        ff_calls = _open_all_gates(
-            monkeypatch, target_sha=_TARGET_SHA, current_sha=_TARGET_SHA
-        )
+    def test_up_to_date(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        ff_calls = _open_all_gates(monkeypatch, target_sha=_TARGET_SHA, current_sha=_TARGET_SHA)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_UP_TO_DATE
         assert ff_calls == []
@@ -178,12 +162,9 @@ class TestAutoIntegrateCatchup:
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
         assert outcome == catchup.CATCHUP_REFUSED
 
-
     def test_rejects_non_positive_interval(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="interval_seconds"):
-            catchup.AutoIntegrateCatchupWorker(
-                _config(), tmp_path, interval_seconds=0.0
-            )
+            catchup.AutoIntegrateCatchupWorker(_config(), tmp_path, interval_seconds=0.0)
 
     def test_ticks_after_interval_and_stops(self, tmp_path: Path) -> None:
         fired = threading.Event()
@@ -237,14 +218,8 @@ class TestAutoIntegrateCatchup:
         finally:
             _stop_and_wait(worker)
 
-
     def test_disabled_returns_none(self, tmp_path: Path) -> None:
-        assert (
-            catchup.start_catchup_worker_if_enabled(
-                _config(enabled=False), tmp_path
-            )
-            is None
-        )
+        assert catchup.start_catchup_worker_if_enabled(_config(enabled=False), tmp_path) is None
 
     def test_enabled_returns_running_worker(self, tmp_path: Path) -> None:
         # The default 30 s interval guarantees no tick (and therefore no

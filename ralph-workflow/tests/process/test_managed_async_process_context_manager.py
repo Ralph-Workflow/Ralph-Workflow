@@ -210,11 +210,11 @@ def _build_proc_with_close_tracking(
 ) -> _AsyncProcessLike:
     """Build a fake async proc whose stdin/stdout/stderr each call ``close()``."""
     return _RecordingFakeAsyncProc(
-            pid=9999,
-            stdin=_RecordingStream("stdin", close_calls, raise_on_close),
-            stdout=_RecordingStream("stdout", close_calls, raise_on_close),
-            stderr=_RecordingStream("stderr", close_calls, raise_on_close),
-        )
+        pid=9999,
+        stdin=_RecordingStream("stdin", close_calls, raise_on_close),
+        stdout=_RecordingStream("stdout", close_calls, raise_on_close),
+        stderr=_RecordingStream("stderr", close_calls, raise_on_close),
+    )
 
 
 async def test_aexit_closes_stdin_stdout_stderr_transports() -> None:

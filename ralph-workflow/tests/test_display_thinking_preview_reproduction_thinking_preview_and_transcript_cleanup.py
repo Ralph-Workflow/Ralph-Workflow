@@ -154,18 +154,14 @@ class TestStreamingBlockCoalescingSingleEntry:
         joined = "Investigating the elapsed time. Found the recompute seam. Closing the loop."
 
         # The joined passage must appear in the output exactly once.
-        assert joined in out, (
-            f"Expected full joined passage in output. Output:\n{out}"
-        )
+        assert joined in out, f"Expected full joined passage in output. Output:\n{out}"
         assert out.count(joined) == 1, (
             f"Joined passage must appear exactly once, got {out.count(joined)} times. "
             f"Output:\n{out}"
         )
 
         # Exactly one streaming-block close line carries the think tag.
-        thinking_lines = [
-            line for line in _plain_lines(out) if "[reasoning][u1]" in line
-        ]
+        thinking_lines = [line for line in _plain_lines(out) if "[reasoning][u1]" in line]
         assert len(thinking_lines) == 1, (
             f"Expected exactly 1 thinking close line, got {len(thinking_lines)}. "
             f"Lines: {thinking_lines}\nFull output:\n{out}"
@@ -182,9 +178,7 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         # No internal vocabulary leaked.
         for forbidden in _FORBIDDEN_TOKENS:
-            assert forbidden not in out, (
-                f"Forbidden token {forbidden!r} leaked into output:\n{out}"
-            )
+            assert forbidden not in out, f"Forbidden token {forbidden!r} leaked into output:\n{out}"
 
     def test_text_block_also_coalesces_to_single_entry(self, tmp_path: Path) -> None:
         """Text blocks share the coalescing rule — one close entry per block.
@@ -258,12 +252,8 @@ class TestStreamingBlockCoalescingSingleEntry:
         )
 
         out = buf.getvalue()
-        tool_use_lines = [
-            line for line in _plain_lines(out) if "[call][u1]" in line
-        ]
-        tool_result_lines = [
-            line for line in _plain_lines(out) if "[result][u1]" in line
-        ]
+        tool_use_lines = [line for line in _plain_lines(out) if "[call][u1]" in line]
+        tool_result_lines = [line for line in _plain_lines(out) if "[result][u1]" in line]
         assert len(tool_use_lines) == 1, (
             f"Expected 1 tool_use entry, got {len(tool_use_lines)}:\n{out}"
         )
@@ -297,9 +287,7 @@ class TestStreamingBlockCoalescingSingleEntry:
         )
 
         out = buf.getvalue()
-        thinking_lines = [
-            line for line in _plain_lines(out) if "[reasoning][u1]" in line
-        ]
+        thinking_lines = [line for line in _plain_lines(out) if "[reasoning][u1]" in line]
         assert len(thinking_lines) == 1, (
             f"Long thinking must still emit exactly one close line, "
             f"got {len(thinking_lines)} lines:\n{out}"
@@ -309,13 +297,9 @@ class TestStreamingBlockCoalescingSingleEntry:
         )
 
         # No checkpoints, no continuation tags, no previews.
-        assert "checkpoint#" not in out, (
-            f"Checkpoint machinery must be retired:\n{out}"
-        )
+        assert "checkpoint#" not in out, f"Checkpoint machinery must be retired:\n{out}"
         for forbidden in _FORBIDDEN_TOKENS:
-            assert forbidden not in out, (
-                f"Forbidden token {forbidden!r} leaked:\n{out}"
-            )
+            assert forbidden not in out, f"Forbidden token {forbidden!r} leaked:\n{out}"
 
     def test_no_bare_lifecycle_noise_in_output(self, tmp_path: Path) -> None:
         """Bare lifecycle tokens still do not appear in the output."""
@@ -340,9 +324,7 @@ class TestStreamingBlockCoalescingSingleEntry:
             "claude/sonnet: message_delta",
             "claude/sonnet: user",
         ]:
-            assert line not in out, (
-                f"Bare lifecycle {line!r} leaked:\n{out}"
-            )
+            assert line not in out, f"Bare lifecycle {line!r} leaked:\n{out}"
 
     @pytest.mark.parametrize(
         "provider_prefix",
@@ -378,9 +360,7 @@ class TestStreamingBlockCoalescingSingleEntry:
         out = buf.getvalue()
 
         for line in lines_to_suppress:
-            assert line not in out, (
-                f"Bare lifecycle {line!r} from {provider_prefix} leaked:\n{out}"
-            )
+            assert line not in out, f"Bare lifecycle {line!r} from {provider_prefix} leaked:\n{out}"
 
     @pytest.mark.parametrize(
         "provider_prefix",
@@ -411,6 +391,4 @@ class TestStreamingBlockCoalescingSingleEntry:
         out = buf.getvalue()
 
         for line in lines_that_must_appear:
-            assert line in out, (
-                f"Longer sentence {line!r} should NOT be suppressed but was:\n{out}"
-            )
+            assert line in out, f"Longer sentence {line!r} should NOT be suppressed but was:\n{out}"

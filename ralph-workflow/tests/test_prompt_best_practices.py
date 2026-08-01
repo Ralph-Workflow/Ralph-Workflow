@@ -5,21 +5,32 @@ from __future__ import annotations
 from ralph.prompts.template_context import TemplateContext
 
 _TEMPLATE_NAMES = (
-    "planning.jinja", "planning_analysis.jinja", "worker_developer.jinja",
-    "developer_iteration.jinja", "review.jinja", "development_analysis.jinja",
-    "review_analysis.jinja", "fix_mode.jinja", "commit_cleanup.jinja",
-    "commit_message.jinja", "commit_simplified.jinja", "conflict_resolution.jinja",
-    "policy_remediation.jinja", "policy_remediation_analysis.jinja",
-    "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja",
-    "developer_iteration_fallback.jinja", "developer_iteration_continuation.jinja",
+    "planning.jinja",
+    "planning_analysis.jinja",
+    "worker_developer.jinja",
+    "developer_iteration.jinja",
+    "review.jinja",
+    "development_analysis.jinja",
+    "review_analysis.jinja",
+    "fix_mode.jinja",
+    "commit_cleanup.jinja",
+    "commit_message.jinja",
+    "commit_simplified.jinja",
+    "conflict_resolution.jinja",
+    "policy_remediation.jinja",
+    "policy_remediation_analysis.jinja",
+    "planning_fallback.jinja",
+    "planning_edit.jinja",
+    "planning_edit_fallback.jinja",
+    "developer_iteration_fallback.jinja",
+    "developer_iteration_continuation.jinja",
 )
 
 
 def _templates() -> dict[str, str]:
     context = TemplateContext.default()
     return {
-        name: context.registry.get_template(name)
-        for name in _TEMPLATE_NAMES
+        name: context.registry.get_template(name) for name in _TEMPLATE_NAMES
     } | context.partials
 
 
@@ -48,7 +59,10 @@ def test_review_templates_share_one_evidence_decision_contract() -> None:
 def test_evidence_decision_contract_owns_shared_review_dimensions() -> None:
     templates = _templates()
     contract = templates["shared/_analysis_decision_contract"]
-    assert "plan compliance, security, correctness, performance, maintainability, and testing" in contract
+    assert (
+        "plan compliance, security, correctness, performance, maintainability, and testing"
+        in contract
+    )
 
 
 def test_verification_guidance_is_single_sourced() -> None:

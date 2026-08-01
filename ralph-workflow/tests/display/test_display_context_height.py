@@ -144,9 +144,7 @@ def test_is_height_constrained_none_height_returns_false() -> None:
     the None-height branch without poking at a frozen dataclass
     field.
     """
-    ctx = make_display_context(
-        force_width=80, force_glyphs=True, force_height=0
-    )
+    ctx = make_display_context(force_width=80, force_glyphs=True, force_height=0)
     assert ctx.height is None
     assert ctx.is_height_constrained() is False
 
@@ -188,9 +186,7 @@ def test_is_height_constrained_survives_refreshed() -> None:
 # -----------------------------------------------------------------------
 
 
-def _run_height_constrained(
-    *, width: int, height: int
-) -> tuple[object, io.StringIO]:
+def _run_height_constrained(*, width: int, height: int) -> tuple[object, io.StringIO]:
     """Render a fully populated ``emit_run_start`` at ``width x height``.
 
     Returns ``(pd, buf)`` so callers can assert against the captured
@@ -216,9 +212,7 @@ def _run_height_constrained(
     pd.emit_run_start(
         RunStartOrientation(
             prompt_path=".agent/PROMPT.md",
-            workspace_root=(
-                "/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-028-display"
-            ),
+            workspace_root=("/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-028-display"),
             developer_agent="claude",
             developer_model="minimax/MiniMax-3",
             developer_iters=4,
@@ -304,14 +298,11 @@ def test_run_start_long_value_left_elides_not_clipped() -> None:
     # The workspace path is left-elided so the tail (the
     # project's basename) remains visible at 80 cols.
     assert "wt-028-display" in plain, (
-        f"left-elided workspace path must keep the project basename "
-        f"at 80 cols; got:\n{plain!r}"
+        f"left-elided workspace path must keep the project basename at 80 cols; got:\n{plain!r}"
     )
     # No mid-token clipping -- the path either appears in full
     # or left-elided with the standard elision glyph (U+2026).
-    assert "..." not in plain, (
-        f"mid-word clipping is the pre-fix defect; got:\n{plain!r}"
-    )
+    assert "..." not in plain, f"mid-word clipping is the pre-fix defect; got:\n{plain!r}"
     # Every other field key survived despite the long path.
     for key in ("developer=", "iterations=", "parallel=", "plan=", "verbosity="):
         assert key in plain, (

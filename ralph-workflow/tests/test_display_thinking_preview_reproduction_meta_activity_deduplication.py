@@ -47,11 +47,7 @@ def _plain_lines(output: str) -> list[str]:
 
 def _activity_meta_lines(output: str) -> list[str]:
     """Return the lines that carry the META [activity] badge."""
-    return [
-        line
-        for line in _plain_lines(output)
-        if "[activity]" in line and "META" in line
-    ]
+    return [line for line in _plain_lines(output) if "[activity]" in line and "META" in line]
 
 
 class TestStreamingBlockCoalescingNoActivityDuplication:
@@ -160,9 +156,5 @@ class TestStreamingBlockCoalescingNoActivityDuplication:
 
         out = buf.getvalue()
 
-        assert "template_registry.py" in out, (
-            f"First path should appear:\n{out}"
-        )
-        assert "plain_renderer.py" in out, (
-            f"Second path should appear (not suppressed):\n{out}"
-        )
+        assert "template_registry.py" in out, f"First path should appear:\n{out}"
+        assert "plain_renderer.py" in out, f"Second path should appear (not suppressed):\n{out}"

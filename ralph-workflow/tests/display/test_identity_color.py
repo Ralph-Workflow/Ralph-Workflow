@@ -107,7 +107,9 @@ def test_normalize_identity_name_preserves_dash_distinction(variant: str, expect
     """
     assert theme._normalize_identity_name(variant) == expected
     # Same identity -> same color regardless of how it was spelled.
-    assert identity_color(variant, terminal_bg_is_light=False) == identity_color(expected, terminal_bg_is_light=False)
+    assert identity_color(variant, terminal_bg_is_light=False) == identity_color(
+        expected, terminal_bg_is_light=False
+    )
 
 
 def test_empty_name_falls_back_to_unknown() -> None:
@@ -121,8 +123,12 @@ def test_empty_name_falls_back_to_unknown() -> None:
     assert theme._normalize_identity_name("") == "unknown"
     assert theme._normalize_identity_name("   ") == "unknown"
     assert theme._normalize_identity_name("---") == "unknown"
-    assert identity_color("", terminal_bg_is_light=False) == identity_color("unknown", terminal_bg_is_light=False)
-    assert identity_color("", terminal_bg_is_light=False) == identity_color("   ", terminal_bg_is_light=False)
+    assert identity_color("", terminal_bg_is_light=False) == identity_color(
+        "unknown", terminal_bg_is_light=False
+    )
+    assert identity_color("", terminal_bg_is_light=False) == identity_color(
+        "   ", terminal_bg_is_light=False
+    )
 
 
 # --- Pairwise RGB distance ----------------------------------------------
@@ -323,7 +329,10 @@ def test_tool_names_receive_collision_aware_accessible_identity_colors() -> None
         theme._PROTANOPIA_MATRIX,
         theme._TRITANOPIA_MATRIX,
     ):
-        colors = [theme._simulate_cvd(identity_color(tool, terminal_bg_is_light=False), matrix) for tool in tools]
+        colors = [
+            theme._simulate_cvd(identity_color(tool, terminal_bg_is_light=False), matrix)
+            for tool in tools
+        ]
         for first, second in combinations(colors, 2):
             assert theme._hex_distance(first, second) >= _CVD_THRESHOLD
     status_colors = {
@@ -331,7 +340,10 @@ def test_tool_names_receive_collision_aware_accessible_identity_colors() -> None
         for style, _icon, _label in STATUS_STYLES.values()
         if (extracted := theme._extract_hex(style))
     }
-    assert all(identity_color(tool, terminal_bg_is_light=False).lower() not in status_colors for tool in tools)
+    assert all(
+        identity_color(tool, terminal_bg_is_light=False).lower() not in status_colors
+        for tool in tools
+    )
 
 
 # --- Renderer application ----------------------------------------------
@@ -402,8 +414,12 @@ def test_event_renderer_regression_shipped_collisions_are_nudged_in_production()
     )
     pi = render_event(event, _ctx(), unit_id="pi")
     agy = render_event(event, _ctx(), unit_id="agy")
-    pi_style = next(span.style for span in pi.spans if pi.plain[span.start : span.end].strip() == "pi")
-    agy_style = next(span.style for span in agy.spans if agy.plain[span.start : span.end].strip() == "agy")
+    pi_style = next(
+        span.style for span in pi.spans if pi.plain[span.start : span.end].strip() == "pi"
+    )
+    agy_style = next(
+        span.style for span in agy.spans if agy.plain[span.start : span.end].strip() == "agy"
+    )
     assert pi_style != agy_style
 
 
@@ -416,9 +432,7 @@ def test_event_renderer_uses_light_background_identity_palette() -> None:
         options=EventOptions(content="hello world"),
     )
     rendered = render_event(event, ctx, unit_id="claude")
-    assert any(
-        span.style == _identity_style_for("claude", ctx=ctx) for span in rendered.spans
-    )
+    assert any(span.style == _identity_style_for("claude", ctx=ctx) for span in rendered.spans)
 
 
 def test_status_bar_uses_light_background_identity_palette() -> None:
@@ -436,9 +450,13 @@ def test_status_bar_uses_light_background_identity_palette() -> None:
         ctx,
     )
     assert any(
-        span.style == identity_color(
-            "claude", active=(*theme._DISPLAY_IDENTITY_ACTIVE_SET, "claude"), terminal_bg_is_light=True
-        ) for span in rendered.spans
+        span.style
+        == identity_color(
+            "claude",
+            active=(*theme._DISPLAY_IDENTITY_ACTIVE_SET, "claude"),
+            terminal_bg_is_light=True,
+        )
+        for span in rendered.spans
     )
 
 

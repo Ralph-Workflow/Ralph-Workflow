@@ -48,7 +48,9 @@ def test_agy_model_resolution_rejection_names_published_models_and_efforts() -> 
 def test_agy_model_resolution_regression_accepts_model_from_successful_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("ralph.agents.registry._default_agy_models_probe", lambda: "account-model\n")
+    monkeypatch.setattr(
+        "ralph.agents.registry._default_agy_models_probe", lambda: "account-model\n"
+    )
 
     assert AgentRegistry.from_config(UnifiedConfig()).get("agy/account-model") is not None
 

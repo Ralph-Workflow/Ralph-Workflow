@@ -23,9 +23,7 @@ CUSTOM_LOG_COUNT = 20
 
 class TestRunGitCommand:
     def test_successful_git_command(self, tmp_path: Path) -> None:
-        def successful_runner(
-            command: list[str], cwd: Path
-        ) -> subprocess.CompletedProcess[bytes]:
+        def successful_runner(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
             return subprocess.CompletedProcess(
                 command,
                 returncode=0,
@@ -42,9 +40,7 @@ class TestRunGitCommand:
         assert result == "git version 2.50.1"
 
     def test_failing_git_command_raises(self, tmp_path: Path) -> None:
-        def failing_runner(
-            command: list[str], cwd: Path
-        ) -> subprocess.CompletedProcess[bytes]:
+        def failing_runner(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
             return subprocess.CompletedProcess(
                 command,
                 returncode=1,

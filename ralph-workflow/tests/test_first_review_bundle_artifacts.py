@@ -17,9 +17,7 @@ _ARTIFACTS_DIR = (
     / ".agent"
     / "artifacts"
 )
-_EXPECTED_ARTIFACT_TYPES = frozenset(
-    {"plan", "development_result", "issues", "fix_result"}
-)
+_EXPECTED_ARTIFACT_TYPES = frozenset({"plan", "development_result", "issues", "fix_result"})
 
 
 def test_first_review_bundle_contains_only_expected_markdown_artifacts() -> None:
@@ -37,10 +35,7 @@ def test_first_review_bundle_artifacts_validate_with_registered_specs() -> None:
         _, diagnostics = parse_and_validate(content, get_spec(artifact_type))
         errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
 
-        assert errors == [], (
-            f"{artifact_path} must validate cleanly; got: "
-            + "; ".join(
-                f"line {diagnostic.line} [{diagnostic.rule_id}] {diagnostic.message}"
-                for diagnostic in errors
-            )
+        assert errors == [], f"{artifact_path} must validate cleanly; got: " + "; ".join(
+            f"line {diagnostic.line} [{diagnostic.rule_id}] {diagnostic.message}"
+            for diagnostic in errors
         )

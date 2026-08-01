@@ -155,14 +155,17 @@ def test_linked_worktree_landing_updates_checked_out_mainline(
     """Real Git proves the worktree-aware fast-forward updates ref and files."""
     main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
     feature = tmp_git_repo.parent / "feature"
-    assert _run(
-        tmp_git_repo,
-        "worktree",
-        "add",
-        "-b",
-        "feature",
-        str(feature),
-    ).returncode == 0
+    assert (
+        _run(
+            tmp_git_repo,
+            "worktree",
+            "add",
+            "-b",
+            "feature",
+            str(feature),
+        ).returncode
+        == 0
+    )
     (feature / "feature.txt").write_text("feature\n", encoding="utf-8")
     assert _run(feature, "add", "feature.txt").returncode == 0
     assert _run(feature, "commit", "-m", "feature").returncode == 0

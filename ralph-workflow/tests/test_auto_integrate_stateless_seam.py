@@ -199,9 +199,7 @@ def test_inline_path_threads_outcome_into_returned_state(monkeypatch) -> None:
     """
     config = _default_config()
     state = _stub_state()
-    expected_outcome = RebaseState(
-        last_action="rebased", last_target="main", fast_forwarded=True
-    )
+    expected_outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=expected_outcome)
     monkeypatch.setattr(runner, "_integrate_on_phase_transition", integrate)
     workspace_scope = MagicMock()
@@ -249,11 +247,10 @@ def test_run_pipeline_step_inline_path_runs_boundary_integration(
     """
     from ralph.config.enums import Verbosity
     from ralph.display.context import make_display_context
+
     bundle = _policy_bundle(default_policy)
     state = _stub_state()
-    expected_outcome = RebaseState(
-        last_action="rebased", last_target="main", fast_forwarded=True
-    )
+    expected_outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=expected_outcome)
     monkeypatch.setattr(runner, "_integrate_on_phase_transition", integrate)
     monkeypatch.setattr(
@@ -261,9 +258,7 @@ def test_run_pipeline_step_inline_path_runs_boundary_integration(
     )
     monkeypatch.setattr(runner, "reducer_reduce", lambda s, e, p, recovery=None: (s, []))
     monkeypatch.setattr(runner.ckpt, "save", MagicMock())
-    monkeypatch.setattr(
-        runner, "_save_checkpoint_or_log", lambda *a, **k: None
-    )
+    monkeypatch.setattr(runner, "_save_checkpoint_or_log", lambda *a, **k: None)
 
     display_context = make_display_context()
     display = runner.ParallelDisplay(display_context)
@@ -348,11 +343,10 @@ def test_non_state_returning_inline_effect_does_not_attempt_copy(
     """
     from ralph.config.enums import Verbosity
     from ralph.display.context import make_display_context
+
     bundle = _policy_bundle(default_policy)
     state = _stub_state()
-    expected_outcome = RebaseState(
-        last_action="rebased", last_target="main", fast_forwarded=True
-    )
+    expected_outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=expected_outcome)
     monkeypatch.setattr(runner, "_integrate_on_phase_transition", integrate)
     monkeypatch.setattr(
@@ -362,9 +356,7 @@ def test_non_state_returning_inline_effect_does_not_attempt_copy(
     )
     monkeypatch.setattr(runner, "reducer_reduce", lambda s, e, p, recovery=None: (s, []))
     monkeypatch.setattr(runner.ckpt, "save", MagicMock())
-    monkeypatch.setattr(
-        runner, "_save_checkpoint_or_log", lambda *a, **k: None
-    )
+    monkeypatch.setattr(runner, "_save_checkpoint_or_log", lambda *a, **k: None)
 
     display_context = make_display_context()
     display = runner.ParallelDisplay(display_context)

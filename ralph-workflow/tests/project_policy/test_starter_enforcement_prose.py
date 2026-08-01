@@ -46,9 +46,7 @@ _REMEDIATION_ERA_PHRASES: tuple[str, ...] = (
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_starter_contains_no_remediation_era_prose(name: str) -> None:
     content = starters.read_starter(name)
-    violations = [
-        phrase for phrase in _REMEDIATION_ERA_PHRASES if phrase in content
-    ]
+    violations = [phrase for phrase in _REMEDIATION_ERA_PHRASES if phrase in content]
     assert not violations, (
         f"starter {name} contains remediation-era prose that would live "
         f"forever in the project's policy file: {violations}. Move the "
@@ -117,8 +115,7 @@ def test_validator_blocks_readiness_while_banner_remains() -> None:
     )
     findings = validators.validate_readiness(ws, stack)
     assert any(
-        markers.STARTER_TEMPLATE_TOKEN in finding.missing_evidence
-        for finding in findings
+        markers.STARTER_TEMPLATE_TOKEN in finding.missing_evidence for finding in findings
     ), "an otherwise-complete file carrying the banner must be flagged"
 
 
@@ -140,8 +137,7 @@ def test_starter_machine_lines_are_line_start(name: str) -> None:
         and line.lstrip("*- ").startswith("RALPH-")
     ]
     assert not offending, (
-        f"starter {name} has bulleted machine lines the validator will "
-        f"never count: {offending}"
+        f"starter {name} has bulleted machine lines the validator will never count: {offending}"
     )
 
 
@@ -167,9 +163,7 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
             content = content[:start] + content[end:].lstrip("\n")
     # Resolve every command placeholder with an allowlisted tool, then every
     # remaining fact placeholder with a plain verified value.
-    content = content.replace(
-        "RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test"
-    )
+    content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
     # No completion marker is appended: a file is complete exactly when no
     # banner, REPLACE-ME comment, or placeholder token remains.

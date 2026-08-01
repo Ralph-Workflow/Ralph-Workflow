@@ -159,9 +159,7 @@ def _stub_context(*, commit_message_present: bool = False) -> PhaseContext:
         commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
     )
     workspace.read.side_effect = lambda path: (
-        _COMMIT_MESSAGE_DOC
-        if commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
-        else ""
+        _COMMIT_MESSAGE_DOC if commit_message_present and path == COMMIT_MESSAGE_ARTIFACT else ""
     )
     return PhaseContext.construct(
         workspace=workspace,
@@ -640,9 +638,7 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
         }
     )
     workspace.read.side_effect = lambda path: (
-        _DEVELOPMENT_RESULT_DOC
-        if path == ".agent/artifacts/development_result.md"
-        else plan_doc
+        _DEVELOPMENT_RESULT_DOC if path == ".agent/artifacts/development_result.md" else plan_doc
     )
 
     effect = InvokeAgentEffect(

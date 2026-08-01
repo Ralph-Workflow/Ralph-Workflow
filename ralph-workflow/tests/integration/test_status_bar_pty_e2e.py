@@ -586,9 +586,7 @@ def test_status_bar_pty_non_tty_subprocess_pipe_suppresses_live(
         pipe_proc = subprocess.run(
             [str(python_executable), str(probe_path)],
             cwd=str(ralph_workflow_root),
-            env=_pty_child_env(
-                ralph_workflow_root=ralph_workflow_root, allow_color=False
-            ),
+            env=_pty_child_env(ralph_workflow_root=ralph_workflow_root, allow_color=False),
             capture_output=True,
             timeout=_TIMEOUT_SECONDS,
             check=False,

@@ -19,7 +19,9 @@ def test_install_conflict_regression_resolves_console_script_to_pipx_package() -
     existing = detect_existing_ralph(
         which_fn=lambda _name: "/home/u/.local/bin/ralph",
         environ={},
-        resolve_package_file=lambda _exe: Path("/home/u/.local/pipx/venvs/ralph-workflow/lib/ralph/__init__.py"),
+        resolve_package_file=lambda _exe: Path(
+            "/home/u/.local/pipx/venvs/ralph-workflow/lib/ralph/__init__.py"
+        ),
     )
 
     assert existing is not None
@@ -31,7 +33,9 @@ def test_install_conflict_detects_uv_tool_from_resolved_package_path() -> None:
     existing = detect_existing_ralph(
         which_fn=lambda _name: "/home/u/.local/bin/ralph",
         environ={},
-        resolve_package_file=lambda _exe: Path("/home/u/.local/share/uv/tools/ralph-workflow/lib/ralph/__init__.py"),
+        resolve_package_file=lambda _exe: Path(
+            "/home/u/.local/share/uv/tools/ralph-workflow/lib/ralph/__init__.py"
+        ),
     )
 
     assert existing is not None
@@ -46,7 +50,10 @@ def test_install_conflict_source_checkout_only_aborts() -> None:
         kind=InstallKind.SOURCE,
     )
 
-    assert prompt_for_conflict(existing, input_fn=lambda _prompt: "c", is_tty=True) is ConflictResolution.ABORT
+    assert (
+        prompt_for_conflict(existing, input_fn=lambda _prompt: "c", is_tty=True)
+        is ConflictResolution.ABORT
+    )
 
 
 def test_install_conflict_prompt_dispatches_continue_remove_and_abort() -> None:
@@ -56,9 +63,18 @@ def test_install_conflict_prompt_dispatches_continue_remove_and_abort() -> None:
         kind=InstallKind.PIPX,
     )
 
-    assert prompt_for_conflict(existing, input_fn=lambda _prompt: "c", is_tty=True) is ConflictResolution.CONTINUE
-    assert prompt_for_conflict(existing, input_fn=lambda _prompt: "r", is_tty=True) is ConflictResolution.REMOVE
-    assert prompt_for_conflict(existing, input_fn=lambda _prompt: "anything", is_tty=True) is ConflictResolution.ABORT
+    assert (
+        prompt_for_conflict(existing, input_fn=lambda _prompt: "c", is_tty=True)
+        is ConflictResolution.CONTINUE
+    )
+    assert (
+        prompt_for_conflict(existing, input_fn=lambda _prompt: "r", is_tty=True)
+        is ConflictResolution.REMOVE
+    )
+    assert (
+        prompt_for_conflict(existing, input_fn=lambda _prompt: "anything", is_tty=True)
+        is ConflictResolution.ABORT
+    )
 
 
 def test_install_conflict_non_tty_aborts_without_prompt() -> None:
@@ -69,12 +85,17 @@ def test_install_conflict_non_tty_aborts_without_prompt() -> None:
     )
 
     with pytest.raises(RuntimeError, match="non-interactive"):
-        prompt_for_conflict(existing, input_fn=lambda _prompt: pytest.fail("must not prompt"), is_tty=False)
+        prompt_for_conflict(
+            existing, input_fn=lambda _prompt: pytest.fail("must not prompt"), is_tty=False
+        )
 
 
 def test_install_conflict_missing_executable_returns_none() -> None:
-    assert detect_existing_ralph(
-        which_fn=lambda _name: None,
-        environ={},
-        resolve_package_file=lambda _exe: pytest.fail("must not resolve"),
-    ) is None
+    assert (
+        detect_existing_ralph(
+            which_fn=lambda _name: None,
+            environ={},
+            resolve_package_file=lambda _exe: pytest.fail("must not resolve"),
+        )
+        is None
+    )

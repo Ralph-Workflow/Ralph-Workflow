@@ -56,15 +56,10 @@ def test_raw_exec_and_unsafe_exec_specs_share_input_schema() -> None:
     (raw_exec calls itself an alias) but the schema must match exactly.
     """
     unsafe_spec = next(
-        spec
-        for spec in git_exec_specs()
-        if spec.metadata.definition.name == UNSAFE_EXEC_TOOL
+        spec for spec in git_exec_specs() if spec.metadata.definition.name == UNSAFE_EXEC_TOOL
     )
     raw_spec = _raw_exec_spec()
-    assert (
-        raw_spec.metadata.definition.input_schema
-        == unsafe_spec.metadata.definition.input_schema
-    )
+    assert raw_spec.metadata.definition.input_schema == unsafe_spec.metadata.definition.input_schema
 
 
 def test_raw_exec_input_schema_requires_command() -> None:

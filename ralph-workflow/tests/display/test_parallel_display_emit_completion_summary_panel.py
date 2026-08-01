@@ -320,31 +320,19 @@ def test_emit_completion_panel_degrades_at_12_rows() -> None:
     pd.stop()
     output = buf.getvalue()
     # Outcome title survives.
-    assert "Pipeline Complete" in output, (
-        f"outcome title must survive at 12 rows; got: {output!r}"
-    )
+    assert "Pipeline Complete" in output, f"outcome title must survive at 12 rows; got: {output!r}"
     # Section rule still emits.
     assert "[run-completion]" in output
     # Essential counts survive.
-    assert "agent_calls=4" in output, (
-        f"agent_calls count must survive at 12 rows; got: {output!r}"
-    )
+    assert "agent_calls=4" in output, f"agent_calls count must survive at 12 rows; got: {output!r}"
     # Plan / Decisions / Activity / Commit rules are dropped (the
     # bordered layout would crowd the 12-row floor).
-    assert "Plan" not in output, (
-        f"Plan rule must be dropped at 12 rows; got: {output!r}"
-    )
-    assert "Decisions" not in output, (
-        f"Decisions rule must be dropped at 12 rows; got: {output!r}"
-    )
-    assert "Activity" not in output, (
-        f"Activity rule must be dropped at 12 rows; got: {output!r}"
-    )
+    assert "Plan" not in output, f"Plan rule must be dropped at 12 rows; got: {output!r}"
+    assert "Decisions" not in output, f"Decisions rule must be dropped at 12 rows; got: {output!r}"
+    assert "Activity" not in output, f"Activity rule must be dropped at 12 rows; got: {output!r}"
     # No panel corners.
     for corner in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘"):
-        assert corner not in output, (
-            f"panel corner {corner!r} survived at 12 rows: {output!r}"
-        )
+        assert corner not in output, f"panel corner {corner!r} survived at 12 rows: {output!r}"
     assert "sections condensed" in output
     assert "chars" in output
     assert "<id>" not in output
@@ -372,7 +360,9 @@ def test_short_completion_marker_counts_condensed_panel_content(tmp_path: Path) 
         return int(marker.split(" · ")[1].split()[0])
 
     assert condensed_size(detailed_buffer.getvalue()) > condensed_size(short_buffer.getvalue())
-    assert str(tmp_path / ".agent/raw/unknown.rendered.log") in detailed_buffer.getvalue().replace("\n", "")
+    assert str(tmp_path / ".agent/raw/unknown.rendered.log") in detailed_buffer.getvalue().replace(
+        "\n", ""
+    )
 
 
 def test_emit_completion_panel_degrades_at_11_rows() -> None:
@@ -400,9 +390,7 @@ def test_emit_completion_panel_keeps_full_layout_at_24_rows() -> None:
     output = buf.getvalue()
     # The full layout has Plan, Decisions, Activity rules.
     assert "Pipeline Complete" in output
-    assert "Decisions" in output, (
-        f"Decisions rule must survive at 24 rows; got: {output!r}"
-    )
+    assert "Decisions" in output, f"Decisions rule must survive at 24 rows; got: {output!r}"
 
 
 def test_emit_completion_panel_failure_shows_error_line_at_12_rows() -> None:
@@ -423,6 +411,4 @@ def test_emit_completion_panel_failure_shows_error_line_at_12_rows() -> None:
     assert "Pipeline Failed" in output, (
         f"failure outcome title must survive at 12 rows; got: {output!r}"
     )
-    assert "kaboom" in output, (
-        f"failure error line must survive at 12 rows; got: {output!r}"
-    )
+    assert "kaboom" in output, f"failure error line must survive at 12 rows; got: {output!r}"

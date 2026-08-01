@@ -70,9 +70,7 @@ def test_no_unbounded_deque_in_explore() -> None:
             if "maxlen" not in line and "bounded-accumulator-ok" not in line:
                 # Allow ``deque(...)`` whose first positional is a
                 # maxlen=`` inside a kwarg.
-                pytest.fail(
-                    f"{py_file}:{line_no}: unbounded deque: {line.strip()}"
-                )
+                pytest.fail(f"{py_file}:{line_no}: unbounded deque: {line.strip()}")
 
 
 def test_no_module_level_mutable_list_in_explore() -> None:
@@ -92,9 +90,8 @@ def test_no_module_level_mutable_list_in_explore() -> None:
                 target_id = node.target.id
                 end_lineno = getattr(node, "end_lineno", node.lineno)
                 marker_lines = source_lines[node.lineno - 1 : end_lineno]
-                if (
-                    target_id == "__all__"
-                    or any("bounded-accumulator-ok" in line for line in marker_lines)
+                if target_id == "__all__" or any(
+                    "bounded-accumulator-ok" in line for line in marker_lines
                 ):
                     continue
                 if isinstance(node.value, (ast.List, ast.Dict, ast.Set)):

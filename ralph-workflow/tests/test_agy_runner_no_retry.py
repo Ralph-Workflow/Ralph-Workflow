@@ -29,7 +29,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")

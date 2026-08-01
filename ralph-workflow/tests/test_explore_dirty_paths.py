@@ -380,11 +380,7 @@ def test_reindex_preserves_failed_dirty_paths(tmp_path: Path) -> None:
         # good.py is in scope and processed, so it's removed; bad.py
         # failed and stays in the queue.
         remaining = sorted(store.peek_dirty_paths())
-        assert "bad.py" in remaining, (
-            f"failed path should remain in queue, got {remaining!r}"
-        )
-        assert "good.py" not in remaining, (
-            f"processed path should be removed, got {remaining!r}"
-        )
+        assert "bad.py" in remaining, f"failed path should remain in queue, got {remaining!r}"
+        assert "good.py" not in remaining, f"processed path should be removed, got {remaining!r}"
     finally:
         store.close()

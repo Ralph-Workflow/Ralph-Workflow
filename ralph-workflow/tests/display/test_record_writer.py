@@ -169,7 +169,9 @@ def test_writer_regression_preserves_multiline_body_with_hanging_indent(tmp_path
     assert "line one line two" not in "\n".join(lines)
 
 
-def test_writer_regression_preserves_file_indentation_blank_lines_and_diff_context(tmp_path: Path) -> None:
+def test_writer_regression_preserves_file_indentation_blank_lines_and_diff_context(
+    tmp_path: Path,
+) -> None:
     """DA-001: record continuations retain source whitespace and blank lines."""
     writer = RenderedRecordWriter(tmp_path, "claude")
     writer.append(_entry(body="def a():\n    return 1\n\ndef b():\n    return 2"))
@@ -389,8 +391,7 @@ def test_writer_eager_flush_before_deque_eviction(tmp_path: Path) -> None:
     # entry the buffer accepted, and the pre-fix contract would
     # have silently evicted it once the cap was hit.
     assert "tool-0" in text, (
-        f"first accepted entry lost; eager flush did not protect it:\n"
-        f"{text[:200]}\n..."
+        f"first accepted entry lost; eager flush did not protect it:\n{text[:200]}\n..."
     )
     # ``tool-{total-1}`` must also appear so the last accepted
     # entry made it through the eager-flush boundary.

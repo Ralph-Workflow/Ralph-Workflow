@@ -671,9 +671,9 @@ def _build_edit_preview(
                             start_line=start_line,
                         ),
                         "\n".join(head),
-                        diff_fills[0] if marker == "-" and diff_fills is not None else (
-                            diff_fills[1] if diff_fills is not None else None
-                        ),
+                        diff_fills[0]
+                        if marker == "-" and diff_fills is not None
+                        else (diff_fills[1] if diff_fills is not None else None),
                     ),
                 )
             )
@@ -689,9 +689,9 @@ def _build_edit_preview(
                             start_line=tail_start,
                         ),
                         "\n".join(tail),
-                        diff_fills[0] if marker == "-" and diff_fills is not None else (
-                            diff_fills[1] if diff_fills is not None else None
-                        ),
+                        diff_fills[0]
+                        if marker == "-" and diff_fills is not None
+                        else (diff_fills[1] if diff_fills is not None else None),
                     )
                 )
     if total_omitted:
@@ -722,7 +722,13 @@ def _apply_diff_line_fills(
     if diff_fills is None:
         return syntax
     for row, line in enumerate(lines, start=1):
-        fill = diff_fills[0] if line.startswith("-") else diff_fills[1] if line.startswith("+") else None
+        fill = (
+            diff_fills[0]
+            if line.startswith("-")
+            else diff_fills[1]
+            if line.startswith("+")
+            else None
+        )
         if fill is not None:
             syntax.stylize_range(f"on {fill}", (row, 0), (row, len(line)))
     return syntax

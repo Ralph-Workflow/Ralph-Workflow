@@ -480,7 +480,9 @@ def test_visual_hierarchy_regression_preview_body_is_nested_below_header() -> No
         )
         pd.stop()
         plain = _ANSI_ESCAPE_RE.sub("", buf.getvalue())
-        header_index = next(index for index, line in enumerate(plain.splitlines()) if "▸ read" in line)
+        header_index = next(
+            index for index, line in enumerate(plain.splitlines()) if "▸ read" in line
+        )
         body_lines = [
             line
             for line in plain.splitlines()[header_index + 1 :]

@@ -175,10 +175,9 @@ def _clear_stale_plan_draft_if_needed(ctx: PhaseContext) -> None:
     if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
         return
     seeded_path = seeded_draft_workspace_path("plan")
-    if (
-        ctx.workspace.read(draft_path) == ctx.workspace.read(PLAN_ARTIFACT_PATH)
-        and not ctx.workspace.exists(seeded_path)
-    ):
+    if ctx.workspace.read(draft_path) == ctx.workspace.read(
+        PLAN_ARTIFACT_PATH
+    ) and not ctx.workspace.exists(seeded_path):
         logger.info("Clearing submitted plan draft at {}", draft_path)
         ctx.workspace.remove(draft_path)
         if ctx.workspace.exists(seeded_path):

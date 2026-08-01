@@ -135,9 +135,7 @@ def test_emit_log_line_preserves_literal_rich_markup_for_copy_paste() -> None:
     # just the timestamp + bracket tag + unit + body. No LEVEL
     # (INFO) or CAT (OUT) plumbing vocabulary reaches the
     # operator surface.
-    assert stream.getvalue().splitlines() == [
-        "12:00:00 [output][worker-1] hello"
-    ]
+    assert stream.getvalue().splitlines() == ["12:00:00 [output][worker-1] hello"]
 
 
 def test_emit_snapshot_output_has_no_ansi_escape_codes() -> None:

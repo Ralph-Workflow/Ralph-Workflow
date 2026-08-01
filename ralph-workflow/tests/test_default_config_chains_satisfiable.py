@@ -92,9 +92,7 @@ def test_flat_default_chain_lists_only_reference_claude(tmp_path: Path) -> None:
     data = tomllib.loads(staged["ralph-workflow.toml"].read_text(encoding="utf-8"))
     chains = data["agent_chains"]
     for chain_name, agents in chains.items():
-        assert isinstance(agents, list), (
-            f"chain '{chain_name}' must be a list of agent names"
-        )
+        assert isinstance(agents, list), f"chain '{chain_name}' must be a list of agent names"
         for agent_name in agents:
             assert isinstance(agent_name, str), (
                 f"chain '{chain_name}' has non-string agent {agent_name!r}"
@@ -134,9 +132,7 @@ def test_two_bundled_chain_copies_agree_on_agent_families(tmp_path: Path) -> Non
     either copy without false-failing the test, but a family swap (e.g.
     switching ``development`` to opencode-only) is detected.
     """
-    staged = _stage_bundled_default(
-        tmp_path, "ralph-workflow.toml", "ralph-workflow-local.toml"
-    )
+    staged = _stage_bundled_default(tmp_path, "ralph-workflow.toml", "ralph-workflow-local.toml")
     flat = tomllib.loads(staged["ralph-workflow.toml"].read_text(encoding="utf-8"))
     local = tomllib.loads(staged["ralph-workflow-local.toml"].read_text(encoding="utf-8"))
 

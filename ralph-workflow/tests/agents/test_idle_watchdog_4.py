@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 IDLE_TIMEOUT = 0.1
 DRAIN_WINDOW = 0.0
 MAX_WAITING = 10.0

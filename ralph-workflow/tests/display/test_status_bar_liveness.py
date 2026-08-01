@@ -421,7 +421,6 @@ def test_attention_unknown_pushed_value_renders_blank() -> None:
     assert "not-a-real-state" not in text
 
 
-
 @pytest.mark.parametrize(
     ("attention", "expected"),
     [

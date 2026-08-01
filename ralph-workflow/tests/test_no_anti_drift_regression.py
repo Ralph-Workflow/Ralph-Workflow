@@ -1649,8 +1649,7 @@ def _parallel_display_imports(path: pathlib.Path) -> tuple[tuple[int, tuple[str,
     return tuple(
         (node.lineno, tuple(alias.name for alias in node.names))
         for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "ralph.display.parallel_display"
+        if isinstance(node, ast.ImportFrom) and node.module == "ralph.display.parallel_display"
     )
 
 

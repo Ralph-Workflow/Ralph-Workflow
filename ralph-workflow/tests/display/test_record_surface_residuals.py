@@ -92,7 +92,9 @@ def test_tool_call_record_omits_pair_marker_and_normalizes_call_shapes(tmp_path:
     calls = [line for line in record.splitlines() if "role=tool_call" in line]
     assert len(calls) == 3
     assert all("↳" not in line for line in calls)
-    assert all(line.startswith("[09:30:00] ") and line.endswith(" role=tool_call") for line in calls)
+    assert all(
+        line.startswith("[09:30:00] ") and line.endswith(" role=tool_call") for line in calls
+    )
     assert all(tool in line for tool, line in zip(("read", "bash", "grep"), calls, strict=True))
 
 

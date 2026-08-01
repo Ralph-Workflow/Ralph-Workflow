@@ -143,8 +143,7 @@ def test_render_event_keeps_internal_vocabulary_off_surface() -> None:
             plain = text.plain
             for forbidden in _INTERNAL_VOCABULARY:
                 assert forbidden not in plain, (
-                    f"{agent_name} {event.kind}: {forbidden!r} leaked into "
-                    f"rendered text: {plain!r}"
+                    f"{agent_name} {event.kind}: {forbidden!r} leaked into rendered text: {plain!r}"
                 )
 
 
@@ -161,8 +160,7 @@ def test_render_event_kind_text_keeps_internal_vocabulary_off_surface() -> None:
             )
             for forbidden in _INTERNAL_VOCABULARY:
                 assert forbidden not in line, (
-                    f"{agent_name} {event.kind}: {forbidden!r} leaked into "
-                    f"plain text: {line!r}"
+                    f"{agent_name} {event.kind}: {forbidden!r} leaked into plain text: {line!r}"
                 )
 
 
@@ -327,7 +325,9 @@ _CORPUS_CASES: tuple[tuple[str, str], ...] = (
 
 def _load_ndjson_fixture(name: str) -> list[dict[str, object]]:
     path = _FIXTURES_DIR / name
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def _event_from_fixture(record: dict[str, object]) -> AgentActivityEvent:
@@ -349,10 +349,7 @@ def _event_from_fixture(record: dict[str, object]) -> AgentActivityEvent:
 def test_claude_ndjson_fixture_yields_one_entry_per_event() -> None:
     """AC-10: claude NDJSON stream -> one PresentedEntry per event, no duplicates."""
     records = _load_ndjson_fixture("claude_ndjson.jsonl")
-    entries = [
-        build_presented_entry(_event_from_fixture(rec), unit_id="claude")
-        for rec in records
-    ]
+    entries = [build_presented_entry(_event_from_fixture(rec), unit_id="claude") for rec in records]
     # One entry per record.
     assert len(entries) == len(records)
     # No body ever contains the internal channel vocabulary.
@@ -366,10 +363,7 @@ def test_claude_ndjson_fixture_yields_one_entry_per_event() -> None:
 def test_pi_ndjson_fixture_yields_one_entry_per_event() -> None:
     """AC-10: pi NDJSON stream -> one PresentedEntry per event, no duplicates."""
     records = _load_ndjson_fixture("pi_ndjson.jsonl")
-    entries = [
-        build_presented_entry(_event_from_fixture(rec), unit_id="pi")
-        for rec in records
-    ]
+    entries = [build_presented_entry(_event_from_fixture(rec), unit_id="pi") for rec in records]
     assert len(entries) == len(records)
     for entry in entries:
         for forbidden in ("CONT", "META", "[thinking-start]", "[thinking-end]"):
@@ -384,7 +378,9 @@ def test_opencode_ndjson_fixture_parses_and_renders_canonical_events() -> None:
     wire_records = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     parsed = list(OpenCodeParser().parse(iter(wire_records)))
     events = [
-        normalize_event_from_agent_output_line(line, provider=ActivityProvider.OPENCODE, unit_id="opencode")
+        normalize_event_from_agent_output_line(
+            line, provider=ActivityProvider.OPENCODE, unit_id="opencode"
+        )
         for line in parsed
         if line.type in {"text", "tool_use", "tool_result", "error"}
     ]
@@ -462,9 +458,7 @@ def _replay_fixture_through_parallel_display(
         )
     display.stop()
     return (
-        (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(
-            encoding="utf-8"
-        ),
+        (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(encoding="utf-8"),
         output.getvalue(),
     )
 
@@ -532,9 +526,7 @@ def test_missing_metadata_keeps_each_agent_on_the_shared_presentation_path(
         metadata={"provider": provider.value},
     )
     display.stop()
-    rendered = (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(
-        encoding="utf-8"
-    )
+    rendered = (tmp_path / ".agent" / "raw" / f"{unit_id}.rendered.log").read_text(encoding="utf-8")
     line = rendered.rstrip("\n")
     assert "partial result" in line
     assert "role=tool_result" in line
@@ -552,10 +544,7 @@ def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:
     selectable agent inherits the presentation by construction.
     """
     records = _load_ndjson_fixture("gemini_ndjson.jsonl")
-    entries = [
-        build_presented_entry(_event_from_fixture(rec), unit_id="gemini")
-        for rec in records
-    ]
+    entries = [build_presented_entry(_event_from_fixture(rec), unit_id="gemini") for rec in records]
     assert len(entries) == len(records)
     for entry in entries:
         # Internal vocabulary never reaches the surface.
@@ -569,4 +558,3 @@ def test_gemini_ndjson_fixture_yields_one_entry_per_event() -> None:
         assert "gemini" not in entry.body, (
             f"gemini fixture: identity leaked into body: {entry.body!r}"
         )
-

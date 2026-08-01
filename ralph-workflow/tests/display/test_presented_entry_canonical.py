@@ -304,9 +304,7 @@ def test_thinking_entries_are_subordinated() -> None:
     coalesced reasoning block still carries its structural
     position when emitted as a presented entry.
     """
-    entry = build_presented_entry(
-        _event(ActivityEventKind.THINKING, "one thought"), unit_id="c"
-    )
+    entry = build_presented_entry(_event(ActivityEventKind.THINKING, "one thought"), unit_id="c")
     assert entry.indent_level == 1
     assert entry.grouping_role == "reasoning"
 
@@ -360,8 +358,14 @@ def test_record_writer_invalid_indent_level_falls_back_to_zero() -> None:
     from ralph.display.record_writer import _format_entry_line
 
     # Force a bad value through the dict-like contract.
-    bad_entry = {"kind": "text", "severity": "info", "identity": "c", "body": "hi",
-                 "timestamp": "14:29:03", "indent_level": "two"}
+    bad_entry = {
+        "kind": "text",
+        "severity": "info",
+        "identity": "c",
+        "body": "hi",
+        "timestamp": "14:29:03",
+        "indent_level": "two",
+    }
     line = _format_entry_line(bad_entry)
     assert line.startswith("[14:29:03]"), f"bad indent must clamp to 0; got: {line!r}"
 
@@ -442,4 +446,3 @@ def test_parser_channel_prefix_tables_stay_in_sync() -> None:
             f"Canonical stripper must strip {token!r} prefix from "
             f"a token declared in the renderer space-less table."
         )
-

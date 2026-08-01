@@ -108,9 +108,7 @@ class TestCursorBinaryOverride:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``_resolve_cursor_binary_override`` returns ``None`` for a non-executable override."""
-        monkeypatch.setenv(
-            "RALPH_CURSOR_BINARY", "/nonexistent/path/to/cursor-wrapper.sh"
-        )
+        monkeypatch.setenv("RALPH_CURSOR_BINARY", "/nonexistent/path/to/cursor-wrapper.sh")
         resolved = smoke_module._resolve_cursor_binary_override()
         assert resolved is None
 
@@ -137,9 +135,7 @@ class TestCursorBinaryOverride:
         """``_apply_cursor_binary_override_to_config`` ignores a non-executable override."""
         config = UnifiedConfig(
             agents={
-                "cursor/auto": AgentConfig(
-                    cmd="agent", transport=AgentTransport.CURSOR
-                ),
+                "cursor/auto": AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
                 "claude/haiku": AgentConfig(
                     cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
                 ),

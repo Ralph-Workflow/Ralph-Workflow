@@ -152,18 +152,14 @@ def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
     )
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed shared")
     feature = tmp_path / "feature"
-    assert _run(
-        tmp_git_repo, "worktree", "add", "-b", "feature", str(feature)
-    ).returncode == 0
+    assert _run(tmp_git_repo, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     _commit(feature, "shared.txt", "feature\n", "feature edit")
     _commit(tmp_git_repo, "shared.txt", "target\n", "target edit")
     advanced: list[str] = []
 
     def _resolve(root: Path, _target: str, stop: RebaseStop) -> bool:
         if not advanced:
-            advanced.append(
-                _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed")
-            )
+            advanced.append(_commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed"))
         for relative in stop.conflicted_files:
             (root / relative).write_text(_RESOLVED_CONTENT, encoding="utf-8")
         return True
@@ -192,9 +188,6 @@ def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
     assert advanced
     feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(feature, target) == feature_tip
-    assert (
-        _run(feature, "merge-base", "--is-ancestor", advanced[0], feature_tip).returncode
-        == 0
-    )
+    assert _run(feature, "merge-base", "--is-ancestor", advanced[0], feature_tip).returncode == 0
     assert _run(feature, "log", "--merges", "--format=%H").stdout.strip() == ""
     assert _run(feature, "show", "HEAD:shared.txt").stdout == _RESOLVED_CONTENT

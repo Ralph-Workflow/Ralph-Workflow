@@ -105,15 +105,11 @@ def test_refused_ff_only_leaves_ref_untouched_and_records_loud_skip(
     """
     root = Path("/workspace/feature")
     _stub_ff_environment(monkeypatch, root)
-    monkeypatch.setattr(
-        auto_integrate_ff, "fast_forward_via_worktree", lambda *_args: False
-    )
+    monkeypatch.setattr(auto_integrate_ff, "fast_forward_via_worktree", lambda *_args: False)
     cas = MagicMock(return_value=True)
     monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", cas)
 
-    landed, reason = auto_integrate_ff.fast_forward_target(
-        root, "main", "feature-head"
-    )
+    landed, reason = auto_integrate_ff.fast_forward_target(root, "main", "feature-head")
     assert landed is False, (
         "AC-10/E2: a refused merge --ff-only on a checked-out target "
         "MUST NOT advance the shared ref -- the previous CAS fallback "
@@ -207,26 +203,18 @@ def _install_retry_loop(
         "_auto_integrate_check_skip_conditions",
         lambda _root, _branch, _target: None,
     )
-    monkeypatch.setattr(
-        auto_integrate, "observe_conflict_identity", lambda _root, _target: "id"
-    )
-    monkeypatch.setattr(
-        auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True
-    )
+    monkeypatch.setattr(auto_integrate, "observe_conflict_identity", lambda _root, _target: "id")
+    monkeypatch.setattr(auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True)
 
     def _refresh(_config, _root, _target) -> str:
         if events is not None:
             events.append("refresh")
         return "refreshed"
 
-    def _integrate_once(
-        *_args: object, **_kwargs: object
-    ) -> tuple[RebaseState, bool]:
+    def _integrate_once(*_args: object, **_kwargs: object) -> tuple[RebaseState, bool]:
         if events is not None:
             events.append("integrate")
-        record = RebaseState(
-            last_action="rebased", last_target="main", fast_forwarded=True
-        )
+        record = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
         return record, next(verdicts, False)
 
     monkeypatch.setattr(auto_integrate, "_refresh_target", _refresh)
@@ -258,9 +246,7 @@ def test_a_first_attempt_that_lands_never_waits(monkeypatch, tmp_path: Path) -> 
     assert _recorder(monkeypatch, tmp_path, retries=[False]) == []
 
 
-def test_a_lost_compare_and_swap_waits_once_before_retrying(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_a_lost_compare_and_swap_waits_once_before_retrying(monkeypatch, tmp_path: Path) -> None:
     """One collision, one bounded wait, inside the documented schedule."""
     delays = _recorder(monkeypatch, tmp_path, retries=[True, False])
 
@@ -269,9 +255,7 @@ def test_a_lost_compare_and_swap_waits_once_before_retrying(
     assert delays[0] >= auto_integrate_backoff.RETRY_BASE_DELAY_SECONDS * 0.5
 
 
-def test_the_delay_grows_across_attempts_and_stays_capped(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_the_delay_grows_across_attempts_and_stays_capped(monkeypatch, tmp_path: Path) -> None:
     """Exponential, so two agents that keep colliding spread further apart."""
     delays = _recorder(monkeypatch, tmp_path, retries=[True, True, True])
 
@@ -280,9 +264,7 @@ def test_the_delay_grows_across_attempts_and_stays_capped(
     assert all(d <= auto_integrate_backoff.RETRY_MAX_DELAY_SECONDS for d in delays)
 
 
-def test_the_wait_happens_before_the_pointer_is_re_read(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_the_wait_happens_before_the_pointer_is_re_read(monkeypatch, tmp_path: Path) -> None:
     """Ordering is the point: the retry must observe a POST-wait pointer.
 
     Refreshing first and then sleeping would land the retry on a pointer
@@ -317,9 +299,7 @@ def test_a_sleep_that_raises_never_escapes_the_integration_step(
     assert outcome.last_action == "rebased"
 
 
-def test_full_jitter_shortens_the_wait_rather_than_fixing_it(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_full_jitter_shortens_the_wait_rather_than_fixing_it(monkeypatch, tmp_path: Path) -> None:
     """A deterministic backoff would re-synchronise the agents it separated."""
     long_wait = _recorder(monkeypatch, tmp_path, retries=[True, False])
     delays: list[float] = []

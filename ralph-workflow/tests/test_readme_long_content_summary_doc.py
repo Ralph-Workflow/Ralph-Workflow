@@ -28,8 +28,7 @@ def long_content_section() -> str:
 def test_readme_lists_all_disabled_values(long_content_section: str) -> None:
     for value in ("0", "false", "no", "off"):
         assert value in long_content_section, (
-            f"developer-internals.md long-content section must document "
-            f"disabled value '{value}'"
+            f"developer-internals.md long-content section must document disabled value '{value}'"
         )
 
 
@@ -42,9 +41,7 @@ def test_readme_states_default_on(long_content_section: str) -> None:
 
 
 def test_readme_does_not_claim_opt_in_by_setting_flag_to_1(long_content_section: str) -> None:
-    match = re.search(
-        r"set[^\n]*RALPH_LONG_CONTENT_SUMMARY=1", long_content_section, re.IGNORECASE
-    )
+    match = re.search(r"set[^\n]*RALPH_LONG_CONTENT_SUMMARY=1", long_content_section, re.IGNORECASE)
     assert match is None, (
         "developer-internals.md must not describe RALPH_LONG_CONTENT_SUMMARY=1 "
         "as the way to enable the summary"
@@ -82,34 +79,29 @@ def test_summary_threshold_is_positive() -> None:
 
 def test_should_summarize_above_threshold() -> None:
     assert should_summarize("x" * (SUMMARY_THRESHOLD + 1), {}) is True, (
-        "should_summarize must return True for text exceeding the threshold "
-        "with no env flag"
+        "should_summarize must return True for text exceeding the threshold with no env flag"
     )
 
 
 def test_readme_documents_deterministic_headline(long_content_section: str) -> None:
     assert "deterministic headline" in long_content_section, (
-        "developer-internals.md long-content section must describe the "
-        "deterministic headline layer"
+        "developer-internals.md long-content section must describe the deterministic headline layer"
     )
 
 
 def test_readme_documents_ai_summary_label(long_content_section: str) -> None:
     assert "ai-summary" in long_content_section, (
-        "developer-internals.md long-content section must document the "
-        "'ai-summary:' label"
+        "developer-internals.md long-content section must document the 'ai-summary:' label"
     )
 
 
 def test_readme_documents_no_headline_available(long_content_section: str) -> None:
     assert "(no headline available)" in long_content_section, (
-        "developer-internals.md must document the '(no headline available)' "
-        "placeholder text"
+        "developer-internals.md must document the '(no headline available)' placeholder text"
     )
 
 
 def test_readme_documents_ralph_long_content_ai_summary(long_content_section: str) -> None:
     assert "RALPH_LONG_CONTENT_AI_SUMMARY" in long_content_section, (
-        "developer-internals.md must document the "
-        "RALPH_LONG_CONTENT_AI_SUMMARY opt-in env var"
+        "developer-internals.md must document the RALPH_LONG_CONTENT_AI_SUMMARY opt-in env var"
     )

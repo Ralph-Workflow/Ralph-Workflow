@@ -365,7 +365,9 @@ def _bootstrap_for_command(
         )
 
 
-def _handle_init(*, template: str | None, config: str | None, display_context: DisplayContext) -> None:
+def _handle_init(
+    *, template: str | None, config: str | None, display_context: DisplayContext
+) -> None:
     """Run init and preserve the setup-time TOML error envelope."""
     try:
         init_command(template, _config_path(config), display_context=display_context)
@@ -1260,8 +1262,7 @@ def smoke_interactive_opencode(
     provider: str | None = typer.Option(
         None,
         help=(
-            "OpenCode provider (e.g. minimax). Requires --model; "
-            "together they override --agent."
+            "OpenCode provider (e.g. minimax). Requires --model; together they override --agent."
         ),
     ),
     model: str | None = typer.Option(

@@ -849,9 +849,7 @@ def test_invoke_agent_prepends_master_prompt_for_opencode(
         )
     )
 
-    assert seen_cmds == [
-        ["opencode", "run", "--format", "json", "unattended mode\n\nhello"]
-    ]
+    assert seen_cmds == [["opencode", "run", "--format", "json", "unattended mode\n\nhello"]]
 
 
 def test_invoke_agent_preserves_existing_codex_home_state(

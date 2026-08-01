@@ -773,9 +773,7 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
     # Step 4: the prune helper removes managed entries whose name is no
     # longer in the baseline.
     pruned = _prune_removed_baseline_skills(canonical)
-    assert stale_name in pruned, (
-        f"expected the stale managed skill to be pruned; got {pruned!r}"
-    )
+    assert stale_name in pruned, f"expected the stale managed skill to be pruned; got {pruned!r}"
     assert not stale_dir.exists(), "stale managed skill must be removed from the canonical"
 
     # Step 5: the user-owned entry (no marker) is preserved in every sibling root.
@@ -795,8 +793,7 @@ def test_install_prunes_managed_skill_removed_from_baseline(tmp_path: Path) -> N
         sibling_root = sibling.resolve(tmp_path)
         stale_symlink = sibling_root / stale_name
         assert not stale_symlink.exists(), (
-            f"{sibling.agent}: stale symlink to retired skill must be removed; "
-            f"saw {stale_symlink}"
+            f"{sibling.agent}: stale symlink to retired skill must be removed; saw {stale_symlink}"
         )
         # The user-owned entry is untouched by the install.
         assert (sibling_root / user_owned_target).is_dir(), (
@@ -826,9 +823,7 @@ def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path
     # 1. Plant a broken symlink to a retired skill — the live case.
     retired_name = "submit-plan-step-edits"
     assert retired_name not in BASELINE_SKILL_NAMES
-    (root / retired_name).symlink_to(
-        root / "does-not-exist", target_is_directory=True
-    )
+    (root / retired_name).symlink_to(root / "does-not-exist", target_is_directory=True)
     assert (root / retired_name).is_symlink()
     assert not (root / retired_name).exists()
 
@@ -853,9 +848,7 @@ def test_prune_removes_broken_symlinks_to_retired_baseline_skills(tmp_path: Path
 
     pruned = _prune_removed_baseline_skills(root)
 
-    assert retired_name in pruned, (
-        f"broken symlink to retired skill must be pruned; got {pruned!r}"
-    )
+    assert retired_name in pruned, f"broken symlink to retired skill must be pruned; got {pruned!r}"
     assert not (root / retired_name).exists(), (
         "broken symlink must be unlinked even when no marker is reachable"
     )

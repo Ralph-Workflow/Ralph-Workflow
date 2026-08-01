@@ -48,6 +48,7 @@ from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
+
 # Test-only: skip real 0.5-4.0s CAS backoff; callers may still override sleep/jitter.
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
     kwargs.setdefault("sleep", lambda _seconds: None)
@@ -114,7 +115,11 @@ def _snapshot(tmp_git_repo: Path) -> dict[str, str]:
             continue
         name, sha = line.split(" ", 1)
         refs[name] = sha
-    return {"head": head, "refs": refs, "worktree": _run(tmp_git_repo, "status", "--porcelain").stdout}
+    return {
+        "head": head,
+        "refs": refs,
+        "worktree": _run(tmp_git_repo, "status", "--porcelain").stdout,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +138,7 @@ def test_disabled_returns_none_and_repo_byte_unchanged(tmp_git_repo: Path) -> No
     assert result is None
     after = _snapshot(tmp_git_repo)
     assert before == after
+
 
 def test_default_enabled_with_no_config_set(tmp_git_repo: Path) -> None:
     """AC-01 default: with no config set, the feature is active (default True)."""
@@ -172,6 +178,8 @@ def test_on_target_branch_skips_with_zero_mutation(tmp_git_repo: Path) -> None:
     assert outcome.last_target == base
     after = _snapshot(tmp_git_repo)
     assert before == after
+
+
 def test_no_commits_beyond_target_skips_with_zero_mutation(tmp_git_repo: Path) -> None:
     """AC-03 no-commits-beyond-target skip."""
     base = _base_branch(tmp_git_repo)
@@ -201,7 +209,10 @@ def test_no_target_branch_resolved_skips(tmp_git_repo: Path) -> None:
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
     assert outcome.last_action == "skipped"
-    assert outcome.last_reason == "local integration target branch does not exist: non-existent-branch-xyz"
+    assert (
+        outcome.last_reason
+        == "local integration target branch does not exist: non-existent-branch-xyz"
+    )
     after = _snapshot(tmp_git_repo)
     assert before == after
 
@@ -226,9 +237,7 @@ def test_detached_head_records_skipped_skip(tmp_git_repo: Path) -> None:
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None, (
-        "detached HEAD must yield a recorded RebaseState (AC-02), not None"
-    )
+    assert outcome is not None, "detached HEAD must yield a recorded RebaseState (AC-02), not None"
     assert outcome.last_action == "skipped"
     assert outcome.last_reason == "detached HEAD"
     # Repo is byte-unchanged: no refs moved, no crash record on disk.
@@ -283,9 +292,7 @@ def test_diverged_clean_rebase_then_ff(tmp_git_repo: Path) -> None:
     # Fork feature off base_seed_sha.
     _run(tmp_git_repo, "branch", "feature", base_seed_sha)
     _run(tmp_git_repo, "checkout", "feature")
-    feature_sha_before_rebase = _commit(
-        tmp_git_repo, "feat_div.txt", "feat div\n", "feat div"
-    )
+    feature_sha_before_rebase = _commit(tmp_git_repo, "feat_div.txt", "feat div\n", "feat div")
     # Now advance base by one more commit on a disjoint file. Now
     # base is NOT an ancestor of feature (they only share base_seed).
     _run(tmp_git_repo, "checkout", base)
@@ -369,9 +376,7 @@ def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
     """
     base = _base_branch(tmp_git_repo)
     # Seed the shared file on the base branch.
-    (tmp_git_repo / "shared.txt").write_text(
-        "line1\nline2\nline3\n", encoding="utf-8"
-    )
+    (tmp_git_repo / "shared.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
     _run(tmp_git_repo, "add", "shared.txt")
     _run(tmp_git_repo, "commit", "-m", "shared seed")
     a_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -379,25 +384,19 @@ def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
     _run(tmp_git_repo, "branch", "feature", a_sha)
     _run(tmp_git_repo, "checkout", "feature")
     # D1: modify the line that base will later modify.
-    (tmp_git_repo / "shared.txt").write_text(
-        "line1\nFEATURE\nline3\n", encoding="utf-8"
-    )
+    (tmp_git_repo / "shared.txt").write_text("line1\nFEATURE\nline3\n", encoding="utf-8")
     _run(tmp_git_repo, "add", "shared.txt")
     _run(tmp_git_repo, "commit", "-m", "feature: D1 modify line 2")
     # D2: REVERT D1 so the final feature tip matches the common
     # ancestor A. This is the key: the endpoint 3-way merge will see
     # D2's state == A and B's change as additive, so it succeeds.
-    (tmp_git_repo / "shared.txt").write_text(
-        "line1\nline2\nline3\n", encoding="utf-8"
-    )
+    (tmp_git_repo / "shared.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
     _run(tmp_git_repo, "add", "shared.txt")
     _run(tmp_git_repo, "commit", "-m", "feature: D2 revert D1")
     feature_tip_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     # Base: B modifies the same line D1 did, creating the conflict.
     _run(tmp_git_repo, "checkout", base)
-    (tmp_git_repo / "shared.txt").write_text(
-        "line1\nBASE\nline3\n", encoding="utf-8"
-    )
+    (tmp_git_repo / "shared.txt").write_text("line1\nBASE\nline3\n", encoding="utf-8")
     _run(tmp_git_repo, "add", "shared.txt")
     _run(tmp_git_repo, "commit", "-m", "base: B modify line 2")
     # Capture B's SHA BEFORE the integration runs -- the
@@ -469,9 +468,7 @@ def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
     # appended on top of it.
     assert head_sha != feature_tip_before
     # Target ref equals feature tip (the fast-forward landed).
-    base_sha_after = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    base_sha_after = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_sha_after == head_sha, (
         f"AC-06: target ref {base_sha_after!r} must equal HEAD {head_sha!r}"
     )
@@ -480,12 +477,9 @@ def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
     # BEFORE the integration ran (see the early capture above);
     # after the fast-forward ``base`` now points at HEAD, so
     # ``base^2`` is B's pre-integration tip.
-    b_ancestor = _run(
-        tmp_git_repo, "log", "-1", "--format=%H", f"{head_sha}^2"
-    ).stdout.strip()
+    b_ancestor = _run(tmp_git_repo, "log", "-1", "--format=%H", f"{head_sha}^2").stdout.strip()
     assert b_ancestor == b_sha, (
-        f"AC-06: HEAD^2 must be base's pre-integration tip {b_sha!r},"
-        f" got {b_ancestor!r}"
+        f"AC-06: HEAD^2 must be base's pre-integration tip {b_sha!r}, got {b_ancestor!r}"
     )
 
 
@@ -523,9 +517,7 @@ def test_rebase_conflict_then_clean_merge_records_merged_action(
     # Force the rebase to report conflicts; the real endpoint merge
     # against the new base SHA will succeed (no shared file changes
     # in this scenario).
-    def _fake_rebase_onto(
-        target: str, *, repo_root: Path, options: object = None
-    ) -> object:
+    def _fake_rebase_onto(target: str, *, repo_root: Path, options: object = None) -> object:
         return RebaseConflicts(files=["shared.txt"])
 
     monkeypatch.setattr(_ai_mod, "rebase_onto", _fake_rebase_onto)
@@ -533,9 +525,7 @@ def test_rebase_conflict_then_clean_merge_records_merged_action(
     # auto_integrate_rebase_merge imports through (rebase_onto is
     # imported at module load time, so the indirection in _ai_mod is
     # the live binding).
-    monkeypatch.setattr(
-        "ralph.git.rebase.rebase.rebase_onto", _fake_rebase_onto
-    )
+    monkeypatch.setattr("ralph.git.rebase.rebase.rebase_onto", _fake_rebase_onto)
 
     # The endpoint merge must succeed in this scenario (disjoint
     # changes); the function under test relies on
@@ -649,16 +639,12 @@ def test_compare_and_swap_branch_rejects_stale_expected_sha(tmp_git_repo: Path) 
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    pre_landing_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    pre_landing_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     # Concurrent landing: a new commit on base advancing it past
     # the pre-landing SHA.
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
-    post_landing_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    post_landing_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert pre_landing_base_sha != post_landing_base_sha
     # CAS with the STALE pre-landing SHA: Git's ``update-ref``
     # is an atomic CAS. The ref must still equal the
@@ -670,12 +656,8 @@ def test_compare_and_swap_branch_rejects_stale_expected_sha(tmp_git_repo: Path) 
     )
     assert cas_ok is False, "AC-08 CAS must fail when expected_old_sha is stale"
     # Target ref is BYTE-UNCHANGED -- still at the post-landing SHA.
-    final_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    final_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert final_base_sha == post_landing_base_sha
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -753,7 +735,6 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
         f"auto_integrate must never invoke git push; recorded argvs "
         f"containing 'push': {push_argvs[:5]}"
     )
-
 
 
 # ---------------------------------------------------------------------------

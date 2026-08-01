@@ -45,9 +45,7 @@ class TestHandleGitStatus:
             assert result.is_error is False
             assert "On branch main" in result.content[0].text
 
-    def test_status_compact_emits_index_metadata_without_handle(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_emits_index_metadata_without_handle(self, tmp_path: Path) -> None:
         """AC-06: compact ``git_status`` always surfaces
         ``index_used`` and ``index_status`` so agents do not
         guess when the index is unavailable.
@@ -64,9 +62,7 @@ class TestHandleGitStatus:
             "ralph.mcp.tools.git_read.run_git_command_lenient",
             return_value=completed,
         ):
-            result = handle_git_status(
-                session, workspace, {"format": "compact"}
-            )
+            result = handle_git_status(session, workspace, {"format": "compact"})
         assert result.is_error is False
         payload = json.loads(result.content[0].text)
         assert payload["format"] == "compact"
@@ -80,15 +76,14 @@ class TestHandleGitStatus:
         assert payload["changed_symbols"] == {}
         assert payload["fallback_reason"] == "index_not_attached"
 
-    def test_status_compact_marks_index_stale_when_generation_zero(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_marks_index_stale_when_generation_zero(self, tmp_path: Path) -> None:
         """AC-06: when the attached index has no committed
         generation, the compact payload marks the index as
         stale with an explicit reason so agents do not treat
         absent evidence as fresh.
         """
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
+
         # Attach a fake handle with a store that returns no
         # current generation. We need to wire it after the
         # session is constructed so the attribute lookup
@@ -113,9 +108,7 @@ class TestHandleGitStatus:
             "ralph.mcp.tools.git_read.run_git_command_lenient",
             return_value=completed,
         ):
-            result = handle_git_status(
-                session, workspace, {"format": "compact"}
-            )
+            result = handle_git_status(session, workspace, {"format": "compact"})
         payload = json.loads(result.content[0].text)
         assert payload["index_used"] is False
         assert payload["index_status"] == "stale"
@@ -139,18 +132,14 @@ class TestHandleGitStatus:
 
         workspace_dir = tmp_path / "ws"
         workspace_dir.mkdir()
-        (workspace_dir / "a.py").write_text(
-            "def hello():\n    return 1\n"
-        )
+        (workspace_dir / "a.py").write_text("def hello():\n    return 1\n")
         handle = build_explore_index(workspace_dir)
         reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
         try:
             # Mark a path dirty WITHOUT consuming it via reindex.
             # The compact payload must observe the dirty queue
             # and mark the index as stale.
-            handle.store.mark_dirty(
-                "a.py", reason="mutated", source_tool="write_file"
-            )
+            handle.store.mark_dirty("a.py", reason="mutated", source_tool="write_file")
             session = MockSession({GIT_STATUS_READ_CAPABILITY})
             session.explore_index = handle
             workspace = MockWorkspaceRoot(workspace_dir)
@@ -164,9 +153,7 @@ class TestHandleGitStatus:
                 "ralph.mcp.tools.git_read.run_git_command_lenient",
                 return_value=completed,
             ):
-                result = handle_git_status(
-                    session, workspace, {"format": "compact"}
-                )
+                result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)
             assert payload["index_used"] is False
             assert payload["index_status"] == "stale"
@@ -188,9 +175,7 @@ class TestHandleGitStatus:
 
         workspace_dir = tmp_path / "ws"
         workspace_dir.mkdir()
-        (workspace_dir / "a.py").write_text(
-            "def hello():\n    return 1\n"
-        )
+        (workspace_dir / "a.py").write_text("def hello():\n    return 1\n")
         handle = build_explore_index(workspace_dir)
         reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
         try:
@@ -207,9 +192,7 @@ class TestHandleGitStatus:
                 "ralph.mcp.tools.git_read.run_git_command_lenient",
                 return_value=completed,
             ):
-                result = handle_git_status(
-                    session, workspace, {"format": "compact"}
-                )
+                result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)
             assert payload["index_used"] is True
             assert payload["index_status"] == "current"
@@ -242,16 +225,12 @@ class TestHandleGitStatus:
 
         workspace_dir = tmp_path / "ws"
         workspace_dir.mkdir()
-        (workspace_dir / "a.py").write_text(
-            "def hello():\n    return 1\n"
-        )
+        (workspace_dir / "a.py").write_text("def hello():\n    return 1\n")
         handle = build_explore_index(workspace_dir)
         reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
         try:
             # Force ``peek_dirty_paths`` to raise.
-            handle.store.peek_dirty_paths = (
-                lambda: (_ for _ in ()).throw(RuntimeError("boom"))
-            )
+            handle.store.peek_dirty_paths = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
             session = MockSession({GIT_STATUS_READ_CAPABILITY})
             session.explore_index = handle
             workspace = MockWorkspaceRoot(workspace_dir)
@@ -265,9 +244,7 @@ class TestHandleGitStatus:
                 "ralph.mcp.tools.git_read.run_git_command_lenient",
                 return_value=completed,
             ):
-                result = handle_git_status(
-                    session, workspace, {"format": "compact"}
-                )
+                result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)
             assert payload["index_used"] is False
             assert payload["index_status"] == "unavailable"
@@ -296,9 +273,7 @@ class TestHandleGitStatus:
 
         workspace_dir = tmp_path / "ws"
         workspace_dir.mkdir()
-        (workspace_dir / "a.py").write_text(
-            "def hello():\n    return 1\n"
-        )
+        (workspace_dir / "a.py").write_text("def hello():\n    return 1\n")
         handle = build_explore_index(workspace_dir)
         reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
         try:
@@ -329,9 +304,7 @@ class TestHandleGitStatus:
                 "ralph.mcp.tools.git_read.run_git_command_lenient",
                 return_value=completed,
             ):
-                result = handle_git_status(
-                    session, workspace, {"format": "compact"}
-                )
+                result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)
             assert payload["index_used"] is False
             assert payload["index_status"] == "stale"
@@ -340,9 +313,7 @@ class TestHandleGitStatus:
         finally:
             handle.store.close()
 
-    def test_status_compact_does_not_materialize_files_table(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_does_not_materialize_files_table(self, tmp_path: Path) -> None:
         """AC-06: the compact ``git_status`` payload must
         detect stale state through bounded aggregates
         (``has_deleted_files``) rather than calling
@@ -357,9 +328,7 @@ class TestHandleGitStatus:
 
         workspace_dir = tmp_path / "ws"
         workspace_dir.mkdir()
-        (workspace_dir / "a.py").write_text(
-            "def hello():\n    return 1\n"
-        )
+        (workspace_dir / "a.py").write_text("def hello():\n    return 1\n")
         handle = build_explore_index(workspace_dir)
         reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
         iter_calls = {"n": 0}
@@ -406,9 +375,7 @@ class TestHandleGitStatus:
                 "ralph.mcp.tools.git_read.run_git_command_lenient",
                 return_value=completed,
             ):
-                result = handle_git_status(
-                    session, workspace, {"format": "compact"}
-                )
+                result = handle_git_status(session, workspace, {"format": "compact"})
             payload = json.loads(result.content[0].text)
             assert payload["index_status"] == "current"
             # The bounded aggregate is consulted; the
@@ -420,9 +387,7 @@ class TestHandleGitStatus:
 
     # --- AC-06: ranked-card contract -----------------------------------
 
-    def test_status_compact_attaches_deterministic_score_per_card(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_attaches_deterministic_score_per_card(self, tmp_path: Path) -> None:
         """AC-06: every compact card carries an integer ``score``
         and a list of ``score_reasons`` describing which signals
         contributed. The score is deterministic across calls.
@@ -439,18 +404,14 @@ class TestHandleGitStatus:
             "ralph.mcp.tools.git_read.run_git_command_lenient",
             return_value=completed,
         ):
-            result = handle_git_status(
-                session, workspace, {"format": "compact"}
-            )
+            result = handle_git_status(session, workspace, {"format": "compact"})
         payload = json.loads(result.content[0].text)
         cards = payload["paths"]
         # Every card carries a score and reasons.
         for card in cards:
             assert isinstance(card["score"], int)
             assert isinstance(card["score_reasons"], list)
-            assert card["score_reasons"], (
-                f"empty score_reasons for {card['path']!r}"
-            )
+            assert card["score_reasons"], f"empty score_reasons for {card['path']!r}"
         # The ranking metadata documents the contract.
         ranking = payload["ranking"]
         assert ranking["scheme"] == "deterministic_integer_score"
@@ -458,13 +419,9 @@ class TestHandleGitStatus:
         assert any("+100 role=unstaged" in c for c in ranking["components"])
         assert any("+80 role=staged" in c for c in ranking["components"])
         assert any("+60 role=untracked" in c for c in ranking["components"])
-        assert any(
-            "-50 generated_or_vendor_path" in c for c in ranking["components"]
-        )
+        assert any("-50 generated_or_vendor_path" in c for c in ranking["components"])
 
-    def test_status_compact_sorts_cards_by_score_descending(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_sorts_cards_by_score_descending(self, tmp_path: Path) -> None:
         """AC-06: cards are sorted by ``score`` descending. The
         documented score formula puts unstaged (+100) above
         staged (+80) above untracked (+60). The test wires a
@@ -488,9 +445,7 @@ class TestHandleGitStatus:
             "ralph.mcp.tools.git_read.run_git_command_lenient",
             return_value=completed,
         ):
-            result = handle_git_status(
-                session, workspace, {"format": "compact"}
-            )
+            result = handle_git_status(session, workspace, {"format": "compact"})
         payload = json.loads(result.content[0].text)
         cards = payload["paths"]
         # The unsorted test data puts c.py AFTER a.py and
@@ -501,9 +456,7 @@ class TestHandleGitStatus:
         assert ordered_paths == ["c.py", "a.py", "b.txt"]
         assert [c["score"] for c in cards] == [100, 80, 60]
 
-    def test_status_compact_lexicographic_tiebreak(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_lexicographic_tiebreak(self, tmp_path: Path) -> None:
         """AC-06: cards with equal scores sort lexicographically
         by path. The test emits two unstaged paths with the
         same role; the sorted output must put ``a.py`` before
@@ -523,18 +476,14 @@ class TestHandleGitStatus:
             "ralph.mcp.tools.git_read.run_git_command_lenient",
             return_value=completed,
         ):
-            result = handle_git_status(
-                session, workspace, {"format": "compact"}
-            )
+            result = handle_git_status(session, workspace, {"format": "compact"})
         payload = json.loads(result.content[0].text)
         cards = payload["paths"]
         assert [c["path"] for c in cards] == ["a.py", "b.py"]
         # Both cards carry the same score (+100 unstaged).
         assert cards[0]["score"] == cards[1]["score"] == 100
 
-    def test_status_compact_generated_or_vendor_path_demoted(
-        self, tmp_path: Path
-    ) -> None:
+    def test_status_compact_generated_or_vendor_path_demoted(self, tmp_path: Path) -> None:
         """AC-06: a generated/vendor path receives the ``-50``
         penalty and ranks below an unstaged path even when its
         role is unstaged (a vendor with unstaged status still
@@ -554,9 +503,7 @@ class TestHandleGitStatus:
             "ralph.mcp.tools.git_read.run_git_command_lenient",
             return_value=completed,
         ):
-            result = handle_git_status(
-                session, workspace, {"format": "compact"}
-            )
+            result = handle_git_status(session, workspace, {"format": "compact"})
         payload = json.loads(result.content[0].text)
         cards = payload["paths"]
         # ``a.py`` (regular unstaged, +100) ranks first;

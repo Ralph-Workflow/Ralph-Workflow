@@ -59,7 +59,9 @@ def _emit(renderer: ParallelDisplay, kind: str, body: str) -> None:
     renderer.stop()
 
 
-@pytest.mark.parametrize("kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"])
+@pytest.mark.parametrize(
+    "kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"]
+)
 def test_activity_line_chrome_carries_no_level_badge_plain(kind: str) -> None:
     """The plain (color-off) activity line never carries a LEVEL badge.
 
@@ -78,7 +80,9 @@ def test_activity_line_chrome_carries_no_level_badge_plain(kind: str) -> None:
         )
 
 
-@pytest.mark.parametrize("kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"])
+@pytest.mark.parametrize(
+    "kind", ["text", "thinking", "tool_use", "tool_result", "error", "progress"]
+)
 def test_activity_line_chrome_carries_no_cat_badge_plain(kind: str) -> None:
     """The plain activity line never carries a CAT (META/OUT) badge either."""
     renderer, buf = _make_plain_renderer()

@@ -414,9 +414,7 @@ def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
         "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
     )
     content = primary.read_text(encoding="utf-8")
-    assert "typed block" in content, (
-        f"{primary} must describe typed block delivery mode"
-    )
+    assert "typed block" in content, f"{primary} must describe typed block delivery mode"
     # Must not claim all non-image media returns resource_reference
     assert "Returns all other media as `resource_reference`" not in content, (
         f"{primary} must not claim all non-image media returns resource_reference"
@@ -476,8 +474,7 @@ def test_mcp_servers_doc_describes_replayable_resource_handles_via_resources_rea
     candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
     primary = next((p for p in candidates if p.exists()), None)
     assert primary is not None, (
-        "Expected one of the docs/mcp/mcp-servers.md legacy file or the "
-        "Sphinx MCP homes to exist"
+        "Expected one of the docs/mcp/mcp-servers.md legacy file or the Sphinx MCP homes to exist"
     )
     content = primary.read_text(encoding="utf-8")
     assert "ralph://media/" in content, (
@@ -512,9 +509,7 @@ def test_mcp_servers_doc_text_only_safety_is_explicit() -> None:
         "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
     )
     content = primary.read_text(encoding="utf-8")
-    assert "text-only" in content, (
-        f"{primary} must explicitly describe text-only client safety"
-    )
+    assert "text-only" in content, f"{primary} must explicitly describe text-only client safety"
 
 
 def test_agents_doc_describes_resolved_capability_profile() -> None:
@@ -551,9 +546,7 @@ def test_agents_doc_explains_interactive_completion_evaluation() -> None:
     assert "declare_complete" in content, (
         "agents.md must explain that declare_complete persists the required sentinel"
     )
-    assert "both" in content, (
-        "agents.md must make the receipt-plus-sentinel conjunction explicit"
-    )
+    assert "both" in content, "agents.md must make the receipt-plus-sentinel conjunction explicit"
 
 
 def test_agents_doc_describes_resumable_session_on_incomplete_exit() -> None:
@@ -714,9 +707,7 @@ def test_tooling_guide_mentions_strict_mypy_config() -> None:
     assert "ralph-workflow/mypy.ini" in content, (
         f"{primary} must reference the exact maintained mypy config path"
     )
-    assert "strict" in content.lower(), (
-        f"{primary} must mention strict type checking"
-    )
+    assert "strict" in content.lower(), f"{primary} must mention strict type checking"
 
 
 def test_tooling_guide_mentions_type_ignore_policy() -> None:

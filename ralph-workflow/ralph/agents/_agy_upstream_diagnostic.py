@@ -6,8 +6,13 @@ import re
 from pathlib import Path
 
 _AGY_CLI_LOG_PATH = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
-_QUOTA_PATTERN = re.compile(r"(?:RESOURCE_EXHAUSTED(?: \(code 429\))?|\b429\b|quota exhausted)", re.IGNORECASE)
-_AUTH_PATTERN = re.compile(r"(?:not logged in|authentication failed|failed to get OAuth token|OAuth failure)", re.IGNORECASE)
+_QUOTA_PATTERN = re.compile(
+    r"(?:RESOURCE_EXHAUSTED(?: \(code 429\))?|\b429\b|quota exhausted)", re.IGNORECASE
+)
+_AUTH_PATTERN = re.compile(
+    r"(?:not logged in|authentication failed|failed to get OAuth token|OAuth failure)",
+    re.IGNORECASE,
+)
 _MODEL_PATTERN = re.compile(
     r"(?:model .*?(?:not recognized|not in local config)|failed to resolve model)", re.IGNORECASE
 )
@@ -15,9 +20,7 @@ _MODEL_ID_PATTERN = re.compile(r"(?:model flag\s+|model ID\s+)(\S+)", re.IGNOREC
 _QUOTA_RESET_PATTERN = re.compile(r"Resets in\s+([^\s.]+)", re.IGNORECASE)
 
 
-def agy_empty_output_reason(
-    output: list[str], *, cli_log_path: Path | None = None
-) -> str | None:
+def agy_empty_output_reason(output: list[str], *, cli_log_path: Path | None = None) -> str | None:
     """Return AGY's actionable empty-output cause from output or its bounded log tail."""
     evidence = "\n".join(output)
     if not evidence:

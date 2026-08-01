@@ -17,14 +17,20 @@ _ALLOWED_STATEMENTS = (
 def collect_violations() -> list[str]:
     """Return missing canonical cross-surface statements."""
     policy = _POLICY_PATH.read_text(encoding="utf-8")
-    templates = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in packaged_template_root().rglob("*.jinja")
-    ) + "\n" + "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in packaged_template_root().rglob("*.j2")
+    templates = (
+        "\n".join(
+            path.read_text(encoding="utf-8") for path in packaged_template_root().rglob("*.jinja")
+        )
+        + "\n"
+        + "\n".join(
+            path.read_text(encoding="utf-8") for path in packaged_template_root().rglob("*.j2")
+        )
     )
-    return [statement for statement in _ALLOWED_STATEMENTS if statement not in policy or statement not in templates]
+    return [
+        statement
+        for statement in _ALLOWED_STATEMENTS
+        if statement not in policy or statement not in templates
+    ]
 
 
 def main() -> int:

@@ -32,9 +32,7 @@ pytestmark = pytest.mark.subprocess_e2e
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {"general": {"auto_integrate_enabled": True}}
-    )
+    return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}})
 
 
 def test_phase_transition_returns_observable_conflict(
@@ -71,9 +69,7 @@ def test_startup_threads_both_resolvers_and_returns_conflict(
     """Startup uses both production resolver factories before phase one."""
     conflict_resolver = MagicMock(name="conflict-resolver")
     rebase_resolver = MagicMock(name="rebase-stop-resolver")
-    outcome = RebaseState(
-        last_action="conflict", last_target="main", fast_forwarded=False
-    )
+    outcome = RebaseState(last_action="conflict", last_target="main", fast_forwarded=False)
     received: list[tuple[ConflictResolver | None, RebaseStopResolver | None]] = []
 
     def _integrate(
@@ -95,17 +91,11 @@ def test_startup_threads_both_resolvers_and_returns_conflict(
     def _rebase_builder(**_kwargs: object) -> MagicMock:
         return rebase_resolver
 
-    monkeypatch.setattr(
-        run_loop, "build_agent_conflict_resolver", _conflict_builder
-    )
-    monkeypatch.setattr(
-        run_loop, "build_agent_rebase_stop_resolver", _rebase_builder
-    )
+    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _conflict_builder)
+    monkeypatch.setattr(run_loop, "build_agent_rebase_stop_resolver", _rebase_builder)
     integrate = MagicMock(side_effect=_integrate)
     monkeypatch.setattr(run_loop, "auto_integrate_on_phase_transition", integrate)
-    monkeypatch.setattr(
-        runner, "_log_auto_integrate_outcome", MagicMock(return_value=None)
-    )
+    monkeypatch.setattr(runner, "_log_auto_integrate_outcome", MagicMock(return_value=None))
     ctx = MagicMock()
     ctx.config = _config()
     ctx.workspace_scope = WorkspaceScope(Path("/workspace"))

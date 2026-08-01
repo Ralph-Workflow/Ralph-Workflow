@@ -282,18 +282,13 @@ def test_index_status_reports_last_job_after_reindex(tmp_path: Path) -> None:
         assert reindex_payload["generation"] == 1
 
         # Status must not raise and must report the last_job dict.
-        status_payload = _decode(
-            handle_ralph_index_status(session, _Workspace(workspace), {})
-        )
+        status_payload = _decode(handle_ralph_index_status(session, _Workspace(workspace), {}))
         assert status_payload["enabled"] is True
         assert status_payload["generation"] == 1
         assert isinstance(status_payload["last_job"], dict), status_payload
         assert status_payload["last_job"]["status"] == "ok"
         # last_job carries the same job_id the reindex returned.
-        assert (
-            status_payload["last_job"]["job_id"]
-            == reindex_payload["job_id"]
-        )
+        assert status_payload["last_job"]["job_id"] == reindex_payload["job_id"]
         # generation is recorded as a string in last_job (raw row
         # values) but the integer appears in the typed status fields.
         assert status_payload["last_job"]["generation"] == "1"
@@ -325,13 +320,9 @@ def test_reindex_full_rebuilds(tmp_path: Path) -> None:
     try:
         session = _FakeSession(explore_index=handle)
         # First build.
-        handle_ralph_reindex(
-            session, _Workspace(workspace), {"mode": "changed"}
-        )
+        handle_ralph_reindex(session, _Workspace(workspace), {"mode": "changed"})
         # Full rebuild resets the generation to 1.
-        result = handle_ralph_reindex(
-            session, _Workspace(workspace), {"mode": "full"}
-        )
+        result = handle_ralph_reindex(session, _Workspace(workspace), {"mode": "full"})
         payload = _decode(result)
         assert payload["generation"] == 1
     finally:
@@ -541,9 +532,7 @@ def test_reindex_updates_handle_last_refresh_kind(tmp_path: Path) -> None:
     handle = build_explore_index(workspace)
     try:
         session = _FakeSession(explore_index=handle)
-        handle_ralph_reindex(
-            session, _Workspace(workspace), {"mode": "changed"}
-        )
+        handle_ralph_reindex(session, _Workspace(workspace), {"mode": "changed"})
         assert handle.last_refresh_kind == "changed"
         handle_ralph_reindex(session, _Workspace(workspace), {"mode": "full"})
         assert handle.last_refresh_kind == "full"
@@ -685,8 +674,7 @@ def test_ralph_graph_clears_cancel_flag_map_after_each_call(
             }
             handle_ralph_graph_local(call_session, _Workspace(workspace), params)
         assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size, (
-            "Cancel-flag map leaked entries: "
-            f"{dict(handlers._GRAPH_CANCEL_FLAGS)}"
+            f"Cancel-flag map leaked entries: {dict(handlers._GRAPH_CANCEL_FLAGS)}"
         )
     finally:
         handle.store.close()
@@ -717,9 +705,7 @@ def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
             patch.object(graph_module, "run_query", side_effect=_explode),
             pytest.raises(RuntimeError),
         ):
-            handle_ralph_graph_local(
-                call_session, _Workspace(workspace), params
-            )
+            handle_ralph_graph_local(call_session, _Workspace(workspace), params)
         assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size, (
             "Cancel-flag map leaked entries after a query error: "
             f"{dict(handlers._GRAPH_CANCEL_FLAGS)}"
@@ -781,12 +767,8 @@ def test_ralph_graph_concurrent_calls_have_independent_cancel_flags(
 
         with patch.object(handlers, "_arm_cancel_flag", side_effect=_spy_arm):
             # Two concurrent calls against the same session.
-            result_a = handle_ralph_graph_local(
-                session, _Workspace(workspace), params
-            )
-            result_b = handle_ralph_graph_local(
-                session, _Workspace(workspace), params
-            )
+            result_a = handle_ralph_graph_local(session, _Workspace(workspace), params)
+            result_b = handle_ralph_graph_local(session, _Workspace(workspace), params)
         # Both calls succeed and return independent bounded results.
         assert result_a.is_error is False
         assert result_b.is_error is False
@@ -966,9 +948,7 @@ def test_ralph_graph_closes_ephemeral_store_when_no_session_handle(
                 "target": "a.py",
                 "timeout_ms": 5_000,
             }
-            result = handle_ralph_graph_local(
-                no_handle_session, _Workspace(workspace), params
-            )
+            result = handle_ralph_graph_local(no_handle_session, _Workspace(workspace), params)
         # The ephemeral handle's store must be closed.
         mock_handle.store.close.assert_called_once()
     assert result.is_error is False

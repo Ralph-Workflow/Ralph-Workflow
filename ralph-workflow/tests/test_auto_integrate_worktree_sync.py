@@ -47,8 +47,10 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _base_branch(repo_root: Path) -> str:
-    return _run(repo_root, "symbolic-ref", "--quiet", "HEAD").stdout.strip().removeprefix(
-        "refs/heads/"
+    return (
+        _run(repo_root, "symbolic-ref", "--quiet", "HEAD")
+        .stdout.strip()
+        .removeprefix("refs/heads/")
     )
 
 
@@ -82,17 +84,13 @@ def test_dirty_checked_out_target_lands_without_losing_operator_changes(
     dirty_file = tmp_git_repo / "tracked.txt"
     dirty_file.write_text("operator work\n", encoding="utf-8")
 
-    outcome = auto_integrate_after_commit(
-        _config(main), WorkspaceScope(feature), RebaseState()
-    )
+    outcome = auto_integrate_after_commit(_config(main), WorkspaceScope(feature), RebaseState())
 
     assert outcome is not None
     assert outcome.fast_forwarded is True
     assert branch_sha(tmp_git_repo, main) == _run(feature, "rev-parse", "HEAD").stdout.strip()
     assert dirty_file.read_text(encoding="utf-8") == "operator work\n"
     assert (tmp_git_repo / "feature.txt").exists()
-    status = _run(
-        tmp_git_repo, "status", "--porcelain", "--untracked-files=no"
-    ).stdout
+    status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no").stdout
     assert "tracked.txt" in status
     assert "feature.txt" not in status

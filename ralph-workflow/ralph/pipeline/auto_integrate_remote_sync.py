@@ -451,7 +451,6 @@ def push_target_after_landing(
     )
 
 
-
 def _coerce_push_result(
     result: _remote_push_module.PushResult | str, *, remote: str, target: str
 ) -> _remote_push_module.PushResult:

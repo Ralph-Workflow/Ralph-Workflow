@@ -40,34 +40,26 @@ def test_conflicted_rebase_uses_injected_resolver_before_merge_fallback(
     def _routing_reason(_root: Path, _target: str) -> None:
         return None
 
-    def _rebase_onto(
-        _target: str, *, repo_root: Path
-    ) -> RebaseConflicts:
+    def _rebase_onto(_target: str, *, repo_root: Path) -> RebaseConflicts:
         return RebaseConflicts(files=["shared.txt"])
 
     def _set_resolving(_root: Path, _value: bool) -> bool:
         return True
 
-    def _resolve_in_progress(
-        root: Path, target: str, received_resolver: object
-    ) -> bool:
+    def _resolve_in_progress(root: Path, target: str, received_resolver: object) -> bool:
         assert root == Path("/workspace")
         assert target == "main"
         assert received_resolver is _resolver
         return True
 
-    def _fallback(
-        root: Path, _target: str, _outcome: object, _resolver: object
-    ) -> RebaseRunResult:
+    def _fallback(root: Path, _target: str, _outcome: object, _resolver: object) -> RebaseRunResult:
         fallback_calls.append(root)
         raise AssertionError("resolved rebase must not fall back")
 
     monkeypatch.setattr(merge_engine, "_range_routing_reason", _routing_reason)
     monkeypatch.setattr(merge_engine, "rebase_onto", _rebase_onto)
     monkeypatch.setattr(merge_engine, "set_resolving_rebase", _set_resolving)
-    monkeypatch.setattr(
-        merge_engine, "resolve_rebase_in_progress", _resolve_in_progress
-    )
+    monkeypatch.setattr(merge_engine, "resolve_rebase_in_progress", _resolve_in_progress)
     monkeypatch.setattr(merge_engine, "_fallback_to_endpoint_merge", _fallback)
 
     result = merge_engine.run_rebase_or_merge(

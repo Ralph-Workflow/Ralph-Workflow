@@ -20,9 +20,7 @@ RUN_TIME_REPORT_SPEC = MdArtifactSpec(
         "Timing": SectionRule(require_items=True, allow_body=True),
         "Phases": SectionRule(require_items=True, allow_body=True),
         "Slowest Steps": SectionRule(require_items=True, allow_body=True),
-        "Memory Findings": SectionRule(
-            required=False, require_items=False, allow_body=False
-        ),
+        "Memory Findings": SectionRule(required=False, require_items=False, allow_body=False),
         "Signals": SectionRule(require_items=True, allow_body=True),
     },
     to_content=_content,

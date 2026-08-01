@@ -263,9 +263,7 @@ class PipelineSubscriber:
         # The display owns no independent stall latch. The sink is wrapped
         # defensively in ``record_waiting_status`` so a misbehaving
         # host does not break the snapshot path.
-        self._watchdog_attention_sink: Callable[[str | None], None] | None = (
-            watchdog_attention_sink
-        )
+        self._watchdog_attention_sink: Callable[[str | None], None] | None = watchdog_attention_sink
         # wt-047-stall-label: dedicated lock for late-binding the
         # sink from a host that already holds a subscriber
         # reference (the ``subscriber=`` injected path on
@@ -538,9 +536,7 @@ class PipelineSubscriber:
         for s in snapshots_to_publish:
             self._publish(s)
 
-    def set_watchdog_attention_sink(
-        self, sink: Callable[[str | None], None] | None
-    ) -> None:
+    def set_watchdog_attention_sink(self, sink: Callable[[str | None], None] | None) -> None:
         """Bind (or clear) the watchdog-attention sink after construction.
 
         wt-047-stall-label (DA-001): the supported ``subscriber=``

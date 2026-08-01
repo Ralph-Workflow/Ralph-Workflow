@@ -58,9 +58,7 @@ def autowire_chains_to_detected_agent(
 
     supports = {support.name: support for support in builtin_supports()}
     default_agents = {
-        entry.split("/", 1)[0]
-        for entries in default_chains.values()
-        for entry in entries
+        entry.split("/", 1)[0] for entries in default_chains.values() for entry in entries
     }
     if any(
         support is not None and shutil.which(_binary_for(name, support.cmd)) is not None
@@ -69,13 +67,14 @@ def autowire_chains_to_detected_agent(
     ):
         return "kept-default-agent"
 
-    selected = (detected if detected is not None else detect_installed_agents())
+    selected = detected if detected is not None else detect_installed_agents()
     if not selected:
         return None
     chain_block = re.compile(r"(?ms)^\[agent_chains\]\n.*?(?=^\[|\Z)")
     match = chain_block.search(text)
     if match is None:
         return None
+
     def replacement(item: Match[str]) -> str:
         return f'{item.group(1)} = ["{selected[0]}"]'
 

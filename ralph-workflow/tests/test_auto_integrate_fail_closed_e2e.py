@@ -40,9 +40,7 @@ def _record(phase: str) -> object:
     )
 
 
-def _stub_recovery(
-    monkeypatch: MonkeyPatch, *, phase: str
-) -> list[Path]:
+def _stub_recovery(monkeypatch: MonkeyPatch, *, phase: str) -> list[Path]:
     cleared: list[Path] = []
     monkeypatch.setattr(recovery, "_read_record", lambda _root: _record(phase))
     monkeypatch.setattr(recovery, "_clear_record", cleared.append)
@@ -99,9 +97,7 @@ def test_unreadable_merge_state_retains_integrating_record(
     monkeypatch.setattr(recovery, "merge_state", lambda _root: next(states))
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: False)
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(Path("/workspace"))
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(Path("/workspace")))
 
     assert outcome is not None
     assert outcome.last_action == "skipped"
@@ -125,9 +121,7 @@ def test_unreadable_merge_state_blocks_integrated_fast_forward(
         lambda *_args, **_kwargs: fast_forward.append(True),
     )
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(Path("/workspace"))
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(Path("/workspace")))
 
     assert outcome is not None
     assert outcome.last_action == "skipped"

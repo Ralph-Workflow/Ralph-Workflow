@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
@@ -82,9 +81,7 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_optional_artifact_absent_without_sentinel_is_resumable(
-        self, tmp_path: Path
-    ) -> None:
+    def test_optional_artifact_absent_without_sentinel_is_resumable(self, tmp_path: Path) -> None:
         """Optional artifact policy does not make a clean exit completion."""
         ra = RequiredArtifact(
             phase="development",

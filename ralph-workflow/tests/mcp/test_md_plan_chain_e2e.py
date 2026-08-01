@@ -49,9 +49,7 @@ from ralph.prompts.template_context import TemplateContext
 from tests.test_tool_artifact_2_helper_mocksession import MockSession
 from tests.test_tool_artifact_2_helper_mockworkspace import MockWorkspace
 
-_ADVISORY_COST_RE = re.compile(
-    r"the run cost is [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$"
-)
+_ADVISORY_COST_RE = re.compile(r"the run cost is [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$")
 _BLOCKING_CONSUMER_RE = re.compile(
     r"blocking because [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$"
 )
@@ -173,8 +171,7 @@ def test_hollow_plan_surfaces_cost_named_warnings_not_errors() -> None:
     )
     for d in plan020:
         assert _ADVISORY_COST_RE.search(d.message), (
-            f"PLAN020 hollow-plan warning does not follow cost/fix convention: "
-            f"{d.message!r}"
+            f"PLAN020 hollow-plan warning does not follow cost/fix convention: {d.message!r}"
         )
 
 
@@ -229,9 +226,7 @@ def test_hollow_plan_tool_payload_reports_warnings_and_zero_overrides() -> None:
     payload = _verify_payload(_hollow_plan())
     counts = payload["counts"]
     assert isinstance(counts, dict)
-    assert counts["error"] == 0, (
-        f"hollow plan must report zero errors, got {counts!r}"
-    )
+    assert counts["error"] == 0, f"hollow plan must report zero errors, got {counts!r}"
     assert counts["warning"] >= 1, (
         f"hollow plan must surface at least one cost-named warning, got {counts!r}"
     )
@@ -318,8 +313,7 @@ def test_unconventional_plan_tool_payload_reports_zero_counts() -> None:
     counts = payload["counts"]
     assert isinstance(counts, dict)
     assert counts == {"error": 0, "info": 0, "warning": 0}, (
-        f"unconventional substantive plan should report zero counts; got "
-        f"{counts!r}"
+        f"unconventional substantive plan should report zero counts; got {counts!r}"
     )
     assert payload["valid"] is True
     assert payload["overridden"] == []

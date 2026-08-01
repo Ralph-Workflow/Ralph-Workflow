@@ -23,9 +23,7 @@ from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 #: A marker-free AGENTS.md with a heading — significant per the heuristic.
-_SIGNIFICANT_AGENTS_MD = (
-    "# Our agent rules\n\nAlways run make test before committing.\n"
-)
+_SIGNIFICANT_AGENTS_MD = "# Our agent rules\n\nAlways run make test before committing.\n"
 
 #: Marker-free content below both significance thresholds.
 _INSIGNIFICANT_AGENTS_MD = "be nice to the codebase\n"
@@ -55,12 +53,8 @@ class _Selector:
 def _stub_load_result() -> _LoadResult:
     return _LoadResult(
         config=UnifiedConfig(),
-        workspace_scope=WorkspaceScope(
-            root="/test/project", allowed_roots=["/test/project"]
-        ),
-        initial_state=PipelineState(
-            phase="planning", policy_entry_phase="planning"
-        ),
+        workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
+        initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
         policy_bundle=None,
         run_id="test-run-id",
     )
@@ -78,9 +72,7 @@ def _run(
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
         emit_factory=emit_messages.append,
-        invoke_remediation_agent_factory=lambda _w: (
-            lambda *, phase, prompt_path: False
-        ),
+        invoke_remediation_agent_factory=lambda _w: lambda *, phase, prompt_path: False,
         select_factory=select,
         is_tty=is_tty,
     )
@@ -201,8 +193,7 @@ def test_existing_managed_block_never_prompts() -> None:
     ws = MemoryWorkspace()
     ws.write(
         markers.AGENTS_MD,
-        "# Our agent rules\n\n"
-        f"{markers.AGENTS_BLOCK_BEGIN}\nbody\n{markers.AGENTS_BLOCK_END}\n",
+        f"# Our agent rules\n\n{markers.AGENTS_BLOCK_BEGIN}\nbody\n{markers.AGENTS_BLOCK_END}\n",
     )
     emit_messages: list[str] = []
 
@@ -272,9 +263,7 @@ def test_menu_descriptions_fit_on_one_terminal_line() -> None:
         *cli_integration._INIT_CHOICES,
         *cli_integration._schema_choices(3),
     ]
-    too_long = [
-        choice.key for choice in choices if len(choice.description) > budget
-    ]
+    too_long = [choice.key for choice in choices if len(choice.description) > budget]
     assert not too_long, f"descriptions exceed {budget} chars: {too_long}"
 
 

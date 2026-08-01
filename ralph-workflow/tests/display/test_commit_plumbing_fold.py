@@ -46,9 +46,7 @@ def test_commit_plumbing_drops_tool_input_summary() -> None:
 def test_commit_renders_text_via_shared_registry() -> None:
     """A ``text`` line flows through ``render_event`` (not a private path)."""
     line = AgentOutputLine(type="text", content="hello world", metadata={})
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name="claude"
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name="claude")
     assert isinstance(rendered, Text)
     plain = rendered.plain
     assert "hello world" in plain
@@ -61,9 +59,7 @@ def test_commit_renders_tool_use_via_shared_registry() -> None:
         content="read",
         metadata={"input": {"path": "/tmp/foo.py"}},
     )
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name="claude"
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name="claude")
     assert isinstance(rendered, Text)
     plain = rendered.plain
     # The shared registry produces a tool name + an input summary;
@@ -78,9 +74,7 @@ def test_commit_renders_tool_result_via_shared_registry() -> None:
         content="ok",
         metadata={},
     )
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name="claude"
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name="claude")
     assert isinstance(rendered, Text)
     plain = rendered.plain
     assert "ok" in plain
@@ -89,9 +83,7 @@ def test_commit_renders_tool_result_via_shared_registry() -> None:
 def test_commit_renders_error_via_shared_registry() -> None:
     """An ``error`` line is rendered by the shared registry."""
     line = AgentOutputLine(type="error", content="boom", metadata={})
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name="claude"
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name="claude")
     assert isinstance(rendered, Text)
     plain = rendered.plain
     assert "boom" in plain
@@ -104,9 +96,7 @@ def test_commit_renders_unknown_via_shared_registry() -> None:
         content="payload",
         metadata={},
     )
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name="claude"
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name="claude")
     assert isinstance(rendered, Text)
     # The shared registry's UNKNOWN handler is the design path for
     # unrecognized events: it still produces a Text so the operator
@@ -117,9 +107,7 @@ def test_commit_renders_unknown_via_shared_registry() -> None:
 def test_commit_renderer_returns_none_for_empty_text() -> None:
     """An empty text line is dropped (legacy contract)."""
     line = AgentOutputLine(type="text", content="   ", metadata={})
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name="claude"
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name="claude")
     assert rendered is None
 
 
@@ -127,8 +115,6 @@ def test_commit_renderer_returns_none_for_empty_text() -> None:
 def test_commit_renderer_does_not_crash_for_known_agents(agent_name: str) -> None:
     """The shared registry handles every documented agent identity."""
     line = AgentOutputLine(type="text", content="ping", metadata={})
-    rendered = commit_plumbing._render_commit_agent_activity_line(
-        line, agent_name=agent_name
-    )
+    rendered = commit_plumbing._render_commit_agent_activity_line(line, agent_name=agent_name)
     assert isinstance(rendered, Text)
     assert "ping" in rendered.plain

@@ -46,9 +46,7 @@ def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(
-        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
-    )
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(
         runner_module, "load_policy_or_die", lambda _path: _load_default_policy_bundle()
     )
@@ -74,7 +72,9 @@ def _run_commit_phase(
     state.copy_with = MagicMock(return_value=state)
     reduced = MagicMock(return_value=(state, []))
     monkeypatch.setattr(runner_module, "determine_effect_from_policy", _determine)
-    monkeypatch.setattr(runner_module, "execute_commit_effect", lambda *_a, **_k: PipelineEvent.COMMIT_SUCCESS)
+    monkeypatch.setattr(
+        runner_module, "execute_commit_effect", lambda *_a, **_k: PipelineEvent.COMMIT_SUCCESS
+    )
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "auto_integrate_after_commit", integration)
@@ -125,7 +125,9 @@ def test_commit_skipped_does_not_invoke_auto_integrate(monkeypatch: MonkeyPatch)
         return commit_effect if calls == 1 else ExitSuccessEffect()
 
     monkeypatch.setattr(runner_module, "determine_effect_from_policy", _determine)
-    monkeypatch.setattr(runner_module, "execute_commit_effect", lambda *_a, **_k: PipelineEvent.COMMIT_SKIPPED)
+    monkeypatch.setattr(
+        runner_module, "execute_commit_effect", lambda *_a, **_k: PipelineEvent.COMMIT_SKIPPED
+    )
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "auto_integrate_after_commit", integration)
@@ -380,9 +382,7 @@ def test_log_outcome_conflict_emits_warn_line() -> None:
 def test_log_outcome_success_emits_info_line() -> None:
     """A successful integration keeps the ordinary activity line."""
     display = MagicMock()
-    outcome = RebaseState(
-        last_action="rebased", last_target="main", fast_forwarded=True
-    )
+    outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
 
     runner_module._log_auto_integrate_outcome(display, outcome)
 
@@ -390,9 +390,7 @@ def test_log_outcome_success_emits_info_line() -> None:
     display.emit_warn_line.assert_not_called()
 
 
-def test_startup_integration_runs_before_loop(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
+def test_startup_integration_runs_before_loop(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     """An old branch is integrated onto the target at run start.
 
     The loop preamble must run the boundary-integration hook BEFORE the
@@ -403,9 +401,7 @@ def test_startup_integration_runs_before_loop(
 
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     hook = MagicMock(return_value=outcome)
-    monkeypatch.setattr(
-        run_loop_module, "auto_integrate_on_phase_transition", hook
-    )
+    monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", hook)
     monkeypatch.setattr(
         run_loop_module,
         "_run_auto_integrate_recovery_preamble",
@@ -475,7 +471,9 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
         lambda _scope, *, config=None: recovered,
     )
     monkeypatch.setattr(run_loop_module._runner_module, "save_checkpoint_or_log", saved)
-    monkeypatch.setattr(run_loop_module._runner_module, "_checkpoint_path", lambda _scope: checkpoint_path)
+    monkeypatch.setattr(
+        run_loop_module._runner_module, "_checkpoint_path", lambda _scope: checkpoint_path
+    )
 
     run_loop_module._run_inner_loop(state, ctx, prev_phase="complete")
 
@@ -565,9 +563,7 @@ def test_no_installed_resolution_agent_is_reported_to_the_operator(
     resolver = _build_merge_resolver(display=display, registry=_EmptyRegistry())
 
     assert resolver(tmp_path, "main") is False
-    assert "no rebase-conflict-resolution agent installed" in _resolver_messages(
-        display
-    )
+    assert "no rebase-conflict-resolution agent installed" in _resolver_messages(display)
 
 
 def test_a_raising_resolution_pipeline_is_reported_to_the_operator(
@@ -578,9 +574,7 @@ def test_a_raising_resolution_pipeline_is_reported_to_the_operator(
     def _explode(**_kwargs: object) -> bool:
         raise RuntimeError("session bridge unavailable")
 
-    monkeypatch.setattr(
-        auto_integrate_agent, "run_conflict_resolution_pipeline", _explode
-    )
+    monkeypatch.setattr(auto_integrate_agent, "run_conflict_resolution_pipeline", _explode)
     display = _RecordingDisplay()
     resolver = _build_merge_resolver(display=display)
 
@@ -635,6 +629,4 @@ def test_the_rebase_stop_resolver_reports_its_declines_too(tmp_path: Path) -> No
         workspace_scope=MagicMock(),
     )
     assert no_agent(tmp_path, "main", stop) is False
-    assert "no rebase-conflict-resolution agent installed" in _resolver_messages(
-        display
-    )
+    assert "no rebase-conflict-resolution agent installed" in _resolver_messages(display)

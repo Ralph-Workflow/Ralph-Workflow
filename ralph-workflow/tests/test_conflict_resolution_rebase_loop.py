@@ -93,15 +93,9 @@ def _install_seams(
         dirty_query_fails=dirty_query_fails,
     )
     monkeypatch.setattr(loop_module, "rebase_in_progress_at", repo.in_progress)
-    monkeypatch.setattr(
-        loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED)
-    )
-    monkeypatch.setattr(
-        loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234"
-    )
-    monkeypatch.setattr(
-        loop_module, "_rebase_head_subject", lambda _root: "feature edit"
-    )
+    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED))
+    monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
+    monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")
     monkeypatch.setattr(loop_module, "conflict_stage_entries", lambda _root, _paths: {})
 
     def _stage(_root: Path, paths: Sequence[str]) -> bool:
@@ -109,18 +103,12 @@ def _install_seams(
         return stage_ok
 
     monkeypatch.setattr(loop_module, "stage_paths", _stage)
-    monkeypatch.setattr(
-        loop_module, "paths_with_conflict_markers", lambda _r, _p: list(surviving)
-    )
+    monkeypatch.setattr(loop_module, "paths_with_conflict_markers", lambda _r, _p: list(surviving))
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _r: list(unmerged))
     monkeypatch.setattr(loop_module, "continue_rebase_at", repo.continue_rebase)
     monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: _BASE_SHA)
-    monkeypatch.setattr(
-        loop_module, "_read_replay_progress", lambda _root: replay_progress
-    )
-    monkeypatch.setattr(
-        loop_module, "verify_rebase_completed_at", lambda _r, _t: verified
-    )
+    monkeypatch.setattr(loop_module, "_read_replay_progress", lambda _root: replay_progress)
+    monkeypatch.setattr(loop_module, "verify_rebase_completed_at", lambda _r, _t: verified)
 
 
 def _install_worktree_seam(
@@ -160,10 +148,7 @@ def test_single_stop_resolves_and_continues_once(
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
     assert repo.continue_calls == 1
 
 
@@ -185,15 +170,10 @@ def test_resolve_rebase_in_progress_lands_after_empty_commit_skip(
             empty_stop_handled["value"] = True
         repo.continue_rebase(root)
 
-    monkeypatch.setattr(
-        loop_module, "continue_rebase_at", _continue_after_empty_stop
-    )
+    monkeypatch.setattr(loop_module, "continue_rebase_at", _continue_after_empty_stop)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
     assert empty_stop_handled["value"] is True
     assert repo.continue_calls == 1
 
@@ -210,10 +190,7 @@ def test_rebase_empty_stop_continuation_failure_abandons(
 
     monkeypatch.setattr(loop_module, "continue_rebase_at", _old_continue)
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([]))
-        is False
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([])) is False
     assert repo.continue_calls == 0
 
 
@@ -225,10 +202,7 @@ def test_three_stops_drive_three_resolver_calls_in_order(
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
     assert [stop.stop_index for stop in seen] == [1, 2, 3]
 
 
@@ -239,9 +213,7 @@ def test_declining_resolver_never_continues_the_rebase(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, lambda _root, _target, _stop: False
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, lambda _root, _target, _stop: False)
 
     assert resolved is False
     assert repo.continue_calls == 0
@@ -255,9 +227,7 @@ def test_surviving_conflict_markers_reject_a_claimed_resolution(
     _install_seams(monkeypatch, repo, surviving=["src/alpha.py"])
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
     assert repo.continue_calls == 0
@@ -271,24 +241,18 @@ def test_residual_unmerged_paths_reject_a_claimed_resolution(
     _install_seams(monkeypatch, repo, unmerged=["src/alpha.py"])
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
 
 
-def test_failure_to_stage_rejects_the_stop(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_failure_to_stage_rejects_the_stop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Staging is Ralph's job, so a failed stage is Ralph's failure."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, stage_ok=False)
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
 
@@ -311,9 +275,7 @@ def test_a_resolver_that_edits_an_unrequested_path_is_refused(
     )
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
     assert repo.staged == []
@@ -335,10 +297,7 @@ def test_a_worktree_dirty_before_the_resolver_ran_is_not_blamed_on_it(
     )
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
 
 
 def test_an_unreadable_worktree_declines_rather_than_assuming_it_is_clean(
@@ -349,9 +308,7 @@ def test_an_unreadable_worktree_declines_rather_than_assuming_it_is_clean(
     _install_seams(monkeypatch, repo, dirty_query_fails=True)
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
     assert seen == []
@@ -376,9 +333,7 @@ def test_an_unreadable_rebase_head_declines_before_the_resolver_runs(
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "")
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
     assert seen == []
@@ -399,10 +354,7 @@ def test_conflict_remaining_error_from_continue_declines(
     monkeypatch.setattr(loop_module, "continue_rebase_at", _raise)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is False
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
 
 
 def test_continuation_error_from_continue_declines(
@@ -418,10 +370,7 @@ def test_continuation_error_from_continue_declines(
     monkeypatch.setattr(loop_module, "continue_rebase_at", _raise)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is False
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
 
 
 def test_a_continue_that_lands_but_hits_the_next_conflict_is_success(
@@ -436,9 +385,7 @@ def test_a_continue_that_lands_but_hits_the_next_conflict_is_success(
     repo = _FakeRepo(stops=2)
     _install_seams(monkeypatch, repo)
     heads = iter(["sha-one", "sha-two"])
-    monkeypatch.setattr(
-        loop_module, "_rev_parse_rebase_head", lambda _root: next(heads, "sha-two")
-    )
+    monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: next(heads, "sha-two"))
 
     def _continue_then_conflict(root: Path) -> None:
         repo.continue_rebase(root)
@@ -448,10 +395,7 @@ def test_a_continue_that_lands_but_hits_the_next_conflict_is_success(
     monkeypatch.setattr(loop_module, "continue_rebase_at", _continue_then_conflict)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
 
 
 def test_a_continue_that_fails_on_the_same_stop_declines(
@@ -467,10 +411,7 @@ def test_a_continue_that_fails_on_the_same_stop_declines(
     monkeypatch.setattr(loop_module, "continue_rebase_at", _raise)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is False
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
     assert len(seen) == 1
 
 
@@ -490,10 +431,7 @@ def test_rebase_finishing_during_continue_is_success(
     monkeypatch.setattr(loop_module, "continue_rebase_at", _finish)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is True
 
 
 def test_a_rebase_that_never_finishes_exhausts_the_stop_budget(
@@ -504,9 +442,7 @@ def test_a_rebase_that_never_finishes_exhausts_the_stop_budget(
     _install_seams(monkeypatch, repo)
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
     assert len(seen) == MAX_REBASE_CONFLICT_STOPS
@@ -521,10 +457,7 @@ def test_a_paused_rebase_with_no_conflicted_path_declines(
     monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is False
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
 
 
 def test_an_unexpected_exception_declines_without_propagating(
@@ -540,10 +473,7 @@ def test_an_unexpected_exception_declines_without_propagating(
     monkeypatch.setattr(loop_module, "get_conflicted_files", _explode)
 
     assert (
-        resolve_rebase_in_progress(
-            tmp_path, _TARGET, lambda _root, _target, _stop: True
-        )
-        is False
+        resolve_rebase_in_progress(tmp_path, _TARGET, lambda _root, _target, _stop: True) is False
     )
 
 
@@ -569,10 +499,7 @@ def test_completion_is_proved_against_the_pinned_replay_base(
 
     monkeypatch.setattr(loop_module, "verify_rebase_completed_at", _verify)
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([]))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([])) is True
     assert verified_against == [_BASE_SHA]
 
 
@@ -591,10 +518,7 @@ def test_an_unreadable_replay_base_falls_back_to_the_target_name(
 
     monkeypatch.setattr(loop_module, "verify_rebase_completed_at", _verify)
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([]))
-        is True
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([])) is True
     assert verified_against == [_TARGET]
 
 
@@ -606,10 +530,7 @@ def test_an_unverifiable_completion_declines(
     _install_seams(monkeypatch, repo, verified=False)
     seen: list[RebaseStop] = []
 
-    assert (
-        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
-        is False
-    )
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen)) is False
 
 
 def test_the_stop_carries_the_replayed_commit_and_the_conflicted_paths(
@@ -657,9 +578,7 @@ def _install_progress_git_seam(
         state_dir / relative.replace("/", "_"): text for relative, text in files.items()
     }
 
-    def _fake_run_git(
-        args: Sequence[str], *, cwd: Path, label: str
-    ) -> GitRunResult:
+    def _fake_run_git(args: Sequence[str], *, cwd: Path, label: str) -> GitRunResult:
         assert cwd == root
         assert label == "git-rebase-progress-path"
         relative = args[-1]
@@ -756,12 +675,8 @@ def test_a_failing_git_path_lookup_reads_as_none(
 ) -> None:
     """git refusing to resolve the state path is just an unreadable counter."""
 
-    def _failing_run_git(
-        args: Sequence[str], *, cwd: Path, label: str
-    ) -> GitRunResult:
-        return GitRunResult(
-            args=tuple(args), returncode=128, stdout="", stderr="not a git repo"
-        )
+    def _failing_run_git(args: Sequence[str], *, cwd: Path, label: str) -> GitRunResult:
+        return GitRunResult(args=tuple(args), returncode=128, stdout="", stderr="not a git repo")
 
     monkeypatch.setattr(loop_module, "run_git", _failing_run_git)
 
@@ -820,9 +735,7 @@ def test_a_readable_replay_total_never_widens_the_stop_budget(
     _install_seams(monkeypatch, repo, replay_progress=(1, 40))
     seen: list[RebaseStop] = []
 
-    resolved = resolve_rebase_in_progress(
-        tmp_path, _TARGET, _accepting_resolver(seen)
-    )
+    resolved = resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
 
     assert resolved is False
     assert len(seen) == MAX_REBASE_CONFLICT_STOPS

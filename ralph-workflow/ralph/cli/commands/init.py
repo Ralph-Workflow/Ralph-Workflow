@@ -181,7 +181,11 @@ def init_command(
         all_results = global_results
         newly_enabled = enable_detected_agents()
         global_main_config = resolve_global_config_dir() / "ralph-workflow.toml"
-        rewired = autowire_chains_to_detected_agent(global_main_config) if global_main_config.exists() else None
+        rewired = (
+            autowire_chains_to_detected_agent(global_main_config)
+            if global_main_config.exists()
+            else None
+        )
 
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
 
@@ -268,7 +272,9 @@ def _emit_agent_setup_status(
     if newly_enabled:
         display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
     if isinstance(rewired, list):
-        display.emit_status("Detected agent set for [agent_chains]; edit section 1 to change models.")
+        display.emit_status(
+            "Detected agent set for [agent_chains]; edit section 1 to change models."
+        )
     elif rewired == "kept-default-agent":
         display.emit_status("kept claude (found on PATH)")
     elif rewired == "chains-customized":

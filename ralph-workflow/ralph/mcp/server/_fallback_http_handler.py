@@ -181,8 +181,12 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         payload = self.rfile.read(length)
         if len(payload) != length:
-            return None, None, (
-                f"Parse error: truncated request body (expected {length} bytes, received {len(payload)})"
+            return (
+                None,
+                None,
+                (
+                    f"Parse error: truncated request body (expected {length} bytes, received {len(payload)})"
+                ),
             )
         try:
             decoded: object = json.loads(payload or b"{}")

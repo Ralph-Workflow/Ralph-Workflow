@@ -158,9 +158,7 @@ KILL_ESCALATION_CEILING_MS: int = 5_000
 #: hard ceiling for legitimate tool calls; adding the kill grace prevents a
 #: healthy clamped call from racing the dispatcher while preserving room for
 #: dispatch, drain, and kill below the 330-second client request timeout.
-MCP_DISPATCH_TIMEOUT_SECONDS: float = (
-    EXEC_MAX_TIMEOUT_MS + KILL_ESCALATION_CEILING_MS
-) / 1000.0
+MCP_DISPATCH_TIMEOUT_SECONDS: float = (EXEC_MAX_TIMEOUT_MS + KILL_ESCALATION_CEILING_MS) / 1000.0
 
 #: Default per-call HTTP timeout for built-in websearch backends (Brave, SearXNG).
 #: Sourced by ralph.mcp.websearch.backends.brave and ralph.mcp.websearch.backends.searxng

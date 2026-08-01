@@ -120,9 +120,7 @@ class TestExtractErrorMessage:
             "error": {
                 "name": "APIError",
                 "data": {
-                    "message": (
-                        "This request requires more credits, or fewer max_tokens."
-                    ),
+                    "message": ("This request requires more credits, or fewer max_tokens."),
                     "statusCode": 402,
                 },
             },

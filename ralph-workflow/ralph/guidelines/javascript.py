@@ -135,42 +135,32 @@ class JavaScriptGuidelines:
     def _apply_typescript_guidelines(self) -> None:
         """Add the TypeScript-specific checks from the Rust implementation."""
         self.quality_checks += (
-            (
-                "Use strict TypeScript mode.",
-                "Prefer interfaces over type aliases for object shapes.",
-                "Use explicit return types for public functions.",
-                "Avoid the any type; use unknown when narrowing is required.",
-            )
+            "Use strict TypeScript mode.",
+            "Prefer interfaces over type aliases for object shapes.",
+            "Use explicit return types for public functions.",
+            "Avoid the any type; use unknown when narrowing is required.",
         )
         self.idioms += (
-            (
-                "Use union types for discriminated unions.",
-                "Leverage type inference where intent stays clear.",
-                "Use generics appropriately.",
-            )
+            "Use union types for discriminated unions.",
+            "Leverage type inference where intent stays clear.",
+            "Use generics appropriately.",
         )
         self.anti_patterns += (
-            (
-                "Do not use as casts to bypass type checking.",
-                "Avoid non-null assertions (!) without justification.",
-            )
+            "Do not use as casts to bypass type checking.",
+            "Avoid non-null assertions (!) without justification.",
         )
 
     def _apply_frontend_guidelines(self) -> None:
         """Add shared frontend guidance for React and Vue stacks."""
         self.quality_checks += (
-            (
-                "Components are properly modularized.",
-                "State management is predictable.",
-                "Accessibility (a11y) is considered.",
-            )
+            "Components are properly modularized.",
+            "State management is predictable.",
+            "Accessibility (a11y) is considered.",
         )
         self.performance_checks += (
-            (
-                "Avoid unnecessary re-renders.",
-                "Use lazy loading for large components.",
-                "Optimize bundle size.",
-            )
+            "Avoid unnecessary re-renders.",
+            "Use lazy loading for large components.",
+            "Optimize bundle size.",
         )
 
     def _apply_framework(self, framework: str) -> None:
@@ -179,84 +169,64 @@ class JavaScriptGuidelines:
 
         if framework_name == "react":
             self.quality_checks += (
-                (
-                    "Use hooks correctly (rules of hooks).",
-                    "Properly manage component lifecycle.",
-                    "Use React.memo for expensive renders.",
-                )
+                "Use hooks correctly (rules of hooks).",
+                "Properly manage component lifecycle.",
+                "Use React.memo for expensive renders.",
             )
             self.anti_patterns += (
-                (
-                    "Avoid prop drilling when context or state management fits better.",
-                    "Do not mutate state directly.",
-                    "Avoid inline functions in render when they create avoidable churn.",
-                )
+                "Avoid prop drilling when context or state management fits better.",
+                "Do not mutate state directly.",
+                "Avoid inline functions in render when they create avoidable churn.",
             )
             return
 
         if framework_name == "vue":
             self.quality_checks += (
-                (
-                    "Use the Composition API for complex logic.",
-                    "Follow the Vue style guide.",
-                    "Use computed properties appropriately.",
-                )
+                "Use the Composition API for complex logic.",
+                "Follow the Vue style guide.",
+                "Use computed properties appropriately.",
             )
             self.anti_patterns += (
-                (
-                    "Avoid watchers when computed properties express the same intent.",
-                    "Do not directly mutate props.",
-                )
+                "Avoid watchers when computed properties express the same intent.",
+                "Do not directly mutate props.",
             )
             return
 
         if framework_name == "angular":
             self.quality_checks += (
-                (
-                    "Use OnPush change detection where possible.",
-                    "Follow the Angular style guide.",
-                    "Use RxJS operators effectively.",
-                )
+                "Use OnPush change detection where possible.",
+                "Follow the Angular style guide.",
+                "Use RxJS operators effectively.",
             )
             self.security_checks += ("Use Angular's built-in sanitization.",)
             self.anti_patterns += (
-                (
-                    "Avoid subscribing without unsubscribing.",
-                    "Do not use the any type.",
-                )
+                "Avoid subscribing without unsubscribing.",
+                "Do not use the any type.",
             )
             return
 
         if framework_name in {"express", "fastify", "nestjs"}:
             self.quality_checks += (
-                (
-                    "Use middleware patterns effectively.",
-                    "Handle errors in middleware.",
-                    "Use environment variables for configuration.",
-                )
+                "Use middleware patterns effectively.",
+                "Handle errors in middleware.",
+                "Use environment variables for configuration.",
             )
             self.security_checks += (
-                (
-                    "Use helmet or equivalent security headers.",
-                    "Implement rate limiting.",
-                    "Validate request body schemas.",
-                )
+                "Use helmet or equivalent security headers.",
+                "Implement rate limiting.",
+                "Validate request body schemas.",
             )
             return
 
         if framework_name in {"next.js", "nuxt"}:
             self.quality_checks += (
-                (
-                    "Use the appropriate rendering strategy (SSR, SSG, or ISR).",
-                    "Handle hydration correctly.",
-                    "Optimize for Core Web Vitals.",
-                )
+                "Use the appropriate rendering strategy (SSR, SSG, or ISR).",
+                "Handle hydration correctly.",
+                "Optimize for Core Web Vitals.",
             )
             self.performance_checks += (
-                (
-                    "Minimize client-side JavaScript.",
-                    "Use image optimization features.",
-                )
+                "Minimize client-side JavaScript.",
+                "Use image optimization features.",
             )
 
     def summary(self) -> str:

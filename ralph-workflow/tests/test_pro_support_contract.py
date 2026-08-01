@@ -504,7 +504,9 @@ def _run_pipeline_with_heartbeat(
         recording.start()
         return recording
 
-    monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", lambda *_args, **_kwargs: (None, None))
+    monkeypatch.setattr(
+        run_loop_module, "_start_pro_marker_watcher", lambda *_args, **_kwargs: (None, None)
+    )
     monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", _fake_start)
 
     pipeline = PipelinePolicy(
@@ -927,7 +929,5 @@ def test_section_7_heartbeat_adopts_late_marker(
         return _SynchronousLateWatcher()
 
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = run_loop_module.run(
-        config, initial_state=state_in, pro_hooks=hooks
-    )
+    exit_code = run_loop_module.run(config, initial_state=state_in, pro_hooks=hooks)
     assert exit_code == 0

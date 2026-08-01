@@ -79,9 +79,7 @@ def _install_pipeline_spy(
         calls.append(kwargs)
         return result
 
-    monkeypatch.setattr(
-        resolver_module, "run_conflict_resolution_pipeline", _fake_pipeline
-    )
+    monkeypatch.setattr(resolver_module, "run_conflict_resolution_pipeline", _fake_pipeline)
     return calls
 
 
@@ -127,9 +125,7 @@ def test_resolver_declines_without_pipeline_deps(
     the only safe answer.
     """
     calls = _install_pipeline_spy(monkeypatch)
-    resolver, _registry, _display = _build_resolver(
-        agent_config=object(), pipeline_deps=None
-    )
+    resolver, _registry, _display = _build_resolver(agent_config=object(), pipeline_deps=None)
 
     assert resolver(tmp_path, "main") is False
     assert calls == []
@@ -140,9 +136,7 @@ def test_resolver_declines_without_workspace_scope(
 ) -> None:
     """Same contract for the other required dependency."""
     calls = _install_pipeline_spy(monkeypatch)
-    resolver, _registry, _display = _build_resolver(
-        agent_config=object(), workspace_scope=None
-    )
+    resolver, _registry, _display = _build_resolver(agent_config=object(), workspace_scope=None)
 
     assert resolver(tmp_path, "main") is False
     assert calls == []

@@ -134,13 +134,9 @@ def test_commit_retry_uses_valid_markdown_as_submit_content(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    retry_prompt = next(
-        body for body in prompt_bodies[1:] if "Example MCP arguments: " in body
-    )
+    retry_prompt = next(body for body in prompt_bodies[1:] if "Example MCP arguments: " in body)
     example_line = next(
-        line
-        for line in retry_prompt.splitlines()
-        if line.startswith("Example MCP arguments: ")
+        line for line in retry_prompt.splitlines() if line.startswith("Example MCP arguments: ")
     )
     arguments = json.loads(example_line.removeprefix("Example MCP arguments: "))
     document = arguments["content"]

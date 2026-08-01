@@ -72,8 +72,7 @@ def test_test_pipeline_deps_fakes_external_runtime_boundaries() -> None:
     assert deps.startup_rebase_resolver(UnifiedConfig(), MagicMock()) is None
     assert deps.auto_integrate_resolver(UnifiedConfig(), MagicMock(), MagicMock()) is None
     assert (
-        deps.commit_effect_executor(MagicMock(), Path("/workspace"))
-        is PipelineEvent.COMMIT_SKIPPED
+        deps.commit_effect_executor(MagicMock(), Path("/workspace")) is PipelineEvent.COMMIT_SKIPPED
     )
     assert deps.process_teardown is not None
     assert deps.process_teardown() is None

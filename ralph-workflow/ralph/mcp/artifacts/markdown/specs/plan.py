@@ -1166,9 +1166,7 @@ def analyze_plan_document(
         apply_plan_severity_policy(parser_diagnostics)
         return {}, [*not_a_plan_diagnostics, *parser_diagnostics], []
     diagnostics, overridden, minimal_content, analyzed_content = (
-        _collect_diagnostics_with_overrides(
-            document, parser_diagnostics=parser_diagnostics
-        )
+        _collect_diagnostics_with_overrides(document, parser_diagnostics=parser_diagnostics)
     )
     # Apply the plan-scoped severity policy before deciding content vs
     # ``{}`` so demoted-from-error findings (PLAN021/PLAN022/REF004/etc.)
@@ -1212,9 +1210,7 @@ def analyze_plan_document(
             # policy demotes it to warning; we still try to persist
             # the best-effort content so a warnings-only plan reaches
             # the executor / analysis phase.
-            pydantic_diagnostic = _normalizer_diagnostic(
-                document, str(exc), "plan"
-            )
+            pydantic_diagnostic = _normalizer_diagnostic(document, str(exc), "plan")
             diagnostics.append(pydantic_diagnostic)
             apply_plan_severity_policy(diagnostics)
             if any(diagnostic.severity == "error" for diagnostic in diagnostics):
@@ -1228,9 +1224,7 @@ def _collect_diagnostics_with_overrides(
     document: ParsedDocument,
     *,
     parser_diagnostics: list[Diagnostic] | None = None,
-) -> tuple[
-    list[Diagnostic], list[_OverrideMatch], Content | None, Content | None
-]:
+) -> tuple[list[Diagnostic], list[_OverrideMatch], Content | None, Content | None]:
     """Collect all plan-spec diagnostics, apply the override ledger, and return both.
 
     Re-runs the same diagnostic surface :func:`parse_and_validate` collects
@@ -1267,9 +1261,8 @@ def _collect_diagnostics_with_overrides(
             require_sections=minimal_content is None,
         )
     )
-    if (
-        minimal_content is None
-        and not any(diagnostic.severity == "error" for diagnostic in diagnostics)
+    if minimal_content is None and not any(
+        diagnostic.severity == "error" for diagnostic in diagnostics
     ):
         # _analyze emits errors and warnings together; we need both for the
         # override ledger's error-vs-stale distinction. The content is
@@ -1455,9 +1448,7 @@ def _apply_validation_overrides(
         # PLAN010 warning with a recorded override does not also surface as
         # a live warning in the tool payload.
         diagnostics[:] = [
-            diagnostic
-            for diagnostic in diagnostics
-            if diagnostic not in consumed_diagnostics
+            diagnostic for diagnostic in diagnostics if diagnostic not in consumed_diagnostics
         ]
     for index, (rule_id, section, _reason) in enumerate(entries):
         if index in used_entries:

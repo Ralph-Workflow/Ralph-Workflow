@@ -161,8 +161,11 @@ def format_auto_integrate_message(
     else:
         message = f"{normalized}"
 
-    return message + _refresh_suffix(refresh) + _push_suffix(push) + _remote_suffix(
-        remote_sync, remote, target
+    return (
+        message
+        + _refresh_suffix(refresh)
+        + _push_suffix(push)
+        + _remote_suffix(remote_sync, remote, target)
     )
 
 

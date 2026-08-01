@@ -46,6 +46,7 @@ def _parse_audit_module() -> _ast.Module:
     source = audit_path.read_text(encoding="utf-8")
     return _ast.parse(source, filename=str(audit_path))
 
+
 # The legacy root watchdog sentinel is constructed at import time in
 # the audit module from private string fragments.  The test re-derives
 # the same filename from the same fragments so the literal forbidden
@@ -363,6 +364,7 @@ def test_audit_does_not_flag_canonical_owner_subagent_counting() -> None:
 # Green-path production-tree coverage: ``make verify`` runs
 # ``python -m ralph.testing.audit_watchdog_drift``.
 
+
 def test_audit_module_imports_clean() -> None:
     """The audit module must not use ``time.sleep``, ``asyncio.sleep``,
     ``subprocess.run``, ``httpx.*``, ``requests.*``, ``urllib.request.urlopen``,
@@ -422,7 +424,6 @@ def test_audit_module_imports_clean() -> None:
         for path, lineno in hits:
             all_violations.append(f"{path}:{lineno}: attribute access on {name}")
     assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
-
 
 
 @pytest.mark.parametrize(

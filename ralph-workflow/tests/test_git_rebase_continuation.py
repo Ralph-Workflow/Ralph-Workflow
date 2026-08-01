@@ -151,13 +151,13 @@ def test_continue_rebase_at_answers_empty_commit_stop_with_skip(
         continuation_module, "rebase_in_progress_impl", lambda _repo: state["in_progress"]
     )
     monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
-    monkeypatch.setattr(continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"])
+    monkeypatch.setattr(
+        continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"]
+    )
 
     def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
         if args[-1] == "--continue":
-            raise subprocess.CalledProcessError(
-                1, args, stderr="The previous cherry-pick is empty"
-            )
+            raise subprocess.CalledProcessError(1, args, stderr="The previous cherry-pick is empty")
         state["skip_calls"] += 1
         state["in_progress"] = False
         return GitRunResult(args=("git", *args), returncode=0, stdout="", stderr="")
@@ -180,7 +180,9 @@ def test_continue_rebase_at_skips_consecutive_empty_commits(
         continuation_module, "rebase_in_progress_impl", lambda _repo: state["in_progress"]
     )
     monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
-    monkeypatch.setattr(continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"])
+    monkeypatch.setattr(
+        continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"]
+    )
 
     def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
         if args[-1] == "--continue":

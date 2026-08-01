@@ -105,7 +105,10 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
     ("draft", "raises"),
     [
         ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Incomplete\nThen run:", True),
-        ("---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, retain it for retry prompts, and verify every downstream reader receives the complete submitted document after restart.\n", False),
+        (
+            "---\ntype: plan\n---\n## Steps\n\n### [S-1] Complete\nPersist the validated handoff, retain it for retry prompts, and verify every downstream reader receives the complete submitted document after restart.\n",
+            False,
+        ),
     ],
 )
 def test_plan_handoff_regression_draft_fallback_requires_valid_plan(

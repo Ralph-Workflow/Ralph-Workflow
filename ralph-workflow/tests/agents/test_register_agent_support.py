@@ -54,7 +54,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
 _GOLDEN_CUSTOM: dict[str, object] = dict(_CUSTOM_COMMAND_REGISTRY)
 _GOLDEN_STRATEGIES: dict[AgentTransport, object] = dict(_STRATEGY_DISPATCH)

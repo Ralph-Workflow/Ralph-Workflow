@@ -255,14 +255,10 @@ def test_init_label_over_existing_prompt_warns_not_applied(
         "edit PROMPT.md directly" in output
         or "remove/rename PROMPT.md" in output
         or "ralph --init refactor" in output
-    ), (
-        f"Expected the warning to point the operator at the remediation "
-        f"path, got: {output}"
-    )
+    ), f"Expected the warning to point the operator at the remediation path, got: {output}"
     # The original PROMPT.md content was preserved (no overwrite).
     assert (tmp_path / "PROMPT.md").read_text(encoding="utf-8") == "# my task\ndo the thing\n", (
-        "PROMPT.md must NOT be overwritten when an explicit label is "
-        "passed over an existing file"
+        "PROMPT.md must NOT be overwritten when an explicit label is passed over an existing file"
     )
 
 
@@ -362,6 +358,5 @@ def test_init_no_template_over_existing_prompt_stays_silent(
     output = stream.getvalue()
     # The AC-03 warning should NOT appear for a bare re-run.
     assert "starter template was not applied" not in output, (
-        f"A bare re-run must not print the template-not-applied warning, "
-        f"got: {output}"
+        f"A bare re-run must not print the template-not-applied warning, got: {output}"
     )

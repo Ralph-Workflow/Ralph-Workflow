@@ -51,19 +51,19 @@ if TYPE_CHECKING:
 def _stub_display_context() -> DisplayContext:
     """Build the smallest DisplayContext the tests need."""
     return type(
-            "_StubDisplay",
-            (),
-            {
-                "console": type(
-                    "_StubConsole",
-                    (),
-                    {
-                        "print": lambda self, *a, **kw: None,
-                        "log": lambda self, *a, **kw: None,
-                    },
-                )(),
-            },
-        )()
+        "_StubDisplay",
+        (),
+        {
+            "console": type(
+                "_StubConsole",
+                (),
+                {
+                    "print": lambda self, *a, **kw: None,
+                    "log": lambda self, *a, **kw: None,
+                },
+            )(),
+        },
+    )()
 
 
 class _OutcomeRecorder:

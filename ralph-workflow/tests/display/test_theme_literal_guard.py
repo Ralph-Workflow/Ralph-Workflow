@@ -54,9 +54,9 @@ def test_s1_display_code_uses_no_literal_theme_or_background() -> None:
 
 def test_s1_guard_regression_rejects_positional_and_inline_markdown_themes() -> None:
     """DA-002: Markdown theme defaults cannot bypass the selector by argument form."""
-    tree = ast.parse('''
+    tree = ast.parse("""
 Markdown(text, "ansi_dark")
 Markdown(text, inline_code_theme="monokai")
 AdaptiveMarkdown(text, "ansi_light")
-''')
+""")
     assert _violations(tree) == ["2 code_theme", "3 inline_code_theme", "4 code_theme"]

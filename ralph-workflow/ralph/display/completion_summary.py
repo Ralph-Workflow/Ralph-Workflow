@@ -311,7 +311,7 @@ def _plain_tail_lines(
                 fast_forwarded=snapshot.auto_integrate_fast_forwarded,
                 push=snapshot.auto_integrate_push,
                 remote_sync=snapshot.auto_integrate_remote_sync,
-        remote=snapshot.auto_integrate_remote,
+                remote=snapshot.auto_integrate_remote,
             )
         )
     return lines

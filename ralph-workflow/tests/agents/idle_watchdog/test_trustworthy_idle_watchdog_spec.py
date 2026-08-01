@@ -625,9 +625,7 @@ class TestTrustworthyIdleWatchdogSpec:
             clock=clock,
         )
         watchdog.record_invocation_start()
-        watchdog.register_default_subagent_activity_listener(
-            _capture
-        )
+        watchdog.register_default_subagent_activity_listener(_capture)
         # Baseline: all three R5 fields are None at invocation start
         # (per-invocation reset semantics).
         assert watchdog.last_subagent_progress_description is None

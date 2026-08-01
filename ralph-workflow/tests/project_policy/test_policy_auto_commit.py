@@ -113,9 +113,7 @@ def test_migrated_candidate_files_are_committed(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_policy_auto_commit_skips_clean_tree(
-    tmp_path: Path, fake_create_commit: MagicMock
-) -> None:
+def test_policy_auto_commit_skips_clean_tree(tmp_path: Path, fake_create_commit: MagicMock) -> None:
     _init_repo_with_commit(tmp_path)
     (tmp_path / "unrelated.py").write_text("print()", encoding="utf-8")
 
@@ -207,9 +205,7 @@ def test_the_users_own_uncommitted_work_is_never_swept_in(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_engine_scratch_is_never_committed(
-    tmp_path: Path, fake_create_commit: MagicMock
-) -> None:
+def test_engine_scratch_is_never_committed(tmp_path: Path, fake_create_commit: MagicMock) -> None:
     """.agent/ is engine-owned scratch (prompts, artifacts, caches). It becomes
     dirty during every policy run and must never be committed."""
     _init_repo_with_commit(tmp_path)
@@ -228,9 +224,7 @@ def test_engine_scratch_is_never_committed(
         fake_create_commit,
         stage_fn=lambda _root, paths: staged.extend(paths),
         pre_run_dirty=pre_run_dirty,
-        authored_paths=frozenset(
-            {"scripts/verify.sh", ".agent/tmp/policy_remediation_prompt.md"}
-        ),
+        authored_paths=frozenset({"scripts/verify.sh", ".agent/tmp/policy_remediation_prompt.md"}),
     )
 
     assert "scripts/verify.sh" in staged

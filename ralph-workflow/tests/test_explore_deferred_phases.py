@@ -20,8 +20,7 @@ def test_deferred_phases_retains_only_phase_5() -> None:
     """
     ids = {entry.phase_id for entry in DEFERRED_PHASES}
     assert ids == {"phase_5"}, (
-        "Only phase_5 should remain in DEFERRED_PHASES once phases "
-        "0-4 ship. Found: " + repr(ids)
+        "Only phase_5 should remain in DEFERRED_PHASES once phases 0-4 ship. Found: " + repr(ids)
     )
 
     phase_5 = next(entry for entry in DEFERRED_PHASES if entry.phase_id == "phase_5")
@@ -50,9 +49,7 @@ def test_every_deferred_phase_has_non_empty_rationale() -> None:
 def test_every_deferred_phase_has_non_empty_risk() -> None:
     """The risk statement is mandatory per the prompt's audit rule."""
     for entry in DEFERRED_PHASES:
-        assert entry.risk.strip(), (
-            f"Phase {entry.phase_id} requires a non-empty risk statement."
-        )
+        assert entry.risk.strip(), f"Phase {entry.phase_id} requires a non-empty risk statement."
 
 
 def test_every_deferred_phase_has_baseline_counters() -> None:
@@ -66,9 +63,7 @@ def test_every_deferred_phase_has_baseline_counters() -> None:
 def test_every_deferred_phase_has_deliverables() -> None:
     """Each phase must enumerate at least one deliverable."""
     for entry in DEFERRED_PHASES:
-        assert entry.deliverables, (
-            f"Phase {entry.phase_id} must enumerate deliverables."
-        )
+        assert entry.deliverables, f"Phase {entry.phase_id} must enumerate deliverables."
 
 
 def test_deferred_phase_rejects_empty_rationale() -> None:
@@ -114,6 +109,7 @@ def test_ralph_explore_remains_deferred_without_measured_bundle_benefit() -> Non
         ALL_FIXTURES,
         REQUIRED_BENCH_WORKFLOW_IDS,
     )
+
     question_ids = {fixture.question_id for fixture in ALL_FIXTURES}
     assert "Q_explore" not in question_ids
     assert "ralph_explore" not in REQUIRED_BENCH_WORKFLOW_IDS

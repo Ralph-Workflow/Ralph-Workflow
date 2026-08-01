@@ -111,9 +111,7 @@ def test_merge_regression_unreadable_git_dir_is_not_reported_as_no_merge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed ``rev-parse --git-dir`` must not answer 'no merge in progress'."""
-    _install_git_stub(
-        monkeypatch, {("rev-parse", "--git-dir"): (128, "")}
-    )
+    _install_git_stub(monkeypatch, {("rev-parse", "--git-dir"): (128, "")})
 
     assert merge_state(Path("/repos/main")) == MERGE_STATE_UNKNOWN
     assert merge_state(Path("/repos/main")) != MERGE_STATE_NONE
@@ -145,9 +143,7 @@ def test_clean_repo_without_merge_head_still_means_no_merge_in_progress(
     """The positive case is unchanged: a readable repo with no MERGE_HEAD."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
-    _install_git_stub(
-        monkeypatch, {("rev-parse", "--git-dir"): (0, str(git_dir))}
-    )
+    _install_git_stub(monkeypatch, {("rev-parse", "--git-dir"): (0, str(git_dir))})
 
     assert merge_state(tmp_path) == MERGE_STATE_NONE
     assert merge_in_progress(tmp_path) is False
@@ -160,9 +156,7 @@ def test_merge_head_present_means_merge_in_progress(
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     (git_dir / "MERGE_HEAD").write_text("cafebabe\n", encoding="utf-8")
-    _install_git_stub(
-        monkeypatch, {("rev-parse", "--git-dir"): (0, str(git_dir))}
-    )
+    _install_git_stub(monkeypatch, {("rev-parse", "--git-dir"): (0, str(git_dir))})
 
     assert merge_state(tmp_path) == MERGE_STATE_IN_PROGRESS
     assert merge_in_progress(tmp_path) is True
@@ -172,9 +166,7 @@ def test_merge_regression_worktree_query_failure_is_not_branch_not_checked_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed ``worktree list`` is distinct from 'checked out nowhere'."""
-    _install_git_stub(
-        monkeypatch, {("worktree", "list", "--porcelain"): (128, "")}
-    )
+    _install_git_stub(monkeypatch, {("worktree", "list", "--porcelain"): (128, "")})
 
     status, path = worktree_lookup(Path("/repos/main"), "main")
 
@@ -222,9 +214,7 @@ def test_worktree_for_branch_keeps_its_optional_returning_signature(
         {("worktree", "list", "--porcelain"): (0, _WORKTREE_LIST_OUTPUT)},
     )
 
-    assert worktree_for_branch(Path("/repos/main"), "feature") == Path(
-        "/repos/feature"
-    )
+    assert worktree_for_branch(Path("/repos/main"), "feature") == Path("/repos/feature")
     assert worktree_for_branch(Path("/repos/main"), "no-such-branch") is None
 
 
@@ -247,14 +237,13 @@ def _install_fast_forward_stub(
             ("worktree", "list", "--porcelain"): worktree_list,
         },
     )
+
     # find_main_worktree_root opens a real GitPython Repo; the fast-forward
     # branch table under test does not depend on which root it returns.
     def _identity_root(repo_root: Path) -> Path:
         return repo_root
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_ff.find_main_worktree_root", _identity_root
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_ff.find_main_worktree_root", _identity_root)
     return calls
 
 
@@ -340,12 +329,8 @@ def _install_resolve_stub(
         "ralph.pipeline.auto_integrate_resolve.merge_target_into_current",
         _fake_merge,
     )
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_resolve.merge_state", _fake_merge_state
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_resolve.abort_merge", _fake_abort
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_resolve.merge_state", _fake_merge_state)
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_resolve.abort_merge", _fake_abort)
     return log
 
 
@@ -369,12 +354,8 @@ def test_resolution_regression_unreadable_merge_state_still_aborts(
 
     assert outcome is not None
     assert outcome.outcome == "conflict"
-    assert "abort" in log, (
-        "an unreadable merge state must still attempt the abort"
-    )
-    assert "resolver" not in log, (
-        "there are no readable conflicted paths to hand a resolver"
-    )
+    assert "abort" in log, "an unreadable merge state must still attempt the abort"
+    assert "resolver" not in log, "there are no readable conflicted paths to hand a resolver"
 
 
 def test_resolution_readable_no_merge_state_returns_the_plain_conflict(
@@ -392,8 +373,7 @@ def test_resolution_readable_no_merge_state_returns_the_plain_conflict(
     assert outcome is not None
     assert outcome.outcome == "conflict"
     assert log == ["merge"], (
-        "git positively reported no MERGE_HEAD: nothing to abort, nothing"
-        f" to resolve; got {log}"
+        f"git positively reported no MERGE_HEAD: nothing to abort, nothing to resolve; got {log}"
     )
 
 

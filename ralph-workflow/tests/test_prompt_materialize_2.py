@@ -241,7 +241,9 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
     assert "ANALYSIS FEEDBACK:" in rendered
-    assert "Read the current plan and verify feedback against the request and repository." in rendered
+    assert (
+        "Read the current plan and verify feedback against the request and repository." in rendered
+    )
     assert "feedback is advice from a fresh reviewer" in rendered
     assert "Plan the full arc in this order" in rendered
     assert "PLAN001" in rendered

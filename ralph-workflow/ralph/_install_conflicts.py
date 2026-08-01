@@ -116,7 +116,9 @@ def prompt_for_conflict(
     options = "[c]ontinue/[a]bort"
     if existing.remove_command is not None:
         options = "[c]ontinue/[r]emove/[a]bort"
-    answer = input_fn(f"Existing {existing.kind} Ralph install at {existing.executable}; {options}: ")
+    answer = input_fn(
+        f"Existing {existing.kind} Ralph install at {existing.executable}; {options}: "
+    )
     normalized = answer.strip().lower()
     if normalized in {"c", "continue"}:
         return ConflictResolution.CONTINUE

@@ -65,9 +65,7 @@ class TestCursorRegistrationAcrossDispatchTables:
         assert factory is not None, (
             "_STRATEGY_DISPATCH is missing an entry for AgentTransport.CURSOR"
         )
-        assert callable(factory), (
-            f"_STRATEGY_DISPATCH[CURSOR] is not callable: {factory!r}"
-        )
+        assert callable(factory), f"_STRATEGY_DISPATCH[CURSOR] is not callable: {factory!r}"
         # The cursor strategy factory must produce a BaseExecutionStrategy subclass
         # (NOT the abstract ``BaseExecutionStrategy`` itself, which would be a
         # no-op for an interactive transport).
@@ -85,9 +83,7 @@ class TestCursorRegistrationAcrossDispatchTables:
         """The per-parser registry resolves the cursor parser for ``agent --print``."""
         key = resolve_parser_key("agent", JsonParserType.GENERIC, AgentTransport.CURSOR)
         parser = get_parser(key)
-        assert parser is not None, (
-            f"get_parser({key!r}) returned None for AgentTransport.CURSOR"
-        )
+        assert parser is not None, f"get_parser({key!r}) returned None for AgentTransport.CURSOR"
         assert isinstance(parser, CursorParser), (
             f"Parser for AgentTransport.CURSOR is not a CursorParser: {type(parser)}"
         )
@@ -109,9 +105,7 @@ class TestCursorCatalogSeeding:
     def test_default_catalog_seeds_cursor_support(self) -> None:
         catalog = default_catalog()
         cursor_support = catalog.get("cursor")
-        assert cursor_support is not None, (
-            "default_catalog().get('cursor') returned None"
-        )
+        assert cursor_support is not None, "default_catalog().get('cursor') returned None"
         assert cursor_support.name == "cursor"
         assert cursor_support.transport is AgentTransport.CURSOR
         # The seeded support uses the cursor parser factory.

@@ -48,11 +48,7 @@ _BLOCKING_CONSUMER_RE = re.compile(
 def test_empty_or_markup_only_text_emits_plan001_error(label: str, text: str) -> None:
     """Empty / whitespace / pure markup is not a plan — error, not advice."""
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d
-        for d in diagnostics
-        if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors, (
         f"expected PLAN001 error for {label!r}, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
@@ -71,12 +67,9 @@ def test_text_under_100_actual_chars_emits_plan001_error() -> None:
     text = "a quick plan to refactor the validator and verify it under pytest"
     assert len(text) < 100
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors, (
-        f"expected PLAN001 for short text, got: "
-        f"{[(d.rule_id, d.severity) for d in diagnostics]}"
+        f"expected PLAN001 for short text, got: {[(d.rule_id, d.severity) for d in diagnostics]}"
     )
     assert content == {}
 
@@ -101,13 +94,13 @@ def test_text_under_100_actual_chars_emits_plan001_error() -> None:
         ),
         (
             "raw_tool_output",
-            "ls -la ralph-workflow\ndrwxr-xr-x  user staff  B \"Jan 01 00:00\" ralph\n"
-            "-rw-r--r--  user staff  B \"Jan 01 00:00\" AGENTS.md\n",
+            'ls -la ralph-workflow\ndrwxr-xr-x  user staff  B "Jan 01 00:00" ralph\n'
+            '-rw-r--r--  user staff  B "Jan 01 00:00" AGENTS.md\n',
         ),
         (
             "stack_trace",
-            "Traceback (most recent call last):\n  File \"/x.py\", line 5\n"
-            "    raise RuntimeError(\"boom\")\nRuntimeError: boom\n",
+            'Traceback (most recent call last):\n  File "/x.py", line 5\n'
+            '    raise RuntimeError("boom")\nRuntimeError: boom\n',
         ),
         (
             "placeholder_todo",
@@ -116,20 +109,15 @@ def test_text_under_100_actual_chars_emits_plan001_error() -> None:
     ],
     ids=lambda v: v if isinstance(v, str) else "",
 )
-def test_recognisably_other_text_emits_plan001_error(
-    label: str, text: str
-) -> None:
+def test_recognisably_other_text_emits_plan001_error(label: str, text: str) -> None:
     """An obvious non-plan that arrived in the plan's place is an error."""
     # Force the frontmatter so the parser does not surface a different error
     # ahead of the closed-list detector.
     wrapped = f"---\ntype: plan\n---\n{text}"
     content, diagnostics = parse_and_validate(wrapped, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors, (
-        f"expected PLAN001 for {label!r}, got: "
-        f"{[(d.rule_id, d.severity) for d in diagnostics]}"
+        f"expected PLAN001 for {label!r}, got: {[(d.rule_id, d.severity) for d in diagnostics]}"
     )
     for d in plan001_errors:
         assert _BLOCKING_CONSUMER_RE.search(d.message), (
@@ -167,9 +155,7 @@ Expect: the focused settings tests pass with exit code 0
   Expect: the focused settings tests pass with exit code 0
 """
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
         f"tiny example should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
@@ -202,9 +188,7 @@ Run `pytest tests/mcp/ -q`; the new not-a-plan tests must pass and every
 existing relaxation test must still pass.
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
         f"prose plan under custom headings should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
@@ -221,12 +205,9 @@ type: plan
 noop: true
 ---"""
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
-        f"noop plan should not trip PLAN001, got: "
-        f"{[(d.rule_id, d.severity) for d in diagnostics]}"
+        f"noop plan should not trip PLAN001, got: {[(d.rule_id, d.severity) for d in diagnostics]}"
     )
     assert content == {"noop": True}
 
@@ -253,19 +234,14 @@ Lints the output structure against the canonical schema and surfaces any
 deviation as a single warning diagnostic that names the line and the rule.
 """
     content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
         f"dangling Depends on should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
     assert content != {}
     # The dangling reference surfaces at warning severity, not error.
-    assert any(
-        d.rule_id in {"PLAN021", "REF003"} and d.severity == "warning"
-        for d in diagnostics
-    )
+    assert any(d.rule_id in {"PLAN021", "REF003"} and d.severity == "warning" for d in diagnostics)
 
 
 def test_plan_with_dependency_cycle_is_a_plan() -> None:
@@ -290,9 +266,7 @@ ordering invariant that downstream readers depend on for cycle detection.
 Depends on: S-1
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
         f"dependency cycle should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
@@ -300,9 +274,7 @@ Depends on: S-1
     # The step dependency cycle is detected on the pydantic side
     # (SPEC010 with a cycle message); the plan-scoped severity policy
     # demotes the pydantic branch from error to warning.
-    assert any(
-        d.rule_id == "SPEC010" and d.severity == "warning" for d in diagnostics
-    )
+    assert any(d.rule_id == "SPEC010" and d.severity == "warning" for d in diagnostics)
 
 
 def test_file_change_step_without_files_is_a_plan() -> None:
@@ -323,9 +295,7 @@ table byte-for-byte identical to the previous release.
 Type: file_change
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
         f"missing Files: should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
@@ -351,9 +321,7 @@ blocking plan-rejection diagnostic.
 Type: action
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors == [], (
         f"malformed step ID should not trip PLAN001, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
@@ -383,17 +351,14 @@ type: plan
 ### [S-1] Do
 """
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors, (
         f"expected PLAN001 error for plan-shaped under-100-char text, got: "
         f"{[(d.rule_id, d.severity) for d in diagnostics]}"
     )
     for d in plan001_errors:
         assert _BLOCKING_CONSUMER_RE.search(d.message), (
-            f"PLAN001 for plan-shaped under-100-char text does not name its "
-            f"consumer: {d.message!r}"
+            f"PLAN001 for plan-shaped under-100-char text does not name its consumer: {d.message!r}"
         )
 
 
@@ -420,9 +385,7 @@ execution receive the authored sections and their verification details.
 def test_plan_regression_recognizable_eof_truncation_emits_plan001_error(text: str) -> None:
     """S-1: unclosed fences and dangling fields are rejected at the shared gate."""
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert len(errors) == 1
     assert _BLOCKING_CONSUMER_RE.search(errors[0].message)
 
@@ -445,9 +408,7 @@ def test_plan_regression_complete_or_ambiguous_eof_does_not_emit_plan001(suffix:
         + suffix
     )
     _content, diagnostics = parse_and_validate(text, PLAN_SPEC)
-    assert [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ] == []
+    assert [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"] == []
 
 
 @pytest.mark.parametrize(
@@ -511,9 +472,7 @@ def test_plan_regression_eof_signal_classification_through_mcp_entry_point(
 def test_analyze_plan_document_propagates_plan001_error() -> None:
     """The MCP wire-shape helper sees the same PLAN001 error."""
     content, diagnostics, _overridden = analyze_plan_document("")
-    plan001_errors = [
-        d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"
-    ]
+    plan001_errors = [d for d in diagnostics if d.rule_id == "PLAN001" and d.severity == "error"]
     assert plan001_errors, "analyze_plan_document must surface PLAN001 on empty text"
     assert content == {}
 
@@ -531,12 +490,10 @@ def test_plan001_message_names_consumer_and_fix() -> None:
         for d in diagnostics:
             if d.rule_id == "PLAN001":
                 assert _BLOCKING_CONSUMER_RE.search(d.message), (
-                    f"PLAN001 message does not follow convention for case {case!r}: "
-                    f"{d.message!r}"
+                    f"PLAN001 message does not follow convention for case {case!r}: {d.message!r}"
                 )
                 assert "analysis" in d.message.lower() or "executor" in d.message.lower(), (
-                    f"PLAN001 message must name analysis or executor as consumer: "
-                    f"{d.message!r}"
+                    f"PLAN001 message must name analysis or executor as consumer: {d.message!r}"
                 )
 
 

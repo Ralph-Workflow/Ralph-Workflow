@@ -144,7 +144,9 @@ def _artifact_requirements_resolver_impl(
     return None
 
 
-_artifact_requirements_resolver: ArtifactRequirementsResolverFn = _artifact_requirements_resolver_impl
+_artifact_requirements_resolver: ArtifactRequirementsResolverFn = (
+    _artifact_requirements_resolver_impl
+)
 
 
 def _phase_prompt_materializer_impl(

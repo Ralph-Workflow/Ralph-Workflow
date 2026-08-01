@@ -35,7 +35,6 @@ from ralph.pro_support.state_query import (
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
-
     from ralph.config.models import UnifiedConfig
 
 # All tests in this module go through the full ``ralph.pipeline.run_loop.run()``
@@ -249,9 +248,7 @@ def test_registry_factory_is_invoked(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     config = _build_config()
     hooks = ProPipelineHooks(registry_factory=_registry_factory)
-    exit_code = run_loop_module.run(
-        config, initial_state=state, pro_hooks=hooks
-    )
+    exit_code = run_loop_module.run(config, initial_state=state, pro_hooks=hooks)
     assert exit_code == 0
     assert len(factory_calls) == 1
     assert factory_calls[0] is config
@@ -344,9 +341,7 @@ def test_recovery_controller_factory_is_invoked(
 
     config = _build_config()
     hooks = ProPipelineHooks(recovery_controller_factory=_controller_factory)
-    exit_code = run_loop_module.run(
-        config, initial_state=state, pro_hooks=hooks
-    )
+    exit_code = run_loop_module.run(config, initial_state=state, pro_hooks=hooks)
     assert exit_code == 0
     assert len(controller_factory_calls) == 1
     assert captured_controller[0] is custom_controller
@@ -422,9 +417,7 @@ def test_snapshot_registry_receives_publishes(
 
     config = _build_config()
     hooks = ProPipelineHooks(snapshot_registry=registry)
-    exit_code = run_loop_module.run(
-        config, initial_state=state, pro_hooks=hooks
-    )
+    exit_code = run_loop_module.run(config, initial_state=state, pro_hooks=hooks)
     assert exit_code == 0
     latest = registry.get_latest()
     assert latest is not None
@@ -467,9 +460,7 @@ def test_custom_pipeline_artifact_type_end_to_end(
 
     config = _build_config()
     hooks = ProPipelineHooks(policy_bundle_override=custom_bundle)
-    exit_code = run_loop_module.run(
-        config, initial_state=state, pro_hooks=hooks
-    )
+    exit_code = run_loop_module.run(config, initial_state=state, pro_hooks=hooks)
     assert exit_code == 0
     assert captured_bundle[0] is custom_bundle
 

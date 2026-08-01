@@ -233,9 +233,7 @@ def test_singleton_atexit_shutdown_calls_executor_shutdown() -> None:
     _saturated_dispatch.submit(lambda: 1)
     # Then swap in a recording executor that tracks the shutdown args.
     recording = _RecordingExecutor()
-    _saturated_dispatch._default_dispatch.install_executor(
-        recording
-    )
+    _saturated_dispatch._default_dispatch.install_executor(recording)
 
     # Invoke the registered atexit hook directly.
     assert callable(_saturated_dispatch._atexit_shutdown)
@@ -266,9 +264,7 @@ def test_bounded_sdk_call_singleton_atexit_shutdown() -> None:
     # by running a single submit with a non-None timeout.
     _bounded_sdk_call.with_timeout(lambda: 1, 5.0)
     recording = _RecordingExecutor()
-    _bounded_sdk_call._default_call.install_executor(
-        recording
-    )
+    _bounded_sdk_call._default_call.install_executor(recording)
 
     assert callable(_bounded_sdk_call._atexit_shutdown)
     _bounded_sdk_call._atexit_shutdown()

@@ -662,9 +662,7 @@ def _regenerate_existing_local_configs(
         _LOCAL_CONFIG_FILENAME: _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
         _LOCAL_MCP_FILENAME: _get_bundled_defaults_dir() / "mcp.toml",
         **{
-            policy_filename: _resolve_global_policy_source(
-                global_dir, policy_filename, force=False
-            )
+            policy_filename: _resolve_global_policy_source(global_dir, policy_filename, force=False)
             for policy_filename in _LOCAL_POLICY_FILENAMES
         },
         **{

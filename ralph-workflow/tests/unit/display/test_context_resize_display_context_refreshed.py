@@ -166,9 +166,7 @@ class TestDisplayContextRefreshed:
         # A vertical resize that does NOT change the operator's
         # ``force_height`` continues to honour the override.
         resized = _console_with_height(80, 42)
-        refreshed = make_display_context(
-            console=resized, env={}, force_height=18
-        ).refreshed()
+        refreshed = make_display_context(console=resized, env={}, force_height=18).refreshed()
 
         assert refreshed.height == 18
 
@@ -186,8 +184,6 @@ class TestDisplayContextRefreshed:
         assert ctx.height is None
 
         resized = _console_with_height(80, 12)
-        refreshed = make_display_context(
-            console=resized, env={}, force_height=0
-        ).refreshed()
+        refreshed = make_display_context(console=resized, env={}, force_height=0).refreshed()
 
         assert refreshed.height is None

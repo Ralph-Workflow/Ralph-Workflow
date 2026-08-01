@@ -106,8 +106,7 @@ def test_no_spawn_call_site_passes_stdin_none() -> None:
                     offenders.append(_format_call_site(source_path, node))
     assert not offenders, (
         "SpawnOptions(stdin=None) re-introduced (would INHERIT Ralph's "
-        "controlling-terminal stdin). Offending call sites:\n"
-        + "\n".join(offenders)
+        "controlling-terminal stdin). Offending call sites:\n" + "\n".join(offenders)
     )
 
 
@@ -166,8 +165,7 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
     )
     sync_opts = sync_captured[0]
     assert sync_opts.stdin is subprocess.DEVNULL, (
-        f"sync seam must pass DEVNULL when caller omits stdin; "
-        f"got stdin={sync_opts.stdin!r}"
+        f"sync seam must pass DEVNULL when caller omits stdin; got stdin={sync_opts.stdin!r}"
     )
     assert sync_opts.start_new_session is True, (
         f"sync seam must keep start_new_session=True; "
@@ -195,8 +193,7 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
     )
     async_kwargs = async_captured[0]
     assert async_kwargs["stdin"] is subprocess.DEVNULL, (
-        f"async seam must pass DEVNULL when caller omits stdin; "
-        f"got stdin={async_kwargs['stdin']!r}"
+        f"async seam must pass DEVNULL when caller omits stdin; got stdin={async_kwargs['stdin']!r}"
     )
     assert async_kwargs["start_new_session"] is True, (
         f"async seam must keep start_new_session=True; "
@@ -220,9 +217,8 @@ def _iter_python_files(root: Path) -> Iterator[Path]:
 def _is_spawn_options_call(node: ast.Call) -> bool:
     """Return True when the call's function is the ``SpawnOptions`` name."""
     func = node.func
-    return (
-        (isinstance(func, ast.Name) and func.id == "SpawnOptions")
-        or (isinstance(func, ast.Attribute) and func.attr == "SpawnOptions")
+    return (isinstance(func, ast.Name) and func.id == "SpawnOptions") or (
+        isinstance(func, ast.Attribute) and func.attr == "SpawnOptions"
     )
 
 

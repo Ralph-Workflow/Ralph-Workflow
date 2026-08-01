@@ -49,4 +49,3 @@ def test_builtin_supports_properties() -> None:
         assert s.name in legacy_agents
         assert s.cmd == legacy_agents[s.name].cmd
         assert s.config.transport == legacy_agents[s.name].transport
-

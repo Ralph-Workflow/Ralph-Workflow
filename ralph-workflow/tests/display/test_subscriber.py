@@ -758,6 +758,7 @@ def test_subscriber_sink_call_is_defensive(tmp_path: Path) -> None:
     snapshot = sub.build_snapshot(state)
     assert snapshot is not None
 
+
 # ---------------------------------------------------------------------------
 # wt-047-stall-label (DA-002): STALLED / STALL_RESUMED lines render the
 # watchdog's idle_elapsed_seconds (NOT current_run_seconds). The

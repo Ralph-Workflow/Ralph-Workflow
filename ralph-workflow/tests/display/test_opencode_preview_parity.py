@@ -11,7 +11,14 @@ from ralph.display.preview_payload import payload_from_tool_event
 @pytest.mark.parametrize(
     ("tool_name", "input_payload", "operation", "path", "old_text", "new_text"),
     (
-        ("write", {"path": "src/example.py", "content": "x = 1\n"}, "write", "src/example.py", "", ""),
+        (
+            "write",
+            {"path": "src/example.py", "content": "x = 1\n"},
+            "write",
+            "src/example.py",
+            "",
+            "",
+        ),
         (
             "edit",
             {"path": "src/example.py", "old_string": "x = 1", "new_string": "x = 2"},

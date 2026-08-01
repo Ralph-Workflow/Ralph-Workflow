@@ -125,9 +125,7 @@ def test_worker_without_resolution_dependencies_warns_the_operator(
     "aborts on the first conflict" for every parallel worker.
     """
     display = _RecordingDisplay()
-    monkeypatch.setattr(
-        worker_runtime, "resolve_active_display", lambda _d, _ctx: display
-    )
+    monkeypatch.setattr(worker_runtime, "resolve_active_display", lambda _d, _ctx: display)
 
     resolvers = worker_runtime._worker_integration_resolvers(
         config=_config(enabled=True),
@@ -141,9 +139,7 @@ def test_worker_without_resolution_dependencies_warns_the_operator(
     assert resolvers == (None, None, None)
     assert display.warn_lines[0][0] == "run"
     assert display.warn_lines[0][1] == "auto-integrate"
-    assert (
-        "parallel worker has no resolution dependencies" in display.warn_lines[0][2]
-    )
+    assert "parallel worker has no resolution dependencies" in display.warn_lines[0][2]
 
 
 def test_worker_without_a_display_context_declines_without_raising() -> None:

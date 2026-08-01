@@ -48,7 +48,9 @@ def test_warns_on_spotlight_and_fat_journal(tmp_path: Path, monkeypatch: object)
     operator sees both mitigations at once.
     """
     monkeypatch.setattr(fs_health_module, "_volume_root", lambda _p: tmp_path)
-    monkeypatch.setattr(fs_health_module, "_probe_journal_size", lambda _journal: _JOURNAL_WARN_BYTES + 1)
+    monkeypatch.setattr(
+        fs_health_module, "_probe_journal_size", lambda _journal: _JOURNAL_WARN_BYTES + 1
+    )
     monkeypatch.setattr(fs_health_module.sys, "platform", "darwin")
 
     def fake_run(cmd: object, **kwargs: object) -> object:

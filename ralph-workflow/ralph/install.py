@@ -87,9 +87,7 @@ def write_dev_launcher(path: Path, content: str) -> None:
 def _write_build_flavor(package_dir: Path, flavor: str) -> None:
     build_meta = package_dir / "ralph" / "_build_meta.py"
     content = build_meta.read_text(encoding="utf-8")
-    updated_content = content.replace(
-        'BUILD_FLAVOR: str = ""', f'BUILD_FLAVOR: str = "{flavor}"'
-    )
+    updated_content = content.replace('BUILD_FLAVOR: str = ""', f'BUILD_FLAVOR: str = "{flavor}"')
     write_text_if_changed(DEFAULT_FILE_BACKEND, build_meta, updated_content, encoding="utf-8")
 
 
@@ -116,7 +114,9 @@ def install_dev_checkout(
             "uv is required to set up the dev build. Install uv first: "
             "https://docs.astral.sh/uv/getting-started/installation/"
         )
-    destination = (install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev") / "current"
+    destination = (
+        install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev"
+    ) / "current"
     copied_dir = copy_tree(cwd, destination)
     write_flavor(copied_dir, "-dev")
     run((uv_executable, "sync", "--extra", "dev"), cwd=copied_dir)
@@ -130,6 +130,8 @@ def install_stable_release(
     cwd: Path,
     version: str | None = None,
     from_path: Path | None = None,
+    which_fn: Callable[[str], str | None] = shutil.which,
+    resolve_installed_package_file: Callable[[str], Path | None] = resolve_package_file,
     write_flavor: Callable[[Path, str], None] = _write_build_flavor,
 ) -> None:
     """Install a stable release as the isolated global ``ralph`` command.
@@ -158,8 +160,12 @@ def install_stable_release(
         command.append(f"{STABLE_PACKAGE_NAME}=={version}")
     run(tuple(command), cwd=cwd)
     if from_path is not None:
-        # uv tool environments are outside the checkout; infer its standard location.
-        write_flavor(Path.home() / ".local" / "share" / "uv" / "tools" / STABLE_PACKAGE_NAME, "-build")
+        installed_package_file = resolve_installed_package_file(which_fn("ralph") or "")
+        if installed_package_file is None:
+            raise RuntimeError(
+                "Installed ralph package could not be located to mark it as a manual build."
+            )
+        write_flavor(installed_package_file.parents[1], "-build")
 
 
 class _InstallArgs(argparse.Namespace):

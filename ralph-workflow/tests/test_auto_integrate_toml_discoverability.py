@@ -120,9 +120,7 @@ def _commented_defaults(text: str) -> dict[str, str]:
         if not key.startswith("auto_integrate_"):
             continue
         if key in out:
-            raise AssertionError(
-                f"duplicate commented key {key!r}; rubric requires one entry"
-            )
+            raise AssertionError(f"duplicate commented key {key!r}; rubric requires one entry")
         out[key] = match.group("value")
     return out
 
@@ -142,9 +140,7 @@ def _general_section_block(content: str) -> str:
             header_idx = idx
             break
     if header_idx is None:
-        raise AssertionError(
-            "no [general] header found; the rubrick requires one per file"
-        )
+        raise AssertionError("no [general] header found; the rubrick requires one per file")
     end_at: int | None = None
     for idx in range(header_idx + 1, len(lines)):
         stripped = lines[idx].strip()
@@ -183,12 +179,8 @@ def test_each_template_has_exactly_one_general_header() -> None:
     """
     for _, path in _bundled():
         text = _read_text(path)
-        count = sum(
-            1 for line in text.splitlines() if line.strip() == "[general]"
-        )
-        assert count == 1, (
-            f"{path}: expected exactly one [general] header, found {count}"
-        )
+        count = sum(1 for line in text.splitlines() if line.strip() == "[general]")
+        assert count == 1, f"{path}: expected exactly one [general] header, found {count}"
 
 
 def test_general_section_starts_with_auto_integration_banner() -> None:
@@ -351,7 +343,7 @@ def test_banner_appears_at_top_of_general_block_not_middle() -> None:
             first_unrelated = None
             first_unrelated_text = None
         assert banner_at is not None, (
-            f"{path}: the { _REQUIRED_BANNER_HEADER!r} banner must "
+            f"{path}: the {_REQUIRED_BANNER_HEADER!r} banner must "
             f"appear directly after the [general] header (line "
             f"{header_idx + 1}); the first non-decorative line after "
             f"the header is at {first_unrelated + 1 if first_unrelated is not None else '(end)'} "

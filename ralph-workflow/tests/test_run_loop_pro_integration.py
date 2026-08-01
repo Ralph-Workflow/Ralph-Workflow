@@ -597,9 +597,7 @@ def test_late_marker_adoption_starts_heartbeat_after_run(
 
     config = _build_config(tmp_path)
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = run_loop_module.run(
-        config, initial_state=state, pro_hooks=hooks
-    )
+    exit_code = run_loop_module.run(config, initial_state=state, pro_hooks=hooks)
     assert exit_code == 0
     assert recording.started, "late marker should have started the heartbeat"
     assert recording.stopped, "cleanup should have stopped the heartbeat"

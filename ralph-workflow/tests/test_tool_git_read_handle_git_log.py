@@ -37,9 +37,7 @@ def test_format_summary_bytes_out_matches_actual_payload(
     payload_text = "abc1234 first commit\ndef5678 second commit\n"
     with patch("ralph.mcp.tools.git_read.run_git_command") as mock_git:
         mock_git.return_value = payload_text
-        result = handle_git_log(
-            session, workspace, {"format": "summary", "count": 5}
-        )
+        result = handle_git_log(session, workspace, {"format": "summary", "count": 5})
     envelope = json.loads(result.content[0].text)
     assert envelope["bytes_out"] == len(result.content[0].text.encode("utf-8"))
 
@@ -76,9 +74,7 @@ class TestHandleGitLog:
 
         with patch("ralph.mcp.tools.git_read.run_git_command") as mock_git:
             mock_git.return_value = "abc1234 first commit\ndef5678 second commit\n"
-            result = handle_git_log(
-                session, workspace, {"count": 5, "format": "summary"}
-            )
+            result = handle_git_log(session, workspace, {"count": 5, "format": "summary"})
             assert result.is_error is False
             envelope = json.loads(result.content[0].text)
             assert envelope["format"] == "summary"
@@ -95,9 +91,7 @@ class TestHandleGitLog:
                     "subject": "second commit",
                 },
             ]
-            assert envelope["bytes_in"] == len(
-                b"abc1234 first commit\ndef5678 second commit\n"
-            )
+            assert envelope["bytes_in"] == len(b"abc1234 first commit\ndef5678 second commit\n")
             assert envelope["bytes_out"] > 0
 
     def test_format_raw_default_unchanged(self, tmp_path: Path) -> None:
@@ -115,9 +109,7 @@ class TestHandleGitLog:
             assert args[1] == ["log", "-10", "--oneline"]
             assert "abc1234 first commit" in result.content[0].text
 
-    def test_format_invalid_value_raises_invalid_params(
-        self, tmp_path: Path
-    ) -> None:
+    def test_format_invalid_value_raises_invalid_params(self, tmp_path: Path) -> None:
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 

@@ -476,9 +476,7 @@ class TestSerializedPostFanoutVerification:
             call_order.append("fan_out")
             call_order.extend(f"worker:{unit.unit_id}" for unit in units)
             timestamps["fan_out_ended"] = time.monotonic()
-            return [
-                WorkerCompletedEvent(unit_id=unit.unit_id, exit_code=0) for unit in units
-            ]
+            return [WorkerCompletedEvent(unit_id=unit.unit_id, exit_code=0) for unit in units]
 
         async def _fake_run_process_async(
             command: str,

@@ -164,20 +164,15 @@ def _too_short_message(content_chars: int) -> str:
 
 def _other_text_message(reason: str) -> str:
     return _consumer_rule_message(
-        f"submitted text is recognizably {reason} that arrived in the "
-        f"plan's place",
-        "submitting a real plan that states the outcome, the change, "
-        "and the verification",
+        f"submitted text is recognizably {reason} that arrived in the plan's place",
+        "submitting a real plan that states the outcome, the change, and the verification",
         _NOT_A_PLAN_CONSUMER,
     )
 
 
 def _is_noop_only(document: ParsedDocument) -> bool:
     """True iff document is the canonical ``{"type": "plan", "noop": "true"}`` plan."""
-    return (
-        document.frontmatter == {"type": "plan", "noop": "true"}
-        and not document.sections
-    )
+    return document.frontmatter == {"type": "plan", "noop": "true"} and not document.sections
 
 
 def _has_plan_shape(document: ParsedDocument) -> bool:
@@ -189,21 +184,14 @@ def _has_plan_shape(document: ParsedDocument) -> bool:
     plan; doubt resolves in favor of the plan.
     """
     for section in document.sections:
-        if any(
-            _STEP_BLOCK_PATTERN.match(line.text) for line in section.lines
-        ):
+        if any(_STEP_BLOCK_PATTERN.match(line.text) for line in section.lines):
             return True
-        if any(
-            _STABLE_ID_ITEM_PATTERN.match(item.text) for item in section.items
-        ):
+        if any(_STABLE_ID_ITEM_PATTERN.match(item.text) for item in section.items):
             return True
         # ``### [S-n]`` step blocks are stored as ``ParsedBlock`` objects,
         # not section lines; the block's identifier matches the step
         # pattern independently of where it sits in the heading tree.
-        if any(
-            _STEP_BLOCK_PATTERN.match(f"### [{block.identifier}]")
-            for block in section.blocks
-        ):
+        if any(_STEP_BLOCK_PATTERN.match(f"### [{block.identifier}]") for block in section.blocks):
             return True
         if any(
             _STABLE_ID_ITEM_PATTERN.match(item.text)
@@ -212,9 +200,7 @@ def _has_plan_shape(document: ParsedDocument) -> bool:
         ):
             return True
         total_body = sum(len(line.text) for line in section.lines)
-        total_body += sum(
-            len(line.text) for block in section.blocks for line in block.lines
-        )
+        total_body += sum(len(line.text) for block in section.blocks for line in block.lines)
         if total_body >= _SUBSTANTIAL_BODY_CHARS:
             return True
     return False
@@ -311,17 +297,43 @@ def _is_recognizably_truncated(text: str) -> str | None:
     content_lines, fence_open = _fence_scanner(text)
     if fence_open:
         return "an unclosed code fence at end of file"
-    final_document_line = next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")
+    final_document_line = next(
+        (line.strip() for line in reversed(text.splitlines()) if line.strip()), ""
+    )
     final_line = next((line for line in reversed(content_lines) if line), "")
     is_heading = final_line.startswith("#")
     final_line_is_document_ending = final_line == final_document_line
     signals: tuple[tuple[bool, str], ...] = (
-        (_DANGLING_FIELD_PATTERN.fullmatch(final_line) is not None, "a dangling plan field label at end of file"),
-        (final_line_is_document_ending and not is_heading and final_line.endswith(":"), "a final content line ending with a colon"),
-        (final_line_is_document_ending and not is_heading and final_line.endswith(("-", "\u2013", "\u2014")), "a final content line ending with a dangling dash"),
-        (final_line_is_document_ending and not is_heading and final_line.endswith(","), "a final content line ending with a comma"),
-        (final_line_is_document_ending and not is_heading and _DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None, "a final content line ending with a dangling function word"),
-        (final_line_is_document_ending and not is_heading and _has_unclosed_inline_delimiter(final_line), "an unclosed inline delimiter on the final content line"),
+        (
+            _DANGLING_FIELD_PATTERN.fullmatch(final_line) is not None,
+            "a dangling plan field label at end of file",
+        ),
+        (
+            final_line_is_document_ending and not is_heading and final_line.endswith(":"),
+            "a final content line ending with a colon",
+        ),
+        (
+            final_line_is_document_ending
+            and not is_heading
+            and final_line.endswith(("-", "\u2013", "\u2014")),
+            "a final content line ending with a dangling dash",
+        ),
+        (
+            final_line_is_document_ending and not is_heading and final_line.endswith(","),
+            "a final content line ending with a comma",
+        ),
+        (
+            final_line_is_document_ending
+            and not is_heading
+            and _DANGLING_FUNCTION_WORD_PATTERN.search(final_line) is not None,
+            "a final content line ending with a dangling function word",
+        ),
+        (
+            final_line_is_document_ending
+            and not is_heading
+            and _has_unclosed_inline_delimiter(final_line),
+            "an unclosed inline delimiter on the final content line",
+        ),
         (_EMPTY_BULLET_PATTERN.fullmatch(final_line) is not None, "a list bullet with no text"),
     )
     return next((reason for matched, reason in signals if matched), None)
@@ -331,9 +343,7 @@ def _has_unclosed_inline_delimiter(line: str) -> bool:
     """Return whether a final prose line leaves a simple inline delimiter open."""
     pairs = (("[", "]"), ("(", ")"), ("`", "`"))
     return any(
-        line.count(opener) > line.count(closer)
-        if opener != closer
-        else line.count(opener) % 2
+        line.count(opener) > line.count(closer) if opener != closer else line.count(opener) % 2
         for opener, closer in pairs
     )
 
@@ -401,9 +411,7 @@ def detect_not_a_plan(text: str) -> list[Diagnostic]:
     """
     # Noop exemption short-circuit: the canonical zero-content plan.
     try:
-        document, _parser_diagnostics = parse_markdown_document(
-            text, allow_nested_headings=True
-        )
+        document, _parser_diagnostics = parse_markdown_document(text, allow_nested_headings=True)
     except Exception:  # pragma: no cover - parser never raises
         return []
     body_text = _extract_body_text(text)

@@ -37,17 +37,13 @@ from ralph.display.parallel_display import ParallelDisplay
 
 def _make_display() -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
-    console = Console(
-        file=buf, force_terminal=False, highlight=False, color_system=None, width=200
-    )
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
 def _make_renderer_with_env(env: dict[str, str]) -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
-    console = Console(
-        file=buf, force_terminal=False, highlight=False, color_system=None, width=200
-    )
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     return ParallelDisplay(make_display_context(console=console, env=env)), buf
 
 
@@ -115,9 +111,7 @@ def test_dedup_disabled_by_env_still_emits_one_close_line() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_lines) == 1, (
-        f"Expected 1 close line, got {len(content_lines)}: {out!r}"
-    )
+    assert len(content_lines) == 1, f"Expected 1 close line, got {len(content_lines)}: {out!r}"
     # With dedup off, all 3 fragments are buffered; the joined
     # passage shows them all separated by spaces (S-13 sketch-J shape
     # carries the span and duration in the close header instead of
@@ -160,10 +154,14 @@ def test_dedup_does_not_suppress_first_fragment_of_new_block() -> None:
     assert len(content_lines) == 1
     # The buffered fragment list kept only the first occurrence.
     accumulated = pd._active_block.pop("u", None)  # already drained by flush
-    assert accumulated is None or len(accumulated) <= 1 or (
-        # Buffer was cleared by flush; the public behavior is what we
-        # actually care about.
-        True
+    assert (
+        accumulated is None
+        or len(accumulated) <= 1
+        or (
+            # Buffer was cleared by flush; the public behavior is what we
+            # actually care about.
+            True
+        )
     )
 
 

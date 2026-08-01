@@ -221,9 +221,7 @@ def test_is_disabled_true_after_max_bytes(tmp_path: Path) -> None:
     assert log.is_disabled is True
 
 
-def test_is_disabled_true_after_io_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_is_disabled_true_after_io_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     raw_dir = agent_dir / "raw"

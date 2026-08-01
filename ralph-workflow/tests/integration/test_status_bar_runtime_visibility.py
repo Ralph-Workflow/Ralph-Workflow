@@ -297,8 +297,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
         f"AC-03: Live region must surface the outer-dev iteration 'Cycle 1/3'; got {full_out!r}"
     )
     assert "iter 2/5" in full_out, (
-        f"AC-04: Live region must surface the inner-analysis iteration "
-        f"'iter 2/5'; got {full_out!r}"
+        f"AC-04: Live region must surface the inner-analysis iteration 'iter 2/5'; got {full_out!r}"
     )
 
     pd_none, buf_none = _make_parallel_display(width=100)

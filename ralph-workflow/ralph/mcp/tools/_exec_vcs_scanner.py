@@ -52,9 +52,7 @@ _VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
 # fail-closed: a benign mention of the word (``echo git``) trips the
 # scanner; the per-segment policy above decides whether the underlying
 # subcommand is whitelisted.
-_VCS_USAGE_PATTERN = re.compile(
-    r"\b(" + "|".join(sorted(_VCS_COMMANDS)) + r")\b", re.IGNORECASE
-)
+_VCS_USAGE_PATTERN = re.compile(r"\b(" + "|".join(sorted(_VCS_COMMANDS)) + r")\b", re.IGNORECASE)
 # Read-only git subcommands permitted via exec / unsafe_exec / raw_exec.
 # The set is intentionally narrow: anything that can mutate the workspace,
 # the index, refs, or remote state is omitted. ``diff`` is whitelisted but
@@ -123,9 +121,7 @@ _GIT_DIFF_EXTERNAL_HELPER_FLAGS: tuple[str, ...] = (
 # Interpreters whose script-file argument is executed as shell: the script's
 # CONTENT is scanned for VCS usage (``bash deploy.sh`` where deploy.sh runs
 # ``git push`` is denied). ``source``/``.`` execute in-shell the same way.
-_SHELL_INTERPRETERS: frozenset[str] = frozenset(
-    {"sh", "bash", "zsh", "dash", "ksh", "source", "."}
-)
+_SHELL_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh", "dash", "ksh", "source", "."})
 _SCRIPT_EXTENSIONS = (".sh", ".bash", ".zsh", ".ksh")
 _SCRIPT_SCAN_LIMIT_BYTES = 256 * 1024
 _SHEBANG_PREFIX = b"#!"
@@ -215,9 +211,7 @@ def _scan_diff_flags_for_writes(args_text: str) -> str | None:
         # is intentional so ``--output-threshold`` is also rejected.
         for prefix in _GIT_DIFF_OUTPUT_FLAGS:
             if prefix == "--output" and (
-                token == "--output"
-                or "--output=" in token
-                or token.startswith("--output ")
+                token == "--output" or "--output=" in token or token.startswith("--output ")
             ):
                 return token
             if prefix == "-o" and (
@@ -348,9 +342,7 @@ def find_vcs_usage_in_scripts(
             continue
         if not (token.endswith(_SCRIPT_EXTENSIONS) or head_bytes.startswith(_SHEBANG_PREFIX)):
             continue
-        reason = _scan_text_for_vcs_violation(
-            head_bytes.decode("utf-8", errors="replace")
-        )
+        reason = _scan_text_for_vcs_violation(head_bytes.decode("utf-8", errors="replace"))
         if reason is not None:
             return token, "git/hg/svn"
     return None

@@ -110,9 +110,7 @@ def test_identity_style_for_active_keeps_distinct_colors_cvd_safe() -> None:
             simulated = _simulate_cvd(hex_color, matrix)
             key = f"{label}:{simulated}"
             existing = seen_cvd.get(key)
-            assert existing is None, (
-                f"{name!r} and {existing!r} collide under {label}: {simulated}"
-            )
+            assert existing is None, f"{name!r} and {existing!r} collide under {label}: {simulated}"
             seen_cvd[key] = name
 
 

@@ -112,14 +112,9 @@ def test_ralph_reindex_cancel_is_bounded_bool() -> None:
 
 def test_explore_catalog_token_count_stays_bounded() -> None:
     """The explore tool catalog token count must remain under 15% growth."""
-    text = " ".join(
-        str(spec.metadata.definition.description)
-        for spec in explore_specs()
-    )
+    text = " ".join(str(spec.metadata.definition.description) for spec in explore_specs())
     token_count = len(text.split())
-    assert token_count < 1500, (
-        f"explore catalog token count {token_count} exceeds soft cap 1500"
-    )
+    assert token_count < 1500, f"explore catalog token count {token_count} exceeds soft cap 1500"
 
 
 def test_deferred_explore_tools_have_no_schemas_yet() -> None:

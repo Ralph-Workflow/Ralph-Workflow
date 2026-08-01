@@ -240,7 +240,7 @@ def test_indexed_grep_without_index_handle_falls_back(tmp_path: Path) -> None:
             "pattern": "hello",
             "path": ".",
             "regex": False,
-                "case_sensitive": False,
+            "case_sensitive": False,
             "use_index": "auto",
         },
     )

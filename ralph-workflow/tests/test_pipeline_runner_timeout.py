@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
     return UnifiedConfig(
         general=GeneralConfig(agent_idle_timeout_seconds=agent_idle_timeout_seconds)

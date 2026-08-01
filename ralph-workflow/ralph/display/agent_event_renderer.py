@@ -520,8 +520,11 @@ def _render_tool_result_event(
     target = metadata.get("target")
     if not isinstance(target, str) or not target:
         target = next(
-            (f"{key}={_safe_str(value)}" for key in ("path", "command", "workdir")
-             if isinstance(value := metadata.get(key), str) and value),
+            (
+                f"{key}={_safe_str(value)}"
+                for key in ("path", "command", "workdir")
+                if isinstance(value := metadata.get(key), str) and value
+            ),
             _format_event_input(metadata),
         )
     text = Text()
@@ -543,9 +546,7 @@ def _render_tool_result_event(
         text.append(escape(target) if escape_body else target, style="theme.text.muted")
         text.append(" ", style=style)
     body_style = "theme.text.muted" if not is_error else style
-    _append_tool_result_body(
-        text, body, unit_id, body_style, tool_ref, ctx, escape_body
-    )
+    _append_tool_result_body(text, body, unit_id, body_style, tool_ref, ctx, escape_body)
     return text
 
 

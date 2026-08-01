@@ -39,7 +39,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _make_prompt(tmp_path: Path) -> str:
     p = tmp_path / "PROMPT.md"
     p.write_text("hello world", encoding="utf-8")

@@ -37,9 +37,7 @@ def _safe_item_text(value: str) -> str:
 def _memory_findings(getenv: Callable[[str], str | None]) -> list[str]:
     findings = getenv("RALPH_RUN_TIME_REPORT_MEMORY_FINDINGS") or ""
     return [
-        _safe_item_text(finding)
-        for finding in findings.splitlines()
-        if _safe_item_text(finding)
+        _safe_item_text(finding) for finding in findings.splitlines() if _safe_item_text(finding)
     ][:_MAX_MEMORY_FINDINGS]
 
 
@@ -99,7 +97,9 @@ def render_run_time_report(
                 for index, (phase, duration) in enumerate(reported_phases, start=1)
             )
             if truncated:
-                phase_lines.append("- [P-8] Phase timing list truncated to fit the reporting budget.")
+                phase_lines.append(
+                    "- [P-8] Phase timing list truncated to fit the reporting budget."
+                )
         else:
             phase_lines.append("- [P-2] No completed phase timings were recorded.")
             slowest_lines.append("- [SS-1] No completed phase timings were recorded.")

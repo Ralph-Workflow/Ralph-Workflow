@@ -107,8 +107,7 @@ def test_emit_snapshot_emits_no_level_badge() -> None:
     output = buf.getvalue()
     for forbidden in ("INFO", "WARN", "ERROR", "MILESTONE", "META", "OUT"):
         assert forbidden not in output, (
-            f"wt-028-display S-4: snapshot must not leak {forbidden!r} "
-            f"chrome; got: {output!r}"
+            f"wt-028-display S-4: snapshot must not leak {forbidden!r} chrome; got: {output!r}"
         )
 
 

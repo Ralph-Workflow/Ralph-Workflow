@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def test_validator_error_includes_rule_location_and_repair_message(tmp_path: Path) -> None:
     result = handle_verify_md_artifact(
         planning_session(),

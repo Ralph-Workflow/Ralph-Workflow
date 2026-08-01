@@ -95,9 +95,7 @@ def test_write_prompt_regression_skips_byte_identical_rewrite() -> None:
     first_path = _render(write_prompt, root, "main", ("shared.txt",), backend)
     second_path = _render(write_prompt, root, "main", ("shared.txt",), backend)
 
-    expected_path = (
-        root / ".agent" / "tmp" / "rebase_conflict_resolution_prompt.md"
-    )
+    expected_path = root / ".agent" / "tmp" / "rebase_conflict_resolution_prompt.md"
     assert first_path == expected_path
     assert second_path == expected_path
     assert backend.write_text_calls == 1

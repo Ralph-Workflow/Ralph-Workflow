@@ -64,7 +64,10 @@ def _replay(
     visible = [line for line in parsed if line.type not in {"stop", "status", "session"}]
     output = io.StringIO()
     display = ParallelDisplay(
-        make_display_context(console=Console(file=output, force_terminal=False, color_system=None, width=100), env={"CI": "1"}),
+        make_display_context(
+            console=Console(file=output, force_terminal=False, color_system=None, width=100),
+            env={"CI": "1"},
+        ),
         workspace_root=tmp_path,
         clock=lambda: datetime(2026, 7, 25, 9, 30, 0),
         monotonic=lambda: 0.0,
@@ -73,7 +76,13 @@ def _replay(
     display.emit_phase_start("development", agent_name=name)
     for line in visible:
         event = normalize_event_from_agent_output_line(line, provider=provider, unit_id=name)
-        display.emit_parsed_event(unit_id=name, kind=event.kind, content=event.content, metadata=event.metadata, timestamp=line.timestamp)
+        display.emit_parsed_event(
+            unit_id=name,
+            kind=event.kind,
+            content=event.content,
+            metadata=event.metadata,
+            timestamp=line.timestamp,
+        )
     if include_condensation:
         condensation_body = f"CONDENSE-{name} " + "x" * 450
         display.emit_parsed_event(
@@ -95,7 +104,9 @@ def _replay(
 
 
 @pytest.mark.parametrize(("name", "provider", "parser_factory"), _CASES)
-def test_parser_native_replay_keeps_each_agent_on_the_shared_presentation_path(name: str, provider: ActivityProvider, parser_factory: _ParserFactory, tmp_path: Path) -> None:
+def test_parser_native_replay_keeps_each_agent_on_the_shared_presentation_path(
+    name: str, provider: ActivityProvider, parser_factory: _ParserFactory, tmp_path: Path
+) -> None:
     """S-5: wire capture -> parser -> normalizer -> display never becomes a raw dump."""
     record, live, expected_bodies = _replay(name, provider, parser_factory, tmp_path)
     lines = [line for line in record.splitlines() if line.strip() and "[" in line]
@@ -106,8 +117,13 @@ def test_parser_native_replay_keeps_each_agent_on_the_shared_presentation_path(n
     assert all("role=" in line and "[??:??:??]" not in line for line in lines)
     tool_lines = [line for line in lines if "role=tool_" in line]
     assert not tool_lines or any(line.startswith("  ") for line in tool_lines)
-    assert all(body.splitlines()[0] in record and body.splitlines()[0] in live for body in expected_bodies)
-    assert all(token not in record and token not in live for token in ("CONT", "META", "thinking-start", "thinking-end"))
+    assert all(
+        body.splitlines()[0] in record and body.splitlines()[0] in live for body in expected_bodies
+    )
+    assert all(
+        token not in record and token not in live
+        for token in ("CONT", "META", "thinking-start", "thinking-end")
+    )
 
 
 @pytest.mark.parametrize(("name", "provider", "parser_factory"), _CASES)
@@ -118,9 +134,7 @@ def test_parser_native_replay_condenses_every_agent_payload(
     tmp_path: Path,
 ) -> None:
     """DA-005: every provider's shared path accounts for oversized content."""
-    record, live, _ = _replay(
-        name, provider, parser_factory, tmp_path, include_condensation=True
-    )
+    record, live, _ = _replay(name, provider, parser_factory, tmp_path, include_condensation=True)
     for surface in (record, live):
         assert f"CONDENSE-{name}" in surface
         assert "truncated" in surface
@@ -142,7 +156,9 @@ def test_parser_native_replay_uses_supplied_wire_lines(tmp_path: Path) -> None:
 
 def test_parser_native_generic_malformed_payload_still_has_hierarchy(tmp_path: Path) -> None:
     """S-5: malformed generic input is retained as a structured unknown entry."""
-    record, live, expected_bodies = _replay("malformed", ActivityProvider.GENERIC, GenericParser, tmp_path)
+    record, live, expected_bodies = _replay(
+        "malformed", ActivityProvider.GENERIC, GenericParser, tmp_path
+    )
     assert expected_bodies == ["{not-json"]
     assert "role=unrecognized" in record
     assert "{not-json" in record

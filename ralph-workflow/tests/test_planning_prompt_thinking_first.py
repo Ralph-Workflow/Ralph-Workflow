@@ -10,7 +10,12 @@ def _source(name: str) -> str:
 
 
 def test_planning_variants_share_the_thinking_contract() -> None:
-    for name in ("planning.jinja", "planning_fallback.jinja", "planning_edit.jinja", "planning_edit_fallback.jinja"):
+    for name in (
+        "planning.jinja",
+        "planning_fallback.jinja",
+        "planning_edit.jinja",
+        "planning_edit_fallback.jinja",
+    ):
         source = _source(name)
         assert "shared/_planning_thinking.j2" in source
         assert "shared/_planning_submission_mechanics.j2" in source
@@ -34,9 +39,11 @@ def test_planning_prompt_frames_the_request_before_mechanics_and_places_payload_
 
     assert source.index("USER REQUEST: produce") < source.index("PLANNING MODE")
     assert source.index("PLANNING MODE") < source.index("shared/_planning_thinking.j2")
-    assert source.index("shared/_planning_thinking.j2") < source.index(
-        "shared/_planning_submission_mechanics.j2"
-    ) < source.rindex("render_payload_section('PROMPT'")
+    assert (
+        source.index("shared/_planning_thinking.j2")
+        < source.index("shared/_planning_submission_mechanics.j2")
+        < source.rindex("render_payload_section('PROMPT'")
+    )
 
 
 def test_planning_variants_keep_thinking_before_submission_and_payload() -> None:
@@ -47,9 +54,11 @@ def test_planning_variants_keep_thinking_before_submission_and_payload() -> None
     }
     for name, payload in payload_markers.items():
         source = _source(name)
-        assert source.index("shared/_planning_thinking.j2") < source.index(
-            "shared/_planning_submission_mechanics.j2"
-        ) < source.index(payload)
+        assert (
+            source.index("shared/_planning_thinking.j2")
+            < source.index("shared/_planning_submission_mechanics.j2")
+            < source.index(payload)
+        )
 
 
 def test_submission_mechanics_keeps_plan001_and_standard_artifact_flow() -> None:

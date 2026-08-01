@@ -150,9 +150,7 @@ def test_exec_summary_registers_spill_with_session_resolver(
     def fake_runner(
         _argv: list[str], _cwd: Path, _timeout: float | None
     ) -> _CompletedProcessAdapter:
-        return _CompletedProcessAdapter(
-            stdout=stdout_body, stderr=stderr_body, returncode=0
-        )
+        return _CompletedProcessAdapter(stdout=stdout_body, stderr=stderr_body, returncode=0)
 
     deps = ExecRunDeps(runner=fake_runner, spill_dir=spill_dir)
     result = handle_exec_command(
@@ -205,9 +203,7 @@ def test_exec_summary_registers_stderr_spill_even_when_below_individual_threshol
     def fake_runner(
         _argv: list[str], _cwd: Path, _timeout: float | None
     ) -> _CompletedProcessAdapter:
-        return _CompletedProcessAdapter(
-            stdout=stdout_body, stderr=stderr_body, returncode=0
-        )
+        return _CompletedProcessAdapter(stdout=stdout_body, stderr=stderr_body, returncode=0)
 
     deps = ExecRunDeps(runner=fake_runner, spill_dir=spill_dir)
     result = handle_exec_command(
@@ -335,9 +331,7 @@ def test_mcp_resources_list_includes_exec_entries(tmp_path: Path) -> None:
 
     handler = object.__new__(McpServer)
     handler._session = session
-    request = JsonRpcRequest(
-        jsonrpc="2.0", method="resources/list", msg_id=1
-    )
+    request = JsonRpcRequest(jsonrpc="2.0", method="resources/list", msg_id=1)
     response, _state = handler._handle_resources_list(request)
     assert response.error is None
     result = response.result
@@ -368,11 +362,7 @@ def test_mcp_resource_templates_includes_exec_template(tmp_path: Path) -> None:
     assert isinstance(result, dict)
     templates_value = result["resourceTemplates"]
     assert isinstance(templates_value, list)
-    uris = [
-        tpl["uriTemplate"]
-        for tpl in templates_value
-        if isinstance(tpl, dict)
-    ]
+    uris = [tpl["uriTemplate"] for tpl in templates_value if isinstance(tpl, dict)]
     assert "ralph://exec/{spill_name}" in uris
 
 

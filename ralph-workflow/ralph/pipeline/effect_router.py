@@ -201,7 +201,11 @@ def _agy_available_agents(probe: Callable[[], str] | None) -> tuple[str, ...]:
         output = (probe or _default_agy_agents_probe)()
     except (OSError, ProcessExecutionError):
         return ()
-    return tuple(line.strip().lstrip("- ") for line in output.splitlines() if line.strip() and ":" not in line)
+    return tuple(
+        line.strip().lstrip("- ")
+        for line in output.splitlines()
+        if line.strip() and ":" not in line
+    )
 
 
 def _fan_out_effect(

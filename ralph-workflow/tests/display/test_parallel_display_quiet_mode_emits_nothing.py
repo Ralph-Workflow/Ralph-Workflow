@@ -72,9 +72,9 @@ def test_quiet_mode_suppresses_file_preview_but_keeps_its_plain_record(tmp_path:
     )
     pd.stop()
     assert buf.getvalue() == ""
-    record = (
-        tmp_path / ".agent" / "raw" / f"{safe_id_for('claude')}.rendered.log"
-    ).read_text(encoding="utf-8")
+    record = (tmp_path / ".agent" / "raw" / f"{safe_id_for('claude')}.rendered.log").read_text(
+        encoding="utf-8"
+    )
     assert "answer = 42" in record
     assert "\x1b" not in record
 
@@ -98,9 +98,7 @@ def test_quiet_mode_writes_agent_event_records(tmp_path: Path) -> None:
     # Terminal surface stays silent.
     assert buf.getvalue() == ""
     # File surface receives the presented entry.
-    expected_path = (
-        tmp_path / ".agent" / "raw" / f"{safe_id_for('claude')}.rendered.log"
-    )
+    expected_path = tmp_path / ".agent" / "raw" / f"{safe_id_for('claude')}.rendered.log"
     assert expected_path.exists(), (
         f"Quiet mode must still write the rendered record; missing {expected_path}"
     )

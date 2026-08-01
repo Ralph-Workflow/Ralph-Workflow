@@ -99,6 +99,8 @@ def test_emit_info_panel_quiet_mode_emits_nothing() -> None:
     pd.stop()
     assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"
     assert captured == [], f"quiet mode must not call console.print, got: {captured!r}"
+
+
 # ---------------------------------------------------------------------------
 # DA-001 (S-5 / AC-04): the info Panel / unboxed body honor
 # ``DisplayContext.body_measure()`` so prose on a very wide console
@@ -178,9 +180,7 @@ def test_emit_info_panel_unboxed_body_caps_width_on_wide_height_constrained_cons
     body_lines = [
         line
         for line in rendered.splitlines()
-        if line
-        and "Next steps" not in line
-        and "\u2500" not in line
+        if line and "Next steps" not in line and "\u2500" not in line
     ]
     assert body_lines, f"expected a body line in rendered output, got: {rendered!r}"
     longest = max(len(line) for line in body_lines)

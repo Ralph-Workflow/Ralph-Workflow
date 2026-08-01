@@ -142,14 +142,12 @@ def _is_disabled_guard(test: ast.expr) -> bool:
     the disabled sentinel on one side of an ``or`` and a
     cheap-stat guard on the other; both sides are AC-01 safe.
     """
+
     # Unwrap a leading ``not`` so ``not X`` and ``X is False``
     # both match.
     def _match_disabled_operand(operand: ast.expr) -> bool:
         target = operand
-        if (
-            isinstance(target, ast.UnaryOp)
-            and isinstance(target.op, ast.Not)
-        ):
+        if isinstance(target, ast.UnaryOp) and isinstance(target.op, ast.Not):
             target = target.operand
         if isinstance(target, ast.Attribute):
             return target.attr == "auto_integrate_enabled"
@@ -370,10 +368,7 @@ def _auto_integrate_with_a_silent_skip(target: str) -> None:
         # every return None is a violation.
         if node.value is None:
             violations.append(f"line {node.lineno}: bare return")
-        elif (
-            isinstance(node.value, ast.Constant)
-            and node.value.value is None
-        ):
+        elif isinstance(node.value, ast.Constant) and node.value.value is None:
             # Check the enclosing guard.
             parent: ast.AST | None = parents.get(id(node))
             guarded = False
@@ -396,8 +391,7 @@ def _auto_integrate_with_a_silent_skip(target: str) -> None:
                     and not _is_no_record_guard(inner_parent.test)
                 ):
                     violations.append(
-                        f"line {node.lineno}: forbidden return None under a "
-                        "non-disabled guard"
+                        f"line {node.lineno}: forbidden return None under a non-disabled guard"
                     )
     assert violations, (
         "the audit did not flag the canonical forbidden shape "

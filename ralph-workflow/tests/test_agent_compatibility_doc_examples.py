@@ -61,9 +61,7 @@ def test_doc_examples_match_real_agentconfig_schema() -> None:
     markdown = DOC_PATH.read_text(encoding="utf-8")
     blocks = _extract_toml_blocks(markdown)
     agent_blocks = {
-        name: toml_text
-        for name, toml_text in blocks.items()
-        if name.startswith("[agents.")
+        name: toml_text for name, toml_text in blocks.items() if name.startswith("[agents.")
     }
     assert agent_blocks, "expected at least one [agents.*] TOML example in agent-compatibility.md"
 
@@ -97,9 +95,7 @@ def test_doc_examples_match_real_agentconfig_schema() -> None:
         # Field allow-list check: catch ``name =`` and ``command =`` and ``args =``
         # regressions before they reach the runtime.
         forbidden_seen = sorted(
-            field
-            for field in ("name", "command", "args")
-            if field in agent_dict
+            field for field in ("name", "command", "args") if field in agent_dict
         )
         assert not forbidden_seen, (
             f"{table_name} declares fields that AgentConfig does not accept "
@@ -166,9 +162,7 @@ def test_doc_examples_match_builtin_flag_inventory() -> None:
 
         # Strip comments to keep tomllib happy, then load.
         raw = blocks[table_header]
-        cleaned = "\n".join(
-            line for line in raw.splitlines() if not line.lstrip().startswith("#")
-        )
+        cleaned = "\n".join(line for line in raw.splitlines() if not line.lstrip().startswith("#"))
         data: dict[str, Any] = tomllib.loads(cleaned)
         # Find the inner dict.
         agent_dict = (

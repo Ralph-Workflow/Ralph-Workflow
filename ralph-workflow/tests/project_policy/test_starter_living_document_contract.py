@@ -22,9 +22,7 @@ from ralph.project_policy import agents_md, markers, remediation
 from ralph.project_policy.models import PolicyFinding
 from ralph.workspace.memory import MemoryWorkspace
 
-_STARTERS_DIR = (
-    Path(__file__).resolve().parents[2] / "ralph" / "project_policy" / "starters"
-)
+_STARTERS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "project_policy" / "starters"
 
 
 def _starter_paths() -> list[Path]:
@@ -84,6 +82,4 @@ def test_condensed_agents_block_carries_pending_resolution_mandate() -> None:
     lowered = ws.read(markers.AGENTS_MD).lower()
     assert "ralph-pending" in lowered, "ready block must name the deferral state"
     assert "review trigger" in lowered, "must tie resolution to the review trigger"
-    assert "violation" in lowered, (
-        "leaving a resolvable pending item must be framed as a violation"
-    )
+    assert "violation" in lowered, "leaving a resolvable pending item must be framed as a violation"

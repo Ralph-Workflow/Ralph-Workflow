@@ -109,9 +109,7 @@ def test_audit_flags_file_sink_without_buffering(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     assert len(violations) == 1, f"expected exactly one violation; got {violations}"
     text_violation: audit.LogSinkBufferingViolation = violations[0]
@@ -142,9 +140,7 @@ def test_audit_log_sink_buffering_regression_helper_missing_buffering(
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     assert len(violations) == 1, f"expected exactly one violation; got {violations}"
     helper_violation: audit.LogSinkBufferingViolation = violations[0]
@@ -173,14 +169,11 @@ def test_audit_flags_file_sink_with_buffering_one(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "file_sink_missing_buffering" in kinds, (
-        f"expected file_sink_missing_buffering violation for buffering=1;"
-        f" got kinds: {kinds}"
+        f"expected file_sink_missing_buffering violation for buffering=1; got kinds: {kinds}"
     )
 
 
@@ -203,9 +196,7 @@ def test_audit_flags_file_sink_with_non_int_buffering(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "file_sink_missing_buffering" in kinds, (
@@ -228,12 +219,8 @@ def test_audit_passes_compliant_fixture(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
-    assert violations == [], (
-        f"compliant fixture must yield zero violations; got: {violations}"
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
+    assert violations == [], f"compliant fixture must yield zero violations; got: {violations}"
 
 
 def test_audit_ignores_callable_stream_sinks(tmp_path: Path) -> None:
@@ -261,12 +248,8 @@ def test_audit_ignores_callable_stream_sinks(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
-    assert violations == [], (
-        f"stream/callable sinks must NOT be flagged; got: {violations}"
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
+    assert violations == [], f"stream/callable sinks must NOT be flagged; got: {violations}"
 
 
 def test_audit_flags_text_log_path_without_buffering(tmp_path: Path) -> None:
@@ -292,14 +275,11 @@ def test_audit_flags_text_log_path_without_buffering(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "file_sink_missing_buffering" in kinds, (
-        f"expected file_sink_missing_buffering violation for text_log_path;"
-        f" got kinds: {kinds}"
+        f"expected file_sink_missing_buffering violation for text_log_path; got kinds: {kinds}"
     )
     text_violation: audit.LogSinkBufferingViolation = next(
         v for v in violations if v.kind == "file_sink_missing_buffering"
@@ -328,9 +308,7 @@ def test_audit_flags_structured_log_path_without_buffering(tmp_path: Path) -> No
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "file_sink_missing_buffering" in kinds, (
@@ -362,12 +340,8 @@ def test_audit_passes_text_log_path_with_buffering(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
-    assert violations == [], (
-        f"buffered text_log_path sink must NOT be flagged; got: {violations}"
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
+    assert violations == [], f"buffered text_log_path sink must NOT be flagged; got: {violations}"
 
 
 def test_audit_passes_structured_log_path_with_buffering(tmp_path: Path) -> None:
@@ -389,12 +363,9 @@ def test_audit_passes_structured_log_path_with_buffering(tmp_path: Path) -> None
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
     assert violations == [], (
-        f"buffered structured_log_path sink must NOT be flagged;"
-        f" got: {violations}"
+        f"buffered structured_log_path sink must NOT be flagged; got: {violations}"
     )
 
 
@@ -421,9 +392,7 @@ def test_audit_flags_attribute_path_without_buffering(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "file_sink_missing_buffering" in kinds, (
@@ -462,9 +431,7 @@ def test_audit_flags_attribute_path_structured_log_path_without_buffering(
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "file_sink_missing_buffering" in kinds, (
@@ -494,9 +461,7 @@ def test_audit_passes_attribute_path_with_buffering(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
     assert violations == [], (
         f"buffered attribute-path sink (paths.text_log_path with"
         f" buffering=8192) must NOT be flagged; got: {violations}"
@@ -525,9 +490,7 @@ def test_audit_passes_attribute_path_structured_with_buffering(
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
     assert violations == [], (
         f"buffered attribute-path structured sink (config.structured_log_path"
         f" with buffering=8192) must NOT be flagged; got: {violations}"
@@ -558,9 +521,7 @@ def test_audit_does_not_flag_non_canonical_attribute(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
     assert violations == [], (
         f"non-canonical attribute sinks (obj.foo, obj.bar) must NOT be"
         f" flagged -- the audit is conservative on Attribute; got: {violations}"
@@ -577,9 +538,7 @@ def test_audit_flags_missing_logging_module(tmp_path: Path) -> None:
     package_root.mkdir(parents=True)
     # Intentionally do NOT write logging.py.
 
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        package_root
-    )
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(package_root)
 
     kinds: list[str] = [v.kind for v in violations]
     assert "missing_logging_module" in kinds, (
@@ -608,9 +567,7 @@ def test_audit_module_imports_clean() -> None:
     The check uses AST-based detection (not regex) so the literal
     strings in the test source do not produce false positives.
     """
-    audit_path: Path = (
-        REPO_ROOT / "ralph" / "testing" / "audit_log_sink_buffering.py"
-    )
+    audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_log_sink_buffering.py"
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))
 
@@ -648,10 +605,7 @@ def test_audit_module_imports_clean() -> None:
         all_violations.extend(
             f"{audit_path.name}:{lineno}: attribute access on {name}" for lineno in lines
         )
-    assert not all_violations, (
-        f"audit module uses forbidden I/O primitives: {all_violations}"
-    )
-
+    assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
 
 @pytest.mark.parametrize(
@@ -677,9 +631,7 @@ def test_audit_module_forbids_known_io_primitives(forbidden_name: str) -> None:
     Uses AST-based detection (not regex) so the literal strings in
     the test source do not produce false positives.
     """
-    audit_path: Path = (
-        REPO_ROOT / "ralph" / "testing" / "audit_log_sink_buffering.py"
-    )
+    audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_log_sink_buffering.py"
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))
 

@@ -136,9 +136,7 @@ def test_passing_internal_links_batch(tmp_path: Path) -> None:
         f"batched internal links must pass; "
         f"rc={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
     )
-    assert "OK" in result.stdout, (
-        f"batched pass path must emit OK marker; stdout={result.stdout!r}"
-    )
+    assert "OK" in result.stdout, f"batched pass path must emit OK marker; stdout={result.stdout!r}"
     assert str(len(paths)) in result.stdout, (
         f"OK line must report file count; stdout={result.stdout!r}"
     )
@@ -194,5 +192,3 @@ def test_missing_source_file_reports_missing_route_file(tmp_path: Path) -> None:
     assert "missing route file" in combined, (
         f"missing source must report 'missing route file'; got {combined!r}"
     )
-
-

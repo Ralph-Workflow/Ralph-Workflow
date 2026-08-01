@@ -119,9 +119,7 @@ def test_plan_grammar_regression_punctuated_unicode_h2_titles_are_safe(
     section: str,
 ) -> None:
     """Regression for plan blocker 5: meaningful Unicode H2 names remain parseable."""
-    content, diagnostics = parse_and_validate(
-        _single_step_document(section=section), PLAN_SPEC
-    )
+    content, diagnostics = parse_and_validate(_single_step_document(section=section), PLAN_SPEC)
 
     assert diagnostics == []
     steps = must_dict_list(content["steps"])
@@ -130,13 +128,16 @@ def test_plan_grammar_regression_punctuated_unicode_h2_titles_are_safe(
 
 def test_plan_grammar_regression_ac_items_are_discovered_outside_named_section() -> None:
     """Regression for plan blocker 3: unambiguous AC items are document-wide."""
-    document = _single_step_document(extra="Satisfies: AC-01\n") + """
+    document = (
+        _single_step_document(extra="Satisfies: AC-01\n")
+        + """
 
 ## Product Outcomes
 - [AC-01] The focused suite proves the behavior
   Verify: pytest tests/mcp/test_md_plan_relaxation.py -q
   Expect: the focused plan-relaxation tests pass with exit code 0
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -205,12 +206,15 @@ def test_exact_fan_out_section_rejects_malformed_unit_marker(section: str) -> No
     warning names the run cost (the worker fan-out falls back to serial
     dispatch) and the fix.
     """
-    document = _single_step_document() + f"""
+    document = (
+        _single_step_document()
+        + f"""
 
 ## {section}
 - api: Implement the API
   Directories: src/api
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -226,11 +230,14 @@ def test_exact_fan_out_section_rejects_malformed_unit_marker(section: str) -> No
 
 def test_custom_fan_out_lookalike_remains_descriptive() -> None:
     """Only exact consumed section names opt into fail-closed fan-out grammar."""
-    document = _single_step_document() + """
+    document = (
+        _single_step_document()
+        + """
 
 ## work units
 - api: This lowercase heading is ordinary descriptive prose.
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -288,7 +295,9 @@ def test_plan_grammar_regression_evaluatable_claims_advisory_must_be_concrete(
 
     The analysis phase owns the substance check; the validator advises.
     """
-    document = _single_step_document() + f"""
+    document = (
+        _single_step_document()
+        + f"""
 
 ## Acceptance Criteria
 - [AC-01] The behavior is proven
@@ -298,6 +307,7 @@ def test_plan_grammar_regression_evaluatable_claims_advisory_must_be_concrete(
 - [V-1] pytest tests/mcp/test_md_plan_relaxation.py -q
   Expect: {verification_expect}
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -305,15 +315,16 @@ def test_plan_grammar_regression_evaluatable_claims_advisory_must_be_concrete(
     assert content != {}
     warnings = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
     assert any(
-        diagnostic.rule_id == "PLAN020"
-        and "concrete" in diagnostic.message
+        diagnostic.rule_id == "PLAN020" and "concrete" in diagnostic.message
         for diagnostic in warnings
     )
 
 
 def test_plan_grammar_regression_concrete_commands_and_artifacts_remain_valid() -> None:
     """Positive coverage for plan blocker 4's command and artifact proof paths."""
-    document = _single_step_document() + """
+    document = (
+        _single_step_document()
+        + """
 
 ## Product Outcomes
 - [AC-01] The command proves the behavior
@@ -328,6 +339,7 @@ def test_plan_grammar_regression_concrete_commands_and_artifacts_remain_valid() 
 - [V-2] Inspect reports/plan-relaxation.json
   Expect: the status field equals completed
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -390,20 +402,21 @@ existing tests in the regression suite continue to pass after the change.
     assert content["verification_strategy"] == [
         {
             "method": "pytest tests/mcp/test_md_plan_relaxation.py -q",
-            "expected_outcome": (
-                "the focused plan-relaxation tests pass with exit code 0"
-            ),
+            "expected_outcome": ("the focused plan-relaxation tests pass with exit code 0"),
         }
     ]
 
 
 def test_unrelated_v_prefixed_item_remains_descriptive() -> None:
     """A non-semantic V-prefixed ID must not become a verification contract."""
-    document = _single_step_document() + """
+    document = (
+        _single_step_document()
+        + """
 
 ## Release Notes
 - [VERSION-1] Verification terminology changed in this release.
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -420,58 +433,60 @@ def test_plan_grammar_regression_command_proof_requires_specific_expected_output
     names the run cost (the executor's step proof will bounce) and the
     fix (a concrete expected_outcome).
     """
-    document = _single_step_document(
-        extra=(
-            "Verify: git diff --check\n"
-            "Expect: no problems\n"
-        )
-    ) + """
+    document = (
+        _single_step_document(extra=("Verify: git diff --check\nExpect: no problems\n"))
+        + """
 
 ## Acceptance Criteria
 - [AC-01] The diff check proves the patch is well formed
   Verify: git diff --check
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert content != {}
-    assert sum(
-        diagnostic.rule_id == "PLAN020"
-        and "Expect:" in diagnostic.message
-        and diagnostic.severity == "warning"
-        for diagnostic in diagnostics
-    ) >= 2
+    assert (
+        sum(
+            diagnostic.rule_id == "PLAN020"
+            and "Expect:" in diagnostic.message
+            and diagnostic.severity == "warning"
+            for diagnostic in diagnostics
+        )
+        >= 2
+    )
 
 
 def test_plan_grammar_regression_arbitrary_executable_with_specific_output_is_valid() -> None:
     """Evaluatability must not depend on a short hard-coded executable allowlist."""
-    document = _single_step_document(
-        extra=(
-            "Verify: dotnet test tests/Plan.Tests/Plan.Tests.csproj\n"
-            "Expect: Plan.Tests reports 12 passed tests and exit code 0\n"
+    document = (
+        _single_step_document(
+            extra=(
+                "Verify: dotnet test tests/Plan.Tests/Plan.Tests.csproj\n"
+                "Expect: Plan.Tests reports 12 passed tests and exit code 0\n"
+            )
         )
-    ) + """
+        + """
 
 ## Acceptance Criteria
 - [AC-01] The .NET regression suite proves the behavior
   Verify: dotnet test tests/Plan.Tests/Plan.Tests.csproj
   Expect: Plan.Tests reports 12 passed tests and exit code 0
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert diagnostics == []
     steps = must_dict_list(content["steps"])
-    assert steps[0]["expected_outcome"] == (
-        "Plan.Tests reports 12 passed tests and exit code 0"
-    )
+    assert steps[0]["expected_outcome"] == ("Plan.Tests reports 12 passed tests and exit code 0")
 
 
 def test_legacy_exact_command_reuses_global_verification_expectation() -> None:
     """Preserve old plans that centralize one exact command/outcome pair."""
-    document = _single_step_document(
-        extra="Verify: pytest tests/mcp/test_md_plan_relaxation.py -q\n"
-    ) + """
+    document = (
+        _single_step_document(extra="Verify: pytest tests/mcp/test_md_plan_relaxation.py -q\n")
+        + """
 
 ## Acceptance Criteria
 - [AC-01] The focused suite proves the behavior
@@ -481,6 +496,7 @@ def test_legacy_exact_command_reuses_global_verification_expectation() -> None:
 - [V-1] pytest tests/mcp/test_md_plan_relaxation.py -q
   Expect: the focused plan-relaxation tests pass with exit code 0
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -521,11 +537,14 @@ Type: action
 
 def test_strict_profile_remains_descriptive_and_does_not_inject_contracts() -> None:
     """A descriptive profile cannot fabricate project-specific execution requirements."""
-    document = _single_step_document() + """
+    document = (
+        _single_step_document()
+        + """
 
 ## Design
 Profile: strict
 """
+    )
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
@@ -581,12 +600,12 @@ Profile: strict
         "planning_profile": "strict",
         "acceptance_criteria": {
             "criteria": [
-                    {
-                        "id": "AC-10",
-                        "description": "The generated API report proves the contract",
-                        "evidence_path": "reports/minimax-api-proof.json",
-                        "satisfied_by_steps": [10],
-                    }
+                {
+                    "id": "AC-10",
+                    "description": "The generated API report proves the contract",
+                    "evidence_path": "reports/minimax-api-proof.json",
+                    "satisfied_by_steps": [10],
+                }
             ]
         },
     }

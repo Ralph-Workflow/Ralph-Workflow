@@ -24,9 +24,7 @@ def test_spawn_failure_removes_created_session_file(tmp_path: Path) -> None:
         preflight=lambda _endpoint, _tools, _timeout: None,
         preflight_timeout=lambda: timedelta(seconds=1),
     )
-    session = AgentSession(
-        session_id="session", run_id="run", drain="planning", capabilities=set()
-    )
+    session = AgentSession(session_id="session", run_id="run", drain="planning", capabilities=set())
 
     with pytest.raises(RuntimeError, match="spawn failed"):
         lifecycle._spawn_mcp_process(tmp_path, session, deps, None, None, [], port=43123)

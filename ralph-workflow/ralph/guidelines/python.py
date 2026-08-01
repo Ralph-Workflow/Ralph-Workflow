@@ -97,52 +97,38 @@ class PythonGuidelines:
 
         if framework_name == "django":
             self.quality_checks += (
-                (
-                    "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits.",
-                    "Follow Django project conventions for apps, settings, and model organization.",
-                    "Use class-based views only when they simplify reuse and composition.",
-                )
+                "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits.",
+                "Follow Django project conventions for apps, settings, and model organization.",
+                "Use class-based views only when they simplify reuse and composition.",
             )
             self.security_checks += (
-                (
-                    "Keep Django CSRF protection enabled for state-changing requests.",
-                    "Validate forms and serializers instead of trusting request payloads.",
-                    "Use Django authentication and permission mechanisms consistently.",
-                )
+                "Keep Django CSRF protection enabled for state-changing requests.",
+                "Validate forms and serializers instead of trusting request payloads.",
+                "Use Django authentication and permission mechanisms consistently.",
             )
             return
 
         if framework_name == "fastapi":
             self.quality_checks += (
-                (
-                    "Use Pydantic models for request and response validation.",
-                    "Define response models explicitly to keep API contracts stable.",
-                    "Use dependency injection for shared concerns such as auth, config, and"
-                    " clients.",
-                )
+                "Use Pydantic models for request and response validation.",
+                "Define response models explicitly to keep API contracts stable.",
+                "Use dependency injection for shared concerns such as auth, config, and clients.",
             )
             self.security_checks += (
-                (
-                    "Implement OAuth2 or JWT handling with explicit validation and expiry checks.",
-                    "Use HTTPS redirect and trusted proxy configuration where deployment"
-                    " requires it.",
-                )
+                "Implement OAuth2 or JWT handling with explicit validation and expiry checks.",
+                "Use HTTPS redirect and trusted proxy configuration where deployment requires it.",
             )
             return
 
         if framework_name == "flask":
             self.quality_checks += (
-                (
-                    "Use Blueprints to keep route registration and application structure modular.",
-                    "Use Flask-SQLAlchemy and application factories consistently when the"
-                    " project adopts them.",
-                )
+                "Use Blueprints to keep route registration and application structure modular.",
+                "Use Flask-SQLAlchemy and application factories consistently when the"
+                " project adopts them.",
             )
             self.security_checks += (
-                (
-                    "Store Flask SECRET_KEY securely and never commit it.",
-                    "Use security headers and production-safe session configuration.",
-                )
+                "Store Flask SECRET_KEY securely and never commit it.",
+                "Use security headers and production-safe session configuration.",
             )
 
     def summary(self) -> str:

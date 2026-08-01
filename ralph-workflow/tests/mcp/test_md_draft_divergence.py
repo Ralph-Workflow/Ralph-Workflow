@@ -71,4 +71,3 @@ def test_md_draft_divergence_regression_worker_artifact_uses_its_own_directory(
     assert not completion_signals_terminal(
         evaluate_completion(tmp_path, required_artifact=required, run_id="run-1")
     )
-

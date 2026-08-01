@@ -251,8 +251,7 @@ def test_structured_tools_outcome_is_keep() -> None:
     for tool in originally_deferred:
         entry = entries_by_tool[tool]
         assert entry.outcome != AuditOutcome.DEFER, (
-            f"Originally-deferred tool {tool} is still DEFER after Phase 4: "
-            f"{entry.outcome}"
+            f"Originally-deferred tool {tool} is still DEFER after Phase 4: {entry.outcome}"
         )
     assert len(structured_tools) == 9, (
         f"structured_tools must contain exactly 9 entries, got {len(structured_tools)}"
@@ -449,9 +448,7 @@ def test_every_family_baseline_flow_is_complete() -> None:
             f"{flow.family}: current_operation_script must list at least one tool"
         )
         for tool_name in flow.current_operation_script:
-            assert tool_name.strip(), (
-                f"{flow.family}: tool name in script must be non-empty"
-            )
+            assert tool_name.strip(), f"{flow.family}: tool name in script must be non-empty"
         assert flow.catalog_token_evidence.strip(), (
             f"{flow.family}: catalog_token_evidence must be non-empty"
         )
@@ -526,9 +523,7 @@ def test_refresh_audit_register_replaces_seed_with_measured_counters() -> None:
     # MUST be preserved from the seed so the audit gate's
     # closed-vocabulary invariant still holds.
     seed_entry = by_tool[RalphToolName.READ_FILE]
-    seed_match = next(
-        e for e in AUDIT_REGISTER if e.tool == RalphToolName.READ_FILE
-    )
+    seed_match = next(e for e in AUDIT_REGISTER if e.tool == RalphToolName.READ_FILE)
     assert seed_entry.rationale == seed_match.rationale
     assert seed_entry.family == seed_match.family
     assert seed_entry.outcome == seed_match.outcome
@@ -611,9 +606,7 @@ def test_refresh_audit_register_detects_duplicate_measurements() -> None:
     result = refresh_audit_register(
         [
             Measurement(tool=RalphToolName.READ_FILE, counters=first, source="first"),
-            Measurement(
-                tool=RalphToolName.READ_FILE, counters=second, source="second"
-            ),
+            Measurement(tool=RalphToolName.READ_FILE, counters=second, source="second"),
         ]
     )
     assert result.duplicates == frozenset({RalphToolName.READ_FILE})

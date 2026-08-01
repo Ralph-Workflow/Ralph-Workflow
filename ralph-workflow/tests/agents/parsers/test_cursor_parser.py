@@ -105,9 +105,7 @@ class TestCursorParserSharedNdjsonBehaviors:
 
     def test_error_shape_yields_error(self) -> None:
         parser = CursorParser()
-        results = list(
-            parser.parse(_lines(_line({"type": "x", "error": "boom"})))
-        )
+        results = list(parser.parse(_lines(_line({"type": "x", "error": "boom"}))))
         assert len(results) == 1
         assert results[0].type == "error"
         assert results[0].content == "boom"
@@ -208,9 +206,7 @@ class TestCursorParserWireFormat:
     def test_system_event_yields_status(self) -> None:
         """``system`` event surfaces as ``type='status'`` with the message."""
         parser = CursorParser()
-        results = list(
-            parser.parse(_lines(_line({"type": "system", "message": "ready"})))
-        )
+        results = list(parser.parse(_lines(_line({"type": "system", "message": "ready"}))))
         assert len(results) == 1
         assert results[0].type == "status"
         assert results[0].content == "ready"
@@ -224,9 +220,7 @@ class TestCursorParserWireFormat:
     def test_thinking_event_yields_thinking(self) -> None:
         """``thinking`` event surfaces as ``type='thinking'`` with the delta."""
         parser = CursorParser()
-        results = list(
-            parser.parse(_lines(_line({"type": "thinking", "text": "pondering"})))
-        )
+        results = list(parser.parse(_lines(_line({"type": "thinking", "text": "pondering"}))))
         assert len(results) == 1
         assert results[0].type == "thinking"
         assert results[0].content == "pondering"
@@ -597,8 +591,6 @@ class TestCursorParserWireFormat:
     def test_unknown_event_passes_through_with_its_type(self) -> None:
         """Forward-compat: unknown event types pass through as their ``type`` field."""
         parser = CursorParser()
-        results = list(
-            parser.parse(_lines(_line({"type": "future_event", "data": "x"})))
-        )
+        results = list(parser.parse(_lines(_line({"type": "future_event", "data": "x"}))))
         assert len(results) == 1
         assert results[0].type == "future_event"

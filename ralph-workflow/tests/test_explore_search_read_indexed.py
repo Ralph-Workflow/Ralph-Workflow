@@ -64,14 +64,26 @@ class _Workspace:
         total_lines = len(lines)
         if head is not None:
             sliced = lines[:head]
-            return ("\n".join(sliced), {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False})
+            return (
+                "\n".join(sliced),
+                {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False},
+            )
         if tail is not None:
             sliced = lines[-tail:]
-            return ("\n".join(sliced), {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False})
+            return (
+                "\n".join(sliced),
+                {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False},
+            )
         if start is None and end is None:
-            return (text, {"total_lines": total_lines, "returned_lines": total_lines, "truncated": False})
+            return (
+                text,
+                {"total_lines": total_lines, "returned_lines": total_lines, "truncated": False},
+            )
         sliced = lines[(start - 1) if start else 0 : end if end else total_lines]
-        return ("\n".join(sliced), {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False})
+        return (
+            "\n".join(sliced),
+            {"total_lines": total_lines, "returned_lines": len(sliced), "truncated": False},
+        )
 
     def read_bytes(self, path: str, *, offset=None, limit=None):
         data = self.read(path).encode("utf-8")
@@ -79,7 +91,10 @@ class _Workspace:
             data = data[offset:]
         if limit is not None:
             data = data[:limit]
-        return (data.decode("utf-8"), {"total_bytes": len(data), "returned_bytes": len(data), "truncated": False})
+        return (
+            data.decode("utf-8"),
+            {"total_bytes": len(data), "returned_bytes": len(data), "truncated": False},
+        )
 
     def list_dir(self, base: str):
         target = self.root / base if base else self.root
@@ -176,9 +191,7 @@ def test_read_file_evidence_id_unknown(tmp_path: Path) -> None:
         from ralph.mcp.tools.coordination import ToolError
 
         with pytest.raises(ToolError):
-            handle_read_file(
-                session, _Workspace(workspace), {"evidence_id": "missing-ev"}
-            )
+            handle_read_file(session, _Workspace(workspace), {"evidence_id": "missing-ev"})
     finally:
         store.close()
 

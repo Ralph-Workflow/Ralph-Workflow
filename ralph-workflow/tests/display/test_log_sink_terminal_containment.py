@@ -66,8 +66,7 @@ def _assert_no_escape_leak(output: str, *, sink_label: str) -> None:
     )
     for forbidden in _FORBIDDEN_BODIES:
         assert forbidden not in output, (
-            f"{sink_label}: hostile body {forbidden!r} leaked through sink; "
-            f"output={output!r}"
+            f"{sink_label}: hostile body {forbidden!r} leaked through sink; output={output!r}"
         )
 
 
@@ -217,9 +216,7 @@ def test_library_configure_logging_installs_no_stderr_handler(
         assert any("tail:" in record for record in captured), (
             f"the recorder must have received at least one record; got {captured!r}"
         )
-        assert "\x1b" not in joined, (
-            f"the recorded text must be sanitized; got {joined!r}"
-        )
+        assert "\x1b" not in joined, f"the recorded text must be sanitized; got {joined!r}"
         assert stderr_recorded.getvalue() == "", (
             f"library configurator must not write raw to sys.stderr; "
             f"got stderr={stderr_recorded.getvalue()!r}"
@@ -278,9 +275,7 @@ def test_cli_configure_logging_installs_no_stderr_handler(
     assert any("through_cli:" in record for record in captured), (
         f"the CLI sink must have received the record; got {captured!r}"
     )
-    assert "\x1b" not in joined, (
-        f"CLI records must be sanitized; got {joined!r}"
-    )
+    assert "\x1b" not in joined, f"CLI records must be sanitized; got {joined!r}"
     assert stderr_output == "", (
         f"_configure_logging must not write raw to sys.stderr; got {stderr_output!r}"
     )

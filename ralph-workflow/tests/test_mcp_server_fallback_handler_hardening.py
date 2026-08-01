@@ -79,12 +79,12 @@ class _Server(_FallbackHttpServer):
         """No-op: the in-memory harness never activates a real listener."""
 
 
-def _post(
-    server: _Server, body: dict[str, object], *, declared_length: int | None = None
-) -> str:
+def _post(server: _Server, body: dict[str, object], *, declared_length: int | None = None) -> str:
     payload = json.dumps(body).encode("utf-8")
     headers = Message()
-    headers["Content-Length"] = str(declared_length if declared_length is not None else len(payload))
+    headers["Content-Length"] = str(
+        declared_length if declared_length is not None else len(payload)
+    )
     wfile = io.BytesIO()
 
     handler = object.__new__(_FallbackHttpHandler)

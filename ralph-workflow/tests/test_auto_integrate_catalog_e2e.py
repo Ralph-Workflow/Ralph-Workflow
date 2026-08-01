@@ -65,7 +65,8 @@ def _iter_test_functions(path: Path) -> tuple[str, ...]:
     return tuple(
         node.name
         for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
     )
 
 
@@ -76,7 +77,11 @@ def _file_is_subprocess_e2e(path: Path) -> bool:
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "pytestmark" and "subprocess_e2e" in ast.unparse(node.value):
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == "pytestmark"
+                    and "subprocess_e2e" in ast.unparse(node.value)
+                ):
                     return True
     return "subprocess_e2e" in source
 

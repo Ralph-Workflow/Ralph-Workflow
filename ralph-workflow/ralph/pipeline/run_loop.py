@@ -552,7 +552,8 @@ def _push_status_bar_if_changed(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
-    last_sig: tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None,
+    last_sig: tuple[str, int | None, int | None, str | None, str | None, str | None, str | None]
+    | None,
 ) -> tuple[str, int | None, int | None, str | None, str | None, str | None, str | None] | None:
     """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert, label) signature changes.
 

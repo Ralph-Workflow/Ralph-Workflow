@@ -35,7 +35,6 @@ from ralph.recovery.controller import RecoveryController
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
-
     from ralph.config.models import UnifiedConfig
 
 

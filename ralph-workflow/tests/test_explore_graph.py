@@ -62,16 +62,11 @@ def _seed_workspace(tmp_path: Path) -> Path:
         "def hello():\n    return compute(1)\n\n"
         "class Foo:\n    def bar(self):\n        return 2\n"
     )
-    (workspace / "helper.py").write_text(
-        "def compute(x):\n    return x + 1\n"
-    )
-    (workspace / "README.md").write_text(
-        "# Title\n\n## Section\n\n```python\nx = 1\n```\n"
-    )
+    (workspace / "helper.py").write_text("def compute(x):\n    return x + 1\n")
+    (workspace / "README.md").write_text("# Title\n\n## Section\n\n```python\nx = 1\n```\n")
     (workspace / "tests").mkdir()
     (workspace / "tests" / "test_module.py").write_text(
-        "from module import hello\n\n"
-        "def test_hello():\n    assert hello() == 2\n"
+        "from module import hello\n\ndef test_hello():\n    assert hello() == 2\n"
     )
     return workspace
 
@@ -170,8 +165,10 @@ def test_graph_path_impact_hubs_and_tests_follow_prompt_schema_and_limits(
         impact_payload = _decode(impact_result)
         assert impact_payload["query_type"] == "impact"
         assert isinstance(impact_payload["impacted_files"], list)
-        assert "behavioral_coverage_unproven" in impact_payload["missing_data"] or \
-            impact_payload["missing_data"] == []
+        assert (
+            "behavioral_coverage_unproven" in impact_payload["missing_data"]
+            or impact_payload["missing_data"] == []
+        )
 
         hubs_result = handle_ralph_graph(
             session,
@@ -218,9 +215,7 @@ def test_graph_rejects_invalid_query_type(tmp_path: Path) -> None:
     "query_type",
     ["neighbors", "path", "impact", "tests"],
 )
-def test_graph_rejects_targetless_required_query_types(
-    tmp_path: Path, query_type: str
-) -> None:
+def test_graph_rejects_targetless_required_query_types(tmp_path: Path, query_type: str) -> None:
     """AC-05: ``neighbors``/``path``/``impact``/``tests`` require ``target``.
 
     The contract documented in

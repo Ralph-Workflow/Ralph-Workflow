@@ -140,10 +140,13 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
             }
             assert all(sgr in rendered for sgr in fill_sgrs), name
             markers = pick_status_styles(terminal_bg_is_light)
-            for color in (*diff_token_foregrounds(terminal_bg_is_light), *[
-                re.search(r"#[0-9A-Fa-f]{6}", markers[status][0]).group()
-                for status in ("error", "success")
-            ]):
+            for color in (
+                *diff_token_foregrounds(terminal_bg_is_light),
+                *[
+                    re.search(r"#[0-9A-Fa-f]{6}", markers[status][0]).group()
+                    for status in ("error", "success")
+                ],
+            ):
                 assert all(contrast_ratio(color, fill) >= 4.5 for fill in fills)
         _assert_no_operator_palette_sgr(rendered, name)
         colors = _RGB_SGR.findall(rendered)

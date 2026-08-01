@@ -68,6 +68,7 @@ def _capture_idle_watchdog_args(
 @pytest.fixture(autouse=True)
 def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
     """Keep monitor-wiring tests inside the injected process boundary."""
+
     def factory(_command: object, _options: object) -> FakePopen:
         return FakePopen(
             1,

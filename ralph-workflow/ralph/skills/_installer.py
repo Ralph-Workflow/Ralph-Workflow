@@ -285,9 +285,7 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
         )
         if on_disk_hash == bundled_sha:
             return False
-        write_text_if_changed(
-            DEFAULT_FILE_BACKEND, skill_file, bundled_content, encoding="utf-8"
-        )
+        write_text_if_changed(DEFAULT_FILE_BACKEND, skill_file, bundled_content, encoding="utf-8")
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,
             marker_file,

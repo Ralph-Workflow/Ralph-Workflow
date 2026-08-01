@@ -423,7 +423,9 @@ def test_command_fold_routes_through_display(
     """
     source = path.read_text(encoding="utf-8")
     for emit in expected_emits:
-        routes_through_display = f"display.{emit}" in source or f'getattr(display, "{emit}"' in source
+        routes_through_display = (
+            f"display.{emit}" in source or f'getattr(display, "{emit}"' in source
+        )
         assert routes_through_display, (
             f"{label} ({path.relative_to(_REPO_ROOT)}) must route through "
             f"display.{emit}(...) to use the shared display surface (S-14)."
@@ -482,10 +484,7 @@ def test_smoke_fold_drops_bare_print_outside_exit_code_seam() -> None:
     helper_start: int | None = None
     helper_end: int | None = None
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.FunctionDef)
-            and node.name == "_smoke_emit_exit_code_line"
-        ):
+        if isinstance(node, ast.FunctionDef) and node.name == "_smoke_emit_exit_code_line":
             helper_start = node.lineno
             helper_end = node.end_lineno
             break
@@ -543,7 +542,7 @@ def test_smoke_keeps_exit_code_machine_contract() -> None:
         "smoke.py must keep the _smoke_emit_exit_code_line helper that "
         "emits the literal EXIT_CODE=N machine contract line."
     )
-    assert "sys.stdout.write(f\"EXIT_CODE={exit_code}\\n\")" in source, (
+    assert 'sys.stdout.write(f"EXIT_CODE={exit_code}\\n")' in source, (
         "smoke.py must emit the EXIT_CODE line via sys.stdout.write so "
         "external smoke harnesses can parse the literal shape."
     )

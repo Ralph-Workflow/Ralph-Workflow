@@ -165,9 +165,7 @@ class TestUnsafeExecVcsBlacklist:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
         with pytest.raises(CapabilityDeniedError, match="git"):
-            handle_unsafe_exec(
-                session, workspace, {"command": "echo hi && git push origin main"}
-            )
+            handle_unsafe_exec(session, workspace, {"command": "echo hi && git push origin main"})
 
     def test_blocks_git_after_semicolon(self, tmp_path: Path) -> None:
         session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})

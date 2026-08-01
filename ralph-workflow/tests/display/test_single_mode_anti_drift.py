@@ -310,9 +310,7 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token() -> N
         assert not probe_path.exists(), (
             f"probe file {probe_path!r} should not exist before the test starts"
         )
-        probes.append(
-            (probe_path, probe_name, token, _token_marker(token))
-        )
+        probes.append((probe_path, probe_name, token, _token_marker(token)))
     try:
         for probe_path, _probe_name, token, _marker in probes:
             probe_path.write_text(f"{token} = '1'\n", encoding="utf-8")

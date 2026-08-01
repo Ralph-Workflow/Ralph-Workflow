@@ -9,7 +9,6 @@ import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
-
     from ralph.pipeline.factory import PipelineDeps
 
 from ralph.agents.invoke import InvokeOptions

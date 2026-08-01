@@ -27,8 +27,12 @@ def _has_required_background(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bo
             continue
         positional = index < len(node.args.posonlyargs) + len(node.args.args)
         if positional:
-            return index < len(node.args.posonlyargs) + len(node.args.args) - len(node.args.defaults)
-        return node.args.kw_defaults[index - len(node.args.posonlyargs) - len(node.args.args)] is None
+            return index < len(node.args.posonlyargs) + len(node.args.args) - len(
+                node.args.defaults
+            )
+        return (
+            node.args.kw_defaults[index - len(node.args.posonlyargs) - len(node.args.args)] is None
+        )
     return False
 
 
@@ -52,7 +56,8 @@ def _violations(tree: ast.AST) -> list[str]:
             (
                 child
                 for child in node.body
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == "__init__"
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name == "__init__"
             ),
             None,
         )
@@ -79,14 +84,13 @@ _BACKGROUND_PARAMETER_VIOLATIONS = [
 def test_s1_color_builders_require_resolved_background() -> None:
     """AC-C7: AST discovery catches future colour paths without a hardcoded list."""
     assert not _BACKGROUND_PARAMETER_VIOLATIONS, (
-        "colour builders need required terminal_bg_is_light: "
-        f"{_BACKGROUND_PARAMETER_VIOLATIONS}"
+        f"colour builders need required terminal_bg_is_light: {_BACKGROUND_PARAMETER_VIOLATIONS}"
     )
 
 
 def test_s1_guard_regression_rejects_defaulted_background_on_renderable_constructor() -> None:
     """DA-001: a CodeBlock wrapper cannot hide a defaulted background in its renderer."""
-    tree = ast.parse('''
+    tree = ast.parse("""
 class SneakyBlock(CodeBlock):
     def __init__(self, terminal_bg_is_light=None):
         self.terminal_bg_is_light = terminal_bg_is_light
@@ -97,5 +101,5 @@ class SneakyBlock(CodeBlock):
 class SneakyMarkdown(Markdown):
     def __init__(self, terminal_bg_is_light=None):
         self.terminal_bg_is_light = terminal_bg_is_light
-''')
+""")
     assert _violations(tree) == ["2 SneakyBlock", "9 SneakyMarkdown"]

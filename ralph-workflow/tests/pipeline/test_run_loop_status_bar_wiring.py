@@ -835,14 +835,17 @@ def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
     def display_stop() -> None:
         observed_before_teardown.append(display.status_bar.last_model)
 
-    assert _execute_with_cleanup(
-        terminal_state,
-        loop_ctx,
-        "development",
-        lambda: None,
-        lambda: None,
-        display_stop,
-    ) == 0
+    assert (
+        _execute_with_cleanup(
+            terminal_state,
+            loop_ctx,
+            "development",
+            lambda: None,
+            lambda: None,
+            display_stop,
+        )
+        == 0
+    )
     assert captured[-1].attention == "terminated"
     assert observed_before_teardown == [captured[-1]]
 
@@ -850,6 +853,7 @@ def test_run_loop_regression_final_status_push_is_terminated_before_teardown(
 def test_attention_state_for_state_returns_waiting() -> None:
     """S-2 / AC-01: a waiting phase pushes ``attention='waiting'`` through the run loop."""
     from ralph.pipeline.run_loop import _attention_state_for_state
+
     state = _make_state("waiting", 1, 1, 1)
     assert _attention_state_for_state(state) == "waiting"
 
@@ -857,6 +861,7 @@ def test_attention_state_for_state_returns_waiting() -> None:
 def test_attention_state_for_state_returns_retrying() -> None:
     """S-2 / AC-01: a retrying run pushes ``attention='retrying'`` through the run loop."""
     from ralph.pipeline.run_loop import _attention_state_for_state
+
     state = _StubState(phase="development", retrying=True)
     assert _attention_state_for_state(state) == "retrying"
 
@@ -864,6 +869,7 @@ def test_attention_state_for_state_returns_retrying() -> None:
 def test_attention_state_for_state_returns_failed() -> None:
     """S-2 / AC-01: a failed run keeps its outcome in the Status Bar."""
     from ralph.pipeline.run_loop import _attention_state_for_state
+
     state = _StubState(phase="development", run_outcome="failed")
     assert _attention_state_for_state(state) == "failed"
 
@@ -872,12 +878,16 @@ def test_attention_state_for_state_regression_failed_terminal_is_terminated() ->
     """DA-002: the policy terminal-failure phase occupies the terminal slot."""
     from ralph.pipeline.run_loop import _attention_state_for_state
 
-    assert _attention_state_for_state(_StubState(phase="failed_terminal", run_outcome="terminated")) == "terminated"
+    assert (
+        _attention_state_for_state(_StubState(phase="failed_terminal", run_outcome="terminated"))
+        == "terminated"
+    )
 
 
 def test_attention_state_for_state_returns_none_when_healthy() -> None:
     """S-2 / AC-01: a healthy development phase pushes ``attention=None`` (renderer drives)."""
     from ralph.pipeline.run_loop import _attention_state_for_state
+
     state = _StubState(phase="development")
     assert _attention_state_for_state(state) is None
 
@@ -916,6 +926,7 @@ def _make_state(
     ``getattr`` keeps the test tolerant of new optional fields.
     """
     from ralph.pipeline.state import AgentChainState
+
     chain = AgentChainState(agent_name="claude", attempts=0, history=())
     return PipelineState(
         phase=phase,

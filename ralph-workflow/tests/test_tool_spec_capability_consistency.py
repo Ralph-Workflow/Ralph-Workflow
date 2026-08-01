@@ -100,11 +100,7 @@ def test_every_handler_capability_is_covered() -> None:
     # If a new gated tool is added to these spec groups, force its handler
     # capability to be registered here so the consistency check cannot be skipped.
     specs = _specs_by_name()
-    gated = {
-        name
-        for name, cap in specs.items()
-        if cap
-    }
+    gated = {name for name, cap in specs.items() if cap}
     missing = gated - set(_HANDLER_CAPABILITY)
     assert not missing, f"gated tools missing a handler-capability assertion: {missing}"
 

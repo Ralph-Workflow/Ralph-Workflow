@@ -78,9 +78,7 @@ def test_capability_state_regression_changed_save_writes_updated_state() -> None
     backend = _CountingBackend()
     path = Path("/virtual-config/ralph-workflow-capabilities.json")
     initial = CapabilityState()
-    changed = CapabilityState(
-        web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY)
-    )
+    changed = CapabilityState(web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY))
 
     save_capability_state(initial, path, backend=backend)
     save_capability_state(changed, path, backend=backend)

@@ -84,10 +84,7 @@ def test_store_creates_full_minimum_schema(tmp_path: Path) -> None:
         cur = sqlite3.connect(str(store.db_path))
         try:
             tables = {
-                row[0]
-                for row in cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
+                row[0] for row in cur.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
             }
         finally:
             cur.close()
@@ -118,9 +115,7 @@ def test_store_creates_chunks_fts_virtual_table(tmp_path: Path) -> None:
         try:
             vtables = {
                 row[0]
-                for row in cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
+                for row in cur.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
                 if row[0].startswith("chunks_fts")
             }
         finally:
@@ -567,6 +562,7 @@ def test_tombstone_round_trip(tmp_path: Path) -> None:
     try:
         # Use a recent stale_at value that survives the 30-day retention cap.
         import time as _time
+
         recent = _time.time()
         store.record_tombstone(
             evidence_id="ev-1",
@@ -594,6 +590,8 @@ def test_settings_round_trip(tmp_path: Path) -> None:
         assert store.get_setting("k") == "v"
     finally:
         store.close()
+
+
 """Black-box tests for the SQLite+FTS5 exploration store.
 
 Includes the security regression for path-boundary rejection
@@ -815,9 +813,7 @@ def test_content_cache_metadata_round_trip(tmp_path: Path) -> None:
     store = _build_store(tmp_path)
     try:
         row = _make_content_cache_row()
-        blob = serialize_content_cache_payload(
-            _make_content_cache_payload(row.content_hash)
-        )
+        blob = serialize_content_cache_payload(_make_content_cache_payload(row.content_hash))
         store.insert_content_cache(row=row, payload=blob)
         assert store.content_cache_size() == 1
         looked_up = store.lookup_content_cache(
@@ -843,9 +839,7 @@ def test_content_cache_lookup_misses_on_version_mismatch(tmp_path: Path) -> None
     store = _build_store(tmp_path)
     try:
         row = _make_content_cache_row(extractor_version="old-version")
-        blob = serialize_content_cache_payload(
-            _make_content_cache_payload(row.content_hash)
-        )
+        blob = serialize_content_cache_payload(_make_content_cache_payload(row.content_hash))
         store.insert_content_cache(row=row, payload=blob)
         looked_up = store.lookup_content_cache(
             content_hash=row.content_hash,
@@ -930,9 +924,7 @@ def test_content_cache_insert_then_delete_round_trip(tmp_path: Path) -> None:
     store = _build_store(tmp_path)
     try:
         row = _make_content_cache_row(content_hash="feedface" * 8)
-        blob = serialize_content_cache_payload(
-            _make_content_cache_payload(row.content_hash)
-        )
+        blob = serialize_content_cache_payload(_make_content_cache_payload(row.content_hash))
         store.insert_content_cache(row=row, payload=blob)
         assert store.content_cache_size() == 1
         blob_back = store.read_content_cache_payload(content_hash=row.content_hash)

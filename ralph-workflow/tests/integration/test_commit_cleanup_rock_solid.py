@@ -133,11 +133,7 @@ def _write_artifact(workspace_root: Path, cleanup: CommitCleanup) -> None:
         for action in cleanup.actions
     )
     artifact_path.write_text(
-        commit_cleanup_markdown(
-            (action, value)
-            for action, value in actions
-            if value is not None
-        ),
+        commit_cleanup_markdown((action, value) for action, value in actions if value is not None),
         encoding="utf-8",
     )
 

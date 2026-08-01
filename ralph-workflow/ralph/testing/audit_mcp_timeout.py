@@ -310,7 +310,11 @@ class McpTimeoutAuditor(ast.NodeVisitor):
                 and node.func.value.id in self._function_scopes[-1]
                 and not _has_bounded_timeout_keyword(node)
             ):
-                self._add(node, "future_result", ".result() on submit-bound Future without bounded timeout=")
+                self._add(
+                    node,
+                    "future_result",
+                    ".result() on submit-bound Future without bounded timeout=",
+                )
 
         name = self._canonical_name(_dotted_name(node))
         if name in _ALWAYS_UNBOUNDED:

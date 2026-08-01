@@ -25,6 +25,7 @@ def test_select_returns_default_when_the_prompt_cannot_run(
 ) -> None:
     """No terminal to drive (the failure mode behind an EOF-despite-isatty or
     a broken pipe): fall back to the default rather than crash the run."""
+
     class _Questionary:
         def select(self, *args: object, **kwargs: object) -> object:
             raise EOFError("stdin closed")
@@ -38,6 +39,7 @@ def test_select_returns_default_when_the_user_interrupts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """questionary's ask() returns None on Ctrl-C; that is not an answer."""
+
     class _Aborted:
         def ask(self) -> None:
             return None

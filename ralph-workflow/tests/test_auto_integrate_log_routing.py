@@ -74,6 +74,7 @@ def test_stale_target_refresh_is_visible_in_the_auto_integrate_line() -> None:
     assert "fast-forwarded main" in message
     # A recorded-but-healthy refresh renders too, and the no-refresh
     # case is byte-identical to the pre-feature line.
-    assert format_auto_integrate_message(
-        "rebased", "main", None, fast_forwarded=True
-    ) == "rebased onto target (main), fast-forwarded main"
+    assert (
+        format_auto_integrate_message("rebased", "main", None, fast_forwarded=True)
+        == "rebased onto target (main), fast-forwarded main"
+    )

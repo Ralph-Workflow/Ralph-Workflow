@@ -241,9 +241,7 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         "[content-continue#",
         "[content-checkpoint#",
     ):
-        assert forbidden not in out, (
-            f"Retired streaming token {forbidden!r} leaked into transcript"
-        )
+        assert forbidden not in out, f"Retired streaming token {forbidden!r} leaked into transcript"
 
     # --- Assert [phase-close] contains elapsed= and content_blocks= ---
     # Exclude the visual-hierarchy section rule line `─── [phase-close]`

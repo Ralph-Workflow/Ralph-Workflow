@@ -376,10 +376,7 @@ def test_flags_raw_path_unlink(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        (
-            "from pathlib import Path\n"
-            "def drop(p):\n    Path(p).unlink()\n"
-        ),
+        ("from pathlib import Path\ndef drop(p):\n    Path(p).unlink()\n"),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)
@@ -409,10 +406,7 @@ def test_flags_raw_path_mkdir(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        (
-            "from pathlib import Path\n"
-            "def make(p):\n    Path(p).mkdir()\n"
-        ),
+        ("from pathlib import Path\ndef make(p):\n    Path(p).mkdir()\n"),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)
@@ -502,10 +496,7 @@ def test_flags_raw_path_touch(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        (
-            "from pathlib import Path\n"
-            "def bump(p):\n    Path(p).touch()\n"
-        ),
+        ("from pathlib import Path\ndef bump(p):\n    Path(p).touch()\n"),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)
@@ -537,7 +528,7 @@ def test_flags_raw_path_open_write_mode(tmp_path: Path) -> None:
         (
             "from pathlib import Path\n"
             "def append(path, content):\n"
-            "    with Path(path).open(\"a\") as stream:\n"
+            '    with Path(path).open("a") as stream:\n'
             "        stream.write(content)\n"
         ),
     )
@@ -586,7 +577,9 @@ def test_does_not_flag_builtin_open_default_or_keyword_read_mode(tmp_path: Path)
         module_rel,
         'def load(path):\n    return open(path).read() + open(path, mode="r").read()\n',
     )
-    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    assert (
+        audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+    )
 
 
 @pytest.mark.parametrize("mode", ["rb+", "r+b", "w+b"])
@@ -598,7 +591,9 @@ def test_flags_all_plus_open_modes(tmp_path: Path, mode: str) -> None:
         module_rel,
         f'def persist(path):\n    return open(path, "{mode}")\n',
     )
-    violations = audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,))
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
     assert [violation.kind for violation in violations] == ["raw_open_write"]
 
 
@@ -651,11 +646,7 @@ def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> No
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        (
-            "import os\n"
-            "def install(tmp, final):\n"
-            "    os.replace(tmp, final)\n"
-        ),
+        ("import os\ndef install(tmp, final):\n    os.replace(tmp, final)\n"),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)
@@ -671,10 +662,7 @@ def test_pathlib_path_unlink_detected(tmp_path: Path) -> None:
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
-        (
-            "import pathlib\n"
-            "def drop(p):\n    pathlib.Path(p).unlink()\n"
-        ),
+        ("import pathlib\ndef drop(p):\n    pathlib.Path(p).unlink()\n"),
     )
     violations = audit.audit_filesystem_write_consolidation(
         package_root, module_paths=(module_rel,)

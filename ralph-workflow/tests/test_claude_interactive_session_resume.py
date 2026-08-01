@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 class _FakeInteractiveHandle:
     def __init__(self) -> None:
         self.returncode = 0

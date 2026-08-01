@@ -1079,7 +1079,11 @@ def _run_pipeline_step(
     _phase_outcome = "crashed"
 
     def _with_phase_timing(result: PipelineState | int) -> PipelineState | int:
-        return result.with_phase_timing(_phase_timer.finish()) if isinstance(result, PipelineState) else result
+        return (
+            result.with_phase_timing(_phase_timer.finish())
+            if isinstance(result, PipelineState)
+            else result
+        )
 
     try:
         effect = call_determine_effect_from_policy(
@@ -1188,13 +1192,15 @@ def _run_pipeline_step(
                 )
             except MissingPlanHandoffError as exc:
                 _phase_outcome = "skipped"
-                return _with_phase_timing(_recover_missing_plan_handoff(
-                    state=state,
-                    pipeline_policy=policy_bundle.pipeline,
-                    checkpoint_path=_checkpoint_path(workspace_scope),
-                    subscriber=pipeline_subscriber,
-                    exc=exc,
-                ))
+                return _with_phase_timing(
+                    _recover_missing_plan_handoff(
+                        state=state,
+                        pipeline_policy=policy_bundle.pipeline,
+                        checkpoint_path=_checkpoint_path(workspace_scope),
+                        subscriber=pipeline_subscriber,
+                        exc=exc,
+                    )
+                )
             event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,
@@ -1498,7 +1504,9 @@ def _call_determine_effect_from_policy(
                     has_uncommitted_changes_fn=has_changes,
                     agy_agents_probe=agy_probe,
                 )
-            return fn(state, policy_bundle, workspace_scope, config=config, agy_agents_probe=agy_probe)
+            return fn(
+                state, policy_bundle, workspace_scope, config=config, agy_agents_probe=agy_probe
+            )
         if "has_uncommitted_changes_fn" in params and has_changes is not None:
             return fn(
                 state,

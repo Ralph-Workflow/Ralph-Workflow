@@ -767,9 +767,7 @@ def handle_grep_files(
     else:
         # use_index == 'never' OR store missing OR non-eligible pattern.
         if use_index == "auto" and fallback_reason is None:
-            fallback_reason = (
-                "pattern_not_fts_eligible" if not eligible else "no_index_handle"
-            )
+            fallback_reason = "pattern_not_fts_eligible" if not eligible else "no_index_handle"
         # Fall back to live grep.
         live_matches, skipped, truncated = _live_grep(
             workspace,

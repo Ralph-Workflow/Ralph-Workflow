@@ -164,6 +164,7 @@ class _MissingSentinel:
 
 _MISSING: object = _MissingSentinel()
 
+
 def _field_message(field: str | None, message: str) -> str:
     if field is None:
         return message

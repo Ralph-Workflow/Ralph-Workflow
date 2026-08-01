@@ -639,9 +639,9 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
         return []
     ruff_lint = _nested_mapping(data, "tool", "ruff", "lint")
     ruff_tool = _nested_mapping(data, "tool", "ruff")
-    return _per_file_ignore_violations(
-        pyproject_path, ruff_lint
-    ) + _global_ignore_violations(pyproject_path, ruff_tool, ruff_lint)
+    return _per_file_ignore_violations(pyproject_path, ruff_lint) + _global_ignore_violations(
+        pyproject_path, ruff_tool, ruff_lint
+    )
 
 
 def _collect_py_files(root: Path) -> Iterable[Path]:

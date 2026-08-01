@@ -185,14 +185,10 @@ def _make_same_workspace_context(
         session_contract.capabilities if session_contract is not None else frozenset()
     )
     session_model_identity = (
-        session_contract.model_identity
-        if session_contract is not None
-        else None
+        session_contract.model_identity if session_contract is not None else None
     )
     session_capability_profile = (
-        session_contract.capability_profile
-        if session_contract is not None
-        else None
+        session_contract.capability_profile if session_contract is not None else None
     )
     return SameWorkspaceContext(
         repo_root=tmp_path,

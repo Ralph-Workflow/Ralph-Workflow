@@ -13,9 +13,9 @@ def test_opencode_smoke_default_regression_uses_current_minimax_provider() -> No
     expected = "opencode/minimax/MiniMax-M3"
 
     cli_default = inspect.signature(main.smoke_interactive_opencode).parameters["agent"].default
-    command_default = inspect.signature(smoke_interactive_opencode_command).parameters[
-        "agent_name"
-    ].default
+    command_default = (
+        inspect.signature(smoke_interactive_opencode_command).parameters["agent_name"].default
+    )
 
     assert cli_default.default == expected
     assert command_default == expected

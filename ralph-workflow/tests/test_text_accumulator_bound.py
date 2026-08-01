@@ -40,6 +40,7 @@ def test_raw_lines_bounded_on_no_paragraph_boundary() -> None:
 
 def test_interactive_parser_flushes_consecutive_output_deltas_at_cap() -> None:
     """Consecutive structured output cannot wait until end-of-stream to flush."""
+
     def lines() -> Iterator[str]:
         for index in range(_MAX_RAW_LINES + 1):
             yield json.dumps(

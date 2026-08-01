@@ -341,10 +341,7 @@ class NdjsonParserBase(ParserTemplateBase):
 
         event_type = str(obj.get("type", ""))
         lifecycle_result: Iterator[AgentOutputLine] | None = None
-        if (
-            event_type == "content_block_start"
-            and isinstance(obj.get("content_block"), dict)
-        ):
+        if event_type == "content_block_start" and isinstance(obj.get("content_block"), dict):
             # Claude's stream events use this framing marker for tool calls;
             # it is lifecycle only when it contains no content block.
             pass
@@ -358,9 +355,7 @@ class NdjsonParserBase(ParserTemplateBase):
         # yields AgentOutputLines whose ``timestamp`` is ``None`` unless the
         # subclass stamps them. Forward the validated source timestamp through
         # the one shared post-processing path.
-        yield from self._dispatch_with_timestamp(
-            obj, stripped, source_timestamp, lifecycle_result
-        )
+        yield from self._dispatch_with_timestamp(obj, stripped, source_timestamp, lifecycle_result)
 
     def _dispatch_with_timestamp(
         self,

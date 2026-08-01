@@ -61,9 +61,7 @@ def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
     return _auto_integrate_after_commit(*args, **kwargs)
 
 
-def _run(
-    repo_root: Path, *args: str, timeout: float = 10.0
-) -> subprocess.CompletedProcess[str]:
+def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
     return subprocess.run(
         ("git", *args),
@@ -106,9 +104,7 @@ def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
     """Set up feature/base divergence with a guaranteed shared.txt conflict."""
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
-    base_seed_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "branch", "feature", base_seed_sha)
     _run(tmp_git_repo, "checkout", "feature")
     _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
@@ -206,9 +202,7 @@ def test_successful_land_resets_the_conflict_budget(tmp_git_repo: Path) -> None:
     base = _diverged_conflicting_repo(tmp_git_repo)
 
     def _resolves(repo_root: Path, target: str) -> bool:
-        (repo_root / "shared.txt").write_text(
-            "feature version\nbase version 1\n", encoding="utf-8"
-        )
+        (repo_root / "shared.txt").write_text("feature version\nbase version 1\n", encoding="utf-8")
         return True
 
     result = auto_integrate_after_commit(
@@ -284,9 +278,7 @@ def test_new_feature_commit_gets_a_fresh_resolver_budget(
 
     # New feature work against the SAME target, with nothing landed in
     # between: the conflict is different, so the budget starts over.
-    new_feature_sha = _commit(
-        tmp_git_repo, "shared.txt", "feature version 2\n", "feature shared 2"
-    )
+    new_feature_sha = _commit(tmp_git_repo, "shared.txt", "feature version 2\n", "feature shared 2")
 
     result = auto_integrate_after_commit(
         config,
@@ -323,9 +315,7 @@ def test_moved_mainline_tip_gets_a_fresh_resolver_budget(
     # is untouched but the conflict is now against a different commit.
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "shared.txt", "base version 2\n", "base shared 2")
-    moved_target_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    moved_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "checkout", "feature")
 
     result = auto_integrate_after_commit(

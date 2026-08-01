@@ -441,8 +441,7 @@ def test_diagnose_flags_unknown_config_field(
     # The fix-it suggestion must include the canonical field name so the
     # operator can correct the typo without grep'ing the docs.
     assert "workflow" in output, (
-        f"Expected the canonical 'workflow' suggestion in --diagnose output, "
-        f"got: {output}"
+        f"Expected the canonical 'workflow' suggestion in --diagnose output, got: {output}"
     )
 
 

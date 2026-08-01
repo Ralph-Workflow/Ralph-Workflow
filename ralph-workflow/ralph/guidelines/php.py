@@ -105,47 +105,36 @@ class PHPGuidelines:
 
         if framework_name == "laravel":
             self.quality_checks += (
-                (
-                    "Use Eloquent relationships intentionally and avoid ad hoc query building "
-                    "when eager loading fits.",
-                    "Follow Laravel conventions for service providers, middleware, "
-                    "and route structure.",
-                    "Leverage Laravel's validation system instead of rolling custom checks "
-                    "where possible.",
-                    "Use middleware for cross-cutting concerns like logging, authentication, "
-                    "and feature flags.",
-                )
+                "Use Eloquent relationships intentionally and avoid ad hoc query building "
+                "when eager loading fits.",
+                "Follow Laravel conventions for service providers, middleware, "
+                "and route structure.",
+                "Leverage Laravel's validation system instead of rolling custom checks "
+                "where possible.",
+                "Use middleware for cross-cutting concerns like logging, authentication, "
+                "and feature flags.",
             )
             self.security_checks += (
-                (
-                    "Keep CSRF protection enabled on state-changing routes.",
-                    "Use Gates, Policies, and Form Requests for authorization and input "
-                    "sanitization.",
-                    "Sanitize input with request validation and escape output in views or APIs.",
-                )
+                "Keep CSRF protection enabled on state-changing routes.",
+                "Use Gates, Policies, and Form Requests for authorization and input sanitization.",
+                "Sanitize input with request validation and escape output in views or APIs.",
             )
             self.performance_checks += (
-                (
-                    "Review Eloquent queries for N+1 risks and eager load where needed.",
-                    "Push slow work to queues or async jobs when it shouldn't run in "
-                    "the request cycle.",
-                )
+                "Review Eloquent queries for N+1 risks and eager load where needed.",
+                "Push slow work to queues or async jobs when it shouldn't run in "
+                "the request cycle.",
             )
             return
 
         if framework_name == "symfony":
             self.quality_checks += (
-                (
-                    "Follow Symfony best practices for bundles, services, and controllers.",
-                    "Use the DependencyInjection component consistently and keep wiring explicit.",
-                    "Model validation with Symfony forms, constraints, or the validator component.",
-                )
+                "Follow Symfony best practices for bundles, services, and controllers.",
+                "Use the DependencyInjection component consistently and keep wiring explicit.",
+                "Model validation with Symfony forms, constraints, or the validator component.",
             )
             self.security_checks += (
-                (
-                    "Configure Symfony Security with firewalls, encoders, and voters as intended.",
-                    "Use voters or access control expressions for authorization.",
-                )
+                "Configure Symfony Security with firewalls, encoders, and voters as intended.",
+                "Use voters or access control expressions for authorization.",
             )
             self.documentation_checks += (
                 "Document service wiring, bundles, and configuration conventions "

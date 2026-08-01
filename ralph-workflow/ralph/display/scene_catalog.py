@@ -121,24 +121,59 @@ def _render_scene_narrative(
     glyphs: GlyphMode,
 ) -> None:
     """Render scene-specific greppable carriers through the canonical palette."""
+
     def marker(state: str) -> str:
         return styles[state][1] if glyphs == "unicode" else styles[state][2]
+
     if scene_name == "first_screen":
-        console.print(Text(f"{marker('running')} RUN OPEN phase=planning project=/work/cafe\u0301", style=styles["running"][0]))
+        console.print(
+            Text(
+                f"{marker('running')} RUN OPEN phase=planning project=/work/cafe\u0301",
+                style=styles["running"][0],
+            )
+        )
     elif scene_name == "clean_run":
-        console.print(Text(f"{marker('running')} phase=development agent=pi", style=styles["running"][0]))
+        console.print(
+            Text(f"{marker('running')} phase=development agent=pi", style=styles["running"][0])
+        )
         console.print(Text(f"{marker('success')} PASS success", style=styles["success"][0]))
     elif scene_name == "failure":
-        console.print(Text(f"{marker('error')} FAIL error phase=review cause=tests failed", style=styles["error"][0]))
-        console.print(Text(f"{marker('warning')} WARN raw=assertion output retained", style=styles["warning"][0]))
+        console.print(
+            Text(
+                f"{marker('error')} FAIL error phase=review cause=tests failed",
+                style=styles["error"][0],
+            )
+        )
+        console.print(
+            Text(
+                f"{marker('warning')} WARN raw=assertion output retained",
+                style=styles["warning"][0],
+            )
+        )
     elif scene_name == "burst":
-        console.print(Text(f"{marker('running')} agent=codex tool=edit_file", style=styles["running"][0]))
-        console.print(Text("REPEATED count=3 bytes=96 recovery=.agent/raw/run.log", style=styles["info"][0]))
+        console.print(
+            Text(f"{marker('running')} agent=codex tool=edit_file", style=styles["running"][0])
+        )
+        console.print(
+            Text("REPEATED count=3 bytes=96 recovery=.agent/raw/run.log", style=styles["info"][0])
+        )
     elif scene_name == "idle_stretch":
-        console.print(Text(f"{marker('pending')} WAIT pending state=waiting elapsed=02:03", style=styles["pending"][0]))
+        console.print(
+            Text(
+                f"{marker('pending')} WAIT pending state=waiting elapsed=02:03",
+                style=styles["pending"][0],
+            )
+        )
     else:
-        console.print(Text(f"{marker('success')} RUN COMPLETE outcome=success elapsed=02:03", style=styles["success"][0]))
-    console.print(Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=styles["info"][0]))
+        console.print(
+            Text(
+                f"{marker('success')} RUN COMPLETE outcome=success elapsed=02:03",
+                style=styles["success"][0],
+            )
+        )
+    console.print(
+        Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=styles["info"][0])
+    )
 
 
 def support_matrix() -> tuple[SupportCase, ...]:

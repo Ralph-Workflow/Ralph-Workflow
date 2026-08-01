@@ -173,6 +173,7 @@ def test_agent_registry_class_not_flagged() -> None:
 # Green-path production-tree coverage: ``make verify`` runs
 # ``python -m ralph.testing.audit_agent_module_state``.
 
+
 def test_run_audit_fails_closed_on_unreadable_file(
     tmp_path: Path,
 ) -> None:

@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-
 def _fake_preflight_request(
     *,
     config: UnifiedConfig,

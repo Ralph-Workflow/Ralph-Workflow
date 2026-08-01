@@ -172,7 +172,11 @@ def test_diff_tokens_are_distinct_and_accessibly_colored(
         if terminal_bg_is_light is True
         else (("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF"))
     )
-    assert all(contrast_ratio(color, background) >= 4.5 for color in colors.values() for background in backgrounds)
+    assert all(
+        contrast_ratio(color, background) >= 4.5
+        for color in colors.values()
+        for background in backgrounds
+    )
     for matrix in _CVD_MATRICES:
         assert len({theme._simulate_cvd(color, matrix) for color in colors.values()}) == 4
 

@@ -223,7 +223,5 @@ def _load_resolve_active_display() -> _ResolveActiveDisplayFn:
     """
     return cast(
         "_ResolveActiveDisplayFn",
-        _module_attr(
-            import_module("ralph.display.parallel_display"), "resolve_active_display"
-        ),
+        _module_attr(import_module("ralph.display.parallel_display"), "resolve_active_display"),
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)

@@ -89,9 +89,7 @@ def test_emit_config_table_renders_panel_via_mock_spec() -> None:
 # -------------------------------------------------------------------------
 
 
-def _height_aware_display(
-    *, height: int
-) -> tuple[ParallelDisplay, StringIO, list[object]]:
+def _height_aware_display(*, height: int) -> tuple[ParallelDisplay, StringIO, list[object]]:
     """Build a display whose Console carries the requested ``height``.
 
     The :class:`rich.console.Console` is created with
@@ -151,9 +149,7 @@ def test_emit_config_table_degrades_to_unboxed_at_12_rows() -> None:
     output = buf.getvalue()
     # Section rule + heading survive.
     assert "[config]" in output, f"section rule missing at 12 rows:\n{output!r}"
-    assert "Effective Configuration" in output, (
-        f"heading missing at 12 rows:\n{output!r}"
-    )
+    assert "Effective Configuration" in output, f"heading missing at 12 rows:\n{output!r}"
     # No bordered Panel.
     panels = [item for item in captured if isinstance(item, Panel)]
     assert len(panels) == 0, (
@@ -161,9 +157,7 @@ def test_emit_config_table_degrades_to_unboxed_at_12_rows() -> None:
     )
     # No panel corner characters anywhere in the output.
     for corner in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘"):
-        assert corner not in output, (
-            f"panel corner {corner!r} survived at 12 rows:\n{output!r}"
-        )
+        assert corner not in output, f"panel corner {corner!r} survived at 12 rows:\n{output!r}"
 
 
 def test_emit_config_table_keeps_panel_at_24_rows() -> None:
@@ -173,9 +167,7 @@ def test_emit_config_table_keeps_panel_at_24_rows() -> None:
     pd.emit_config_table(config)
     pd.stop()
     panels = [item for item in captured if isinstance(item, Panel)]
-    assert len(panels) == 1, (
-        f"boxed Panel must survive at 24 rows; got {len(panels)}: {panels!r}"
-    )
+    assert len(panels) == 1, f"boxed Panel must survive at 24 rows; got {len(panels)}: {panels!r}"
     panel = panels[0]
     assert panel.title == "Effective Configuration"
 

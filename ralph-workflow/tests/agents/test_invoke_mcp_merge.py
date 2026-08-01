@@ -401,9 +401,7 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
 
     def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
         del cmd, extras
-        config_at_launch.append(
-            must_mapping(json.loads(config_path.read_text(encoding="utf-8")))
-        )
+        config_at_launch.append(must_mapping(json.loads(config_path.read_text(encoding="utf-8"))))
         env_at_launch.append(must_str_dict(ctx.extra_env))
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 

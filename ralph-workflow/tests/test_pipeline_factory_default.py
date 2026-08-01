@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _make_display_context() -> DisplayContext:
     return make_display_context(env={"NO_COLOR": "1", "COLUMNS": "120"})
 

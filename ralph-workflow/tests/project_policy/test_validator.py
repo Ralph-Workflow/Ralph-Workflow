@@ -182,16 +182,19 @@ def _seed_all_core_complete(workspace: MemoryWorkspace, stack: ProjectStack) -> 
     for filename in markers.CORE_POLICY_FILES:
         workspace.write(
             f"{markers.CANONICAL_DIR}{filename}",
-            _complete_policy_body(filename=filename, lang=None if filename not in {"typechecking-policy.md", "linting-policy.md"} else "Python"),
+            _complete_policy_body(
+                filename=filename,
+                lang=None
+                if filename not in {"typechecking-policy.md", "linting-policy.md"}
+                else "Python",
+            ),
         )
 
 
 def _seed_agents_md(workspace: MemoryWorkspace) -> None:
     workspace.write(
         markers.AGENTS_MD,
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"See {markers.CANONICAL_DIR}.\n"
-        f"{markers.AGENTS_BLOCK_END}\n",
+        f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n",
     )
 
 
@@ -269,7 +272,9 @@ def test_missing_command_and_inapplicable_emits_finding() -> None:
     lines = [line for line in lines if not line.startswith(markers.COMMAND_MARKER)]
     ws.write(path, "\n".join(lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
-    assert any(f.path == path and f.requirement_id.startswith(markers.ID_CMD_UNUSABLE) for f in findings)
+    assert any(
+        f.path == path and f.requirement_id.startswith(markers.ID_CMD_UNUSABLE) for f in findings
+    )
 
 
 def test_no_completion_marker_is_required_for_readiness() -> None:
@@ -283,9 +288,7 @@ def test_no_completion_marker_is_required_for_readiness() -> None:
     findings = validators.validate_readiness(ws, _stack_with())
     assert findings == []
     for filename in markers.CORE_POLICY_FILES:
-        assert "ralph-policy-complete" not in ws.read(
-            f"{markers.CANONICAL_DIR}{filename}"
-        )
+        assert "ralph-policy-complete" not in ws.read(f"{markers.CANONICAL_DIR}{filename}")
 
 
 def test_per_language_coverage_required_for_secondary_language() -> None:
@@ -297,8 +300,12 @@ def test_per_language_coverage_required_for_secondary_language() -> None:
     stack = _stack_with(primary="Python", secondary=["TypeScript"])
     findings = validators.validate_readiness(ws, stack)
     ids = {f.requirement_id for f in findings}
-    assert any(i.startswith(f"{markers.ID_LANG_COVERAGE}:typechecking-policy.md:TypeScript") for i in ids)
-    assert any(i.startswith(f"{markers.ID_LANG_COVERAGE}:linting-policy.md:TypeScript") for i in ids)
+    assert any(
+        i.startswith(f"{markers.ID_LANG_COVERAGE}:typechecking-policy.md:TypeScript") for i in ids
+    )
+    assert any(
+        i.startswith(f"{markers.ID_LANG_COVERAGE}:linting-policy.md:TypeScript") for i in ids
+    )
 
 
 def test_bypass_detection_section_required_for_verification_policy() -> None:
@@ -311,8 +318,7 @@ def test_bypass_detection_section_required_for_verification_policy() -> None:
     ws.write(path, content)
     findings = validators.validate_readiness(ws, _stack_with())
     assert any(
-        f.path == path and "bypass detection" in f.missing_evidence.lower()
-        for f in findings
+        f.path == path and "bypass detection" in f.missing_evidence.lower() for f in findings
     )
 
 
@@ -354,11 +360,7 @@ def test_headings_only_never_ready() -> None:
     # Strip the command from one policy.
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ws.read(path)
-    lines = [
-        line
-        for line in content.splitlines()
-        if not line.startswith(markers.COMMAND_MARKER)
-    ]
+    lines = [line for line in content.splitlines() if not line.startswith(markers.COMMAND_MARKER)]
     ws.write(path, "\n".join(lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
@@ -390,10 +392,7 @@ def test_design_system_required_emits_design_system_finding() -> None:
     # Stack has a UI framework but no design-system policy file.
     stack = _stack_with(secondary=["CSS"])
     findings = validators.validate_readiness(ws, stack)
-    assert any(
-        "design-system-policy.md" in f.path
-        for f in findings
-    )
+    assert any("design-system-policy.md" in f.path for f in findings)
 
 
 def test_starter_content_fails_validation_until_customized() -> None:
@@ -421,11 +420,7 @@ def test_removed_fact_lines_emits_no_fact_finding_per_policy() -> None:
     for filename in markers.CORE_POLICY_FILES:
         path = f"{markers.CANONICAL_DIR}{filename}"
         content = ws.read(path)
-        lines = [
-            line
-            for line in content.splitlines()
-            if not line.startswith(markers.FACT_MARKER)
-        ]
+        lines = [line for line in content.splitlines() if not line.startswith(markers.FACT_MARKER)]
         ws.write(path, "\n".join(lines) + "\n")
         stripped_paths.append(path)
     findings = validators.validate_readiness(ws, _stack_with())
@@ -466,9 +461,7 @@ def test_empty_general_inapplicable_emits_finding() -> None:
     ), f"missing empty-inapplicable finding; observed: {ids}"
     # The file also lost its RALPH-COMMAND; the missing-command finding
     # must still fire so the user sees the dual defect.
-    assert any(
-        i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:missing" for i in ids
-    )
+    assert any(i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:missing" for i in ids)
 
 
 def test_empty_per_language_inapplicable_emits_finding() -> None:
@@ -491,9 +484,7 @@ def test_empty_per_language_inapplicable_emits_finding() -> None:
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
     assert any(
-        i.startswith(
-            f"{markers.ID_LANG_COVERAGE}:typechecking-policy.md:Python:empty-inapplicable"
-        )
+        i.startswith(f"{markers.ID_LANG_COVERAGE}:typechecking-policy.md:Python:empty-inapplicable")
         for i in ids
     ), f"missing per-language empty-inapplicable finding; observed: {ids}"
 
@@ -508,16 +499,14 @@ def test_duplicate_complete_managed_block_emits_finding() -> None:
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, _stack_with())
     block = (
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"See {markers.CANONICAL_DIR}.\n"
-        f"{markers.AGENTS_BLOCK_END}\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n"
     )
     ws.write(markers.AGENTS_MD, block + block)
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_MARKER_MISSING}:agents-block:duplicate" in ids
-    ), f"missing duplicate managed-block finding; observed: {ids}"
+    assert f"{markers.ID_MARKER_MISSING}:agents-block:duplicate" in ids, (
+        f"missing duplicate managed-block finding; observed: {ids}"
+    )
     # Project must NOT be ready.
     assert any(f.path == markers.AGENTS_MD for f in findings)
 
@@ -535,9 +524,9 @@ def test_unmatched_begin_only_emits_finding() -> None:
     )
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_MARKER_MISSING}:agents-block:unmatched" in ids
-    ), f"missing unmatched managed-block finding; observed: {ids}"
+    assert f"{markers.ID_MARKER_MISSING}:agents-block:unmatched" in ids, (
+        f"missing unmatched managed-block finding; observed: {ids}"
+    )
 
 
 def test_unmatched_end_only_emits_finding() -> None:
@@ -550,9 +539,9 @@ def test_unmatched_end_only_emits_finding() -> None:
     )
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_MARKER_MISSING}:agents-block:unmatched" in ids
-    ), f"missing unmatched managed-block finding; observed: {ids}"
+    assert f"{markers.ID_MARKER_MISSING}:agents-block:unmatched" in ids, (
+        f"missing unmatched managed-block finding; observed: {ids}"
+    )
 
 
 def test_misordered_markers_emit_finding() -> None:
@@ -564,14 +553,13 @@ def test_misordered_markers_emit_finding() -> None:
     _seed_all_core_complete(ws, _stack_with())
     ws.write(
         markers.AGENTS_MD,
-        f"{markers.AGENTS_BLOCK_END}\n{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"See {markers.CANONICAL_DIR}.\n",
+        f"{markers.AGENTS_BLOCK_END}\n{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n",
     )
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_MARKER_MISSING}:agents-block:misordered" in ids
-    ), f"missing misordered managed-block finding; observed: {ids}"
+    assert f"{markers.ID_MARKER_MISSING}:agents-block:misordered" in ids, (
+        f"missing misordered managed-block finding; observed: {ids}"
+    )
 
 
 def test_managed_block_missing_both_markers_emits_finding() -> None:
@@ -588,9 +576,9 @@ def test_managed_block_missing_both_markers_emits_finding() -> None:
     )
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_MARKER_MISSING}:agents-block:missing" in ids
-    ), f"missing missing-block finding; observed: {ids}"
+    assert f"{markers.ID_MARKER_MISSING}:agents-block:missing" in ids, (
+        f"missing missing-block finding; observed: {ids}"
+    )
 
 
 def test_canonical_dir_outside_block_emits_finding() -> None:
@@ -615,9 +603,7 @@ def test_canonical_dir_outside_block_emits_finding() -> None:
     )
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" in ids
-    ), (
+    assert f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" in ids, (
         f"missing canonical-dir-ref finding when CANONICAL_DIR is only "
         f"outside the managed block; observed: {ids}"
     )
@@ -642,8 +628,7 @@ def test_canonical_dir_inside_block_emits_no_finding() -> None:
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
     assert f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" not in ids, (
-        f"unexpected canonical-dir-ref finding when reference is inside "
-        f"the block; observed: {ids}"
+        f"unexpected canonical-dir-ref finding when reference is inside the block; observed: {ids}"
     )
 
 
@@ -685,10 +670,7 @@ def test_verification_bypass_empty_command_emits_finding() -> None:
     ws.write(path, "\n".join(new_lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:empty"
-        in ids
-    ), (
+    assert f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:empty" in ids, (
         f"missing bypass-cmd:empty finding for an empty RALPH-COMMAND "
         f"under Bypass detection; observed: {ids}"
     )
@@ -727,10 +709,7 @@ def test_verification_bypass_placeholder_command_emits_finding() -> None:
     ws.write(path, "\n".join(new_lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:placeholder"
-        in ids
-    ), (
+    assert f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:placeholder" in ids, (
         f"missing bypass-cmd:placeholder finding for a placeholder "
         f"RALPH-COMMAND under Bypass detection; observed: {ids}"
     )
@@ -759,15 +738,15 @@ def test_unapproved_command_at_normal_policy_scope_emits_finding() -> None:
     # string is the exact reproducer from the analysis feedback.
     lines = content.splitlines()
     new_lines = [
-        line if not line.startswith(markers.COMMAND_MARKER) else f"{markers.COMMAND_MARKER} definitely-not-a-command"
+        line
+        if not line.startswith(markers.COMMAND_MARKER)
+        else f"{markers.COMMAND_MARKER} definitely-not-a-command"
         for line in lines
     ]
     ws.write(path, "\n".join(new_lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert any(
-        i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:unapproved-cmd-1" for i in ids
-    ), (
+    assert any(i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:unapproved-cmd-1" for i in ids), (
         f"missing unapproved-cmd-1 finding at normal policy scope for "
         f"'definitely-not-a-command'; observed: {sorted(ids)}"
     )
@@ -810,10 +789,7 @@ def test_verification_bypass_unapproved_command_emits_finding() -> None:
     ws.write(path, "\n".join(new_lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    assert (
-        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:unapproved"
-        in ids
-    ), (
+    assert f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:unapproved" in ids, (
         f"missing bypass-cmd:unapproved finding for a non-allowlist "
         f"RALPH-COMMAND under Bypass detection; observed: {sorted(ids)}"
     )

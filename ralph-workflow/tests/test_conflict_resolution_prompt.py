@@ -144,9 +144,7 @@ def test_the_rebase_variant_states_the_unlisted_path_enforcement(
     tmp_path: Path,
 ) -> None:
     """Only the rebase loop enforces it, so only the rebase prompt claims it."""
-    assert "REJECTS the whole resolution and aborts the\n  rebase" in _render_rebase_stop(
-        tmp_path
-    )
+    assert "REJECTS the whole resolution and aborts the\n  rebase" in _render_rebase_stop(tmp_path)
 
 
 def test_the_endpoint_merge_variant_claims_no_unenforced_gate(

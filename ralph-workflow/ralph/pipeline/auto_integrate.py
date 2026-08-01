@@ -110,7 +110,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-
 # The record path / write_record / read_record / clear_record helpers
 # were extracted to :mod:`ralph.pipeline.auto_integrate_record`, and the
 # outcome branch table (action verbs, RebaseState builders, rebase/merge
@@ -693,7 +692,11 @@ def _configured_target(config: UnifiedConfig) -> str:
 def _missing_target_reason(config: UnifiedConfig) -> str:
     """Name the missing local target without guessing an alternative."""
     target = _configured_target(config)
-    return f"local integration target branch does not exist: {target}" if target else "no integration target configured"
+    return (
+        f"local integration target branch does not exist: {target}"
+        if target
+        else "no integration target configured"
+    )
 
 
 def _check_early_skips(

@@ -103,7 +103,9 @@ class TestExplainCLI:
     def test_check_policy_command_reports_block_summary(self) -> None:
         stream = StringIO()
         context = DisplayContext(
-            console=Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME),
+            console=Console(
+                file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME
+            ),
             theme=RALPH_THEME,
             width=80,
             mode="default",

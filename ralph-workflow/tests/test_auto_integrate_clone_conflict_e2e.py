@@ -52,9 +52,7 @@ def test_checked_out_sibling_target_refuses_stale_fast_forward(
         _observe,
     )
     monkeypatch.setattr(auto_integrate_ff, "is_ancestor", _is_ancestor)
-    monkeypatch.setattr(
-        auto_integrate_ff, "find_main_worktree_root", _main_root
-    )
+    monkeypatch.setattr(auto_integrate_ff, "find_main_worktree_root", _main_root)
     monkeypatch.setattr(
         auto_integrate_ff,
         "worktree_lookup",
@@ -66,13 +64,9 @@ def test_checked_out_sibling_target_refuses_stale_fast_forward(
         _refuse,
     )
     compare_and_swap = MagicMock(return_value=True)
-    monkeypatch.setattr(
-        auto_integrate_ff, "compare_and_swap_branch", compare_and_swap
-    )
+    monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", compare_and_swap)
 
-    landed, reason = auto_integrate_ff.fast_forward_target(
-        feature, "main", "stale-feature-head"
-    )
+    landed, reason = auto_integrate_ff.fast_forward_target(feature, "main", "stale-feature-head")
 
     assert landed is False
     assert auto_integrate_ff.is_retryable_fast_forward_failure(reason) is True

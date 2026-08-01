@@ -29,8 +29,8 @@ def test_plan_markdown_maps_to_the_canonical_execution_model() -> None:
 
 
 def test_plan_markdown_accepts_steps_without_the_recommended_optional_sections() -> None:
-    truncated = _plan_document().split("## Critical Files", maxsplit=1)[0].replace(
-        "Satisfies: AC-01\n", ""
+    truncated = (
+        _plan_document().split("## Critical Files", maxsplit=1)[0].replace("Satisfies: AC-01\n", "")
     )
 
     content, diagnostics = parse_and_validate(truncated, get_spec("plan"))

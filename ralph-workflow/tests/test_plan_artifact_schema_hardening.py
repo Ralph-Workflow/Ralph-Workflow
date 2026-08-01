@@ -296,9 +296,7 @@ def test_all_unconsumed_plan_vocabularies_accept_project_specific_values() -> No
     plan["summary"] = {
         "intent_verb": "ship_it",
         "coverage_areas": ["operator-experience"],
-        "scope_items": [
-            {"text": "Refresh the operator flow", "category": "product-polish"}
-        ],
+        "scope_items": [{"text": "Refresh the operator flow", "category": "product-polish"}],
     }
     steps = must_dict_list(plan["steps"])
     steps[0]["priority"] = "release-blocker"
@@ -310,15 +308,9 @@ def test_all_unconsumed_plan_vocabularies_accept_project_specific_values() -> No
     summary = must_mapping(normalized["summary"])
     assert summary["intent_verb"] == "ship_it"
     assert summary["coverage_areas"] == ["operator-experience"]
-    assert must_dict_list(summary["scope_items"])[0][
-        "category"
-    ] == "product-polish"
-    assert must_dict_list(normalized["steps"])[0][
-        "priority"
-    ] == "release-blocker"
-    assert must_dict_list(normalized["risks_mitigations"])[0][
-        "severity"
-    ] == "watch-carefully"
+    assert must_dict_list(summary["scope_items"])[0]["category"] == "product-polish"
+    assert must_dict_list(normalized["steps"])[0]["priority"] == "release-blocker"
+    assert must_dict_list(normalized["risks_mitigations"])[0]["severity"] == "watch-carefully"
 
 
 # ---------------------------------------------------------------------------

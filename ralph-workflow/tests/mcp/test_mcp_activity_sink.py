@@ -432,9 +432,7 @@ def test_upstream_proxy_does_not_invoke_sink_when_called_directly() -> None:
     def sink(name: str) -> None:
         sinks_called.append(name)
 
-    handler = UpstreamProxyHandler(
-        alias="mcp__upstream__search", upstream_registry=upstream
-    )
+    handler = UpstreamProxyHandler(alias="mcp__upstream__search", upstream_registry=upstream)
     token = set_active_sink(sink)
     try:
         result = handler(host_session=None, workspace=None, params={"query": "hello"})
@@ -465,9 +463,7 @@ def test_upstream_proxy_failure_does_not_invoke_sink_when_called_directly() -> N
     def sink(name: str) -> None:
         sinks_called.append(name)
 
-    handler = UpstreamProxyHandler(
-        alias="mcp__upstream__fetch", upstream_registry=upstream
-    )
+    handler = UpstreamProxyHandler(alias="mcp__upstream__fetch", upstream_registry=upstream)
     token = set_active_sink(sink)
     try:
         raised = False
@@ -501,9 +497,7 @@ def test_upstream_proxy_ignores_registered_sink() -> None:
     def bad_sink(name: str) -> None:
         raise RuntimeError("buggy sink")
 
-    handler = UpstreamProxyHandler(
-        alias="mcp__upstream__search", upstream_registry=upstream
-    )
+    handler = UpstreamProxyHandler(alias="mcp__upstream__search", upstream_registry=upstream)
     token = set_active_sink(bad_sink)
     try:
         result = handler(host_session=None, workspace=None, params={})
@@ -527,9 +521,7 @@ def test_upstream_proxy_without_sink_does_not_raise() -> None:
     """
     assert get_active_sink() is None
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
-    handler = UpstreamProxyHandler(
-        alias="mcp__upstream__search", upstream_registry=upstream
-    )
+    handler = UpstreamProxyHandler(alias="mcp__upstream__search", upstream_registry=upstream)
     result = handler(host_session=None, workspace=None, params={"k": "v"})
     assert result == {"content": [{"type": "text", "text": "ok"}]}
     assert upstream.calls == [("mcp__upstream__search", {"k": "v"}, None)]

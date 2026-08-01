@@ -249,11 +249,7 @@ def _to_hh_mm_ss(timestamp: object) -> str:
         head = text.split("T", 1)[1] if "T" in text else text
         time_part = head.split("+", 1)[0].split("-", 1)[0].split("Z", 1)[0]
         hh_mm_ss = time_part[:_HHMMSS_LEN]
-        if (
-            len(hh_mm_ss) == _HHMMSS_LEN
-            and hh_mm_ss[2] == ":"
-            and hh_mm_ss[5] == ":"
-        ):
+        if len(hh_mm_ss) == _HHMMSS_LEN and hh_mm_ss[2] == ":" and hh_mm_ss[5] == ":":
             return hh_mm_ss
     except Exception:
         pass
@@ -264,7 +260,13 @@ def _body_lines(body: object) -> tuple[str, ...]:
     """Return normalized body lines for a text-first hanging-indent record."""
     if body is None:
         return ()
-    text = body if isinstance(body, str) else " ".join(str(item) for item in body) if isinstance(body, Iterable) else str(body)
+    text = (
+        body
+        if isinstance(body, str)
+        else " ".join(str(item) for item in body)
+        if isinstance(body, Iterable)
+        else str(body)
+    )
     return tuple(
         _ANSI_ESCAPE_RE.sub("", line.replace("\t", " ")).rstrip()
         for line in text.replace("\r\n", "\n").split("\n")

@@ -71,8 +71,8 @@ def test_audit_passes_real_production_tree() -> None:
     scheduled statically inside ``WorkspaceMonitor.start()`` with
     no loop ancestor -- satisfies the invariants.
     """
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(PRODUCTION_ROOT)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        PRODUCTION_ROOT
     )
     assert violations == [], (
         f"audit must be clean on the real ralph-workflow tree; got: {violations}"
@@ -96,8 +96,8 @@ def test_audit_flags_second_schedule_call_in_start(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(package_root)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
     )
 
     kinds: set[str] = {v.kind for v in violations}
@@ -122,8 +122,8 @@ def test_audit_flags_non_recursive_schedule_call(tmp_path: Path) -> None:
         ),
     )
 
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(package_root)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
     )
 
     kinds: set[str] = {v.kind for v in violations}
@@ -152,8 +152,8 @@ def test_audit_flags_schedule_call_relocated_into_record_event(tmp_path: Path) -
         ),
     )
 
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(package_root)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
     )
 
     kinds: set[str] = {v.kind for v in violations}
@@ -185,8 +185,8 @@ def test_audit_flags_schedule_call_inside_for_loop_in_start(tmp_path: Path) -> N
         ),
     )
 
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(package_root)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
     )
 
     kinds: set[str] = {v.kind for v in violations}
@@ -239,8 +239,8 @@ def test_audit_flags_missing_workspace_module(tmp_path: Path) -> None:
     package_root.mkdir(parents=True)
     # Intentionally do NOT write agents/invoke/_workspace.py.
 
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(package_root)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
     )
 
     kinds: set[str] = {v.kind for v in violations}
@@ -262,9 +262,7 @@ def _dotted(node: _ast.AST) -> str | None:
 
 @functools.cache
 def _parse_audit_module() -> _ast.Module:
-    audit_path: Path = (
-        REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
-    )
+    audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
     source: str = audit_path.read_text(encoding="utf-8")
     return _ast.parse(source, filename=str(audit_path))
 
@@ -279,9 +277,7 @@ def test_audit_module_imports_clean() -> None:
     The check uses AST-based detection (not regex) so the literal
     strings in the test source do not produce false positives.
     """
-    audit_path: Path = (
-        REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
-    )
+    audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
     source: str = audit_path.read_text(encoding="utf-8")
     tree: _ast.Module = _ast.parse(source, filename=str(audit_path))
 
@@ -322,7 +318,6 @@ def test_audit_module_imports_clean() -> None:
     assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
 
-
 @pytest.mark.parametrize(
     "forbidden_name",
     [
@@ -346,9 +341,7 @@ def test_audit_module_forbids_known_io_primitives(forbidden_name: str) -> None:
     Uses AST-based detection (not regex) so the literal strings in
     the test source do not produce false positives.
     """
-    audit_path: Path = (
-        REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
-    )
+    audit_path: Path = REPO_ROOT / "ralph" / "testing" / "audit_fsevents_watch_consolidation.py"
     tree: _ast.Module = _parse_audit_module()
 
     parts: list[str] = forbidden_name.split(".")

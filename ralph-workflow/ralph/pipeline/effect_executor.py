@@ -1417,9 +1417,7 @@ def _write_terminal_missing_artifact_hint(
     required_artifact: RequiredArtifact | None,
 ) -> None:
     """Persist canonical resubmission guidance only when the receipt is absent."""
-    if required_artifact is None or not is_unsubmitted_artifact_failure(
-        failure_detail_parts(exc)
-    ):
+    if required_artifact is None or not is_unsubmitted_artifact_failure(failure_detail_parts(exc)):
         return
     workspace_root = ctx.workspace_scope.root
     if (workspace_root / required_artifact.artifact_path).exists():

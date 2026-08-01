@@ -28,7 +28,9 @@ class _FakeResponse:
 
 
 class _FakeClient:
-    def __init__(self, response: _FakeResponse | None = None, *, get_error: Exception | None = None) -> None:
+    def __init__(
+        self, response: _FakeResponse | None = None, *, get_error: Exception | None = None
+    ) -> None:
         self._response = response
         self._get_error = get_error
 

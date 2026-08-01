@@ -141,9 +141,7 @@ def test_starter_citations_are_structurally_valid() -> None:
             assert http_line is not None, f"{name} citation block has no http: line:\n{block}"
             url = http_line.split("http:", 1)[1].strip()
             parsed = urlparse(url)
-            assert parsed.scheme == "https", (
-                f"{name} citation URL must use https: {url!r}"
-            )
+            assert parsed.scheme == "https", f"{name} citation URL must use https: {url!r}"
             assert parsed.netloc, f"{name} citation URL must have a non-empty host: {url!r}"
 
             review_line = next(
@@ -285,14 +283,10 @@ def test_multi_language_template_blocks_carry_replace_me_marker(name: str) -> No
     the section instead of bloating the remediation prompt."""
     content = starters.read_starter(name)
     lines = content.splitlines()
-    lang_lines = [
-        idx for idx, line in enumerate(lines) if line.startswith(markers.LANG_MARKER)
-    ]
+    lang_lines = [idx for idx, line in enumerate(lines) if line.startswith(markers.LANG_MARKER)]
     if len(lang_lines) <= 1:
         return  # single/no language block: nothing speculative to adapt.
-    marker_lines = [
-        idx for idx, line in enumerate(lines) if line.startswith("<!-- REPLACE-ME:")
-    ]
+    marker_lines = [idx for idx, line in enumerate(lines) if line.startswith("<!-- REPLACE-ME:")]
     assert marker_lines, (
         f"{name} ships {len(lang_lines)} RALPH-LANG template blocks but no "
         "<!-- REPLACE-ME: --> section marker"

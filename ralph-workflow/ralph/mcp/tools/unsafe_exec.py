@@ -67,13 +67,9 @@ def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
     """
     segments = _shell_command_segments(command)
     for segment_command, segment_args in segments:
-        reason = _scan_text_for_vcs_violation(
-            " ".join([segment_command, *segment_args])
-        )
+        reason = _scan_text_for_vcs_violation(" ".join([segment_command, *segment_args]))
         if reason is not None:
-            raise CapabilityDeniedError(
-                f"Command '{segment_command}': {reason}"
-            )
+            raise CapabilityDeniedError(f"Command '{segment_command}': {reason}")
     script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
     if script_hit is not None:
         script, word = script_hit

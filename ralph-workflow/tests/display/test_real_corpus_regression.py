@@ -59,9 +59,7 @@ def test_pi_tool_result_flood_replay_collapses_identical_burst_on_both_surfaces(
     tmp_path: Path,
 ) -> None:
     """S-2: timestamp-less Pi terminal results become one accounted-for presentation."""
-    rendered, live, _ = _replay(
-        "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path
-    )
+    rendered, live, _ = _replay("pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path)
     assert rendered.count("role=tool_result") == 2
     for surface in (rendered, live):
         collapsed = " ".join(surface.split())
@@ -79,7 +77,9 @@ def test_pi_tool_result_flood_without_channel_prefix_or_pi_identity_still_collap
     """DA-001: collapse and cleanup are content-agnostic across agent identities."""
     body = "✓ PASS read_file src/flood.py (running...) severity=warn severity=warn codex codex"
     wire = [
-        "{" + f'"type":"tool_execution_end","toolCallId":"flood-1","toolName":"read_file","args":{{"path":"src/flood.py"}},"result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false' + "}"
+        "{"
+        + f'"type":"tool_execution_end","toolCallId":"flood-1","toolName":"read_file","args":{{"path":"src/flood.py"}},"result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false'
+        + "}"
         for _ in range(4)
     ]
     rendered, live, _ = _replay(
@@ -99,7 +99,9 @@ def test_codex_tool_result_flood_without_timestamp_collapses(tmp_path: Path) -> 
     """DA-001: real-shape Codex completions need no source timestamp to collapse."""
     body = "[tool-result] ✓ PASS read_file src/flood.py (running...) severity=info severity=info codex codex"
     wire = [
-        "{" + f'"type":"item.completed","item":{{"id":"flood-1","type":"mcp_tool_call","tool":"read_file","arguments":{{"path":"src/flood.py"}},"result":"{body}"}}' + "}"
+        "{"
+        + f'"type":"item.completed","item":{{"id":"flood-1","type":"mcp_tool_call","tool":"read_file","arguments":{{"path":"src/flood.py"}},"result":"{body}"}}'
+        + "}"
         for _ in range(4)
     ]
     rendered, live, _ = _replay(
@@ -120,7 +122,9 @@ def test_pi_tool_result_flood_without_target_uses_overflow_destination(tmp_path:
     """DA-002: collapsed shell results cite their verbatim capture, never unknown."""
     body = "[tool-result] ✓ PASS bash (running...) severity=info severity=info pi pi"
     wire = [
-        "{" + f'"type":"tool_execution_end","toolCallId":"flood-1","toolName":"bash","result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false' + "}"
+        "{"
+        + f'"type":"tool_execution_end","toolCallId":"flood-1","toolName":"bash","result":{{"content":[{{"type":"text","text":"{body}"}}]}},"isError":false'
+        + "}"
         for _ in range(5)
     ]
     rendered, live, _ = _replay(
@@ -137,7 +141,9 @@ def test_tool_call_record_emits_call_id_once(tmp_path: Path) -> None:
     wire = [
         '{"type":"tool_execution_start","timestamp":"2026-07-25T09:30:00.000Z","toolCallId":"call_ABC123","toolName":"read_file","args":{"path":"src/one.py"}}'
     ]
-    rendered, _live, _ = _replay("pi_call_id", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire)
+    rendered, _live, _ = _replay(
+        "pi_call_id", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire
+    )
     line = next(line for line in rendered.splitlines() if "role=tool_call" in line)
     assert line.count("call_id=call_ABC123") == 1
 

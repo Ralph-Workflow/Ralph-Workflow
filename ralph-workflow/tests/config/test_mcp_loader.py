@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
 
 

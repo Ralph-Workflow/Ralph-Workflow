@@ -64,9 +64,7 @@ def save_state(path: Path, state: VersionCheckState) -> None:
             "last_checked": state.last_checked,
             "latest_version": state.latest_version,
         }
-        write_text_if_changed(
-            DEFAULT_FILE_BACKEND, path, json.dumps(document), encoding="utf-8"
-        )
+        write_text_if_changed(DEFAULT_FILE_BACKEND, path, json.dumps(document), encoding="utf-8")
     except OSError:
         pass
 

@@ -61,10 +61,7 @@ def test_parser_captures_blocks_item_fields_and_body_lines() -> None:
 
 def test_parser_flags_malformed_headings_and_preamble_content() -> None:
     _, diagnostics = parse_markdown_document(
-        "---\ntype: example\n---\n"
-        "stray preamble\n"
-        "## Steps\n"
-        "### no stable id\n"
+        "---\ntype: example\n---\nstray preamble\n## Steps\n### no stable id\n"
     )
 
     assert [(diagnostic.line, diagnostic.rule_id) for diagnostic in diagnostics] == [

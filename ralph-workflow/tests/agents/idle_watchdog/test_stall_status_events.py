@@ -747,6 +747,7 @@ def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
     assert len(stalled_total) == 1
     assert len(resumed_total) == 1
 
+
 # ---------------------------------------------------------------------------
 # wt-047-stall-label (DA-002): the watchdog STALLED / STALL_RESUMED
 # transition events carry the correct idle_elapsed_seconds (the

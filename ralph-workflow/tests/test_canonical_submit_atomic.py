@@ -18,9 +18,7 @@ if TYPE_CHECKING:
 class _AtomicityBackend(MemoryBackend):
     """Memory backend that exposes canonical writes and replace faults."""
 
-    def __init__(
-        self, *, fail_replace: bool = False, corrupt_replace: bool = False
-    ) -> None:
+    def __init__(self, *, fail_replace: bool = False, corrupt_replace: bool = False) -> None:
         super().__init__()
         self.fail_replace = fail_replace
         self.corrupt_replace = corrupt_replace
@@ -50,7 +48,9 @@ def _submit(tmp_path: Path, backend: MemoryBackend, markdown: str) -> None:
     )
 
 
-def test_canonical_submit_regression_writes_artifact_and_handoff_via_replace(tmp_path: Path) -> None:
+def test_canonical_submit_regression_writes_artifact_and_handoff_via_replace(
+    tmp_path: Path,
+) -> None:
     """S-1: destination write faults prove both canonical files use replacement."""
     backend = _AtomicityBackend()
 

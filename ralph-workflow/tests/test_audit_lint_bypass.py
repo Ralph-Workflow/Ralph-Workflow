@@ -123,7 +123,7 @@ def test_noqa_after_triple_quoted_string_detected() -> None:
 def test_noqa_after_single_line_triple_quoted_string_detected() -> None:
     """A single-line triple-quoted literal does not hide a later noqa."""
     lines = [
-        '\"\"\"A docstring.\"\"\"',
+        '"""A docstring."""',
         "value = 1  # noqa",
     ]
     violations = _find_noqa_violations(lines, "src/docstring.py")

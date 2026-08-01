@@ -353,7 +353,9 @@ def _run_policy_preflight_checks(
     try:
         agent_registry = AgentRegistry.from_config(request.config)
         validate_agent_chains_satisfiable(request.policy_bundle, agent_registry)
-        validate_chain_agents_on_path(request.policy_bundle.agents, warn=_warn_missing_chain_fallback)
+        validate_chain_agents_on_path(
+            request.policy_bundle.agents, warn=_warn_missing_chain_fallback
+        )
     except PolicyValidationError as e:
         display.emit_warning(_preflight_error_text(e.message).plain)
         return _EXIT_PREFLIGHT

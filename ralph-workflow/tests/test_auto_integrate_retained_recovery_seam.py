@@ -74,9 +74,7 @@ def _retained() -> RebaseState:
     """A recovery outcome that left the durable record on disk."""
     return RebaseState(
         last_action="skipped",
-        last_reason=(
-            "recovery: feature branch not restored, record retained for retry"
-        ),
+        last_reason=("recovery: feature branch not restored, record retained for retry"),
         last_target="main",
         recovery_record_retained=True,
     )
@@ -132,9 +130,7 @@ def _fake_record(phase: str, *, integrated_sha: str | None = None) -> object:
     )
 
 
-def _stub_clean_git(
-    recovery: ModuleType, monkeypatch: MonkeyPatch, record: object
-) -> None:
+def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: object) -> None:
     """Fake every git collaborator into a quiet, no-op-in-flight state.
 
     Each branch test below then breaks exactly ONE of them, so the
@@ -146,9 +142,7 @@ def _stub_clean_git(
     monkeypatch.setattr(recovery, "_clear_record", lambda _root: None)
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: False)
     monkeypatch.setattr(recovery, "abort_rebase", lambda **_kw: None)
-    monkeypatch.setattr(
-        recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE
-    )
+    monkeypatch.setattr(recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
     monkeypatch.setattr(recovery, "reset_hard", lambda _root, _sha: None)
 
@@ -177,9 +171,7 @@ def test_an_unprovable_abort_retains_the_record_and_says_so_structurally(
 ) -> None:
     """phase='integrated' whose owned abort could not be proven (branch 4)."""
     recovery = _recovery_module()
-    _stub_clean_git(
-        recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40)
-    )
+    _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "rebase_in_progress", lambda _root: True)
     monkeypatch.setattr(recovery, "abort_rebase", _boom)
 
@@ -199,18 +191,14 @@ def test_an_unrefreshable_pointer_retains_the_record_and_says_so_structurally(
     stale pointer, so it is the one that most needs to be detectable.
     """
     recovery = _recovery_module()
-    _stub_clean_git(
-        recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40)
-    )
+    _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(
         recovery,
         "_refresh_target",
         lambda _config, _root, _target: recovery.REFRESH_UNREACHABLE,
     )
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(tmp_path), config=_config()
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
 
     assert recovery_retained_record(outcome), (
         f"an unrefreshable pointer retains the record; got {outcome!r}"
@@ -227,9 +215,7 @@ def test_a_transient_fast_forward_failure_retains_the_record_structurally(
     NOT read as retained.
     """
     recovery = _recovery_module()
-    _stub_clean_git(
-        recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40)
-    )
+    _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
     monkeypatch.setattr(recovery, "is_ancestor", lambda _root, _target, _sha: True)
     monkeypatch.setattr(recovery, "fast_forward_target", _boom)
@@ -263,14 +249,10 @@ def test_a_cleared_record_never_reads_as_retained(
     catch-up on the two paths that genuinely finished.
     """
     recovery = _recovery_module()
-    _stub_clean_git(
-        recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40)
-    )
+    _stub_clean_git(recovery, monkeypatch, _fake_record("integrated", integrated_sha="b" * 40))
     monkeypatch.setattr(recovery, "branch_sha", lambda _root, _target: "c" * 40)
     monkeypatch.setattr(recovery, "is_ancestor", lambda _root, _target, _sha: True)
-    monkeypatch.setattr(
-        recovery, "fast_forward_target", lambda _root, _target, _sha: ff_result
-    )
+    monkeypatch.setattr(recovery, "fast_forward_target", lambda _root, _target, _sha: ff_result)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
@@ -311,9 +293,7 @@ def _install_run_loop_seams(
     events: list[str] = []
     saves: list[PipelineState] = []
 
-    def _fake_recover(
-        workspace_scope: object, config: object = None
-    ) -> RebaseState | None:
+    def _fake_recover(workspace_scope: object, config: object = None) -> RebaseState | None:
         del workspace_scope, config
         events.append("recover")
         return recovered
@@ -328,9 +308,7 @@ def _install_run_loop_seams(
         events.append("save")
         saves.append(state)
 
-    monkeypatch.setattr(
-        module, "_run_auto_integrate_recovery_preamble", _fake_recover
-    )
+    monkeypatch.setattr(module, "_run_auto_integrate_recovery_preamble", _fake_recover)
     monkeypatch.setattr(module, "_run_startup_integration", _fake_startup)
     monkeypatch.setattr(module, "_save_recovered_rebase_checkpoint", _fake_save)
     return events, saves
@@ -420,9 +398,7 @@ def test_run_loop_still_catches_up_after_a_reconciled_recovery(
         PipelineState(phase="planning"), _loop_ctx(tmp_path, display)
     )
 
-    assert "integrate" in events, (
-        f"a reconciled recovery must still catch up, got {events!r}"
-    )
+    assert "integrate" in events, f"a reconciled recovery must still catch up, got {events!r}"
     assert state.rebase.last_action == "fast_forwarded"
     assert display.warn_lines == []
 
@@ -463,9 +439,7 @@ def _install_worker_seams(
 ) -> list[str]:
     events: list[str] = []
 
-    def _fake_recover(
-        workspace_scope: object, *, config: object = None
-    ) -> RebaseState | None:
+    def _fake_recover(workspace_scope: object, *, config: object = None) -> RebaseState | None:
         del workspace_scope, config
         events.append("recover")
         return recovered
@@ -475,9 +449,7 @@ def _install_worker_seams(
         events.append("integrate")
         return RebaseState(last_action="fast_forwarded", last_target="main")
 
-    monkeypatch.setattr(
-        module, "recover_incomplete_integration", _fake_recover, raising=False
-    )
+    monkeypatch.setattr(module, "recover_incomplete_integration", _fake_recover, raising=False)
     monkeypatch.setattr(
         module, "auto_integrate_on_phase_transition", _fake_integrate, raising=False
     )
@@ -512,8 +484,7 @@ def test_worker_does_not_integrate_over_a_retained_recovery_record(
     outcome = _run_worker_seam(module, tmp_path)
 
     assert events == ["recover"], (
-        "a worker must not integrate over a record recovery still owns;"
-        f" got {events!r}"
+        f"a worker must not integrate over a record recovery still owns; got {events!r}"
     )
     assert outcome is not None
     assert outcome.recovery_record_retained is True, (
@@ -541,9 +512,7 @@ def test_the_worker_deferral_reaches_a_real_operator_console(
         env={}, console=Console(file=buffer, width=200), force_width=200
     )
 
-    outcome = _run_worker_seam(
-        module, tmp_path, display_context=display_context
-    )
+    outcome = _run_worker_seam(module, tmp_path, display_context=display_context)
 
     assert events == ["recover"]
     assert outcome is not None
@@ -552,8 +521,7 @@ def test_the_worker_deferral_reaches_a_real_operator_console(
         f"expected the deferral on the operator console, got {rendered!r}"
     )
     assert "auto-integrate" in rendered, (
-        "the line must be attributed to the auto-integrate channel, got"
-        f" {rendered!r}"
+        f"the line must be attributed to the auto-integrate channel, got {rendered!r}"
     )
 
 
@@ -573,9 +541,7 @@ def test_worker_still_integrates_after_a_reconciled_recovery(
     assert outcome.last_action == "fast_forwarded"
 
 
-def test_the_worker_boundary_seam_is_unaffected(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
+def test_the_worker_boundary_seam_is_unaffected(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     """``recover_first=False`` is the per-phase boundary: no recovery, no gate.
 
     Deliberate scope: gating the in-run seams too would disable

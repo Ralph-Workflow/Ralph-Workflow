@@ -144,9 +144,7 @@ def test_planning_analysis_prompt_requires_cost_element_per_finding() -> None:
     fails closed.
     """
     source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
-    assert "Cost:" in source, (
-        "planning_analysis.jinja must require a `Cost:` element per finding"
-    )
+    assert "Cost:" in source, "planning_analysis.jinja must require a `Cost:` element per finding"
     assert "Observation:" in source
     assert "Fix:" in source
     # The form must NOT regress to the legacy ``MCP plan-edit tools``
@@ -220,8 +218,7 @@ def test_advertised_tools_per_drain_match_registration(drain: SessionDrain) -> N
     registered = _registered_tool_names()
     missing = visible - registered
     assert not missing, (
-        f"drain {drain!r} advertises tools that are not registered: "
-        f"{sorted(missing)}"
+        f"drain {drain!r} advertises tools that are not registered: {sorted(missing)}"
     )
 
 
@@ -298,14 +295,13 @@ def test_server_registry_visible_names_equals_rendered_prompt_set(
     workspace = MemoryWorkspace()
     registry = build_ralph_tool_registry(session, workspace)
     server_visible_canonical = {
-        str(name) for name in canonicalize_tool_names(
+        str(name)
+        for name in canonicalize_tool_names(
             [definition.name for definition in registry.list_definitions()]
         )
     }
 
-    prompt_visible = set(
-        visible_tool_names_for_capabilities(capability_ids, drain=drain.value)
-    )
+    prompt_visible = set(visible_tool_names_for_capabilities(capability_ids, drain=drain.value))
     prompt_canonical = set(canonicalize_tool_names(prompt_visible))
 
     assert server_visible_canonical == prompt_canonical, (
@@ -409,15 +405,13 @@ def test_mcp_partial_kept_within_two_added_sentences(drain: SessionDrain) -> Non
         f"drain {drain!r}: READ/SEARCH clarifying sentence missing"
     )
     if has_mcp_write:
-        assert "These Ralph Workflow edit tools are the ONLY permitted write/edit path" in rendered, (
-            f"drain {drain!r}: WRITE clarifying sentence missing"
-        )
+        assert (
+            "These Ralph Workflow edit tools are the ONLY permitted write/edit path" in rendered
+        ), f"drain {drain!r}: WRITE clarifying sentence missing"
     # Hard-bloat guard: the partial source adds exactly two new
     # sentences, no more. Count occurrences of the canonical
     # clarifying sentences — anything beyond 1 per slot is bloat.
-    read_clarifying_count = rendered.count(
-        "Use these for every workspace read or search"
-    )
+    read_clarifying_count = rendered.count("Use these for every workspace read or search")
     assert read_clarifying_count == 1, (
         f"drain {drain!r}: READ/SEARCH clarifying sentence appears "
         f"{read_clarifying_count} times (expected exactly 1)"
@@ -432,8 +426,7 @@ def test_mcp_partial_kept_within_two_added_sentences(drain: SessionDrain) -> Non
         )
     else:
         assert write_clarifying_count == 0, (
-            f"drain {drain!r}: WRITE clarifying sentence leaks into a "
-            f"read-only drain's partial"
+            f"drain {drain!r}: WRITE clarifying sentence leaks into a read-only drain's partial"
         )
 
 
@@ -458,8 +451,6 @@ def test_mcp_partial_identical_across_phase_templates() -> None:
     # Every visible canonical tool name must appear as a backticked
     # reference in the rendered partial.
     for tool in sorted(visible):
-        assert f"`{tool}`" in rendered, (
-            f"visible tool {tool!r} not rendered in the shared partial"
-        )
+        assert f"`{tool}`" in rendered, f"visible tool {tool!r} not rendered in the shared partial"
     # And the edit-tools-only sentence is present.
     assert "ONLY permitted write/edit path" in rendered

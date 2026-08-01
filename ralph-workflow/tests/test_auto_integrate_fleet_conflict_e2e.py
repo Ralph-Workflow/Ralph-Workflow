@@ -60,13 +60,11 @@ def test_resolved_rebase_advances_the_ref_shared_by_both_worktrees(
     seed = branch_sha(tmp_git_repo, target)
     assert seed is not None
     feature = tmp_path / "agent-a"
-    assert _run(
-        tmp_git_repo, "worktree", "add", "-b", "feature", str(feature), seed
-    ).returncode == 0
-    _commit(feature, "shared.txt", "agent-a intent\n", "agent A edits shared")
-    agent_b_sha = _commit(
-        tmp_git_repo, "shared.txt", "agent-b intent\n", "agent B lands"
+    assert (
+        _run(tmp_git_repo, "worktree", "add", "-b", "feature", str(feature), seed).returncode == 0
     )
+    _commit(feature, "shared.txt", "agent-a intent\n", "agent A edits shared")
+    agent_b_sha = _commit(tmp_git_repo, "shared.txt", "agent-b intent\n", "agent B lands")
     seen: list[RebaseStop] = []
 
     def _resolve(root: Path, _target: str, stop: RebaseStop) -> bool:
@@ -99,9 +97,6 @@ def test_resolved_rebase_advances_the_ref_shared_by_both_worktrees(
     feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(feature, target) == feature_tip
     assert branch_sha(tmp_git_repo, target) == feature_tip
-    assert (
-        _run(feature, "merge-base", "--is-ancestor", agent_b_sha, feature_tip).returncode
-        == 0
-    )
+    assert _run(feature, "merge-base", "--is-ancestor", agent_b_sha, feature_tip).returncode == 0
     assert _run(feature, "log", "--merges", "--format=%H").stdout.strip() == ""
     assert _run(feature, "show", "HEAD:shared.txt").stdout == _RESOLVED_CONTENT

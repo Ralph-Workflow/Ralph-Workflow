@@ -57,9 +57,7 @@ class TextAccumulator:
             self.buffer = remaining
             self.raw_lines = [raw] if (remaining or keep_current_when_empty) else []
 
-    def append_delta(
-        self, text: str, raw: str, *, kind: str = "text"
-    ) -> Iterator[AgentOutputLine]:
+    def append_delta(self, text: str, raw: str, *, kind: str = "text") -> Iterator[AgentOutputLine]:
         """Append a delta and flush only when either accumulation cap is exceeded."""
         self.buffer += text
         self.raw_lines.append(raw)

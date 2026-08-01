@@ -808,15 +808,10 @@ def _check_line_for_cast(
         return violations
 
     targets = _extract_cast_targets(line)
-    targets = [
-        (target, pos)
-        for target, pos in targets
-        if not _is_inside_string_literal(line, pos)
-    ]
+    targets = [(target, pos) for target, pos in targets if not _is_inside_string_literal(line, pos)]
     fake_match = _TEST_FAKE_VALUE_RE.search(line)
-    fake_value_used = (
-        fake_match is not None
-        and not _is_inside_string_literal(line, fake_match.start())
+    fake_value_used = fake_match is not None and not _is_inside_string_literal(
+        line, fake_match.start()
     )
 
     if not targets and not fake_value_used:

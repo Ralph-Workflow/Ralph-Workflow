@@ -230,10 +230,12 @@ def test_identity_palette_distinct_under_deuteranopia() -> None:
     ]
     for a, b in pairs:
         ca = _simulate_cvd(
-            identity_color(a, terminal_bg_is_light=False), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
+            identity_color(a, terminal_bg_is_light=False),
+            ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7)),
         )
         cb = _simulate_cvd(
-            identity_color(b, terminal_bg_is_light=False), ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7))
+            identity_color(b, terminal_bg_is_light=False),
+            ((0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7)),
         )
         assert ca != cb, f"{a} and {b} collide under deuteranopia"
 

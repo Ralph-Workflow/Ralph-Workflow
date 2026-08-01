@@ -123,10 +123,18 @@ _RAW_OS_FD_ALLOWLIST_DIRS: tuple[str, ...] = ("process",)
 
 _DIRECT_CHILD_PROCESS_NAMES: frozenset[str] = frozenset(
     {
-        "subprocess.run", "subprocess.call", "subprocess.check_call",
-        "subprocess.check_output", "subprocess.Popen", "subprocess.getoutput",
-        "subprocess.getstatusoutput", "os.system", "os.posix_spawn", "os.fork",
-        "asyncio.create_subprocess_exec", "asyncio.create_subprocess_shell",
+        "subprocess.run",
+        "subprocess.call",
+        "subprocess.check_call",
+        "subprocess.check_output",
+        "subprocess.Popen",
+        "subprocess.getoutput",
+        "subprocess.getstatusoutput",
+        "os.system",
+        "os.posix_spawn",
+        "os.fork",
+        "asyncio.create_subprocess_exec",
+        "asyncio.create_subprocess_shell",
     }
 )
 
@@ -544,9 +552,8 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
             if isinstance(v_lineno, int) and v_lineno > 0:
                 candidates.add(v_lineno)
         for candidate in candidates:
-            if (
-                1 <= candidate <= len(self.source_lines)
-                and any(marker in self.source_lines[candidate - 1] for marker in _ALLOW_MARKERS)
+            if 1 <= candidate <= len(self.source_lines) and any(
+                marker in self.source_lines[candidate - 1] for marker in _ALLOW_MARKERS
             ):
                 return True
         return False
@@ -784,11 +791,23 @@ _AUDIT_SUBSTRINGS: tuple[str, ...] = (
     "os.pipe(",
     # direct child-spawn rule (contract 5)
     "subprocess",
-    "subprocess.run(", "subprocess.call(", "subprocess.check_call(",
-    "subprocess.check_output(", "subprocess.Popen(", "subprocess.getoutput(",
-    "subprocess.getstatusoutput(", "os.system(", "system(", "os.spawn", "spawn",
-    "os.posix_spawn(", "posix_spawn(", "os.fork(", "fork(",
-    "asyncio.create_subprocess_exec(", "asyncio.create_subprocess_shell(",
+    "subprocess.run(",
+    "subprocess.call(",
+    "subprocess.check_call(",
+    "subprocess.check_output(",
+    "subprocess.Popen(",
+    "subprocess.getoutput(",
+    "subprocess.getstatusoutput(",
+    "os.system(",
+    "system(",
+    "os.spawn",
+    "spawn",
+    "os.posix_spawn(",
+    "posix_spawn(",
+    "os.fork(",
+    "fork(",
+    "asyncio.create_subprocess_exec(",
+    "asyncio.create_subprocess_shell(",
     # accumulator constructors (contract 4) — alias-resolved
     # call patterns. The bare ``=[]`` / ``={}`` / ``[]`` / ``{}``
     # literal patterns are also included: a file that lacks every

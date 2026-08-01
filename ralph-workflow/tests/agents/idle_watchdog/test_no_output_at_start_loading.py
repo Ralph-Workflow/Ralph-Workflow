@@ -107,7 +107,6 @@ def _make_watchdog(
     )
 
 
-
 def test_no_output_at_start_fires_at_threshold_with_stale_alive_by() -> None:
     """NO_OUTPUT_AT_START fires at the threshold even when alive_by is a
     stale descendant-only signal AND invocation_elapsed is under the

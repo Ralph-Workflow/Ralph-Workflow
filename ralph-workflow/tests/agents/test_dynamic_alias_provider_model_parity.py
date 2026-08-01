@@ -105,9 +105,7 @@ class TestCursorAlias:
         # The full bracket-parameterized id is preserved (with
         # ``shlex.quote`` so the brackets do not tokenize into
         # extra argv tokens at command-build time).
-        assert config.model_flag == (
-            "--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'"
-        )
+        assert config.model_flag == ("--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'")
         assert catalog_support.config.model_flag == (
             "--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'"
         )

@@ -112,16 +112,10 @@ def _inject_catchup_observations(
     """Install deterministic git-boundary observations and record mutations."""
     mutations: list[str] = []
     monkeypatch.setattr(catchup, "_current_branch_name", lambda _root: _FEATURE)
-    monkeypatch.setattr(
-        catchup, "resolve_integration_target", lambda _config, _root: _TARGET
-    )
+    monkeypatch.setattr(catchup, "resolve_integration_target", lambda _config, _root: _TARGET)
     shas = {_TARGET: "target-sha", _FEATURE: "feature-sha"}
-    monkeypatch.setattr(
-        catchup, "observe_branch_sha", lambda _root, branch: (shas[branch], True)
-    )
-    monkeypatch.setattr(
-        catchup, "is_ancestor", lambda _root, _ancestor, _descendant: ancestor
-    )
+    monkeypatch.setattr(catchup, "observe_branch_sha", lambda _root, branch: (shas[branch], True))
+    monkeypatch.setattr(catchup, "is_ancestor", lambda _root, _ancestor, _descendant: ancestor)
     monkeypatch.setattr(catchup, "_worktree_is_clean", lambda _root: clean)
     monkeypatch.setattr(catchup, "_still_safe_to_merge", lambda _root, _branch: True)
 
@@ -137,9 +131,7 @@ def test_diverged_checkout_is_left_untouched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mutations = _inject_catchup_observations(monkeypatch, ancestor=False)
-    outcome = catchup.attempt_catchup_fast_forward(
-        _build_config(), Path("/workspace")
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(), Path("/workspace"))
     assert outcome == catchup.CATCHUP_DIVERGED
     assert mutations == []
 
@@ -148,21 +140,15 @@ def test_dirty_worktree_defers_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mutations = _inject_catchup_observations(monkeypatch, clean=False)
-    outcome = catchup.attempt_catchup_fast_forward(
-        _build_config(), Path("/workspace")
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(), Path("/workspace"))
     assert outcome == catchup.CATCHUP_DIRTY
     assert mutations == []
 
 
 def test_checkout_on_target_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(catchup, "_current_branch_name", lambda _root: _TARGET)
-    monkeypatch.setattr(
-        catchup, "resolve_integration_target", lambda _config, _root: _TARGET
-    )
-    outcome = catchup.attempt_catchup_fast_forward(
-        _build_config(), Path("/workspace")
-    )
+    monkeypatch.setattr(catchup, "resolve_integration_target", lambda _config, _root: _TARGET)
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(), Path("/workspace"))
     assert outcome == catchup.CATCHUP_ON_TARGET
 
 
@@ -173,9 +159,7 @@ def test_disabled_config_never_touches_git(
         raise AssertionError("disabled catch-up touched git")
 
     monkeypatch.setattr(catchup, "_current_branch_name", _unexpected_git)
-    outcome = catchup.attempt_catchup_fast_forward(
-        _build_config(enabled=False), Path("/workspace")
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(enabled=False), Path("/workspace"))
     assert outcome == catchup.CATCHUP_DISABLED
 
 
@@ -190,6 +174,7 @@ def test_branch_names_shadowing_list_methods_resolve_correctly(
     ``append`` reads as unreadable (adversarial-review reproduction).
     The catch-up's exact-name lookup must get both directions right.
     """
+
     class _Head:
         def __init__(self, name: str) -> None:
             self.name = name

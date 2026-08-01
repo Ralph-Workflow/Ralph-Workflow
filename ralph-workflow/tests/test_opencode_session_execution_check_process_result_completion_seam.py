@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
@@ -123,9 +122,7 @@ class TestCheckProcessResultCompletionSeam:
                 ),
             )
 
-    def test_required_receipt_needs_completion_sentinel(
-        self, tmp_path: Path
-    ) -> None:
+    def test_required_receipt_needs_completion_sentinel(self, tmp_path: Path) -> None:
         """A current-run receipt is necessary but not sufficient for completion.
 
         The legacy on-disk ``.agent/artifacts/<type>.json``-only fallback
@@ -302,9 +299,7 @@ class TestCheckProcessResultCompletionSeam:
                 ),
             )
 
-    def test_optional_artifact_absent_without_sentinel_raises(
-        self, tmp_path: Path
-    ) -> None:
+    def test_optional_artifact_absent_without_sentinel_raises(self, tmp_path: Path) -> None:
         """Optional artifact policy relaxes the receipt, not declaration."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)

@@ -117,8 +117,9 @@ def test_tool_use_renders_friendly_name() -> None:
             ActivityEventKind.TOOL_USE,
             "mcp__ralph__read_file",
             metadata={"input": {"path": "src/foo.py"}},
-        )
-    , ctx)
+        ),
+        ctx,
+    )
     assert "ralph.read_file" in rendered.plain
     assert "path=src/foo.py" in rendered.plain
 
@@ -156,10 +157,7 @@ def test_tool_result_json_from_bash_is_syntax_highlighted() -> None:
         ctx,
     )
     assert '{"ready": true}' in rendered.plain
-    assert any(
-        span.style not in {"on default", "on transparent"}
-        for span in rendered.spans
-    )
+    assert any(span.style not in {"on default", "on transparent"} for span in rendered.spans)
 
 
 def test_tool_result_unknown_tool_renders_plain() -> None:
@@ -213,8 +211,8 @@ def test_progress_renders_message() -> None:
 def test_subagent_progress_renders_message() -> None:
     ctx = _ctx()
     rendered = render_event(
-        _event(ActivityEventKind.SUBAGENT_PROGRESS, "Read(path=src/foo.py)")
-    , ctx)
+        _event(ActivityEventKind.SUBAGENT_PROGRESS, "Read(path=src/foo.py)"), ctx
+    )
     assert "Read(path=src/foo.py)" in rendered.plain
 
 
@@ -237,8 +235,9 @@ def test_tool_result_with_is_error_metadata_uses_error_carrier() -> None:
             ActivityEventKind.TOOL_RESULT,
             "permission denied",
             metadata={"is_error": True},
-        )
-    , ctx)
+        ),
+        ctx,
+    )
     assert "permission denied" in rendered.plain
 
 
@@ -421,9 +420,7 @@ def test_render_event_strips_space_less_text_prefix() -> None:
 def test_render_event_strips_space_less_thinking_prefix() -> None:
     """AC-07: ``thinking:reasoning here`` is stripped of the prefix."""
     ctx = _ctx()
-    rendered = render_event(
-        _event(ActivityEventKind.THINKING, "thinking:reasoning here"), ctx
-    )
+    rendered = render_event(_event(ActivityEventKind.THINKING, "thinking:reasoning here"), ctx)
     plain = rendered.plain
     assert "thinking:reasoning" not in plain
     assert "reasoning here" in plain
@@ -436,9 +433,7 @@ def test_render_event_preserves_colon_in_legitimate_prose() -> None:
     word, not when the colon word appears later in the body.
     """
     ctx = _ctx()
-    rendered = render_event(
-        _event(ActivityEventKind.TEXT, "He said text: was a key field"), ctx
-    )
+    rendered = render_event(_event(ActivityEventKind.TEXT, "He said text: was a key field"), ctx)
     plain = rendered.plain
     assert "He said text: was a key field" in plain
 
@@ -454,4 +449,3 @@ def test_render_event_preserves_bare_prefix_token() -> None:
     rendered = render_event(_event(ActivityEventKind.TEXT, "text:"), ctx)
     plain = rendered.plain
     assert "text:" in plain
-

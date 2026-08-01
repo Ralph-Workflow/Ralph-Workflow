@@ -78,9 +78,7 @@ def conflict_status_bar_session(display: object, workspace_root: Path) -> Iterat
             clear_conflict_status_bar(
                 display,
                 workspace_root,
-                run_started_monotonic=(
-                    run_started if isinstance(run_started, float) else None
-                ),
+                run_started_monotonic=(run_started if isinstance(run_started, float) else None),
             )
         else:
             restore_status_bar(display, previous)

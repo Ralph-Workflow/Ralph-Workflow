@@ -66,8 +66,7 @@ def test_cached_ready_avoids_revalidation() -> None:
     assert second.is_ready()
     # No additional changes were made.
     assert second.changed_files == [] or all(
-        path in (markers.AGENTS_MD, markers.CLAUDE_MD)
-        for path in second.changed_files
+        path in (markers.AGENTS_MD, markers.CLAUDE_MD) for path in second.changed_files
     )
 
 

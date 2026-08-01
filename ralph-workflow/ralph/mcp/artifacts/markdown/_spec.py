@@ -253,9 +253,7 @@ def _missing_frontmatter_message(spec: MdArtifactSpec, key: str) -> str:
         )
     hint = spec.required_frontmatter_hints.get(key)
     if hint is not None:
-        return (
-            f"missing required frontmatter {key!r}; blocking because {hint}"
-        )
+        return f"missing required frontmatter {key!r}; blocking because {hint}"
     return (
         f"missing required frontmatter {key!r}; blocking because the artifact "
         "spec registry (ralph/mcp/artifacts/markdown/registry.py) routes the "

@@ -57,9 +57,7 @@ pytestmark = pytest.mark.timeout_seconds(10)
 
 
 def _ctx(width: int = 120) -> DisplayContext:
-    console = Console(
-        file=io.StringIO(), force_terminal=False, color_system=None, width=width
-    )
+    console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=width)
     # Force the display context width to the requested ``width`` so the
     # test is invariant to ``COLUMNS`` (pytest-xdist sets ``COLUMNS=80``
     # for its workers, which would otherwise leak into ctx.width and
@@ -181,12 +179,10 @@ def test_terminal_phase_omits_outer_cycle(phase: str) -> None:
     state = PipelineState(phase=phase)
     entry = build_phase_entry_model_from_state(phase, state, policy)
     assert entry.outer_dev_iteration is None, (
-        f"{phase} must not show the outer cycle (AC-01); "
-        f"got {entry.outer_dev_iteration}"
+        f"{phase} must not show the outer cycle (AC-01); got {entry.outer_dev_iteration}"
     )
     assert entry.outer_dev_cap is None, (
-        f"{phase} must not show the outer cap (AC-01); "
-        f"got {entry.outer_dev_cap}"
+        f"{phase} must not show the outer cap (AC-01); got {entry.outer_dev_cap}"
     )
 
 
@@ -317,8 +313,7 @@ def test_remediation_push_helper_produces_correct_model(attempt: int) -> None:
     assert capture.last_model is not None
     model = capture.last_model
     assert model.outer_dev_iteration == attempt, (
-        f"remediation push must surface live attempt {attempt}; "
-        f"got {model.outer_dev_iteration}"
+        f"remediation push must surface live attempt {attempt}; got {model.outer_dev_iteration}"
     )
     assert model.outer_dev_cap == DEFAULT_MAX_REMEDIATION_ATTEMPTS
     assert model.outer_dev_iteration <= model.outer_dev_cap
@@ -436,9 +431,7 @@ def test_truncation_stability_across_widths() -> None:
             inner_analysis_cap=5,
         )
         text = render_status_bar(model, ctx)
-        assert "\n" not in text.plain, (
-            f"status bar wrapped at width={width}: {text.plain!r}"
-        )
+        assert "\n" not in text.plain, f"status bar wrapped at width={width}: {text.plain!r}"
         assert len(text.plain) <= width, (
             f"status bar exceeded width={width}: {len(text.plain)} > {width}"
         )
@@ -459,9 +452,7 @@ def test_remediation_label_at_40_columns_preserves_attempt_and_cap(attempt: int)
     text = render_status_bar(model, ctx)
     # The bar must stay single-line and fit the terminal width.
     assert "\n" not in text.plain, f"status bar wrapped at width=40: {text.plain!r}"
-    assert len(text.plain) <= 40, (
-        f"status bar exceeded width=40: {len(text.plain)} > 40"
-    )
+    assert len(text.plain) <= 40, f"status bar exceeded width=40: {len(text.plain)} > 40"
     # The Remediation label MUST surface the attempt value AND the
     # cap; the prior bug truncated the bar mid-label so the operator
     # lost the live remediation progress. Pass when the canonical
@@ -472,8 +463,7 @@ def test_remediation_label_at_40_columns_preserves_attempt_and_cap(attempt: int)
     # a recognizable remediation indicator.
     remediation_carriers = ("Remediation", "Rem", "R")
     assert any(carrier in text.plain for carrier in remediation_carriers), (
-        f"Remediation carrier missing at width=40 (any of "
-        f"{remediation_carriers!r}): {text.plain!r}"
+        f"Remediation carrier missing at width=40 (any of {remediation_carriers!r}): {text.plain!r}"
     )
     assert f"{attempt}/{DEFAULT_MAX_REMEDIATION_ATTEMPTS}" in text.plain, (
         f"remediation attempt+cap missing at width=40: {text.plain!r}"
@@ -501,9 +491,7 @@ def test_round_label_at_40_columns_preserves_attempt_and_cap() -> None:
     )
     text = render_status_bar(model, ctx)
     assert "\n" not in text.plain, f"status bar wrapped at width=40: {text.plain!r}"
-    assert len(text.plain) <= 40, (
-        f"status bar exceeded width=40: {len(text.plain)} > 40"
-    )
+    assert len(text.plain) <= 40, f"status bar exceeded width=40: {len(text.plain)} > 40"
     # attempt+cap must survive in some form (canonical, compact, or minimal).
     payload_forms = ("Round 2/3", "R2/3", "2/3")
     assert any(form in text.plain for form in payload_forms), (

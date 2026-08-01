@@ -35,7 +35,10 @@ def test_review_prompt_fans_out_independent_checks_when_supported() -> None:
     assert prompt.startswith(
         "Judge the implementation against the plan with fresh evidence and report material findings."
     )
-    assert "Review mode: analyze the implementation and report findings; leave code and commits unchanged." in prompt
+    assert (
+        "Review mode: analyze the implementation and report findings; leave code and commits unchanged."
+        in prompt
+    )
     assert "subagent" in prompt.lower()
     assert "parallel" in prompt.lower()
     assert "main session" in prompt.lower()

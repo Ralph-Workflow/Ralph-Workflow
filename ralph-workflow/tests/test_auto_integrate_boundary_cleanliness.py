@@ -64,9 +64,7 @@ def _record_status_argv(
     """
     seen: list[tuple[str, ...]] = []
 
-    def _fake_run_git(
-        argv: tuple[str, ...], *, cwd: Path, label: str
-    ) -> _StubGitResult:
+    def _fake_run_git(argv: tuple[str, ...], *, cwd: Path, label: str) -> _StubGitResult:
         seen.append(tuple(argv))
         return _StubGitResult(returncode=returncode, stdout="")
 
@@ -88,9 +86,7 @@ def test_boundary_cleanliness_probe_ignores_untracked_files(
     seen = _record_status_argv(monkeypatch, returncode=0)
 
     assert ai._worktree_is_clean(tmp_path) is True
-    assert seen == [
-        (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no")
-    ]
+    assert seen == [(*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no")]
 
     # Any git failure still counts as "not clean" (fail closed).
     _record_status_argv(monkeypatch, returncode=1)
@@ -161,9 +157,7 @@ def test_dirty_boundary_regression_suppressed_divergence_forces_a_refresh(
     monkeypatch.setattr(ai, "BOUNDARY_REFRESH_THROTTLE", throttle)
     refresh_calls: list[str] = []
 
-    def _forced_refresh(
-        _config: UnifiedConfig, _root: Path, target: str
-    ) -> str:
+    def _forced_refresh(_config: UnifiedConfig, _root: Path, target: str) -> str:
         refresh_calls.append(target)
         return REFRESH_REFRESHED
 

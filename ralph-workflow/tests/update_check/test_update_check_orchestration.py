@@ -141,7 +141,10 @@ def test_scheduled_refresh_fetches_and_persists() -> None:
     # Execute the scheduled background job synchronously.
     spawn_calls[0]()
     assert saved == [
-        (Path("/cache/version-check.json"), VersionCheckState(last_checked=555.0, latest_version="0.9.1"))
+        (
+            Path("/cache/version-check.json"),
+            VersionCheckState(last_checked=555.0, latest_version="0.9.1"),
+        )
     ]
 
 

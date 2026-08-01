@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect

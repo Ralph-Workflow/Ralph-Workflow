@@ -119,7 +119,9 @@ def validate_references(
         key = normalize_id(target, case_sensitive=case_sensitive)
         for source, line, section in sources:
             if key is None or key not in known:
-                chosen_consumer = consumer if consumer is not None else _consumer_for_section(section)
+                chosen_consumer = (
+                    consumer if consumer is not None else _consumer_for_section(section)
+                )
                 diagnostics.append(
                     Diagnostic(
                         line,
@@ -164,9 +166,7 @@ def validate_acyclic_dependencies(
             return
         if identifier in visiting:
             section = None if section_by_id is None else section_by_id.get(identifier)
-            chosen_consumer = (
-                consumer if consumer is not None else _consumer_for_section(section)
-            )
+            chosen_consumer = consumer if consumer is not None else _consumer_for_section(section)
             diagnostics.append(
                 Diagnostic(
                     1 if line_by_id is None else line_by_id.get(identifier, 1),

@@ -38,9 +38,7 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _ctx() -> DisplayContext:
-    console = Console(
-        file=io.StringIO(), force_terminal=False, color_system=None, width=120
-    )
+    console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=120)
     return make_display_context(console=console)
 
 
@@ -59,9 +57,7 @@ def test_status_styles_define_redundant_carriers_for_every_state() -> None:
         assert len(payload) == 3, f"{state} must have a 3-tuple style/icon/label"
         _rich_style, icon, label = payload
         assert icon and not icon.isspace(), f"{state} icon must be non-empty"
-        assert (
-            label and not label.isspace()
-        ), f"{state} ascii label must be non-empty"
+        assert label and not label.isspace(), f"{state} ascii label must be non-empty"
         # ASCII fallback carriers must contain at least one
         # non-color letter so a colorblind operator (or color-disabled
         # console) gets a carrier it can read without hue.
@@ -93,9 +89,10 @@ def test_status_style_pairs_have_distinct_non_color_carriers_and_rgb_distance() 
             left_hex = _hex_from_style(left[0])
             right_hex = _hex_from_style(right[0])
             if left_hex is not None and right_hex is not None:
-                distance = sum(
-                    (a - b) ** 2 for a, b in zip(_rgb(left_hex), _rgb(right_hex), strict=True)
-                ) ** 0.5
+                distance = (
+                    sum((a - b) ** 2 for a, b in zip(_rgb(left_hex), _rgb(right_hex), strict=True))
+                    ** 0.5
+                )
                 assert distance >= 40, (
                     f"{left_name}/{right_name} colors are too close: {left_hex}/{right_hex}"
                 )

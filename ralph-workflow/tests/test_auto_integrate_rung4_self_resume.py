@@ -107,9 +107,7 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
 
     def _rung4_precondition(_root: Path) -> None:
         if blocked:
-            raise RebasePreconditionError(
-                "shallow clone; run git fetch --unshallow"
-            )
+            raise RebasePreconditionError("shallow clone; run git fetch --unshallow")
 
     monkeypatch.setattr(
         auto_integrate_module,
@@ -123,13 +121,9 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
         RebaseState(),
         **_NO_INTEGRATION_BACKOFF,
     )
-    assert outcome is not None, (
-        "rung-4 condition must surface a recorded skip, "
-        "not a silent None"
-    )
+    assert outcome is not None, "rung-4 condition must surface a recorded skip, not a silent None"
     assert "preconditions not met" in (outcome.last_reason or ""), (
-        f"rung-4 skip must name the precondition failure; "
-        f"got last_reason={outcome.last_reason!r}"
+        f"rung-4 skip must name the precondition failure; got last_reason={outcome.last_reason!r}"
     )
     assert "shallow" in (outcome.last_reason or "").lower(), (
         f"rung-4 diagnostic must name the shallow condition; "
@@ -149,12 +143,10 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
         "of the silent-skip bug class)"
     )
     assert outcome_second.last_action in {"rebased", "merged"}, (
-        f"after clearing rung-4 the next seam must land; got "
-        f"{outcome_second.last_action!r}"
+        f"after clearing rung-4 the next seam must land; got {outcome_second.last_action!r}"
     )
     assert outcome_second.fast_forwarded is True, (
-        "after clearing rung-4 the next seam must fast-forward "
-        "the target to the feature tip"
+        "after clearing rung-4 the next seam must fast-forward the target to the feature tip"
     )
     target_head = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert target_head == feature_sha, (

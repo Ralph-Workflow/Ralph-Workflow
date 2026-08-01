@@ -191,17 +191,30 @@ def test_install_stable_release_marks_local_wheel_as_manual_build() -> None:
         uv_executable="/usr/local/bin/uv",
         cwd=Path("/tmp/ralph-workflow"),
         from_path=Path("/tmp/ralph-workflow/dist/ralph.whl"),
+        which_fn=lambda _name: "/home/u/.local/bin/ralph",
+        resolve_installed_package_file=lambda _exe: Path(
+            "/home/u/.local/share/uv/tools/ralph-workflow/lib/python3.14/site-packages/ralph/__init__.py"
+        ),
         write_flavor=lambda path, flavor: flavors.append((path, flavor)),
     )
 
     assert commands == [
         (
-            ("/usr/local/bin/uv", "tool", "install", "--force", "/tmp/ralph-workflow/dist/ralph.whl"),
+            (
+                "/usr/local/bin/uv",
+                "tool",
+                "install",
+                "--force",
+                "/tmp/ralph-workflow/dist/ralph.whl",
+            ),
             Path("/tmp/ralph-workflow"),
         ),
     ]
     assert flavors == [
-        (Path.home() / ".local/share/uv/tools/ralph-workflow", "-build"),
+        (
+            Path("/home/u/.local/share/uv/tools/ralph-workflow/lib/python3.14/site-packages"),
+            "-build",
+        ),
     ]
 
 

@@ -47,5 +47,6 @@ def test_commit_message_spec_preserves_conventional_subject_validation() -> None
     }
     assert valid_diagnostics == []
     assert invalid == {}
-    assert any("conventional commit format" in diagnostic.message for diagnostic in invalid_diagnostics)
-
+    assert any(
+        "conventional commit format" in diagnostic.message for diagnostic in invalid_diagnostics
+    )

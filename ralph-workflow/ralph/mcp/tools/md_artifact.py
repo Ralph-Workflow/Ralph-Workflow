@@ -209,8 +209,10 @@ def handle_stage_md_artifact(
     existing = (
         load_md_draft(artifact_dir, artifact_type, backend=backend) if mode == "append" else None
     )
-    if existing and mode == "append" and is_md_draft_seeded(
-        artifact_dir, artifact_type, backend=backend
+    if (
+        existing
+        and mode == "append"
+        and is_md_draft_seeded(artifact_dir, artifact_type, backend=backend)
     ):
         raise InvalidParamsError(
             "draft was restored from the last submitted artifact; use mode='replace_all' "

@@ -290,6 +290,7 @@ def test_audit_flags_reader_missing_teardown_subtree_on_fire_path(tmp_path: Path
 # Green-path production-tree coverage: ``make verify`` runs
 # ``python -m ralph.testing.audit_activity_aware_watchdog``.
 
+
 def test_audit_reader_file_per_file_interface(tmp_path: Path) -> None:
     """``audit_reader_file`` runs detectors 1-5 on a single file."""
     bad_file = tmp_path / "_bad_reader.py"

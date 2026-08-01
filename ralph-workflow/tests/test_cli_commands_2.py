@@ -43,7 +43,7 @@ from ralph.skills._capability_state import CapabilityState
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
     """Write the markdown commit_message artifact the way MCP submission does."""
     if message.upper().startswith("SKIP:"):
-        reason = message[len("SKIP:"):].strip()
+        reason = message[len("SKIP:") :].strip()
         document = f"---\ntype: skip\nreason: {reason}\n---\n"
     else:
         document = f"---\ntype: commit\nsubject: {message}\n---\n"
@@ -170,9 +170,7 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(
-        commit_module, "stage_commit_changes_safely", lambda _root: None
-    )
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -1007,9 +1005,12 @@ def test_init_local_config_creates_complete_project_local_override_set(
 
     main_module._handle_generate_local_config(display_context=display_context)
 
-    assert {
-        path.name for path in (tmp_path / ".agent").glob("*.toml")
-    } == {"ralph-workflow.toml", "mcp.toml", "pipeline.toml", "artifacts.toml"}
+    assert {path.name for path in (tmp_path / ".agent").glob("*.toml")} == {
+        "ralph-workflow.toml",
+        "mcp.toml",
+        "pipeline.toml",
+        "artifacts.toml",
+    }
 
 
 def test_init_command_feature_spec_writes_distinct_prompt(
@@ -1081,9 +1082,7 @@ class TestCheckPolicyCommand:
         assert "drains:" in out
         assert "artifact contracts:" in out
 
-    def test_success_includes_counts(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_success_includes_counts(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _copy_defaults(tmp_path)
         stream = _attach_console(monkeypatch, check_policy_module)
         check_policy_command(tmp_path)

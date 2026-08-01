@@ -44,9 +44,7 @@ def test_format_summary_bytes_out_matches_actual_payload(
     )
     with patch("ralph.mcp.tools.git_read.run_git_command") as mock_git:
         mock_git.return_value = raw
-        result = handle_git_show(
-            session, workspace, {"ref": "HEAD", "format": "summary"}
-        )
+        result = handle_git_show(session, workspace, {"ref": "HEAD", "format": "summary"})
     envelope = json.loads(result.content[0].text)
     assert envelope["bytes_out"] == len(result.content[0].text.encode("utf-8"))
 
@@ -93,9 +91,7 @@ class TestHandleGitShow:
                 "Initial commit\x1f\x1f\x1f"
                 "abcdef0123456789"
             )
-            result = handle_git_show(
-                session, workspace, {"ref": "HEAD", "format": "summary"}
-            )
+            result = handle_git_show(session, workspace, {"ref": "HEAD", "format": "summary"})
             assert result.is_error is False
             envelope = json.loads(result.content[0].text)
             assert envelope["format"] == "summary"
@@ -126,9 +122,7 @@ class TestHandleGitShow:
             assert args[1] == ["show", "HEAD"]
             assert "commit abc1234" in result.content[0].text
 
-    def test_format_invalid_value_raises_invalid_params(
-        self, tmp_path: Path
-    ) -> None:
+    def test_format_invalid_value_raises_invalid_params(self, tmp_path: Path) -> None:
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 

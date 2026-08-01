@@ -37,7 +37,9 @@ from ralph.display.snapshot import PipelineSnapshot
 #: Verbatim reasons pulled from the producer so the tests assert on strings
 #: the operator will actually see in a real run.
 _TARGET_DIRTY_REASON = "target worktree dirty"  # auto_integrate_ff.py:108 (AC-09)
-_CAS_REFUSAL_REASON = "target advanced concurrently (CAS mismatch)"  # auto_integrate_ff.py:122 (AC-08)
+_CAS_REFUSAL_REASON = (
+    "target advanced concurrently (CAS mismatch)"  # auto_integrate_ff.py:122 (AC-08)
+)
 _CONFLICT_REASON = "rebase and endpoint merge both conflicted"  # auto_integrate.py:230 (AC-07)
 _NO_COMMITS_BEYOND_REASON = "no commits beyond target"  # auto_integrate.py:557 (AC-03)
 _ALREADY_FF_REASON = "already fast-forwarded"  # auto_integrate.py:747-750 (recovery)
@@ -107,9 +109,7 @@ def _render_plain(snapshot: PipelineSnapshot) -> str:
 
 def _render_group(snapshot: PipelineSnapshot) -> str:
     buf = StringIO()
-    console = Console(
-        file=buf, force_terminal=False, width=160, color_system=None
-    )
+    console = Console(file=buf, force_terminal=False, width=160, color_system=None)
     ctx = make_display_context(console=console, env={})
     group = render_completion_summary_group(
         snapshot,
@@ -131,9 +131,7 @@ def test_format_successful_land_says_fast_forwarded_target() -> None:
     """
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
-    msg = format_auto_integrate_message(
-        "rebased", "main", None, fast_forwarded=True
-    )
+    msg = format_auto_integrate_message("rebased", "main", None, fast_forwarded=True)
     assert "fast-forwarded main" in msg
     assert "rebased" in msg.lower()
 
@@ -183,9 +181,7 @@ def test_format_unresolved_conflict_states_reason() -> None:
     """AC-07: an unresolved conflict surfaces its reason in the receipt."""
     from ralph.display.auto_integrate_message import format_auto_integrate_message
 
-    msg = format_auto_integrate_message(
-        "conflict", "main", _CONFLICT_REASON, fast_forwarded=False
-    )
+    msg = format_auto_integrate_message("conflict", "main", _CONFLICT_REASON, fast_forwarded=False)
     assert "conflict" in msg.lower()
     assert _CONFLICT_REASON in msg
 

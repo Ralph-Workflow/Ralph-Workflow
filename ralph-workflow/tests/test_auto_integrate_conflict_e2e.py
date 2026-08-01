@@ -34,9 +34,7 @@ pytestmark = pytest.mark.subprocess_e2e
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {"general": {"auto_integrate_enabled": True}}
-    )
+    return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}})
 
 
 @pytest.mark.parametrize(
@@ -80,9 +78,7 @@ def test_commit_seam_returns_the_injected_integration_outcome(
     monkeypatch.setattr(runner, "_build_seam_rebase_stop_resolver", _rebase_builder)
     integrate = MagicMock(side_effect=_integrate)
     monkeypatch.setattr(runner, "auto_integrate_after_commit", integrate)
-    monkeypatch.setattr(
-        runner, "clear_cycle_baseline", MagicMock(return_value=None)
-    )
+    monkeypatch.setattr(runner, "clear_cycle_baseline", MagicMock(return_value=None))
     scope = WorkspaceScope(Path("/workspace"))
     state = SimpleNamespace(rebase=RebaseState())
     phase = SimpleNamespace(role="commit")

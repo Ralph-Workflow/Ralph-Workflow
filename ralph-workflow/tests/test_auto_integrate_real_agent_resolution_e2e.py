@@ -28,6 +28,7 @@ from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
+
 def _write_mcp_agent(root: Path) -> Path:
     script = root / "mcp-resolution-agent.py"
     script.write_text(

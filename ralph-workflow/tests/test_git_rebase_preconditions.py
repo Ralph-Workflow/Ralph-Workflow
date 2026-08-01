@@ -143,9 +143,7 @@ def test_uninitialized_submodule_does_not_block(tmp_git_repo: Path) -> None:
     check_rebase_preconditions(tmp_git_repo)
 
 
-def test_linked_worktree_passes_preconditions(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
+def test_linked_worktree_passes_preconditions(tmp_git_repo: Path, tmp_path: Path) -> None:
     """A clean linked worktree passes, even with an uninitialized submodule."""
 
     _commit_gitmodules(tmp_git_repo)
@@ -155,9 +153,7 @@ def test_linked_worktree_passes_preconditions(
     check_rebase_preconditions(worktree_path)
 
 
-def test_detects_shallow_clone_from_linked_worktree(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
+def test_detects_shallow_clone_from_linked_worktree(tmp_git_repo: Path, tmp_path: Path) -> None:
     """The shallow marker lives in the common git dir; worktrees must see it."""
 
     worktree_path = tmp_path / "linked-worktree"
@@ -191,9 +187,7 @@ def test_stale_auto_merge_marker_does_not_block(tmp_git_repo: Path) -> None:
     "leftover",
     ["MERGE_MSG", "MERGE_MODE", "MERGE_RR", "SQUASH_MSG", "ORIG_HEAD"],
 )
-def test_stale_merge_bookkeeping_files_do_not_block(
-    tmp_git_repo: Path, leftover: str
-) -> None:
+def test_stale_merge_bookkeeping_files_do_not_block(tmp_git_repo: Path, leftover: str) -> None:
     """Bookkeeping git leaves behind after an operation must not block."""
 
     marker = tmp_git_repo / ".git" / leftover

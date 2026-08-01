@@ -26,9 +26,7 @@ def _seed_workspace(tmp_path: Path) -> Path:
     (workspace / "module.py").write_text(
         "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
     )
-    (workspace / "README.md").write_text(
-        "# Title\n\n## Section\n\n```python\nx = 1\n```\n"
-    )
+    (workspace / "README.md").write_text("# Title\n\n## Section\n\n```python\nx = 1\n```\n")
     return workspace
 
 
@@ -238,10 +236,7 @@ def test_extract_markdown_recognizes_links_with_mentions_relation() -> None:
     evidence-backed edge/span so callers can audit the link.
     """
     content = (
-        "# Heading\n"
-        "\n"
-        "See [example](https://example.test) and "
-        "[docs](docs/index.md) for more.\n"
+        "# Heading\n\nSee [example](https://example.test) and [docs](docs/index.md) for more.\n"
     )
     result = extract_markdown(
         path="doc.md",

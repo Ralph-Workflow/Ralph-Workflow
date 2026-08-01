@@ -170,9 +170,7 @@ def test_doc_already_under_canonical_dir_is_skipped() -> None:
         "# Misc\n\n## Testing policy\n\nShould not be flagged.\n",
     )
     candidates = evidence.migration_candidates(ws)
-    assert all(
-        c.path != f"{markers.CANONICAL_DIR}misc.md" for c in candidates
-    )
+    assert all(c.path != f"{markers.CANONICAL_DIR}misc.md" for c in candidates)
 
 
 def test_agents_md_policy_sections_are_migration_candidates() -> None:

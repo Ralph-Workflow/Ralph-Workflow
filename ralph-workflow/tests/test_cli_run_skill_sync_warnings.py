@@ -60,8 +60,7 @@ def test_user_global_skill_update_check_failure_emits_visible_warning(
 
     warning_text = "\n".join(records)
     assert "User-global skill update check failed" in warning_text, (
-        f"user-global skill check failure MUST surface as a visible "
-        f"warning; got: {warning_text!r}"
+        f"user-global skill check failure MUST surface as a visible warning; got: {warning_text!r}"
     )
     assert "--force-init-skills" in warning_text, (
         f"warning MUST point at the remediation command; got: {warning_text!r}"
@@ -94,8 +93,7 @@ def test_project_skill_install_failure_emits_visible_warning(
 
     warning_text = "\n".join(records)
     assert "Project-scope skill install failed" in warning_text, (
-        f"project install failure MUST surface as a visible warning; "
-        f"got: {warning_text!r}"
+        f"project install failure MUST surface as a visible warning; got: {warning_text!r}"
     )
 
 
@@ -164,6 +162,5 @@ def test_retention_sweep_failure_emits_visible_warning(
 
     warning_text = "\n".join(records)
     assert "Retention sweep failed" in warning_text, (
-        f"retention sweep failure MUST surface as a visible warning; "
-        f"got: {warning_text!r}"
+        f"retention sweep failure MUST surface as a visible warning; got: {warning_text!r}"
     )

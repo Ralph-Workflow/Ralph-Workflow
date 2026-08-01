@@ -69,9 +69,7 @@ def test_router_only_project_requires_both_design_system_and_ux() -> None:
     require BOTH design-system AND ux (UX implies design-system).
     """
     ws = MemoryWorkspace()
-    package_json: dict[str, dict[str, str]] = {
-        "dependencies": {"react-router-dom": "^6.0.0"}
-    }
+    package_json: dict[str, dict[str, str]] = {"dependencies": {"react-router-dom": "^6.0.0"}}
     ws.write("package.json", json.dumps(package_json))
     stack = _stack(primary="JavaScript", secondary=["TypeScript"], frameworks=[])
     ds_required, ds_triggered = evidence.design_system_required(ws, stack)
@@ -103,9 +101,7 @@ def test_ux_required_for_app_framework() -> None:
 
 def test_ux_required_for_router_dependency() -> None:
     ws = MemoryWorkspace()
-    package_json: dict[str, dict[str, str]] = {
-        "dependencies": {"react-router-dom": "^6.0.0"}
-    }
+    package_json: dict[str, dict[str, str]] = {"dependencies": {"react-router-dom": "^6.0.0"}}
     ws.write("package.json", json.dumps(package_json))
     stack = _stack(primary="JavaScript", secondary=["TypeScript"])
     assert evidence.ux_required(ws, stack)[0] is True
@@ -120,9 +116,7 @@ def test_performance_required_for_signal_file() -> None:
 
 def test_performance_required_for_dep_substring() -> None:
     ws = MemoryWorkspace()
-    package_json: dict[str, dict[str, str]] = {
-        "devDependencies": {"k6": "^1.0.0"}
-    }
+    package_json: dict[str, dict[str, str]] = {"devDependencies": {"k6": "^1.0.0"}}
     ws.write("package.json", json.dumps(package_json))
     stack = _stack()
     assert evidence.performance_required(ws, stack)[0] is True
@@ -143,9 +137,7 @@ def test_memory_required_for_signal_file() -> None:
 
 def test_memory_required_for_dep_substring() -> None:
     ws = MemoryWorkspace()
-    package_json: dict[str, dict[str, str]] = {
-        "devDependencies": {"memlab": "^1.0.0"}
-    }
+    package_json: dict[str, dict[str, str]] = {"devDependencies": {"memlab": "^1.0.0"}}
     ws.write("package.json", json.dumps(package_json))
     stack = _stack()
     assert evidence.memory_required(ws, stack)[0] is True
@@ -167,9 +159,7 @@ def test_memory_not_required_without_signals() -> None:
         ("release-deployment", ".github/workflows/release.yml"),
     ),
 )
-def test_conditional_domain_requires_exact_repository_signal(
-    domain: str, signal_path: str
-) -> None:
+def test_conditional_domain_requires_exact_repository_signal(domain: str, signal_path: str) -> None:
     ws = MemoryWorkspace()
     if signal_path.endswith("/"):
         ws.mkdirs(signal_path.rstrip("/"))
@@ -182,9 +172,7 @@ def test_conditional_domain_requires_exact_repository_signal(
 
 
 def test_specialized_conditional_domains_remain_optional_without_exact_signals() -> None:
-    requirements = evidence.conditional_domain_requirements(
-        MemoryWorkspace(), _stack()
-    )
+    requirements = evidence.conditional_domain_requirements(MemoryWorkspace(), _stack())
     for domain in markers.CONDITIONAL_SIGNAL_PATHS:
         assert requirements[domain] == (False, [])
 

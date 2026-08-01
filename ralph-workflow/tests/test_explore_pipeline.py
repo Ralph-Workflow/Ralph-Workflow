@@ -167,9 +167,7 @@ def test_warm_small_edit_reparses_only_changed_file(tmp_path: Path) -> None:
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         (workspace / "a.py").write_text("def hello():\n    return 42\n")
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status == "ok"
         # Only a.py changed.
         assert result.parse_count == 1
@@ -192,7 +190,9 @@ def test_delete_path_marks_file_deleted(tmp_path: Path) -> None:
         store.close()
 
 
-def test_partial_failure_records_failed_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_partial_failure_records_failed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
     try:
@@ -257,9 +257,7 @@ def test_mode_full_pre_cancel_preserves_committed_generation(tmp_path: Path) -> 
     store = _build_store(tmp_path)
     try:
         # 1. Build an initial index.
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok", first.error_summary
         prior_generation = int(store.get_setting("current_generation") or 0)
         prior_generation_str = store.get_setting("current_generation")
@@ -326,9 +324,7 @@ def test_mode_full_mid_build_cancel_preserves_committed_generation(
     store = _build_store(tmp_path)
     try:
         # 1. Build an initial index.
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok", first.error_summary
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
@@ -367,9 +363,7 @@ def test_mode_full_mid_build_cancel_preserves_committed_generation(
         #    in its ``finally`` block, even on cancellation.
         staging_root = store.index_dir
         leftovers = [
-            child
-            for child in staging_root.iterdir()
-            if child.name.startswith(".staging-full-")
+            child for child in staging_root.iterdir() if child.name.startswith(".staging-full-")
         ]
         assert leftovers == []
 
@@ -407,9 +401,7 @@ def test_mode_full_mid_build_timeout_preserves_committed_generation(
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
     try:
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok", first.error_summary
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
@@ -441,9 +433,7 @@ def test_mode_full_mid_build_timeout_preserves_committed_generation(
         assert _count_chunks_rows(store) == chunks_before
         assert _count_fts_rows(store) == fts_before
         leftovers = [
-            child
-            for child in store.index_dir.iterdir()
-            if child.name.startswith(".staging-full-")
+            child for child in store.index_dir.iterdir() if child.name.startswith(".staging-full-")
         ]
         assert leftovers == []
     finally:
@@ -471,9 +461,7 @@ def test_mode_full_swap_io_failure_preserves_committed_generation(
     store = _build_store(tmp_path)
     try:
         # 1. Build an initial index.
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok"
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
@@ -534,11 +522,7 @@ def test_mode_full_swap_io_failure_preserves_committed_generation(
         # 7. No ``.swap`` temp file is left behind from the
         #    aborted swap.
         swap_dir = store.db_path.parent
-        leftovers = [
-            child
-            for child in swap_dir.iterdir()
-            if child.name.endswith(".swap")
-        ]
+        leftovers = [child for child in swap_dir.iterdir() if child.name.endswith(".swap")]
         assert leftovers == []
 
         # 8. A subsequent full reindex without the fault
@@ -578,9 +562,7 @@ def test_mode_full_swap_refused_when_outer_deadline_already_exceeded(
     store = _build_store(tmp_path)
     try:
         # 1. Build an initial index.
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok"
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
@@ -621,9 +603,7 @@ def test_mode_full_swap_refused_when_outer_deadline_already_exceeded(
         assert _count_fts_rows(store) == fts_before
         # 5. No staging directory is left behind.
         leftovers = [
-            child
-            for child in store.index_dir.iterdir()
-            if child.name.startswith(".staging-full-")
+            child for child in store.index_dir.iterdir() if child.name.startswith(".staging-full-")
         ]
         assert leftovers == []
         # 6. A subsequent full reindex without the deadline
@@ -655,9 +635,7 @@ def test_mode_full_swap_refused_when_outer_cancellation_already_requested(
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
     try:
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok"
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
@@ -699,9 +677,7 @@ def test_mode_full_swap_refused_when_outer_cancellation_already_requested(
         assert _count_fts_rows(store) == fts_before
         # No staging directory is left behind.
         leftovers = [
-            child
-            for child in store.index_dir.iterdir()
-            if child.name.startswith(".staging-full-")
+            child for child in store.index_dir.iterdir() if child.name.startswith(".staging-full-")
         ]
         assert leftovers == []
         # A subsequent full reindex without cancel rebuilds
@@ -739,9 +715,7 @@ def test_timeout_is_fail_closed_for_job(tmp_path: Path, monkeypatch: pytest.Monk
                 clock.advance(0.1)
             return original_hash(workspace_root, relative_path)
 
-        monkeypatch.setattr(
-            "ralph.mcp.explore.pipeline.hash_workspace_file", slow_hash
-        )
+        monkeypatch.setattr("ralph.mcp.explore.pipeline.hash_workspace_file", slow_hash)
         result = reindex(
             store,
             workspace,
@@ -980,9 +954,7 @@ def test_changed_reindex_clears_structure_rows_for_deleted_path(
     store = _build_store(tmp_path)
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
-        assert [s.qualified_name for s in store.iter_symbols("gone.py")] == [
-            "gone.gone"
-        ]
+        assert [s.qualified_name for s in store.iter_symbols("gone.py")] == ["gone.gone"]
         # Delete the file and re-run a changed reindex.
         (workspace / "gone.py").unlink()
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
@@ -1028,9 +1000,7 @@ def test_full_reindex_clears_structure_rows_for_deleted_path(
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         # Sanity: the symbol exists before the file is removed.
-        assert [s.qualified_name for s in store.iter_symbols("gone.py")] == [
-            "gone.gone"
-        ]
+        assert [s.qualified_name for s in store.iter_symbols("gone.py")] == ["gone.gone"]
         (workspace / "gone.py").unlink()
         reindex(
             store,
@@ -1083,9 +1053,7 @@ def test_delete_then_identical_restore_reindexes_path(tmp_path: Path) -> None:
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         # Sanity: the symbol exists before deletion.
-        assert [s.qualified_name for s in store.iter_symbols("restore.py")] == [
-            "restore.original"
-        ]
+        assert [s.qualified_name for s in store.iter_symbols("restore.py")] == ["restore.original"]
         # Delete the file and reindex.
         (workspace / "restore.py").unlink()
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
@@ -1097,9 +1065,7 @@ def test_delete_then_identical_restore_reindexes_path(tmp_path: Path) -> None:
         # The bug was: the second reindex would short-circuit on equal
         # content hash and leave the file row marked deleted. The
         # corrected pipeline must clear is_deleted and re-extract.
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status == "ok"
         assert "restore.py" in tuple(result.changed_files)
         restored_row = store.get_file("restore.py")
@@ -1126,9 +1092,7 @@ def test_delete_then_identical_restore_reindexes_path(tmp_path: Path) -> None:
         assert fts_count > 0
         assert evidence_count > 0
         assert symbol_count > 0
-        assert [
-            s.qualified_name for s in store.iter_symbols("restore.py")
-        ] == ["restore.original"]
+        assert [s.qualified_name for s in store.iter_symbols("restore.py")] == ["restore.original"]
     finally:
         store.close()
 
@@ -1140,9 +1104,7 @@ def test_malformed_changed_python_preserves_prior_rows_and_retries(tmp_path: Pat
     rows with valid content, and never blocks the sorted path loop.
     """
     workspace = _seed_workspace(tmp_path)
-    (workspace / "a.py").write_text(
-        "def hello():\n    return 1\n\ndef goodbye():\n    return 2\n"
-    )
+    (workspace / "a.py").write_text("def hello():\n    return 1\n\ndef goodbye():\n    return 2\n")
     store = _build_store(tmp_path)
     try:
         # 1. Cold-index valid ``a.py`` and assert the lexical and
@@ -1209,9 +1171,7 @@ def test_malformed_changed_python_preserves_prior_rows_and_retries(tmp_path: Pat
         assert "a.py" in result2.changed_files
         # The dirty entry has been consumed for the successful path.
         assert "a.py" not in store.peek_dirty_paths()
-        qual_recovered = {
-            sym.qualified_name for sym in store.iter_symbols("a.py")
-        }
+        qual_recovered = {sym.qualified_name for sym in store.iter_symbols("a.py")}
         assert "a.hello" in qual_recovered
     finally:
         store.close()
@@ -1243,9 +1203,7 @@ def test_tombstone_record_is_idempotent_on_repeat_delete(tmp_path: Path) -> None
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         (workspace / "t.py").unlink()
         # The previous bug raised IntegrityError on the third delete.
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
         # No IntegrityError and the tombstone row count is bounded.
         cur = sqlite3.connect(str(store.db_path))
@@ -1273,9 +1231,7 @@ def test_move_path_reindexes_with_normalized_paths(tmp_path: Path) -> None:
         # Move a.py to sub/helper.py (a brand-new directory).
         (workspace / "sub").mkdir()
         (workspace / "a.py").rename(workspace / "sub" / "helper.py")
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
         # Source path is marked deleted.
         old_row = store.get_file("a.py")
@@ -1301,9 +1257,7 @@ def test_copy_path_reindexes_with_fresh_destination(tmp_path: Path) -> None:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         # Copy b.py to b_copy.py.
         (workspace / "b_copy.py").write_bytes((workspace / "b.py").read_bytes())
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status == "ok"
         # Source stays live.
         old_row = store.get_file("b.py")
@@ -1342,9 +1296,7 @@ def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
         original = (workspace / "a.py").read_bytes()
         (workspace / "moved.py").write_bytes(original)
         (workspace / "a.py").unlink()
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
         # Old path marked deleted; new path live.
         old_row = store.get_file("a.py")
@@ -1352,9 +1304,7 @@ def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
         new_row = store.get_file("moved.py")
         assert new_row is not None and new_row.is_deleted is False
         # Idempotent: a second reindex with no further edits is a no-op.
-        result2 = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result2 = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result2.parse_count == 0
     finally:
         store.close()
@@ -1385,9 +1335,7 @@ def test_swap_post_publish_cancel_reports_success_published_generation(
     store = _build_store(tmp_path)
     try:
         # 1. Build an initial index so ``prior_generation_str`` is known.
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok"
         prior_generation_str = store.get_setting("current_generation")
         assert prior_generation_str is not None
@@ -1476,9 +1424,7 @@ def test_swap_post_publish_deadline_reports_success_published_generation(
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
     try:
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok"
 
         # SequenceClock polls:
@@ -1493,9 +1439,7 @@ def test_swap_post_publish_deadline_reports_success_published_generation(
         #     (= 1_010.0; past the 5 s deadline)
         # We append a long tail of high values so any post-publish
         # check sees deadline exceeded.
-        clock = _SequenceClock(
-            [1_000.0] * 50 + [1_010.0] * 50
-        )
+        clock = _SequenceClock([1_000.0] * 50 + [1_010.0] * 50)
 
         result = reindex(
             store,
@@ -1537,9 +1481,7 @@ def test_copy_populates_content_cache(tmp_path: Path) -> None:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert store.content_cache_size() > 0
         # Every cache row's hash matches a file row's content_hash.
-        file_hashes = {
-            row.content_hash for row in store.iter_files()
-        }
+        file_hashes = {row.content_hash for row in store.iter_files()}
         cache_rows = list(store.iter_content_cache())
         cache_hashes = {row.content_hash for row in cache_rows}
         assert cache_hashes.issubset(file_hashes)
@@ -1557,17 +1499,13 @@ def test_copy_with_identical_content_reuses_cache(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
     try:
-        first = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert first.status == "ok"
         cache_size_before = store.content_cache_size()
         # Copy b.py to a new path; content is byte-identical so the
         # cache hit path fires for the new file.
         (workspace / "b_copy.py").write_bytes((workspace / "b.py").read_bytes())
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status == "ok"
         # Destination path is present with fresh chunks.
         new_row = store.get_file("b_copy.py")
@@ -1596,9 +1534,7 @@ def test_move_with_identical_content_uses_cache_and_pivots_path(
         original_bytes = (workspace / "a.py").read_bytes()
         (workspace / "a.py").unlink()
         (workspace / "moved.py").write_bytes(original_bytes)
-        result = reindex(
-            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
-        )
+        result = reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         assert result.status in {"ok", "skipped_no_changes"}
         # Old path marked deleted; new path live with symbols.
         old_row = store.get_file("a.py")
@@ -1696,7 +1632,9 @@ def test_copy_then_edit_repopulates_cache_with_new_hash(tmp_path: Path) -> None:
         assert store.content_cache_size() == cache_size_before + 1
         # Both paths have live file rows.
         assert store.get_file("b.py") is not None and not store.get_file("b.py").is_deleted
-        assert store.get_file("b_copy.py") is not None and not store.get_file("b_copy.py").is_deleted
+        assert (
+            store.get_file("b_copy.py") is not None and not store.get_file("b_copy.py").is_deleted
+        )
     finally:
         store.close()
 

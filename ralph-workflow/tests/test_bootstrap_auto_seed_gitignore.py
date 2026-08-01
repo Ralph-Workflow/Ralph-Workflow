@@ -203,9 +203,7 @@ def test_auto_seed_gitignore_warns_on_unreadable_existing_file(
     assert "Could not read existing .gitignore" in warning, (
         f"OSError warning MUST label the failure; got: {warning!r}"
     )
-    assert (
-        "non-fatal" in warning or "best-effort" in warning or "Proceeding" in warning
-    ), (
+    assert "non-fatal" in warning or "best-effort" in warning or "Proceeding" in warning, (
         f"OSError warning MUST mark the failure as non-fatal / best-effort; got: {warning!r}"
     )
 

@@ -74,9 +74,7 @@ def _freeze_event_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _ctx() -> DisplayContext:
-    console = Console(
-        file=io.StringIO(), force_terminal=False, color_system=None, width=200
-    )
+    console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=200)
     return make_display_context(console=console)
 
 
@@ -95,9 +93,7 @@ def _backend_event(
 ) -> AgentActivityEvent:
     """Normalize a parser line from a given backend and provider."""
     line = _agent_output_line(parser_type, content, **metadata)
-    return normalize_event_from_agent_output_line(
-        line, provider=provider, unit_id="unit"
-    )
+    return normalize_event_from_agent_output_line(line, provider=provider, unit_id="unit")
 
 
 def test_tool_use_renders_identically_across_backends() -> None:
@@ -114,9 +110,7 @@ def test_tool_use_renders_identically_across_backends() -> None:
     }
     rendered_plains: dict[str, str] = {}
     for provider, content in contents.items():
-        event = _backend_event(
-            provider, "tool_use", content, metadata=shared_metadata
-        )
+        event = _backend_event(provider, "tool_use", content, metadata=shared_metadata)
         rendered = render_event(event, ctx)
         rendered_plains[provider.value] = rendered.plain
     # Backend parity: ALL three backends produce the same plain text

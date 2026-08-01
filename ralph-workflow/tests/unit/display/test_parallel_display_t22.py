@@ -86,6 +86,7 @@ def test_injected_subscriber_used_directly() -> None:
 # STALLED transition was silently dropped on that path.
 # ---------------------------------------------------------------------------
 
+
 def test_injected_subscriber_receives_stalled_event(tmp_path: Path) -> None:
     """DA-001 regression: an injected subscriber + STALLED event drives the host.
 

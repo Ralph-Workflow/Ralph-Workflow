@@ -28,9 +28,7 @@ class TestWorkspaceWithRootProtocol:
         seen: list[Path] = []
         fallback = Path("/virtual/fallback")
 
-        def fake_runner(
-            command: list[str], cwd: Path
-        ) -> subprocess.CompletedProcess[bytes]:
+        def fake_runner(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
             seen.append(cwd)
             return subprocess.CompletedProcess(
                 command,

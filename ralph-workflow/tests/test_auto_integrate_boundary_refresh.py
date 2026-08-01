@@ -65,9 +65,7 @@ class _FakeClock:
         self.now += seconds
 
 
-def _permit_and_succeed(
-    throttle: BoundaryRefreshThrottle, root: str, target: str
-) -> bool:
+def _permit_and_succeed(throttle: BoundaryRefreshThrottle, root: str, target: str) -> bool:
     """Ask for a permit and, when granted, report a SUCCESSFUL refresh.
 
     The production caller always pairs the two calls; expressing that
@@ -186,9 +184,7 @@ def test_an_unsuccessful_refresh_does_not_consume_the_window() -> None:
 def test_tracked_windows_are_capped_and_evicted_oldest_first() -> None:
     """The window map is a long-lived accumulator, so it carries a cap."""
     clock = _FakeClock()
-    throttle = BoundaryRefreshThrottle(
-        min_interval_seconds=30.0, clock=clock, max_tracked_keys=2
-    )
+    throttle = BoundaryRefreshThrottle(min_interval_seconds=30.0, clock=clock, max_tracked_keys=2)
 
     assert _permit_and_succeed(throttle, _ROOT_A, "main") is True
     assert _permit_and_succeed(throttle, _ROOT_B, "main") is True
@@ -205,9 +201,7 @@ def test_tracked_windows_are_capped_and_evicted_oldest_first() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _dirty_boundary_workspace(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> WorkspaceScope:
+def _dirty_boundary_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> WorkspaceScope:
     """A workspace whose phase-boundary pre-checks reach the dirty deferral.
 
     The target carries a commit this checkout lacks, which is the case
@@ -215,14 +209,10 @@ def _dirty_boundary_workspace(
     """
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(auto_integrate, "_worktree_is_clean", lambda root: False)
-    monkeypatch.setattr(
-        auto_integrate, "resolve_integration_target", lambda config, root: "main"
-    )
+    monkeypatch.setattr(auto_integrate, "resolve_integration_target", lambda config, root: "main")
     monkeypatch.setattr(auto_integrate, "branch_sha", lambda root, ref: _TARGET_SHA)
     monkeypatch.setattr(auto_integrate, "get_head_sha", lambda root: _HEAD_SHA)
-    monkeypatch.setattr(
-        auto_integrate, "is_ancestor", lambda root, ancestor, descendant: False
-    )
+    monkeypatch.setattr(auto_integrate, "is_ancestor", lambda root, ancestor, descendant: False)
     monkeypatch.setattr(
         auto_integrate,
         "BOUNDARY_REFRESH_THROTTLE",
@@ -254,16 +244,12 @@ def test_dirty_boundary_records_the_refresh_outcome(
 
     monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
 
-    outcome = auto_integrate.auto_integrate_on_phase_transition(
-        _config(), scope, RebaseState()
-    )
+    outcome = auto_integrate.auto_integrate_on_phase_transition(_config(), scope, RebaseState())
 
     assert refresh_calls == ["main"], "the boundary must observe a fresh pointer"
     assert outcome is not None
     assert outcome.last_action == "skipped"
     assert outcome.last_refresh == REFRESH_REFRESHED
-
-
 
 
 def test_throttled_boundary_records_the_suppression_without_refetching(
@@ -302,12 +288,8 @@ def test_throttled_boundary_records_the_suppression_without_refetching(
     monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
     config = _config()
 
-    first = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
-    second = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    first = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+    second = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert len(refresh_calls) == 1, "the throttle must suppress the second fetch"
     assert first is not None
@@ -330,9 +312,7 @@ def test_a_failed_boundary_refresh_is_retried_on_the_next_boundary(
     config = _config()
 
     auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
-    second = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    second = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert refresh_calls == ["main", "main"], (
         "a refresh that could not reach origin must not consume the window"
@@ -347,9 +327,7 @@ def test_a_failed_boundary_refresh_is_retried_on_the_next_boundary(
 # ---------------------------------------------------------------------------
 
 
-def _recording_refresh(
-    monkeypatch: pytest.MonkeyPatch, outcome: str
-) -> list[str]:
+def _recording_refresh(monkeypatch: pytest.MonkeyPatch, outcome: str) -> list[str]:
     """Install a counting ``_refresh_target`` returning ``outcome``."""
     calls: list[str] = []
 
@@ -376,16 +354,13 @@ def test_a_throttled_boundary_with_a_pending_catch_up_forces_one_refresh(
     config = _config()
 
     auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
-    second = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    second = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert len(calls) == 2, "the suppressed boundary must force one refresh"
     assert second is not None
     assert second.last_action == "skipped"
     assert second.last_refresh == REFRESH_REFRESHED, (
-        "the recorded verdict must carry the real refresh outcome, "
-        "not REFRESH_SUPPRESSED"
+        "the recorded verdict must carry the real refresh outcome, not REFRESH_SUPPRESSED"
     )
 
 
@@ -395,18 +370,12 @@ def test_a_throttled_boundary_with_nothing_pending_still_costs_no_fetch(
     """The common dirty boundary must stay free; only divergence pays."""
     scope = _dirty_boundary_workspace(monkeypatch, tmp_path)
     # Target already contained in HEAD: nothing to catch up.
-    monkeypatch.setattr(
-        auto_integrate, "is_ancestor", lambda root, ancestor, descendant: True
-    )
+    monkeypatch.setattr(auto_integrate, "is_ancestor", lambda root, ancestor, descendant: True)
     calls = _recording_refresh(monkeypatch, REFRESH_REFRESHED)
     config = _config()
 
-    first = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
-    second = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    first = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+    second = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert first is None
     assert second is None
@@ -434,9 +403,7 @@ def test_a_forced_refresh_that_clears_the_divergence_records_nothing(
     config = _config()
 
     auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
-    second = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    second = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert len(calls) == 2
     assert second is None, "a refreshed pointer showing no divergence is quiet"
@@ -458,9 +425,7 @@ def test_the_forced_refresh_arms_the_throttle_window(
 
     first = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
     forced = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
-    suppressed = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    suppressed = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert calls == ["main", "main"]
     assert first is not None
@@ -493,9 +458,7 @@ def test_an_unhealthy_forced_refresh_is_retried_immediately(
     config = _config()
 
     auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
-    first_forced = auto_integrate.auto_integrate_on_phase_transition(
-        config, scope, RebaseState()
-    )
+    first_forced = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
     retry = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
 
     assert calls == ["main", "main", "main"]
@@ -562,9 +525,7 @@ def _install_recovery_seams(
     monkeypatch.setattr(recovery, "branch_sha", _branch_sha)
     monkeypatch.setattr(recovery, "is_ancestor", _is_ancestor)
     monkeypatch.setattr(recovery, "_refresh_target", _refresh)
-    monkeypatch.setattr(
-        recovery, "fast_forward_target", lambda _root, _target, _sha: (True, "")
-    )
+    monkeypatch.setattr(recovery, "fast_forward_target", lambda _root, _target, _sha: (True, ""))
     return events
 
 
@@ -572,13 +533,9 @@ def test_recovery_refreshes_the_pointer_before_its_ancestry_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The verdict that CLEARS the durable record must not read a stale ref."""
-    events = _install_recovery_seams(
-        monkeypatch, target_sha=_TARGET_SHA, ancestor=True
-    )
+    events = _install_recovery_seams(monkeypatch, target_sha=_TARGET_SHA, ancestor=True)
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(tmp_path), config=_config()
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
 
     assert events[0] == "refresh", "the pointer must be re-read first"
     assert events.count("refresh") == 1, "exactly one refresh per recovery"
@@ -596,9 +553,7 @@ def test_a_refresh_that_reveals_a_landable_target_no_longer_drops_the_record(
     was about to be discarded proceeds instead.
     """
     ancestry = iter([False, True])
-    events = _install_recovery_seams(
-        monkeypatch, target_sha=_TARGET_SHA, ancestor=True
-    )
+    events = _install_recovery_seams(monkeypatch, target_sha=_TARGET_SHA, ancestor=True)
     monkeypatch.setattr(
         recovery,
         "is_ancestor",
@@ -623,9 +578,7 @@ def test_recovery_without_a_config_behaves_exactly_as_before(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The parameter is optional, and omitting it changes nothing."""
-    events = _install_recovery_seams(
-        monkeypatch, target_sha=_TARGET_SHA, ancestor=True
-    )
+    events = _install_recovery_seams(monkeypatch, target_sha=_TARGET_SHA, ancestor=True)
 
     outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
 
@@ -652,9 +605,7 @@ def test_a_raising_refresh_never_escapes_recovery(
         monkeypatch, target_sha=_TARGET_SHA, ancestor=True, on_refresh=_explode
     )
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(tmp_path), config=_config()
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
 
     assert outcome is not None
     assert outcome.last_action == "skipped"
@@ -681,9 +632,7 @@ def test_a_raising_refresh_cannot_clear_the_record_from_a_stale_pointer(
         monkeypatch, target_sha=_TARGET_SHA, ancestor=False, on_refresh=_explode
     )
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(tmp_path), config=_config()
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
 
     assert outcome is not None
     assert "clear" not in events, "the durable record must be retained for retry"
@@ -716,9 +665,7 @@ def test_an_unhealthy_refresh_outcome_also_defers_the_recovery_verdict(
         on_refresh=lambda: REFRESH_UNREACHABLE,
     )
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(tmp_path), config=_config()
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
 
     assert outcome is not None
     assert "clear" not in events
@@ -734,13 +681,9 @@ def test_a_healthy_refresh_still_reaches_the_ancestry_verdicts(
     With a CONFIRMED-current pointer, "target advanced concurrently" is
     still a permanent state and still clears the record.
     """
-    events = _install_recovery_seams(
-        monkeypatch, target_sha=_TARGET_SHA, ancestor=False
-    )
+    events = _install_recovery_seams(monkeypatch, target_sha=_TARGET_SHA, ancestor=False)
 
-    outcome = recovery.recover_incomplete_integration(
-        WorkspaceScope(tmp_path), config=_config()
-    )
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path), config=_config())
 
     assert outcome is not None
     assert events[0] == "refresh"

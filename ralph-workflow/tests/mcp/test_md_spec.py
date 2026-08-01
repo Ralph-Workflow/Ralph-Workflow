@@ -26,7 +26,9 @@ def test_shared_validator_rejects_missing_required_document_structure() -> None:
         normalize_content=_normalize,
     )
 
-    content, diagnostics = parse_and_validate("---\nstatus: ready\n---\n## Other\n- [S1] Build\n", spec)
+    content, diagnostics = parse_and_validate(
+        "---\nstatus: ready\n---\n## Other\n- [S1] Build\n", spec
+    )
 
     assert content == {}
     assert {(diagnostic.section, diagnostic.rule_id) for diagnostic in diagnostics} == {

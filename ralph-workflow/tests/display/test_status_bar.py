@@ -155,9 +155,7 @@ def test_render_status_bar_without_alert_unchanged() -> None:
     assert "conflict" not in plain
 
 
-def _build_model_with_rebase(
-    monkeypatch: pytest.MonkeyPatch, rebase: object
-) -> StatusBarModel:
+def _build_model_with_rebase(monkeypatch: pytest.MonkeyPatch, rebase: object) -> StatusBarModel:
     """Drive _build_status_bar_model with fakes and the given rebase state."""
 
     class _FakeEntry:
@@ -386,9 +384,7 @@ def test_render_status_bar_canonical_iteration_labels_at_wide_widths(width: int)
         f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
     )
     # Single-line invariant.
-    assert "\n" not in plain, (
-        f"rendered bar must be single-line at width={width}; got {plain!r}"
-    )
+    assert "\n" not in plain, f"rendered bar must be single-line at width={width}; got {plain!r}"
 
 
 @pytest.mark.parametrize("width", [40, 50, 60, 80])
@@ -439,9 +435,7 @@ def test_render_status_bar_iteration_labels_compact_at_narrow_widths(width: int)
         f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
     )
     # Single-line invariant.
-    assert "\n" not in plain, (
-        f"rendered bar must be single-line at width={width}; got {plain!r}"
-    )
+    assert "\n" not in plain, f"rendered bar must be single-line at width={width}; got {plain!r}"
 
 
 @pytest.mark.parametrize("width", [14, 15, 20, 24, 30, 40, 50, 60, 80, 100, 120])
@@ -1537,7 +1531,9 @@ def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> No
     assert "Development" in out, (
         f"Live region must surface the phase label 'Development'; got {out!r}"
     )
-    assert "Cycle 1/3" in out, f"Live region must surface the iteration label 'Cycle 1/3'; got {out!r}"
+    assert "Cycle 1/3" in out, (
+        f"Live region must surface the iteration label 'Cycle 1/3'; got {out!r}"
+    )
 
 
 def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
@@ -2156,6 +2152,8 @@ def test_status_bar_start_rolls_back_live_on_startup_failure(
         "StatusBar.stop() must tear down a successfully-started Live "
         "region and flip is_active back to False"
     )
+
+
 # ---------------------------------------------------------------------------
 # DA-001 / DA-002 / DA-003 / DA-004 — direct locks for the analysis feedback
 # ---------------------------------------------------------------------------
@@ -2172,9 +2170,7 @@ def test_status_bar_regression_middle_truncate_path_honours_every_budget(path: s
     """DA-001: middle truncation never exceeds its requested budget."""
     for budget in range(1, len(path) + 5):
         result = _status_bar_module._middle_truncate_path(path, budget)
-        assert len(result) <= budget, (
-            f"DA-001: budget={budget}, result={result!r}, path={path!r}"
-        )
+        assert len(result) <= budget, f"DA-001: budget={budget}, result={result!r}, path={path!r}"
 
 
 @pytest.mark.parametrize("width", range(61, 201))
@@ -2217,7 +2213,8 @@ def test_status_bar_regression_path_elision_preserves_basename(
     [None, "waiting", "stalled", "retrying", "terminated"],
 )
 def test_attention_arrival_does_not_shift_neighbours(
-    width: int, attention_value: str | None,
+    width: int,
+    attention_value: str | None,
 ) -> None:
     """DA-001 (AC-01): attention arrival shifts no neighbour.
 
@@ -2289,10 +2286,10 @@ def test_elapsed_format_change_does_not_shift_path() -> None:
     assert len(set(paths)) == 1, f"DA-002: elapsed rollover shifted path: {paths!r}"
 
 
-
 @pytest.mark.parametrize("width", [120, 80, 60, 40])
 def test_status_bar_regression_value_changes_preserve_surviving_segment_columns(width: int) -> None:
     """S-2: counters and identity reserve their realistic maximum widths."""
+
     def render(*, cycle: int, cycle_cap: int, iteration: int, agent: str, elapsed: int) -> str:
         return render_status_bar(
             StatusBarModel(
@@ -2323,10 +2320,7 @@ def test_status_bar_regression_value_changes_preserve_surviving_segment_columns(
         for anchor in anchors:
             baseline_column = baseline.find(anchor)
             changed_column = changed.find(anchor)
-            if (
-                baseline_column >= 0
-                and changed_column >= 0
-            ):
+            if baseline_column >= 0 and changed_column >= 0:
                 assert changed_column == baseline_column, (
                     f"S-2: {anchor} shifted at width={width}; "
                     f"baseline={baseline!r}, changed={changed!r}"
@@ -2335,6 +2329,7 @@ def test_status_bar_regression_value_changes_preserve_surviving_segment_columns(
 
 def test_status_bar_regression_agent_name_reflow_at_60_keeps_preceding_columns() -> None:
     """S-4: agent-name growth at the 60-column rung does not reflow the bar."""
+
     def render(agent_name: str) -> str:
         return render_status_bar(
             StatusBarModel(
@@ -2362,6 +2357,7 @@ def test_status_bar_regression_agent_name_reflow_at_60_keeps_preceding_columns()
 
 def test_status_bar_regression_width_ladder_and_agent_identity_are_stable() -> None:
     """DA-001/DA-002: the documented width ladder is monotonic and agent-safe."""
+
     def render(width: int, agent_name: str = "claude") -> str:
         return render_status_bar(
             StatusBarModel(
@@ -2454,8 +2450,7 @@ def test_status_bar_abbreviates_phase_at_60() -> None:
     ctx = _make_display_context(width=60)
     plain = render_status_bar(model, ctx, home="/Users/alice").plain
     assert "dev" in plain.lower(), (
-        f"DA-003: abbreviated phase 'dev' must render at width=60; "
-        f"got plain={plain!r}"
+        f"DA-003: abbreviated phase 'dev' must render at width=60; got plain={plain!r}"
     )
     assert "Development" not in plain, (
         f"DA-003: full 'Development' must NOT render at width=60 "
@@ -2503,6 +2498,7 @@ def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> N
     )
     # Elapsed short form survives (the new S-3 segment).
     import re as _re
+
     assert _re.search(r"\d+m\d{2}s|\d+h\d{2}m|Time \d", plain) or "     " in plain, (
         f"DA-003/S-3: elapsed short form must survive at width=40; got plain={plain!r}"
     )
@@ -2524,7 +2520,8 @@ def test_status_bar_floor_keeps_attention_phase_liveness_position_elapsed() -> N
 @pytest.mark.parametrize("width", [40, 60, 80, 120])
 @pytest.mark.parametrize("attention", [None, "waiting", "stalled", "retrying", "terminated"])
 def test_status_bar_contract_attention_width_ladder(
-    width: int, attention: str | None,
+    width: int,
+    attention: str | None,
 ) -> None:
     """S-1: attention, width ladder, elapsed stability, and cwd-last contract."""
     model = StatusBarModel(
@@ -2579,9 +2576,7 @@ def test_status_bar_regression_resize_below_floor_and_back_restores_layout(
     for width, plain in zip(widths, rendered, strict=True):
         assert plain.count("\n") == 0
         assert len(plain) <= width
-    floor = render_status_bar(
-        model, _make_display_context(width=40), home="/Users/alice"
-    ).plain
+    floor = render_status_bar(model, _make_display_context(width=40), home="/Users/alice").plain
     for identity in ("WAITING", "Dev", "1/3"):
         assert identity in floor
     assert rendered[2] == rendered[0]

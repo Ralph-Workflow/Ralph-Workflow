@@ -17,7 +17,9 @@ def test_developer_prompt_includes_plan_and_submission_contract(tmp_path: Path) 
     workspace = MemoryWorkspace(root=str(tmp_path))
     prompt = prompt_developer_iteration_xml_with_context(
         context=TemplateContext.default(),
-        inputs=DeveloperPromptInputs(prompt_content="Implement it", plan_content="### [S-1] Change it"),
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement it", plan_content="### [S-1] Change it"
+        ),
         workspace=workspace,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
     )

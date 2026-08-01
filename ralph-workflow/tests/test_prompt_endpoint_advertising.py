@@ -54,10 +54,7 @@ def _visible_tool_strings(drain: SessionDrain) -> set[str]:
         sorted(cap.value for cap in caps.to_vec()),
         drain=drain.value,
     )
-    return {
-        (tool.value if hasattr(tool, "value") else str(tool))
-        for tool in raw
-    }
+    return {(tool.value if hasattr(tool, "value") else str(tool)) for tool in raw}
 
 
 def _render_phase(template_name: str, drain: SessionDrain) -> str:
@@ -121,7 +118,7 @@ def _extract_mcp_section(rendered: str) -> str:
     # Stop at the next H2 that is NOT ``MCP TOOLS`` AND is not
     # ``ARTIFACT SUBMISSION`` (the artifact block is part of the brokered
     # partial — the parallel branch is leaving it byte-stable).
-    rest = rendered[start.start():]
+    rest = rendered[start.start() :]
     next_h2 = re.search(r"^## (?!MCP TOOLS|ARTIFACT SUBMISSION)\S", rest, re.MULTILINE)
     end = next_h2.start() if next_h2 is not None else len(rest)
     section = rest[:end]

@@ -61,9 +61,7 @@ def contribute(
         url = CODEBERG_MIRROR_URL
         label = "Codeberg mirror"
     else:
-        display.emit_warning(
-            f"Unknown source '{source}'. Use 'github' (default) or 'codeberg'."
-        )
+        display.emit_warning(f"Unknown source '{source}'. Use 'github' (default) or 'codeberg'.")
         raise typer.Exit(1)
 
     display.emit_renderable(_build_banner())

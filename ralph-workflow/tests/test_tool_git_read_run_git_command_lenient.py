@@ -22,9 +22,7 @@ CUSTOM_LOG_COUNT = 20
 
 class TestRunGitCommandLenient:
     def test_returns_output_regardless_of_exit_code(self, tmp_path: Path) -> None:
-        def failing_runner(
-            command: list[str], cwd: Path
-        ) -> subprocess.CompletedProcess[bytes]:
+        def failing_runner(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
             return subprocess.CompletedProcess(
                 command,
                 returncode=1,

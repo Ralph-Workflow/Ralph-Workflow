@@ -308,9 +308,7 @@ class TestExecuteCommitEffect:
             )
             (tmp_git_repo / "safe.txt").write_text("safe\n", encoding="utf-8")
 
-            message_file = (
-                tmp_git_repo / ".agent" / "artifacts" / "commit_message.md"
-            )
+            message_file = tmp_git_repo / ".agent" / "artifacts" / "commit_message.md"
             message_file.parent.mkdir(parents=True, exist_ok=True)
             message_file.write_text(
                 _commit_document("fix: safely stage pipeline changes"),
@@ -320,9 +318,7 @@ class TestExecuteCommitEffect:
 
             def capture_commit(_root: Path | str, _message: str) -> str:
                 staged_at_commit.extend(
-                    path
-                    for path in repo.git.diff("--cached", "--name-only").splitlines()
-                    if path
+                    path for path in repo.git.diff("--cached", "--name-only").splitlines() if path
                 )
                 return "sha"
 

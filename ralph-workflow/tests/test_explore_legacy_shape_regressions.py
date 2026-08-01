@@ -87,12 +87,11 @@ class TestMutationFreshnessWithRealHandle:
 
     def test_write_file_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
-        session = MockSession(
-            WORKSPACE_WRITE_TRACKED_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_WRITE_TRACKED_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         result = handle_write_file(
-            session, _make_write_ws(),
+            session,
+            _make_write_ws(),
             {"path": "foo.py", "content": "print(1)\n"},
         )
         assert result.is_error is False
@@ -113,16 +112,12 @@ class TestMutationFreshnessWithRealHandle:
 
     def test_append_file_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
-        session = MockSession(
-            WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         ws = MagicMock()
         ws.append.return_value = None
         ws.relative_path.return_value = "foo.py"
-        result = handle_append_file(
-            session, ws, {"path": "foo.py", "content": "\n"}
-        )
+        result = handle_append_file(session, ws, {"path": "foo.py", "content": "\n"})
         assert result.is_error is False
         body = json.loads(result.content[0].text)
         assert "reindex_in_progress" in body
@@ -130,9 +125,7 @@ class TestMutationFreshnessWithRealHandle:
 
     def test_edit_file_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
-        session = MockSession(
-            WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         ws = MagicMock()
         ws.read_text.return_value = "def foo():\n    pass\n"
@@ -141,7 +134,8 @@ class TestMutationFreshnessWithRealHandle:
         ws.write.return_value = None
         ws.relative_path.return_value = "foo.py"
         result = handle_edit_file(
-            session, ws,
+            session,
+            ws,
             {
                 "path": "foo.py",
                 "edits": [
@@ -154,16 +148,15 @@ class TestMutationFreshnessWithRealHandle:
     def test_move_file_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
         (tmp_path / "bar.py").write_text("bar")
-        session = MockSession(
-            WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         ws = MagicMock()
         ws.exists.return_value = True
         ws.move.return_value = None
         ws.relative_path.return_value = "bar.py"
         result = handle_move_file(
-            session, ws,
+            session,
+            ws,
             {"src": "bar.py", "dest": "baz.py"},
         )
         assert result.is_error is False
@@ -171,27 +164,22 @@ class TestMutationFreshnessWithRealHandle:
     def test_copy_file_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
         (tmp_path / "bar.py").write_text("bar")
-        session = MockSession(
-            WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_EDIT_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         ws = MagicMock()
         ws.exists.return_value = True
         ws.copy.return_value = None
         ws.relative_path.return_value = "bar.py"
         result = handle_copy_file(
-            session, ws,
+            session,
+            ws,
             {"src": "bar.py", "dest": "baz.py"},
         )
         assert result.is_error is False
 
-    def test_delete_path_returns_freshness_metadata(
-        self, tmp_path: Path
-    ) -> None:
+    def test_delete_path_returns_freshness_metadata(self, tmp_path: Path) -> None:
         handle = _make_handle(tmp_path)
-        session = MockSession(
-            WORKSPACE_DELETE_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_DELETE_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         ws = MagicMock()
         ws.is_dir.return_value = False
@@ -200,19 +188,16 @@ class TestMutationFreshnessWithRealHandle:
         result = handle_delete_path(session, ws, {"path": "foo.py"})
         assert result.is_error is False
 
-    def test_write_file_with_handle_missing_reindex_attr(
-        self, tmp_path: Path
-    ) -> None:
+    def test_write_file_with_handle_missing_reindex_attr(self, tmp_path: Path) -> None:
         """Real ``ExploreIndex`` exposes ``reindex_in_progress``; the
         new safe accessor must default to ``False`` when a duck-typed
         handle lacks the attribute."""
         handle = _make_handle(tmp_path)
-        session = MockSession(
-            WORKSPACE_WRITE_TRACKED_CAPABILITY, WORKSPACE_READ_CAPABILITY
-        )
+        session = MockSession(WORKSPACE_WRITE_TRACKED_CAPABILITY, WORKSPACE_READ_CAPABILITY)
         session.explore_index = handle
         result = handle_write_file(
-            session, _make_write_ws(),
+            session,
+            _make_write_ws(),
             {"path": "foo.py", "content": "x = 1\n"},
         )
         assert result.is_error is False
@@ -229,9 +214,7 @@ class TestListDirectoryLegacyShape:
             handle = build_explore_index(tmp_path)
             session = MockSession(WORKSPACE_READ_CAPABILITY)
             session.explore_index = handle
-            result = handle_list_directory(
-                session, _make_listing_ws(), {"path": "."}
-            )
+            result = handle_list_directory(session, _make_listing_ws(), {"path": "."})
             assert result.is_error is False
             text = result.content[0].text
             # Legacy shape: "Directory: ." header + entry list.
@@ -249,9 +232,7 @@ class TestListDirectoryLegacyShape:
             ws = MagicMock()
             ws.list_dir.return_value = []
             ws.is_dir.return_value = False
-            result = handle_list_directory(
-                session, ws, {"path": ".", "recursive": True}
-            )
+            result = handle_list_directory(session, ws, {"path": ".", "recursive": True})
             assert result.is_error is False
             text = result.content[0].text
             assert text.startswith("Directory (recursive): .")
@@ -273,8 +254,7 @@ class TestListDirectoryLegacyShape:
                 assert result.is_error is False
                 text = result.content[0].text
                 assert text.startswith("Directory: ."), (
-                    f"use_index=never with view={view} returned non-legacy "
-                    f"text: {text!r}"
+                    f"use_index=never with view={view} returned non-legacy text: {text!r}"
                 )
 
     def test_use_index_always_without_handle_fails_closed(self) -> None:
@@ -330,9 +310,7 @@ class TestDirectoryTreeLegacyShape:
             assert "children" in body
             assert "index_used" not in body
 
-    def test_compact_view_decorates_non_changed_only_children(
-        self, explore_handle: object
-    ) -> None:
+    def test_compact_view_decorates_non_changed_only_children(self, explore_handle: object) -> None:
         """AC-09: requested counts decorate every child."""
         session = MockSession(WORKSPACE_READ_CAPABILITY)
         session.explore_index = explore_handle
@@ -381,7 +359,11 @@ class TestDirectoryTreeSchemaAdvertisesChangedOnly:
         specs = {s.metadata.definition.name: s for s in file_list_specs()}
         assert DIRECTORY_TREE_TOOL in specs
         spec = specs[DIRECTORY_TREE_TOOL]
-        properties = must_mapping(must_mapping(spec.metadata.definition.input_schema,)["properties"],)
+        properties = must_mapping(
+            must_mapping(
+                spec.metadata.definition.input_schema,
+            )["properties"],
+        )
         assert "changed_only" in properties
         prop = must_mapping(properties["changed_only"])
         assert prop.get("type") == "boolean"

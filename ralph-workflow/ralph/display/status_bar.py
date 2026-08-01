@@ -264,6 +264,7 @@ def _abbreviated_phase_label(label: str, budget: int, width: int) -> str:
         return _tail_truncate("DAn", budget)
     return _tail_truncate(_PHASE_ABBREVIATIONS.get(key, key.title()), budget)
 
+
 # wt-028-display S-2/S-3 (AC-01/AC-02): the 40-col rung is the spec's
 # floor below which the liveness glyph + elapsed segment drop
 # entirely. At every width >= 40 the liveness glyph and the elapsed
@@ -647,15 +648,12 @@ def _field_overhead_and_label_budgets(
     ) -> int:
         """Total chrome excluding phase + path: marker + iter segments."""
         ml = marker_len if with_marker else 0
-        return (
-            ml
-            + _iter_width(
-                outer_label,
-                inner_label,
-                with_glyph,
-                include_outer=include_outer,
-                include_inner=include_inner,
-            )
+        return ml + _iter_width(
+            outer_label,
+            inner_label,
+            with_glyph,
+            include_outer=include_outer,
+            include_inner=include_inner,
         )
 
     def _allocate(
@@ -695,7 +693,12 @@ def _field_overhead_and_label_budgets(
         else:
             elapsed_chrome = 0
         agent_chrome = (
-            separator_len + (_AGENT_LABEL_FIXED_WIDTH if ctx.width < _CANONICAL_FIT_THRESHOLD else len("Agent pi · minimax/MiniMax-3"))
+            separator_len
+            + (
+                _AGENT_LABEL_FIXED_WIDTH
+                if ctx.width < _CANONICAL_FIT_THRESHOLD
+                else len("Agent pi · minimax/MiniMax-3")
+            )
             if has_agent and ctx.width >= _AGENT_FIT_THRESHOLD
             else 0
         )
@@ -775,8 +778,16 @@ def _field_overhead_and_label_budgets(
     )
     for include_outer, include_inner in iter_bearing_configs:
         for outer_label, inner_label in label_forms:
-            for with_marker in ((False,) if _AGENT_PATH_FIT_THRESHOLD <= ctx.width <= _NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH else (True, False)):
-                for with_glyph in ((False, True) if _AGENT_PATH_FIT_THRESHOLD <= ctx.width <= _NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH else (True, False)):
+            for with_marker in (
+                (False,)
+                if _AGENT_PATH_FIT_THRESHOLD <= ctx.width <= _NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH
+                else (True, False)
+            ):
+                for with_glyph in (
+                    (False, True)
+                    if _AGENT_PATH_FIT_THRESHOLD <= ctx.width <= _NARROW_AGENT_PATH_LAYOUT_MAX_WIDTH
+                    else (True, False)
+                ):
                     budget = _allocate(
                         outer_label,
                         inner_label,
@@ -1215,12 +1226,7 @@ def render_status_bar(
     # Optional trailing context yields before path/phase/cycle context.
     # Reserve only path surplus so the established narrow-width
     # contract is unchanged.
-    optional_segments = (
-        [agent_label]
-        if agent_label
-        and ctx.width >= _AGENT_FIT_THRESHOLD
-        else []
-    )
+    optional_segments = [agent_label] if agent_label and ctx.width >= _AGENT_FIT_THRESHOLD else []
     if ctx.width < _PHASE_ABBREVIATE_THRESHOLD:
         phase_display = _abbreviated_phase_label(phase_display, budgets.phase_budget, ctx.width)
     else:
@@ -1329,7 +1335,9 @@ def render_status_bar(
         if path_room >= len(last_segment) + _ELLIPSIS_LEN + 1
         # A final segment is still an honest, recognizable path when full
         # left elision cannot fit; omit it only when even that would clip.
-        else last_segment if path_room >= len(last_segment) else ""
+        else last_segment
+        if path_room >= len(last_segment)
+        else ""
     )
     _append_path_segment(text, path_display, separator, ctx.width)
     # Final width clamp is a defensive guard for widths below the supported
@@ -1357,7 +1365,11 @@ def _append_optional_segment(
     grayscale / colourblind operator still reads the bare name.
     """
     text.append(separator, style="theme.status.path_marker")
-    agent_width = _AGENT_LABEL_FIXED_WIDTH if ctx.width < _CANONICAL_FIT_THRESHOLD else len("Agent pi · minimax/MiniMax-3")
+    agent_width = (
+        _AGENT_LABEL_FIXED_WIDTH
+        if ctx.width < _CANONICAL_FIT_THRESHOLD
+        else len("Agent pi · minimax/MiniMax-3")
+    )
     label = _tail_truncate(label, agent_width).ljust(agent_width)
     if label.startswith("Agent ") and model.agent_name:
         agent_prefix, agent_rest = _split_agent_label(label)

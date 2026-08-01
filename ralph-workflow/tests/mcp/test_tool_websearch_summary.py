@@ -52,9 +52,7 @@ def test_format_summary_returns_compact_cards(
 ) -> None:
     mock_backend = MagicMock()
     mock_backend.search.return_value = _GOOD_RESULTS
-    monkeypatch.setattr(
-        tool_websearch, "build_backend", lambda name, cfg: mock_backend
-    )
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: mock_backend)
 
     config = _make_config(backend="ddgs")
     result = tool_websearch.handle_web_search(
@@ -84,9 +82,7 @@ def test_format_raw_default_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     """``format='raw'`` (default) preserves the legacy Title/URL/Snippet text."""
     mock_backend = MagicMock()
     mock_backend.search.return_value = _GOOD_RESULTS
-    monkeypatch.setattr(
-        tool_websearch, "build_backend", lambda name, cfg: mock_backend
-    )
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: mock_backend)
 
     config = _make_config(backend="ddgs")
     result = tool_websearch.handle_web_search(
@@ -109,9 +105,7 @@ def test_format_invalid_value_returns_error(monkeypatch: pytest.MonkeyPatch) -> 
     """An unknown ``format`` value returns an explicit is_error result."""
     mock_backend = MagicMock()
     mock_backend.search.return_value = _GOOD_RESULTS
-    monkeypatch.setattr(
-        tool_websearch, "build_backend", lambda name, cfg: mock_backend
-    )
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: mock_backend)
 
     config = _make_config(backend="ddgs")
     result = tool_websearch.handle_web_search(
@@ -164,9 +158,7 @@ def test_format_summary_bytes_out_matches_actual_payload(
 ) -> None:
     mock_backend = MagicMock()
     mock_backend.search.return_value = _GOOD_RESULTS
-    monkeypatch.setattr(
-        tool_websearch, "build_backend", lambda name, cfg: mock_backend
-    )
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: mock_backend)
     config = _make_config(backend="ddgs")
     result = tool_websearch.handle_web_search(
         _AllowedSession(),
@@ -197,9 +189,7 @@ def test_format_summary_snippet_budget_bytes_is_utf8(
     ]
     mock_backend = MagicMock()
     mock_backend.search.return_value = multibyte_results
-    monkeypatch.setattr(
-        tool_websearch, "build_backend", lambda name, cfg: mock_backend
-    )
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: mock_backend)
     config = _make_config(backend="ddgs")
     result = tool_websearch.handle_web_search(
         _AllowedSession(),

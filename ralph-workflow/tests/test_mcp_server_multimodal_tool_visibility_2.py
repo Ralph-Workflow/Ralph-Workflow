@@ -104,9 +104,7 @@ class TestMultimodalToolVisibility:
 
         assert tools_response is not None
         tools_result = must_mapping(tools_response.result)
-        tool_names = {
-            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-        }
+        tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
         assert "read_image" not in tool_names
 
     def test_text_only_client_does_not_see_read_image_when_media_enabled(
@@ -141,9 +139,7 @@ class TestMultimodalToolVisibility:
 
         assert tools_response is not None
         tools_result = must_mapping(tools_response.result)
-        tool_names = {
-            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-        }
+        tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
         # Text-only client should NOT see read_image even when media is enabled on server
         assert "read_image" not in tool_names
 
@@ -182,9 +178,7 @@ class TestMultimodalToolVisibility:
 
         assert tools_response is not None
         tools_result = must_mapping(tools_response.result)
-        tool_names = {
-            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-        }
+        tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
         # Multimodal-capable client SHOULD see read_image
         assert "read_image" in tool_names
 
@@ -306,9 +300,7 @@ class TestMultimodalToolVisibility:
 
         assert tools_response is not None
         tools_result = must_mapping(tools_response.result)
-        tool_names = {
-            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-        }
+        tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
         # Multimodal-capable client SHOULD see read_image with default config
         assert "read_image" in tool_names
 
@@ -343,9 +335,7 @@ class TestMultimodalToolVisibility:
 
         assert tools_response is not None
         tools_result = must_mapping(tools_response.result)
-        tool_names = {
-            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-        }
+        tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
         # Text-only client should NOT see read_image even with default media config
         assert "read_image" not in tool_names
 
@@ -386,8 +376,6 @@ class TestMultimodalToolVisibility:
 
         assert tools_response is not None
         tools_result = must_mapping(tools_response.result)
-        tool_names = {
-            must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-        }
+        tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
         # Multimodal-capable client should NOT see read_image when media is explicitly disabled
         assert "read_image" not in tool_names

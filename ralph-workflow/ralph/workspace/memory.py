@@ -21,7 +21,9 @@ class MemoryWorkspace:
 
     def __init__(self, root: str = "/workspace") -> None:
         """Initialize empty in-memory workspace."""
-        self._storage: dict[str, str] = {}  # bounded-accumulator-ok: MemoryWorkspace test double drained by clear()
+        self._storage: dict[
+            str, str
+        ] = {}  # bounded-accumulator-ok: MemoryWorkspace test double drained by clear()
         self._dirs: set[str] = {""}  # Root is always present
         self._root = PurePosixPath(root)
         # Optional ExploreIndex handle attached by the production

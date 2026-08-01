@@ -57,7 +57,10 @@ def test_completed_call_releases_its_admission_slot() -> None:
 
 
 def test_default_dispatch_timeout_is_the_named_constant() -> None:
-    assert saturated_dispatch._SaturatedDispatch().dispatch_timeout_seconds == MCP_DISPATCH_TIMEOUT_SECONDS
+    assert (
+        saturated_dispatch._SaturatedDispatch().dispatch_timeout_seconds
+        == MCP_DISPATCH_TIMEOUT_SECONDS
+    )
     assert MCP_DISPATCH_TIMEOUT_SECONDS > EXEC_MAX_TIMEOUT_MS / 1000.0
 
 

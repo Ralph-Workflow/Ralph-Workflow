@@ -265,9 +265,7 @@ def test_build_standalone_http_server_falls_back_without_mcp_dependency(
     initialize_result = must_mapping(initialize_response.result)
     assert must_mapping(initialize_result["serverInfo"])["name"] == "ralph-mcp"
     assert must_mapping(initialize_result["serverInfo"])["version"]
-    assert must_mapping(initialize_result["capabilities"])["prompts"] == {
-        "listChanged": False
-    }
+    assert must_mapping(initialize_result["capabilities"])["prompts"] == {"listChanged": False}
     assert must_mapping(initialize_result["capabilities"])["resources"] == {
         "subscribe": False,
         "listChanged": False,
@@ -430,9 +428,7 @@ def test_build_standalone_http_server_filters_tools_by_session_capabilities(tmp_
     )
     assert tools_response is not None
     tools_result = must_mapping(tools_response.result)
-    tool_names = {
-        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-    }
+    tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
 
     assert "read_file" in tool_names
     assert "directory_tree" in tool_names
@@ -747,9 +743,7 @@ def test_build_standalone_http_server_lists_proxied_upstream_tools(tmp_path: Pat
 
     assert tools_response is not None
     tools_result = must_mapping(tools_response.result)
-    tool_names = {
-        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-    }
+    tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
     assert "read_file" in tool_names
     assert "ralph_upstream__myfs__read_remote" in tool_names
 
@@ -876,9 +870,7 @@ def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
 
     assert tools_response is not None
     tools_result = must_mapping(tools_response.result)
-    tool_names = {
-        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-    }
+    tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
     assert "ralph_upstream__srv__do_thing" not in tool_names
 
 
@@ -923,9 +915,7 @@ def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
 
     assert tools_response is not None
     tools_result = must_mapping(tools_response.result)
-    tool_names = {
-        must_str(t["name"]) for t in must_dict_list(tools_result["tools"])
-    }
+    tool_names = {must_str(t["name"]) for t in must_dict_list(tools_result["tools"])}
     assert "ralph_upstream__srv2__do_thing" in tool_names
 
 

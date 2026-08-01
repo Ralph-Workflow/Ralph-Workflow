@@ -245,9 +245,7 @@ def _is_write_mode_open(call: ast.Call, *, path_method: bool = False) -> bool:
     """
     mode_position = 0 if path_method else _OPEN_MODE_POSITION
     minimum_args = 1 if path_method else _OPEN_MODE_MIN_ARGS
-    mode_arg: ast.expr | None = (
-        call.args[mode_position] if len(call.args) >= minimum_args else None
-    )
+    mode_arg: ast.expr | None = call.args[mode_position] if len(call.args) >= minimum_args else None
     if mode_arg is None:
         mode_arg = next((keyword.value for keyword in call.keywords if keyword.arg == "mode"), None)
     if mode_arg is None:
@@ -372,7 +370,15 @@ def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | 
     # typically imported from ``pathlib``; treat them as pathlib aliases.
     pathlib_aliases = {"Path", "PurePath", "PosixPath", "WindowsPath"}
     pathlib_mutations = {
-        "write_text", "write_bytes", "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate"
+        "write_text",
+        "write_bytes",
+        "replace",
+        "rename",
+        "unlink",
+        "mkdir",
+        "rmdir",
+        "touch",
+        "truncate",
     }
     return attr if root in pathlib_aliases and attr in pathlib_mutations else None
 

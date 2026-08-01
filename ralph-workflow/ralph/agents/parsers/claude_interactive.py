@@ -95,7 +95,9 @@ class ClaudeInteractiveParser:
                 if is_lifecycle_kind(event.kind):
                     continue
                 if event.kind == "output":
-                    yield from self._text_accumulator.append_delta(event.text + "\n", raw, kind="text")
+                    yield from self._text_accumulator.append_delta(
+                        event.text + "\n", raw, kind="text"
+                    )
                     continue
                 if event.kind == "thinking":
                     yield from self._thinking_accumulator.append_delta(

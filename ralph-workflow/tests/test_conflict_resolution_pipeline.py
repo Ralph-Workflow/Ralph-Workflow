@@ -86,9 +86,7 @@ def _install_seams(
 ) -> list[Sequence[str]]:
     """Stub the two git queries the driver's verdict rests on."""
     scans: list[Sequence[str]] = []
-    monkeypatch.setattr(
-        driver_module, "unmerged_paths", lambda root: list(unmerged)
-    )
+    monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
 
     def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
         index = min(len(scans), len(surviving_per_round) - 1)
@@ -177,13 +175,9 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
     assert feedback_seen == [(), ("src/alpha.py",)]
 
 
-def test_bounded_at_max_resolution_rounds(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Markers that never clear exhaust the budget and decline."""
-    _install_seams(
-        monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]]
-    )
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
     calls: list[int] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -197,9 +191,7 @@ def test_bounded_at_max_resolution_rounds(
 def test_invoker_exception_is_contained_and_returns_false(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_seams(
-        monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]]
-    )
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         raise RuntimeError("agent exploded")
@@ -211,9 +203,7 @@ def test_agent_success_over_surviving_markers_is_not_a_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The repository outranks the agent's own claim."""
-    _install_seams(
-        monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]]
-    )
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
     assert _run(tmp_path, invoke=lambda name, path, index: True) is False
 
 
@@ -323,9 +313,7 @@ def test_status_bar_clear_tolerates_a_display_that_raises(
 def test_entry_and_exit_are_announced_to_the_operator(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_seams(
-        monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]]
-    )
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
     display = _FakeDisplay()
 
     assert _run(tmp_path, invoke=lambda name, path, index: True, display=display) is False

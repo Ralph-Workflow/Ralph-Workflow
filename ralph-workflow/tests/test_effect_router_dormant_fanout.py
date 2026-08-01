@@ -191,6 +191,7 @@ def test_runner_regression_forwards_agy_agents_probe_to_effect_router(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """DA-002: the production runner must preserve the per-install AGY probe seam."""
+
     def expected_probe() -> str:
         return "Available agents:\n- reviewer"
 

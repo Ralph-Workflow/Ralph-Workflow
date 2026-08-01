@@ -27,7 +27,7 @@ def test_provider_fallback_regression_warns_when_set(
     """S-1: legacy provider_fallback points users to active chain fallback."""
     global_path = tmp_path / GLOBAL_CONFIG_PATH.name
     global_path.write_text(
-        "[general]\nprovider_fallback = { claude = [\"codex\"] }\n", encoding="utf-8"
+        '[general]\nprovider_fallback = { claude = ["codex"] }\n', encoding="utf-8"
     )
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name)

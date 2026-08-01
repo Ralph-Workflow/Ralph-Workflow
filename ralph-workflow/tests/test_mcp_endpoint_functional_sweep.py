@@ -107,9 +107,7 @@ def _seed_workspace(workspace: Path) -> None:
 
 def _drive_tools_list(server: McpServer) -> list[str]:
     """Return the advertised tool names from a ``tools/list`` call."""
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
     _status, _headers, body = drive_request(server, payload)
     data = parse_sse_data(body)
     result = must_mapping(data.get("result", {}))
@@ -242,12 +240,8 @@ def _install_web_backends(monkeypatch: Any) -> None:
         "build_backend",
         _fake_web_search_backend_factory,
     )
-    monkeypatch.setattr(
-        _webvisit_handler_module, "fetch_url", _fake_web_visit_fetch
-    )
-    monkeypatch.setattr(
-        _webvisit_handler_module, "extract_readable", _fake_web_visit_extract
-    )
+    monkeypatch.setattr(_webvisit_handler_module, "fetch_url", _fake_web_visit_fetch)
+    monkeypatch.setattr(_webvisit_handler_module, "extract_readable", _fake_web_visit_extract)
 
 
 # Minimal valid arguments for every advertised canonical tool. Each
@@ -389,9 +383,7 @@ def _assert_call_round_trips(name: str, response: dict[str, Any]) -> None:
         f"{name}: tools/call returned a JSON-RPC error envelope: {response}"
     )
     result = response.get("result")
-    assert isinstance(result, dict), (
-        f"{name}: tools/call result is not a dict: {response}"
-    )
+    assert isinstance(result, dict), f"{name}: tools/call result is not a dict: {response}"
     assert result, f"{name}: tools/call result is empty: {response}"
 
 
@@ -408,8 +400,9 @@ def _alias_names_for_canonical(canonical_names: set[str], advertised: set[str]) 
     """
     prefix = "mcp__ralph__"
     return sorted(
-        name for name in advertised
-        if name.startswith(prefix) and name[len(prefix):] in canonical_names
+        name
+        for name in advertised
+        if name.startswith(prefix) and name[len(prefix) :] in canonical_names
     )
 
 
@@ -425,10 +418,7 @@ def _covered_advertised_names(advertised: set[str]) -> set[str]:
     lives in ``test_every_advertised_name_has_real_call``.
     """
     canonical = set(SWEEP_CALLS.keys()) | {RalphToolName.DECLARE_COMPLETE}
-    return (
-        canonical
-        | set(_alias_names_for_canonical(canonical, advertised))
-    )
+    return canonical | set(_alias_names_for_canonical(canonical, advertised))
 
 
 #: Per-test budget for the full functional sweep. With ~80 advertised
@@ -495,7 +485,7 @@ def test_every_advertised_endpoint_round_trips(
     # above; this step proves the alias emission and resolver.
     alias_targets = _alias_names_for_canonical(set(SWEEP_CALLS.keys()), advertised)
     for alias_name in alias_targets:
-        canonical_name = alias_name[len("mcp__ralph__"):]
+        canonical_name = alias_name[len("mcp__ralph__") :]
         arguments = SWEEP_CALLS[canonical_name]
         response = _drive_call(server, alias_name, arguments)
         _assert_call_round_trips(alias_name, response)
@@ -565,9 +555,7 @@ def test_unknown_tool_returns_documented_error(tmp_path: Path) -> None:
     _seed_workspace(tmp_path)
     server, _ = _build_server(tmp_path)
     response = _drive_call(server, "ralph_does_not_exist", {})
-    assert "error" in response, (
-        f"unknown tool returned a non-error response: {response}"
-    )
+    assert "error" in response, f"unknown tool returned a non-error response: {response}"
     error_block = must_mapping(response["error"], field="error")
     code = error_block.get("code")
     assert code is not None, f"unknown tool: error envelope has no code: {response}"

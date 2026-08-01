@@ -69,20 +69,14 @@ def _replace_once(source: str, old: str, new: str) -> str:
 def _invariant_cases() -> list[_CaseSpec]:
     """All import-time invariant cases exercised by this module."""
     empty_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset([])"
-    other_labels = (
-        "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(['other test'])"
-    )
+    other_labels = "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(['other test'])"
     empty_budget_steps = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset([])"
-    labels_anchor = (
-        '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
-    )
+    labels_anchor = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
     budget_steps_anchor = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
     budget_anchor = "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
     integration_anchor = "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0"
-    resource_label_anchor = (
-        '"resource lifecycle audit (audit_resource_lifecycle)"'
-    )
+    resource_label_anchor = '"resource lifecycle audit (audit_resource_lifecycle)"'
     resource_label_gone = '"resource lifecycle audit (REMOVED)"'
 
     return [
@@ -173,27 +167,21 @@ def _invariant_cases() -> list[_CaseSpec]:
         },
         {
             "name": "verify_step_timeout_must_be_positive",
-            "patches": [
-                (step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")
-            ],
+            "patches": [(step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")],
             "minus_o": False,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "must be positive"],
         },
         {
             "name": "verify_step_timeout_must_be_minimum",
-            "patches": [
-                (step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 1.0")
-            ],
+            "patches": [(step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 1.0")],
             "minus_o": False,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "must be at least 5.0"],
         },
         {
             "name": "verify_step_timeout_survives_minus_o",
-            "patches": [
-                (step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")
-            ],
+            "patches": [(step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")],
             "minus_o": True,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "must be positive"],
@@ -383,9 +371,7 @@ def _run_batch(cases: list[_CaseSpec], *, minus_o: bool) -> list[dict[str, objec
     return results
 
 
-def _assert_results(
-    cases: list[_CaseSpec], results: list[dict[str, object]]
-) -> None:
+def _assert_results(cases: list[_CaseSpec], results: list[dict[str, object]]) -> None:
     """Assert each case matched its expected import outcome."""
     assert len(results) == len(cases)
     failures: list[str] = []
@@ -396,9 +382,7 @@ def _assert_results(
             continue
         if case["expect_ok"]:
             if not result["ok"]:
-                failures.append(
-                    f"{case['name']}: expected OK import, stderr={result['stderr']!r}"
-                )
+                failures.append(f"{case['name']}: expected OK import, stderr={result['stderr']!r}")
             continue
         if result["ok"]:
             failures.append(f"{case['name']}: expected RuntimeError, got OK")
@@ -406,9 +390,7 @@ def _assert_results(
         stderr = str(result["stderr"])
         missing = [s for s in case["stderr_substrings"] if s not in stderr]
         if missing:
-            failures.append(
-                f"{case['name']}: missing {missing!r} in stderr={stderr!r}"
-            )
+            failures.append(f"{case['name']}: missing {missing!r} in stderr={stderr!r}")
     assert not failures, "\n".join(failures)
 
 

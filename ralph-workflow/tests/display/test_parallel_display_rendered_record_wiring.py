@@ -152,14 +152,14 @@ def test_quiet_mode_writes_rendered_writer(tmp_path: Path) -> None:
     )
     pd_quiet.stop()
     expected = tmp_path / ".agent" / "raw" / f"{safe_id_for('pi')}.rendered.log"
-    assert expected.exists(), (
-        f"Quiet mode must still write the rendered record; missing {expected}"
-    )
+    assert expected.exists(), f"Quiet mode must still write the rendered record; missing {expected}"
     body = expected.read_text(encoding="utf-8")
     assert "quiet event" in body
 
 
-def test_rendered_record_regression_strips_progress_badge_and_channel_chrome(tmp_path: Path) -> None:
+def test_rendered_record_regression_strips_progress_badge_and_channel_chrome(
+    tmp_path: Path,
+) -> None:
     """S-2: record entries retain one human body, not a live progress companion."""
     pd, _buf = _make_display(tmp_path)
     pd.emit_parsed_event(
@@ -169,9 +169,9 @@ def test_rendered_record_regression_strips_progress_badge_and_channel_chrome(tmp
         metadata={},
     )
     pd.stop()
-    record = (
-        tmp_path / ".agent" / "raw" / f"{safe_id_for('pi/model')}.rendered.log"
-    ).read_text(encoding="utf-8")
+    record = (tmp_path / ".agent" / "raw" / f"{safe_id_for('pi/model')}.rendered.log").read_text(
+        encoding="utf-8"
+    )
     assert "read_file (path=ralph/display.py)" in record
     assert "◐ RUN" not in record
     assert "tool_use:" not in record
@@ -180,7 +180,9 @@ def test_rendered_record_regression_strips_progress_badge_and_channel_chrome(tmp
     assert "role=tool_call" in record
 
 
-def test_rendered_record_regression_condenses_oversized_body_to_verbatim_log(tmp_path: Path) -> None:
+def test_rendered_record_regression_condenses_oversized_body_to_verbatim_log(
+    tmp_path: Path,
+) -> None:
     """S-3: the record uses the shared condenser and preserves raw content."""
     pd, _buf = _make_display(tmp_path)
     body = "x" * 10_000

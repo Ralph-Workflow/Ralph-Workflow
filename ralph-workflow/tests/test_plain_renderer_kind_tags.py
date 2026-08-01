@@ -41,9 +41,7 @@ from ralph.display.snapshot import PipelineSnapshot
 
 def _make_display() -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
-    console = Console(
-        file=buf, force_terminal=False, highlight=False, color_system=None, width=200
-    )
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
@@ -276,9 +274,7 @@ def test_close_line_carries_joined_passage_and_span_duration() -> None:
     assert "hello world" in out
     # Sketch-J span and duration markers are present.
     assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
-    assert "s\n" in out or out.endswith("s"), (
-        f"close line missing duration suffix 's': {out!r}"
-    )
+    assert "s\n" in out or out.endswith("s"), f"close line missing duration suffix 's': {out!r}"
     # No retired plumbing leaks.
     assert "fragments" not in out
     assert "chars" not in out

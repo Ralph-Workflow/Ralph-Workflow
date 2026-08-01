@@ -46,8 +46,10 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _base_branch(repo_root: Path) -> str:
-    return _run(repo_root, "symbolic-ref", "--quiet", "HEAD").stdout.strip().removeprefix(
-        "refs/heads/"
+    return (
+        _run(repo_root, "symbolic-ref", "--quiet", "HEAD")
+        .stdout.strip()
+        .removeprefix("refs/heads/")
     )
 
 
@@ -118,9 +120,7 @@ def test_synthetic_clean_merge_head_is_reclaimed_and_lands(
     try:
         _commit(feature, "feature.txt", "feature\n", "feature change")
         _commit(tmp_git_repo, "main.txt", "main\n", "main change")
-        (_private_git_dir(feature) / "MERGE_HEAD").write_text(
-            "0" * 40, encoding="utf-8"
-        )
+        (_private_git_dir(feature) / "MERGE_HEAD").write_text("0" * 40, encoding="utf-8")
 
         outcome = auto_integrate_after_commit(
             _build_config(target=main), WorkspaceScope(feature), RebaseState()

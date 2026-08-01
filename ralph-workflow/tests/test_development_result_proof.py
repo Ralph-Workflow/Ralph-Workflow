@@ -495,9 +495,7 @@ def test_isolated_worker_accepts_exactly_its_assigned_unit_proof() -> None:
     for unit_id in ("api", "web", "docs", "contract", "integration"):
         workspace = MemoryWorkspace()
         _write_nested_work_unit_plan(workspace)
-        worker_artifact_path = (
-            f".agent/workers/{unit_id}/artifacts/development_result.md"
-        )
+        worker_artifact_path = f".agent/workers/{unit_id}/artifacts/development_result.md"
         _write_dev_result(
             workspace,
             plan_items=[{"plan_item": unit_id, "proof": f"Completed {unit_id}."}],
@@ -517,9 +515,7 @@ def test_isolated_worker_accepts_exactly_its_assigned_unit_proof() -> None:
 def test_isolated_worker_assignment_is_authoritative_for_linear_plan_proof() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
-    worker_artifact_path = (
-        ".agent/workers/runtime-unit/artifacts/development_result.md"
-    )
+    worker_artifact_path = ".agent/workers/runtime-unit/artifacts/development_result.md"
     _write_dev_result(
         workspace,
         plan_items=[
@@ -564,9 +560,7 @@ def test_isolated_worker_rejects_an_extra_unit_proof() -> None:
     failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
     assert "exactly one proof" in failure_event.reason
     assert "web" in failure_event.reason
-    assert workspace.exists(
-        ".agent/workers/api/tmp/last_retry_error_development.txt"
-    )
+    assert workspace.exists(".agent/workers/api/tmp/last_retry_error_development.txt")
     assert not workspace.exists(".agent/tmp/last_retry_error_development.txt")
 
 
@@ -635,9 +629,7 @@ def test_subplan_main_result_rejects_complete_synthetic_worker_unit_proof() -> N
 def test_subplan_isolated_worker_uses_synthetic_unit_id_not_every_owned_step() -> None:
     workspace = MemoryWorkspace()
     _write_subplan_plan(workspace)
-    worker_artifact_path = (
-        ".agent/workers/subplan-s-1/artifacts/development_result.md"
-    )
+    worker_artifact_path = ".agent/workers/subplan-s-1/artifacts/development_result.md"
     _write_dev_result(
         workspace,
         plan_items=[

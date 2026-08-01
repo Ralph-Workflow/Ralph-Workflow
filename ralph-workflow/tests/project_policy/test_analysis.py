@@ -15,7 +15,10 @@ def test_analysis_prompt_starts_with_the_review_instruction() -> None:
 
     first_nonempty = next(line for line in prompt.splitlines() if line.strip())
 
-    assert first_nonempty == "Judge the policy build system with fresh evidence and submit one decision artifact."
+    assert (
+        first_nonempty
+        == "Judge the policy build system with fresh evidence and submit one decision artifact."
+    )
     assert prompt.index(first_nonempty) < prompt.index("*** UNATTENDED MODE")
 
 
@@ -75,9 +78,18 @@ def test_analysis_prompt_uses_subagents_for_independent_evidence() -> None:
 def test_analysis_prompt_teaches_complete_and_remediation_invariants() -> None:
     normalized = " ".join(_prompt().split())
 
-    assert "A completed decision omits both remediation sections; every known gap uses a non-completed status." in normalized
-    assert "The two remediation ID sets must match exactly: no missing, extra, or mismatched gap/fix IDs." in normalized
-    assert "For `request_changes` and `failed`, include non-empty `## What Came Up Short` and `## How To Fix` sections" in normalized
+    assert (
+        "A completed decision omits both remediation sections; every known gap uses a non-completed status."
+        in normalized
+    )
+    assert (
+        "The two remediation ID sets must match exactly: no missing, extra, or mismatched gap/fix IDs."
+        in normalized
+    )
+    assert (
+        "For `request_changes` and `failed`, include non-empty `## What Came Up Short` and `## How To Fix` sections"
+        in normalized
+    )
 
 
 def test_analysis_prompt_keeps_declare_complete_as_the_final_action() -> None:

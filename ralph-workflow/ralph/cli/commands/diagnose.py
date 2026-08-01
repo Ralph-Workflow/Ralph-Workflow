@@ -223,13 +223,22 @@ def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...
         "Workspace Files": ["File", "Status"],
         "Filesystem Health": ["Volume", "Spotlight", "Journal", "Warnings"],
     }.get(title, ["Check", "Result"])
-    column_styles = ["theme.cat.meta", None, "theme.status.success", "theme.text.muted", "theme.text.muted"]
+    column_styles = [
+        "theme.cat.meta",
+        None,
+        "theme.status.success",
+        "theme.text.muted",
+        "theme.text.muted",
+    ]
     for header, style in zip(headers, column_styles, strict=False):
         table.add_column(header, style=style) if style else table.add_column(header)
     for row in rows:
         cells = list(row) + [None] * (len(headers) - len(row))
         table.add_row(
-            *(cell if isinstance(cell, Text) else str(cell) if cell is not None else "-" for cell in cells[: len(headers)])
+            *(
+                cell if isinstance(cell, Text) else str(cell) if cell is not None else "-"
+                for cell in cells[: len(headers)]
+            )
         )
     display.emit_renderable(table)
 
@@ -417,7 +426,11 @@ def _check_git_repo(*, display: object) -> bool:
         rows.append(
             (
                 "Repository",
-                _status_text("Error", f"{e}. FIX: run `git init` before running Ralph Workflow.", "theme.status.error"),
+                _status_text(
+                    "Error",
+                    f"{e}. FIX: run `git init` before running Ralph Workflow.",
+                    "theme.status.error",
+                ),
                 "",
                 "",
                 "",

@@ -59,9 +59,7 @@ _CONCRETE_ARTIFACT_TYPE_RE: re.Pattern[str] = re.compile(r"^[a-z][a-z0-9_]*$")
 _FENCE_EXAMPLE_SIZE_RE: re.Pattern[str] = re.compile(
     r"(?:^|\s)example-size=(?P<example_size>tiny|medium|large)(?=\s|$)"
 )
-_PLAN_STEP_HEADING_RE: re.Pattern[str] = re.compile(
-    r"^### \[S-[1-9][0-9]*\] .+$", re.MULTILINE
-)
+_PLAN_STEP_HEADING_RE: re.Pattern[str] = re.compile(r"^### \[S-[1-9][0-9]*\] .+$", re.MULTILINE)
 _PLAN_UNIT_ITEM_RE: re.Pattern[str] = re.compile(
     r"^- \[(?P<unit_id>[A-Za-z0-9][A-Za-z0-9_-]*)\] (?P<description>.+)$"
 )

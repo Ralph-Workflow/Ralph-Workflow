@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from collections import OrderedDict
 from collections.abc import Iterator
 from itertools import count
@@ -37,14 +36,14 @@ _media_add_counter: Iterator[int] | int = count(1)
 
 def _advance_media_prune_counter() -> bool:
     """Advance the injectable prune counter and report whether this is a tick."""
+    global _media_add_counter
     counter = _media_add_counter
     if isinstance(counter, int):
         next_count = counter + 1
-        object.__setattr__(sys.modules[__name__], "_media_add_counter", next_count)
+        _media_add_counter = next_count
     else:
         next_count = next(counter)
     return next_count % _MEDIA_PRUNE_INTERVAL == 0
-
 
 
 def _media_session_identity(entry: dict[str, str]) -> str:

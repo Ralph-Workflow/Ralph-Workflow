@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _zero_grace() -> TimeoutPolicy:
     return TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0)
 
@@ -97,9 +96,7 @@ def _remediation_invoke_inputs() -> tuple[_LoadResult, DisplayContext]:
     return (
         _LoadResult(
             config=UnifiedConfig(),
-            workspace_scope=WorkspaceScope(
-                root="/test/project", allowed_roots=["/test/project"]
-            ),
+            workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
             initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
             policy_bundle=load_policy(default_dir()),
             run_id="test-run-id",
@@ -125,9 +122,7 @@ def test_remediation_effect_opts_out_of_completion_evidence(
         observed.append(effect)
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(
-        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
 
     load_result, display_context = _remediation_invoke_inputs
     invoke = cli_integration._make_production_invoke_agent(

@@ -344,7 +344,9 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     )
 
 
-def test_stream_parsed_agent_activity_correlates_read_result_without_preview_duplication(tmp_path: Path) -> None:
+def test_stream_parsed_agent_activity_correlates_read_result_without_preview_duplication(
+    tmp_path: Path,
+) -> None:
     """A Claude result retains its correlated content in its single result entry."""
     pd, buf = _make_display(tmp_path)
     tool_use = json.dumps(
@@ -448,7 +450,6 @@ def test_stream_parsed_agent_activity_plain_tool_line_routes_to_tool_use(tmp_pat
     assert "[output][activity]" not in out
 
 
-
 def test_live_read_result_preserves_correlated_window_line_numbers() -> None:
     """A partial MCP read retains the request window in its live preview gutter."""
     import io
@@ -466,12 +467,16 @@ def test_live_read_result_preserves_correlated_window_line_numbers() -> None:
         )
     )
     display.emit_parsed_event(
-        "u1", ActivityEventKind.TOOL_USE, "mcp__ralph__read_file",
+        "u1",
+        ActivityEventKind.TOOL_USE,
+        "mcp__ralph__read_file",
         {"input": {"path": "x.py", "line_start": 17, "line_end": 18}},
     )
     display.emit_parsed_event(
-        "u1", ActivityEventKind.TOOL_RESULT,
-        '{"path":"x.py","content":"def render():\\n    return 1\\n","total_lines":50,"returned_lines":2,"truncated":true}', {},
+        "u1",
+        ActivityEventKind.TOOL_RESULT,
+        '{"path":"x.py","content":"def render():\\n    return 1\\n","total_lines":50,"returned_lines":2,"truncated":true}',
+        {},
     )
     rendered = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output.getvalue())
     assert re.search(r"\b17\s+def render\(\):", rendered)

@@ -22,9 +22,7 @@ _LANG_POLICIES = frozenset({"typechecking-policy.md", "linting-policy.md"})
 
 def stack() -> ProjectStack:
     """The project stack every policy-pipeline test runs against."""
-    return ProjectStack(
-        primary_language="Python", secondary_languages=[], frameworks=[]
-    )
+    return ProjectStack(primary_language="Python", secondary_languages=[], frameworks=[])
 
 
 def complete_policy_body(filename: str) -> str:
@@ -79,14 +77,10 @@ def seed_complete_corpus(workspace: Workspace) -> None:
     """Write a full policy corpus that passes the real validator."""
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
     for filename in markers.CORE_POLICY_FILES:
-        workspace.write(
-            f"{markers.CANONICAL_DIR}{filename}", complete_policy_body(filename)
-        )
+        workspace.write(f"{markers.CANONICAL_DIR}{filename}", complete_policy_body(filename))
     workspace.write(
         markers.AGENTS_MD,
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"See {markers.CANONICAL_DIR}.\n"
-        f"{markers.AGENTS_BLOCK_END}\n",
+        f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n",
     )
     workspace.write(
         markers.CLAUDE_MD,

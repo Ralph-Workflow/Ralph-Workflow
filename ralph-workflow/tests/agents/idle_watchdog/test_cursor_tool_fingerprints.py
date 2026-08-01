@@ -59,5 +59,7 @@ def test_different_shell_commands_stay_distinct() -> None:
     second = extract_tool_call_from_activity_signal(_shell_call_line("pwd", call_id="t_2"))
 
     assert first != second
-    assert first == ("shellToolCall", {"command": "ls -la", "workingDirectory": "/repo",
-                                       "timeout": 30000})
+    assert first == (
+        "shellToolCall",
+        {"command": "ls -la", "workingDirectory": "/repo", "timeout": 30000},
+    )

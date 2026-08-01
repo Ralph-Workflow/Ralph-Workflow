@@ -33,14 +33,17 @@ def test_prefix_extended_sibling_branch_does_not_block_rebase(
 ) -> None:
     """A sibling on ``wt-040-fix`` must not be mistaken for ``wt-040``."""
     sibling = tmp_path / "sibling"
-    assert _run(
-        tmp_git_repo,
-        "worktree",
-        "add",
-        "-b",
-        "wt-040-fix",
-        str(sibling),
-    ).returncode == 0
+    assert (
+        _run(
+            tmp_git_repo,
+            "worktree",
+            "add",
+            "-b",
+            "wt-040-fix",
+            str(sibling),
+        ).returncode
+        == 0
+    )
     assert _run(tmp_git_repo, "checkout", "-b", "wt-040").returncode == 0
 
     check_rebase_preconditions(tmp_git_repo)

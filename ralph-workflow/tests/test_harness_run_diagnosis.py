@@ -934,9 +934,7 @@ def _make_artifact(
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     breaks_section = (
         "\n## Observed Breaks\n"
-        + "\n".join(
-            f"- [BR-{index}] {item}" for index, item in enumerate(observed_breaks, 1)
-        )
+        + "\n".join(f"- [BR-{index}] {item}" for index, item in enumerate(observed_breaks, 1))
         if observed_breaks
         else ""
     )

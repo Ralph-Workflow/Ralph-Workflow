@@ -53,9 +53,7 @@ def test_code_style_encodes_documentation_contract() -> None:
     candidates = [REPO_ROOT_CODE_STYLE, REPOSITORY_ROOT / "docs" / "code-style" / "index.md"]
     primary = next((p for p in candidates if p.exists()), None)
     if primary is None:
-        pytest.skip(
-            "Neither CODE_STYLE.md nor docs/code-style/index.md exists"
-        )
+        pytest.skip("Neither CODE_STYLE.md nor docs/code-style/index.md exists")
     content = primary.read_text()
     # Public docstrings should be self-sufficient
     assert "docstring" in content.lower() or "pydoc" in content.lower(), (

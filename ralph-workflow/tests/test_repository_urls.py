@@ -96,10 +96,15 @@ def test_maintained_docs_only_use_canonical_repo_urls() -> None:
     mismatches: list[str] = []
 
     for root in _MAINTAINED_DOC_ROOTS:
-        paths = [root] if root.is_file() else sorted(root.rglob("*.md")) + sorted(root.rglob("*.rst"))
+        paths = (
+            [root] if root.is_file() else sorted(root.rglob("*.md")) + sorted(root.rglob("*.rst"))
+        )
         for path in paths:
             for url in _URL_PATTERN.findall(path.read_text(encoding="utf-8")):
-                if "RalphWorkflow/Ralph-Workflow" not in url and "Ralph-Workflow/Ralph-Workflow" not in url:
+                if (
+                    "RalphWorkflow/Ralph-Workflow" not in url
+                    and "Ralph-Workflow/Ralph-Workflow" not in url
+                ):
                     continue
                 pro_url = getattr(module, "RALPH_WORKFLOW_PRO_REPOSITORY_URL", "")
                 is_allowed = (

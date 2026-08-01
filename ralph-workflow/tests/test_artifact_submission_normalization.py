@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def test_submit_rejects_legacy_json_without_writing_an_artifact(tmp_path: Path) -> None:
     result = handle_submit_md_artifact(
         planning_session(),

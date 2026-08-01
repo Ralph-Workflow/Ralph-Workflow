@@ -30,9 +30,7 @@ def test_is_opted_out_returns_true_when_marker_exact() -> None:
     ws = MemoryWorkspace()
     ws.write(
         markers.AGENTS_MD,
-        "# AGENTS.md\n\n"
-        + markers.OPT_OUT_MARKER
-        + "\n\nThe rest of the file.\n",
+        "# AGENTS.md\n\n" + markers.OPT_OUT_MARKER + "\n\nThe rest of the file.\n",
     )
     assert agents_md.is_opted_out(ws) is True
 
@@ -132,12 +130,7 @@ def test_bootstrap_does_not_append_when_partial_begin_only() -> None:
     remediation agent must reconcile the partial state in one change.
     """
     ws = MemoryWorkspace()
-    original = (
-        "# Original\n\n"
-        "User content.\n\n"
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        "incomplete\n"
-    )
+    original = f"# Original\n\nUser content.\n\n{markers.AGENTS_BLOCK_BEGIN}\nincomplete\n"
     ws.write(markers.AGENTS_MD, original)
     changed = agents_md.bootstrap(ws)
     # Bootstrap is a no-op for AGENTS.md on malformed state.
@@ -148,12 +141,7 @@ def test_bootstrap_does_not_append_when_partial_begin_only() -> None:
 
 def test_bootstrap_does_not_append_when_partial_end_only() -> None:
     ws = MemoryWorkspace()
-    original = (
-        "# Original\n\n"
-        "User content.\n\n"
-        "trailing\n"
-        f"{markers.AGENTS_BLOCK_END}\n"
-    )
+    original = f"# Original\n\nUser content.\n\ntrailing\n{markers.AGENTS_BLOCK_END}\n"
     ws.write(markers.AGENTS_MD, original)
     changed = agents_md.bootstrap(ws)
     assert markers.AGENTS_MD not in changed
@@ -167,9 +155,7 @@ def test_bootstrap_does_not_append_when_duplicate_complete_block() -> None:
     """
     ws = MemoryWorkspace()
     block = (
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"See {markers.CANONICAL_DIR}.\n"
-        f"{markers.AGENTS_BLOCK_END}\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n"
     )
     ws.write(markers.AGENTS_MD, block + block)
     original = ws.read(markers.AGENTS_MD)
@@ -185,9 +171,7 @@ def test_bootstrap_does_not_append_when_misordered_markers() -> None:
     """
     ws = MemoryWorkspace()
     original = (
-        f"{markers.AGENTS_BLOCK_END}\n"
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"See {markers.CANONICAL_DIR}.\n"
+        f"{markers.AGENTS_BLOCK_END}\n{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n"
     )
     ws.write(markers.AGENTS_MD, original)
     changed = agents_md.bootstrap(ws)
@@ -270,10 +254,7 @@ def test_significant_content_false_when_opt_out_marker_present() -> None:
     ws = MemoryWorkspace()
     ws.write(
         markers.AGENTS_MD,
-        "# Big existing policy\n\n"
-        + "rule line\n" * 20
-        + markers.OPT_OUT_MARKER
-        + "\n",
+        "# Big existing policy\n\n" + "rule line\n" * 20 + markers.OPT_OUT_MARKER + "\n",
     )
     assert agents_md.has_significant_unmanaged_content(ws) is False
 

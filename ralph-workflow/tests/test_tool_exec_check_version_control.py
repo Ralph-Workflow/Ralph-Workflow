@@ -111,11 +111,9 @@ class TestGitReadOnlySubcommandsConstant:
                 f"state-mutating subcommand {subcommand!r} must never be whitelisted"
             )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Low-level scanner: check_version_control
-# ─────────────────────────────────────────────────────────────────────────────
-
+    # ─────────────────────────────────────────────────────────────────────────────
+    # Low-level scanner: check_version_control
+    # ─────────────────────────────────────────────────────────────────────────────
 
     class TestCheckVersionControlAllowed:
         """The scanner must allow whitelisted read-only git subcommands and
@@ -182,7 +180,6 @@ class TestGitReadOnlySubcommandsConstant:
             """'.gitignore' is a file, not a git command."""
             assert check_version_control("cat", [".gitignore"]) is None
 
-
     class TestCheckVersionControlDenied:
         """The scanner must deny any non-whitelisted git subcommand, bare git,
         and any hg / svn invocation."""
@@ -220,9 +217,7 @@ class TestGitReadOnlySubcommandsConstant:
                 ("git", ["bisect", "start"]),
             ],
         )
-        def test_state_mutating_subcommand_is_denied(
-            self, command: str, args: list[str]
-        ) -> None:
+        def test_state_mutating_subcommand_is_denied(self, command: str, args: list[str]) -> None:
             reason = check_version_control(command, args)
             assert reason is not None
             assert "git" in reason.lower()
@@ -262,11 +257,9 @@ class TestGitReadOnlySubcommandsConstant:
             reason = check_version_control("/usr/bin/git", ["push"])
             assert reason is not None
 
-
     # ─────────────────────────────────────────────────────────────────────────────
     # Diff flag guard — whitelisted diff must still reject output-writing flags
     # ─────────────────────────────────────────────────────────────────────────────
-
 
     class TestDiffFlagGuard:
         """Even when ``diff`` is whitelisted, output-writing and external-helper
@@ -309,11 +302,9 @@ class TestGitReadOnlySubcommandsConstant:
         def test_diff_diff_filter_is_allowed(self) -> None:
             assert check_version_control("git", ["diff", "--diff-filter=ACMRT"]) is None
 
-
     # ─────────────────────────────────────────────────────────────────────────────
     # Pipeline / substitution / script-level enforcement
     # ─────────────────────────────────────────────────────────────────────────────
-
 
     class TestPipelineEnforcement:
         """A whitelisted subcommand in one segment cannot mask a mutating
@@ -358,7 +349,6 @@ class TestGitReadOnlySubcommandsConstant:
             )
             assert result.is_error is False
 
-
     class TestScriptEnforcement:
         """The script-content scanner must reuse the same whitelist scanner so
         ``bash build.sh`` running only ``git status`` is allowed, but a script
@@ -384,7 +374,6 @@ class TestGitReadOnlySubcommandsConstant:
                     MockWorkspaceRoot(tmp_path),
                     {"command": "bash deploy.sh"},
                 )
-
 
     class TestCommandSubstitution:
         """The deep textual scan must catch a VCS command hidden inside
@@ -414,11 +403,9 @@ class TestGitReadOnlySubcommandsConstant:
                     {"command": ["sh", "-c", "git push origin main"]},
                 )
 
-
     # ─────────────────────────────────────────────────────────────────────────────
     # Result-text hints — whitelisted git usage must mention the MCP endpoints
     # ─────────────────────────────────────────────────────────────────────────────
-
 
     class TestExecResultHints:
         """A successful exec that used a whitelisted git subcommand must carry a
@@ -463,7 +450,6 @@ class TestGitReadOnlySubcommandsConstant:
             assert "git_status" not in text
             assert "git_log" not in text
 
-
     class TestGrepHint:
         """A ``grep`` (or egrep / fgrep) head must run, and the result text
         must carry a warning that the MCP explore endpoint is more efficient."""
@@ -504,7 +490,6 @@ class TestGitReadOnlySubcommandsConstant:
             )
             assert result.is_error is False
 
-
     class TestUnsafeExecHints:
         """unsafe_exec / raw_exec must also append the git-hint and grep-hint
         notes to the result text, mirroring exec's behavior."""
@@ -531,7 +516,6 @@ class TestGitReadOnlySubcommandsConstant:
             assert result.is_error is False
             text = result.content[0].text if isinstance(result.content[0], ToolContent) else ""
             assert "grep_files" in text or "explore" in text.lower()
-
 
     # ─────────────────────────────────────────────────────────────────────────────
     # Helpers
@@ -595,4 +579,3 @@ def _first_text(result: object) -> str:
         return content.text
     # Defensive: tests should always get a ToolContent back from the handler.
     return getattr(content, "text", str(content))
-

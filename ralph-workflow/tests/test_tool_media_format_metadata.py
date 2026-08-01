@@ -120,9 +120,7 @@ class TestReadImageMetadata:
 
 
 class TestReadMediaMetadata:
-    def test_read_media_metadata_returns_bounded_envelope_for_pdf(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_media_metadata_returns_bounded_envelope_for_pdf(self, tmp_path: Path) -> None:
         pdf_path = tmp_path / "report.pdf"
         pdf_path.write_bytes(b"%PDF-1.4 fake pdf content")
         ws = FsWorkspace(tmp_path)
@@ -148,9 +146,7 @@ class TestReadMediaMetadata:
         assert envelope["media_kind"] == "pdf"
         assert envelope["mime_type"] == "application/pdf"
         assert envelope["size_bytes"] == len(b"%PDF-1.4 fake pdf content")
-        assert envelope["sha256"] == hashlib.sha256(
-            b"%PDF-1.4 fake pdf content"
-        ).hexdigest()
+        assert envelope["sha256"] == hashlib.sha256(b"%PDF-1.4 fake pdf content").hexdigest()
         # Resource-reference delivery registers a Ralph-owned artifact,
         # so the handle is non-null.
         assert envelope["resource_handle"] is not None
@@ -160,9 +156,7 @@ class TestReadMediaMetadata:
         # No inline media content block.
         assert not any(isinstance(c, ResourceReferenceContent) for c in result.content)
 
-    def test_read_media_metadata_returns_bounded_envelope_for_image(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_media_metadata_returns_bounded_envelope_for_image(self, tmp_path: Path) -> None:
         _write_png(tmp_path, name="shot.png")
         ws = FsWorkspace(tmp_path)
 
@@ -189,9 +183,7 @@ class TestReadMediaMetadata:
         assert envelope["width"] == 1
         assert envelope["height"] == 1
 
-    def test_read_media_inline_default_unchanged_for_pdf(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_media_inline_default_unchanged_for_pdf(self, tmp_path: Path) -> None:
         """``format='inline'`` (default) preserves the legacy block shape.
 
         Claude delivers PDFs as a typed ``PdfContent`` block (not
@@ -220,15 +212,14 @@ class TestReadMediaMetadata:
         # text block whose JSON carries ``format='metadata'``;
         # ``format='inline'`` MUST NOT produce that envelope.
         legacy_blocks = [
-            c for c in result.content
+            c
+            for c in result.content
             if isinstance(c, ResourceReferenceContent)
-            or c.__class__.__name__ in {"PdfContent", "AudioContent",
-                                         "VideoContent", "DocumentContent",
-                                         "ImageContent"}
+            or c.__class__.__name__
+            in {"PdfContent", "AudioContent", "VideoContent", "DocumentContent", "ImageContent"}
         ]
         assert legacy_blocks, (
-            f"inline mode must emit a legacy typed/resource-reference "
-            f"block; got {result.content!r}"
+            f"inline mode must emit a legacy typed/resource-reference block; got {result.content!r}"
         )
         for c in result.content:
             text = getattr(c, "text", None)

@@ -68,7 +68,12 @@ def test_agy_command_yolo_flag_precedes_model_and_print(tmp_path: Path) -> None:
     output_format_index = cmd.index("--output-format")
     assert cmd[output_format_index : output_format_index + 2] == ["--output-format", "stream-json"]
     assert cmd.count("--output-format") == 1
-    assert output_format_index < cmd.index("--dangerously-skip-permissions") < cmd.index("--model") < cmd.index("--print")
+    assert (
+        output_format_index
+        < cmd.index("--dangerously-skip-permissions")
+        < cmd.index("--model")
+        < cmd.index("--print")
+    )
 
 
 def test_agy_command_add_dir_present_with_workspace(tmp_path: Path) -> None:

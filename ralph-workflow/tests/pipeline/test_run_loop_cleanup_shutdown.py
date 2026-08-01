@@ -173,8 +173,7 @@ def test_cleanup_pipeline_logs_early_step_failure_and_still_runs_teardown() -> N
     assert len(teardown_calls) == 1
     matching = [msg for msg in captured if "unsubscribe_bus" in msg]
     assert matching, (
-        "expected a diagnostic-log ERROR naming resource=unsubscribe_bus; "
-        f"got: {captured!r}"
+        f"expected a diagnostic-log ERROR naming resource=unsubscribe_bus; got: {captured!r}"
     )
 
 

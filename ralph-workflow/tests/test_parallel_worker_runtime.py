@@ -25,7 +25,6 @@ from tests._support.typed_accessors import (
 )
 
 if TYPE_CHECKING:
-
     from pytest import MonkeyPatch
 
     from ralph.pipeline.factory import PhasePromptMaterializerFn, PipelineDeps
@@ -125,7 +124,9 @@ def test_worker_prompt_paths_are_namespaced(tmp_path: Path) -> None:
     worker_multimodal_sidecar_path = getattr(
         debug_dump_module, "worker_multimodal_sidecar_path", None
     )
-    worker_product_criteria_path = getattr(master_prompt_module, "worker_product_criteria_path", None)
+    worker_product_criteria_path = getattr(
+        master_prompt_module, "worker_product_criteria_path", None
+    )
     worker_master_prompt_path = getattr(master_prompt_module, "worker_master_prompt_path", None)
 
     if (
@@ -234,6 +235,7 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         lambda *args, **kwargs: PipelineState(phase="development"),
         raising=False,
     )
+
     def expected_agy_agents_probe() -> str:
         return "Available agents:\n- reviewer"
 

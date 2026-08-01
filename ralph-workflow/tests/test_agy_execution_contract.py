@@ -29,7 +29,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 _check_process_result = check_process_result
 _CompletionCheckOptions = CompletionCheckOptions
 

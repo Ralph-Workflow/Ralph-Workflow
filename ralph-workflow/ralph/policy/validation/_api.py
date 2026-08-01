@@ -67,7 +67,6 @@ if TYPE_CHECKING:
         validate_for_same_workspace: Callable[[object], object]
 
 
-
 def validate_phase_exists_in_policy(
     phase: str,
     policy: PipelinePolicy,
@@ -351,7 +350,10 @@ def validate_chain_agents_on_path(
         support = supports.get(base_name)
         override_name = {"agy": "RALPH_AGY_BINARY", "cursor": "RALPH_CURSOR_BINARY"}.get(base_name)
         command = os.environ.get(override_name) if override_name is not None else None
-        return support is not None and shutil.which((command or support.cmd).split(maxsplit=1)[0]) is not None
+        return (
+            support is not None
+            and shutil.which((command or support.cmd).split(maxsplit=1)[0]) is not None
+        )
 
     used_chains = {drain.chain for drain in agents.agent_drains.values()}
     for chain_name in used_chains:

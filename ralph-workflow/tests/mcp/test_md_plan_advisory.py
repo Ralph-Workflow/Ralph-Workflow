@@ -40,9 +40,7 @@ from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 _BLOCKING_CONSUMER_RE = re.compile(
     r"blocking because [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$"
 )
-_ADVISORY_COST_RE = re.compile(
-    r"the run cost is [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$"
-)
+_ADVISORY_COST_RE = re.compile(r"the run cost is [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$")
 
 
 def _good_plan() -> str:
@@ -163,8 +161,7 @@ Expect: it works
     # Every warning uses the advisory cost \u2192 resolve convention.
     for d in warnings:
         assert _ADVISORY_COST_RE.search(d.message), (
-            f"advisory diagnostic does not follow the cost \u2192 resolve convention: "
-            f"{d.message!r}"
+            f"advisory diagnostic does not follow the cost \u2192 resolve convention: {d.message!r}"
         )
 
 
@@ -220,13 +217,12 @@ free text line that is not a [unit-id] item
         f"{[(d.rule_id, d.severity, d.message) for d in errors]}"
     )
     assert content != {}, (
-        "a plan that draws only advisory findings must still produce "
-        "canonical content"
+        "a plan that draws only advisory findings must still produce canonical content"
     )
 
     rule_ids = {d.rule_id for d in warnings}
     assert "PLAN022" in rule_ids  # malformed step ID (STEP-1)
-    assert "REF004" in rule_ids   # dependency cycle in Work Units
+    assert "REF004" in rule_ids  # dependency cycle in Work Units
     assert "PLAN024" in rule_ids  # malformed Work Units line
     assert "PLAN020" in rule_ids  # shell invocation guard on V-1
 
@@ -266,9 +262,9 @@ Depends on: S-99
         f"{[(d.rule_id, d.message) for d in errors]}"
     )
     assert content != {}, "warnings-only plan must still map to canonical content"
-    assert any(
-        d.rule_id in {"PLAN021", "REF003"} and d.severity == "warning" for d in warnings
-    ), f"expected a dangling-reference warning, got: {[(d.rule_id, d.severity, d.message) for d in warnings]}"
+    assert any(d.rule_id in {"PLAN021", "REF003"} and d.severity == "warning" for d in warnings), (
+        f"expected a dangling-reference warning, got: {[(d.rule_id, d.severity, d.message) for d in warnings]}"
+    )
     for d in warnings:
         assert _ADVISORY_COST_RE.search(d.message), (
             f"advisory diagnostic does not follow cost/resolve convention: "
@@ -509,9 +505,7 @@ This is prose, not an override item.
 """
 
     _content, diagnostics, _overridden = analyze_plan_document(document)
-    malformed = [
-        d for d in diagnostics if d.rule_id == "PLAN025" and d.severity == "warning"
-    ]
+    malformed = [d for d in diagnostics if d.rule_id == "PLAN025" and d.severity == "warning"]
     assert len(malformed) == 1
     assert "list items" in malformed[0].message
     assert _ADVISORY_COST_RE.search(malformed[0].message), (
@@ -601,7 +595,9 @@ Satisfies: AC-99
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
     assert content != {}, "warnings-only plan must still map to canonical content"
-    spec010_warnings = [d for d in diagnostics if d.rule_id == "SPEC010" and d.severity == "warning"]
+    spec010_warnings = [
+        d for d in diagnostics if d.rule_id == "SPEC010" and d.severity == "warning"
+    ]
     assert spec010_warnings, "expected SPEC010 warning for pydantic schema rejection"
     for d in spec010_warnings:
         assert _ADVISORY_COST_RE.search(d.message), (
@@ -636,8 +632,7 @@ Filse:
     assert plan009_warnings, "expected PLAN009 warning for unknown field label"
     for d in plan009_warnings:
         assert _ADVISORY_COST_RE.search(d.message), (
-            f"PLAN009 unknown label warning does not follow cost/fix convention: "
-            f"{d.message!r}"
+            f"PLAN009 unknown label warning does not follow cost/fix convention: {d.message!r}"
         )
 
 
@@ -679,8 +674,7 @@ Expect: pytest will pass
     )
     for d in prose_drop:
         assert _ADVISORY_COST_RE.search(d.message), (
-            f"PLAN020 prose-drop warning does not follow cost/fix convention: "
-            f"{d.message!r}"
+            f"PLAN020 prose-drop warning does not follow cost/fix convention: {d.message!r}"
         )
 
 
@@ -849,7 +843,5 @@ Evidence:
     assert plan006_warnings, "expected PLAN006 warning for unknown evidence kind"
     for d in plan006_warnings:
         assert _ADVISORY_COST_RE.search(d.message), (
-            "PLAN006 unknown evidence kind does not follow the cost/fix convention: "
-            f"{d.message!r}"
+            f"PLAN006 unknown evidence kind does not follow the cost/fix convention: {d.message!r}"
         )
-

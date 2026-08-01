@@ -151,7 +151,9 @@ def test_agy_parser_regression_stream_json_tool_step_index_correlates_result() -
 
     parsed = list(parser.parse(iter(lines)))
 
-    assert [(line.type, line.metadata.get("tool"), line.metadata.get("tool_use_id")) for line in parsed] == [
+    assert [
+        (line.type, line.metadata.get("tool"), line.metadata.get("tool_use_id")) for line in parsed
+    ] == [
         ("tool_use", "write_file", "3"),
         ("tool_result", "write_file", "3"),
     ]

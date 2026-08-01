@@ -268,9 +268,7 @@ def test_run_benchmark_derives_catalog_tokens_from_visible_tool_catalog() -> Non
         ("search_files", "Find files matching a glob pattern."),
         ("grep_files", "Find text matching a regex across the workspace."),
     )
-    expected_catalog_tokens = sum(
-        len(desc.split()) for _name, desc in visible_catalog
-    )
+    expected_catalog_tokens = sum(len(desc.split()) for _name, desc in visible_catalog)
     result = run_benchmark(
         fixture,
         baseline_executor=_baseline_executor,
@@ -454,8 +452,7 @@ def test_run_benchmark_default_catalog_matches_registered_specs() -> None:
     derived_catalog = derive_visible_catalog()
     derived_tokens = tool_catalog_tokens(derived_catalog)
     expected_min = sum(
-        len(str(definition.input_schema).split())
-        for _name, definition in derived_catalog
+        len(str(definition.input_schema).split()) for _name, definition in derived_catalog
     )
     # The full visible catalog must include input schemas, not only prose.
     assert sum(derived_tokens.values()) >= expected_min

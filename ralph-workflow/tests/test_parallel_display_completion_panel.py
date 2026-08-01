@@ -102,9 +102,7 @@ def test_emit_run_end_non_terminal_phase_no_panel(tmp_path: Path) -> None:
 # -------------------------------------------------------------------------
 
 
-def _make_height_aware_display(
-    tmp_path: Path, *, height: int
-) -> tuple[ParallelDisplay, Console]:
+def _make_height_aware_display(tmp_path: Path, *, height: int) -> tuple[ParallelDisplay, Console]:
     """Build a display whose Console carries the requested ``height``.
 
     The :class:`rich.console.Console` is created with
@@ -160,15 +158,11 @@ def test_emit_info_panel_degrades_to_unboxed_at_11_rows(tmp_path: Path) -> None:
     # heading has none of those around the title line.
     # Specifically, the title line ("Next steps") is NOT flanked
     # by box-drawing characters on the same line.
-    next_steps_lines = [
-        line for line in out.splitlines() if "Next steps" in line
-    ]
+    next_steps_lines = [line for line in out.splitlines() if "Next steps" in line]
     assert next_steps_lines, f"title line not found:\n{out!r}"
     title_line = next_steps_lines[0]
     for box_char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─"):
-        assert box_char not in title_line, (
-            f"boxed title line found at 11 rows: {title_line!r}"
-        )
+        assert box_char not in title_line, f"boxed title line found at 11 rows: {title_line!r}"
 
 
 def test_emit_info_panel_degrades_at_12_rows(tmp_path: Path) -> None:
@@ -200,10 +194,7 @@ def test_emit_info_panel_keeps_box_at_24_rows(tmp_path: Path) -> None:
     out = console.export_text()
     assert "Next steps" in out
     assert "Run ralph --init to bootstrap." in out
-    has_box = any(
-        char in out
-        for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│")
-    )
+    has_box = any(char in out for char in ("╭", "╮", "╰", "╯", "┌", "┐", "└", "┘", "─", "│"))
     assert has_box, f"boxed Panel border missing at 24 rows:\n{out!r}"
 
 
@@ -221,12 +212,11 @@ def test_emit_welcome_banner_degrades_to_heading_at_11_rows(tmp_path: Path) -> N
     # single heading line + welcome + tagline.
     # Check that no line carries the pipe-rail ASCII art pattern.
     ascii_art_lines = [
-        line for line in out.splitlines()
+        line
+        for line in out.splitlines()
         if line.lstrip().startswith("\u2502") and line.rstrip().endswith("\u2502")
     ]
-    assert not ascii_art_lines, (
-        f"boxed ASCII-art banner survived at 11 rows: {ascii_art_lines!r}"
-    )
+    assert not ascii_art_lines, f"boxed ASCII-art banner survived at 11 rows: {ascii_art_lines!r}"
 
 
 def test_emit_welcome_banner_degrades_at_12_rows(tmp_path: Path) -> None:
@@ -247,7 +237,8 @@ def test_emit_welcome_banner_degrades_at_12_rows(tmp_path: Path) -> None:
     # the canonical floor; the unboxed banner replaces it with a
     # single heading line.
     ascii_art_lines = [
-        line for line in out.splitlines()
+        line
+        for line in out.splitlines()
         if line.lstrip().startswith("\u2502") and line.rstrip().endswith("\u2502")
     ]
     assert not ascii_art_lines, (
@@ -336,26 +327,14 @@ def test_emit_completion_summary_panel_degrades_to_heading_at_12_rows(
         options=CompletionSummaryOptions(elapsed_seconds=42.0),
     )
     out = console.export_text()
-    assert "[run-completion]" in out, (
-        f"section rule missing at 12 rows:\n{out!r}"
-    )
-    assert "Pipeline Complete" in out, (
-        f"outcome title must survive at 12 rows:\n{out!r}"
-    )
-    assert "agent_calls=" in out, (
-        f"agent_calls count must survive at 12 rows:\n{out!r}"
-    )
+    assert "[run-completion]" in out, f"section rule missing at 12 rows:\n{out!r}"
+    assert "Pipeline Complete" in out, f"outcome title must survive at 12 rows:\n{out!r}"
+    assert "agent_calls=" in out, f"agent_calls count must survive at 12 rows:\n{out!r}"
     # The Plan / Decisions / Activity / Commit rules are dropped on
     # the constrained surface.
-    assert "Plan" not in out, (
-        f"Plan rule must be dropped at 12 rows:\n{out!r}"
-    )
-    assert "Decisions" not in out, (
-        f"Decisions rule must be dropped at 12 rows:\n{out!r}"
-    )
-    assert "Activity" not in out, (
-        f"Activity rule must be dropped at 12 rows:\n{out!r}"
-    )
+    assert "Plan" not in out, f"Plan rule must be dropped at 12 rows:\n{out!r}"
+    assert "Decisions" not in out, f"Decisions rule must be dropped at 12 rows:\n{out!r}"
+    assert "Activity" not in out, f"Activity rule must be dropped at 12 rows:\n{out!r}"
 
 
 def test_emit_completion_summary_panel_keeps_full_layout_at_24_rows(
@@ -380,6 +359,4 @@ def test_emit_completion_summary_panel_keeps_full_layout_at_24_rows(
     assert "[run-completion]" in out
     assert "Pipeline Complete" in out
     # The full layout has Decisions and Activity rules at 24 rows.
-    assert "Decisions" in out, (
-        f"Decisions rule must survive at 24 rows:\n{out!r}"
-    )
+    assert "Decisions" in out, f"Decisions rule must survive at 24 rows:\n{out!r}"

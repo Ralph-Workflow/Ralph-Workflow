@@ -266,9 +266,25 @@ def test_default_roots_cover_required_packages() -> None:
     assert any(str(r).endswith("ralph/prompts") for r in roots)
     assert any(str(r).endswith("ralph/diagnostics") for r in roots)
     required_expanded_roots = {
-        "api", "update_check", "contrib", "git", "cli", "telemetry", "policy",
-        "language_detector", "workspace", "phases", "guidelines", "checkpoint",
-        "config", "exit_pause", "files", "platform", "project_policy", "skills", "interrupt",
+        "api",
+        "update_check",
+        "contrib",
+        "git",
+        "cli",
+        "telemetry",
+        "policy",
+        "language_detector",
+        "workspace",
+        "phases",
+        "guidelines",
+        "checkpoint",
+        "config",
+        "exit_pause",
+        "files",
+        "platform",
+        "project_policy",
+        "skills",
+        "interrupt",
     }
     root_names = {root.name for root in roots}
     assert required_expanded_roots <= root_names
@@ -821,6 +837,7 @@ def _category(violation: ResourceLifecycleViolation) -> str:
 # Direct child-spawn contract
 # ---------------------------------------------------------------------------
 
+
 def test_direct_subprocess_spawn_is_flagged(tmp_path: Path) -> None:
     v = _audit(tmp_path, "import subprocess\nsubprocess.run(['x'])\n")
     assert any(_category(item) == "direct_child_spawn" for item in v)
@@ -835,7 +852,9 @@ def test_aliased_and_from_import_direct_subprocess_spawns_are_flagged(tmp_path: 
 
 def test_direct_subprocess_spawn_under_process_is_clean(tmp_path: Path) -> None:
     del tmp_path
-    process_manager = __file__.replace("tests/test_audit_resource_lifecycle.py", "ralph/process/manager/__init__.py")
+    process_manager = __file__.replace(
+        "tests/test_audit_resource_lifecycle.py", "ralph/process/manager/__init__.py"
+    )
     violations = audit_resource_lifecycle_file(Path(process_manager))
     assert not any(_category(item) == "direct_child_spawn" for item in violations)
 

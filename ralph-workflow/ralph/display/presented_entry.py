@@ -217,6 +217,7 @@ def _strip_markdown_emphasis(body: str) -> str:
     """Remove prose-only Markdown chrome from canonical event bodies."""
     if not body:
         return body
+
     def unwrapped(match: re.Match[str]) -> str:
         return match.group(2) or match.group(4)
 
@@ -269,7 +270,7 @@ def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
     # the parser identifier or a synthetic ``tool`` fallback.
     for marker in ("▸", ">"):
         if marker in body:
-            return f"{body[body.index(marker):]} {suffix}".rstrip()
+            return f"{body[body.index(marker) :]} {suffix}".rstrip()
     if not tool:
         return f"{body} {suffix}".rstrip()
     if body.startswith("(") or not body.casefold().startswith(tool.casefold()):

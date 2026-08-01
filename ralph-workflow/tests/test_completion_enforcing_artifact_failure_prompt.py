@@ -63,7 +63,9 @@ def _completion_failure_invoke(
         if write_artifact:
             artifact_path = workspace_root / ".agent" / "artifacts" / "development_result.md"
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
-            artifact_path.write_text("---\ntype: development_result\nstatus: completed\n---\n", encoding="utf-8")
+            artifact_path.write_text(
+                "---\ntype: development_result\nstatus: completed\n---\n", encoding="utf-8"
+            )
 
         def generate() -> Iterator[str]:
             yield "agent output"

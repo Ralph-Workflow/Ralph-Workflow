@@ -146,9 +146,7 @@ def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> 
         upstream = repo.active_branch.name
         repo.git.checkout("-b", "feature-noop")
     responses = {
-        ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")): _mk_result(
-            returncode=0
-        ),
+        ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")): _mk_result(returncode=0),
     }
     executor = FakeProcessExecutor(responses)
 
@@ -184,15 +182,15 @@ def test_rebase_rename_limit_warning_retries_once_with_raised_limit(
     executor = FakeProcessExecutor(
         {
             ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(1),
-            ("git", initial): _mk_result(
-                1, stderr="warning: inexact rename detection was skipped"
-            ),
+            ("git", initial): _mk_result(1, stderr="warning: inexact rename detection was skipped"),
             ("git", ("rebase", "--abort")): _mk_result(),
             ("git", retry): _mk_result(),
         }
     )
 
-    assert isinstance(rebase_onto(base_branch, repo_root=tmp_git_repo, executor=executor), RebaseSuccess)
+    assert isinstance(
+        rebase_onto(base_branch, repo_root=tmp_git_repo, executor=executor), RebaseSuccess
+    )
     assert executor.calls.count(("git", retry)) == 1
 
 
@@ -204,8 +202,14 @@ def test_rebase_rename_limit_retry_conflict_is_classified_without_loop(
         base_branch = repo.active_branch.name
         repo.git.checkout("-b", "feature-rename-limit-conflict")
     initial = (
-        "rebase", "--no-autostash", "--no-autosquash", "--no-update-refs", "--empty=drop", "--",
-        base_branch, "feature-rename-limit-conflict",
+        "rebase",
+        "--no-autostash",
+        "--no-autosquash",
+        "--no-update-refs",
+        "--empty=drop",
+        "--",
+        base_branch,
+        "feature-rename-limit-conflict",
     )
     retry = ("-c", "merge.renameLimit=0", *initial)
     executor = FakeProcessExecutor(

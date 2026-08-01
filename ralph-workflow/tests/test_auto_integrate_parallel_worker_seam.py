@@ -134,9 +134,7 @@ def _fake_registry_class() -> object:
 class _FakeWorkspace:
     """Workspace whose ``read`` returns a fixed prompt body."""
 
-    def __init__(
-        self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None
-    ) -> None:
+    def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None) -> None:
         del root, allowed_roots
 
     def read(self, path: str) -> str:
@@ -180,9 +178,7 @@ def _install_worker_stubs(
         ),
         raising=False,
     )
-    monkeypatch.setattr(
-        module, "AgentRegistry", _fake_registry_class(), raising=False
-    )
+    monkeypatch.setattr(module, "AgentRegistry", _fake_registry_class(), raising=False)
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
     monkeypatch.setattr(
         module,
@@ -211,9 +207,7 @@ def _record_seams(
     events: list[str] = []
     calls: list[_IntegrationCall] = []
 
-    def _fake_recover(
-        workspace_scope: object, *, config: object = None
-    ) -> RebaseState | None:
+    def _fake_recover(workspace_scope: object, *, config: object = None) -> RebaseState | None:
         del workspace_scope, config
         events.append("recover")
         return None
@@ -238,9 +232,7 @@ def _record_seams(
         )
         return None
 
-    monkeypatch.setattr(
-        module, "recover_incomplete_integration", _fake_recover, raising=False
-    )
+    monkeypatch.setattr(module, "recover_incomplete_integration", _fake_recover, raising=False)
     monkeypatch.setattr(
         module, "auto_integrate_on_phase_transition", _fake_integrate, raising=False
     )
@@ -258,9 +250,7 @@ def _worker_pipeline_deps(display_context: DisplayContext) -> PipelineDeps:
         del context, options, kwargs
         return ".agent/tmp/development_prompt.md"
 
-    return make_test_pipeline_deps(
-        display_context, phase_prompt_materializer=_materialize
-    )
+    return make_test_pipeline_deps(display_context, phase_prompt_materializer=_materialize)
 
 
 def _run_worker(
@@ -290,9 +280,7 @@ def test_worker_recovers_before_it_integrates_and_before_it_works(
     assert events.count("recover") == 1, (
         f"recovery must run exactly once per worker, got {events!r}"
     )
-    assert events[0] == "recover", (
-        f"recovery must precede any integration, got {events!r}"
-    )
+    assert events[0] == "recover", f"recovery must precede any integration, got {events!r}"
 
 
 def test_worker_runs_a_startup_and_a_boundary_integration(
@@ -305,8 +293,7 @@ def test_worker_runs_a_startup_and_a_boundary_integration(
 
     assert exit_code == 0
     assert events == ["recover", "integrate", "integrate"], (
-        "a worker must integrate once at startup and once after a successful"
-        f" phase, got {events!r}"
+        f"a worker must integrate once at startup and once after a successful phase, got {events!r}"
     )
     for call in calls:
         assert isinstance(call.workspace_scope, WorkspaceScope)
@@ -342,9 +329,7 @@ def test_a_failed_phase_does_not_run_the_boundary_integration(
     """Only a SUCCESSFUL phase publishes; a failed one has nothing to land."""
     module = _worker_module()
     manifest_path, _worker_ns = _write_manifest(tmp_path)
-    _install_worker_stubs(
-        module, monkeypatch, agent_event=PipelineEvent.AGENT_FAILURE
-    )
+    _install_worker_stubs(module, monkeypatch, agent_event=PipelineEvent.AGENT_FAILURE)
     events, _calls = _record_seams(module, monkeypatch)
     display_context = _display_context()
 
@@ -417,9 +402,7 @@ def test_a_workspace_that_is_not_a_checkout_costs_nothing(
     assert calls == [], "a non-checkout workspace must not reach the integration"
 
 
-def test_a_raising_seam_never_aborts_the_worker(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_raising_seam_never_aborts_the_worker(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     """Auto-integration must degrade, never propagate into the worker.
 
     A worker's job is the phase it was launched for. An integration that
@@ -429,15 +412,11 @@ def test_a_raising_seam_never_aborts_the_worker(
     """
     module = _worker_module()
 
-    def _explode(
-        workspace_scope: object, *, config: object = None
-    ) -> RebaseState | None:
+    def _explode(workspace_scope: object, *, config: object = None) -> RebaseState | None:
         del workspace_scope, config
         raise RuntimeError("simulated recovery failure")
 
-    monkeypatch.setattr(
-        module, "recover_incomplete_integration", _explode, raising=False
-    )
+    monkeypatch.setattr(module, "recover_incomplete_integration", _explode, raising=False)
 
     assert (
         module.run_worker_auto_integration(

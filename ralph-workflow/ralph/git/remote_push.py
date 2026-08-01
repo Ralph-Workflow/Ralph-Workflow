@@ -81,7 +81,15 @@ def _classify_failure(detail: str) -> PushStatus:
     text = detail.lower()
     if "timed out" in text or "timeout" in text:
         return PushStatus.TIMEOUT
-    if any(token in text for token in ("permission denied", "authentication", "publickey", "terminal prompts disabled")):
+    if any(
+        token in text
+        for token in (
+            "permission denied",
+            "authentication",
+            "publickey",
+            "terminal prompts disabled",
+        )
+    ):
         return PushStatus.AUTH_FAILED
     if "non-fast-forward" in text or "fetch first" in text:
         return PushStatus.NON_FAST_FORWARD
@@ -115,7 +123,9 @@ def push_branch_to_single_remote(
 ) -> PushResult:
     """Push exactly ``refs/heads/<branch>`` to one remote without raising."""
     if not isinstance(remote, str) or not remote.strip() or remote not in _list_remotes(repo_root):
-        return PushResult(PushStatus.MISSING_REMOTE, remote if isinstance(remote, str) else "", branch)
+        return PushResult(
+            PushStatus.MISSING_REMOTE, remote if isinstance(remote, str) else "", branch
+        )
     ok, detail = _push_to_remote(repo_root, remote, branch, timeout_seconds=timeout_seconds)
     if ok:
         status = PushStatus.CREATED if "[new branch]" in detail.lower() else PushStatus.PUSHED

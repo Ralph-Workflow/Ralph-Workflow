@@ -86,9 +86,7 @@ def _make_config(**overrides: object) -> WebVisitConfig:
 
 def test_format_metadata_drops_text_body(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
-    monkeypatch.setattr(
-        tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE
-    )
+    monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
 
     result = tool_webvisit.handle_visit_url(
         _AllowedSession(),
@@ -117,9 +115,7 @@ def test_format_metadata_includes_links_when_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
-    monkeypatch.setattr(
-        tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE
-    )
+    monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
 
     result = tool_webvisit.handle_visit_url(
         _AllowedSession(),
@@ -140,9 +136,7 @@ def test_format_metadata_includes_links_when_requested(
 def test_format_raw_default_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     """``format='raw'`` (default) preserves the legacy full text body."""
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
-    monkeypatch.setattr(
-        tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE
-    )
+    monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
 
     result = tool_webvisit.handle_visit_url(
         _AllowedSession(),

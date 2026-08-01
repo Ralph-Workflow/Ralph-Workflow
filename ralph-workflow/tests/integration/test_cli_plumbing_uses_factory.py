@@ -210,9 +210,7 @@ def test_subagent_prompt_file_requires_subagent_scenario(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
-    )
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     prompt_file = tmp_path / "subagent-prompt.txt"
     prompt_file.write_text("Inspect the parser.", encoding="utf-8")
 
@@ -227,9 +225,7 @@ def test_subagent_prompt_file_must_not_be_empty(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
-    )
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     prompt_file = tmp_path / "subagent-prompt.txt"
     prompt_file.write_text("  \n", encoding="utf-8")
 
@@ -245,9 +241,7 @@ def test_subagent_prompt_file_must_be_valid_utf8(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
-    )
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     prompt_file = tmp_path / "subagent-prompt.txt"
     prompt_file.write_bytes(b"\xff\xfe")
 
@@ -267,9 +261,7 @@ def test_subagent_prompt_file_must_be_inside_workspace(
     workspace.mkdir()
     prompt_file = tmp_path / "outside-prompt.txt"
     prompt_file.write_text("Inspect the parser.", encoding="utf-8")
-    monkeypatch.setattr(
-        smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(workspace)
-    )
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: WorkspaceScope(workspace))
 
     with pytest.raises(click.UsageError, match="must be inside the workspace"):
         smoke_module.smoke_harness_agent_command(

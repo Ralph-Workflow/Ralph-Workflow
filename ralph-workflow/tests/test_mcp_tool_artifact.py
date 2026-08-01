@@ -42,9 +42,9 @@ def test_submit_writes_canonical_markdown_and_receipt(tmp_path: Path) -> None:
     )
 
     assert result.is_error is False
-    assert (
-        tmp_path / ".agent" / "artifacts" / "commit_message.md"
-    ).read_text(encoding="utf-8") == _DOCUMENT
+    assert (tmp_path / ".agent" / "artifacts" / "commit_message.md").read_text(
+        encoding="utf-8"
+    ) == _DOCUMENT
     assert artifact_receipt_present(tmp_path, "run-md-submit", "commit_message")
 
 

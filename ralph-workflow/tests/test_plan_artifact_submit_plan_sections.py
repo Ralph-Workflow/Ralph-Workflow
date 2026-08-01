@@ -64,9 +64,7 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
         workspace,
         {"artifact_type": "plan", "content": tail},
     )
-    resumed = handle_get_md_draft(
-        _session(), workspace, {"artifact_type": "plan"}
-    )
+    resumed = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
 
     assert first.is_error is False
     # The head-only draft lacks step blocks, which is a PLAN022 warning
@@ -76,8 +74,7 @@ def test_plan_chunks_append_into_one_resumable_markdown_draft(tmp_path: Path) ->
     assert _payload(first)["valid"] is True
     first_diagnostics = _payload(first).get("diagnostics", [])
     assert any(
-        diagnostic.get("rule_id") == "PLAN022"
-        and diagnostic.get("severity") == "warning"
+        diagnostic.get("rule_id") == "PLAN022" and diagnostic.get("severity") == "warning"
         for diagnostic in first_diagnostics
     )
     assert second.is_error is False
@@ -124,7 +121,10 @@ def test_plan_regression_seeded_draft_rejects_default_append(tmp_path: Path) -> 
         handle_stage_md_artifact(
             session, workspace, {"artifact_type": "plan", "content": "new plan"}
         )
-    assert _payload(handle_get_md_draft(session, workspace, {"artifact_type": "plan"}))["content"] == plan_a
+    assert (
+        _payload(handle_get_md_draft(session, workspace, {"artifact_type": "plan"}))["content"]
+        == plan_a
+    )
 
 
 def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -> None:
@@ -143,26 +143,19 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
         {"artifact_type": "plan", "content": invalid},
     )
 
-    rejected = handle_finalize_md_artifact(
-        _session(), workspace, {"artifact_type": "plan"}
-    )
-    kept = handle_get_md_draft(
-        _session(), workspace, {"artifact_type": "plan"}
-    )
+    rejected = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
+    kept = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
     handle_stage_md_artifact(
         _session(),
         workspace,
         {"artifact_type": "plan", "content": _plan_document(), "mode": "replace_all"},
     )
-    finalized = handle_finalize_md_artifact(
-        _session(), workspace, {"artifact_type": "plan"}
-    )
+    finalized = handle_finalize_md_artifact(_session(), workspace, {"artifact_type": "plan"})
 
     assert rejected.is_error is False
     rejected_payload = _payload(rejected)
     assert any(
-        diagnostic.get("rule_id") == "PLAN021"
-        and diagnostic.get("severity") == "warning"
+        diagnostic.get("rule_id") == "PLAN021" and diagnostic.get("severity") == "warning"
         for diagnostic in rejected_payload.get("diagnostics", [])
     )
     assert _payload(kept)["content"] == invalid
@@ -172,8 +165,6 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
     ) == _plan_document()
     # The finalized document is retained as the draft so it stays editable for
     # an in-phase revision; only fresh phase entry clears it.
-    after = handle_get_md_draft(
-        _session(), workspace, {"artifact_type": "plan"}
-    )
+    after = handle_get_md_draft(_session(), workspace, {"artifact_type": "plan"})
     assert _payload(after)["exists"] is True
     assert _payload(after)["content"] == _plan_document()

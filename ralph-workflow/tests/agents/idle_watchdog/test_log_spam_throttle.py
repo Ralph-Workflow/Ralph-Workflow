@@ -308,11 +308,7 @@ def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
             corroboration=CorroborationSnapshot(),
         )
 
-    matching = [
-        r
-        for r in records
-        if ("deferred fire" in r and "CHILDREN_PERSIST_TOO_LONG" in r)
-    ]
+    matching = [r for r in records if ("deferred fire" in r and "CHILDREN_PERSIST_TOO_LONG" in r)]
     assert len(matching) <= 2, (
         f"coarse single-key throttle MUST cap emissions across"
         f" kind-cycles; got {len(matching)} records for 1000 calls"

@@ -1064,7 +1064,11 @@ def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str)
         # The transport name didn't match any known provider; fall
         # back to the agent's own normalized name so identity_color
         # still picks the deterministic slot for it.
-        provider = ActivityProvider(agent_name) if agent_name in ActivityProvider.__members__ else ActivityProvider.GENERIC
+        provider = (
+            ActivityProvider(agent_name)
+            if agent_name in ActivityProvider.__members__
+            else ActivityProvider.GENERIC
+        )
     event = normalize_event_from_agent_output_line(
         output,
         provider=provider,

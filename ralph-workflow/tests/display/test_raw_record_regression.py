@@ -841,7 +841,6 @@ def test_production_path_pi_fixture_no_role_progress_duplicate(
     assert "role=progress" not in rendered, f"role=progress echo leaked into record:\n{rendered}"
 
 
-
 def test_codex_wire_regression_completed_calls_become_correlated_results(tmp_path: Path) -> None:
     """DA-001/DA-002: Codex start/completion pairs render one call and one outcome."""
     from ralph.agents.parsers.codex import CodexParser
@@ -882,7 +881,9 @@ def test_codex_wire_regression_completed_calls_become_correlated_results(tmp_pat
     results = [line for line in lines if "role=tool_result" in line]
     assert any("ok" in line and "resources" in line for line in results)
     assert any("failed" in line and "severity=error" in line for line in results)
-    assert "RUN" not in "\n".join(line for line in live.getvalue().splitlines() if "[result]" in line)
+    assert "RUN" not in "\n".join(
+        line for line in live.getvalue().splitlines() if "[result]" in line
+    )
 
 
 def test_record_regression_json_read_result_uses_numbered_file_preview(tmp_path: Path) -> None:
@@ -904,9 +905,11 @@ def test_record_regression_json_read_result_uses_numbered_file_preview(tmp_path:
     pd.stop()
     record = (tmp_path / ".agent" / "raw" / "claude.rendered.log").read_text(encoding="utf-8")
     result = next(line for line in record.splitlines() if "role=tool_result" in line)
-    assert "{\"content\"" not in result
+    assert '{"content"' not in result
     assert "\\n" not in result
-    assert all(f"{number:>4} {line}" in record for number, line in enumerate("a\nb\nc".splitlines(), 1))
+    assert all(
+        f"{number:>4} {line}" in record for number, line in enumerate("a\nb\nc".splitlines(), 1)
+    )
 
 
 def test_targetless_tool_calls_receive_distinct_ordinals(tmp_path: Path) -> None:
@@ -926,7 +929,9 @@ def test_targetless_tool_calls_receive_distinct_ordinals(tmp_path: Path) -> None
     assert all("call " in line for line in record_lines)
 
 
-def test_record_regression_tool_call_uses_one_friendly_name_without_fallback(tmp_path: Path) -> None:
+def test_record_regression_tool_call_uses_one_friendly_name_without_fallback(
+    tmp_path: Path,
+) -> None:
     """DA-002: preview-backed calls name their tool once and never expose ``tool`` fallback."""
     pd, _live, _advance = _make_display_with_injected_clock(tmp_path)
     pd.start()

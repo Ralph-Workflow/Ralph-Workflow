@@ -21,7 +21,6 @@ from tests._support.typed_accessors import (
 )
 
 if TYPE_CHECKING:
-
     import pytest
 
 

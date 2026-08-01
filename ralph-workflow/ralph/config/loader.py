@@ -335,11 +335,25 @@ def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object])
 def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate simple configuration fields."""
     simple_fields = (
-        "developer_iters", "developer_context", "prompt_path", "templates_dir",
-        "git_user_name", "git_user_email", "provider_fallback", "max_same_agent_retries",
-        "max_commit_residual_retries", "max_retries", "retry_delay_ms", "backoff_multiplier",
-        "max_backoff_ms", "max_cycles", "execution_history_limit", "auto_integrate_enabled",
-        "auto_integrate_target", "auto_integrate_remote_enabled", "auto_integrate_remote",
+        "developer_iters",
+        "developer_context",
+        "prompt_path",
+        "templates_dir",
+        "git_user_name",
+        "git_user_email",
+        "provider_fallback",
+        "max_same_agent_retries",
+        "max_commit_residual_retries",
+        "max_retries",
+        "retry_delay_ms",
+        "backoff_multiplier",
+        "max_backoff_ms",
+        "max_cycles",
+        "execution_history_limit",
+        "auto_integrate_enabled",
+        "auto_integrate_target",
+        "auto_integrate_remote_enabled",
+        "auto_integrate_remote",
     )
     for field in simple_fields:
         if field in data:
@@ -368,6 +382,7 @@ def _warn_and_remove_retired_auto_integrate_keys(data: dict[str, object]) -> Non
             logger.warning(
                 "`{}` is no longer supported and is ignored; use `{}` instead.", key, replacement
             )
+
 
 def _warn_reserved_provider_fallback(data: dict[str, object]) -> None:
     """Explain the legacy knob when a user actually sets it."""

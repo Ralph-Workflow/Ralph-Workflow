@@ -125,8 +125,7 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
         # ``os.getsid(pid)`` race (the child may already be reaped by the
         # time the assertion runs) by using the child's own observation.
         assert b"child_sid=" in raw, (
-            f"child must report its own session id from inside the pty; "
-            f"got raw={raw!r}"
+            f"child must report its own session id from inside the pty; got raw={raw!r}"
         )
         text = raw.decode("utf-8", errors="replace")
         marker = "child_sid="

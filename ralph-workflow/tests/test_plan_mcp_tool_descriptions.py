@@ -15,10 +15,7 @@ if TYPE_CHECKING:
 
 
 def _specs() -> dict[str, ToolDefinition]:
-    return {
-        spec.metadata.definition.name: spec.metadata.definition
-        for spec in artifact_specs()
-    }
+    return {spec.metadata.definition.name: spec.metadata.definition for spec in artifact_specs()}
 
 
 def test_plan_markdown_tools_expose_string_document_schemas() -> None:
@@ -60,4 +57,6 @@ def test_plan_edit_tool_is_not_exposed() -> None:
     """Plan edits now go through the standard stage/replace_all/finalize flow."""
     specs = _specs()
     assert "ralph_edit_md_plan_step" not in specs
-    assert "replace_all" in specs["ralph_stage_md_artifact"].input_schema["properties"]["mode"]["enum"]
+    assert (
+        "replace_all" in specs["ralph_stage_md_artifact"].input_schema["properties"]["mode"]["enum"]
+    )

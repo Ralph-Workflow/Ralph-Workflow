@@ -646,7 +646,9 @@ def _resolve_dynamic_simple_prefixed_agent(
                     model_flag += f" --model {shlex.quote(model)}"
                 return base_config.model_copy(update={"model_flag": model_flag, "can_commit": True})
     elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS:
-        alias = _parse_agy_alias(name.removeprefix("agy/"), models=frozenset(agy_published_models()))
+        alias = _parse_agy_alias(
+            name.removeprefix("agy/"), models=frozenset(agy_published_models())
+        )
         base_config = base_lookup("agy")
         if alias is not None and base_config is not None:
             model_id, effort = alias

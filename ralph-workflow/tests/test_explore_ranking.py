@@ -152,9 +152,7 @@ def test_score_search_file_to_dict_includes_reasons() -> None:
 
 
 def test_score_grep_match_returns_missing_indexed_data_for_symbol_components() -> None:
-    item = score_grep_match(
-        path="a.py", line=1, evidence_id="ev-1"
-    )
+    item = score_grep_match(path="a.py", line=1, evidence_id="ev-1")
     joined = " ".join(item.reasons)
     assert "bare_match" in joined
     assert INDEXED_COMPONENT_NOT_AVAILABLE in joined
@@ -162,9 +160,7 @@ def test_score_grep_match_returns_missing_indexed_data_for_symbol_components() -
 
 def test_score_grep_match_git_changed_adds_bonus() -> None:
     base = score_grep_match(path="a.py", line=1, evidence_id="ev-1")
-    changed = score_grep_match(
-        path="a.py", line=1, evidence_id="ev-1", is_git_changed=True
-    )
+    changed = score_grep_match(path="a.py", line=1, evidence_id="ev-1", is_git_changed=True)
     assert changed.score > base.score
 
 

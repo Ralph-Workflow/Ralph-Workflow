@@ -105,23 +105,17 @@ class JavaGuidelines:
             return
 
         self.quality_checks += (
-            (
-                "Use constructor injection.",
-                "Follow Spring Boot conventions.",
-                "Use proper transaction management.",
-            )
+            "Use constructor injection.",
+            "Follow Spring Boot conventions.",
+            "Use proper transaction management.",
         )
         self.security_checks += (
-            (
-                "Configure Spring Security properly.",
-                "Use @Valid for input validation.",
-            )
+            "Configure Spring Security properly.",
+            "Use @Valid for input validation.",
         )
         self.testing_checks += (
-            (
-                "Prefer focused slice tests before broad @SpringBootTest coverage.",
-                "Verify controller validation, serialization, and security behavior.",
-            )
+            "Prefer focused slice tests before broad @SpringBootTest coverage.",
+            "Verify controller validation, serialization, and security behavior.",
         )
         self.api_design_checks += (
             "Keep Spring annotations focused and avoid leaking framework concerns across layers.",

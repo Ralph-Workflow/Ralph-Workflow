@@ -72,9 +72,7 @@ def _path_ends_with(call: _RecordedSinkAddition, suffix: str) -> bool:
     return target_str.endswith(suffix)
 
 
-def _find_call_for(
-    calls: list[_RecordedSinkAddition], suffix: str
-) -> _RecordedSinkAddition | None:
+def _find_call_for(calls: list[_RecordedSinkAddition], suffix: str) -> _RecordedSinkAddition | None:
     """Return the first recorded call whose target ends with ``suffix``."""
     for call in calls:
         if _path_ends_with(call, suffix):
@@ -149,23 +147,19 @@ def test_engine_file_sinks_are_block_buffered(tmp_path: Path) -> None:
 
     # ralph.jsonl kwargs preserved byte-for-byte (besides the added buffering).
     assert structured_call.kwargs.get("serialize") is True, (
-        f"ralph.jsonl serialize kwarg changed:"
-        f" {structured_call.kwargs.get('serialize')!r}"
+        f"ralph.jsonl serialize kwarg changed: {structured_call.kwargs.get('serialize')!r}"
     )
     assert structured_call.kwargs.get("level") == "INFO", (
         f"ralph.jsonl level kwarg changed: {structured_call.kwargs.get('level')!r}"
     )
     assert structured_call.kwargs.get("backtrace") is True, (
-        f"ralph.jsonl backtrace kwarg changed:"
-        f" {structured_call.kwargs.get('backtrace')!r}"
+        f"ralph.jsonl backtrace kwarg changed: {structured_call.kwargs.get('backtrace')!r}"
     )
     assert structured_call.kwargs.get("diagnose") is False, (
-        f"ralph.jsonl diagnose kwarg changed:"
-        f" {structured_call.kwargs.get('diagnose')!r}"
+        f"ralph.jsonl diagnose kwarg changed: {structured_call.kwargs.get('diagnose')!r}"
     )
     assert structured_call.kwargs.get("rotation") == "10 MB", (
-        f"ralph.jsonl rotation kwarg changed:"
-        f" {structured_call.kwargs.get('rotation')!r}"
+        f"ralph.jsonl rotation kwarg changed: {structured_call.kwargs.get('rotation')!r}"
     )
 
     # No real loguru file handler was created for either path -- the
@@ -215,9 +209,7 @@ def test_ralph_log_text_sink_is_buffered_when_structured_disabled(tmp_path: Path
     )
 
     text_call: _RecordedSinkAddition | None = _find_call_for(adder.calls, "ralph.log")
-    structured_call: _RecordedSinkAddition | None = _find_call_for(
-        adder.calls, "ralph.jsonl"
-    )
+    structured_call: _RecordedSinkAddition | None = _find_call_for(adder.calls, "ralph.jsonl")
 
     assert text_call is not None, (
         f"expected ralph.log sink addition even when structured=False;"

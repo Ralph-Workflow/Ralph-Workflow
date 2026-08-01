@@ -89,7 +89,7 @@ exit 2
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
     """Write the markdown commit_message artifact the way MCP submission does."""
     if message.upper().startswith("SKIP:"):
-        reason = message[len("SKIP:"):].strip()
+        reason = message[len("SKIP:") :].strip()
         document = f"---\ntype: skip\nreason: {reason}\n---\n"
     else:
         document = f"---\ntype: commit\nsubject: {message}\n---\n"

@@ -58,9 +58,7 @@ def _module_path(path: Path) -> str:
 
 
 def _parsed_modules() -> dict[str, ast.Module]:
-    script_paths = {
-        module.replace(".", "/") + ".py" for module in _script_module_names()
-    }
+    script_paths = {module.replace(".", "/") + ".py" for module in _script_module_names()}
     modules: dict[str, ast.Module] = {}
     main_guard_markers = (
         b'if __name__ == "__main__":',
@@ -97,7 +95,10 @@ def _imports_spawn_seam(tree: ast.Module) -> bool:
     return any(
         isinstance(node, ast.ImportFrom)
         and node.module is not None
-        and (node.module == "ralph.executor.process" or node.module.startswith("ralph.process.manager"))
+        and (
+            node.module == "ralph.executor.process"
+            or node.module.startswith("ralph.process.manager")
+        )
         for node in ast.walk(tree)
     )
 

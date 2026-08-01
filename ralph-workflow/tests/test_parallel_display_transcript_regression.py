@@ -96,9 +96,7 @@ def test_bare_lifecycle_tokens_produce_no_content_activity_lines(tmp_path: Path)
 
     _assert_no_internal_vocabulary(out)
     for token in ("message_delta", "status=requesting"):
-        assert token not in out, (
-            f"lifecycle token {token!r} leaked into output:\n{out}"
-        )
+        assert token not in out, f"lifecycle token {token!r} leaked into output:\n{out}"
 
 
 def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None:
@@ -130,9 +128,7 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
 
     # Exactly one [call] entry — no duplicate activity.
     tool_lines = [line for line in out.splitlines() if "[call][main]" in line]
-    assert len(tool_lines) == 1, (
-        f"Expected exactly 1 [call] entry, got {len(tool_lines)}:\n{out}"
-    )
+    assert len(tool_lines) == 1, f"Expected exactly 1 [call] entry, got {len(tool_lines)}:\n{out}"
 
 
 def test_lifecycle_and_tool_use_together_produce_clean_output(tmp_path: Path) -> None:
@@ -166,12 +162,8 @@ def test_lifecycle_and_tool_use_together_produce_clean_output(tmp_path: Path) ->
         f"tool name not found in:\n{out}"
     )
     _assert_no_internal_vocabulary(out)
-    assert "message_delta" not in out, (
-        f"lifecycle token 'message_delta' leaked into:\n{out}"
-    )
-    assert "status=requesting" not in out, (
-        f"lifecycle token leaked into:\n{out}"
-    )
+    assert "message_delta" not in out, f"lifecycle token 'message_delta' leaked into:\n{out}"
+    assert "status=requesting" not in out, f"lifecycle token leaked into:\n{out}"
 
 
 def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
@@ -222,9 +214,7 @@ def test_thinking_block_emits_exactly_one_close_entry(tmp_path: Path) -> None:
     )
 
     # Exactly one thinking close entry — no per-fragment or preview lines.
-    thinking_lines = [
-        line for line in out.splitlines() if "[reasoning][main]" in line
-    ]
+    thinking_lines = [line for line in out.splitlines() if "[reasoning][main]" in line]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking close line, got {len(thinking_lines)}:\n{out}"
     )
@@ -257,9 +247,7 @@ def test_whitespace_only_thinking_delta_produces_no_thinking_output(tmp_path: Pa
     pd.stop()
     out = buf.getvalue()
 
-    assert "[think" not in out, (
-        f"[think tag found for whitespace content in:\n{out}"
-    )
+    assert "[think" not in out, f"[think tag found for whitespace content in:\n{out}"
 
 
 def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -> None:
@@ -284,14 +272,10 @@ def test_non_empty_thinking_close_entry_carries_joined_passage(tmp_path: Path) -
     pd.stop()
     out = buf.getvalue()
 
-    assert "deep reasoning here" in out, (
-        f"thinking content not found in:\n{out}"
-    )
+    assert "deep reasoning here" in out, f"thinking content not found in:\n{out}"
 
     # Exactly one thinking close entry.
-    thinking_lines = [
-        line for line in out.splitlines() if "[reasoning][main]" in line
-    ]
+    thinking_lines = [line for line in out.splitlines() if "[reasoning][main]" in line]
     assert len(thinking_lines) == 1, (
         f"Expected exactly 1 thinking close line, got {len(thinking_lines)}:\n{out}"
     )

@@ -42,9 +42,7 @@ def test_emit_run_start_prints_milestone_header() -> None:
     lines = [ln for ln in out.splitlines() if ln.strip()]
     assert lines, "expected at least one non-empty line"
     milestone_line = next((ln for ln in lines if "Ralph Workflow run start" in ln), None)
-    assert milestone_line is not None, (
-        f"expected a run-start header line, got: {lines!r}"
-    )
+    assert milestone_line is not None, f"expected a run-start header line, got: {lines!r}"
     assert "[run-start]" in milestone_line
     assert "Ralph Workflow run start" in milestone_line
     for forbidden in ("MILESTONE META", "INFO META"):
@@ -170,13 +168,9 @@ def test_emit_run_start_plan_verbosity_each_on_own_line() -> None:
     out = buf.getvalue()
     run_start_lines = _filter_run_start_content(out.splitlines())
     plan_line = next((ln for ln in run_start_lines if "plan=" in ln), None)
-    verbosity_line = next(
-        (ln for ln in run_start_lines if "verbosity=" in ln), None
-    )
+    verbosity_line = next((ln for ln in run_start_lines if "verbosity=" in ln), None)
     assert plan_line is not None, "expected a line with plan= in default mode"
-    assert verbosity_line is not None, (
-        "expected a line with verbosity= in default mode"
-    )
+    assert verbosity_line is not None, "expected a line with verbosity= in default mode"
     assert "verbosity=" not in plan_line, (
         "verbosity= must be on its own line, not grouped with plan="
     )
@@ -197,13 +191,9 @@ def test_emit_run_start_prompt_workspace_each_on_own_line() -> None:
     out = buf.getvalue()
     run_start_lines = _filter_run_start_content(out.splitlines())
     prompt_line = next((ln for ln in run_start_lines if "prompt=" in ln), None)
-    workspace_line = next(
-        (ln for ln in run_start_lines if "workspace=" in ln), None
-    )
+    workspace_line = next((ln for ln in run_start_lines if "workspace=" in ln), None)
     assert prompt_line is not None, "expected a line with prompt= in default mode"
-    assert workspace_line is not None, (
-        "expected a line with workspace= in default mode"
-    )
+    assert workspace_line is not None, "expected a line with workspace= in default mode"
     assert "workspace=" not in prompt_line, (
         "workspace= must be on its own line, not grouped with prompt="
     )
@@ -212,9 +202,7 @@ def test_emit_run_start_prompt_workspace_each_on_own_line() -> None:
     )
 
 
-def _make_height_constrained_display(
-    *, height: int
-) -> tuple[ParallelDisplay, StringIO]:
+def _make_height_constrained_display(*, height: int) -> tuple[ParallelDisplay, StringIO]:
     """Build a ParallelDisplay whose Console reports the requested ``height``.
 
     The Console is constructed with ``height=...`` so
@@ -263,9 +251,7 @@ def test_emit_run_start_suppresses_section_rule_at_12_rows() -> None:
     # The information is preserved: the milestone header line
     # still carries the run-start banner title; the condensed
     # orientation body still surfaces every key=value field.
-    assert "Ralph Workflow run start" in out, (
-        f"banner title missing at 12 rows:\n{out!r}"
-    )
+    assert "Ralph Workflow run start" in out, f"banner title missing at 12 rows:\n{out!r}"
     assert "prompt=PROMPT.md" in out
     assert "workspace=/workspace" in out
     assert "plan=ready" in out
