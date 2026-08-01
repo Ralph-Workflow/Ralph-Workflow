@@ -284,7 +284,7 @@ class GeminiParser(NdjsonParserBase):
         """
         if event_type in self._STOP_EVENT_TYPES:
             return self._flush_stop_event(obj, event_type)
-        return iter(())
+        return super()._handle_lifecycle_event(obj, event_type)
 
     def _flush_stop_event(
         self,

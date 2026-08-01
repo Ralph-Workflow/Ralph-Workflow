@@ -14,6 +14,35 @@ Overview
 
 Every renderer receives a ``DisplayContext`` instead of constructing its own ``Console`` or reading environment variables directly. This keeps rendering testable, predictable, and easier to audit.
 
+Rendering guarantees
+--------------------
+
+The executable catalog in ``ralph.display.scene_catalog`` declares every
+printable surface and the six generated reference scenes: first screen, clean
+run, failure, burst, idle stretch, and closing screen. The supported matrix is
+an implementation input rather than a post-hoc description:
+
+- backgrounds: detected dark, detected light, operator-declared, and unknown;
+- colour: truecolour, reduced colour, and no colour;
+- glyphs: Unicode and ASCII-only;
+- destination: real TTY and redirected or CI capture;
+- width: fully laid out from 80 columns, with marked graceful degradation to
+  the 40-column and 12-row floor.
+
+Every fixed foreground clears WCAG 4.5:1 against its actual surface. Semantic
+states retain a glyph or label when colour is unavailable. ``NO_COLOR`` wins
+over ``FORCE_COLOR``; forced colour may remain in render-capable redirected
+captures, but motion is restricted to a real TTY. Redirected output is durable,
+has no repaint debris, and uses the rendered record plus the unabridged raw
+transcript as recovery destinations when content is condensed.
+
+Syntax and diff previews use complete background-aware token palettes for
+comments, keywords and types, names and functions, strings, numbers, operators,
+punctuation, and diff polarity. Known dark and light terminals select the
+matching contrast-tested palette; unknown backgrounds use the dual-safe
+fallback. Preview fills are opt-in and, when used, cover complete source rows
+only—never a partial or overextended band.
+
 The DI invariant
 ----------------
 

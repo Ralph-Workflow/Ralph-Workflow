@@ -3289,6 +3289,13 @@ ralph.display.preview_payload
    :members:
    :show-inheritance:
 
+ralph.display.scene_catalog
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.scene_catalog
+   :members:
+   :show-inheritance:
+
 ralph.display.language_inference
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
