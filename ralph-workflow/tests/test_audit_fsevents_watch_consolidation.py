@@ -79,6 +79,22 @@ def test_audit_passes_real_production_tree() -> None:
     )
 
 
+def test_audit_fails_closed_for_invalid_workspace_source_without_schedule_marker(
+    tmp_path: Path,
+) -> None:
+    """Malformed monitor source reports invalid syntax rather than a missing watch."""
+    package_root: Path = _write_fake_package(
+        tmp_path,
+        workspace_body="class WorkspaceMonitor:\n    def start(self) -> None:\n        (\n",
+    )
+
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
+    )
+
+    assert [violation.kind for violation in violations] == ["invalid_workspace_module"]
+
+
 def test_audit_flags_second_schedule_call_in_start(tmp_path: Path) -> None:
     """A second ``observer.schedule(...)`` call inside ``start()`` triggers ``multiple_watch_schedule``.
 

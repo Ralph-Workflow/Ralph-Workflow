@@ -51,6 +51,13 @@ def test_test_target_uses_maintained_suite_runner() -> None:
     assert test_body == ["$(RUN_PYTHON) -m ralph.test_suites"]
 
 
+def test_run_python_uses_uv_managed_interpreter() -> None:
+    """Regression: test targets must not resolve bare Python outside .venv."""
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
+
+    assert "RUN_PYTHON = uv run python" in makefile_text
+
+
 def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:
     docs_body = _target_body("docs")
 

@@ -53,7 +53,9 @@ PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
 # `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
 # this target. Raising it does NOT raise the verify budget.
 LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
-RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
+# Always select the project-managed interpreter. Setting VIRTUAL_ENV alone does
+# not alter PATH, so a bare `python` can bypass .venv and miss dependencies.
+RUN_PYTHON = uv run python
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""

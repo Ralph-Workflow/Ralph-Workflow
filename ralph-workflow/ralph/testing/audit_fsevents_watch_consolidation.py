@@ -462,6 +462,10 @@ def audit_fsevents_watch_consolidation(
             )
         ]
 
+    # Parse before looking for a schedule call. Otherwise malformed source that
+    # happens not to contain the textual marker would be misclassified as a
+    # missing watch and evade the audit's fail-closed invalid-source diagnosis.
+
     return _check_module(module_path, rel_path, source) + _unowned_schedule_violations(package_root)
 
 
