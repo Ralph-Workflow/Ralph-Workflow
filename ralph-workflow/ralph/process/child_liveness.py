@@ -282,18 +282,19 @@ class ChildLivenessRegistry:
         )
 
     def has_active_phase(self, scope_prefix: str, phase: str) -> bool:
-        """Return whether a scoped non-terminal child reports ``phase``.
+        """Return whether a scoped non-terminal child reports a fresh ``phase``.
 
-        Native OpenCode task calls report a durable ``running`` state but no
-        PID or separate heartbeat frames. Their terminal event is the only
-        authoritative acknowledgement that the delegated work stopped, so the
-        execution strategy needs to distinguish that explicit lifecycle state
-        from stale generic child evidence.
+        A native OpenCode task's ``running`` state defers the idle watchdog only
+        while its progress heartbeat is fresh; stale lifecycle records must not
+        mask a wedged child behind raw OS descendant evidence.
         """
+        now = self._now()
         return any(
             rec.scope_prefix.startswith(scope_prefix)
             and rec.terminal_state is None
             and rec.last_known_phase == phase
+            and rec.last_heartbeat_at is not None
+            and (now - rec.last_heartbeat_at) <= self._heartbeat_ttl
             for rec in self._records.values()
         )
 

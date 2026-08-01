@@ -138,8 +138,8 @@ def test_native_running_task_regression_defers_idle_watchdog_until_child_ceiling
     A live smoke run showed the task's explicit ``running`` dispatch followed by
     over 30 seconds without parent stdout. Treating that task as stale at the
     ordinary output deadline killed a healthy run and forced a session retry.
-    The native running state is authoritative child-lifecycle evidence; it must
-    defer through the child-wait path, whose absolute ceiling remains enforced.
+    A fresh native running state is authoritative child-lifecycle evidence; it
+    must defer through the child-wait path, whose absolute ceiling remains enforced.
     """
     clock = FakeClock()
     registry = ChildLivenessRegistry(
@@ -152,7 +152,7 @@ def test_native_running_task_regression_defers_idle_watchdog_until_child_ceiling
     strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
 
     strategy.observe_line(_tool_event("task", status="running", call_id="call_live_task"))
-    clock.advance(31.0)
+    clock.advance(29.0)
 
     assert strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe(active=False)) == (
         AgentExecutionState.WAITING_ON_CHILD
