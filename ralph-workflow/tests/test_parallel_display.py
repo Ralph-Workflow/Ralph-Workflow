@@ -205,6 +205,19 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
     assert "A" * 100 in written
 
 
+def test_oversized_text_preserves_full_payload_in_overflow_log(tmp_path: Path) -> None:
+    """S-5: hard-limit condensation remains visual; raw recovery retains every cell."""
+    console, _buf = _make_wide_console()
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
+    original_payload = "界" * 3_000
+
+    pd._emit_activity_event("unit-hard-limit", ActivityEventKind.TEXT, original_payload, None, {})
+    pd.drop_unit("unit-hard-limit")
+
+    written = (tmp_path / ".agent" / "raw" / "unit-hard-limit.log").read_text(encoding="utf-8")
+    assert original_payload in written
+
+
 def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: Path) -> None:
     """Regression: TOOL_RESULT above soft_limit must capture the FULL payload in the overflow log.
 

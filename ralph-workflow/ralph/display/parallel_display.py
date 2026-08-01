@@ -2590,16 +2590,6 @@ class ParallelDisplay:
                 escape_body=False,
             ).plain
         )
-        if len(text) > self._ctx.condenser_hard_limit + 256:
-            # Defensive cap: even the plain-text path must hand the
-            # condenser a bounded payload, otherwise a pathologically
-            # long line would blow the soft/hard gates. The
-            # ``+ 256`` slack matches the legacy ``max_chars`` knob so
-            # the visible truncation behavior is preserved.
-            from ralph.display.agent_event_renderer import _truncate_to_cells
-
-            text = _truncate_to_cells(text, self._ctx.condenser_hard_limit + 256)
-
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
