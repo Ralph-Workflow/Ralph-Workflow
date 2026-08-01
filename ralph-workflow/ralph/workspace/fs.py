@@ -355,9 +355,10 @@ class FsWorkspace:
     ) -> tuple[str, dict[str, object]]:
         """Read a byte window from a file, decoded as UTF-8."""
         abs_path = self._abs(path)
-        if not abs_path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
-        total_bytes = abs_path.stat().st_size
+        try:
+            total_bytes = abs_path.stat().st_size
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {path}") from None
         with abs_path.open("rb") as fh:
             if offset:
                 fh.seek(offset)

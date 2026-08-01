@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from ralph.workspace.fs import FsWorkspace
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class TestFsWorkspaceReadBytes:
@@ -60,6 +57,24 @@ class TestFsWorkspaceReadBytes:
 
         with pytest.raises(FileNotFoundError):
             ws.read_bytes("nonexistent.txt")
+
+    def test_read_bytes_regression_uses_metadata_to_detect_a_missing_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """S-5: a byte-window read obtains existence and size in one metadata access."""
+        ws = FsWorkspace(tmp_path)
+        target = tmp_path / "missing.txt"
+        original_exists = Path.exists
+
+        def guarded_exists(candidate: Path) -> bool:
+            if candidate == target:
+                raise AssertionError("read_bytes must not probe existence before stat")
+            return original_exists(candidate)
+
+        monkeypatch.setattr(Path, "exists", guarded_exists)
+
+        with pytest.raises(FileNotFoundError, match=r"File not found: missing\.txt"):
+            ws.read_bytes("missing.txt")
 
     def test_total_bytes_reflects_file_size(self, tmp_path: Path) -> None:
         ws = FsWorkspace(tmp_path)
