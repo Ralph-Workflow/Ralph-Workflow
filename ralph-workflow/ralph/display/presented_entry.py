@@ -251,14 +251,8 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
 def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
     """Preserve a tool name and any continuation glyph on every record call."""
     body = body.rstrip()
-    input_obj = metadata.get("input", metadata.get("args"))
-    input_dict = input_obj if isinstance(input_obj, dict) else {}
-    # Structured calls already carry their tool target in the record body.
-    # The live-only pairing arrow would make independent, greppable records
-    # look like continuations; retain it only for an explicitly preformatted
-    # (unstructured) wrapped call.
-    if any(input_dict.get(key) for key in ("path", "command", "pattern")):
-        body = body.removeprefix("↳ ").removesuffix(" ↳").rstrip()
+    if "↳" in body and not body.endswith("↳"):
+        body = body.split("↳", 1)[1].lstrip()
     raw_tool = next(
         (
             value
