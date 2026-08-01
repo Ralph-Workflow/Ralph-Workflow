@@ -304,7 +304,48 @@ def _call_root_name(node: ast.AST) -> str | None:
     return None
 
 
-def _raw_qualified_mutation_call(node: ast.Call) -> str | None:
+def _import_aliases(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]:
+    """Return module and directly imported raw-mutation aliases from *tree*.
+
+    Import aliases must not turn package-wide enforcement into an easily
+    evaded spelling convention: ``import os as filesystem`` and
+    ``from os import replace as publish`` remain raw filesystem mutations.
+    """
+    module_aliases: dict[str, str] = {}
+    direct_mutations: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for imported in node.names:
+                root = imported.name.split(".", maxsplit=1)[0]
+                if root in _RAW_MUTATION_QUALIFIERS or root == "pathlib":
+                    module_aliases[imported.asname or root] = root
+        elif isinstance(node, ast.ImportFrom) and node.module in {"os", "shutil", "pathlib"}:
+            for imported in node.names:
+                local_name = imported.asname or imported.name
+                if node.module == "pathlib" and imported.name in {
+                    "Path",
+                    "PurePath",
+                    "PosixPath",
+                    "WindowsPath",
+                }:
+                    module_aliases[local_name] = "Path"
+                elif imported.name in _RAW_MUTATION_ATTRS:
+                    direct_mutations[local_name] = imported.name
+    return module_aliases, direct_mutations
+
+
+def _raw_direct_import_mutation_call(
+    node: ast.Call, direct_mutations: dict[str, str]
+) -> str | None:
+    """Return the raw mutation called through a directly imported alias, if any."""
+    if isinstance(node.func, ast.Name):
+        return direct_mutations.get(node.func.id)
+    return None
+
+
+def _raw_qualified_mutation_call(
+    node: ast.Call, module_aliases: dict[str, str]
+) -> str | None:
     """Return the attribute name if *node* is a raw qualified mutation.
 
     Matches ``os.replace``, ``shutil.copy``, ``pathlib.Path.unlink``,
@@ -335,7 +376,14 @@ def _raw_qualified_mutation_call(node: ast.Call) -> str | None:
     root = _call_root_name(receiver)
     if root is None:
         return None
-    return _qualified_mutation_attr(attr, receiver, root)
+    resolved_root = module_aliases.get(root, root)
+    if (
+        resolved_root in {"os", "shutil"}
+        and root != resolved_root
+        and isinstance(receiver, ast.Name)
+    ):
+        return attr
+    return _qualified_mutation_attr(attr, receiver, resolved_root)
 
 
 def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | None:
@@ -454,6 +502,7 @@ def _scan_module(
         if reason:
             marker_lines.add(idx)
 
+    module_aliases, direct_mutations = _import_aliases(tree)
     violations: list[FilesystemWriteViolation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -494,8 +543,15 @@ def _scan_module(
                 )
             )
             continue
+        # ``from os import replace as publish`` and similar direct imports.
+        direct_violation = _direct_import_violation(
+            node, direct_mutations, marker_lines, rel_path
+        )
+        if direct_violation is not None:
+            violations.append(direct_violation)
+            continue
         # os.* / shutil.* / pathlib.Path.* raw mutation
-        qattr = _raw_qualified_mutation_call(node)
+        qattr = _raw_qualified_mutation_call(node, module_aliases)
         if qattr is not None:
             if _has_marker_on_or_before(node.lineno, marker_lines):
                 continue
@@ -516,6 +572,24 @@ def _call_receiver_root(node: ast.Call) -> str | None:
     if not isinstance(node.func, ast.Attribute):
         return None
     return _call_root_name(node.func.value)
+
+
+def _direct_import_violation(
+    node: ast.Call,
+    direct_mutations: dict[str, str],
+    marker_lines: set[int],
+    rel_path: str,
+) -> FilesystemWriteViolation | None:
+    """Return a violation for a directly imported raw mutation, if present."""
+    direct_attr = _raw_direct_import_mutation_call(node, direct_mutations)
+    if direct_attr is None or _has_marker_on_or_before(node.lineno, marker_lines):
+        return None
+    return FilesystemWriteViolation(
+        kind=f"raw_{direct_attr}",
+        file_path=rel_path,
+        line=node.lineno,
+        message=_qualified_violation_message("import", direct_attr),
+    )
 
 
 def _has_named_marker_for_line(source: str, line_idx: int, marker_lines: set[int]) -> bool:

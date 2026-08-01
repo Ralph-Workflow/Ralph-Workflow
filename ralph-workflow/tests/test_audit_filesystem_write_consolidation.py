@@ -347,6 +347,56 @@ def test_flags_raw_os_replace(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_replace"
 
 
+def test_flags_import_aliased_os_replace(tmp_path: Path) -> None:
+    """An import alias cannot evade the package-wide raw-replace audit (S-8)."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os as operating_system\ndef swap(src, dst):\n    operating_system.replace(src, dst)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_replace"]
+    assert "idempotent_write" in violations[0].message
+
+
+def test_flags_directly_imported_os_replace(tmp_path: Path) -> None:
+    """A directly imported mutation function cannot bypass the audit (S-8)."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from os import replace as publish\ndef swap(src, dst):\n    publish(src, dst)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_replace"]
+    assert "idempotent_write" in violations[0].message
+
+
+def test_flags_import_aliased_pathlib_mutation(tmp_path: Path) -> None:
+    """A renamed pathlib class cannot bypass the package-wide delete audit (S-8)."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path as ProjectPath\ndef drop(path):\n    ProjectPath(path).unlink()\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_unlink"]
+
+
 def test_flags_raw_os_rename(tmp_path: Path) -> None:
     """``os.rename(src, dst)`` is a raw atomic move."""
     module_rel = "alpha/example.py"
