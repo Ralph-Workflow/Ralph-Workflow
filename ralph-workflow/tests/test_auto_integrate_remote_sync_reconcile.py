@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.git import remote_push as remote_push_module
+from ralph.pipeline import auto_integrate_remote_reconcile as remote_reconcile
 from ralph.pipeline import auto_integrate_remote_sync as remote_sync
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_PUSH_REJECTED,
@@ -160,27 +161,30 @@ def test_target_reconciliation_offers_rebase_stop_resolver_before_abort(
 ) -> None:
     """S-1: target rebase conflicts offer the shared resolver before aborting."""
     from ralph.git.rebase.rebase import RebaseConflicts
-    from ralph.pipeline import auto_integrate_remote_reconcile as mod
 
     owner = Path("/target-owner")
-    monkeypatch.setattr(mod, "_reconciliation_preconditions", lambda *_a: (owner, "before", None))
-    monkeypatch.setattr(mod, "write_record", lambda *_a: None)
-    monkeypatch.setattr(mod, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict"))
-    monkeypatch.setattr(mod, "rebase_in_progress", lambda *_a: True)
+    monkeypatch.setattr(
+        remote_reconcile, "_reconciliation_preconditions", lambda *_a: (owner, "before", None)
+    )
+    monkeypatch.setattr(remote_reconcile, "write_record", lambda *_a: None)
+    monkeypatch.setattr(
+        remote_reconcile, "rebase_onto", lambda *_a, **_kw: RebaseConflicts("conflict")
+    )
+    monkeypatch.setattr(remote_reconcile, "rebase_in_progress", lambda *_a: True)
 
     def resolver(*_a: object, **_kw: object) -> bool:
         return True
 
     calls: list[tuple[Path, str]] = []
     monkeypatch.setattr(
-        mod,
+        remote_reconcile,
         "resolve_rebase_in_progress",
         lambda root, target, received: (
             calls.append((root, target)) or received(root, target, object())
         ),
     )
 
-    success, _reason = mod.reconcile_target_onto_remote(
+    success, _reason = remote_reconcile.reconcile_target_onto_remote(
         Path("/repo"), "main", "origin", rebase_stop_resolver=resolver
     )
     assert calls == [(owner, "origin/main")]
