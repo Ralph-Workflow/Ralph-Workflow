@@ -61,7 +61,7 @@ help:
 	@echo ""
 	@echo "  install         Set up the dev build + install the 'rdev' launcher (~/.local/bin/rdev)"
 	@echo "  stable          Install the pinned stable build as the global 'ralph' via uv tool"
-	@echo "  dev             Sync the dev environment only (no 'rdev' launcher)"
+	@echo "  dev             Alias for install (refreshes the dev snapshot + rdev launcher)"
 	@echo "  install-dev     Alias for dev"
 	@echo "  test           Run the full pytest suite without coverage (excludes subprocess_e2e)"
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
@@ -109,7 +109,7 @@ stable:
 	$(RUN_PYTHON) -m ralph.install --stable
 
 dev:
-	uv sync --extra dev
+	$(RUN_PYTHON) -m ralph.install
 
 install-dev: dev
 

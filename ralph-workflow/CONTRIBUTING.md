@@ -9,7 +9,7 @@ If this is your first contribution, the shortest path is:
 ```bash
 git clone https://github.com/Ralph-Workflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
-make dev              # sync the uv environment (editable install + dev extras)
+make dev              # create/refresh the self-contained dev snapshot + rdev launcher
 # ...make your change...
 make verify           # docs/drift, ruff, mypy, combined tests, and every
                       # declared audit; required real-git E2E runs inside
@@ -81,7 +81,7 @@ side. They never collide because the dev build registers no global `ralph` comma
 
 | | Command to run it | How to install / refresh | Tracks |
 |---|---|---|---|
-| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` | a self-contained snapshot (`-dev`); rerun after edits |
+| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` or `make dev` | a self-contained snapshot (`-dev`); rerun after edits |
 | **Stable build** | `ralph …` (anywhere) | `make stable` | a published release, isolated via `uv tool` |
 
 - **Dev build** — `make install` copies this checkout to
@@ -90,7 +90,7 @@ side. They never collide because the dev build registers no global `ralph` comma
   `make install` after edits to refresh the snapshot. From inside the repo you
   can still use `uv run ralph`. There is deliberately **no global `ralph`** for
   the dev build — the distinct `rdev` name keeps it from shadowing the stable
-  one. (`make dev` only syncs the checkout environment.)
+  one. (`make dev` is an alias for `make install`.)
 - **Stable build** — `make stable` runs `uv tool install --force --upgrade
   ralph-workflow`, putting an isolated `ralph` on your `PATH`
   (`~/.local/bin/ralph`), independent of the working tree. Re-running `make
