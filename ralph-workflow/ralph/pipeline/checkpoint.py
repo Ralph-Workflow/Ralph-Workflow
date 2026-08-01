@@ -111,10 +111,15 @@ def save(
     """
     state = _normalize_recovery_state(state)
     serialized = state.model_dump_json(indent=2)
-    backend.mkdir(path.parent, parents=True, exist_ok=True)
     tmp_path = path.with_suffix(".tmp")
     try:
-        atomic_write_text_if_changed(backend, path, serialized, tmp_path=tmp_path)
+        atomic_write_text_if_changed(
+            backend,
+            path,
+            serialized,
+            tmp_path=tmp_path,
+            prepare_write=lambda: backend.mkdir(path.parent, parents=True, exist_ok=True),
+        )
         logger.debug("Checkpoint saved to {}", path)
     except Exception as exc:
         logger.error("Failed to save checkpoint to {}: {}", path, exc)

@@ -119,12 +119,14 @@ def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None
     ckpt.save(state, dest, backend=backend)
     writes_after_first = len(backend.write_text_calls)
     replaces_after_first = len(backend.replace_calls)
+    mkdirs_after_first = len(backend.mkdir_calls)
     stored_after_first = backend._files[dest]
 
     ckpt.save(state, dest, backend=backend)
 
     assert len(backend.write_text_calls) == writes_after_first
     assert len(backend.replace_calls) == replaces_after_first
+    assert len(backend.mkdir_calls) == mkdirs_after_first
     assert backend._files[dest] == stored_after_first
     assert tmp not in backend._files
 
