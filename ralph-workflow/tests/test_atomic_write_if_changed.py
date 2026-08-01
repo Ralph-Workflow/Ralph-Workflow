@@ -103,6 +103,14 @@ class _FailingReplaceBackend(_ReplacingCountingBackend):
         raise OSError("publication failed")
 
 
+class _InterruptedReplaceBackend(_ReplacingCountingBackend):
+    """Persistence boundary interrupted after it stages a publication."""
+
+    def replace(self, source: Path, destination: Path) -> None:
+        del source, destination
+        raise KeyboardInterrupt
+
+
 def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -> None:
     """AC-01: fresh destination performs one tmp-write plus one replace returning True.
 
@@ -220,6 +228,18 @@ def test_atomic_write_regression_removes_unique_staging_file_when_publication_fa
     tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
 
     with pytest.raises(OSError, match="publication failed"):
+        atomic_write_text_if_changed(backend, destination, "fresh", tmp_path=tmp_path)
+
+    assert backend._files == {}
+
+
+def test_atomic_write_regression_cleans_unique_staging_file_when_interrupted() -> None:
+    """S-3: interruption after staging leaves no transient file in the watched tree."""
+    backend = _InterruptedReplaceBackend()
+    destination = Path("/virtual-ws/checkpoint.json")
+    tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
+
+    with pytest.raises(KeyboardInterrupt):
         atomic_write_text_if_changed(backend, destination, "fresh", tmp_path=tmp_path)
 
     assert backend._files == {}

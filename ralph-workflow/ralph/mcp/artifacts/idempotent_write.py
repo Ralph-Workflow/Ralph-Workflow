@@ -194,7 +194,7 @@ def atomic_write_text_if_changed(
     try:
         backend.write_text(staging_path, content, encoding=encoding)
         backend.replace(staging_path, destination)
-    except Exception:
+    except BaseException:
         backend.unlink(staging_path, missing_ok=True)
         raise
     if sync_directory:
@@ -229,7 +229,7 @@ def atomic_write_bytes_if_changed(
     try:
         backend.write_bytes(staging_path, content)
         backend.replace(staging_path, destination)
-    except Exception:
+    except BaseException:
         backend.unlink(staging_path, missing_ok=True)
         raise
     if sync_directory:
