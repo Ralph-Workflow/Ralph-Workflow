@@ -91,9 +91,7 @@ class TestRebuildHistoryIndex:
         """S-3: rebuilding unchanged history leaves the index mutation-free."""
         artifact_dir = Path("/virtual/.agent/artifacts")
         history_dir = history_dir_for_artifact(artifact_dir, "plan")
-        backend = _RecordingHistoryBackend(
-            {history_dir / "20260506T120000_plan.md": "# Plan"}
-        )
+        backend = _RecordingHistoryBackend({history_dir / "20260506T120000_plan.md": "# Plan"})
 
         rebuild_history_index(artifact_dir, "plan", backend=backend)
         rebuild_history_index(artifact_dir, "plan", backend=backend)

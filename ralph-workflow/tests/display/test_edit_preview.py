@@ -84,7 +84,9 @@ def test_diff_preview_regression_uses_an_owned_surface_and_paints_polarity_when_
             if surface == "default":
                 assert "48;2;" not in rendered and "48;5;" not in rendered
             else:
-                sgr = f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
+                sgr = (
+                    f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
+                )
                 assert sgr in rendered
             fills = diff_fill_styles(terminal_bg_is_light)
             painted = build_edit_preview(

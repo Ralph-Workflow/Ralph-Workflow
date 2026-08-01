@@ -131,7 +131,9 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
         if fills is None and surface == "default":
             assert "48;2;" not in rendered and "48;5;" not in rendered, name
         elif fills is None:
-            surface_sgr = f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
+            surface_sgr = (
+                f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
+            )
             assert surface_sgr in rendered, name
         else:
             fill_sgrs = {
@@ -158,9 +160,9 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
         if surface == "default":
             for red, green, blue in colors:
                 colour = f"#{int(red):02X}{int(green):02X}{int(blue):02X}"
-                assert all(contrast_ratio(colour, background) >= 4.5 for background in backgrounds), (
-                    f"black-on-black regression in {name}: {colour} on {backgrounds}"
-                )
+                assert all(
+                    contrast_ratio(colour, background) >= 4.5 for background in backgrounds
+                ), f"black-on-black regression in {name}: {colour} on {backgrounds}"
 
 
 def test_preview_color_stripped_output_preserves_structure() -> None:

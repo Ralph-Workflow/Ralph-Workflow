@@ -255,8 +255,8 @@ def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    violations: list[audit.FseventsWatchViolation] = (
-        audit.audit_fsevents_watch_consolidation(package_root)
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
     )
 
     assert len(violations) == 1

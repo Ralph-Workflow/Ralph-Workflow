@@ -1022,7 +1022,9 @@ def test_regenerate_config_regression_refreshes_only_the_existing_local_file(
     existing = agent_dir / local_filename
     existing.write_text("# old", encoding="utf-8")
     display_context = make_display_context(
-        console=Console(file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME),
+        console=Console(
+            file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME
+        ),
         env={},
     )
 
@@ -1030,9 +1032,7 @@ def test_regenerate_config_regression_refreshes_only_the_existing_local_file(
 
     assert existing.with_suffix(".toml.bak").read_text(encoding="utf-8") == "# old"
     assert isinstance(tomllib.loads(existing.read_text(encoding="utf-8")), dict)
-    assert {
-        path.name for path in agent_dir.glob("*.toml")
-    } == {local_filename}
+    assert {path.name for path in agent_dir.glob("*.toml")} == {local_filename}
 
 
 def test_init_local_config_creates_complete_project_local_override_set(

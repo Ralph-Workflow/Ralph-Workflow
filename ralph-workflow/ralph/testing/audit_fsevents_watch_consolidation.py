@@ -246,7 +246,9 @@ def _check_module(
 
     schedule_aliases: list[ast.Attribute] = _find_schedule_aliases(tree)
     if schedule_aliases:
-        return [_aliased_watch_schedule_violation(rel_path, alias.lineno) for alias in schedule_aliases]
+        return [
+            _aliased_watch_schedule_violation(rel_path, alias.lineno) for alias in schedule_aliases
+        ]
 
     schedule_calls: list[ast.Call] = _find_schedule_calls(tree)
     invariants_violations: list[FseventsWatchViolation] = _check_schedule_call_invariants(

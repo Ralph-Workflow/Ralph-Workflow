@@ -97,9 +97,7 @@ def test_any_terminal_width_preserves_width(width: int) -> None:
         ("line one\n\nline two", "line\none\n\nline\ntwo"),
     ),
 )
-def test_parallel_display_regression_wraps_body_by_display_cells(
-    body: str, expected: str
-) -> None:
+def test_parallel_display_regression_wraps_body_by_display_cells(body: str, expected: str) -> None:
     """S-5: cell-aware wrapping preserves Unicode, words, and explicit rows."""
     wrapped = ParallelDisplay._wrap_body_with_hanging_indent(
         "00:00:00 [x] ", body, total_width=20, body_measure=20

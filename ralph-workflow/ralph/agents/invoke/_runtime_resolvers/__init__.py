@@ -191,7 +191,6 @@ def _invoke_module() -> _InvokeCompatibilitySeam:
     return cast("_InvokeCompatibilitySeam", sys.modules["ralph.agents.invoke"])
 
 
-
 def _apply_upstream_env(
     upstreams: tuple[UpstreamMcpServer, ...],
     workspace_path: Path | None,

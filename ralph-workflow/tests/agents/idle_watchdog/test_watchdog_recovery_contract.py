@@ -187,12 +187,15 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
             if isinstance(node, ast.Compare):
                 for comparator in node.comparators:
                     if not (
-                        isinstance(comparator, ast.Attribute) and isinstance(comparator.value, ast.Name)
+                        isinstance(comparator, ast.Attribute)
+                        and isinstance(comparator.value, ast.Name)
                     ):
                         continue
                     if comparator.value.id == "WatchdogVerdict" and comparator.attr == "FIRE":
                         return True
-                    if comparator.value.id == "PostExitVerdict" and comparator.attr.startswith("FIRE_"):
+                    if comparator.value.id == "PostExitVerdict" and comparator.attr.startswith(
+                        "FIRE_"
+                    ):
                         return True
             if isinstance(node, ast.Attribute) and node.attr == "_completion_is_terminal":
                 return True

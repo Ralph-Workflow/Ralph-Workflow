@@ -542,8 +542,7 @@ def test_smoke_diagnosis_regression_reports_empty_opencode_transcript_actionably
 
     assert (
         "OpenCode produced no transcript output; verify the configured provider/model with "
-        "`opencode models` and inspect its stderr."
-        in errors
+        "`opencode models` and inspect its stderr." in errors
     )
 
 

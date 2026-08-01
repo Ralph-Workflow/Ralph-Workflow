@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def test_install_baseline_skills_success(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
