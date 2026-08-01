@@ -48,6 +48,15 @@ tag exists yet — a link to one would be a dead link.
 - **fix(opencode): use the currently published `minimax/MiniMax-M3` provider alias for the interactive smoke default** — the smoke command now reaches the live MiniMax route while retaining configurable provider/model aliases. Locked by `tests/test_opencode_defaults.py`.
 - **fix(config): keep project-local configuration explicit opt-in** — `ralph --regenerate-config` now rewrites global configuration and refreshes only local TOMLs already present; missing `.agent/` files remain absent and are created only by `ralph --init-local-config` / `--generate-local-config`. Locked by `tests/test_config_bootstrap.py` and `tests/test_cli_commands_2.py`.
 
+### Changed
+
+- **feat(install): rework dev build into a self-contained snapshot** — `make install` / `make dev` copy the checkout to `~/.local/share/ralph-workflow-dev/current`, launch `rdev` against the copy, and preflight existing global `ralph` installs with continue/remove/abort before writing anything ([`75151e75f`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/75151e75f), [`0adcd32b4`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/0adcd32b4)); locked by `tests/test_install.py` and `tests/test_install_conflicts.py`.
+- **feat(install): surface build-flavored versions and manual-wheel install mode** — `--version` reports `-dev` for a dev build, `-build` for a `--from <wheel>` install, and plain for a package-manager install; `make stable` supports `--from` for a hand-built wheel ([`bc5d28ff0`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/bc5d28ff0), [`61594df49`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/61594df49), [`9866492d1`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/9866492d1)); locked by `tests/test_install.py`.
+
+### Removed
+
+- **refactor(install)!: remove the prompt-helper feature** — its entry point, option, builder, config key, docs, and tests are gone; leftover config is ignored rather than fatal, and users author prompts through workspace `PROMPT.md` ([`75151e75f`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/75151e75f), [`2b83f509c`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/2b83f509c)); breaking change locked by `tests/test_config_loader.py` and the repository-wide zero-match regression check.
+
 ## [0.9.7] - 2026-07-29
 
 Patch release. `__version__` moved from `0.9.6` to `0.9.7` in

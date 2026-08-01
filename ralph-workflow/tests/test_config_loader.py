@@ -97,6 +97,20 @@ def test_load_toml_malformed_config_names_file_and_fix(tmp_path: Path) -> None:
     assert "Fix:" in message
 
 
+def test_config_loader_regression_stale_prompt_helper_table_is_ignored(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-2: retired prompt-helper config must not block normal config loading."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[prompt_helper]\nagent = \"legacy\"\n", encoding="utf-8")
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+
+    config = load_config(config_path=config_path)
+
+    assert config.general.verbosity == DEFAULT_VERBOSITY
+    assert not hasattr(config, "prompt_helper")
+
+
 def test_load_config_unknown_field_warns_with_field_and_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
