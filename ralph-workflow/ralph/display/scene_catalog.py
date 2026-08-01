@@ -32,6 +32,15 @@ GRACEFUL_WIDTH_FLOOR: Final[int] = 40
 GRACEFUL_HEIGHT_FLOOR: Final[int] = 12
 INDENT_UNIT: Final[str] = "  "
 
+# Test-facing stream formats exercised by generated scenes. Each value retains
+# its carrier when read without surrounding phase context.
+CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
+    "duration": "elapsed=MM:SS",
+    "count": "count=<decimal>",
+    "path": "project=<verbatim-or-folded-path>",
+    "identifier": "agent=<stable-id> when present",
+}
+
 
 @dataclass(frozen=True)
 class SupportCase:
@@ -202,6 +211,7 @@ def support_matrix() -> tuple[SupportCase, ...]:
 
 
 __all__ = [
+    "CANONICAL_VALUE_FORMATS",
     "CONTRAST_FLOOR",
     "FULL_LAYOUT_WIDTH",
     "GRACEFUL_HEIGHT_FLOOR",

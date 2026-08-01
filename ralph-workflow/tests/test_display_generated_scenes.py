@@ -10,6 +10,7 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.scene_catalog import (
+    CANONICAL_VALUE_FORMATS,
     CONTRAST_FLOOR,
     FULL_LAYOUT_WIDTH,
     GRACEFUL_HEIGHT_FLOOR,
@@ -169,6 +170,23 @@ def test_generated_scene_catalog_declares_canonical_value_and_structure_formats(
     assert formats["syntax_preview"] == "indent: shared unit; numbered source rows"
     assert formats["elision"] == "marker: count, bytes, recovery destination"
     assert formats["completion_success"] == "frame: outcome, metrics, recovery"
+
+
+def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None:
+    """S-1: generated output exercises every catalogued stream format."""
+    common = SupportCase("dark", "none", "unicode", 80, "redirect")
+    burst = render_scene("burst", common, terminal_bg_is_light=False)
+    opening = render_scene("first_screen", common, terminal_bg_is_light=False)
+    idle = render_scene("idle_stretch", common, terminal_bg_is_light=False)
+
+    assert CANONICAL_VALUE_FORMATS["duration"] == "elapsed=MM:SS"
+    assert "elapsed=02:03" in idle
+    assert CANONICAL_VALUE_FORMATS["count"] == "count=<decimal>"
+    assert "count=3" in burst
+    assert CANONICAL_VALUE_FORMATS["path"] == "project=<verbatim-or-folded-path>"
+    assert "project=/work/café" in opening
+    assert CANONICAL_VALUE_FORMATS["identifier"] == "agent=<stable-id> when present"
+    assert "agent=codex" in burst
 
 
 def test_generated_scene_frames_are_rationed_to_identity_surfaces() -> None:
