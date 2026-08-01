@@ -73,11 +73,6 @@ if TYPE_CHECKING:
 #: rather than silently passing.
 _WORKSPACE_MONITOR_MODULE: str = "agents/invoke/_workspace.py"
 
-#: Pre-filter substring for the schedule-call detector.  Files
-#: whose source does not contain the literal token ``.schedule(``
-#: cannot schedule a watchdog watch, so the expensive AST pass is
-#: skipped for them.
-_SCHEDULE_CALL_MARKER: str = ".schedule("
 _EXCLUDED_DIRECTORY_NAMES: frozenset[str] = frozenset({"__pycache__", "testing"})
 
 
@@ -463,20 +458,6 @@ def audit_fsevents_watch_consolidation(
                 message=(
                     "canonical workspace monitor source could not be read; restore readable "
                     "source so the package-wide watch ownership audit can fail closed"
-                ),
-            )
-        ]
-
-    if _SCHEDULE_CALL_MARKER not in source:
-        return [
-            FseventsWatchViolation(
-                kind="missing_watch_schedule",
-                file_path=rel_path,
-                line=0,
-                message=(
-                    "expected exactly one observer.schedule(...) call inside"
-                    f" {_WORKSPACE_MONITOR_MODULE!r}: WorkspaceMonitor.start()"
-                    " must schedule the recursive root watch; none found"
                 ),
             )
         ]

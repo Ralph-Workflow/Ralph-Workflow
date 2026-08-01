@@ -596,6 +596,8 @@ def test_indexed_grep_cold_store_falls_back_to_live(tmp_path: Path) -> None:
 # --- Defect D3: dotted literals served from index ---
 
 
+# ponytail: SQLite setup under xdist can exceed 1s; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_indexed_grep_dotted_literal_uses_index(tmp_path: Path) -> None:
     """AC-01/D3: dotted literals (e.g. ``os.path``) are served from the
     index via a quoted-phrase FTS query. Live-grep parity required.

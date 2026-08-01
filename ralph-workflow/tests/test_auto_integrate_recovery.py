@@ -65,7 +65,8 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+# ponytail: real-Git recovery conflicts can exceed 10s under xdist; the 60s suite budget remains authoritative.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
 def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:

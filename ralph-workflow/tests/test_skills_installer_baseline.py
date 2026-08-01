@@ -7,14 +7,22 @@ import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._content import get_skill_content
 from ralph.skills._installer import install_baseline_skills
 
+
+@pytest.fixture(autouse=True)
+def _isolate_baseline_install_from_user_siblings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep canonical-install behavior tests independent of user-global siblings."""
+    monkeypatch.setattr("ralph.skills._installer.sibling_agent_skill_roots", lambda: ())
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
 
 
 def test_install_baseline_skills_success(

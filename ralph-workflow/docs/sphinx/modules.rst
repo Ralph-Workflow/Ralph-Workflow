@@ -3950,13 +3950,6 @@ ralph.testing.audit_idempotent_write_adoption
    :members:
    :show-inheritance:
 
-ralph.testing.audit_filesystem_write_consolidation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_write_consolidation
-   :members:
-   :show-inheritance:
-
 ralph.testing.audit_parallelization_dormant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -4082,21 +4075,5 @@ ralph.pro_support.state_query
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pro_support.state_query
-   :members:
-   :show-inheritance:
-
-----
-
-Verification Audits
--------------------
-
-These static verification audits protect repository-wide contributor
-contracts. They are invoked by ``make verify`` and expose their diagnostics as
-Python modules for maintainers who need to run a focused audit locally.
-
-ralph.testing.audit_filesystem_write_consolidation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_write_consolidation
    :members:
    :show-inheritance:
