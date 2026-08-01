@@ -137,8 +137,7 @@ def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> N
 
     def live_stdout() -> Iterator[str]:
         yield '{"type":"text","part":{"text":"complete"}}\n'
-        if not blocked.wait(timeout=0.1):
-            raise RuntimeError("completion reader did not terminate the live stdout stream")
+        assert blocked.wait(timeout=1.0)
 
     class _CompletionHandle(_FakeManagedHandle):
         def terminate(self, grace_period_s: float | None = None) -> None:

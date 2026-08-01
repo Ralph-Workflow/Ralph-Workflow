@@ -845,15 +845,20 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     assert "Created" not in stream.getvalue()
 
 
-def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_init_command_does_not_create_missing_custom_config_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Plan S-1: a custom ``--config`` path is a selector, not a generation request."""
     stream = _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom" / "custom.toml"
     custom.parent.mkdir()
+
     init_module.init_command(template=None, config_path=custom)
-    assert custom.exists()
-    assert "Created" in stream.getvalue()
+
+    assert not custom.exists()
+    assert "ralph --init-local-config" in stream.getvalue()
 
 
 def test_init_command_creates_prompt_in_cwd_not_template_subdir(
@@ -1078,20 +1083,46 @@ def test_init_command_unknown_template_label_errors(
     assert not (tmp_path / "PROMPT.md").exists()
 
 
-def test_init_command_respects_explicit_config_path(
+def test_init_command_regression_does_not_create_missing_explicit_config_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Plan S-1: ``--init --config`` must not bypass the local-config generator boundary."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
-    _attach_console(monkeypatch, init_module)
+    stream = _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    custom = tmp_path / "custom.toml"
+    custom = tmp_path / ".agent" / "custom.toml"
 
     init_module.init_command(None, custom)
 
-    assert custom.exists()
-    assert isinstance(tomllib.loads(custom.read_text()), dict)
+    assert not custom.exists()
+    assert not custom.parent.exists()
+    assert "ralph --init-local-config" in stream.getvalue()
+    assert (xdg_dir / "ralph-workflow.toml").exists()
+
+
+@pytest.mark.parametrize("alias", ("--init-local-config", "--generate-local-config"))
+def test_local_config_aliases_create_the_complete_parseable_override_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, alias: str
+) -> None:
+    """Plan S-1: only the explicit local-config aliases materialize local TOMLs."""
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    monkeypatch.chdir(tmp_path)
+
+    result = typer.testing.CliRunner().invoke(main_module.app, [alias])
+
+    assert result.exit_code == 0, result.output
+    local_files = tuple((tmp_path / ".agent").glob("*.toml"))
+    assert {path.name for path in local_files} == {
+        "ralph-workflow.toml",
+        "mcp.toml",
+        "pipeline.toml",
+        "artifacts.toml",
+    }
+    for path in local_files:
+        assert isinstance(tomllib.loads(path.read_text(encoding="utf-8")), dict)
 
 
 class TestCheckPolicyCommand:

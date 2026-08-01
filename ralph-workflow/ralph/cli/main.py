@@ -865,8 +865,10 @@ def main(
 
     Primary flags:
 
-    - ``--init [PATH]`` — scaffold ``.agent/`` + ``PROMPT.md`` in the
-      target directory.
+    - ``--init [label]`` — scaffold ``PROMPT.md`` and user-global
+      configuration. It never creates project-local TOMLs; use
+      ``--init-local-config`` (or ``--generate-local-config``) for the
+      advanced explicit local override set.
     - ``--diagnose`` / ``-d`` — pre-flight check of agent CLIs, MCP
       servers, and capability bundles; never starts a real run.
     - ``--generate-commit`` / ``--generate-commit-msg`` — build the

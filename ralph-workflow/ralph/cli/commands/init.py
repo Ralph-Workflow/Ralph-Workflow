@@ -16,7 +16,6 @@ on both the first-run and re-run paths.
 
 from __future__ import annotations
 
-import shutil
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -24,7 +23,6 @@ from typing import TYPE_CHECKING, cast
 import typer
 from loguru import logger
 
-import ralph.policy
 from ralph.agents.agent_install_links import install_url_for
 from ralph.config.agent_detection import (
     autowire_chains_to_detected_agent,
@@ -151,20 +149,7 @@ def init_command(
     if (target / ".git").exists():
         auto_seed_default_git_exclude(target)
 
-    bundled_defaults = Path(ralph.policy.__file__).parent / "defaults"
-
-    if config_path is not None and not config_path.exists():
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        # filesystem-write-ok: first-run template copy preserves source metadata for user-visible initialization
-        shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
-        display.emit_status(f"Created: {config_path}")
-        newly_enabled = enable_detected_agents(config_path)
-        rewired = autowire_chains_to_detected_agent(config_path)
-        _, failures = _ensure_baseline_capabilities(display_context=ctx)
-        _emit_agent_setup_status(display, newly_enabled, rewired)
-        if failures:
-            display.emit_skill_failure_warning(failures)
-    elif config_path is not None:
+    if config_path is not None and config_path.exists():
         newly_enabled = enable_detected_agents(config_path)
         rewired = autowire_chains_to_detected_agent(config_path)
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
@@ -172,6 +157,12 @@ def init_command(
         if failures:
             display.emit_skill_failure_warning(failures)
     else:
+        if config_path is not None:
+            display.emit_warning(
+                f"Config file does not exist: {config_path}. `ralph --init` does not create "
+                "project-local configuration; run `ralph --init-local-config` to create "
+                "the optional local override set."
+            )
         global_results: list[BootstrapResult] = [
             ensure_global_config(),
             ensure_global_agents_config(),
