@@ -67,8 +67,9 @@ if TYPE_CHECKING:
 # The 1.0 s per-test ITIMER_REAL budget charges wall clock. Plain-pytest
 # shards avoid xdist's shared-worker contention while preserving exact-once
 # test assignment. The automatic profile uses the available cores up to the
-# measured 32-shard ceiling; operators may explicitly override
-# ``PYTEST_WORKERS`` for a measured environment.
+# measured 32-shard ceiling while the audit's candidate fast path keeps the
+# full verification profile within its immutable 60.0-second budget.
+# Operators may explicitly override ``PYTEST_WORKERS`` for a measured environment.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )

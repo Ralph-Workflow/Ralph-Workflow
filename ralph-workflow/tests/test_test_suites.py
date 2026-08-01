@@ -302,7 +302,8 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
     # Regression: automatic sharding follows available cores without
-    # exceeding the measured 32-shard ceiling.
+    # exceeding the measured 32-shard ceiling, while the package-wide audit
+    # fast path keeps the profile inside the immutable combined budget.
     for cores, expected in (
         (1, "1"),
         (4, "4"),

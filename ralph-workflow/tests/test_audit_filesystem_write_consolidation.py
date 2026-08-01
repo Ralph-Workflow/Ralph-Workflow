@@ -38,6 +38,21 @@ def test_real_production_tree_audit_passes() -> None:
     assert violations == []
 
 
+def test_candidate_free_module_skips_ast_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DA-001 regression: inert modules avoid parse cost without narrowing the walk."""
+    module_rel = "alpha/inert.py"
+    package_root = _write_fake_package(tmp_path, module_rel, "VALUE = 1\n")
+
+    def fail_parse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("candidate-free source must not be parsed")
+
+    monkeypatch.setattr(audit.ast, "parse", fail_parse)
+
+    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+
+
 def test_flags_unknown_raw_write_text(tmp_path: Path) -> None:
     """A new raw ``write_text`` call in a previously-clean module fails closed."""
     module_rel = "alpha/example.py"

@@ -159,6 +159,15 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "mark with a reason or route through the canonical primitive",
 }
 
+# Source containing none of these names cannot produce a violation: every
+# mutation form recognized by the fail-closed AST walker has one of these
+# lexical entry points. Avoiding AST parsing for such modules keeps the
+# package-wide audit within the immutable verification budget without
+# narrowing its production-tree walk.
+_MUTATION_CANDIDATES: frozenset[str] = frozenset(
+    {"write_text", "write_bytes", *_RAW_MUTATION_ATTRS}
+)
+
 
 @dataclass(frozen=True)
 class FilesystemWriteViolation:
@@ -473,43 +482,71 @@ def _has_marker_on_or_before(line_idx: int, marker_lines: set[int]) -> bool:
     return line_idx in marker_lines or (line_idx - 1) in marker_lines
 
 
+def _has_mutation_candidate(source: str) -> bool:
+    """Return whether source can contain a mutation recognized by this audit."""
+    return any(candidate in source for candidate in _MUTATION_CANDIDATES)
+
+
+def _parse_candidate_module(
+    source: str, module_path: Path, rel_path: str
+) -> ast.Module | FilesystemWriteViolation:
+    """Parse candidate source or return its fail-closed syntax violation."""
+    try:
+        return ast.parse(source, filename=str(module_path))
+    except SyntaxError as exc:
+        return FilesystemWriteViolation(
+            kind="invalid_module",
+            file_path=rel_path,
+            line=exc.lineno or 0,
+            message=(
+                "module could not be parsed; restore valid source before the "
+                "filesystem-write audit can evaluate it"
+            ),
+        )
+
+
+def _read_candidate_source(
+    module_path: Path, rel_path: str
+) -> str | FilesystemWriteViolation:
+    """Read one module or return its fail-closed unreadable-source violation."""
+    try:
+        return module_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return FilesystemWriteViolation(
+            kind="unreadable_module",
+            file_path=rel_path,
+            line=0,
+            message=(
+                "module could not be read; restore readable source and ensure "
+                "the audit can walk it"
+            ),
+        )
+
+
+def _prepare_module(
+    module_path: Path, rel_path: str
+) -> tuple[ast.Module, str] | list[FilesystemWriteViolation]:
+    """Read and parse candidate source, preserving fail-closed diagnostics."""
+    source_or_violation = _read_candidate_source(module_path, rel_path)
+    if isinstance(source_or_violation, FilesystemWriteViolation):
+        return [source_or_violation]
+    if not _has_mutation_candidate(source_or_violation):
+        return []
+    tree_or_violation = _parse_candidate_module(source_or_violation, module_path, rel_path)
+    if isinstance(tree_or_violation, FilesystemWriteViolation):
+        return [tree_or_violation]
+    return tree_or_violation, source_or_violation
+
+
 def _scan_module(
     module_path: Path,
     rel_path: str,
 ) -> list[FilesystemWriteViolation]:
     """Run the AST walk against one module and return its violations."""
-    try:
-        source = module_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        # We can't read the file — surface as a structural violation
-        # so a future maintainer can't silently exclude modules by
-        # removing read permissions.
-        return [
-            FilesystemWriteViolation(
-                kind="unreadable_module",
-                file_path=rel_path,
-                line=0,
-                message=(
-                    "module could not be read; restore readable source and ensure "
-                    "the audit can walk it"
-                ),
-            )
-        ]
-
-    try:
-        tree = ast.parse(source, filename=str(module_path))
-    except SyntaxError as exc:
-        return [
-            FilesystemWriteViolation(
-                kind="invalid_module",
-                file_path=rel_path,
-                line=exc.lineno or 0,
-                message=(
-                    "module could not be parsed; restore valid source before the "
-                    "filesystem-write audit can evaluate it"
-                ),
-            )
-        ]
+    prepared = _prepare_module(module_path, rel_path)
+    if isinstance(prepared, list):
+        return prepared
+    tree, source = prepared
 
     # Pre-compute the lines that carry a filesystem-write-ok marker
     # so we can answer "is this call suppressed?" in O(1). The
