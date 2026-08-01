@@ -993,6 +993,43 @@ def test_regenerate_config_refreshes_existing_local_file_only(
     assert not (agent_dir / "artifacts.toml").exists()
 
 
+@pytest.mark.parametrize(
+    "local_filename",
+    (
+        "ralph-workflow.toml",
+        "mcp.toml",
+        "pipeline.toml",
+        "artifacts.toml",
+        "agents.toml",
+    ),
+)
+def test_regenerate_config_regression_refreshes_only_the_existing_local_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    local_filename: str,
+) -> None:
+    """Plan S-1: regeneration must never fill in missing local overrides."""
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    monkeypatch.chdir(tmp_path)
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    existing = agent_dir / local_filename
+    existing.write_text("# old", encoding="utf-8")
+    display_context = make_display_context(
+        console=Console(file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME),
+        env={},
+    )
+
+    main_module._handle_regenerate_config(display_context=display_context)
+
+    assert existing.with_suffix(".toml.bak").read_text(encoding="utf-8") == "# old"
+    assert isinstance(tomllib.loads(existing.read_text(encoding="utf-8")), dict)
+    assert {
+        path.name for path in agent_dir.glob("*.toml")
+    } == {local_filename}
+
+
 def test_init_local_config_creates_complete_project_local_override_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
