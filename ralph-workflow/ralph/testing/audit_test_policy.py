@@ -106,9 +106,11 @@ _IO_ALLOWLIST: set[str] = {
     "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
-    # Documentation command-sync tests inspect repository documentation and
-    # source assertions. Those files are the subject under test; replacing
-    # the reads with fixtures would fail to detect documentation drift.
+    # Documentation-source invariants inspect repository documentation and
+    # canonical production modules. Their read targets are the subjects under
+    # test, so replacing the reads with fixtures would make the regression
+    # guards meaningless; this file's callback guidance test also pins the
+    # explicit-only local-config boundary.
     "test_documentation_command_sync",
     # AC-08 silent-skip audit that reads auto_integrate.py source to
     # enforce that the AC-01 disabled-path and the

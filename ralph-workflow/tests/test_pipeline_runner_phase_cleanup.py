@@ -21,6 +21,7 @@ import pytest
 import ralph.process.manager as _mgr
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
+from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
@@ -54,7 +55,7 @@ _TEST_PHASE = "fake-phase"
 
 def _config() -> object:
     config = MagicMock()
-    config.general.verbosity = 0
+    config.general = GeneralConfig(verbosity=0)
     return config
 
 
