@@ -167,6 +167,18 @@ output_file: tmp/smoke.log
 """
 
 
+class _RecordingBackend(MemoryBackend):
+    """In-memory artifact boundary that exposes directory mutations."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.mkdir_calls: list[Path] = []
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        self.mkdir_calls.append(path)
+        super().mkdir(path, parents=parents, exist_ok=exist_ok)
+
+
 def _backend() -> MemoryBackend:
     return MemoryBackend()
 
@@ -235,6 +247,33 @@ def test_canonical_submit_symbols_exported_from_artifacts_package() -> None:
     assert hasattr(artifacts_package, "SubmitResult")
     assert hasattr(artifacts_package, "submit_artifact_canonical")
     assert hasattr(artifacts_package, "promote_fallback_artifact")
+
+
+def test_canonical_submission_replay_skips_directory_mutations(tmp_path: Path) -> None:
+    """S-2: replaying identical canonical output leaves its directories untouched."""
+    backend = _RecordingBackend()
+    parsed = _parsed("development_result", DEVELOPMENT_RESULT)
+
+    submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type="development_result",
+        parsed_content=parsed,
+        markdown=DEVELOPMENT_RESULT,
+        deps=ArtifactHandlerDeps(backend=backend, history_enabled=False),
+    )
+    first_directory_mutations = list(backend.mkdir_calls)
+
+    submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type="development_result",
+        parsed_content=parsed,
+        markdown=DEVELOPMENT_RESULT,
+        deps=ArtifactHandlerDeps(backend=backend, history_enabled=False),
+    )
+
+    assert backend.mkdir_calls == first_directory_mutations
+    artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
+    assert backend.read_text(artifact_path) == DEVELOPMENT_RESULT
 
 
 def test_submit_artifact_canonical_returns_result_and_writes_markdown(

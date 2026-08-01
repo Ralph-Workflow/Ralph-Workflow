@@ -203,7 +203,10 @@ def submit_artifact_canonical(
         else False
     )
     try:
-        backend.mkdir(directory, parents=True, exist_ok=True)
+        # Avoid even an idempotent mkdir on an unchanged replay: directory creation
+        # changes metadata on some backends and is unnecessary once persistence exists.
+        if not backend.exists(directory):
+            backend.mkdir(directory, parents=True, exist_ok=True)
         # Worker-local submissions carry their own handoff directory and are
         # replaced between isolated attempts. Shared artifact history would look
         # up the coordinator handoff and leak it into the worker namespace.
@@ -227,7 +230,8 @@ def submit_artifact_canonical(
             raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
 
         if handoff_path is not None:
-            backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
+            if not backend.exists(handoff_path.parent):
+                backend.mkdir(handoff_path.parent, parents=True, exist_ok=True)
             atomic_write_text_if_changed(
                 backend,
                 handoff_path,
