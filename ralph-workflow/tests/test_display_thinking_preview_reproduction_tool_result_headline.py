@@ -110,9 +110,9 @@ class TestToolResultSingleEntry:
             f"Expected exactly 1 logical tool_result entry, got {len(primary_lines)}: "
             f"{result_lines}\nFull output:\n{out}"
         )
-        logical_result = " ".join(result_lines)
-        assert "This is a longer tool result content" in logical_result
-        assert "headline summary since it exceeded the 80 character threshold." in logical_result
+        rendered_content = "\n".join(result_lines)
+        assert "This is a longer tool result content" in rendered_content
+        assert "headline summary since it exceeded the 80 character threshold." in rendered_content
         assert "\u21b3 summary:" not in out, (
             f"Retired ↳ summary: supplement must not appear:\n{out}"
         )

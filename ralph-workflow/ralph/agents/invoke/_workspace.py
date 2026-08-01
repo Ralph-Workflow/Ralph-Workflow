@@ -230,7 +230,9 @@ class WorkspaceMonitor:
         """Start monitoring the workspace for file changes.
 
         Schedules exactly ONE recursive watchdog watch on the workspace
-        root. A single recursive root watch is the minimal-stream option
+        root. Repeated starts while that watch is active preserve it instead
+        of tearing it down or registering an overlapping subscription. A single
+        recursive root watch is the minimal-stream option
         for macOS fseventsd: watchdog's fsevents backend is OS-recursive
         (see watchdog/observers/fsevents.py lines 85-87 -- ``"fsevents
         defaults to be recursive, so if the watch was meant to be
@@ -241,6 +243,9 @@ class WorkspaceMonitor:
         classify-drop backstop, which is independent of how many
         watchdog watches are scheduled.
         """
+        if self._observer is not None:
+            return
+
         observer = _create_watchdog_observer()
         if observer is None:
             return

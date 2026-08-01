@@ -121,6 +121,24 @@ def test_start_single_recursive_root_watch_when_classifier_none(
     assert fake.started is True
 
 
+def test_start_replay_preserves_one_live_workspace_watch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-6 regression: re-starting an active monitor does not add a duplicate watch."""
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+
+    monitor.start()
+    monitor.start()
+
+    assert len(fake.scheduled) == 1
+    assert fake.started is True
+
+
 # ---------------------------------------------------------------------------
 # AC-02: record_event classify-drop parity
 # ---------------------------------------------------------------------------

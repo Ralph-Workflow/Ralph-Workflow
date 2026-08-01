@@ -385,10 +385,10 @@ def _render_status_event(
 #: order, regardless of which agent backend emitted them.
 _TOOL_PAIR_MARKER: str = "\u21b3"
 
-#: Correlation prefix for the TOOL_RESULT body so the result remains visibly
-#: paired with its TOOL_USE call. The shared activity renderer supplies the
-#: structural indentation; duplicating spaces here breaks its stable
-#: badge-to-marker transcript carrier.
+#: Correlation prefix for the TOOL_RESULT body so the result visually nests
+#: under its TOOL_USE call. The state-label carrier already supplies the
+#: separator, keeping the plain-text form stable as ``✓ PASS ↳`` for log
+#: consumers and grep-based pair recovery.
 _TOOL_RESULT_INDENT: str = _TOOL_PAIR_MARKER + " "
 
 
