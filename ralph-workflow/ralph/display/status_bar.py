@@ -160,7 +160,8 @@ _MIN_BUDGET: int = _ELLIPSIS_LEN + 1
 #     for any tab-containing path or phase label.
 #   * CSI / SGR escape sequences (``ESC[...m`` and friends) are
 #     stripped so a hostile path cannot inject color or cursor moves
-#     into the bar.
+#     into the bar. All later budgeting uses terminal display cells
+#     (``rich.cells.cell_len``), not character count.
 _SAFE_LINE_NEWLINE_RE: re.Pattern[str] = re.compile(r"[\r\n]+")
 _SAFE_LINE_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x09\x0b-\x1f\x7f]")
 _SAFE_LINE_ESCAPE_RE: re.Pattern[str] = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -175,13 +176,12 @@ def _safe_single_line(text: str) -> str:
     Collapses line breaks AND tab characters AND other C0 control
     bytes to a single ASCII space (preserving readability), and drops
     CSI escape sequences entirely. The tab-to-space normalization is
-    required because the bar's width budget accounts column count via
-    ``len()`` (terminal-cell-aware measurement is intentionally
-    out-of-scope here) while a terminal expands ``\t`` to the next
-    tab stop; without this normalization a single tab in a path or
-    phase label would silently inflate the rendered width and break
-    the ``len(text.plain) <= ctx.width`` invariant the Live region
-    is sized against. Leading / trailing whitespace is trimmed so a
+    required because tabs expand to the next terminal tab stop while
+    all layout is measured with terminal display cells; without this
+    normalization a single tab in a path or phase label would silently
+    inflate the rendered width and break the
+    ``cell_len(text.plain) <= ctx.width`` invariant the Live region is
+    sized against. Leading / trailing whitespace is trimmed so a
     path that is otherwise non-empty cannot render as an invisible
     bar segment.
     """

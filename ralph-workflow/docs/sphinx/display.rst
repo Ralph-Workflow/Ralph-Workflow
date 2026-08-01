@@ -439,7 +439,9 @@ unchanged direct renders remain byte-stable. ``NO_COLOR`` and
 ``RALPH_FORCE_ASCII`` preserve the same labels and hierarchy.
 
 The single layout keeps phase, cycle/iter (or round), elapsed time, and identity
-vocabulary consistent with the live activity feed and rendered record.
+vocabulary consistent with the live activity feed and rendered record. All width
+allocation, truncation, and fit checks use terminal display-cell width, so wide
+Unicode and combining characters cannot shift a later Status Bar segment.
 
 Rendered record hierarchy
 -------------------------

@@ -1137,13 +1137,12 @@ def test_render_status_bar_collapses_tab_chars_to_spaces(tab_label: str) -> None
     """Tabs in phase_label collapse to a space so the bar's width budget stays honest.
 
     Pins the analysis-feedback correctness fix at
-    ``ralph/display/status_bar.py:_safe_single_line``: the persistent
-    live footer's width budget accounts column count via ``len()``
-    while a terminal expands ``\t`` to the next tab stop (typically
-    8 columns). Without tab normalization a single tab in a label
-    would silently inflate the rendered width and break the
-    ``len(text.plain) <= ctx.width`` invariant the Live region is
-    sized against.
+    ``ralph/display/status_bar.py:_safe_single_line``: terminal tabs
+    expand to the next tab stop (typically 8 columns), while the footer
+    budgets terminal display cells. Without tab normalization a single
+    tab in a label would silently inflate the rendered width and break
+    the ``cell_len(text.plain) <= ctx.width`` invariant the Live region
+    is sized against.
 
     The test feeds a tab-containing ``phase_label`` (the same hostile
     payload class that broke the operator's display before the fix)
@@ -1154,7 +1153,7 @@ def test_render_status_bar_collapses_tab_chars_to_spaces(tab_label: str) -> None
     - the rendered text stays single-line (no ``\n`` wrap into the
       working area),
     - the rendered text still fits the configured width
-      (``len(plain) <= ctx.width``), so a tab-containing label
+      (``cell_len(plain) <= ctx.width``), so a tab-containing label
       cannot blow up the bar's layout at any width,
     - the label is collapsed to ``"Dev Phase"`` / ``"Dev Analysis"``
       / ``" Development"`` / ``"Development"`` form (whitespace
@@ -1177,9 +1176,9 @@ def test_render_status_bar_collapses_tab_chars_to_spaces(tab_label: str) -> None
     assert "\r" not in plain, (
         f"Status Bar must not contain CR from tab in phase_label={tab_label!r}: {plain!r}"
     )
-    assert len(plain) <= ctx.width, (
+    assert cell_len(plain) <= ctx.width, (
         f"Status Bar must fit ctx.width={ctx.width} after tab "
-        f"normalization; len(plain)={len(plain)} for "
+        f"normalization; cell_len(plain)={cell_len(plain)} for "
         f"phase_label={tab_label!r}, plain={plain!r}"
     )
 
@@ -1212,9 +1211,9 @@ def test_render_status_bar_collapses_tab_in_workspace_root_keeps_width_budget() 
     assert "\n" not in plain, (
         f"Status Bar must not wrap from tab in workspace_root={tab_path!r}: {plain!r}"
     )
-    assert len(plain) <= ctx.width, (
+    assert cell_len(plain) <= ctx.width, (
         f"Status Bar must fit ctx.width={ctx.width} after tab "
-        f"normalization; len(plain)={len(plain)} for "
+        f"normalization; cell_len(plain)={cell_len(plain)} for "
         f"workspace_root={tab_path!r}, plain={plain!r}"
     )
 

@@ -7,7 +7,7 @@ appended to the in-memory ``_active_block`` list — but the OUTSIDE
 OBSERVABLE BEHAVIOR changed:
 
 * during open / continue, the console is silent (regardless of dedup);
-* on close, the console emits ONE line carrying the joined passage;
+* on close, the console emits one logical entry: output uses a metadata row plus a joined-passage row, while reasoning uses one row;
 * identical consecutive fragments do NOT show as duplicate close lines
   (the joined passage is a single string, deduplicated at the source).
 
@@ -50,8 +50,8 @@ def _make_renderer_with_env(env: dict[str, str]) -> tuple[ParallelDisplay, Strin
 # --- Public behavior: console is silent during streaming ---------------
 
 
-def test_identical_consecutive_text_fragments_emit_one_close_line() -> None:
-    """Three identical text fragments produce ONE [output] close line on flush.
+def test_identical_consecutive_text_fragments_emit_one_logical_close_entry() -> None:
+    """Three identical text fragments produce one logical [output] close entry on flush.
 
     Pre-S-7, this test pinned the visible dedup machinery by counting
     ``[content-start]`` and ``[content-continue#]`` lines. The new shape
@@ -65,27 +65,24 @@ def test_identical_consecutive_text_fragments_emit_one_close_line() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
-    content_lines = [ln for ln in lines if "[output][u]" in ln]
-    assert len(content_lines) == 1, (
-        f"Expected exactly 1 [output] close line, got {len(content_lines)}: {out!r}"
-    )
+    content_rows = [ln for ln in lines if "[output][u]" in ln]
+    assert len(content_rows) == 2
+    assert any("⋯ output" in row for row in content_rows)
     # The joined passage appears exactly once.
     assert out.count("same content") == 1, (
         f"Joined passage must appear once, got {out.count('same content')}: {out!r}"
     )
 
 
-def test_differing_text_fragments_emit_one_close_line_with_joined_passage() -> None:
-    """Differing text fragments produce ONE [output] close line on flush."""
+def test_differing_text_fragments_emit_one_logical_close_entry_with_joined_passage() -> None:
+    """Differing text fragments produce one logical [output] close entry on flush."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "first content")
     pd.emit_activity_line("u", "text", "second content")
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_lines) == 1, (
-        f"Expected exactly 1 [output] close line, got {len(content_lines)}: {out!r}"
-    )
+    content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
+    assert len(content_rows) == 2
     # Both fragments visible in the joined passage.
     assert "first content" in out
     assert "second content" in out
@@ -94,8 +91,8 @@ def test_differing_text_fragments_emit_one_close_line_with_joined_passage() -> N
     )
 
 
-def test_dedup_disabled_by_env_still_emits_one_close_line() -> None:
-    """Even with dedup disabled, the visible shape is one close line per block.
+def test_dedup_disabled_by_env_still_emits_one_logical_close_entry() -> None:
+    """Even with dedup disabled, the visible shape is one logical close entry per block.
 
     The internal dedup helper is a no-op for visible output in the
     new shape. With dedup disabled, the buffered fragment list still
@@ -110,8 +107,8 @@ def test_dedup_disabled_by_env_still_emits_one_close_line() -> None:
     pd.emit_activity_line("u", "text", "same content")
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_lines) == 1, f"Expected 1 close line, got {len(content_lines)}: {out!r}"
+    content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
+    assert len(content_rows) == 2
     # With dedup off, all 3 fragments are buffered; the joined
     # passage shows them all separated by spaces (S-13 sketch-J shape
     # carries the span and duration in the close header instead of
@@ -150,8 +147,8 @@ def test_dedup_does_not_suppress_first_fragment_of_new_block() -> None:
     pd.emit_activity_line("u", "text", "hello")
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_lines) == 1
+    content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
+    assert len(content_rows) == 2
     # The buffered fragment list kept only the first occurrence.
     accumulated = pd._active_block.pop("u", None)  # already drained by flush
     assert (
@@ -173,8 +170,8 @@ def test_dedup_with_three_different_then_identical() -> None:
     pd.emit_activity_line("u", "text", "second")  # identical to previous
     pd.flush_blocks()
     out = buf.getvalue()
-    content_lines = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_lines) == 1
+    content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
+    assert len(content_rows) == 2
     # With dedup on, the buffer holds 2 entries; joined is "first second".
     assert "first second" in out
 
