@@ -106,7 +106,7 @@ def archive_artifact_before_overwrite(
     created: list[Path] = []
 
     archive_markdown = hist_dir / f"{timestamp}_{artifact_type}.md"
-    backend.write_text(archive_markdown, backend.read_text(canonical_markdown))
+    write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
 
     # Archive the Markdown handoff if it exists
@@ -121,7 +121,7 @@ def archive_artifact_before_overwrite(
                 backend=backend,
                 now_iso=now_iso,
             )
-            backend.write_text(archive_md, backend.read_text(handoff_abs))
+            write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
 
     # Rebuild the index to include the new entry
@@ -158,7 +158,7 @@ def snapshot_current_artifact(
         backend=backend,
         now_iso=now_iso,
     )
-    backend.write_text(archive_markdown, backend.read_text(canonical_markdown))
+    write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
 
     handoff_rel = handoff_path_for_artifact(artifact_type)
@@ -172,7 +172,7 @@ def snapshot_current_artifact(
                 backend=backend,
                 now_iso=now_iso,
             )
-            backend.write_text(archive_md, backend.read_text(handoff_abs))
+            write_text_if_changed(backend, archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
 
     rebuild_history_index(artifact_dir, artifact_type, backend=backend)

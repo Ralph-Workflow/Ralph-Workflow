@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.state_db import DB_RELPATH, MISSING, RunStateDB, _Missing
 
 #: Directory (workspace-relative) holding every receipt for a single run.
@@ -209,7 +210,7 @@ def _write_legacy_receipt_fallback(
         payload["hmac"] = hmac_hex
     try:
         backend.mkdir(_receipt_dir(workspace_root, run_id), parents=True, exist_ok=True)
-        backend.write_text(path, json.dumps(payload), encoding="utf-8")
+        write_text_if_changed(backend, path, json.dumps(payload), encoding="utf-8")
     except OSError:
         return False  # Both DB and legacy paths failed - nothing durable to write.
     return True

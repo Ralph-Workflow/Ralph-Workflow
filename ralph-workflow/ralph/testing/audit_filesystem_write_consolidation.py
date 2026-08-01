@@ -99,20 +99,6 @@ _MARKER_TOKEN = "filesystem-write-ok:"
 _OPEN_MODE_POSITION = 1
 _OPEN_MODE_MIN_ARGS = 2
 
-#: Attribute names whose receiver is already routed through the canonical
-#: ``FileBackend`` abstraction. When the audit sees ``backend.write_text(...)``
-#: or ``self.write_text(...)`` (where ``self`` is a ``FileBackend`` subclass),
-#: the write is already inside the abstraction boundary — the canonical
-#: primitive lives in ``mcp/artifacts/idempotent_write.py`` and the call
-#: itself is not a raw bypass. The audit must not flag these.
-_ALREADY_ROUTED_RECEIVERS: frozenset[str] = frozenset(
-    {
-        "backend",
-        "self",
-        "cls",
-    }
-)
-
 #: Module-level qualifiers (typically ``shutil``, ``os``, ``pathlib``)
 #: whose free-function calls are considered raw filesystem mutation
 #: when they target writes/mutations we want the consolidation to
@@ -256,22 +242,17 @@ def _is_write_mode_open(call: ast.Call, *, path_method: bool = False) -> bool:
 
 
 def _raw_write_text_call(node: ast.Call) -> str | None:
-    """Return ``"write_text"`` / ``"write_bytes"`` if *node* is a raw full-file overwrite.
+    """Return ``"write_text"`` / ``"write_bytes"`` for every raw full-file overwrite.
 
-    Receivers whose name is in :data:`_ALREADY_ROUTED_RECEIVERS`
-    (typically a ``FileBackend`` parameter or a method's ``self``)
-    are not flagged, because those calls already pass through the
-    canonical abstraction.
+    Receiver names are not proof of routing: an arbitrary new module can name
+    an unguarded writer ``backend`` or ``self``. Only the shared primitive
+    modules are exempt, so every other raw overwrite fails closed and must
+    route through an idempotent helper or carry a local contract marker.
     """
     if not isinstance(node.func, ast.Attribute):
         return None
     attr = node.func.attr
-    if attr not in {"write_text", "write_bytes"}:
-        return None
-    receiver = node.func.value
-    if isinstance(receiver, ast.Name) and receiver.id in _ALREADY_ROUTED_RECEIVERS:
-        return None
-    return attr
+    return attr if attr in {"write_text", "write_bytes"} else None
 
 
 def _raw_builtin_open_call(node: ast.Call) -> bool:

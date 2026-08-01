@@ -167,14 +167,8 @@ def test_whitespace_around_attr_does_not_evade(tmp_path: Path) -> None:
     assert len(violations) == 1
 
 
-def test_backend_write_text_is_not_flagged(tmp_path: Path) -> None:
-    """``backend.write_text(...)`` is already routed through the canonical abstraction.
-
-    The audit's job is to flag raw writes that bypass the shared
-    ``FileBackend`` primitive. Calls where the receiver is a
-    ``FileBackend`` parameter (or ``self``/``cls``) are part of
-    the abstraction itself and must not be flagged.
-    """
+def test_backend_write_text_is_flagged_outside_the_canonical_primitive(tmp_path: Path) -> None:
+    """S-8: a new backend-named raw writer cannot bypass D1 by convention alone."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -190,11 +184,13 @@ def test_backend_write_text_is_not_flagged(tmp_path: Path) -> None:
         module_paths=(module_rel,),
     )
 
-    assert violations == []
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_write_text"
+    assert "write_text_if_changed" in violations[0].message
 
 
-def test_self_write_text_is_not_flagged(tmp_path: Path) -> None:
-    """``self.write_text(...)`` (a ``FileBackend`` subclass) is part of the abstraction."""
+def test_self_write_text_is_flagged_outside_the_canonical_primitive(tmp_path: Path) -> None:
+    """S-8: receiver spelling cannot silently exempt an unknown writer."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
@@ -211,16 +207,12 @@ def test_self_write_text_is_not_flagged(tmp_path: Path) -> None:
         module_paths=(module_rel,),
     )
 
-    assert violations == []
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_write_text"
 
 
 def test_arbitrary_name_write_text_is_flagged(tmp_path: Path) -> None:
-    """A call whose receiver is not a known-routed name IS flagged.
-
-    Only the canonical receiver names (``backend``, ``self``, ``cls``)
-    are exempt. Any other name — including ambiguous ones like
-    ``ctx`` or ``fs`` — is treated as a raw bypass and fails.
-    """
+    """Any raw receiver name is rejected outside the canonical primitive."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
