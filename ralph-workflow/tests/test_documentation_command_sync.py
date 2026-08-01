@@ -207,6 +207,7 @@ def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
         "explicit local override flow."
     )
     assert "ralph --generate-local-config" in content
+    assert "does not create `.agent/`" in content
     assert "advanced and optional" in content
     assert "refreshes local TOMLs only when they already" in content
     assert "never opts a project into local configuration" in content

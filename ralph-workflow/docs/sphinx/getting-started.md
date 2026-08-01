@@ -72,6 +72,12 @@ From inside the git repo you want Ralph Workflow to operate on, run
 ralph --init
 ```
 
+`ralph --init` does not create `.agent/`. Project-local TOMLs are advanced
+and optional: create the complete override set only with
+`ralph --init-local-config` (alias: `ralph --generate-local-config`).
+`ralph --regenerate-config` refreshes local TOMLs only when they already
+exist, so it never opts a project into local configuration.
+
 `ralph --init` is safe to re-run; it is idempotent and re-checks
 detected agents on every run.
 
