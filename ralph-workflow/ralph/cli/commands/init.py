@@ -112,7 +112,7 @@ def init_command(
 
     Args:
         template: Optional prompt-template name.
-        config_path: Optional path for config file.
+        config_path: Optional existing config path to use for agent enablement; a missing path is not created.
         display_context: Display context for consistent rendering. If None, a default
             context is created using make_display_context().
     """
