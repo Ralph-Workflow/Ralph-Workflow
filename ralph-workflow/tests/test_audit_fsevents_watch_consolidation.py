@@ -63,20 +63,16 @@ def _write_fake_package(
     return package_root
 
 
-@pytest.mark.timeout_seconds(10)
-def test_audit_passes_real_production_tree() -> None:
-    """The audit returns zero violations against the committed ralph/ tree.
-
-    Proves the current tree -- exactly one recursive root watch
-    scheduled statically inside ``WorkspaceMonitor.start()`` with
-    no loop ancestor -- satisfies the invariants.
-    """
-    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
-        PRODUCTION_ROOT
-    )
-    assert violations == [], (
-        f"audit must be clean on the real ralph-workflow tree; got: {violations}"
-    )
+# NOTE: ``test_audit_passes_real_production_tree`` was deleted in the
+# wt-05-test-opti pass. That audit is already invoked as a dedicated
+# ``_VERIFY_STEPS`` entry inside ``make verify`` (via
+# ``python -m ralph.testing.audit_fsevents_watch_consolidation``),
+# so the same clean-tree check runs in the same gate. Re-running it
+# through pytest on the default profile added ~4.5 s of AST-walk cost
+# to the slowest shard while proving nothing the verify step does not
+# already prove. The fixture-driven tests below cover every audit
+# branch on a synthetic ``tmp_path`` tree without touching the real
+# package, preserving the audit's behavior contract.
 
 
 def test_audit_skips_schedule_walk_for_modules_without_a_schedule_marker(

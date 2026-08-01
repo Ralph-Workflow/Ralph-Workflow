@@ -43,7 +43,6 @@ import pytest
 from ralph.testing import audit_log_sink_buffering as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION_ROOT = REPO_ROOT / "ralph"
 _LOGGING_MODULE: str = "logging.py"
 _MIN_BLOCK_BUFFERING: int = 2
 
@@ -74,20 +73,16 @@ def _write_fake_logging_module(
     return package_root
 
 
-def test_audit_passes_real_production_tree() -> None:
-    """The audit returns zero violations against the committed ralph/ tree.
-
-    Proves the current tree -- both engine file sinks
-    (``ralph.log`` and ``ralph.jsonl``) passed through the
-    ``_add_buffered_file_sink`` helper with ``buffering=8192`` --
-    satisfies the invariant.
-    """
-    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
-        PRODUCTION_ROOT
-    )
-    assert violations == [], (
-        f"audit must be clean on the real ralph-workflow tree; got: {violations}"
-    )
+# NOTE: ``test_audit_passes_real_production_tree`` was deleted in the
+# wt-05-test-opti pass. That audit is already invoked as a dedicated
+# ``_VERIFY_STEPS`` entry inside ``make verify`` (via
+# ``python -m ralph.testing.audit_log_sink_buffering``), so the same
+# clean-tree check runs in the same gate. Re-running it through pytest
+# on the default profile added ~1 s of AST-walk cost while proving
+# nothing the verify step does not already prove. The fixture-driven
+# tests below cover every audit branch on a synthetic ``tmp_path``
+# tree without touching the real package, preserving the audit's
+# behavior contract.
 
 
 def test_audit_flags_file_sink_without_buffering(tmp_path: Path) -> None:

@@ -37,7 +37,10 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig, UnifiedConfig
 
-pytestmark = [pytest.mark.timeout_seconds(10)]
+pytestmark = [
+    pytest.mark.timeout_seconds(10),
+    pytest.mark.subprocess_e2e,
+]
 
 _CYCLES = 12
 _WARMUP_CYCLES = 2

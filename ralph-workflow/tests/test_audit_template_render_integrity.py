@@ -7,14 +7,17 @@ optional-input scenarios. It enforces five render-integrity checks: no
 unrendered Jinja markers, include resolution, no duplicated headings, no
 duplicated >=120-char paragraphs, and no blank-line/doubled-label defects.
 
-``test_audit_clean_on_current_templates`` is the verify-gate
-wiring: it runs inside ``make test`` (a ``make verify`` step), so any
-template regression fails the default gate.
+The clean-template render check (``test_audit_clean_on_current_templates``)
+used to live here as the verify-gate wiring, but it duplicates the
+``audit_template_render_integrity`` step in ``_VERIFY_STEPS`` so it was
+removed in the wt-05-test-opti pass. The remaining fixture-driven tests
+below cover every audit branch on synthetic inputs without touching the
+packaged templates.
 """
 
 from __future__ import annotations
 
-import pytest
+from typing import TYPE_CHECKING
 
 import ralph.testing.audit_template_render_integrity as audit_module
 from ralph.prompts.template_context import TemplateContext
@@ -24,9 +27,11 @@ from ralph.testing.audit_template_render_integrity import (
     _conditional_variable_names,
     _render_targets,
     check_rendered_prompt,
-    collect_violations,
 )
 from ralph.testing.audit_template_render_integrity import main as audit_main
+
+if TYPE_CHECKING:
+    import pytest
 
 _CLEAN_PROMPT = (
     "# Title\n\n"
@@ -214,19 +219,13 @@ def test_main_exit_codes_follow_collect_violations(
     assert captured.out.count("Every packaged prompt template must render") == 1
 
 
-@pytest.mark.timeout_seconds(15)
-def test_audit_clean_on_current_templates() -> None:
-    """Verify-gate wiring: every packaged template x scenario must render
-    cleanly. On failure, the full violation list is surfaced so the failing
-    template and check are immediately visible in the test output.
-
-    The audit walks every packaged template through every reachable
-    scenario via the real rendering path (registry + partials +
-    ``TemplateRenderer``). The 5 s cap was measured at 1.6 s on a clean
-    host, but under 24-way sharding the per-test SIGALRM cap fires
-    against CPU contention from sibling shards. The 15 s cap is the
-    resource headroom the work needs; it does NOT mask a real
-    regression (the audit either finds zero violations or it doesn't).
-    """
-    violations = collect_violations()
-    assert violations == [], "render-integrity violations:\n" + "\n".join(violations)
+# NOTE: ``test_audit_clean_on_current_templates`` was deleted in the
+# wt-05-test-opti pass. That audit is already invoked as a dedicated
+# ``_VERIFY_STEPS`` entry inside ``make verify`` (via
+# ``python -m ralph.testing.audit_template_render_integrity``), so
+# the same clean-template render check runs in the same gate. The
+# pytest version added ~1 s of template-rendering cost to the
+# default profile while proving nothing the verify step does not
+# already prove. The remaining tests in this file cover every
+# audit branch on synthetic inputs without touching the packaged
+# templates, preserving the audit's behavior contract.
