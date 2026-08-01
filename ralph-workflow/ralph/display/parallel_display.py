@@ -423,6 +423,11 @@ def _strip_markup(line: str) -> str:
     return strip_markup_safe(line)
 
 
+def _tool_preview_lookup_name(source_content: str) -> str:
+    """Return a tool name suitable for preview lookup without changing record content."""
+    return source_content.removeprefix("↳ ").removesuffix(" ↳")
+
+
 def _record_tool_call_body(record_body: str, source_content: str) -> str:
     """Restore a source continuation carrier removed from a preview header.
 
@@ -430,11 +435,7 @@ def _record_tool_call_body(record_body: str, source_content: str) -> str:
     structured tool-call header. A source-provided ``↳`` is event content,
     however, and must remain in the greppable rendered record.
     """
-    if (
-        "↳" in source_content
-        and not source_content.lstrip().startswith("↳ ")
-        and "↳" not in record_body
-    ):
+    if source_content.rstrip().endswith(" ↳") and "↳" not in record_body:
         return f"{record_body} ↳".strip()
     return record_body
 
@@ -2761,7 +2762,7 @@ class ParallelDisplay:
                     record_body=(
                         _record_tool_call_body(
                             preview_record_text(
-                                text_content,
+                                _tool_preview_lookup_name(text_content),
                                 metadata,
                                 overflow_ref=overflow_ref,
                                 glyphs_enabled=self._ctx.glyphs_enabled,

@@ -100,7 +100,7 @@ def test_tool_call_record_omits_pair_marker_and_normalizes_call_shapes(tmp_path:
 
 @pytest.mark.parametrize(
     ("content", "contains_pair_marker"),
-    [("↳ read", False), ("read ↳", True)],
+    [("↳ read", False), ("read ↳", True), ("↳ read ↳", True)],
 )
 def test_tool_call_record_normalizes_only_leading_pair_marker(
     tmp_path: Path, content: str, contains_pair_marker: bool
@@ -120,6 +120,10 @@ def test_tool_call_record_normalizes_only_leading_pair_marker(
     call = next(line for line in record.splitlines() if "role=tool_call" in line)
     assert "read" in call
     assert ("↳" in call) is contains_pair_marker
+    assert call.count("↳") == int(contains_pair_marker)
+    if contains_pair_marker:
+        assert " ↳ role=tool_call" in call
+        assert "↳ read" not in call
 
 
 def test_event_rows_indent_beneath_phase_headers(tmp_path: Path) -> None:
