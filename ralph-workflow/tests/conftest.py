@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import shutil
 import signal
 import threading
@@ -173,7 +172,11 @@ def _isolate_process_home(
     """
 
     worker_root = tmp_path_factory.getbasetemp() / "autouse-home"
-    unique_suffix = hashlib.sha1(request.node.nodeid.encode("utf-8")).hexdigest()
+    # Use the nodeid directly as the per-test suffix. nodeid is already
+    # globally unique within a session (path::name[<param>] for parametrized
+    # cases), so the extra SHA-1 round is unnecessary work in the hot path
+    # of the autouse fixture.
+    unique_suffix = request.node.nodeid
     fake_home = worker_root / unique_suffix / "home"
     fake_xdg = fake_home / ".config"
     monkeypatch.setenv("HOME", str(fake_home))

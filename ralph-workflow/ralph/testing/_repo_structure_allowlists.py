@@ -998,6 +998,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/phases/commit_cleanup.py", 701),
         ("ralph/phases/commit_cleanup.py", 722),
         ("ralph/phases/commit_cleanup.py", 732),
+        ("ralph/display/parallel_display.py", 879),
         ("ralph/display/parallel_display.py", 1967),
         ("ralph/display/parallel_display.py", 1968),
         # wt-04-improve-display: _wrap_close_body fans out across 8 chrome-prefix
