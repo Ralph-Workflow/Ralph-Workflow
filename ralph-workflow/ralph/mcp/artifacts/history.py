@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -219,7 +220,7 @@ def rebuild_history_index(
         lines.append("")
 
     index_path = hist_dir / "index.md"
-    backend.write_text(index_path, "\n".join(lines))
+    write_text_if_changed(backend, index_path, "\n".join(lines))
 
 
 def clear_artifact_history(
