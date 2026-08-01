@@ -635,6 +635,7 @@ def test_indexed_grep_dotted_literal_uses_index(tmp_path: Path) -> None:
 # --- Defect D4: stale_paths_count populated ---
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_indexed_grep_freshness_reports_stale_paths_count(tmp_path: Path) -> None:
     """AC-01/D4: stale_paths_count mirrors the dirty-path queue, not 0."""
     workspace = _seed_workspace(tmp_path)

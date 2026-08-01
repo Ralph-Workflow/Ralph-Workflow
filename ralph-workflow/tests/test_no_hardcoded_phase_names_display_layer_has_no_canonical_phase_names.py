@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import tokenize
+from io import StringIO
 
 import pytest
 
@@ -47,12 +49,17 @@ RALPH_ROOT = pathlib.Path(__file__).parent.parent / "ralph"
 
 
 def _string_literals_in_source(source: str) -> set[str]:
-    tree = ast.parse(source)
+    """Return literal strings without parsing the whole production module AST."""
     return {
-        node.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        ast.literal_eval(token.string)
+        for token in tokenize.generate_tokens(StringIO(source).readline)
+        if token.type == tokenize.STRING
     }
+
+
+def test_string_literal_scan_ignores_comments_regression() -> None:
+    """The guard scans literals, not phase-name comments."""
+    assert _string_literals_in_source('# "planning"\n"review"\n') == {"review"}
 
 
 def _string_literals_in_function(source: str, function_name: str) -> set[str]:
@@ -67,6 +74,8 @@ def _string_literals_in_function(source: str, function_name: str) -> set[str]:
     return set()
 
 
+# ponytail: token scanning the consolidated display source competes for CPU under xdist; no behavior is deferred.
+@pytest.mark.timeout_seconds(2.0)
 class TestDisplayLayerHasNoCanonicalPhaseNames:
     """Display modules must not embed canonical phase name literals as routing keys."""
 

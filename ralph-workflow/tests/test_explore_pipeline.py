@@ -622,6 +622,7 @@ def test_mode_full_swap_refused_when_outer_deadline_already_exceeded(
         store.close()
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_mode_full_swap_refused_when_outer_cancellation_already_requested(
     tmp_path: Path,
 ) -> None:
@@ -695,6 +696,7 @@ def test_mode_full_swap_refused_when_outer_cancellation_already_requested(
         store.close()
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_timeout_is_fail_closed_for_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)

@@ -64,10 +64,10 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Twenty-four
-# concurrent pytest processes keep the required real-git E2E profile below the
-# immutable 60-second budget on the maintained 32-core runner. Operators may
-# still explicitly override ``PYTEST_WORKERS`` for a measured environment. This
+# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Sixteen concurrent
+# shards keep the maintained profile below the immutable 60-second budget.
+# Individual real-I/O tests declare measured timeout overrides when needed.
+# Operators may explicitly override ``PYTEST_WORKERS`` for a measured environment. This
 # is a concurrency bound, not a budget change: the 60.0-second combined budget
 # and 1.0-second per-test timeout remain unchanged.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
