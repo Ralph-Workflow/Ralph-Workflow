@@ -41,8 +41,11 @@ def _has_resolved_background(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bo
     if _has_required_background(node):
         return True
     return any(
-        argument.arg == "ctx"
-        and any(isinstance(child, ast.Name) and child.id == "DisplayContext" for child in ast.walk(argument.annotation))
+        argument.arg in {"ctx", "display_context"}
+        and any(
+            isinstance(child, ast.Name) and child.id == "DisplayContext"
+            for child in ast.walk(argument.annotation)
+        )
         for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
         if argument.annotation is not None
     )
@@ -73,7 +76,7 @@ def _violations(tree: ast.AST) -> list[str]:
             ),
             None,
         )
-        if initializer is None or not _has_required_background(initializer):
+        if initializer is None or not _has_resolved_background(initializer):
             violations.append(f"{node.lineno} {node.name}")
     violations.extend(
         f"{node.lineno} {node.name}"
