@@ -23,6 +23,22 @@ The fuller tutorial is
 The full operator manual lives under
 [`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst).
 
+## Install from a checkout
+
+For a self-contained manual snapshot, run this from `ralph-workflow/`:
+
+```bash
+make install  # `rdev --version` ends in -build
+# or: make dev  # `rdev --version` ends in -dev
+```
+
+Before either command changes files, it detects an existing global `ralph`.
+In an interactive terminal, choose to continue, remove a pipx or `uv tool`
+installation, or abort. The source snapshot uses `rdev`, so it does not
+shadow the published `ralph` command. See the
+[contributor setup guide](ralph-workflow/CONTRIBUTING.md#dev-build-vs-stable-build)
+for stable installs and switching builds.
+
 ## Supported agents
 
 Ralph Workflow ships eight built-in agent backends: Claude Code,
