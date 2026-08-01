@@ -3,18 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import StringIO
 from typing import Final, Literal
-
-from rich.syntax import Syntax
-from rich.text import Text
-
-from ralph.display.theme import (
-    SYNTAX_BACKGROUND_TRANSPARENT,
-    make_console,
-    pick_status_styles,
-    syntax_theme_for_background,
-)
 
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
@@ -104,50 +93,6 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
 )
 
 
-def render_scene(
-    scene_name: str,
-    case: SupportCase,
-    *,
-    terminal_bg_is_light: bool | None,
-) -> str:
-    """Render one deterministic reference scene through a real Rich console.
-
-    This is intentionally a compact probe rather than a replacement display
-    path. It exercises the canonical semantic palette and syntax theme for all
-    declared destination modes, giving floor tests generated output instead of
-    stored captures. Real pipeline scenes retain their focused display tests.
-    """
-    if scene_name not in SCENE_NAMES:
-        raise ValueError(f"unknown scene {scene_name!r}")
-    stream = StringIO()
-    console = make_console(
-        file=stream,
-        force_terminal=case.destination == "tty" and case.colour != "none",
-        color_system=case.color_system,
-        no_color=case.colour == "none",
-        width=case.width,
-        height=case.height,
-    )
-    styles = pick_status_styles(terminal_bg_is_light)
-    console.print(Text(f"[{scene_name}] ", style=styles["info"][0]), end="")
-    for state in ("running", "pending", "warning", "success", "error"):
-        style, glyph, label = styles[state]
-        marker = glyph if case.glyphs == "unicode" else label
-        console.print(Text(f"{marker} {label} ", style=style), end="")
-    console.print(Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=styles["info"][0]))
-    console.print(
-        Syntax(
-            "def café(value: str) -> int:\\n    return len(value)",
-            "python",
-            theme=syntax_theme_for_background(terminal_bg_is_light),
-            line_numbers=True,
-            word_wrap=True,
-            background_color=SYNTAX_BACKGROUND_TRANSPARENT,
-        )
-    )
-    return stream.getvalue()
-
-
 def support_matrix() -> tuple[SupportCase, ...]:
     """Return the complete declared support matrix.
 
@@ -179,6 +124,5 @@ __all__ = [
     "SURFACE_CATALOG",
     "SupportCase",
     "SurfaceSpec",
-    "render_scene",
     "support_matrix",
 ]

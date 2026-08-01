@@ -173,19 +173,6 @@ class GenericParser(NdjsonParserBase):
         yield from self._flush_accumulator()
         yield AgentOutputLine(type="unknown", raw=stripped, metadata=obj)
 
-    def _handle_lifecycle_event(
-        self,
-        obj: dict[str, object],
-        event_type: str,
-    ) -> Iterator[AgentOutputLine] | None:
-        """Flush text and emit stop for generic terminal lifecycle events."""
-        if event_type in self._STOP_TYPES:
-            return self._stop_event_lines(obj)
-        return super()._handle_lifecycle_event(obj, event_type)
-
-    def _stop_event_lines(self, obj: dict[str, object]) -> Iterator[AgentOutputLine]:
-        yield from self._flush_accumulator()
-        yield AgentOutputLine(type="stop", raw=str(obj))
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         yield from self._flush_accumulator()
