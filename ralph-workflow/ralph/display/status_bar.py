@@ -313,12 +313,10 @@ ATTENTION_PRESENTATION: dict[str, tuple[str, str, str]] = {
 
 # DA-001 (wt-028-display AC-01): worst-case attention slot width.
 # The attention slot is reserved at every width so its arrival (or
-# clearing) never shifts any neighbour. The width is the maximum
-# ``len(glyph) + 1 + len(label)`` across the four attention states
-# (``waiting`` is the longest at ``STALLED`` glyph (1) + " " (1) +
-# ``WAITING`` (7) = 9, etc.). Computed once at module import.
-_ATTENTION_PRESENTATION_MAX_LABEL_CHARS: int = max(
-    len(label) for label, _glyph, _style in ATTENTION_PRESENTATION.values()
+# clearing) never shifts any neighbour. Its label width is measured in
+# terminal cells; glyph widths are resolved from the active context below.
+_ATTENTION_PRESENTATION_MAX_LABEL_CELLS: int = max(
+    cell_len(label) for label, _glyph, _style in ATTENTION_PRESENTATION.values()
 )
 
 
@@ -339,7 +337,7 @@ def _attention_slot_reserved_width(ctx: DisplayContext) -> int:
     separator = _field_separator(ctx)
     max_glyph_len = max(
         (
-            len(ctx.glyph_for(glyph_key))
+            cell_len(ctx.glyph_for(glyph_key))
             for glyph_key in (
                 glyph_key for _label, glyph_key, _style in ATTENTION_PRESENTATION.values()
             )
@@ -347,7 +345,7 @@ def _attention_slot_reserved_width(ctx: DisplayContext) -> int:
         default=0,
     )
     # ``{glyph} {label}{separator}`` is the rendered string when populated.
-    return max_glyph_len + 1 + _ATTENTION_PRESENTATION_MAX_LABEL_CHARS + len(separator)
+    return max_glyph_len + 1 + _ATTENTION_PRESENTATION_MAX_LABEL_CELLS + cell_len(separator)
 
 
 @dataclass(frozen=True)
@@ -496,7 +494,7 @@ def _iteration_segment_width(
     """
     separator = _field_separator(ctx)
     glyph = ctx.glyph_for(glyph_key)
-    return len(separator) + len(glyph) + 1 + label_max_chars
+    return cell_len(separator) + cell_len(glyph) + 1 + label_max_chars
 
 
 @dataclass(frozen=True)
@@ -616,10 +614,10 @@ def _field_overhead_and_label_budgets(
         _FieldBudgets with phase_budget, path_budget, label budgets,
         and the render_marker / render_iter_glyph degradation flags.
     """
-    separator_len = len(_field_separator(ctx))
-    marker_len = len(ctx.glyph_for("phase_marker") + " ") if ctx.glyphs_enabled else 0
-    outer_dev_glyph_len = len(ctx.glyph_for("outer_dev"))
-    inner_analysis_glyph_len = len(ctx.glyph_for("inner_analysis"))
+    separator_len = cell_len(_field_separator(ctx))
+    marker_len = cell_len(ctx.glyph_for("phase_marker") + " ") if ctx.glyphs_enabled else 0
+    outer_dev_glyph_len = cell_len(ctx.glyph_for("outer_dev"))
+    inner_analysis_glyph_len = cell_len(ctx.glyph_for("inner_analysis"))
 
     def _iter_width(
         outer_label: int,
@@ -1061,11 +1059,11 @@ def _prune_optional_segments(
     agent label (or only a future optional) still typecheck.
     """
     keep: list[str] = [label for label in candidates if label]
-    keep_width = sum(len(separator) + len(label) for label in keep)
+    keep_width = sum(cell_len(separator) + cell_len(label) for label in keep)
     while keep and keep_width > path_budget - _MIN_PATH_BUDGET:
         # Drop the lowest-priority trailing segment.
         keep.pop()
-        keep_width = sum(len(separator) + len(label) for label in keep)
+        keep_width = sum(cell_len(separator) + cell_len(label) for label in keep)
     return keep
 
 
@@ -1145,7 +1143,7 @@ def _append_attention_slot(
         # shorter than the worst case (e.g. ``DONE`` is shorter
         # than ``STALLED``) so the trailing separator lands at
         # the reserved position even on shorter states.
-        rendered_so_far = len(text.plain)
+        rendered_so_far = cell_len(text.plain)
         if rendered_so_far < attention_slot_width:
             text.append(
                 " " * (attention_slot_width - rendered_so_far),
