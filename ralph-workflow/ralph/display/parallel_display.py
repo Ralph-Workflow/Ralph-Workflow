@@ -2618,8 +2618,9 @@ class ParallelDisplay:
             metadata.get("input", metadata.get("args")), dict
         ):
             # A structured parser event already exposes its tool input in the
-            # call body; its trailing arrow would create a second `[call]` row.
-            text = text.rstrip().removesuffix("↳").rstrip()
+            # call body. Remove the renderer's leading pairing chrome, while
+            # preserving an arrow that was actually part of the source body.
+            text = text.replace(" ↳ ", " ", 1)
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 

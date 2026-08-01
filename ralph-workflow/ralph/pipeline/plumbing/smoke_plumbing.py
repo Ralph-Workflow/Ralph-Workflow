@@ -156,13 +156,19 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
         suffix = agent_name.removeprefix("opencode").lstrip("/")
         if not suffix:
             run_id = _OPENCODE_SMOKE_RUN_ID
+            relative_dir = _OPENCODE_SMOKE_RELATIVE_DIR
         else:
             sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
             run_id = f"{_OPENCODE_SMOKE_RUN_ID}-{sanitized}"
+            # Receipts and sentinels were alias-scoped already, but the
+            # workspace output was shared. Scope it by the same normalized
+            # alias so one concurrent provider smoke cannot unlink or satisfy
+            # another provider's file assertion.
+            relative_dir = _OPENCODE_SMOKE_RELATIVE_DIR / sanitized
         return SmokeHarnessSpec(
             agent_name=agent_name,
-            relative_dir=_OPENCODE_SMOKE_RELATIVE_DIR,
-            output_file=_OPENCODE_SMOKE_OUTPUT_FILE,
+            relative_dir=relative_dir,
+            output_file=relative_dir / "todo-list.js",
             run_id=run_id,
         )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")

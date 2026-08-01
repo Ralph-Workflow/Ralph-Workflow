@@ -373,6 +373,16 @@ def test_resolve_smoke_harness_spec_cursor_alias_uses_unique_run_id() -> None:
     assert spec_bracket.run_id == "interactive-cursor-smoke-claude-opus-4-8-context-1m"
 
 
+def test_resolve_smoke_harness_spec_opencode_aliases_isolate_output_paths() -> None:
+    """S-6: concurrent OpenCode aliases must not erase one another's smoke output."""
+    minimax = smoke_plumbing_module.resolve_smoke_harness_spec("opencode/minimax/MiniMax-M3")
+    alternate = smoke_plumbing_module.resolve_smoke_harness_spec("opencode/omnirouter/auto/cheap")
+
+    assert minimax.run_id != alternate.run_id
+    assert minimax.relative_dir != alternate.relative_dir
+    assert minimax.output_file != alternate.output_file
+
+
 def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

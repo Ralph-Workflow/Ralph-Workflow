@@ -617,10 +617,14 @@ def parse_opencode_child_id(line: str) -> str | None:
     if not isinstance(parsed, dict):
         return None
     obj = cast("dict[str, object]", parsed)
-    child_id = _opencode_child_id_from_object(obj)
-    if child_id is not None:
-        return child_id
-    return _opencode_native_task_call_id(obj)
+    # Native task envelopes carry an unrelated top-level event ID as well as
+    # their logical subagent identity in ``part.callID``. Prefer the latter so
+    # parser, activity sink, and liveness registry all attribute the task to
+    # the same child lifecycle.
+    native_task_id = _opencode_native_task_call_id(obj)
+    if native_task_id is not None:
+        return native_task_id
+    return _opencode_child_id_from_object(obj)
 
 
 def _opencode_native_task_call_id(obj: dict[str, object]) -> str | None:
@@ -655,11 +659,16 @@ def _route_opencode_line_to_registry(
         return
     obj = cast("dict[str, object]", parsed)
     event_type = str(obj.get("type", ""))
+    # ``tool_use``/``task`` frames use ``part.callID`` for the child. Their
+    # top-level ``id`` is merely the enclosing event ID, not a lifecycle ID.
+    # Route the native shape first so that generic envelope metadata cannot
+    # suppress the subagent lifecycle.
+    if _opencode_native_task_call_id(obj) is not None:
+        _route_opencode_native_task(obj, registry, scope_prefix)
+        return
     child_id = _opencode_child_id_from_object(obj)
     if child_id is not None:
         _route_opencode_lifecycle_event(obj, registry, scope_prefix, child_id, event_type)
-        return
-    _route_opencode_native_task(obj, registry, scope_prefix)
 
 
 def _opencode_pid(value: object) -> int | None:

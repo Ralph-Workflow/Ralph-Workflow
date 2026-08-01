@@ -147,6 +147,36 @@ def test_task_tool_observe_line_refreshes_subagent_activity_sink() -> None:
     assert sink_calls == [line]
 
 
+def test_native_task_regression_prefers_call_id_over_unrelated_envelope_id() -> None:
+    """S-3: event-envelope IDs must not hide OpenCode's native task identity."""
+    clock = FakeClock()
+    registry = ChildLivenessRegistry(
+        progress_ttl=30.0,
+        heartbeat_ttl=30.0,
+        stale_label_ttl=30.0,
+        exit_reconcile=30.0,
+        now=clock.monotonic,
+    )
+    line = json.dumps(
+        {
+            "type": "tool_use",
+            "id": "event-envelope-id",
+            "part": {
+                "type": "tool",
+                "tool": "task",
+                "callID": "call-native-child",
+                "state": {"status": "running", "input": {"description": "d"}},
+            },
+        }
+    )
+    strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
+
+    strategy.observe_line(line)
+
+    assert parse_opencode_child_id(line) == "call-native-child"
+    assert registry.snapshot("agent:parent:").active_count == 1
+
+
 def test_task_tool_observe_line_records_native_task_lifecycle() -> None:
     """S-3: a native task callID must become one scoped child lifecycle.
 
