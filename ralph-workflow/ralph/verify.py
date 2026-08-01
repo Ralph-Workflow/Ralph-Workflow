@@ -381,6 +381,16 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Package-wide fail-closed filesystem mutation audit. Every raw write,
+        # delete, replacement, copy, move, mkdir, or durability barrier under
+        # ralph/ must route through a shared compliant boundary or carry a
+        # local filesystem-write-ok reason marker (D1-D3).
+        "filesystem write consolidation audit (audit_filesystem_write_consolidation)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # wt-043: render-integrity audit for the packaged prompt
         # templates. Renders every top-level .jinja template through the
         # real registry/partials/render_template path across the main

@@ -172,6 +172,7 @@ def _write_user_id_file(config_path: Path, user_id: str) -> None:
         with os.fdopen(temp_fd, "w", encoding="utf-8") as stream:
             stream.write(content)
             stream.flush()
+            # filesystem-write-ok: durable publication of persistent telemetry identity configuration
             os.fsync(stream.fileno())
         temp_path.replace(config_path)
     finally:

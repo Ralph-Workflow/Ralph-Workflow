@@ -418,6 +418,7 @@ class FsWorkspace:
         dest_abs = self._abs(dest)
         if dest_abs.exists() and not overwrite:
             raise FileExistsError(f"Destination '{dest}' already exists")
+        # filesystem-write-ok: explicit user-requested workspace move preserves source bytes and metadata
         shutil.move(str(src_abs), str(dest_abs))
 
     def copy(self, src: str, dest: str, *, overwrite: bool = False) -> None:
@@ -439,6 +440,7 @@ class FsWorkspace:
             shutil.copytree(str(src_abs), str(dest_abs), dirs_exist_ok=overwrite)
         else:
             dest_abs.parent.mkdir(parents=True, exist_ok=True)
+            # filesystem-write-ok: explicit user-requested workspace copy preserves source bytes and metadata
             shutil.copy2(str(src_abs), str(dest_abs))
 
     def delete(self, path: str, *, recursive: bool = False) -> None:
@@ -455,6 +457,7 @@ class FsWorkspace:
         if p.is_dir():
             if not recursive:
                 raise IsADirectoryError(f"Path '{path}' is a directory, use recursive=True")
+            # filesystem-write-ok: explicit user-requested recursive workspace deletion
             shutil.rmtree(str(p))
         else:
             p.unlink()

@@ -182,6 +182,7 @@ def _staged_full_reindex(
         # Always remove the staging directory; it is
         # disposable and must not be committed.
         if staging_dir.exists():
+            # filesystem-write-ok: cleanup of temporary staged index directory after publication
             shutil.rmtree(staging_dir, ignore_errors=True)
 
 

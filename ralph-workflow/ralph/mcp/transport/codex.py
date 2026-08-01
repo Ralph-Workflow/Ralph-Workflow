@@ -80,6 +80,7 @@ def cleanup_codex_homes() -> None:
     already-removed dirs.
     """
     for home in list(_all_allocated_codex_homes):
+        # filesystem-write-ok: atexit cleanup of run-scoped temporary Codex homes
         shutil.rmtree(home, ignore_errors=True)
     _all_allocated_codex_homes.clear()
     _allocated_codex_homes.clear()
@@ -113,8 +114,10 @@ def release_codex_home(codex_home: str) -> bool:
     try:
         _allocated_codex_homes.remove(codex_home)
     except ValueError:
+        # filesystem-write-ok: idempotent release of run-scoped temporary Codex home
         shutil.rmtree(codex_home, ignore_errors=True)
         return False
+    # filesystem-write-ok: normal lifecycle release of run-scoped temporary Codex home
     shutil.rmtree(codex_home, ignore_errors=True)
     return True
 
@@ -252,6 +255,7 @@ def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
             if entry.is_dir():
                 shutil.copytree(entry, destination, dirs_exist_ok=True)
             else:
+                # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input
                 shutil.copy2(entry, destination)
 
 

@@ -155,6 +155,7 @@ def init_command(
 
     if config_path is not None and not config_path.exists():
         config_path.parent.mkdir(parents=True, exist_ok=True)
+        # filesystem-write-ok: first-run template copy preserves source metadata for user-visible initialization
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
         display.emit_status(f"Created: {config_path}")
         newly_enabled = enable_detected_agents(config_path)

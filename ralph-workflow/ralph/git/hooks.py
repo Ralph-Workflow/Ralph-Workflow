@@ -282,6 +282,7 @@ def _backup_existing_hook(hook_path: Path) -> None:
         return
 
     orig_path = _orig_hook_path(hook_path.parent, hook_path.name)
+    # filesystem-write-ok: git hook installation copies the selected hook content into Git-managed hook storage
     shutil.copyfile(hook_path, orig_path)
     _make_writable(orig_path)
 
@@ -333,6 +334,7 @@ def _remove_hook(hook_path: Path) -> int:
     _make_writable(hook_path)
     orig_path = _orig_hook_path(hook_path.parent, hook_path.name)
     if orig_path.exists():
+        # filesystem-write-ok: restore the user hook from Git-managed backup storage
         shutil.move(orig_path, hook_path)
         _make_writable(hook_path)
         return 1

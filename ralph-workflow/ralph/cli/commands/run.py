@@ -203,6 +203,7 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
 def _clear_generated_pipeline_state(workspace_root: Path) -> None:
     agent_dir = workspace_root / ".agent"
     for relative_dir in _GENERATED_AGENT_STATE_DIRS:
+        # filesystem-write-ok: reset explicitly generated pipeline state before a fresh run
         shutil.rmtree(agent_dir / relative_dir, ignore_errors=True)
     for relative_file in _GENERATED_AGENT_STATE_FILES:
         (agent_dir / relative_file).unlink(missing_ok=True)

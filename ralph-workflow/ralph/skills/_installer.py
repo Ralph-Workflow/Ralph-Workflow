@@ -76,6 +76,7 @@ def _mirror_skill_to_sibling_root(
     if sibling_dir.is_symlink():
         sibling_dir.unlink()
     elif sibling_dir.is_dir():
+        # filesystem-write-ok: replace managed sibling skill mirror before relinking it to canonical content
         shutil.rmtree(sibling_dir)
     try:
         sibling_dir.symlink_to(canonical_root / skill_name, target_is_directory=True)
@@ -99,11 +100,13 @@ def _mirror_baseline_skills_to_siblings(canonical_root: Path) -> list[str]:
         if sibling_metadata.is_symlink() or sibling_metadata.is_file():
             sibling_metadata.unlink()
         elif sibling_metadata.is_dir():
+            # filesystem-write-ok: replace managed sibling metadata directory before relinking canonical metadata
             shutil.rmtree(sibling_metadata)
         try:
             sibling_metadata.symlink_to(canonical_root / "metadata.json")
         except OSError:
             try:
+                # filesystem-write-ok: fallback materialization of managed sibling skill metadata
                 shutil.copy2(canonical_root / "metadata.json", sibling_metadata)
             except OSError:
                 failures.append("sibling-materialize-failed-metadata")
@@ -208,6 +211,7 @@ def _materialize_project_sibling_dir(
     if sibling_dir.is_symlink():
         sibling_dir.unlink()
     elif sibling_dir.is_dir():
+        # filesystem-write-ok: replace managed project sibling skill mirror before relinking it
         shutil.rmtree(sibling_dir)
     elif sibling_dir.exists():
         sibling_dir.unlink()
@@ -349,6 +353,7 @@ def _prune_removed_baseline_skills(root: Path) -> list[str]:
             if not marker.exists():
                 continue
             try:
+                # filesystem-write-ok: bounded pruning of a managed skill removed from the shipped baseline
                 shutil.rmtree(entry)
             except OSError:
                 continue

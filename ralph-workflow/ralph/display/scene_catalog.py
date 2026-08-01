@@ -15,6 +15,7 @@ Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
 GlyphMode = Literal["unicode", "ascii"]
 Destination = Literal["tty", "redirect"]
+RichColorSystem = Literal["auto", "standard", "256", "truecolor", "windows"]
 
 CONTRAST_FLOOR: Final[float] = 4.5
 FULL_LAYOUT_WIDTH: Final[int] = 80
@@ -43,8 +44,15 @@ class SupportCase:
     destination: Destination
 
     @property
-    def color_system(self) -> Literal["standard", "truecolor"] | None:
-        """Return the Rich colour system for this declared colour mode."""
+    def terminal_background_is_light(self) -> bool | None:
+        """Return the background preference consumed by semantic display themes."""
+        if self.background == "unknown":
+            return None
+        return self.background == "light"
+
+    @property
+    def color_system(self) -> RichColorSystem | None:
+        """Return the Rich color-system name for this support case."""
         if self.colour == "truecolour":
             return "truecolor"
         if self.colour == "reduced":
@@ -129,7 +137,6 @@ def render_scene(
             theme=syntax_theme_for_background(terminal_bg_is_light),
             line_numbers=True,
             word_wrap=True,
-            background_color="default",
         )
     )
     return stream.getvalue()

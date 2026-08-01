@@ -32,6 +32,7 @@ def write_pi_mcp_extension(
         extension_path = temp_dir / "ralph_pi_mcp_extension.ts"
 
         def cleanup() -> None:
+            # filesystem-write-ok: cleanup of a run-scoped temporary Pi home
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     else:

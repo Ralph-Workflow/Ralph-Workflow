@@ -114,9 +114,11 @@ def write_record(workspace_root: Path, record: IntegrationRecord) -> None:
     try:
         with os.fdopen(fd, "wb") as staging:
             staging.write(payload)
+        # filesystem-write-ok: atomic publication of a durable auto-integration record
         Path(staging_path).replace(record_file)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
+            # filesystem-write-ok: cleanup of failed auto-integration staging file
             Path(staging_path).unlink()
         raise
 

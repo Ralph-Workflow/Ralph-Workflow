@@ -216,6 +216,7 @@ def _backup_checkpoint() -> None:
     os.close(fd)
     temp_path = Path(temp_name)
     try:
+        # filesystem-write-ok: backup staging preserves rebase recovery bytes before atomic publication
         shutil.copy2(path, temp_path)
         temp_path.replace(backup)
     finally:
@@ -277,6 +278,7 @@ def restore_from_backup() -> RebaseCheckpoint | None:
     payload = _load_checkpoint_payload(backup)
     checkpoint = RebaseCheckpoint.from_dict(payload)
     validate_checkpoint(checkpoint)
+    # filesystem-write-ok: recovery restores a validated rebase checkpoint from its backup
     shutil.copy2(backup, _checkpoint_path())
     return checkpoint
 

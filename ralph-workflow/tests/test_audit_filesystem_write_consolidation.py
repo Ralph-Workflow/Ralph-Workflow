@@ -31,26 +31,11 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
 
 
 @pytest.mark.timeout_seconds(10)
-def test_real_production_tree_audit_passes_or_summarises_with_actionable_diagnostics() -> None:
-    """Step 8: package-wide walk must not crash on the committed tree.
-
-    The walk either passes clean (every raw ``write_text`` is
-    sanctioned via marker or lives in the explicit exception list)
-    or reports at least one actionable violation. Either outcome is
-    acceptable for this smoke test — the audit's *behavior* is
-    what we're proving; the production-tree migration is the work
-    for later iterations and may legitimately surface violations
-    that this test does not fail on.
-    """
+def test_real_production_tree_audit_passes() -> None:
+    """S-8 regression: every production mutation is routed or locally justified."""
     violations = audit.audit_filesystem_write_consolidation(PRODUCTION_ROOT)
-    # No crash + bounded result; the content of violations is
-    # whatever the current production tree contains.
-    assert isinstance(violations, list)
-    for violation in violations:
-        assert violation.kind
-        assert violation.file_path
-        assert violation.line >= 0
-        assert violation.message
+
+    assert violations == []
 
 
 def test_flags_unknown_raw_write_text(tmp_path: Path) -> None:

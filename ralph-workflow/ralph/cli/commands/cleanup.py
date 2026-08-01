@@ -73,6 +73,7 @@ def cleanup(
     removed = 0
     for unit_id in stale:
         target = workers_dir / unit_id
+        # filesystem-write-ok: explicit CLI removal of user-selected Ralph run data
         shutil.rmtree(target, ignore_errors=True)
         removed += 1
 

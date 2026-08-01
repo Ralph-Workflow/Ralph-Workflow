@@ -775,6 +775,7 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     backup = _backup_path(target)
     if backup.exists():
         backup.unlink()
+    # filesystem-write-ok: migration backup preserves existing user configuration metadata
     shutil.copy2(str(target), str(backup))
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,
@@ -810,8 +811,10 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
+        # filesystem-write-ok: forced migration moves the existing user configuration into its backup
         shutil.move(str(target), str(backup))
 
+    # filesystem-write-ok: bootstrap copies the bundled template for a first-run or forced user configuration
     shutil.copy2(str(source), str(target))
     action: Literal["created", "skipped", "regenerated"] = (
         "regenerated" if pre_existed else "created"

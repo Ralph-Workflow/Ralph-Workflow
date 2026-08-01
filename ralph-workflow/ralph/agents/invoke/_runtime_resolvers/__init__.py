@@ -244,6 +244,7 @@ class CodexRuntimeResolver:
         # duplicate invocation is harmless.
         def _release() -> None:
             release_codex_home(codex_home)
+            # filesystem-write-ok: idempotent cleanup of a run-scoped temporary Codex home
             shutil.rmtree(codex_home, ignore_errors=True)
 
         return ResolvedInvocationRuntime(

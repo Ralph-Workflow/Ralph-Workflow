@@ -52,6 +52,7 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
         with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
             spill_file.write(text)
     except BaseException:
+        # filesystem-write-ok: cleanup of a temporary command-output spill after failed creation
         Path(name).unlink(missing_ok=True)
         raise
     path = Path(name)

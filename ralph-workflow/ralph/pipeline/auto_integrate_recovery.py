@@ -358,6 +358,7 @@ def _remove_path(path: Path) -> None:
         import shutil
 
         try:
+            # filesystem-write-ok: bounded cleanup of abandoned auto-integration worktree state
             shutil.rmtree(path)
         except Exception as exc:  # pragma: no cover -- defensive
             logger.warning("recovery: could not rmtree {}: {}", path, exc)

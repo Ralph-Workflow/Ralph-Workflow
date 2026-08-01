@@ -90,6 +90,7 @@ def _sweep_receipt_dirs(
         if not _older_than(run_dir, cutoff):
             continue
         try:
+            # filesystem-write-ok: bounded oldest-first retention cleanup of obsolete receipt directory
             shutil.rmtree(run_dir)
             removed += 1
         except OSError:
@@ -110,6 +111,7 @@ def _sweep_codex_home_dirs(tmp_dir: Path, *, cutoff: float) -> int:
         if not is_aged_dir:
             continue
         try:
+            # filesystem-write-ok: bounded retention cleanup of stale temporary Codex home
             shutil.rmtree(home)
             removed += 1
         except OSError:
