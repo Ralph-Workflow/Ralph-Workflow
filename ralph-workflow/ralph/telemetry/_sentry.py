@@ -108,6 +108,19 @@ _AGENT_STATS: dict[
 _SESSION_WALLCLOCK_BUCKETS: dict[str, object] | None = None
 
 
+def _replace_module_state(**values: object) -> None:
+    """Update telemetry lifecycle scalars without rebinding through ``global``.
+
+    The telemetry lifecycle intentionally remains observable through module
+    attributes so test seams can reset it independently. Centralizing those
+    updates avoids scattered global-statement lint suppressions while keeping
+    the state surface explicit and contained in this module.
+    """
+    module = sys.modules[__name__]
+    for name, value in values.items():
+        setattr(module, name, value)
+
+
 @runtime_checkable
 class _FinishableTransaction(Protocol):
     def finish(self) -> None: ...
@@ -413,8 +426,7 @@ def _build_extra_scrub_prefixes() -> tuple[str, ...]:
 
 def init_sentry(user_id: str, session_id: str) -> None:
     """Initialize Sentry with anonymous user identity and PII scrubbing."""
-    global _EXTRA_SCRUB_PREFIXES, _INITIALIZED  # noqa: PLW0603
-    _EXTRA_SCRUB_PREFIXES = _build_extra_scrub_prefixes()
+    _replace_module_state(_EXTRA_SCRUB_PREFIXES=_build_extra_scrub_prefixes())
 
     sentry_sdk.init(
         dsn=_DSN,
@@ -463,7 +475,7 @@ def init_sentry(user_id: str, session_id: str) -> None:
     )
     sentry_sdk.set_user({"id": user_id})  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     sentry_sdk.set_tag("session_id", session_id)
-    _INITIALIZED = True
+    _replace_module_state(_INITIALIZED=True)
 
 
 def set_environment_context() -> None:
@@ -562,20 +574,23 @@ def record_session_start(
     ``time.monotonic()`` in test files). Production code passes ``now=None``
     so the call resolves to ``time.monotonic()`` at runtime.
     """
-    global _SESSION_FINALIZED, _SESSION_STARTED_AT, _SESSION_STARTED_AT_UTC, _SESSION_TRANSACTION  # noqa: PLW0603
     if now is None:
         now = time.monotonic()
-    _SESSION_STARTED_AT = float(now)
-    _SESSION_STARTED_AT_UTC = now_dt if now_dt is not None else datetime.now(UTC)
-    _SESSION_FINALIZED = False
+    _replace_module_state(
+        _SESSION_STARTED_AT=float(now),
+        _SESSION_STARTED_AT_UTC=now_dt if now_dt is not None else datetime.now(UTC),
+        _SESSION_FINALIZED=False,
+    )
     if _telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         sentry_sdk.start_session(session_mode="application")
     with contextlib.suppress(Exception):
-        _SESSION_TRANSACTION = sentry_sdk.start_transaction(
-            op="cli.run",
-            name="ralph.session",
+        _replace_module_state(
+            _SESSION_TRANSACTION=sentry_sdk.start_transaction(
+                op="cli.run",
+                name="ralph.session",
+            )
         )
     _add_breadcrumb(
         category="ralph.session",
@@ -588,8 +603,7 @@ def record_session_start(
 
 def set_session_outcome(outcome: str) -> None:
     """Record the coarse session outcome: success / failure / interrupted / unknown."""
-    global _SESSION_OUTCOME  # noqa: PLW0603
-    _SESSION_OUTCOME = outcome
+    _replace_module_state(_SESSION_OUTCOME=outcome)
 
 
 def record_command_invocation(command: str) -> None:
@@ -637,12 +651,11 @@ def set_session_wallclock_start(now_dt: datetime | None = None) -> None:
     No-op when telemetry is disabled or Sentry was never initialized.
     Fail-soft.
     """
-    global _SESSION_WALLCLOCK_BUCKETS  # noqa: PLW0603
     if _telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         dt = now_dt if now_dt is not None else datetime.now(UTC)
-        _SESSION_WALLCLOCK_BUCKETS = _compute_wallclock_buckets(dt)
+        _replace_module_state(_SESSION_WALLCLOCK_BUCKETS=_compute_wallclock_buckets(dt))
 
 
 def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
@@ -812,7 +825,6 @@ def finalize_session(
     values are process-local: they are meaningful only inside this
     process instance and leak no real-world clock information.
     """
-    global _SESSION_FINALIZED, _SESSION_TRANSACTION  # noqa: PLW0603
     if not _INITIALIZED or _SESSION_STARTED_AT is None or _SESSION_FINALIZED:
         return None
 
@@ -820,7 +832,7 @@ def finalize_session(
     end_clock = time.monotonic() if now is None else float(now)
     duration = max(0.0, end_clock - started)
     ended_at_utc = end_dt if end_dt is not None else datetime.now(UTC)
-    _SESSION_FINALIZED = True
+    _replace_module_state(_SESSION_FINALIZED=True)
 
     try:
         session_payload: dict[str, object] = {
@@ -873,5 +885,5 @@ def finalize_session(
     # reuse the module-level accumulators safely (bounded-accumulator-ok).
     _PHASE_STATS.clear()
     _AGENT_STATS.clear()
-    _SESSION_TRANSACTION = None
+    _replace_module_state(_SESSION_TRANSACTION=None)
     return duration
