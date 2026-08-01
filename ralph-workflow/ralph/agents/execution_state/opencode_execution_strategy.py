@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind
@@ -87,6 +88,11 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         # descendant existence alone from keeping a quiet run in
         # WAITING_ON_CHILD after the scoped child has been pruned.
         self._scoped_records_seen = False
+        # OpenCode emits ``step_start`` before it begins native delegated work,
+        # but buffers the matching ``task`` tool frame until that work has
+        # completed. Keep the turn itself as liveness evidence during that
+        # otherwise stdout-silent interval; ``step_finish`` releases it.
+        self._open_step_count = 0
 
     def _active_label_prefix(self) -> str | None:
         if self._label_scope is None:
@@ -124,6 +130,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         signal sent". Sink exceptions are swallowed so a buggy sink
         cannot corrupt the registry or break the line loop.
         """
+        self._update_open_step_liveness(line)
         registry = cast(
             "ChildLivenessRegistry | None", getattr(self, "_registry", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -209,11 +216,28 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         if registry.has_records(prefix):
             self._scoped_records_seen = True
 
+    def _update_open_step_liveness(self, line: str) -> None:
+        """Track OpenCode turn boundaries that bracket buffered native task work."""
+        try:
+            decoded = cast("object", json.loads(line))
+        except json.JSONDecodeError:
+            return
+        if not isinstance(decoded, dict):
+            return
+        envelope = cast("dict[str, object]", decoded)
+        event_type = envelope.get("type")
+        if event_type == "step_start":
+            self._open_step_count += 1
+        elif event_type == "step_finish":
+            self._open_step_count = max(0, self._open_step_count - 1)
+
     def classify_quiet(
         self,
         handle: _LiveDescendantHandle,
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
+        if self._open_step_count > 0:
+            return AgentExecutionState.WAITING_ON_CHILD
         prefix = self._active_label_prefix()
         probe_prefix = prefix if prefix is not None else ""
 
@@ -239,12 +263,12 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             try:
                 reg_snap = registry.snapshot(probe_prefix)
                 verdict = classify_child_snapshot(reg_snap)
-                if verdict.all_children_terminal:
+                if verdict.all_children_terminal or (
+                    not verdict.deferral_allowed and had_scoped_records
+                ):
                     return AgentExecutionState.ACTIVE
                 if verdict.deferral_allowed:
                     return AgentExecutionState.WAITING_ON_CHILD
-                if had_scoped_records:
-                    scoped_child_evidence_stale = True
             except Exception:
                 pass
 
@@ -259,9 +283,11 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         # raw OS descendant existence. Raw descendants alone are only a
         # valid WAITING_ON_CHILD signal when Ralph never had scoped
         # visibility into the child in the first place.
-        if scoped_child_evidence_stale or self._scoped_records_seen:
-            return AgentExecutionState.ACTIVE
-        return _os_descendant_state(handle, AgentExecutionState.ACTIVE)
+        return (
+            AgentExecutionState.ACTIVE
+            if scoped_child_evidence_stale or self._scoped_records_seen
+            else _os_descendant_state(handle, AgentExecutionState.ACTIVE)
+        )
 
     def classify_exit(
         self,

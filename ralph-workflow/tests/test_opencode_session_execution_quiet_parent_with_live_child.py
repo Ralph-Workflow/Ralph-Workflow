@@ -36,3 +36,17 @@ class TestQuietParentWithLiveChild:
         state = strategy.classify_quiet(handle, probe)
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
+
+    def test_opencode_regression_open_step_defers_idle_until_step_finishes(self) -> None:
+        """S-4: an active OpenCode turn remains live while native task output is buffered."""
+        strategy = OpenCodeExecutionStrategy()
+        probe = FakeLivenessProbe(active=False)
+        handle = _FakeHandle(has_descendants=False)
+
+        strategy.observe_line('{"type":"step_start","part":{"type":"step-start"}}')
+
+        assert strategy.classify_quiet(handle, probe) == AgentExecutionState.WAITING_ON_CHILD
+
+        strategy.observe_line('{"type":"step_finish","part":{"type":"step-finish"}}')
+
+        assert strategy.classify_quiet(handle, probe) == AgentExecutionState.ACTIVE

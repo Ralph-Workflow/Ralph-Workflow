@@ -95,10 +95,9 @@ import json
 import re
 from typing import TYPE_CHECKING, ClassVar, Final, cast
 
-from rich.console import Console, ConsoleOptions, ConsoleRenderable, Group, RenderResult, RichCast
+from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.markdown import CodeBlock, Markdown, MarkdownElement
 from rich.padding import Padding
-from rich.segment import Segment, Segments
 from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
