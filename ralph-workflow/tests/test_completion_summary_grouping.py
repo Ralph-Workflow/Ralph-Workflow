@@ -166,10 +166,23 @@ def test_group_no_decisions_shows_none_recorded() -> None:
     assert "none recorded" in out
 
 
-def test_group_error_section_shown_on_failure() -> None:
+def test_group_cause_section_shown_on_failure() -> None:
     out = _render_group(_make_snapshot(phase="failed", last_error="boom", is_terminal_failure=True))
-    assert "Error" in out
+    assert "Error Cause" in out
     assert "boom" in out
+
+
+def test_completion_summary_regression_failure_cause_precedes_metrics() -> None:
+    """S-6: a failed standalone summary puts its cause before secondary metrics."""
+    out = _render_group(
+        _make_snapshot(
+            phase="failed",
+            last_error="verification failed",
+            is_terminal_success=False,
+            is_terminal_failure=True,
+        )
+    )
+    assert out.index("verification failed") < out.index("Metrics")
 
 
 def test_group_sections_appear_in_order() -> None:

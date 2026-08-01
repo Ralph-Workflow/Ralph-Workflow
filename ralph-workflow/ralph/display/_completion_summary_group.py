@@ -86,13 +86,6 @@ def _tail_items(
     set.
     """
     items: list[Text | Rule] = []
-    if snapshot.is_terminal_failure:
-        items.append(Rule("Error", style=style_for_terminal_failure(pipeline_policy)))
-        items.append(Text(f"  {snapshot.last_error}"))
-        last_error = snapshot.last_error if snapshot.last_error is not None else ""
-        diag = _children_persist_diagnostic_line(last_error)
-        if diag:
-            items.append(Text(f"  {diag}"))
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
         items.append(Text(f"  {dropped_line}"))
@@ -234,6 +227,12 @@ def render_completion_summary_group(
 
     renderables: list[Rule | Text] = [Rule(title, style=style)]
     renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}"))
+    if failed:
+        renderables.append(Rule("Error Cause", style=style))
+        renderables.append(Text(f"  {snapshot.last_error or 'unknown failure'}"))
+        diagnostic = _children_persist_diagnostic_line(snapshot.last_error or "")
+        if diagnostic:
+            renderables.append(Text(f"  {diagnostic}"))
     if options.elapsed_seconds is not None:
         renderables.append(Text(f"  elapsed={format_elapsed_seconds(options.elapsed_seconds)}"))
 

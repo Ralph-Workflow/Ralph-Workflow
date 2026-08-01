@@ -40,8 +40,9 @@ Syntax and diff previews use complete background-aware token palettes for
 comments, keywords and types, names and functions, strings, numbers, operators,
 punctuation, and diff polarity. Known dark and light terminals select the
 matching contrast-tested palette; unknown backgrounds use the dual-safe
-fallback. Preview fills are opt-in and, when used, cover complete source rows
-only—never a partial or overextended band.
+fallback. Preview fills are opt-in and, when used, cover the complete preview
+surface—including gutters, source rows, and padding—never a partial or
+overextended band.
 
 The DI invariant
 ----------------
