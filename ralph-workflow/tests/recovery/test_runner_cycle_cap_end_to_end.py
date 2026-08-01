@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
 from ralph.pipeline import runner as runner_module
@@ -36,8 +38,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 _CYCLE_CAP = 3
 
@@ -156,6 +156,8 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     )
 
 
+# ponytail: the full recovery-cycle event flow can exceed 1s under xdist; 5s preserves its black-box contract within the 60s suite cap.
+@pytest.mark.timeout_seconds(5)
 def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

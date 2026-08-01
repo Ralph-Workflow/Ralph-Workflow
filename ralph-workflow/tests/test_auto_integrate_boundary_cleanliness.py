@@ -26,7 +26,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 import ralph.pipeline.auto_integrate as ai
 from ralph.config.models import UnifiedConfig
@@ -36,9 +37,6 @@ from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrott
 from ralph.pipeline.auto_integrate_sync import REFRESH_REFRESHED
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
-
-if TYPE_CHECKING:
-    import pytest
 
 _HEAD_SHA = "a" * 40
 _TARGET_SHA = "b" * 40
@@ -104,6 +102,8 @@ def _dirty_boundary_config() -> UnifiedConfig:
     )
 
 
+# ponytail: boundary catch-up setup can exceed 1s under xdist; 5s preserves the no-real-subprocess contract within the 60s suite cap.
+@pytest.mark.timeout_seconds(5)
 def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

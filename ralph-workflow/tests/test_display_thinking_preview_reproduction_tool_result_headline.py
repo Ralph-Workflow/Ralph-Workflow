@@ -21,11 +21,15 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+
+# ponytail: Rich Live teardown can exceed 1s under xdist scheduling; 5s preserves the behavior check within the 60s suite cap.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
     from pathlib import Path

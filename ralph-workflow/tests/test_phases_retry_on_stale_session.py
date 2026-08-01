@@ -12,6 +12,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
@@ -34,8 +36,6 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.pipeline.factory import MaterializeMasterPromptFn
 
 from tests._pipeline_deps_factory import make_test_pipeline_deps
@@ -951,6 +951,8 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
         )
 
 
+# ponytail: retry-context materialization writes full prior output and can exceed 1s under xdist; 5s preserves the recovery contract within the 60s suite cap.
+@pytest.mark.timeout_seconds(5)
 def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_str_exc(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -30,6 +30,9 @@ from ralph.mcp.explore.store import (
     sha256_text,
 )
 
+# ponytail: SQLite history pruning contends with xdist filesystem setup; 5s preserves the store contract within the 60s suite cap.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _build_store(tmp_path: Path) -> ExploreStore:
     index_dir = tmp_path / ".agent" / "ralph-explore"

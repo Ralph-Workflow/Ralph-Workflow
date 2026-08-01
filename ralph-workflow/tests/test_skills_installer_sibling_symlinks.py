@@ -15,6 +15,9 @@ from ralph.skills._installer import (
     install_baseline_skills,
 )
 
+# ponytail: sibling fan-out performs real recursive filesystem I/O under xdist; 5s avoids SIGALRM turning into a caught OSError while the 60s suite cap remains authoritative.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 

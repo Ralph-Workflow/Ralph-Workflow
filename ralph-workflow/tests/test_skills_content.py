@@ -19,6 +19,9 @@ from ralph.skills._content import (
     materialize_skills_to_dir,
 )
 
+# ponytail: bundle materialization writes every shipped skill; 5s avoids xdist filesystem contention while the 60s suite cap remains authoritative.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
