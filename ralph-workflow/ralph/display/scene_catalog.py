@@ -15,6 +15,7 @@ from ralph.display.theme import (
     pick_status_styles,
     syntax_theme_for_background,
 )
+
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
 GlyphMode = Literal["unicode", "ascii"]
@@ -29,12 +30,15 @@ INDENT_UNIT: Final[str] = "  "
 
 
 @dataclass(frozen=True)
-class SurfaceSpec:
+class _SurfaceSpec:
     """One user-visible display surface and its structural entitlement."""
 
     name: str
     owner: str
     frame_entitled: bool = False
+
+
+SurfaceSpec = _SurfaceSpec
 
 
 @dataclass(frozen=True)
@@ -121,9 +125,9 @@ def render_scene(
     stream = StringIO()
     console = make_console(
         file=stream,
+        no_color=case.colour == "none",
         force_terminal=case.destination == "tty" and case.colour != "none",
         color_system=case.color_system,
-        no_color=case.colour == "none",
         width=case.width,
         height=case.height,
     )

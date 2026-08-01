@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from typing import TYPE_CHECKING, Final, Literal, TextIO
+from typing import TYPE_CHECKING, Final, Literal
 
 from rich.console import Console
 from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
@@ -28,6 +28,7 @@ from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
+    from typing import TextIO
 
 ORANGE: Final[str] = "#E69F00"
 SKY_BLUE: Final[str] = "#56B4E9"

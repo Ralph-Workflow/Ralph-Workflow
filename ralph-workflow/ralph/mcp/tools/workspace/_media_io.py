@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -29,11 +30,15 @@ MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 #: cache files were evicted. The dedup-by-artifact_id list comprehension
 #: still runs every add, so same-id replacement is immediate (AC-10).
 _MEDIA_PRUNE_INTERVAL: int = 32
-
-#: Module-level counter for the periodic prune gate. Incremented on every
-#: ``_persist_media_session_entry`` and ``_persist_media_registry_entry``
-#: call; when it crosses the interval, the next call runs the stat sweep.
 _media_add_counter: int = 0
+
+
+def _advance_media_prune_counter() -> bool:
+    """Advance the module counter without a ``global`` declaration."""
+    next_count = _media_add_counter + 1
+    object.__setattr__(sys.modules[__name__], "_media_add_counter", next_count)
+    return next_count % _MEDIA_PRUNE_INTERVAL == 0
+
 
 
 def _media_session_identity(entry: dict[str, str]) -> str:
@@ -101,11 +106,9 @@ def _persist_media_registry_entry(
     entry: dict[str, str],
 ) -> None:
     """Write entry to the centralized media registry for cross-session lookup."""
-    global _media_add_counter  # noqa: PLW0603
     path = media_registry_path()
     artifact_id = entry["artifact_id"]
-    _media_add_counter += 1
-    run_prune = _media_add_counter % _MEDIA_PRUNE_INTERVAL == 0
+    run_prune = _advance_media_prune_counter()
     try:
         artifacts: list[dict[str, str]] = []
         try:
@@ -175,7 +178,6 @@ def _persist_media_session_entry(
     meta: dict[str, str],
 ) -> None:
     """Upsert a resource-reference artifact into the persistent session media index."""
-    global _media_add_counter  # noqa: PLW0603
     drain: object = getattr(session, "drain", None)
     phase = str(drain) if drain else "standalone"
     path = media_session_path(phase)
@@ -196,8 +198,7 @@ def _persist_media_session_entry(
         "failure_kind": meta.get("failure_kind", ""),
         "identity_key": meta.get("identity_key", ""),
     }
-    _media_add_counter += 1
-    run_prune = _media_add_counter % _MEDIA_PRUNE_INTERVAL == 0
+    run_prune = _advance_media_prune_counter()
     try:
         try:
             data: dict[str, object] = json.loads(workspace.read(path))

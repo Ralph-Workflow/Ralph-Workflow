@@ -127,7 +127,7 @@ async function readSseJsonRpcPayload(
       buffer = buffer.slice(boundary + 2);
       const payload = parseSseEvent(block);
       if (payload && responseMatchesRequest(payload, requestId)) {{
-        await reader.cancel().catch(() => undefined);
+        void (async () => {{ await reader.cancel().catch(() => undefined); }})();
         return payload;
       }}
       boundary = buffer.indexOf("\\n\\n");
