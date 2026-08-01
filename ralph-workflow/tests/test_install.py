@@ -10,12 +10,15 @@ import shutil
 import subprocess
 import sys
 import zipfile
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph import install as install_module
+
+_build_meta = import_module("ralph._build_meta")
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -332,6 +335,15 @@ def test_main_default_install_preflights_existing_global_ralph(
 
     assert install_module.main([]) == 0
     assert preflight_calls == [install_module._run_command]
+
+
+def test_flavored_version_reports_build_and_dev_suffixes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S-2: installer flavor suffixes appear in the public version."""
+    assert _build_meta.flavored_version() == _build_meta._BASE_VERSION
+
+    for flavor in ("-build", "-dev"):
+        monkeypatch.setattr(_build_meta, "BUILD_FLAVOR", flavor)
+        assert _build_meta.flavored_version() == _build_meta._BASE_VERSION + flavor
 
 
 def test_write_build_flavor_changes_only_the_runtime_suffix(tmp_path: Path) -> None:
