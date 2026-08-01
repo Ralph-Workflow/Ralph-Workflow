@@ -423,6 +423,18 @@ def _strip_markup(line: str) -> str:
     return strip_markup_safe(line)
 
 
+def _record_tool_call_body(record_body: str, source_content: str) -> str:
+    """Restore a source continuation carrier removed from a preview header.
+
+    The preview formatter deliberately removes live pairing chrome from a
+    structured tool-call header. A source-provided ``↳`` is event content,
+    however, and must remain in the greppable rendered record.
+    """
+    if "↳" in source_content and "↳" not in record_body:
+        return f"{record_body} ↳".strip()
+    return record_body
+
+
 class ParallelDisplay:
     """Multiplexed terminal display for parallel pipeline workers.
 
@@ -2739,14 +2751,15 @@ class ParallelDisplay:
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
                     record_body=(
-                        (
+                        _record_tool_call_body(
                             preview_record_text(
                                 text_content,
                                 metadata,
                                 overflow_ref=overflow_ref,
                                 glyphs_enabled=self._ctx.glyphs_enabled,
                             )[0]
-                            + (" ↳" if text_content.rstrip().endswith("↳") else "")
+                            or "",
+                            text_content,
                         )
                         or None
                     )

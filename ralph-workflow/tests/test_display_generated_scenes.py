@@ -110,7 +110,7 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
         assert "\x1b[" not in rendered
     if case.destination in {"redirect", "ci"}:
         assert "\r" not in rendered
-    if case.destination == "ci" and case.colour != "none":
+    if case.destination in {"redirect", "ci"} and case.colour != "none":
         assert "\x1b[" in rendered
 
 
