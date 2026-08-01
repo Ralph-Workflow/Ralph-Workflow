@@ -482,6 +482,46 @@ def test_flags_raw_path_unlink(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_unlink"
 
 
+def test_flags_path_derived_variable_without_path_suffix(tmp_path: Path) -> None:
+    """S-8 regression: Path provenance, not a variable naming convention, owns deletion checks."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def drop() -> None:\n"
+            "    target = Path('stale')\n"
+            "    target.unlink(missing_ok=True)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_unlink"]
+    assert violations[0].line == 4
+
+
+def test_path_provenance_does_not_leak_between_function_scopes(tmp_path: Path) -> None:
+    """S-8 regression: a Path local cannot misclassify another function's domain object."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def build() -> None:\n"
+            "    target = Path('stale')\n"
+            "def detach(target) -> None:\n"
+            "    target.unlink()\n"
+        ),
+    )
+
+    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+
+
 def test_flags_raw_os_remove(tmp_path: Path) -> None:
     """``os.remove(path)`` is a raw delete."""
     module_rel = "alpha/example.py"

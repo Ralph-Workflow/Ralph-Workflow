@@ -85,6 +85,7 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
         finally:
             repo.close()
 
+    # filesystem-write-ok: explicit secret-cleanup deletion requested by the caller after repository-boundary validation
     target.unlink(missing_ok=True)
     logger.debug("Deleted file {}", relative_path)
 

@@ -367,15 +367,30 @@ def _raw_direct_import_mutation_call(
     return None
 
 
-def _path_variable_names(tree: ast.Module, module_aliases: dict[str, str]) -> frozenset[str]:
-    """Return local names directly initialized from a pathlib constructor.
+def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
+    """Return the nearest function scope identity, or ``None`` at module scope."""
+    current: ast.AST | None = node
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return id(current)
+        current = parents.get(current)
+    return None
+
+
+def _path_variable_names(
+    tree: ast.Module, module_aliases: dict[str, str]
+) -> frozenset[tuple[int | None, str]]:
+    """Return function-scoped local names directly initialized from pathlib.
 
     This deliberately small provenance pass closes the common bypass where a
     ``Path(...)`` value is assigned before its mutating method is called. It
     does not guess that arbitrary objects are paths, avoiding false positives
-    for domain methods named ``unlink`` or ``replace``.
+    for domain methods named ``unlink`` or ``replace``. Provenance remains
+    scoped to the function containing the assignment so a ``Path`` local in
+    one function cannot misclassify a same-named string parameter elsewhere.
     """
-    names: set[str] = set()
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    names: set[tuple[int | None, str]] = set()
     pathlib_constructors = {"Path", "PurePath", "PosixPath", "WindowsPath"}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
@@ -386,18 +401,16 @@ def _path_variable_names(tree: ast.Module, module_aliases: dict[str, str]) -> fr
         if root is None or module_aliases.get(root, root) not in pathlib_constructors:
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        names.update(
-            target.id
-            for target in targets
-            if isinstance(target, ast.Name) and target.id.endswith("_path")
-        )
+        scope = _scope_key(node, parents)
+        names.update((scope, target.id) for target in targets if isinstance(target, ast.Name))
     return frozenset(names)
 
 
 def _raw_qualified_mutation_call(
     node: ast.Call,
     module_aliases: dict[str, str],
-    path_variables: frozenset[str],
+    path_variables: frozenset[tuple[int | None, str]],
+    parents: dict[ast.AST, ast.AST],
 ) -> str | None:
     """Return the attribute name if *node* is a raw qualified mutation.
 
@@ -426,7 +439,7 @@ def _raw_qualified_mutation_call(
     if attr not in _RAW_MUTATION_ATTRS:
         return None
     receiver = node.func.value
-    if isinstance(receiver, ast.Name) and receiver.id in path_variables:
+    if isinstance(receiver, ast.Name) and (_scope_key(node, parents), receiver.id) in path_variables:
         return attr if attr in {
             "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate"
         } else None
@@ -582,6 +595,7 @@ def _scan_module(
 
     module_aliases, direct_mutations, direct_open_aliases, open_module_aliases = _import_aliases(tree)
     path_variables = _path_variable_names(tree, module_aliases)
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     violations: list[FilesystemWriteViolation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -629,7 +643,7 @@ def _scan_module(
             violations.append(direct_violation)
             continue
         # os.* / shutil.* / pathlib.Path.* raw mutation
-        qattr = _raw_qualified_mutation_call(node, module_aliases, path_variables)
+        qattr = _raw_qualified_mutation_call(node, module_aliases, path_variables, parents)
         if qattr is not None:
             if _has_marker_on_or_before(node.lineno, marker_lines):
                 continue
