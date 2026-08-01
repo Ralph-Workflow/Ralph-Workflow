@@ -17,7 +17,7 @@ import argparse
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from ralph._install_conflicts import (
     ConflictResolution,
@@ -162,6 +162,14 @@ def install_stable_release(
         write_flavor(Path.home() / ".local" / "share" / "uv" / "tools" / STABLE_PACKAGE_NAME, "-build")
 
 
+class _InstallArgs(argparse.Namespace):
+    """Typed arguments parsed by the installer entry point."""
+
+    stable: bool
+    version: str | None
+    from_path: Path | None
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m ralph.install",
@@ -188,15 +196,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None, Path | None]:
-    parsed = _build_parser().parse_args(argv)
-    stable = cast(
-        "bool", parsed.stable
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    version = cast(
-        "str | None", parsed.version
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    from_path = cast("Path | None", parsed.from_path)
-    return stable, version, from_path
+    parsed = _InstallArgs()
+    _build_parser().parse_args(argv, namespace=parsed)
+    return parsed.stable, parsed.version, parsed.from_path
 
 
 def main(argv: Sequence[str] | None = None) -> int:

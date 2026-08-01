@@ -32,7 +32,7 @@ class ConflictResolution(StrEnum):
 
 
 @dataclass(frozen=True)
-class ExistingInstall:
+class _ExistingInstall:
     """A global executable and the installation type that owns it."""
 
     executable: Path
@@ -47,6 +47,9 @@ class ExistingInstall:
         if self.kind is InstallKind.UV_TOOL:
             return ("uv", "tool", "uninstall", "ralph-workflow")
         return None
+
+
+ExistingInstall = _ExistingInstall
 
 
 def resolve_package_file(executable: str) -> Path | None:
