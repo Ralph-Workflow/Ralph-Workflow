@@ -1136,11 +1136,15 @@ class ParallelDisplay:
             # re-wrapped the resulting 32 + 26 = 58-char first
             # line at 40 cols, dropping continuations to column 0.
             wrap_target = body_text if body_text is not None else sanitized
+            # A tool result is a single transaction outcome, not prose: keep
+            # it on one physical row whenever the terminal itself permits it.
+            # Other activity still uses the readable body-measure cap.
+            wrap_measure = self._ctx.width if kind == "tool_result" else self._ctx.body_measure()
             wrapped_body = self._wrap_body_with_hanging_indent(
                 effective_prefix_for_wrap,
                 wrap_target,
                 total_width=self._ctx.width,
-                body_measure=self._ctx.body_measure(),
+                body_measure=wrap_measure,
             )
             chunks = wrapped_body.split("\n")
             first_chunk = chunks[0]
@@ -2607,6 +2611,12 @@ class ParallelDisplay:
                 escape_body=False,
             ).plain
         )
+        if kind is ActivityEventKind.TOOL_USE and isinstance(
+            metadata.get("input", metadata.get("args")), dict
+        ):
+            # A structured parser event already exposes its tool input in the
+            # call body; its trailing arrow would create a second `[call]` row.
+            text = text.rstrip().removesuffix("↳").rstrip()
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 

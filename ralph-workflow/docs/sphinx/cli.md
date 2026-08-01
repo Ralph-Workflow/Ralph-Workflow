@@ -37,7 +37,7 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. Labels: `feature-spec`, `guardrail` (or `bug-fix`), `refactor`, `test-coverage`, `docs`. It creates `.gitignore` only in a git repo. Use `--init-local-config` only when this repo needs project-local overrides. |
+| `--init [label]` | | `None` | Create `PROMPT.md` and user-global configuration, detect agent CLIs already on `PATH`, and install bundled skills. Labels: `feature-spec`, `guardrail` (or `bug-fix`), `refactor`, `test-coverage`, `docs`. Seeds `.gitignore` in the current directory when missing; use `--init-local-config` only when this repo needs project-local overrides. |
 | `--force-init-skills` | | `False` | Re-run baseline skill installation (user-global + project-scope) and exit. Pairs with `--init` for an explicit re-init; standalone forces the recheck path on a normal `ralph` run. |
 | `--init-local-config` (`--generate-local-config`) | | `False` | Create the complete advanced `.agent/` project-local override set. This is the explicit local-config opt-in. |
 | `--regenerate-config` | | `False` | Rewrite user-global config files and refresh only project-local TOMLs that already exist. Missing `.agent/` files stay absent; overwritten files are backed up as `<name>.bak`. |
@@ -48,7 +48,7 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 2. **Creates the user-global set** under `~/.config/` (`ralph-workflow.toml` and policy files). It does not create project-local `.agent/` configuration unless you later run `ralph --init-local-config`.
 3. **Installs skills + symlinks siblings** by materializing the bundled skill bundle at `~/.claude/skills/` and symlinking it into the documented supported-agents sibling roots (Codex, OpenCode, AGY).
 4. **Wires Pi as a transport without a skill-fan-out target** — pi.dev is wired as a transport (so the `pi` BuiltinAgentSpec, `pi/<model>` resolver, and `PiCommandBuilder` are all available end-to-end) but pi.dev has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so no Pi user-global install target is created and no `.pi/skills/` directory is written. Skills loaded on the pi side use the per-invocation `--skill <path>` flag.
-5. **Seeds `.gitignore` only in a git repo** with common local-artifact patterns; it never creates one in a non-git directory. Re-runs add any new patterns that have been added to the default set since the last init.
+5. **Seeds `.gitignore` in the current directory when missing** with common local-artifact patterns, including outside a git repository. It seeds `.git/info/exclude` only when the directory is a git repository. Re-runs add any new patterns that have been added to the default set since the last init.
 
 ## Quick mode
 

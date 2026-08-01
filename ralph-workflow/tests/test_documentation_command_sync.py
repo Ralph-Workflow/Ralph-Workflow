@@ -36,6 +36,7 @@ TOOLING_CONFIG_PATH = WORKSPACE_ROOT / "ralph-workflow" / "docs" / "sphinx" / "c
 # its non-duplicate content was merged into docs/sphinx/getting-started.md,
 # which is now the canonical home for the init-local-config contract.
 QUICKSTART_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
+CLI_REFERENCE_PATH = REPO_ROOT / "docs" / "sphinx" / "cli.md"
 
 _STALE_FLAGS = [
     "--cov-report=term-missing",
@@ -171,6 +172,16 @@ def test_cli_callback_docs_do_not_claim_init_scaffolds_local_config() -> None:
         "ralph/cli/main.py must not imply ordinary `--init` scaffolds `.agent/`; "
         "only the explicit local-config aliases may create local TOMLs."
     )
+
+
+def test_cli_reference_distinguishes_gitignore_from_git_exclude_seeding() -> None:
+    """Plan S-3: CLI reference keeps ordinary init's non-git behavior accurate."""
+    content = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+
+    assert "It creates `.gitignore` only in a git repo." not in content
+    assert "Seeds `.gitignore` only in a git repo" not in content
+    assert "Seeds `.gitignore` in the current directory when missing" in content
+    assert "It seeds `.git/info/exclude` only when the directory is a git repository" in content
 
 
 def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
