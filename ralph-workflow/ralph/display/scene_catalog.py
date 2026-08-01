@@ -153,7 +153,7 @@ def _render_scene_narrative(
     if scene_name == "first_screen":
         console.print(
             Text(
-                f"{marker('running')} RUN OPEN phase=planning project=/work/cafe\u0301",
+                f"{marker('running')} RUN OPEN phase=planning project=/work/café",
                 style=styles["running"][0],
             )
         )
