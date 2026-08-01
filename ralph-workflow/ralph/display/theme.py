@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, TextIO
 
 from rich.console import Console
 from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
@@ -687,6 +687,7 @@ SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxTheme
 #: Named here so syntax-preview call sites never hard-code the literal.
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
+
 # Diff washes are intentionally resolved alongside the syntax palette. The
 # unknown-background path remains transparent rather than assuming a terminal.
 _DIFF_REMOVED_FILL_ON_DARK_BG: Final[str] = "#101112"
@@ -862,12 +863,12 @@ def format_status(status_name: str) -> str:
 
 def make_console(
     *,
-    file: IO[str] | None = None,
+    file: TextIO | None = None,
     no_color: bool | None = None,
     force_terminal: bool | None = None,
+    color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = None,
     width: int | None = None,
     height: int | None = None,
-    color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = None,
 ) -> Console:
     """Construct a Rich ``Console`` wired with the Ralph theme.
 
@@ -879,13 +880,13 @@ def make_console(
     the colour behaviour consistent.
 
     Parameters:
-        file: Optional text stream receiving rendered output.
+        file: Optional output stream.
         no_color: When ``True``, strip colour from the console.
         force_terminal: When ``True``, treat the console as a
             TTY even when it is not (useful for tests).
+        color_system: Rich colour-system override.
         width: Override the console width (default: auto-detect).
         height: Override the console height (default: auto-detect).
-        color_system: Rich colour system override for deterministic captures.
 
     Returns:
         A ``rich.console.Console`` instance with the Ralph theme.
@@ -897,9 +898,9 @@ def make_console(
         theme=RALPH_THEME,
         no_color=resolved_no_color,
         force_terminal=resolved_force_terminal,
+        color_system=color_system,
         width=width,
         height=height,
-        color_system=color_system,
         highlight=False,
     )
 

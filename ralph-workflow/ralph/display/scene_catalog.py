@@ -9,7 +9,12 @@ from typing import Final, Literal
 from rich.syntax import Syntax
 from rich.text import Text
 
-from ralph.display.theme import make_console, pick_status_styles, syntax_theme_for_background
+from ralph.display.theme import (
+    SYNTAX_BACKGROUND_TRANSPARENT,
+    make_console,
+    pick_status_styles,
+    syntax_theme_for_background,
+)
 
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
@@ -56,12 +61,12 @@ class SupportCase:
         if self.colour == "truecolour":
             return "truecolor"
         if self.colour == "reduced":
-            return "standard"
+            return "256"
         return None
 
     @property
     def height(self) -> int:
-        """Return the declared narrow-height floor for deterministic captures."""
+        """Return a stable height that supports the catalog's reference scenes."""
         return GRACEFUL_HEIGHT_FLOOR
 
 
@@ -137,6 +142,7 @@ def render_scene(
             theme=syntax_theme_for_background(terminal_bg_is_light),
             line_numbers=True,
             word_wrap=True,
+            background_color=SYNTAX_BACKGROUND_TRANSPARENT,
         )
     )
     return stream.getvalue()
