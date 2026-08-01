@@ -1172,7 +1172,7 @@ class ParallelDisplay:
                 # (the pre-fix bug dropped continuations to column 0
                 # on a 40-col console).
                 self._console.print(
-                    f"{hang_prefix}{chunk}",
+                    f"{hang_prefix}{chunk} ↳",
                     markup=False,
                     highlight=False,
                     no_wrap=True,
