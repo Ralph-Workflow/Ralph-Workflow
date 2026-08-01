@@ -115,8 +115,13 @@ class FsWorkspace:
             content: Content to write.
         """
         p = self._abs(path)
-        self._backend.mkdir(p.parent, parents=True, exist_ok=True)
-        write_text_if_changed(self._backend, p, content, encoding="utf-8")
+        write_text_if_changed(
+            self._backend,
+            p,
+            content,
+            encoding="utf-8",
+            prepare_write=lambda: self._backend.mkdir(p.parent, parents=True, exist_ok=True),
+        )
 
     def append(self, path: str, content: str) -> None:
         """Append content to file.

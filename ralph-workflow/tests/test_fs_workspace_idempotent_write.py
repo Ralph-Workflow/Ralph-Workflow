@@ -82,6 +82,18 @@ def test_identical_write_is_skipped() -> None:
     assert backend._files[Path("/virtual-ws/output.txt")] == "alpha"  # unchanged
 
 
+def test_identical_write_skips_parent_directory_creation() -> None:
+    """S-3 regression: replaying unchanged output does not touch its parent directory."""
+    backend = _CountingBackend()
+    ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
+
+    ws.write("nested/output.txt", "alpha")
+    ws.write("nested/output.txt", "alpha")
+
+    assert backend.write_text_calls == [(Path("/virtual-ws/nested/output.txt"), "alpha")]
+    assert backend.mkdir_calls == [Path("/virtual-ws/nested")]
+
+
 def test_changed_write_persists() -> None:
     """Write a different content: second write_text call, stored bytes reflect new content."""
     backend = _CountingBackend()

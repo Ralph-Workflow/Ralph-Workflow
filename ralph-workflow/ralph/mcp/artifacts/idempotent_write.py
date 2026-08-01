@@ -33,6 +33,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.mcp.artifacts.file_backend import FileBackend
@@ -44,6 +45,7 @@ def write_text_if_changed(
     content: str,
     *,
     encoding: str = "utf-8",
+    prepare_write: Callable[[], None] | None = None,
 ) -> bool:
     """Write ``content`` to ``path`` only when it differs from the existing bytes.
 
@@ -61,9 +63,15 @@ def write_text_if_changed(
           on the next call).
         * If the read-back content equals ``content``: returns ``False``
           without calling ``backend.write_text`` (the skip).
-        * Otherwise: writes and returns ``True``.
+        * Otherwise: calls ``prepare_write`` when supplied, writes, and returns
+          ``True``. The callback runs only for a physical write, so callers can
+          defer parent-directory creation until changed content requires it.
 
-    The helper never creates parent directories. ``mkdir`` is the
+    Args:
+        prepare_write: Optional pre-write action such as creating the destination
+            parent directory. It is never called for a skipped identical write.
+
+    The helper never creates parent directories itself. ``mkdir`` stays in the
     caller's responsibility so directory-creation semantics at every
     converted call site are unchanged.
     """
@@ -75,6 +83,8 @@ def write_text_if_changed(
         existing = None
     if existing is not None and existing == content:
         return False
+    if prepare_write is not None:
+        prepare_write()
     backend.write_text(path, content, encoding=encoding)
     return True
 

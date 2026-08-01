@@ -85,6 +85,43 @@ def test_skips_write_when_content_identical() -> None:
     assert backend.read_text_calls == 1
 
 
+def test_identical_write_skips_preparation() -> None:
+    """S-3 regression: write preparation occurs only when content changes."""
+    backend = _CountingBackend()
+    path = Path("/virtual-ws/file.txt")
+    backend._files[path] = "alpha"
+    preparation_calls: list[str] = []
+
+    result = write_text_if_changed(
+        backend,
+        path,
+        "alpha",
+        prepare_write=lambda: preparation_calls.append("prepared"),
+    )
+
+    assert result is False
+    assert preparation_calls == []
+    assert backend.write_text_calls == []
+
+
+def test_changed_write_prepares_before_persisting() -> None:
+    """S-3 regression: changed content performs its deferred preparation once."""
+    backend = _CountingBackend()
+    path = Path("/virtual-ws/file.txt")
+    preparation_calls: list[str] = []
+
+    result = write_text_if_changed(
+        backend,
+        path,
+        "alpha",
+        prepare_write=lambda: preparation_calls.append("prepared"),
+    )
+
+    assert result is True
+    assert preparation_calls == ["prepared"]
+    assert backend.write_text_calls == [(path, "alpha")]
+
+
 def test_writes_when_content_changed() -> None:
     """Different content: returns True, exactly one write_text call, stored bytes updated."""
     backend = _CountingBackend()
