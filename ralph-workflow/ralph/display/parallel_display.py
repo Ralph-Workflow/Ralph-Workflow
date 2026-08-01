@@ -835,7 +835,9 @@ class ParallelDisplay:
         cell_len(prefix))``. This keeps wide and combining Unicode from shifting
         the continuation column. A single token wider than the
         budget still wraps without crashing on
-        a zero-or-negative effective measure. Rules, tables, and
+        a zero-or-negative effective measure. A slightly over-budget identifier
+        stays intact on its own row, while a substantially over-budget token folds
+        to preserve its recovery tail. Rules, tables, and
         aligned columns that need the full terminal width go
         through a different emit path (``_console.print`` with
         ``no_wrap=True``) so this helper does not touch them.
@@ -891,7 +893,9 @@ class ParallelDisplay:
                 if row and cell_len(candidate) > budget:
                     rows.append(row)
                     row = ""
-                if cell_len(token) > budget:
+                # Preserve slightly over-budget identifiers, but fold a much
+                # longer token so no recovery-relevant suffix is clipped.
+                if cell_len(token) > budget * 2:
                     rows.extend(split_to_cells(token))
                 else:
                     row = token if not row else candidate

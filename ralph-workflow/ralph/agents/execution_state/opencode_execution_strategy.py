@@ -232,7 +232,10 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             # completed/error frame arrives; treating it as ordinary stale
             # evidence kills healthy subagent runs at the parent idle deadline.
             if registry.has_active_phase(probe_prefix, "running"):
-                return AgentExecutionState.WAITING_ON_CHILD
+                running_snapshot = registry.snapshot(probe_prefix)
+                running_verdict = classify_child_snapshot(running_snapshot)
+                if running_verdict.deferral_allowed:
+                    return AgentExecutionState.WAITING_ON_CHILD
             try:
                 reg_snap = registry.snapshot(probe_prefix)
                 verdict = classify_child_snapshot(reg_snap)
