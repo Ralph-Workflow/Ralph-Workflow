@@ -312,7 +312,7 @@ def test_ensure_global_policy_configs_ignore_legacy_global_policy_files(
     assert all(result.action == "created" for result in results)
 
 
-def test_ensure_local_configs_creates_all_five(tmp_path: Path) -> None:
+def test_ensure_local_configs_creates_all_four_standard_files(tmp_path: Path) -> None:
     agent_dir = tmp_path / ".agent"
     results = ensure_local_configs(agent_dir)
 
