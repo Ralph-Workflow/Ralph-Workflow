@@ -1,27 +1,6 @@
 """Single registry-driven renderer for agent-output events.
 
-After the wt-028-display consolidation, all agent-output rendering
-flows through this module. Three independent renderers existed before
-the consolidation:
-
-* ``ralph/pipeline/activity_stream.py`` ``_render_agent_activity_line``
-  (and its per-type helpers ``_render_text_line``,
-  ``_render_tool_use_line``, ``_render_tool_result_line``,
-  ``_render_error_line``, ``_render_metadata_event_line``,
-  ``_tool_input_summary``, ``_metadata_summary``, ``_kv_summary``,
-  ``_styled_prefix``) -- the pipeline runner's path.
-* ``ralph/display/activity_model.py`` ``render_event_line`` -- the ring
-  buffer / activity-router path (subprocess executor side).
-* ``ralph/display/parallel_display.py`` ``_emit_activity_event`` inline
-  body (``friendly_tool_name``, ``format_tool_input``, ``condense_content``)
-  -- the parallel / live-display path.
-
-These three had drifted apart over time. Each grew its own
-truncation limit, its own icon table, and its own tool-input
-formatter, so the same logical event could render visibly different
-text depending on which path produced it. The single renderer
-registry below owns every agent-output event presentation decision
-once:
+All agent-output rendering flows through this module's single registry.
 
 * The ``EventRenderer`` ``Protocol`` defines the per-kind rendering
   contract; each kind has exactly one renderer.

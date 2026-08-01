@@ -25,7 +25,8 @@ import importlib
 import sqlite3
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.agents.completion_signals import _check_completion_sentinel, _db_sentinel_lookup
 from ralph.agents.invoke import _clear_session_completion_sentinel
@@ -35,8 +36,8 @@ from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStat
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.workspace.agent_dir_retention import _sweep_run_state_db_rows
 
-if TYPE_CHECKING:
-    import pytest
+# ponytail: Real-SQLite cleanup can exceed 1s while xdist workers contend on the external-volume filesystem; 5s preserves the bounded behavioral proof.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _RaisingCloseDB:

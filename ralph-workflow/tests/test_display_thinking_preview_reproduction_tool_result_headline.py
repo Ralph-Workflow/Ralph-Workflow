@@ -82,12 +82,10 @@ class TestToolResultSingleEntry:
     def test_long_tool_result_emits_one_line_with_content_no_summary_supplement(
         self, tmp_path: Path
     ) -> None:
-        """Long tool_result content still emits exactly one entry, no summary supplement.
+        """Long tool_result remains one logical entry without a summary supplement.
 
-        The pre-S-7 expectation that "long tool_result gets a summary line"
-        is now retired — the single-entry contract means the content
-        itself is the entry, and a ``↳ summary:`` supplement is no longer
-        appended.
+        The renderer may wrap that entry into hanging continuation rows;
+        those rows are layout, not duplicate activity.
         """
         pd, buf, _console = _make_display(tmp_path)
         unit_id = "u1"
@@ -107,10 +105,17 @@ class TestToolResultSingleEntry:
         lines = _plain_lines(out)
         result_lines = [line for line in lines if "[result][u1]" in line]
 
-        assert len(result_lines) == 1, (
-            f"Expected exactly 1 tool_result entry, got {len(result_lines)}: "
+        primary_lines = [line for line in result_lines if "✓ PASS ↳" in line]
+        continuation_lines = [line for line in result_lines if "✓ PASS ↳" not in line]
+        assert len(primary_lines) == 1, (
+            f"Expected exactly 1 logical tool_result entry, got {len(primary_lines)}: "
             f"{result_lines}\nFull output:\n{out}"
         )
+        assert len(continuation_lines) == 1, (
+            f"Expected one hanging continuation, got {continuation_lines}:\n{out}"
+        )
+        assert "This is a longer tool result content" in primary_lines[0]
+        assert "headline summary since it exceeded the 80 character threshold." in continuation_lines[0]
         assert "\u21b3 summary:" not in out, (
             f"Retired ↳ summary: supplement must not appear:\n{out}"
         )

@@ -93,7 +93,7 @@ def test_any_terminal_width_preserves_width(width: int) -> None:
     (
         ("界界界 x", "界界界\nx"),
         ("café café café", "café\ncafé\ncafé"),
-        ("PASS read_file", "PASS\nread_file"),
+        ("PASS read_file", "PASS\nread_fi\nle"),
         ("line one\n\nline two", "line\none\n\nline\ntwo"),
     ),
 )

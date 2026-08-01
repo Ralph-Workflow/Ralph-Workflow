@@ -100,7 +100,7 @@ def test_bare_lifecycle_tokens_produce_no_content_activity_lines(tmp_path: Path)
 
 
 def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None:
-    """A tool_use event must produce exactly one [call] line containing tool name and path=."""
+    """A tool_use event must produce one logical [call] entry with tool name and path=."""
     pd, buf = _make_display(tmp_path)
 
     tool_event = json.dumps(
@@ -126,9 +126,14 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
     )
     _assert_no_internal_vocabulary(out)
 
-    # Exactly one [call] entry — no duplicate activity.
+    # One logical [call] entry; a blank hanging continuation is layout, not activity.
     tool_lines = [line for line in out.splitlines() if "[call][main]" in line]
-    assert len(tool_lines) == 1, f"Expected exactly 1 [call] entry, got {len(tool_lines)}:\n{out}"
+    primary_lines = [line for line in tool_lines if "◐ RUN" in line]
+    continuation_lines = [line for line in tool_lines if "◐ RUN" not in line]
+    assert len(primary_lines) == 1, f"Expected exactly 1 logical [call] entry, got {tool_lines}:\n{out}"
+    assert all(line.rstrip().endswith("↳") for line in continuation_lines), (
+        f"Unexpected non-hanging [call] continuation: {continuation_lines}\n{out}"
+    )
 
 
 def test_lifecycle_and_tool_use_together_produce_clean_output(tmp_path: Path) -> None:
