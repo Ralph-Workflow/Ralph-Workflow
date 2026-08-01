@@ -251,8 +251,8 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
 def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
     """Preserve a tool name and any continuation glyph on every record call."""
     body = body.rstrip()
-    if "↳" in body and not body.endswith("↳"):
-        body = body.split("↳", 1)[1].lstrip()
+    if body.startswith("↳ "):
+        body = body[2:].lstrip()
     raw_tool = next(
         (
             value
