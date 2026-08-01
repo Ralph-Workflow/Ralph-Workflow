@@ -276,6 +276,31 @@ def test_canonical_submission_replay_skips_directory_mutations(tmp_path: Path) -
     assert backend.read_text(artifact_path) == DEVELOPMENT_RESULT
 
 
+def test_canonical_submission_identical_replay_does_not_create_history(tmp_path: Path) -> None:
+    """S-4: identical replay creates neither an archive nor its history directory."""
+    backend = _RecordingBackend()
+    parsed = _parsed("development_result", DEVELOPMENT_RESULT)
+    deps = ArtifactHandlerDeps(backend=backend, history_enabled=True)
+
+    submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type="development_result",
+        parsed_content=parsed,
+        markdown=DEVELOPMENT_RESULT,
+        deps=deps,
+    )
+    submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type="development_result",
+        parsed_content=parsed,
+        markdown=DEVELOPMENT_RESULT,
+        deps=deps,
+    )
+
+    history_dir = tmp_path / ".agent" / "artifacts" / "history" / "development_result"
+    assert not backend.exists(history_dir)
+
+
 def test_submit_artifact_canonical_returns_result_and_writes_markdown(
     tmp_path: Path,
     backend: MemoryBackend,

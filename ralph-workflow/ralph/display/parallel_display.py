@@ -2750,6 +2750,10 @@ class ParallelDisplay:
                     activity_metadata=metadata,
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
+                    # Keep the structured preview in the record, and restore a
+                    # pairing glyph only when it was explicit in the source body.
+                    # The live renderer strips its own decorative pairing chrome,
+                    # but that must not erase source-provided record content.
                     record_body=(
                         _record_tool_call_body(
                             preview_record_text(

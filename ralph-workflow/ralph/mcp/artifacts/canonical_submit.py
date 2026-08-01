@@ -183,7 +183,12 @@ def submit_artifact_canonical(
     artifact_state = _capture_file_state(backend, artifact_path)
     handoff_state = _capture_file_state(backend, handoff_path) if handoff_path is not None else None
     history_paths: list[Path] = []
-    history_enabled = deps.history_enabled and handoff_dir is None and artifact_state[0]
+    # A history snapshot represents a prior version, not another observation of
+    # the same version.  Avoid creating a timestamped archive merely because a
+    # caller re-submitted byte-identical Markdown: it adds no recoverable
+    # information and turns a no-op replay into filesystem churn.
+    artifact_changed = not artifact_state[0] or artifact_state[1] != markdown
+    history_enabled = deps.history_enabled and handoff_dir is None and artifact_changed
     history_dir = history_dir_for_artifact(directory, artifact_type) if history_enabled else None
     history_paths_before = (
         frozenset(backend.glob(history_dir, "*.md"))
