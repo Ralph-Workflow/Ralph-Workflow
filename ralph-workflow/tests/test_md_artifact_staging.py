@@ -9,6 +9,7 @@ import pytest
 
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.tools._side_effects import REGISTRY
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import tool_specs
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
 from ralph.mcp.tools.md_artifact import (
@@ -30,6 +31,7 @@ from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,
 )
+from tests.test_tool_artifact_1_helper_memorybackend import MemoryBackend
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -244,26 +246,27 @@ def test_submit_stages_the_submitted_document_as_the_draft(tmp_path: Path) -> No
     """Whole-document submission leaves an editable draft, valid or not."""
     session = MockSession()
     workspace = _workspace(tmp_path)
+    deps = ArtifactHandlerDeps(backend=MemoryBackend())
     broken = _HEAD
 
     rejected = handle_submit_md_artifact(
-        session, workspace, {"artifact_type": "product_spec", "content": broken}
+        session, workspace, {"artifact_type": "product_spec", "content": broken}, deps=deps
     )
 
     assert rejected.is_error is True
     after_reject = _payload(
-        handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"})
+        handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"}, deps=deps)
     )
     assert after_reject["exists"] is True
     assert after_reject["content"] == broken
 
     accepted = handle_submit_md_artifact(
-        session, workspace, {"artifact_type": "product_spec", "content": _HEAD + _TAIL}
+        session, workspace, {"artifact_type": "product_spec", "content": _HEAD + _TAIL}, deps=deps
     )
 
     assert accepted.is_error is False
     after_accept = _payload(
-        handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"})
+        handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"}, deps=deps)
     )
     assert after_accept["exists"] is True
     assert after_accept["content"] == _HEAD + _TAIL

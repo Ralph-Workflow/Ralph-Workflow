@@ -509,6 +509,8 @@ def test_indexed_grep_case_sensitive_default_uses_index_with_post_filter(
         store.close()
 
 
+# ponytail: SQLite setup plus indexed/live parity needs a measured 2s xdist ceiling.
+@pytest.mark.timeout_seconds(2.0)
 def test_indexed_grep_case_sensitive_parity_with_live(tmp_path: Path) -> None:
     """AC-01: indexed case-sensitive match set equals live grep's."""
     workspace = _seed_workspace(tmp_path)

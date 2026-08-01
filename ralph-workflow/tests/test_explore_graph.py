@@ -227,25 +227,19 @@ def test_graph_rejects_targetless_required_query_types(tmp_path: Path, query_typ
     and is covered separately by
     :func:`test_graph_hubs_accepts_targetless_query`.
     """
-    workspace = _seed_workspace(tmp_path)
-    store = _build_index(workspace, tmp_path)
-    try:
-        session = _FakeSession(explore_index=_FakeIndex(store))
-        from ralph.mcp.tools.coordination import InvalidParamsError
+    from ralph.mcp.tools.coordination import InvalidParamsError
 
-        with pytest.raises(InvalidParamsError) as exc_info:
-            handle_ralph_graph(
-                session,
-                _Workspace(workspace),
-                {"query_type": query_type},
-            )
-        # The error message must name the missing field and the
-        # query type so an agent can repair the call deterministically.
-        message = str(exc_info.value)
-        assert "target" in message
-        assert query_type in message
-    finally:
-        store.close()
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_ralph_graph(
+            _FakeSession(),
+            _Workspace(tmp_path),
+            {"query_type": query_type},
+        )
+    # The error message must name the missing field and the query type so an
+    # agent can repair the call deterministically without requiring an index.
+    message = str(exc_info.value)
+    assert "target" in message
+    assert query_type in message
 
 
 def test_graph_hubs_accepts_targetless_query(tmp_path: Path) -> None:

@@ -32,6 +32,31 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
+_SUBPROCESS_CALLS: frozenset[str] = frozenset(
+    {
+        "subprocess.run",
+        "subprocess.Popen",
+        "subprocess.call",
+        "subprocess.check_call",
+        "subprocess.check_output",
+        "asyncio.create_subprocess_exec",
+        "asyncio.create_subprocess_shell",
+        "os.system",
+        "os.popen",
+    }
+)
+_NETWORK_CALLS: frozenset[str] = frozenset(
+    {
+        "socket.socket",
+        "socket.create_connection",
+        "urllib.request.urlopen",
+        "requests.get",
+        "requests.post",
+        "httpx.get",
+        "httpx.post",
+    }
+)
+
 # --- Allowlist: test files exempt from specific checks ---
 
 # Files with pytest.mark.subprocess_e2e are EXCLUDED from all checks.
@@ -345,63 +370,45 @@ class TestPolicyAuditor(ast.NodeVisitor):
         """Detect real I/O operations."""
         func_name = self._get_func_name(node)
         if func_name is None:
-            # Check for Path(expr).method() pattern where receiver is a Call.
-            if (
-                isinstance(node.func, ast.Attribute)
-                and node.func.attr in _PATH_IO_METHODS
-                and not self._has_monkeypatch
-                and not self._is_using_tmp_path()
-            ):
-                self._add_violation(
-                    node,
-                    "io",
-                    f".{node.func.attr}() — real filesystem I/O in test; use tmp_path fixture",
-                )
+            self._check_anonymous_path_io_call(node)
         elif func_name == "open" and not self._has_monkeypatch:
             self._add_violation(
                 node,
                 "io",
                 "open() — real file I/O in test; use MemoryWorkspace, tmp_path, or monkeypatch",
             )
-        elif (
-            any(func_name == f"Path.{method}" for method in _PATH_IO_METHODS)
+        elif any(func_name == f"Path.{method}" for method in _PATH_IO_METHODS):
+            if not self._has_monkeypatch and not self._is_using_tmp_path():
+                self._add_violation(
+                    node,
+                    "io",
+                    f"{func_name}() — real filesystem I/O in test; use tmp_path fixture",
+                )
+        elif func_name in _SUBPROCESS_CALLS and not self._has_subprocess_e2e_marker:
+            self._add_violation(
+                node,
+                "io",
+                f"{func_name}() — subprocess call in test; use MockProcessExecutor",
+            )
+        elif func_name in _NETWORK_CALLS and not self._has_monkeypatch:
+            self._add_violation(
+                node,
+                "io",
+                f"{func_name}() — network I/O in test; use mock/patch at the boundary",
+            )
+
+    def _check_anonymous_path_io_call(self, node: ast.Call) -> None:
+        """Detect I/O on an inline Path expression without a dotted name."""
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in _PATH_IO_METHODS
             and not self._has_monkeypatch
             and not self._is_using_tmp_path()
         ):
             self._add_violation(
                 node,
                 "io",
-                f"{func_name}() — real filesystem I/O in test; use tmp_path fixture",
-            )
-        elif func_name in (
-            "subprocess.run",
-            "subprocess.Popen",
-            "subprocess.call",
-            "subprocess.check_call",
-            "subprocess.check_output",
-            "asyncio.create_subprocess_exec",
-            "asyncio.create_subprocess_shell",
-            "os.system",
-            "os.popen",
-        ) and not self._has_subprocess_e2e_marker:
-            self._add_violation(
-                node,
-                "io",
-                f"{func_name}() — subprocess call in test; use MockProcessExecutor",
-            )
-        elif func_name in (
-            "socket.socket",
-            "socket.create_connection",
-            "urllib.request.urlopen",
-            "requests.get",
-            "requests.post",
-            "httpx.get",
-            "httpx.post",
-        ) and not self._has_monkeypatch:
-            self._add_violation(
-                node,
-                "io",
-                f"{func_name}() — network I/O in test; use mock/patch at the boundary",
+                f".{node.func.attr}() — real filesystem I/O in test; use tmp_path fixture",
             )
 
     def _check_wall_clock_call(self, node: ast.Call) -> None:
@@ -585,9 +592,11 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:
         tree = ast.parse(source, filename=str(file_path))
     except (OSError, UnicodeDecodeError, SyntaxError):
         return []
-    if file_path.stem in (
+
+    excluded_files = (
         _SUBPROCESS_E2E_FILES | _SLEEP_ALLOWLIST | _IO_ALLOWLIST | _WALL_CLOCK_ALLOWLIST
-    ):
+    )
+    if file_path.stem in excluded_files:
         return []
     auditor = TestPolicyAuditor(str(file_path), source)
     auditor.visit(tree)
