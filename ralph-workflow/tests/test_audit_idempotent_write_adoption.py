@@ -44,6 +44,29 @@ def test_audit_idempotent_write_adoption_regression_flags_unknown_raw_write_text
     assert "write_text_if_changed" in violations[0].message
 
 
+def test_audit_idempotent_write_adoption_regression_flags_path_variable_delete(
+    tmp_path: Path,
+) -> None:
+    """S-8 regression: a Path-valued variable cannot bypass delete enforcement."""
+    package_root = _write_fake_package(
+        tmp_path,
+        "new_surface/cleanup.py",
+        (
+            "from pathlib import Path\n\n"
+            "def cleanup() -> None:\n"
+            "    sentinel_path = Path('sentinel')\n"
+            "    sentinel_path.unlink(missing_ok=True)\n"
+        ),
+    )
+
+    violations = audit.audit_idempotent_write_adoption(package_root)
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_unlink"
+    assert violations[0].file_path == "new_surface/cleanup.py"
+    assert "filesystem-write-ok" in violations[0].message
+
+
 def test_audit_idempotent_write_adoption_regression_accepts_local_reasoned_exception(
     tmp_path: Path,
 ) -> None:

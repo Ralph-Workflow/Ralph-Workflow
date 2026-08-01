@@ -40,6 +40,7 @@ def _current_timestamp() -> str:
 
 
 def _ensure_agent_dir() -> None:
+    # filesystem-write-ok: rebase recovery directory is required before durable checkpoint publication
     AGENT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -193,9 +194,11 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
     try:
         # filesystem-write-ok: atomic temp+replace target for checkpoint persist
         temp_path.write_text(json.dumps(checkpoint.to_dict(), indent=2), encoding="utf-8")
+        # filesystem-write-ok: atomic checkpoint publication after staged durable write
         temp_path.replace(path)
     finally:
         if temp_path.exists():
+            # filesystem-write-ok: remove uncommitted checkpoint staging on publication failure
             temp_path.unlink()
 
     if not checkpoint_existed:
@@ -218,9 +221,11 @@ def _backup_checkpoint() -> None:
     try:
         # filesystem-write-ok: backup staging preserves rebase recovery bytes before atomic publication
         shutil.copy2(path, temp_path)
+        # filesystem-write-ok: atomically publish recovery backup from completed staging copy
         temp_path.replace(backup)
     finally:
         if temp_path.exists():
+            # filesystem-write-ok: remove uncommitted recovery backup staging after failure
             temp_path.unlink()
 
 

@@ -175,7 +175,9 @@ def _write_user_id_file(config_path: Path, user_id: str) -> None:
             stream.flush()
             # filesystem-write-ok: durable publication of persistent telemetry identity configuration
             os.fsync(stream.fileno())
+        # filesystem-write-ok: atomically publish durable telemetry identity configuration
         temp_path.replace(config_path)
     finally:
         with contextlib.suppress(OSError):
+            # filesystem-write-ok: remove uncommitted telemetry configuration staging on failure
             temp_path.unlink()

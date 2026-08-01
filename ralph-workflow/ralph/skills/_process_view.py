@@ -86,6 +86,7 @@ class SkillsProcessView(AbstractContextManager[Path]):
             target = Path(self._tempdir.name)
         else:
             target = self._target_dir
+            # filesystem-write-ok: caller-selected skills materialization directory must exist before output publication
             target.mkdir(parents=True, exist_ok=True)
         _merge_external_skills(target)
         materialize_skills_to_dir(target)

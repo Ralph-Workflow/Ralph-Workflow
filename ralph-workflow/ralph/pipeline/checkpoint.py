@@ -43,6 +43,7 @@ _FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
 
 def _cleanup_stray_tmp(path: Path) -> None:
     tmp = Path(str(path) + ".tmp")
+    # filesystem-write-ok: discard interrupted checkpoint staging before recovery reads canonical bytes
     tmp.unlink(missing_ok=True)
 
 

@@ -133,6 +133,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
                 if target.exists():
+                    # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()
         except OSError:
             pass
@@ -145,6 +146,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
                 if target.exists():
+                    # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()
         except OSError:
             pass
@@ -156,6 +158,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
                 if target.exists():
+                    # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()
         except OSError:
             pass

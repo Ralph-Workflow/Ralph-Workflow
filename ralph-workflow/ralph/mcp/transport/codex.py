@@ -167,6 +167,7 @@ def prepare_codex_home_with_upstreams(
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     """Prepare an isolated Codex home directory and return its path with upstream servers."""
     codex_root = _allocate_codex_home_dir(workspace_path)
+    # filesystem-write-ok: create this run-scoped isolated Codex home before materializing configuration
     codex_root.mkdir(parents=True, exist_ok=True)
 
     source_home = Path(existing_home).expanduser() if existing_home else Path.home() / ".codex"

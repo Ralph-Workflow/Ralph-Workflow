@@ -152,6 +152,7 @@ def _recover_stale_git_lock(
         )
         return False
     try:
+        # filesystem-write-ok: stale git lock removal follows ownership and liveness validation above
         lock_path.unlink()
     except OSError:
         return False
