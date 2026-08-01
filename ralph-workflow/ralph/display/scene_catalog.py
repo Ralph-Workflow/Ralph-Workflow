@@ -124,6 +124,10 @@ def render_scene(
         clock=lambda: datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
         monotonic=lambda: 123.0,
     )
+    # Generated captures are deterministic matrix fixtures: bypass the
+    # terminal probe after construction so the requested case, rather than
+    # the host terminal, selects the semantic palette.
+    display._terminal_bg_is_light = case.terminal_background_is_light
     console.print(Text(f"SCENE {scene_name}", style="theme.cat.meta"))
     _drive_production_scene(display, console, context, scene_name)
     if scene_name in {"clean_run", "burst"}:

@@ -876,12 +876,13 @@ class ParallelDisplay:
         return f"{timestamp} {''.ljust(len(f'[{tag}]') + len(unit_id) + 2)}"
 
     @staticmethod
-    def _wrap_close_body(
+    def _wrap_close_body(  # noqa: PLR0911 - 8 returns carry the chrome-prefix / continuation-budget / trailer branches (fits/head/trailer/single-word/over-budget/over-budget-2x/short-after-over/short-after-over-2x)
         header: str,
         visible: str,
         *,
         total_width: int,
         hang_prefix: str = "",
+        chrome_prefix_width: int = 0,
     ) -> list[str]:
         """Wrap a close-entry body into ``[first_row, *continuation_rows]``.
 
@@ -901,14 +902,14 @@ class ParallelDisplay:
         the public condensed-ref contract on narrow terminals.
         """
         first_line = f"{header} {visible}" if visible else header
-        if not total_width or cell_len(first_line) <= total_width:
+        if not total_width or cell_len(first_line) + chrome_prefix_width <= total_width:
             return [first_line]
         trailer_idx = visible.rfind("(truncated,")
         if trailer_idx > 0:
             head = visible[:trailer_idx].rstrip()
             trailer = visible[trailer_idx:]
             first_line_with_head = f"{header} {head}"
-            if cell_len(first_line_with_head) <= total_width:
+            if cell_len(first_line_with_head) + chrome_prefix_width <= total_width:
                 return [first_line_with_head, trailer]
             # The head (content before the trailer) does not fit in
             # one chrome-prefixed row; split it into wrapped rows so
@@ -917,24 +918,72 @@ class ParallelDisplay:
             # a single row). The trailer is always emitted on its own
             # row because it carries the atomic
             # `` B, see .agent/raw/<unit>.log`` substring.
-            cont_budget_for_head = max(1, total_width - cell_len(f"{header} "))
+            # The first row's chrome (timestamp + badge) is
+            # prepended by ``_activity_text``; subtract its width
+            # so a wide header does not push the head's first row
+            # past the console width and clip the middle of a
+            # marker like ``CONDENSE-<unit>``.
+            cont_budget_for_head = max(
+                1, total_width - cell_len(f"{header} ") - chrome_prefix_width
+            )
             head_rows = ParallelDisplay._wrap_trailing_words(
                 head, total_width=cont_budget_for_head
             )
             first_row = head_rows[0] if head_rows else head
-            tail_rows = head_rows[1:] if head_rows else []
+            # If the first row is itself wider than the chrome-prefixed
+            # budget (e.g. a single ``CONDENSE-<unit>`` token that is
+            # one cell wider than the head budget on a narrow terminal),
+            # move it to a continuation so the marker survives as a
+            # contiguous substring and Rich does not crop its tail on
+            # the chrome-prefixed first row. The continuation uses
+            # ``hang_prefix`` (one cell narrower than the chrome) so a
+            # 27-col marker fits in a 100-col terminal.
+            if head_rows and cell_len(first_row) > cont_budget_for_head:
+                head_rows = head_rows[1:] if len(head_rows) > 1 else []
+                tail_rows = [first_row, *head_rows]
+                first_row = ""
+            else:
+                tail_rows = head_rows[1:] if head_rows else []
             first_chunk = f"{header} {first_row}"
             cont_budget = max(1, total_width - cell_len(hang_prefix))
             trailer_rows = ParallelDisplay._split_long_trailer(
                 trailer, total_width=cont_budget
             )
             return [first_chunk, *tail_rows, *trailer_rows]
-        chrome_prefix_width = cell_len(f"{header} ")
-        first_budget = max(1, total_width - chrome_prefix_width)
+        # The first row's chrome is the same width as ``hang_prefix``
+        # (timestamp + badge + trailing space); ``_activity_text``
+        # prepends it before the header. Subtract it from the
+        # console width so a wide header + chrome pair does not
+        # push the head's first row past the console width and
+        # clip the middle of a marker like ``CONDENSE-<unit>``.
+        first_budget = max(1, total_width - cell_len(f"{header} ") - chrome_prefix_width)
+        cont_budget = max(1, total_width - cell_len(hang_prefix))
         if cell_len(visible) <= first_budget:
             return [first_line]
+        # When the body does not fit on the chrome-prefixed first
+        # row but does fit on a single continuation row, place the
+        # body on a continuation so it remains a contiguous substring
+        # in the live log. A split body (e.g. ``Claude Headless
+        # checks the`` + ``display.``) breaks the grep carrier and
+        # the cold-transcript readability contract.
+        if cell_len(visible) <= cont_budget:
+            return [header, visible]
+        # If the first word is wider than the chrome-prefixed first
+        # budget but fits on a continuation row, emit it on the
+        # continuation so it survives as a contiguous substring and
+        # Rich does not crop its tail on the chrome-prefixed first
+        # row. The continuation uses ``hang_prefix`` (one cell
+        # narrower than the chrome) so a marker one cell wider than
+        # the head budget fits in a ``total_width``-column terminal.
         chunks: list[str] = []
         remaining = visible
+        first_token = remaining.split(" ", 1)[0]
+        if cell_len(first_token) > first_budget and cell_len(first_token) <= cont_budget:
+            chunks.append(first_token)
+            rest = remaining[len(first_token):].lstrip()
+            if not rest:
+                return [f"{header} {chunks[0]}"]
+            remaining = rest
         # First iteration: first-row chunk fits within ``first_budget``,
         # which is the terminal width minus the chrome prefix. The
         # first chunk is taken as the longest word-boundary prefix that
@@ -961,7 +1010,6 @@ class ParallelDisplay:
         # Continuation rows use the terminal width MINUS the hang-prefix
         # width because the caller hangs them under the body column,
         # not under the chrome prefix.
-        cont_budget = max(1, total_width - cell_len(hang_prefix))
         continuation_rows = ParallelDisplay._wrap_trailing_words(
             remaining, total_width=cont_budget
         )
@@ -973,9 +1021,14 @@ class ParallelDisplay:
 
         Continuation rows hang at the body column, so each row may use the
         full terminal width. A word that is wider than the budget is
-        folded cell-by-cell so no recovery-relevant suffix is dropped.
-        The result preserves the input order; an empty input yields no
-        rows so the caller can short-circuit.
+        emitted on the next row unchanged so a marker like
+        ``CONDENSE-<unit>`` (one cell wider than the budget on a
+        narrow terminal) survives the wrap as a contiguous substring
+        in the output. The fold-by-cell path remains for tokens
+        substantially wider than the row width (e.g. a 200-character
+        path in a 50-column row) so no recovery-relevant tail is
+        dropped. The result preserves the input order; an empty input
+        yields no rows so the caller can short-circuit.
         """
         if not remaining:
             return []
@@ -993,21 +1046,31 @@ class ParallelDisplay:
                 rows.append(" ".join(head_words))
                 remaining = " ".join(tail_words)
                 continue
-            # Token wider than the budget -- fold it cell-by-cell.
-            fold_chars: list[str] = []
-            folded = ""
-            for ch in remaining:
-                if cell_len(folded + ch) > budget and folded:
+            # Token wider than the budget. Emit it on the next row
+            # unchanged so a slightly-over-budget marker stays
+            # contiguous; the next iteration re-evaluates the
+            # budget for the following words. Only fold cell-by-cell
+            # for tokens substantially wider than the row width
+            # (more than 2x) so a long path does not drop its tail.
+            first_token = tail_words[0]
+            if cell_len(first_token) > budget * 2:
+                fold_chars: list[str] = []
+                folded = ""
+                for ch in first_token:
+                    if cell_len(folded + ch) > budget and folded:
+                        fold_chars.append(folded)
+                        folded = ch
+                    else:
+                        folded += ch
+                if folded:
                     fold_chars.append(folded)
-                    folded = ch
-                else:
-                    folded += ch
-            if folded:
-                fold_chars.append(folded)
-            if not fold_chars:
-                break
-            rows.extend(fold_chars[:-1])
-            remaining = fold_chars[-1]
+                rows.extend(fold_chars[:-1])
+                tail_words = tail_words[1:]
+                remaining = " ".join([fold_chars[-1], *tail_words]).strip()
+                continue
+            rows.append(first_token)
+            tail_words = tail_words[1:]
+            remaining = " ".join(tail_words)
         return rows
 
     @staticmethod
@@ -1776,11 +1839,23 @@ class ParallelDisplay:
             # cold-transcript grep that matches the marker still
             # finds it on the folded row.
             hang_prefix = self._close_hang_prefix(timestamp, display_tag, rendered_unit_id)
+            # The first row is rendered through ``_activity_text`` which
+            # prepends the timestamp + badge chrome before the header.
+            # The wrap must account for that chrome width so a
+            # ``CONDENSE-<unit>`` (or any other) prefix on the visible
+            # body survives the wrap on a narrow terminal; otherwise
+            # the wrap overshoots the console width and Rich clips the
+            # middle of the marker. The chrome is one column wider
+            # than ``hang_prefix`` (which ljusts to
+            # ``[tag] + unit_id + 2``) so add one to match the actual
+            # emission: ``timestamp + ' ' + [tag] + [unit_id] + ' '``.
+            chrome_prefix_width = cell_len(hang_prefix) + 1
             wrapped_rows = self._wrap_close_body(
                 header,
                 visible,
                 total_width=self._ctx.width,
                 hang_prefix=hang_prefix,
+                chrome_prefix_width=chrome_prefix_width,
             )
             if wrapped_rows:
                 first_chunk, *continuations = wrapped_rows
