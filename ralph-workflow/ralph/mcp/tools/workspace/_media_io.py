@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import OrderedDict
 from collections.abc import Iterator
 from itertools import count

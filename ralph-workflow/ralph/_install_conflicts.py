@@ -12,7 +12,7 @@ from os import environ as process_environ
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph._install_conflict_types import ExistingInstall
+from ralph._existing_install import ExistingInstall
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.update_check._install_kind import InstallKind
 from ralph.update_check.environment import detect_install

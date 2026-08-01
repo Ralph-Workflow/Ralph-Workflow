@@ -51,6 +51,7 @@ from ralph.mcp.transport.codex import (
     cleanup_codex_homes,
     release_codex_home,
 )
+from ralph.mcp.upstream import agent_probe
 from ralph.mcp.upstream.agent_probe import _probe_codex
 from ralph.mcp.upstream.config import UpstreamMcpServer
 
@@ -364,7 +365,7 @@ def test_probe_codex_releases_home_in_normal_flow(tmp_path: Path) -> None:
 
 
 def test_probe_codex_registry_does_not_grow_across_repeated_calls(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Multiple _probe_codex calls must NOT accumulate entries in the
     registry. The registry length must remain bounded across N probes.
@@ -380,6 +381,11 @@ def test_probe_codex_registry_does_not_grow_across_repeated_calls(
         command=None,
         args=(),
     )
+
+    def failing_handshake(_server: UpstreamMcpServer) -> None:
+        raise PreflightError("simulated handshake failure")
+
+    monkeypatch.setattr(agent_probe, "_server_handshake", failing_handshake)
 
     n_iterations = 10
     for _ in range(n_iterations):
