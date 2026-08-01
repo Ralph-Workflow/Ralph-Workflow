@@ -1250,17 +1250,17 @@ app.command(name="smoke-interactive-cursor")(smoke_interactive_cursor)
 
 def smoke_interactive_opencode(
     agent: str = typer.Option(
-        "opencode/minimax-coding-plan/MiniMax-M3",
+        "opencode/minimax/MiniMax-M3",
         help=(
             "OpenCode alias to smoke, as opencode/<provider>/<model> "
-            "(e.g. opencode/minimax-coding-plan/MiniMax-M3). Run `opencode models` "
+            "(e.g. opencode/minimax/MiniMax-M3). Run `opencode models` "
             "to list reachable provider/model pairs."
         ),
     ),
     provider: str | None = typer.Option(
         None,
         help=(
-            "OpenCode provider (e.g. minimax-coding-plan). Requires --model; "
+            "OpenCode provider (e.g. minimax). Requires --model; "
             "together they override --agent."
         ),
     ),

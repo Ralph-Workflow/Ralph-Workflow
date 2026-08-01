@@ -146,7 +146,7 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
         )
     if agent_name == "opencode" or agent_name.startswith("opencode/"):
         # ``opencode/<provider>/<model>`` (e.g.
-        # ``opencode/minimax-coding-plan/MiniMax-M3``) carries BOTH the
+        # ``opencode/minimax/MiniMax-M3``) carries BOTH the
         # provider and the model, so one alias selects the full routing
         # target. The command builder strips the leading ``opencode/`` and
         # passes ``<provider>/<model>`` to ``opencode run --model``, which is

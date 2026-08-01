@@ -182,5 +182,6 @@ __all__ = [
     "SURFACE_CATALOG",
     "SupportCase",
     "SurfaceSpec",
+    "render_scene",
     "support_matrix",
 ]

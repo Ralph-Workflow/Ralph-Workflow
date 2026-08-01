@@ -704,7 +704,7 @@ def smoke_interactive_cursor_command(
 
 
 def smoke_interactive_opencode_command(
-    agent_name: str = "opencode/minimax-coding-plan/MiniMax-M3",
+    agent_name: str = "opencode/minimax/MiniMax-M3",
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -717,7 +717,7 @@ def smoke_interactive_opencode_command(
     The alias carries BOTH the provider and the model
     (``opencode/<provider>/<model>``), so one ``--agent`` value selects the
     full routing target -- e.g.
-    ``--agent 'opencode/minimax-coding-plan/MiniMax-M3'`` or
+    ``--agent 'opencode/minimax/MiniMax-M3'`` or
     ``--agent 'opencode/kimi-for-coding/k2p5'``. Run ``opencode models`` to
     list the provider/model pairs your credentials can reach. The command
     builder strips the leading ``opencode/`` and passes ``<provider>/<model>``
@@ -746,7 +746,7 @@ def smoke_interactive_opencode_command(
         logger.error(
             "Agent '{}' is not available. Use --agent with an "
             "opencode/<provider>/<model> alias, e.g. "
-            "--agent 'opencode/minimax-coding-plan/MiniMax-M3'. "
+            "--agent 'opencode/minimax/MiniMax-M3'. "
             "Run `opencode models` to list reachable provider/model pairs.",
             agent_name,
         )
