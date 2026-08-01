@@ -37,7 +37,7 @@ def normalize_vt_text(raw: str) -> str:
     """
 
     ansi_free = _ANSI_ESCAPE_RE.sub("", raw)
-    current_line = ""
+    current_line: list[str] = []
     output: list[str] = []
     index = 0
     length = len(ansi_free)
@@ -48,32 +48,33 @@ def normalize_vt_text(raw: str) -> str:
             if index + 1 < length and ansi_free[index + 1] in ("\r", "\n"):
                 lookahead = ansi_free[index + 1]
                 if lookahead == "\n":
-                    output.append(f"{current_line}\n")
-                    current_line = ""
+                    output.append("".join(current_line) + "\n")
+                    current_line = []
                     index += 2
                     continue
                 if lookahead == "\r" and index + 2 < length and ansi_free[index + 2] == "\n":
-                    output.append(f"{current_line}\n")
-                    current_line = ""
+                    output.append("".join(current_line) + "\n")
+                    current_line = []
                     index += 3
                     continue
-            current_line = ""
+            current_line = []
             index += 1
             continue
         if char == "\n":
-            output.append(f"{current_line}\n")
-            current_line = ""
+            output.append("".join(current_line) + "\n")
+            current_line = []
             index += 1
             continue
         if char == "\b":
-            current_line = current_line[:-1]
+            if current_line:
+                current_line.pop()
             index += 1
             continue
-        current_line += char
+        current_line.append(char)
         index += 1
 
     if current_line:
-        output.append(current_line)
+        output.append("".join(current_line))
     return "".join(output)
 
 

@@ -6,6 +6,7 @@ import re
 from io import StringIO
 
 import pytest
+from rich.cells import cell_len
 from rich.console import Console
 
 from ralph.display.context import make_display_context
@@ -110,18 +111,23 @@ def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
     assert "return len(value)" in visible
 
 
-def test_generated_scene_narrow_elision_keeps_a_greppable_event_carrier_on_every_row() -> None:
-    """S-5: folded narrow elisions never leave a bare recovery continuation."""
+def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier_on_every_row() -> None:
+    """S-5: folded narrow condensed records never leave a bare recovery row."""
     rendered = render_scene(
         "burst",
         SupportCase("dark", "none", "ascii", 40, "redirect"),
         terminal_bg_is_light=False,
     )
     elision_rows = [line for line in rendered.splitlines() if "ELIDED" in line]
+    repeated_rows = [line for line in rendered.splitlines() if "REPEATED" in line]
 
     assert elision_rows == [
         "ELIDED count=2 bytes=24",
         "ELIDED recovery=.agent/raw/run.log",
+    ]
+    assert repeated_rows == [
+        "REPEATED count=3 bytes=96",
+        "REPEATED recovery=.agent/raw/run.log",
     ]
 
 
@@ -146,12 +152,20 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
     )
     assert rendered
     assert scene_name in rendered
+    visible = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
     if case.colour == "none":
         assert "\x1b[" not in rendered
+    else:
+        assert "\x1b[" in rendered
+    semantic_glyphs = "✓✗⚠◐○"
+    if case.glyphs == "ascii":
+        assert not (set(semantic_glyphs) & set(visible))
+    else:
+        assert set(semantic_glyphs) & set(visible)
+    if case.width == GRACEFUL_WIDTH_FLOOR:
+        assert all(cell_len(line) <= case.width for line in visible.splitlines())
     if case.destination in {"redirect", "ci"}:
         assert "\r" not in rendered
-    if case.destination in {"redirect", "ci"} and case.colour != "none":
-        assert "\x1b[" in rendered
 
 
 @pytest.mark.parametrize(

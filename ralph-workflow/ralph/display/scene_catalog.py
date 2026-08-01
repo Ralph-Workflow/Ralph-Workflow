@@ -168,9 +168,18 @@ def _render_scene_narrative(
         console.print(
             Text(f"{marker('running')} agent=codex tool=edit_file", style=styles["running"][0])
         )
-        console.print(
-            Text("REPEATED count=3 bytes=96 recovery=.agent/raw/run.log", style=styles["info"][0])
-        )
+        if width < FULL_LAYOUT_WIDTH:
+            console.print(Text("REPEATED count=3 bytes=96", style=styles["info"][0]), no_wrap=True)
+            console.print(
+                Text("REPEATED recovery=.agent/raw/run.log", style=styles["info"][0]), no_wrap=True
+            )
+        else:
+            console.print(
+                Text(
+                    "REPEATED count=3 bytes=96 recovery=.agent/raw/run.log",
+                    style=styles["info"][0],
+                )
+            )
     elif scene_name == "idle_stretch":
         console.print(
             Text(
