@@ -86,7 +86,7 @@ class TestThoroughModeSemantics:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
-        result = cli_runner.invoke(app, ["-Q", "-T", "--prompt", "task"])
+        result = cli_runner.invoke(app, ["-Q", "-T"])
         assert result.exit_code == 2
         assert "--quick/-Q and --thorough/-T cannot be used together" in (
             result.stderr or result.stdout

@@ -52,7 +52,7 @@ class TestQuickModeSemantics:
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
-        runner.invoke(app, ["-Q", "--prompt", "do a task", "--dry-run"], catch_exceptions=False)
+        runner.invoke(app, ["-Q", "--dry-run"], catch_exceptions=False)
 
         cli_overrides = must_mapping(captured.get("request").cli_overrides)
         general = must_mapping(cli_overrides["general"])
@@ -77,7 +77,7 @@ class TestQuickModeSemantics:
         runner = TyperCliRunner()
         runner.invoke(
             app,
-            ["-Q", "-D", "5", "--prompt", "do a task", "--dry-run"],
+            ["-Q", "-D", "5", "--dry-run"],
             catch_exceptions=False,
         )
 
@@ -85,37 +85,19 @@ class TestQuickModeSemantics:
         general = must_mapping(cli_overrides["general"])
         assert general["developer_iters"] == 1
 
-    def test_quick_mode_positional_text_is_passed_as_inline_prompt(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        captured: dict[str, object] = {}
-        monkeypatch.setattr(
-            "ralph.cli.main.run_pipeline",
-            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
-        )
-        monkeypatch.setattr(
-            "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
-        )
-        monkeypatch.setattr(
-            "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
-        )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+    def test_quick_mode_rejects_bare_positional_prompt_text(self, cli_runner: CliRunner) -> None:
+        """S-3 regression: quick mode accepts no inline prompt shortcut."""
+        result = cli_runner.invoke(app, ["-Q", "do a quick change", "--dry-run"])
 
-        runner = TyperCliRunner()
-        runner.invoke(
-            app,
-            ["-Q", "do a quick change", "--dry-run"],
-            catch_exceptions=False,
-        )
+        assert result.exit_code == USAGE_ERROR_EXIT_CODE
+        assert "usage: ralph" in result.output.lower()
 
-        assert captured.get("request").inline_prompt == "do a quick change"
-
-    def test_prompt_without_quick_raises_usage_error(
+    def test_prompt_option_is_not_a_cli_option(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """S-3 regression: the removed inline-prompt flag is rejected by Click."""
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
         result = cli_runner.invoke(app, ["--prompt", "some text"])
-        assert result.exit_code == 2
-        assert (
-            "--prompt requires --quick/-Q" in result.stderr or "--prompt requires" in result.stdout
-        )
+
+        assert result.exit_code == USAGE_ERROR_EXIT_CODE
+        assert "no such option: --prompt" in result.output.lower()

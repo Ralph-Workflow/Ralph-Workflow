@@ -125,14 +125,12 @@ def _get_cli_context() -> DisplayContext:
     return _make_display_context()
 
 
-_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup", "star", "contribute"})
-_QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
 _LONG_DEVELOPER_ITERS = 5
 _THOROUGH_DEVELOPER_ITERS = 10
 
 
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
-    """Normalize --init and -Q positional text before Click parsing."""
+    """Normalize a missing --init label before Click parsing."""
     if args is None:
         args = sys.argv[1:]
 
@@ -145,50 +143,7 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
                 normalized_args.insert(index + 1, "")
             break
 
-    normalized_args = _inject_quick_prompt(normalized_args)
     return normalized_args
-
-
-def _inject_quick_prompt(args: list[str]) -> list[str]:
-    """Inject --prompt before bare positional text when -Q/--quick is present."""
-    if not any(a in _QUICK_FLAGS for a in args):
-        return args
-    if "--prompt" in args or "-P" in args:
-        return args
-    result: list[str] = []
-    skip_next = False
-    for i, arg in enumerate(args):
-        if skip_next:
-            skip_next = False
-            result.append(arg)
-            continue
-        # Options with values consume the next arg; skip it to avoid treating it as a prompt.
-        if arg in {
-            "--config",
-            "-c",
-            "--developer-iters",
-            "-D",
-            "--counter",
-            "--developer-agent",
-            "-a",
-            "--developer-model",
-            "--verbosity",
-            "-v",
-            "--init",
-            "--git-user-name",
-            "--git-user-email",
-            "--explain-policy-dir",
-        }:
-            result.append(arg)
-            skip_next = True
-            continue
-        if not arg.startswith("-") and arg not in _KNOWN_SUBCOMMANDS:
-            # Bare positional text: inject --prompt before it
-            result.append("--prompt")
-            result.append(arg)
-            return result + list(args[i + 1 :])
-        result.append(arg)
-    return result
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -582,14 +537,6 @@ Side effects:
 
 def main(
     ctx: typer.Context,
-    prompt: Annotated[
-        str | None,
-        typer.Option(
-            "--prompt",
-            "-P",
-            help="Inline prompt text for quick runs (use with --quick/-Q)",
-        ),
-    ] = None,
     config: Annotated[
         str | None,
         typer.Option(
@@ -1005,8 +952,6 @@ def main(
     _init_telemetry()
     _record_cli_command(ctx)
 
-    _validate_prompt_flags(prompt, quick)
-
     # Mode presets imply developer iteration counts and override explicit -D when supplied.
     effective_developer_iters = _resolve_effective_developer_iters(
         quick=quick,
@@ -1104,7 +1049,6 @@ def main(
             no_resume=no_resume,
             verbosity=verbosity,
             counter_overrides=counter_overrides,
-            inline_prompt=prompt,
             parallel_worker_manifest=_config_path(parallel_worker_manifest),
             policy_mode=policy_mode,
         ),
@@ -1368,13 +1312,6 @@ def _resolve_policy_mode(
     return _POLICY_MODES[(redo_policy, policy_only)]
 
 
-def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
-    if prompt is not None and not quick:
-        raise click.UsageError(
-            "--prompt requires --quick/-Q. Usage: ralph -Q --prompt 'your prompt here'"
-        )
-
-
 def _resolve_effective_developer_iters(
     *, quick: bool, long_run: bool, thorough: bool, developer_iters: int | None
 ) -> int | None:
@@ -1500,7 +1437,6 @@ class _RunPipelineOpts:
     no_resume: bool
     verbosity: Verbosity = Verbosity.VERBOSE
     counter_overrides: dict[str, int] | None = None
-    inline_prompt: str | None = None
     parallel_worker_manifest: RuntimePath | None = None
     policy_mode: PolicyMode = PolicyMode.NORMAL
 
@@ -1540,7 +1476,6 @@ def _run_pipeline(
             resume=opts.resume and not opts.no_resume,
             verbosity=opts.verbosity,
             counter_overrides=opts.counter_overrides or {},
-            inline_prompt=opts.inline_prompt,
             parallel_worker_manifest=opts.parallel_worker_manifest,
             policy_mode=opts.policy_mode,
         )
@@ -1671,7 +1606,6 @@ configure_logging = _configure_logging
 handle_commit_plumbing = _handle_commit_plumbing
 handle_list_agents = _handle_list_agents
 handle_list_providers = _handle_list_providers
-inject_quick_prompt = _inject_quick_prompt
 parse_counter_overrides = _parse_counter_overrides
 prepare_init_args = _prepare_init_args
 build_cli_overrides = _build_cli_overrides

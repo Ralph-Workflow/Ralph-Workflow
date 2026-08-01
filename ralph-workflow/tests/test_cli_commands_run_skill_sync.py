@@ -851,7 +851,7 @@ def test_run_pipeline_threads_canonical_run_id_to_sweep(
 
     sync_mock.side_effect = _capture
 
-    result = run_module.run_pipeline(dry_run=True, inline_prompt="quick canonical run")
+    result = run_module.run_pipeline(dry_run=True)
     assert result == 0
 
     assert sync_mock.called, "production sweep call site must invoke the sweep"

@@ -18,7 +18,6 @@ class _PreflightRequest(NamedTuple):
     policy_bundle: object
     initial_state: PipelineState | None
     counter_overrides: dict[str, int]
-    inline_prompt: str | None = None
     parallel_worker_manifest: Path | None = None
 
 

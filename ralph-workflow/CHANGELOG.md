@@ -55,7 +55,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Removed
 
-- **refactor(install)!: remove the prompt-helper feature** — its entry point, option, builder, config key, docs, and tests are gone; leftover config is ignored rather than fatal, and users author prompts through workspace `PROMPT.md` ([`75151e75f`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/75151e75f), [`2b83f509c`](https://github.com/Ralph-Workflow/Ralph-Workflow/commit/2b83f509c)); breaking change locked by `tests/test_config_loader.py` and the repository-wide zero-match regression check.
+- **refactor(cli)!: remove inline prompt input** — `--prompt`/`-P` and quick positional prompt injection are gone; runs use workspace `PROMPT.md`, and the ordinary preflight/readiness path always applies. Locked by `tests/test_cli_quick_mode_semantics.py` and `tests/project_policy/test_run_integration.py`.
 
 ## [0.9.7] - 2026-07-29
 

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from contextlib import suppress
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -494,9 +493,7 @@ def test_helper_does_not_emit_blocked_panel_when_agent_uses_run_id() -> None:
 # 1. The readiness preflight is invoked between skill-sync and dry-run.
 # 2. A nonzero readiness result prevents both ``print_dry_run`` and
 #    ``_execute_pipeline`` from being reached.
-# 3. An ``inline_prompt`` request short-circuits BEFORE the readiness
-#    preflight runs.
-# 4. A ``parallel_worker_manifest`` request short-circuits BEFORE the
+# 3. A ``parallel_worker_manifest`` request short-circuits BEFORE the
 #    readiness preflight runs.
 #
 # The seam is the module-level functions of ``ralph.cli.commands.run``; the
@@ -608,7 +605,6 @@ def test_run_pipeline_invokes_readiness_before_execution() -> None:
         resume=False,
         verbosity=None,
         counter_overrides=None,
-        inline_prompt=None,
         parallel_worker_manifest=None,
         pro_hooks=None,
         model_identity=None,
@@ -657,7 +653,6 @@ def test_run_pipeline_nonzero_readiness_still_reaches_dry_run_and_execute() -> N
         resume=False,
         verbosity=None,
         counter_overrides=None,
-        inline_prompt=None,
         parallel_worker_manifest=None,
         pro_hooks=None,
         model_identity=None,
@@ -706,7 +701,6 @@ def test_run_pipeline_dry_run_invokes_printer_after_ready() -> None:
         resume=False,
         verbosity=None,
         counter_overrides=None,
-        inline_prompt=None,
         parallel_worker_manifest=None,
         pro_hooks=None,
         model_identity=None,
@@ -727,57 +721,6 @@ def test_run_pipeline_dry_run_invokes_printer_after_ready() -> None:
     ]
     # The dry-run short-circuit prevents _execute_pipeline.
     assert "execute_pipeline" not in runners.calls
-
-
-def test_run_pipeline_inline_prompt_short_circuits_before_readiness() -> None:
-    """AC-14: ``inline_prompt`` requests MUST short-circuit BEFORE the
-    readiness preflight runs (the orchestrator writes the inline prompt
-    to ``PRODUCT_CRITERIA.md`` and then proceeds through Phase 1+2 normally,
-    but the readiness preflight has an explicit ``inline_prompt is None``
-    guard at run.py:1057). The readiness preflight is NEVER invoked for
-    an inline-prompt run.
-    """
-    _ensure_run_func_state_unset()
-    runners = _RecordingRunners()
-    load_result = _stub_load_result("/test/inline-prompt")
-    _patch_run_pipeline_collaborators(
-        run_module,
-        load_result=load_result,
-        preflight_rc=0,
-        policy_readiness_rc=0,
-        runners=runners,
-    )
-
-    request = run_module.RunPipelineRequest(
-        config_path=None,
-        cli_overrides=None,
-        dry_run=False,
-        resume=False,
-        verbosity=None,
-        counter_overrides=None,
-        inline_prompt="ephemeral prompt",
-        parallel_worker_manifest=None,
-        pro_hooks=None,
-        model_identity=None,
-    )
-    # The orchestrator writes the inline prompt to
-    # ``<workspace_scope.root>/.agent/PRODUCT_CRITERIA.md`` BEFORE Phase 1.
-    # The virtual ``/test/...`` root may not exist on the host's disk, so
-    # the call can raise FileNotFoundError; that surface still proves the
-    # readiness helper never ran.
-    with suppress(FileNotFoundError, OSError):
-        run_module.run_pipeline(
-            request=request,
-            display_context=make_display_context(),
-        )
-
-    # The critical invariant: the readiness helper never ran for an
-    # inline-prompt request. The orchestrator may or may not reach later
-    # phases depending on the prompt-write outcome; we only assert what
-    # the analysis requires.
-    assert "run_project_policy_readiness" not in runners.calls, (
-        f"readiness helper MUST NOT run for inline_prompt; observed: {runners.calls}"
-    )
 
 
 def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness() -> None:
@@ -804,7 +747,6 @@ def test_run_pipeline_parallel_worker_manifest_short_circuits_before_readiness()
         resume=False,
         verbosity=None,
         counter_overrides=None,
-        inline_prompt=None,
         parallel_worker_manifest="unused-manifest-path",
         pro_hooks=None,
         model_identity=None,

@@ -32,9 +32,9 @@ class TestPrepareInitArgs:
     def test_none_falls_back_to_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("sys.argv", ["ralph", "-Q", "do a quick change", "--dry-run"])
         result = prepare_init_args(None)
-        assert result == ["-Q", "--prompt", "do a quick change", "--dry-run"]
+        assert result == ["-Q", "do a quick change", "--dry-run"]
 
     def test_explicit_args_bypass_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("sys.argv", ["ralph", "--should-not-be-used"])
         result = prepare_init_args(["-Q", "task"])
-        assert result == ["-Q", "--prompt", "task"]
+        assert result == ["-Q", "task"]

@@ -72,8 +72,8 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     release = kwargs.get("release")
     assert isinstance(release, str)
     assert release.startswith("ralph-workflow@")
-    # Defense in depth: locals like ``inline_prompt`` must NEVER be forwarded
-    # even if the scrubber misses a prefix. Disabling local-variable capture
+    # Defense in depth: request locals must NEVER be forwarded even if the
+    # scrubber misses a prefix. Disabling local-variable capture
     # at the SDK level removes the surface entirely.
     assert kwargs.get("include_local_variables") is False
 
@@ -1354,7 +1354,7 @@ def test_set_session_outcome_records_value(
 
 
 # ---------------------------------------------------------------------------
-# Local-variable scrubber guard (defense in depth vs. inline_prompt leak).
+# Local-variable scrubber guard.
 # ---------------------------------------------------------------------------
 
 
@@ -1407,8 +1407,8 @@ def test_init_sentry_disables_local_variables_capture(
     """Regression: ``include_local_variables=False`` is set on ``sentry_sdk.init``.
 
     If the SDK ever silently drops this kwarg (e.g. via a stub that ignores
-    unknown kwargs), frame locals could leak ``inline_prompt`` and other
-    request parameters verbatim. The test pins the kwarg at the call site.
+    unknown kwargs), frame locals could leak request parameters verbatim.
+    The test pins the kwarg at the call site.
     """
     captured: dict[str, object] = {}
 

@@ -58,8 +58,8 @@ RUN_PYTHON = uv run python
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""
-	@echo "  install         Set up the dev build + install the 'rdev' launcher (~/.local/bin/rdev)"
-	@echo "  stable          Install the pinned stable build as the global 'ralph' via uv tool"
+	@echo "  install         Refresh the self-contained dev build and 'rdev' launcher"
+	@echo "  stable          Install the latest stable build as global 'ralph' via uv tool"
 	@echo "  dev             Alias for install (refreshes the dev snapshot + rdev launcher)"
 	@echo "  install-dev     Alias for dev"
 	@echo "  test           Run the full pytest suite without coverage (excludes subprocess_e2e)"
@@ -98,19 +98,17 @@ help:
 	@echo "  run            Run ralph CLI directly"
 	@echo "  check          Run all checks (lint, typecheck, test)"
 
-# Installation
-# install  -> dev build: sync uv env + write `rdev` launcher (run the dev build with `rdev`)
-# stable   -> pinned release as the isolated global `ralph` command via `uv tool`
+# Installation delegates to the tested installer; `rdev` runs the copied dev snapshot.
 install:
+	$(RUN_PYTHON) -m ralph.install
+
+dev:
 	$(RUN_PYTHON) -m ralph.install
 
 stable:
 	$(RUN_PYTHON) -m ralph.install --stable
 
-dev:
-	$(RUN_PYTHON) -m ralph.install
-
-install-dev: dev
+install-dev: install
 
 # Testing
 test:
@@ -346,11 +344,11 @@ policy-loader-smoke:
 	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 
 packaging-smoke:
-	@mkdir -p $(shell realpath .)/../tmp
-	@rm -rf $(shell realpath .)/../tmp/packaging-smoke
-	@python -m venv --without-pip $(shell realpath .)/../tmp/packaging-smoke
-	@PYTHONPATH="" uv pip install --quiet --python $(shell realpath .)/../tmp/packaging-smoke/bin/python $(shell realpath .)/../ralph-workflow/
-	-@rm -rf $(shell realpath .)/../tmp/packaging-smoke
+	@mkdir -p "$(CURDIR)/../tmp"
+	@rm -rf "$(CURDIR)/../tmp/packaging-smoke"
+	@python -m venv --without-pip "$(CURDIR)/../tmp/packaging-smoke"
+	@PYTHONPATH="" uv pip install --quiet --python "$(CURDIR)/../tmp/packaging-smoke/bin/python" "$(CURDIR)"
+	-@rm -rf "$(CURDIR)/../tmp/packaging-smoke"
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

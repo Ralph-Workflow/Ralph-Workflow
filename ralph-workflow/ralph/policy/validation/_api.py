@@ -430,20 +430,13 @@ def validate_checkpoint_against_policy(
         )
 
 
-def validate_required_inputs(
-    workspace_scope: WorkspaceScope,
-    inline_prompt: str | None = None,
-) -> None:
+def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
     """Validate that required input files exist and are readable.
 
     The source-prompt path is resolved through
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
-    ``PROMPT_PATH`` env var is honoured in Pro mode. When
-    ``inline_prompt`` is supplied the check is skipped entirely
-    (the inline prompt supersedes the file on disk).
+    ``PROMPT_PATH`` env var is honoured in Pro mode.
     """
-    if inline_prompt is not None:
-        return
     prompt_path = resolve_effective_prompt_path(workspace_scope.root, os.environ)
     if not prompt_path.exists():
         raise PolicyValidationError(

@@ -52,21 +52,11 @@ See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the 
 
 ## Quick mode
 
-Run one developer iteration with an inline prompt:
+Use `-Q` / `--quick` to run one developer iteration. It still uses the workspace `PROMPT.md`; inline prompt text is not accepted.
 
 ```bash
-ralph -Q "do a quick change"
+ralph -Q
 ```
-
-`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph Workflow writes that inline prompt to `.agent/PRODUCT_CRITERIA.md` for the run.
-
-```bash
-ralph -Q "add a /healthz endpoint"
-ralph -Q --prompt "add a /healthz endpoint"
-ralph -Q -P "add a /healthz endpoint"
-```
-
-`--prompt` also accepts the short alias `-P`.
 
 `ralph-mcp` is the standalone MCP server entrypoint (declared in `pyproject.toml` as `ralph.mcp.server.runtime:main`). It starts Ralph Workflow's local MCP server outside of a full pipeline run, which is useful for debugging tool calls or connecting an agent manually:
 
@@ -103,7 +93,7 @@ cannot be combined with one another. Each one overrides an explicit `-D`.
 |------|-------|---------|-------------|
 | `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` |
 | `--developer-iters N` | `-D` | `2` | Maximum developer iterations per run |
-| `--quick` | `-Q` | `False` | Quick mode: one developer iteration with optional inline prompt |
+| `--quick` | `-Q` | `False` | Quick mode: one developer iteration |
 | `--long` | `-L` | `False` | Long mode: five developer iterations |
 | `--thorough` | `-T` | `False` | Thorough mode: ten developer iterations |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |

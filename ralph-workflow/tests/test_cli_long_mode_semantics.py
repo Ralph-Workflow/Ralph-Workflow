@@ -66,7 +66,7 @@ class TestLongModeSemantics:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
-        result = cli_runner.invoke(app, ["-Q", "-L", "--prompt", "task"])
+        result = cli_runner.invoke(app, ["-Q", "-L"])
         assert result.exit_code == USAGE_ERROR_EXIT_CODE
         assert "--quick/-Q and --long/-L cannot be used together" in (
             result.stderr or result.stdout

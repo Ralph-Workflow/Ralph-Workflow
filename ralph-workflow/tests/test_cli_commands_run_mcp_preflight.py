@@ -28,7 +28,6 @@ def _fake_preflight_request(
     policy_bundle: object,
     initial_state: object,
     counter_overrides: dict[str, int],
-    inline_prompt: str | None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         config=config,
@@ -36,7 +35,6 @@ def _fake_preflight_request(
         policy_bundle=policy_bundle,
         initial_state=initial_state,
         counter_overrides=counter_overrides,
-        inline_prompt=inline_prompt,
     )
 
 
@@ -65,7 +63,6 @@ def test_run_preflight_aborts_when_custom_mcp_validation_fails(
             policy_bundle=None,
             initial_state=None,
             counter_overrides={},
-            inline_prompt=None,
         ),
         display_context=make_display_context(),
     )

@@ -26,8 +26,6 @@ from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
@@ -172,7 +170,6 @@ class RunPipelineRequest(NamedTuple):
     resume: bool = False
     verbosity: Verbosity | None = None
     counter_overrides: dict[str, int] | None = None
-    inline_prompt: str | None = None
     parallel_worker_manifest: Path | None = None
     pro_hooks: ProPipelineHooks | None = None
     model_identity: MultimodalModelIdentity | None = None
@@ -249,7 +246,6 @@ def _load_configuration(
     resume: bool,
     *,
     display_context: DisplayContext,
-    inline_prompt: str | None = None,
 ) -> _LoadResult | int:
     """Load configuration and resolve workspace scope.
 
@@ -277,11 +273,7 @@ def _load_configuration(
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None
 
-    if (
-        workspace_scope is not None
-        and inline_prompt is None
-        and _invalidate_pipeline_state_if_prompt_changed(workspace_scope.root)
-    ):
+    if workspace_scope is not None and _invalidate_pipeline_state_if_prompt_changed(workspace_scope.root):
         display.emit_warning(
             "PROMPT.md changed since the last materialized run context; "
             "cleared saved pipeline state and caches."
@@ -401,7 +393,7 @@ def _run_preflight_checks(
     """
     display = resolve_active_display(None, display_context)
     # validate_required_inputs requires workspace_scope
-    if request.workspace_scope is not None and request.inline_prompt is None:
+    if request.workspace_scope is not None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
         prompt_path = resolve_effective_prompt_path(request.workspace_scope.root, os.environ)
         agent_dir = request.workspace_scope.root / ".agent"
@@ -805,7 +797,7 @@ def run_pipeline(
             context is created using make_display_context().
         **kwargs: Additional keyword arguments for backward compatibility.
             Accepted keys: config_path, cli_overrides, dry_run, resume, verbosity,
-            counter_overrides, inline_prompt.
+            counter_overrides.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -820,7 +812,6 @@ def run_pipeline(
             resume=kwargs.get("resume", False),
             verbosity=kwargs.get("verbosity"),
             counter_overrides=kwargs.get("counter_overrides"),
-            inline_prompt=kwargs.get("inline_prompt"),
             parallel_worker_manifest=(
                 Path(manifest_from_kwargs)
                 if isinstance(manifest_from_kwargs, str)
@@ -850,24 +841,12 @@ def run_pipeline(
             pro_hooks=effective_request.pro_hooks,
         )
 
-    if effective_request.inline_prompt is not None:
-        workspace_scope = resolve_workspace_scope()
-        product_criteria_path = workspace_scope.root / ".agent" / "PRODUCT_CRITERIA.md"
-        product_criteria_path.parent.mkdir(parents=True, exist_ok=True)
-        write_text_if_changed(
-            DEFAULT_FILE_BACKEND,
-            product_criteria_path,
-            effective_request.inline_prompt,
-            encoding="utf-8",
-        )
-
     # Phase 1: Load configuration
     load_result = _load_configuration(
         effective_request.config_path,
         effective_request.cli_overrides or {},
         effective_request.resume,
         display_context=ctx,
-        inline_prompt=effective_request.inline_prompt,
     )
     if isinstance(load_result, int):
         return load_result
@@ -880,7 +859,6 @@ def run_pipeline(
             policy_bundle=load_result.policy_bundle,
             initial_state=load_result.initial_state,
             counter_overrides=effective_counter_overrides,
-            inline_prompt=effective_request.inline_prompt,
             parallel_worker_manifest=effective_request.parallel_worker_manifest,
         ),
         display_context=ctx,
@@ -906,8 +884,7 @@ def run_pipeline(
 
     # Phase 2c: project-policy preflight (deterministic validator, opt-out
     # honored, change-aware cache, then the bounded remediation/analysis
-    # pipeline). Runs only for non-inline, non-parallel-worker startup
-    # invocations so parallel-worker sub-runs never reach this code path.
+    # pipeline). Parallel-worker sub-runs return before reaching this path.
     #
     # POLICY NEVER BLOCKS THE RUN. The orchestrator is a fault boundary that
     # swallows every failure -- including its own bugs -- and returns
@@ -916,7 +893,7 @@ def run_pipeline(
     # development run to proceed to. That is what this branch checks: we return
     # early because the user asked for policy work ONLY, not because policy
     # failed.
-    if load_result.workspace_scope is not None and effective_request.inline_prompt is None:
+    if load_result.workspace_scope is not None:
         policy_readiness_result = _run_project_policy_readiness(
             load_result=load_result,
             display_context=ctx,

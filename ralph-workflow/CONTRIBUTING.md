@@ -103,6 +103,8 @@ side. They never collide because the dev build registers no global `ralph` comma
   python -m ralph.install --version 0.8.18   # or: uv tool install ralph-workflow==0.8.18
   ```
 
+- **Existing global installs** — before either install changes files, Ralph Workflow resolves any global `ralph` executable to its owning package. In an interactive terminal, choose continue, remove a pipx/uv-tool install with its package-manager uninstall command, or abort; non-interactive and source-owned conflicts abort without changing the install.
+
 - **Switching** — type `rdev` for the dev build and `ralph` for the stable
   build; nothing to toggle. Verify which is which with:
 

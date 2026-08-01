@@ -127,7 +127,7 @@ class TestConfigErrorEnvelope:
             lambda request, **kw: (_ for _ in ()).throw(ConfigTomlError(_ENVELOPE_TEXT)),
         )
 
-        result = TyperCliRunner().invoke(app, ["--quick", "--prompt", "task", "--dry-run"])
+        result = TyperCliRunner().invoke(app, ["--quick", "--dry-run"])
 
         assert result.exit_code == 1
         combined = (result.output or "") + (result.stderr or "")
