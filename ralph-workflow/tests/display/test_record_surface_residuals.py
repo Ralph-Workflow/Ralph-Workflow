@@ -98,6 +98,23 @@ def test_tool_call_record_omits_pair_marker_and_normalizes_call_shapes(tmp_path:
     assert all(tool in line for tool, line in zip(("read", "bash", "grep"), calls, strict=True))
 
 
+def test_tool_call_record_retains_pair_marker_for_wrapped_call(tmp_path: Path) -> None:
+    """S-2 regression: wrapped calls retain the continuation glyph in the durable record."""
+    pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
+    pd.start()
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_USE,
+        content="read ↳",
+        metadata={"input": {"path": "a/b.py"}},
+    )
+    pd.stop()
+
+    record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
+    call = next(line for line in record.splitlines() if "role=tool_call" in line)
+    assert "↳" in call
+
+
 def test_event_rows_indent_beneath_phase_headers(tmp_path: Path) -> None:
     """Phase-owned record entries start below the header margin."""
     pd, _buf, _advance = _make_display_with_injected_clock(tmp_path)
