@@ -265,6 +265,15 @@ class OpenCodeParser(NdjsonParserBase):
         self._stream_counter = 0
         self._dispatcher = _OpenCodeDispatch(self)
 
+    def _flush_before_error(
+        self,
+        _obj: dict[str, object],
+        _raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Drain streamed text before the base emits a terminal error."""
+        yield from self.flush_accumulators()
+        self._current_part_id = None
+
     def _handle_lifecycle_event(
         self,
         obj: dict[str, object],

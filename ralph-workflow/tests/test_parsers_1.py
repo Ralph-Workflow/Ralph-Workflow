@@ -592,6 +592,11 @@ def test_opencode_parser_error_flushes_immediately() -> None:
     assert text_results[0].content == "Some text"
     assert len(error_results) == 1
     assert error_results[0].content == "Tool failed"
+    assert [(result.type, result.content) for result in results] == [
+        ("text", "Some text"),
+        ("error", "Tool failed"),
+        ("stop", ""),
+    ]
 
 
 def test_opencode_parser_iterator_exhaustion_flushes_accumulator() -> None:

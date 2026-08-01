@@ -329,6 +329,9 @@ class NdjsonParserBase(ParserTemplateBase):
         self._try_register_subagent_pid_from_obj(obj)
 
         if "error" in obj:
+            # Stateful stream parsers may hold text that preceded this terminal
+            # error. Flush it first so yielded output keeps wire order.
+            yield from self._flush_before_error(obj, stripped)
             error_msg = extract_error_message(obj)
             yield AgentOutputLine(
                 type="error",
@@ -385,6 +388,20 @@ class NdjsonParserBase(ParserTemplateBase):
                 yield replace(line, timestamp=source_timestamp)
             else:
                 yield line
+
+    def _flush_before_error(
+        self,
+        _obj: dict[str, object],
+        _raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Flush subclass state immediately before a top-level error line.
+
+        The base owns canonical error shaping, while stateful subclasses own
+        any buffered output. The default has no state; overriding this hook
+        preserves prior output before the terminal error without changing the
+        shared error contract for other transports.
+        """
+        return iter(())
 
     def _handle_lifecycle_event(
         self,
