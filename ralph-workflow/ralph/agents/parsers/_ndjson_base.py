@@ -290,7 +290,7 @@ class NdjsonParserBase(ParserTemplateBase):
             return stripped[5:].strip()
         return stripped
 
-    def _classify_after_strip(self, stripped: str) -> Iterator[AgentOutputLine]:  # noqa: PLR0911
+    def _classify_after_strip(self, stripped: str) -> Iterator[AgentOutputLine]:
         """Dispatch the already-stripped line through the NDJSON state machine."""
         if stripped == "[DONE]":
             yield AgentOutputLine(type="stop", raw=stripped)
@@ -336,52 +336,26 @@ class NdjsonParserBase(ParserTemplateBase):
             return
 
         event_type = str(obj.get("type", ""))
+        lifecycle_result: Iterator[AgentOutputLine] | None = None
         if (
             event_type == "content_block_start"
             and isinstance(obj.get("content_block"), dict)
         ):
             # Claude's stream events use this framing marker for tool calls;
             # it is lifecycle only when it contains no content block.
-            yield from self._dispatch_with_timestamp(
-                obj, stripped, source_timestamp, None
-            )
-            return
-        if event_type and is_lifecycle_event(event_type):
+            pass
+        elif event_type and is_lifecycle_event(event_type):
+            # A subclass may explicitly handle a lifecycle event (for example
+            # OpenCode uses step_finish to flush text). ``None`` deliberately
+            # falls through to normal dispatch; an empty iterator suppresses it.
             lifecycle_result = self._handle_lifecycle_event(obj, event_type)
-            # A subclass may explicitly handle a lifecycle event (for
-            # example OpenCode uses step_finish to flush text). The default
-            # is suppression; never dispatch an unhandled lifecycle marker as
-            # a visible raw event.
-            if lifecycle_result is None:
-                yield from self._dispatch_with_timestamp(
-                    obj, stripped, source_timestamp, None
-                )
-                return
-            yield from self._dispatch_with_timestamp(
-                obj,
-                stripped,
-                source_timestamp,
-                lifecycle_result,
-            )
-            return
 
-        # DA-002 (wt-028-display S-2 / AC-01): the subclass dispatch
-        # hook yields AgentOutputLines whose ``timestamp`` is ``None``
-        # unless the subclass itself stamps them. Forward the validated
-        # source timestamp end-to-end by post-processing the iterator:
-        # any AgentOutputLine whose ``timestamp`` is still ``None`` has
-        # the source timestamp attached (or stays ``None`` when the
-        # wire-format event had none, preserving the display-clock
-        # fallback). ``AgentOutputLine`` is a frozen dataclass so the
-        # attribute is not directly writable; ``dataclasses.replace``
-        # produces a stamped copy. The post-processing is bounded by the
-        # subclass dispatch lifetime so a stale value cannot leak into
-        # a later event.
+        # DA-002 (wt-028-display S-2 / AC-01): the subclass dispatch hook
+        # yields AgentOutputLines whose ``timestamp`` is ``None`` unless the
+        # subclass stamps them. Forward the validated source timestamp through
+        # the one shared post-processing path.
         yield from self._dispatch_with_timestamp(
-            obj,
-            stripped,
-            source_timestamp,
-            None,
+            obj, stripped, source_timestamp, lifecycle_result
         )
 
     def _dispatch_with_timestamp(

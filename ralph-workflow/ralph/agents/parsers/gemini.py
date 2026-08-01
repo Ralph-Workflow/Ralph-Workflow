@@ -266,6 +266,35 @@ class GeminiParser(NdjsonParserBase):
         self._try_register_subagent_pid_from_obj(obj)
         yield from self._dispatcher.dispatch(obj, raw)
 
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
+        """Flush text and emit stop for Gemini's terminal lifecycle events.
+
+        Gemini uses ``done`` / ``stop`` / ``message_end`` to mark the end
+        of a model turn. These wire-format event types are also flagged
+        as lifecycle markers by ``is_lifecycle_event`` (they share the
+        same names as OpenCode's terminal ``done`` event), so the base
+        class short-circuits to this hook instead of routing them
+        through ``_dispatch_json_object``. We must explicitly flush the
+        text accumulator and yield a stop line so the public contract
+        (every Gemini turn ends with a stop) is preserved.
+        """
+        if event_type in self._STOP_EVENT_TYPES:
+            return self._flush_stop_event(obj, event_type)
+        return iter(())
+
+    def _flush_stop_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Flush the text accumulator and yield a stop line."""
+        yield from self.flush_accumulators()
+        yield AgentOutputLine(type="stop", raw=str(event_type), metadata=obj)
+
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         if self._text_accumulator is None:
             return
