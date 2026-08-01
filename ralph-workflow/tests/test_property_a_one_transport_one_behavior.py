@@ -55,6 +55,11 @@ def _source_bytes(root: Path) -> tuple[tuple[Path, bytes], ...]:
 
 
 _RALPH_SOURCE_BYTES = _source_bytes(REPO / "ralph")
+# Build the repository-wide test-source snapshot during collection, before the
+# per-test wall-clock watchdog starts. The assertion below is a pure audit of
+# this immutable snapshot; performing the full filesystem walk inside its
+# three-second budget makes it contend with parallel verification workers.
+_TEST_SOURCE_BYTES = _source_bytes(REPO / "tests")
 
 
 def test_runtime_module_contains_no_fastmcp_symbols() -> None:
@@ -196,7 +201,7 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
     """
     usage_hits: list[str] = []
     absent_files: list[str] = []
-    for path, content in _source_bytes(REPO / "tests"):
+    for path, content in _TEST_SOURCE_BYTES:
         if path.suffix != ".py":
             continue
         rel = path.relative_to(REPO).as_posix()

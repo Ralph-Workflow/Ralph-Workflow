@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import ast
 import multiprocessing
 import os
 import re
@@ -115,6 +116,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_pi_mcp_extension_sse_behavior.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
+_SUBPROCESS_E2E_MARK_EXPRESSION = (
+    "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
+)
 _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # DA-003 (wt-028-display P1 / AC-08 / S-13): when the 60s parent
 # deadline fires, the runner has already given us its 60s budget;
@@ -249,7 +253,12 @@ def _default_spawner(
     )
 
 
-def _shard_command(files: Sequence[str], *, basetemp: Path) -> tuple[str, ...]:
+def _shard_command(
+    files: Sequence[str],
+    *,
+    basetemp: Path,
+    marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
+) -> tuple[str, ...]:
     """Build the pytest command for one shard.
 
     DA-003 (wt-028-display P1 / AC-08 / S-13): the shard
@@ -261,10 +270,8 @@ def _shard_command(files: Sequence[str], *, basetemp: Path) -> tuple[str, ...]:
     cache-write + banner path adds 100-300 ms of wall time per
     shard; eliminating it on every shard keeps the slowest shard
     well under the combined 60-second budget. The cache is
-    still honored for the unpartitioned ``make test-unit`` /
-    ``make test-subprocess-e2e`` targets because those use the
-    default xdist path and the cache write does not block the
-    wall clock there.
+    still honored for raw targets that deliberately use the default
+    xdist path, while maintained shard profiles avoid shared cache writes.
     """
     return (
         sys.executable,
@@ -276,7 +283,7 @@ def _shard_command(files: Sequence[str], *, basetemp: Path) -> tuple[str, ...]:
         "-p",
         "no:cacheprovider",
         "-m",
-        _VERIFICATION_MARK_EXPRESSION,
+        marker_expression,
         "--basetemp",
         str(basetemp),
     )
@@ -296,6 +303,32 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     discovered = tuple(sorted(selected_files))
     validate_required_auto_integrate_selection(discovered)
     return discovered
+
+
+def discover_subprocess_e2e_files(cwd: Path) -> tuple[str, ...]:
+    """Return test files that statically reference the subprocess-E2E marker.
+
+    Supplying explicit files avoids pytest collecting the entire repository
+    merely to deselect non-E2E tests. Pytest still applies the canonical marker
+    expression within each selected file, preserving function-level exclusions.
+    """
+    selected: list[str] = []
+    for relative_path in discover_test_files(cwd):
+        source = (cwd / relative_path).read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=relative_path)
+        if any(
+            isinstance(node, ast.Attribute)
+            and node.attr == "subprocess_e2e"
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "mark"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "pytest"
+            for node in ast.walk(tree)
+        ):
+            selected.append(relative_path)
+    if not selected:
+        raise RuntimeError("static subprocess-E2E discovery selected no files")
+    return tuple(selected)
 
 
 def estimate_test_file_weight(source: str) -> int:
@@ -369,6 +402,7 @@ def _run_shards(
     spawner: ShardSpawner,
     monotonic: Callable[[], float],
     wait: Callable[[float], None],
+    marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
 ) -> int:
     processes: list[ShardProcess] = []
     try:
@@ -386,6 +420,7 @@ def _run_shards(
                     _shard_command(
                         shard,
                         basetemp=basetemp_root / f"shard-{shard_index}",
+                        marker_expression=marker_expression,
                     ),
                     cwd=cwd,
                     env=env,
@@ -460,6 +495,7 @@ def run_test_suites(
     monotonic: Callable[[], float] = time.monotonic,
     wait: Callable[[float], None] = time.sleep,
     auto_integrate_e2e_only: bool = False,
+    subprocess_e2e_only: bool = False,
 ) -> int:
     """Run the maintained pytest verification suite and return its exit code.
 
@@ -494,8 +530,14 @@ def run_test_suites(
         ),
         suite_timeout_seconds=suite_timeout_seconds,
     )
+    if auto_integrate_e2e_only and subprocess_e2e_only:
+        raise ValueError("test-suite profiles are mutually exclusive")
+    marker_expression = _VERIFICATION_MARK_EXPRESSION
     if auto_integrate_e2e_only:
         selected_files = REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    elif subprocess_e2e_only:
+        selected_files = discover_subprocess_e2e_files(cwd)
+        marker_expression = _SUBPROCESS_E2E_MARK_EXPRESSION
     else:
         selected_files = file_discoverer(cwd)
         validate_required_auto_integrate_selection(selected_files)
@@ -506,7 +548,12 @@ def run_test_suites(
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
     validate_exact_file_assignment(selected_files, shards)
-    profile = "auto-integrate-e2e" if auto_integrate_e2e_only else "verification"
+    if auto_integrate_e2e_only:
+        profile = "auto-integrate-e2e"
+    elif subprocess_e2e_only:
+        profile = "subprocess-e2e"
+    else:
+        profile = "verification"
     basetemp_parent = Path(tempfile.gettempdir()) / "ralph-pytest-shards"
     basetemp_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -522,6 +569,7 @@ def run_test_suites(
             spawner=spawner,
             monotonic=monotonic,
             wait=wait,
+            marker_expression=marker_expression,
         )
 
 
@@ -537,8 +585,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = tuple(argv or ())
     if arguments == ("--auto-integrate-e2e",):
         return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)
+    if arguments == ("--subprocess-e2e",):
+        return run_test_suites(cwd=Path.cwd(), subprocess_e2e_only=True)
     if arguments:
-        raise SystemExit("ralph.test_suites accepts only the optional --auto-integrate-e2e profile")
+        raise SystemExit("ralph.test_suites accepts only --auto-integrate-e2e or --subprocess-e2e")
     return run_test_suites(cwd=Path.cwd())
 
 

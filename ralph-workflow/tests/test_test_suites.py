@@ -210,6 +210,27 @@ def test_partition_selected_files_minimizes_heavy_e2e_shard_load() -> None:
     test_suites_module.validate_exact_file_assignment(selected, shards)
 
 
+def test_static_subprocess_e2e_discovery_selects_only_marked_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_e2e.py").write_text(
+        "import pytest\npytestmark = pytest.mark.subprocess_e2e\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_unit.py").write_text("def test_unit(): pass\n", encoding="utf-8")
+    required = tests_root / "test_cli_commit_command.py"
+    required.write_text("def test_required(): pass\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_cli_commit_command.py",),
+    )
+    assert test_suites_module.discover_subprocess_e2e_files(tmp_path) == ("tests/test_e2e.py",)
+
+
 def test_estimate_test_file_weight_counts_sync_async_and_method_tests() -> None:
     source = """
 def test_top_level() -> None:
@@ -458,6 +479,33 @@ def test_focused_auto_integrate_profile_shards_exact_registry_without_discovery(
     assert exit_code == 0
     assert sorted(assigned_files) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     assert len(assigned_files) == len(set(assigned_files))
+
+
+def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    spawner = _StubSpawner([_FakeShardProcess([0])])
+    monkeypatch.setattr(
+        test_suites_module,
+        "discover_subprocess_e2e_files",
+        lambda _cwd: ("tests/test_e2e.py",),
+    )
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            spawner=spawner,
+            file_weigher=lambda _cwd, _path: 1,
+            wait=lambda _seconds: None,
+            subprocess_e2e_only=True,
+        )
+        == 0
+    )
+    command = spawner.calls[0][0]
+    assert command[3 : command.index("-q")] == ("tests/test_e2e.py",)
+    marker_flag = command.index("-m", command.index("pytest") + 1)
+    assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
 
 
 def test_run_test_suites_terminates_and_reaps_siblings_on_first_failure(

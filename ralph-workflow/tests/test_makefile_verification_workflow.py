@@ -117,14 +117,10 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 
-def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
-    e2e_body = _target_body("test-subprocess-e2e")
-
-    assert e2e_body == [
-        "uv run python -m ralph.verify_timeout "
-        "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        "python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "
-        '"subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"'
+def test_test_subprocess_e2e_uses_maintained_explicit_file_selector() -> None:
+    """The E2E profile avoids collecting the entire repository to deselect it."""
+    assert _target_body("test-subprocess-e2e") == [
+        "$(RUN_PYTHON) -m ralph.test_suites --subprocess-e2e"
     ]
 
 

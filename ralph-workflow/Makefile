@@ -120,11 +120,11 @@ test-unit:
 test-integration:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
 
-# Runs with the same parallel workers as `make test`. Work stealing balances
-# independent real-process tests across workers within the immutable 60-second
-# per-suite cap.
+# Uses the maintained static file selector, avoiding full-suite collection
+# merely to deselect non-E2E tests. The selector preserves the canonical
+# subprocess-E2E marker expression inside each explicit shard.
 test-subprocess-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
+	$(RUN_PYTHON) -m ralph.test_suites --subprocess-e2e
 
 # Live AGY tests are excluded from `test-subprocess-e2e` because they
 # require real network round-trips to the Antigravity backend and run
