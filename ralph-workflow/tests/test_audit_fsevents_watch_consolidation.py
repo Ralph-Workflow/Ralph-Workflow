@@ -148,6 +148,53 @@ def test_audit_flags_second_schedule_call_in_start(tmp_path: Path) -> None:
     )
 
 
+def test_audit_flags_dynamic_schedule_lookup_without_schedule_text(tmp_path: Path) -> None:
+    """An unowned dynamic lookup fails closed instead of hiding a second watch.
+
+    S-8 regression: an AST audit cannot prove that a nonliteral ``getattr``
+    attribute is not ``schedule``.  It must reject the lookup rather than let
+    a newly added module create an overlapping workspace subscription.
+    """
+    package_root = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    (package_root / "extra_watch.py").write_text(
+        "def start(observer, handler, root):\n"
+        "    method_name = configured_method_name\n"
+        "    getattr(observer, method_name)(handler, root, recursive=True)\n",
+        encoding="utf-8",
+    )
+
+    violations = audit.audit_fsevents_watch_consolidation(package_root)
+
+    assert [violation.kind for violation in violations] == ["unowned_watch_schedule"]
+    assert "dynamic getattr" in violations[0].message
+
+
+def test_audit_allows_non_watch_dynamic_invocation(tmp_path: Path) -> None:
+    """Dynamic dispatch unrelated to an observer remains outside the watch audit."""
+    package_root = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    (package_root / "plugin_dispatch.py").write_text(
+        "def run(plugin, method_name):\n"
+        "    getattr(plugin, method_name)()\n",
+        encoding="utf-8",
+    )
+
+    assert audit.audit_fsevents_watch_consolidation(package_root) == []
+
+
 def test_audit_flags_aliased_schedule_call(tmp_path: Path) -> None:
     """A bound ``schedule`` method alias cannot bypass the single-watch audit."""
     package_root: Path = _write_fake_package(

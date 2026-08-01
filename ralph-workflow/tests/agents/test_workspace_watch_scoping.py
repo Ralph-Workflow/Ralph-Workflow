@@ -236,6 +236,25 @@ def test_dispatched_file_event_counts_via_public_seam(
     assert len(fake.scheduled) == initial_count
 
 
+def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-6 regression: events outside the subscribed root do not refresh activity."""
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor.start()
+
+    monitor.dispatch_event(_FakeEvent("/other-project/src/app.py"))
+
+    assert monitor.event_count == 0
+    assert monitor.changed_files == set()
+    assert monitor.last_event_at is None
+
+
 def test_dispatched_directory_event_schedules_no_additional_watch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -81,6 +81,8 @@ if TYPE_CHECKING:
 _WORKSPACE_MONITOR_MODULE: str = "agents/invoke/_workspace.py"
 
 _EXCLUDED_DIRECTORY_NAMES: frozenset[str] = frozenset({"__pycache__"})
+_GETATTR_ATTRIBUTE_POSITION: int = 1
+_MIN_GETATTR_ARGUMENTS: int = _GETATTR_ATTRIBUTE_POSITION + 1
 
 
 @dataclass(frozen=True)
@@ -133,12 +135,7 @@ def _ancestors(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> list[ast.AST]:
 
 
 def _is_dynamic_schedule_lookup(node: ast.AST) -> bool:
-    """Return whether ``node`` is ``getattr(..., "schedule")``.
-
-    Dynamic lookup has the same scheduling capability as direct attribute
-    access, so treating it as invisible would let a new watch owner evade the
-    package-wide fail-closed contract.
-    """
+    """Return whether ``node`` is the literal ``getattr(..., "schedule")`` form."""
     match node:
         case ast.Call(
             func=ast.Name(id="getattr"),
@@ -147,6 +144,36 @@ def _is_dynamic_schedule_lookup(node: ast.AST) -> bool:
             return True
         case _:
             return False
+
+
+def _is_observer_receiver(node: ast.expr) -> bool:
+    """Return whether a receiver's name identifies watchdog observer ownership."""
+    if isinstance(node, ast.Name):
+        return node.id.endswith("observer")
+    return isinstance(node, ast.Attribute) and node.attr.endswith("observer")
+
+
+def _nonliteral_observer_getattr_invocation_line(node: ast.AST) -> int | None:
+    """Return an invoked nonliteral lookup on an observer-like receiver.
+
+    Dynamic dispatch unrelated to an observer is not a filesystem-watch
+    operation. A nonliteral method invoked on an observer can be ``schedule``,
+    however, and must fail closed so it cannot introduce an unowned watch.
+    """
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Call):
+        return None
+    lookup = node.func
+    if not isinstance(lookup.func, ast.Name) or lookup.func.id != "getattr":
+        return None
+    if len(lookup.args) < _MIN_GETATTR_ARGUMENTS:
+        return None
+    receiver = lookup.args[0]
+    attribute = lookup.args[_GETATTR_ATTRIBUTE_POSITION]
+    if not _is_observer_receiver(receiver):
+        return None
+    if isinstance(attribute, ast.Constant) and isinstance(attribute.value, str):
+        return None
+    return node.lineno
 
 
 def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
@@ -383,17 +410,27 @@ def _check_schedule_call_location(
     return []
 
 
-def _unowned_watch_schedule_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
+def _unowned_watch_schedule_violation(
+    rel_path: str, lineno: int, *, dynamic_getattr: bool = False
+) -> FseventsWatchViolation:
     """INV-5 failure: a production module attempts to own a watch schedule."""
+    if dynamic_getattr:
+        message = (
+            "dynamic getattr attribute name cannot prove this is not observer.schedule; "
+            "route workspace events through the lifecycle-owned WorkspaceMonitor.start() "
+            "instead of adding a potentially overlapping watch"
+        )
+    else:
+        message = (
+            "observer.schedule(...) is outside the lifecycle-owned "
+            "WorkspaceMonitor.start(); route workspace events through the "
+            "canonical monitor instead of adding an overlapping watch"
+        )
     return FseventsWatchViolation(
         kind="unowned_watch_schedule",
         file_path=rel_path,
         line=lineno,
-        message=(
-            "observer.schedule(...) is outside the lifecycle-owned "
-            "WorkspaceMonitor.start(); route workspace events through the "
-            "canonical monitor instead of adding an overlapping watch"
-        ),
+        message=message,
     )
 
 
@@ -518,19 +555,25 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
             )
             continue
         # Most production modules cannot own a watch. Parse every module first
-        # so malformed source still fails closed, then avoid two full AST walks
-        # unless the source can name schedule capability at all. Every direct,
-        # aliased, or dynamic schedule form necessarily contains this marker.
-        if "schedule" not in source:
-            continue
-        violations.extend(
-            _unowned_watch_schedule_violation(rel_path, call.lineno)
-            for call in _find_schedule_calls(tree)
-        )
-        violations.extend(
-            _unowned_watch_schedule_violation(rel_path, alias.lineno)
-            for alias in _find_schedule_aliases(tree)
-        )
+        # so malformed source still fails closed. Direct and literal schedule
+        # forms are cheap to skip when their marker is absent, but every module
+        # still checks nonliteral ``getattr`` because AST cannot prove that such
+        # a lookup is unrelated to scheduling.
+        if "schedule" in source:
+            violations.extend(
+                _unowned_watch_schedule_violation(rel_path, call.lineno)
+                for call in _find_schedule_calls(tree)
+            )
+            violations.extend(
+                _unowned_watch_schedule_violation(rel_path, alias.lineno)
+                for alias in _find_schedule_aliases(tree)
+            )
+        for node in ast.walk(tree):
+            line = _nonliteral_observer_getattr_invocation_line(node)
+            if line is not None:
+                violations.append(
+                    _unowned_watch_schedule_violation(rel_path, line, dynamic_getattr=True)
+                )
     return violations
 
 

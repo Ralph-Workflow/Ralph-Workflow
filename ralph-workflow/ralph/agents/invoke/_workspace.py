@@ -6,6 +6,7 @@ import importlib
 import inspect
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
@@ -14,8 +15,6 @@ from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKin
 from ralph.agents.invoke._has_src_path import _HasSrcPath
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 
     class _HasStop(Protocol):
@@ -65,13 +64,24 @@ class _HandlerWithDispatch(Protocol):
     def dispatch(self, event: object) -> None: ...
 
 
+def _is_within_workspace(workspace: Path, src_path: str) -> bool:
+    """Return whether a delivered event path remains inside the monitor root."""
+    try:
+        Path(src_path).resolve(strict=False).relative_to(workspace.resolve(strict=False))
+    except ValueError:
+        return False
+    return True
+
+
 def _make_change_tracker(monitor: WorkspaceMonitor) -> object:
     class _ChangeTrackerHandler:
         def dispatch(self, event: object) -> None:
             self.on_any_event(event)
 
         def on_any_event(self, event: object) -> None:
-            if isinstance(event, _HasSrcPath):
+            if isinstance(event, _HasSrcPath) and _is_within_workspace(
+                monitor._workspace, event.src_path
+            ):
                 monitor.record_event(event.src_path)
 
     return _ChangeTrackerHandler()
