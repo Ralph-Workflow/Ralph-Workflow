@@ -322,25 +322,10 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: automatic sharding follows available cores without
-    # exceeding the measured 24-shard ceiling, which keeps the profile below
-    # the per-test timeout under load.
-    for cores, expected in (
-        (1, "1"),
-        (4, "4"),
-        (5, "5"),
-        (6, "6"),
-        (7, "7"),
-        (8, "8"),
-        (12, "12"),
-        (16, "16"),
-        (20, "20"),
-        (21, "21"),
-        (32, "24"),
-        (64, "24"),
-    ):
-        monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
-        assert test_suites_module._pytest_workers() == expected
+    # Regression: the default profile must meet the immutable 60-second
+    # budget even on a low-core host, so auto uses the measured fixed ceiling
+    # rather than scaling down with available CPUs.
+    assert test_suites_module._pytest_workers() == "24"
 
 
 def test_explicit_worker_count_overrides_the_auto_resolution(

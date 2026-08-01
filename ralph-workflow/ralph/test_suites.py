@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import ast
-import multiprocessing
 import os
 import re
 import subprocess
@@ -67,15 +66,15 @@ if TYPE_CHECKING:
 
 # The 1.0 s per-test ITIMER_REAL budget charges wall clock. Plain-pytest
 # shards avoid xdist's shared-worker contention while preserving exact-once
-# test assignment. The automatic profile uses the available cores up to the
-# measured 24-shard ceiling; higher concurrency exceeds the per-test timeout
-# under load.
-# Operators may explicitly override ``PYTEST_WORKERS`` for a measured environment.
+# test assignment. The automatic profile always uses the measured 24-shard
+# ceiling so low-core hosts retain enough parallelism to meet the immutable
+# 60-second combined budget; higher concurrency exceeds the per-test timeout
+# under load. Operators may explicitly override ``PYTEST_WORKERS`` for a
+# measured environment.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MIN_PYTEST_WORKERS = 1
 _MAX_PYTEST_WORKERS = 24
 
 #: Exact subprocess-E2E files required by the authoritative verification
@@ -225,14 +224,9 @@ def validate_exact_file_assignment(
 
 
 def _pytest_workers() -> str:
+    """Return an explicit override or the verified fixed shard profile."""
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
-    if raw != "auto":
-        return raw
-    try:
-        cores = multiprocessing.cpu_count()
-    except Exception:
-        return str(_MIN_PYTEST_WORKERS)
-    return str(min(max(cores, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
+    return raw if raw != "auto" else str(_MAX_PYTEST_WORKERS)
 
 
 def _default_spawner(
