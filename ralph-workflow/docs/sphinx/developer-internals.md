@@ -34,8 +34,8 @@ priority):
    here apply to every project the user runs Ralph Workflow against.
 3. **Project-local config.** `.agent/ralph-workflow.toml` inside the
    active workspace. The user-global file is laid down by
-   `ralph --init`; the project-local file is the per-repo override
-   that ships with version control.
+   `ralph --init`; create this optional per-repo override explicitly
+   with `ralph --init-local-config` (or `ralph --generate-local-config`).
 4. **CLI flag overrides.** Applied last, just before Pydantic
    validation; CLI wins on conflict.
 

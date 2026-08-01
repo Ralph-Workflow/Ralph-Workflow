@@ -528,9 +528,9 @@ Side effects:
     Invokes the configured pipeline (planning, development, review, fix
     cycles) which spawns agent subprocesses and writes artifacts under
     ``.agent/``. ``--init`` creates ``PROMPT.md`` and seeds ``.gitignore``;
-    it never creates project-local TOMLs. The explicit local-config aliases
-    and skill subcommands may respectively mutate ``.agent/`` and supported
-    agent roots. ``--diagnose`` prints but does not mutate. ``--version``
+    it never creates project-local TOMLs. Only the explicit local-config
+    aliases create the supported local TOML set. Skill subcommands may mutate
+    supported agent roots. ``--diagnose`` prints but does not mutate. ``--version``
     and ``--help`` are read-only.
 """
 
