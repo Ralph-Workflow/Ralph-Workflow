@@ -45,9 +45,12 @@ import json
 import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from typing import cast
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
@@ -95,6 +98,11 @@ def cursor_mcp_config(endpoint: str) -> str:
         }
     }
     return json.dumps(config_payload, separators=(",", ":"))
+
+
+def _prepare_config_parent(path: Path) -> None:
+    """Create a config parent only when a changed publication needs it."""
+    DEFAULT_FILE_BACKEND.mkdir(path, parents=True, exist_ok=True)
 
 
 def _cursor_paths_to_consider(
@@ -155,19 +163,18 @@ def cursor_workspace_mcp_endpoint(
         )
 
         try:
+            config_payload = json.dumps(merged_config, indent=2).encode("utf-8")
             for config_path in _cursor_paths_to_consider(workspace_path):
-                config_path.parent.mkdir(parents=True, exist_ok=True)
-                # Atomic write: stage to a sibling temp file then
-                # ``Path.replace`` so a concurrent reader (Cursor's Go
-                # runtime) never sees a half-written config.  The temp
-                # file is unique per call to avoid a TOCTOU between two
-                # siblings staging the same name.
-                _stage_path = config_path.with_suffix(
-                    config_path.suffix + f".ralph-staging.{id(merged_config)}"
+                # Atomically publish only changed bytes. The primitive avoids
+                # staging/replacing an unchanged effective config and defers
+                # parent creation until a changed publish requires it.
+                atomic_write_bytes_if_changed(
+                    DEFAULT_FILE_BACKEND,
+                    config_path,
+                    config_payload,
+                    tmp_path=config_path.with_suffix(config_path.suffix + ".ralph-staging"),
+                    prepare_write=partial(_prepare_config_parent, config_path.parent),
                 )
-                # filesystem-write-ok: unique-keyed Cursor config staging file (publish via replace below)
-                _stage_path.write_text(json.dumps(merged_config, indent=2), encoding="utf-8")
-                _stage_path.replace(config_path)
             yield
         finally:
             for config_path in _cursor_paths_to_consider(workspace_path):
@@ -176,16 +183,15 @@ def cursor_workspace_mcp_endpoint(
                     if config_path.is_file():
                         config_path.unlink()
                 else:
-                    # Atomic restore via the same staging pattern so a
-                    # concurrent sibling that staged its own write
-                    # between our yield and our restore does not lose
-                    # its bytes.
-                    _restore_path = config_path.with_suffix(
-                        config_path.suffix + f".ralph-restore.{id(original_bytes)}"
+                    # Restore atomically while avoiding a no-op replace when
+                    # the pre-run bytes are already back in place.
+                    atomic_write_bytes_if_changed(
+                        DEFAULT_FILE_BACKEND,
+                        config_path,
+                        original_bytes,
+                        tmp_path=config_path.with_suffix(config_path.suffix + ".ralph-restore"),
+                        prepare_write=partial(_prepare_config_parent, config_path.parent),
                     )
-                    # filesystem-write-ok: unique-keyed restore staging file (publish via replace below)
-                    _restore_path.write_bytes(original_bytes)
-                    _restore_path.replace(config_path)
     finally:
         _cursor_mcp_lock.release()
 
