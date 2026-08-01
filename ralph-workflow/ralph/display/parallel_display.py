@@ -430,7 +430,11 @@ def _record_tool_call_body(record_body: str, source_content: str) -> str:
     structured tool-call header. A source-provided ``↳`` is event content,
     however, and must remain in the greppable rendered record.
     """
-    if "↳" in source_content and "↳" not in record_body:
+    if (
+        "↳" in source_content
+        and not source_content.lstrip().startswith("↳ ")
+        and "↳" not in record_body
+    ):
         return f"{record_body} ↳".strip()
     return record_body
 
@@ -2762,7 +2766,7 @@ class ParallelDisplay:
                                 overflow_ref=overflow_ref,
                                 glyphs_enabled=self._ctx.glyphs_enabled,
                             )[0]
-                            or "",
+                            or text,
                             text_content,
                         )
                         or None

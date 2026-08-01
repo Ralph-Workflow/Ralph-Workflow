@@ -43,9 +43,14 @@ outside reading source) and enforces five invariants:
      ``missing_workspace_module`` because the file's absence is
      itself drift.
   5. **INV-5 (package-wide ownership)** -- every production module other
-     than the canonical owner is scanned for ``.schedule(...)`` calls.
-     Any such call raises ``unowned_watch_schedule``. New production modules
-     therefore fail closed rather than silently adding an overlapping watch.
+     than the canonical owner is scanned for direct ``.schedule(...)`` calls
+     and dynamic ``getattr(..., "schedule")`` calls or aliases. Any such use
+     raises ``unowned_watch_schedule``. New production modules therefore fail
+     closed rather than silently adding an overlapping watch.
+  6. **INV-6 (canonical receiver)** -- the canonical call must be the direct
+     ``self._observer.schedule(...)`` expression. An unrelated scheduler must
+     not satisfy the owner contract while the real observer is hidden behind a
+     dynamic lookup.
 
 Usage::
 
@@ -127,6 +132,23 @@ def _ancestors(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> list[ast.AST]:
     return chain
 
 
+def _is_dynamic_schedule_lookup(node: ast.AST) -> bool:
+    """Return whether ``node`` is ``getattr(..., "schedule")``.
+
+    Dynamic lookup has the same scheduling capability as direct attribute
+    access, so treating it as invisible would let a new watch owner evade the
+    package-wide fail-closed contract.
+    """
+    match node:
+        case ast.Call(
+            func=ast.Name(id="getattr"),
+            args=[_, ast.Constant(value="schedule"), *_],
+        ):
+            return True
+        case _:
+            return False
+
+
 def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
     """Return every ``Call`` whose function attribute is ``schedule``.
 
@@ -144,12 +166,14 @@ def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if isinstance(func, ast.Attribute) and func.attr == "schedule":
+        if (isinstance(func, ast.Attribute) and func.attr == "schedule") or _is_dynamic_schedule_lookup(
+            func
+        ):
             calls.append(node)
     return calls
 
 
-def _find_schedule_aliases(tree: ast.Module) -> list[ast.Attribute]:
+def _find_schedule_aliases(tree: ast.Module) -> list[ast.expr]:
     """Return every ``.schedule`` attribute bound for later invocation.
 
     The canonical owner must call ``self._observer.schedule(...)`` directly.
@@ -157,12 +181,14 @@ def _find_schedule_aliases(tree: ast.Module) -> list[ast.Attribute]:
     can otherwise hide a subsequent invocation from the AST call matcher and
     evade the package-wide single-watch rule.
     """
-    aliases: list[ast.Attribute] = []
+    aliases: list[ast.expr] = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
             continue
         value = node.value
-        if isinstance(value, ast.Attribute) and value.attr == "schedule":
+        if (isinstance(value, ast.Attribute) and value.attr == "schedule") or (
+            isinstance(value, ast.Call) and _is_dynamic_schedule_lookup(value)
+        ):
             aliases.append(value)
     return aliases
 
@@ -244,7 +270,7 @@ def _check_module(
             )
         ]
 
-    schedule_aliases: list[ast.Attribute] = _find_schedule_aliases(tree)
+    schedule_aliases: list[ast.expr] = _find_schedule_aliases(tree)
     if schedule_aliases:
         return [
             _aliased_watch_schedule_violation(rel_path, alias.lineno) for alias in schedule_aliases
@@ -296,6 +322,35 @@ def _check_schedule_call_invariants(
     return []
 
 
+def _is_canonical_schedule_receiver(call: ast.Call) -> bool:
+    """Return whether ``call`` directly invokes ``self._observer.schedule``."""
+    func = call.func
+    if not isinstance(func, ast.Attribute) or func.attr != "schedule":
+        return False
+    receiver = func.value
+    return (
+        isinstance(receiver, ast.Attribute)
+        and receiver.attr == "_observer"
+        and isinstance(receiver.value, ast.Name)
+        and receiver.value.id == "self"
+    )
+
+
+def _invalid_watch_schedule_receiver_violation(
+    rel_path: str, lineno: int
+) -> FseventsWatchViolation:
+    """INV-6 failure: another scheduler cannot satisfy the monitor contract."""
+    return FseventsWatchViolation(
+        kind="invalid_watch_schedule_receiver",
+        file_path=rel_path,
+        line=lineno,
+        message=(
+            "the canonical watch must call self._observer.schedule(...) directly; "
+            "do not hide the lifecycle-owned observer behind another receiver or dynamic lookup"
+        ),
+    )
+
+
 def _check_schedule_call_location(
     rel_path: str,
     tree: ast.Module,
@@ -309,6 +364,9 @@ def _check_schedule_call_location(
     Returns an empty list when the call sits directly inside
     ``start()`` with no loop ancestor.
     """
+    if not _is_canonical_schedule_receiver(schedule_call):
+        return [_invalid_watch_schedule_receiver_violation(rel_path, schedule_call.lineno)]
+
     parents: dict[ast.AST, ast.AST] = _build_parent_map(tree)
     ancestors: list[ast.AST] = _ancestors(schedule_call, parents)
 

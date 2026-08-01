@@ -322,12 +322,16 @@ def test_interrupted_history_snapshot_does_not_leave_partial_archive(
         now_iso=lambda: "2026-07-24T01:02:03+00:00",
     )
 
+    updated_markdown = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed the interrupted snapshot regression.",
+    )
     with pytest.raises(OSError, match="snapshot interrupted"):
         submit_artifact_canonical(
             workspace_root=tmp_path,
             artifact_type="development_result",
-            parsed_content=_parsed("development_result", DEVELOPMENT_RESULT),
-            markdown=DEVELOPMENT_RESULT,
+            parsed_content=_parsed("development_result", updated_markdown),
+            markdown=updated_markdown,
             deps=deps,
             run_id="run-new",
         )

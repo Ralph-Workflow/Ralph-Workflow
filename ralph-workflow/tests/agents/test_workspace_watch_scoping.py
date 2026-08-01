@@ -19,14 +19,11 @@ coupling to internals.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
-
-if TYPE_CHECKING:
-    import pytest
-
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -70,6 +67,14 @@ class _FakeObserver:
 
     def join(self, timeout: float | None = None) -> None:
         self.joined = True
+
+
+class _ScheduleFailingObserver(_FakeObserver):
+    """Observer whose first schedule attempt fails before monitoring starts."""
+
+    def schedule(self, event_handler: object, path: str, recursive: bool = False) -> None:
+        super().schedule(event_handler, path, recursive)
+        raise OSError("watch registration failed")
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +124,30 @@ def test_start_single_recursive_root_watch_when_classifier_none(
     assert path == "/ws"
     assert recursive is True
     assert fake.started is True
+
+
+def test_start_failure_allows_a_later_watch_registration_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-6 regression: a failed registration does not strand monitor lifecycle ownership."""
+    failing = _ScheduleFailingObserver()
+    succeeding = _FakeObserver()
+    observers = iter((failing, succeeding))
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: next(observers),
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+
+    with pytest.raises(OSError, match="watch registration failed"):
+        monitor.start()
+    monitor.start()
+
+    assert len(failing.scheduled) == 1
+    assert failing.stopped is True
+    assert failing.joined is True
+    assert len(succeeding.scheduled) == 1
+    assert succeeding.started is True
 
 
 def test_start_replay_preserves_one_live_workspace_watch(

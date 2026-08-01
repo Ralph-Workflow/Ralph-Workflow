@@ -254,8 +254,15 @@ class WorkspaceMonitor:
         workspace_str = str(self._workspace)
         self._observer = observer
         self._handler = handler
-        self._observer.schedule(handler, workspace_str, recursive=True)
-        self._observer.start()
+        try:
+            self._observer.schedule(handler, workspace_str, recursive=True)
+            self._observer.start()
+        except BaseException:
+            observer.stop()
+            observer.join(5)
+            self._observer = None
+            self._handler = None
+            raise
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
     def record_event(self, src_path: str) -> None:
