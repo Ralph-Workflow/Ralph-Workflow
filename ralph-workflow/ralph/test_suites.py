@@ -75,7 +75,7 @@ _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
 _MIN_PYTEST_WORKERS = 16
-_MAX_PYTEST_WORKERS = 16
+_MAX_PYTEST_WORKERS = 32
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two

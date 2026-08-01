@@ -139,7 +139,7 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # isolation fix in _subprocess_env ensures it does NOT leak to spawned
     # children. PTY and smoke helpers call this single parent-side accessor
     # instead of reading ambient env themselves.
-    "agents/invoke/_process_reader.py:186",
+    "agents/invoke/_process_reader.py:187",
     # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY in
     # _agy_binary_override_env; justified by di-seam-allowlist comment.
     "pipeline/plumbing/smoke_plumbing.py:516",
