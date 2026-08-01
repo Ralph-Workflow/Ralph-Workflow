@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING
 
 from ralph.git.rebase._rebase_lock import RebaseLock
 from ralph.git.rebase._rebase_phase import RebasePhase
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
-from ralph.process._spawn_env import sanitize_process_environment
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.process._spawn_env import sanitize_process_environment
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

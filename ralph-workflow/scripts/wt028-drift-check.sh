@@ -267,7 +267,7 @@ fi
 # comments and docstrings may explain the retired direct-output paths. The smoke
 # EXIT_CODE line is a documented machine contract and the sole allowed exception.
 COMMAND_OUTPUT_HITS="$(git grep -nE '^[[:space:]]*(print\(|typer\.echo\(|sys\.stdout\.write\(|[[:alnum:]_\.]+\.console\.print\()' -- ralph/cli ralph/config ralph/pipeline \
-    | grep -v '^ralph/cli/commands/smoke.py:513:' || true)"
+    | grep -vE '^ralph/cli/commands/smoke\.py:[0-9]+:[[:space:]]*sys\.stdout\.write\(f"EXIT_CODE=\{exit_code\}\\n"\)$' || true)"
 if [ -n "$COMMAND_OUTPUT_HITS" ]; then
     echo "FAIL: private command display path detected" >&2
     echo "$COMMAND_OUTPUT_HITS" >&2

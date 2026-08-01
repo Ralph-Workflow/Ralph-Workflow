@@ -306,8 +306,12 @@ class NdjsonParserBase(ParserTemplateBase):
             yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
             return
 
-        obj = cast("dict[str, object]", parsed)
+        yield from self._classify_parsed_json_object(cast("dict[str, object]", parsed), stripped)
 
+    def _classify_parsed_json_object(
+        self, obj: dict[str, object], stripped: str
+    ) -> Iterator[AgentOutputLine]:
+        """Classify a parsed JSON object after base-level validation."""
         # DA-002 (wt-028-display S-2 / AC-01): extract the source
         # timestamp ONCE so every yielded ``AgentOutputLine`` carries
         # the same validated value when the wire-format event has one.

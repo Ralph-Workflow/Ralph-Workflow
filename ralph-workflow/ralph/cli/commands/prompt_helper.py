@@ -39,12 +39,12 @@ from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.prompt_helper_prompt import build_prompt_helper_prompt
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.product_spec import (
     read_product_spec_artifact,
     render_product_spec_as_prompt,
 )
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.fs import FsWorkspace

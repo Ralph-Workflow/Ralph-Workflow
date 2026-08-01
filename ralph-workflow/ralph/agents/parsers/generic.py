@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 from ralph.display.vt_normalizer import normalize_vt_text
 
-from ._event_classification import is_lifecycle_event
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message
@@ -144,10 +143,6 @@ class GenericParser(NdjsonParserBase):
     def _classify_parsed_json(
         self, obj: dict[str, object], stripped: str
     ) -> Iterator[AgentOutputLine]:
-        type_val = str(obj.get("type", "")).lower()
-        if type_val and self._is_lifecycle_type(type_val):
-            return
-
         if self._is_stop(obj):
             yield from self._flush_accumulator()
             yield AgentOutputLine(type="stop", raw=stripped)
@@ -181,8 +176,13 @@ class GenericParser(NdjsonParserBase):
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         yield from self._flush_accumulator()
 
-    def _is_lifecycle_type(self, type_val: str) -> bool:
-        return is_lifecycle_event(type_val)
+    def _handle_lifecycle_event(
+        self, obj: dict[str, object], event_type: str
+    ) -> Iterator[AgentOutputLine] | None:
+        """Flush buffered text when a generic stream marks a message complete."""
+        if event_type not in self._STOP_TYPES:
+            return iter(())
+        return self._classify_parsed_json(obj, stripped="")
 
     def _is_short_content(self, content: str) -> bool:
         if len(content) >= _SHORT_CONTENT_THRESHOLD:
