@@ -119,6 +119,16 @@ def test_mkdir_is_routed_through_injected_backend() -> None:
     assert backend._files[Path("/virtual-ws/a/b/c/deep.txt")] == "content"
 
 
+def test_workspace_round_trip_uses_the_injected_file_backend() -> None:
+    """S-5 regression: a logical write/read round trip stays within its I/O seam."""
+    backend = _CountingBackend()
+    ws = FsWorkspace(Path("/virtual-ws"), backend=backend)
+
+    ws.write("output.txt", "alpha")
+
+    assert ws.read("output.txt") == "alpha"
+
+
 def test_write_signature_returns_none() -> None:
     """Public write() signature unchanged: returns None, accepts (str, str)."""
     backend = _CountingBackend()

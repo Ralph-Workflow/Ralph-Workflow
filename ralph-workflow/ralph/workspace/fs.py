@@ -98,7 +98,7 @@ class FsWorkspace:
         Raises:
             FileNotFoundError: If file doesn't exist.
         """
-        return self._abs(path).read_text(encoding="utf-8")
+        return self._backend.read_text(self._abs(path), encoding="utf-8")
 
     def write(self, path: str, content: str) -> None:
         """Write content to file.
