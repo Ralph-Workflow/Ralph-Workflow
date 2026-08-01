@@ -1590,32 +1590,43 @@ class ParallelDisplay:
             # embedded-newline string and only the first embedded
             # line carried the prefix).
             close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
-            close_hang_prefix = " " * cell_len(close_badge_prefix)
-            wrapped_body = "\n".join(
-                self._wrap_body_with_hanging_indent(
+            header = f"⋯ {display_tag} · {start_str} → {end_str} · {duration_str}"
+            if base_tag == "think":
+                # Reasoning is one logical passage: retain its single-row
+                # close shape when it fits, while the repeated carrier still
+                # protects every physical continuation at narrow widths.
+                rows = self._wrap_body_with_hanging_indent(
                     close_badge_prefix,
-                    chunk,
+                    f"{header} · {visible}",
                     total_width=self._ctx.width,
-                    body_measure=self._ctx.body_measure(),
+                    body_measure=max(
+                        self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)),
+                ).split("\n")
+            else:
+                # Agent output keeps a compact metadata row followed by
+                # independently greppable content rows, so the duration is
+                # never obscured by a long passage.
+                rows = [header, *self._wrap_body_with_hanging_indent(
+                    close_badge_prefix,
+                    visible,
+                    total_width=self._ctx.width,
+                    body_measure=max(
+                        self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)),
+                ).split("\n")]
+            for row in rows:
+                self._console.print(
+                    self._activity_text(
+                        timestamp,
+                        display_tag,
+                        rendered_unit_id,
+                        row,
+                        kind="thinking" if base_tag == "think" else "text",
+                    ),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                    overflow="ignore",
                 )
-                for chunk in body.split("\n")
-            )
-            indented_body = "\n".join(
-                f"{close_hang_prefix}{line}" for line in wrapped_body.split("\n")
-            )
-            self._console.print(
-                self._activity_text(
-                    timestamp,
-                    display_tag,
-                    rendered_unit_id,
-                    indented_body,
-                    kind="thinking" if base_tag == "think" else "text",
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-                overflow="ignore",
-            )
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
         # also the single record entry for the streaming block. Map the
         # base_tag back to an ``ActivityEventKind`` so the record line

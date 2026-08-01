@@ -19,7 +19,7 @@ all applicable fields at every terminal width where they fit:
   can accommodate it),
 - elapsed run time and current agent identity when the path budget has room.
 
-Width-driven degradation (in order) so ``len(text.plain) <= ctx.width``
+Width-driven degradation (in order) so ``cell_len(text.plain) <= ctx.width``
 holds at every width:
 
 1. Path middle-truncation absorbs excess length on long paths.
