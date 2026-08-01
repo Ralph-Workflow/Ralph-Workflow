@@ -73,18 +73,7 @@ ralph --init
 ```
 
 `ralph --init` is safe to re-run; it is idempotent and re-checks
-detected agents on every run. It does **not** create project-local TOMLs.
-Those overrides are advanced and optional: create the complete
-`.agent/ralph-workflow.toml`, `mcp.toml`, `pipeline.toml`, and
-`artifacts.toml` set only with:
-
-```bash
-ralph --init-local-config
-# Alias: ralph --generate-local-config
-```
-
-`ralph --regenerate-config` refreshes local TOMLs only when they already
-exist (with backups); it never opts a project into local configuration.
+detected agents on every run.
 
 ### 4. Confirm the agent is wired up
 

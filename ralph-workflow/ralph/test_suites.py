@@ -64,17 +64,16 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Twenty-four concurrent
-# pytest processes are the measured safe profile for the full verification
-# selection. Operators may explicitly override ``PYTEST_WORKERS`` for a measured
-# environment. This is a concurrency bound, not a budget change: the 60.0-second
-# combined budget and 1.0-second per-test timeout remain unchanged.
+# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Ten concurrent
+# pytest processes keep the full verification selection within its immutable
+# 60.0-second budget without the earlier SQLite contention ceiling. Operators
+# may explicitly override ``PYTEST_WORKERS`` for a measured environment.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MIN_PYTEST_WORKERS = 24
-_MAX_PYTEST_WORKERS = 24
+_MIN_PYTEST_WORKERS = 10
+_MAX_PYTEST_WORKERS = 10
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two

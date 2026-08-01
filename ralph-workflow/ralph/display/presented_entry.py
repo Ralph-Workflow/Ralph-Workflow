@@ -249,10 +249,17 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
 
 
 def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
-    """Preserve a tool name and any continuation glyph on every record call."""
+    """Drop live-only arrows while preserving preformatted wrapped tool calls."""
     body = body.rstrip()
-    if body.startswith("↳ "):
-        body = body[2:].lstrip()
+    input_obj = metadata.get("input", metadata.get("args"))
+    # Structured calls identify their string target independently. Their pairing
+    # arrow is live-only, except an explicit trailing arrow is preformatted content.
+    has_structured_target = isinstance(input_obj, dict) and any(
+        key in {"path", "command", "pattern"} and isinstance(value, str) and value
+        for key, value in input_obj.items()
+    )
+    if has_structured_target and not body.endswith(" ↳"):
+        body = body.removeprefix("↳ ").removesuffix(" ↳").rstrip()
     raw_tool = next(
         (
             value
