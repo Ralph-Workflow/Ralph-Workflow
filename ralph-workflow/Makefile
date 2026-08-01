@@ -2,9 +2,9 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: `auto` resolves to the measured safe six-shard profile. The 1.0 s
-# per-test SIGALRM budget charges wall clock; eight shards exceed the immutable
-# 60 s suite budget. The capped profile keeps the maintained suite below it.
+# Default: `auto` resolves to the measured safe twenty-four-shard profile. The 1.0 s
+# per-test SIGALRM budget charges wall clock; this profile keeps the maintained
+# suite below the immutable 60 s budget.
 # Operators may override after measuring their own host.
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
@@ -12,9 +12,9 @@
 # literally, so this exported default governs both ralph.test_suites and
 # the raw-target paths. Keep conditional assignment so operators can
 # override:
-#   PYTEST_WORKERS=6 make test    # measured automatic cap
-#   PYTEST_WORKERS=2 make test
-#   PYTEST_WORKERS=16 make test   # may exceed 1s per-test under load
+#   PYTEST_WORKERS=24 make test   # measured automatic profile
+#   PYTEST_WORKERS=2 make test    # may exceed the suite budget
+#   PYTEST_WORKERS=32 make test   # may exceed 1s per-test under load
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout

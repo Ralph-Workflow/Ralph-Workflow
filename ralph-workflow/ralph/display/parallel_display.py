@@ -2739,12 +2739,15 @@ class ParallelDisplay:
                     indent_level=_entry.indent_level,
                     grouping_role=_entry.grouping_role,
                     record_body=(
-                        preview_record_text(
-                            text_content,
-                            metadata,
-                            overflow_ref=overflow_ref,
-                            glyphs_enabled=self._ctx.glyphs_enabled,
-                        )[0]
+                        (
+                            preview_record_text(
+                                text_content,
+                                metadata,
+                                overflow_ref=overflow_ref,
+                                glyphs_enabled=self._ctx.glyphs_enabled,
+                            )[0]
+                            + (" ↳" if text_content.rstrip().endswith("↳") else "")
+                        )
                         or None
                     )
                     if kind is ActivityEventKind.TOOL_USE
