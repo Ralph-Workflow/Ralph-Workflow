@@ -517,6 +517,27 @@ def test_flags_raw_shutil_move(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_move"
 
 
+def test_flags_raw_os_open_with_write_flags(tmp_path: Path) -> None:
+    """A raw ``os.open`` creation path cannot bypass the mutation audit."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "import os\n"
+            "def create(path):\n"
+            "    return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_open"]
+    assert "filesystem-write-ok" in violations[0].message
+
+
 def test_flags_raw_os_fsync(tmp_path: Path) -> None:
     """``os.fsync(fd)`` outside the canonical primitive is a raw durability barrier."""
     module_rel = "alpha/example.py"

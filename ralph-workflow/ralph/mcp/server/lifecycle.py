@@ -791,7 +791,7 @@ def _spawn_process(
     log_dir = cwd / ".agent" / "tmp"
     # filesystem-write-ok: MCP server live diagnostic log directory
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_fd = os.open(  # resource-lifecycle-ok: closed in finally
+    log_fd = os.open(  # filesystem-write-ok: append-only live MCP diagnostic stream; resource-lifecycle-ok: fd closed in finally
         log_dir / "mcp-server.log",
         os.O_WRONLY | os.O_CREAT | os.O_APPEND,
         0o644,

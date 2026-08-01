@@ -22,8 +22,8 @@ The audit detects the following raw mutation classes:
     ``Path.rename`` (atomic moves)
   * ``Path.unlink`` / ``os.remove`` / ``os.unlink`` / ``Path.rmdir``
     (raw deletes)
-  * ``Path.mkdir`` / ``os.mkdir`` / ``os.makedirs`` (raw directory
-    creation)
+  * ``Path.mkdir`` / ``os.mkdir`` / ``os.makedirs`` / ``os.open``
+    (raw directory or file creation)
   * ``shutil.rmtree`` / ``shutil.copy`` / ``shutil.copy2`` /
     ``shutil.copyfile`` / ``shutil.copymode`` / ``shutil.move``
     (raw copies / moves / tree deletes)
@@ -153,6 +153,8 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "use ralph.mcp.artifacts.idempotent_write.replace_if_changed or mark",
     "touch": "raw touch bumps mtime without content change; "
     "annotate with `# filesystem-write-ok: <reason>` or remove the call",
+    "open": "raw os.open bypasses the canonical file-creation boundary; "
+    "route through a shared persistence primitive or mark the local lifecycle reason",
     "truncate": "raw truncate bypasses the canonical truncation primitive; "
     "mark with a reason or route through the canonical primitive",
 }
@@ -343,9 +345,7 @@ def _raw_direct_import_mutation_call(
     return None
 
 
-def _raw_qualified_mutation_call(
-    node: ast.Call, module_aliases: dict[str, str]
-) -> str | None:
+def _raw_qualified_mutation_call(node: ast.Call, module_aliases: dict[str, str]) -> str | None:
     """Return the attribute name if *node* is a raw qualified mutation.
 
     Matches ``os.replace``, ``shutil.copy``, ``pathlib.Path.unlink``,
@@ -544,9 +544,7 @@ def _scan_module(
             )
             continue
         # ``from os import replace as publish`` and similar direct imports.
-        direct_violation = _direct_import_violation(
-            node, direct_mutations, marker_lines, rel_path
-        )
+        direct_violation = _direct_import_violation(node, direct_mutations, marker_lines, rel_path)
         if direct_violation is not None:
             violations.append(direct_violation)
             continue
