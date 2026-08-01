@@ -716,8 +716,8 @@ def _route_opencode_native_task(
     """Represent OpenCode's native ``task`` tool as a scoped child lifecycle.
 
     The native wire protocol uses ``part.callID`` rather than standalone
-    ``child_*`` frames. Its running and completed states therefore need to
-    update the same child-evidence registry that the watchdog consults.
+    ``child_*`` frames. Its pending/running and completed states therefore need
+    to update the same child-evidence registry that the watchdog consults.
     """
     if _opencode_tool_name(obj) not in _OPENCODE_SUBAGENT_TOOLS:
         return
@@ -731,7 +731,7 @@ def _route_opencode_native_task(
         return
     state_obj = cast("dict[str, object]", state)
     status = str(state_obj.get("status", ""))
-    if status not in {"running", "completed", "error"}:
+    if status not in {"pending", "running", "completed", "error"}:
         return
     registry.register_child(call_id, scope_prefix)
     registry.record_progress(call_id, phase=status)

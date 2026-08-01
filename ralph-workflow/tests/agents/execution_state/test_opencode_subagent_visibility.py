@@ -222,6 +222,32 @@ def test_task_tool_observe_line_records_native_task_lifecycle() -> None:
     assert snapshot.terminal_count == 1
 
 
+def test_native_pending_task_regression_defers_idle_watchdog_until_child_ceiling() -> None:
+    """S-2: the live OpenCode task dispatch reports pending before it runs.
+
+    The smoke transcript shows a task dispatch, then legitimate quiet work longer
+    than the parent idle deadline. Treating the provider's non-terminal
+    ``pending`` state as neither registered nor live makes the watchdog kill that
+    healthy child before its terminal event arrives.
+    """
+    clock = FakeClock()
+    registry = ChildLivenessRegistry(
+        progress_ttl=30.0,
+        heartbeat_ttl=30.0,
+        stale_label_ttl=30.0,
+        exit_reconcile=30.0,
+        now=clock.monotonic,
+    )
+    strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
+
+    strategy.observe_line(_tool_event("task", status="pending", call_id="call_pending_task"))
+    clock.advance(29.0)
+
+    assert strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe(active=False)) == (
+        AgentExecutionState.WAITING_ON_CHILD
+    )
+
+
 def test_native_running_task_regression_defers_idle_watchdog_until_child_ceiling() -> None:
     """S-3: OpenCode's native task has no heartbeat frames while it runs.
 
