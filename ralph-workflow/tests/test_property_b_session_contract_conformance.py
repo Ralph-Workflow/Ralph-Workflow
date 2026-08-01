@@ -58,8 +58,9 @@ def _make_agent_session() -> AgentSession:
 def _all_mcp_session_members() -> list[str]:
     """Return every public McpSession member name from the Protocol itself.
 
-    Derived from typing_extensions.get_protocol_members() so adding a new @property
-    or method to McpSession extends this list automatically.
+Derived from typing_extensions.get_protocol_members() so adding a new
+    @property or method to McpSession extends this list automatically on every
+    supported Python version.
     """
     return sorted(get_protocol_members(McpSession))
 

@@ -436,9 +436,8 @@ def _render_tool_use_event(
         body_segments.append(f"call_id={call_id}")
     body = " ".join(body_segments)
     text = Text()
-    text.append(f"{icon} {label} ", style=style)
+    text.append(f"{icon} {label} {_TOOL_PAIR_MARKER} ", style=style)
     _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
-    text.append(f" {_TOOL_PAIR_MARKER}", style=style)
     return text
 
 

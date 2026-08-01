@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import threading
-import typing
 from typing import TYPE_CHECKING
+
+from typing_extensions import get_protocol_members
 
 from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server.runtime_session import FileBackedSession
@@ -114,6 +115,6 @@ def test_mcp_session_protocol_covers_full_agent_session_surface() -> None:
     """Protocol-staleness guard: every public AgentSession member must be
     declared on McpSession, or mypy's structural check silently stops
     covering it (signature drift would then go unchecked)."""
-    protocol_members = typing.get_protocol_members(McpSession)
+    protocol_members = get_protocol_members(McpSession)
     missing = sorted(_agent_session_public_surface() - set(protocol_members))
     assert not missing, f"McpSession protocol is stale; missing members: {missing}"
