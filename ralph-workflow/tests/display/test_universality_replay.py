@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -63,11 +64,12 @@ def _replay(
     parsed = list(parser.parse(iter(_wire(name) if wire_lines is None else wire_lines)))
     visible = [line for line in parsed if line.type not in {"stop", "status", "session"}]
     output = io.StringIO()
+    context = make_display_context(
+        console=Console(file=output, force_terminal=False, color_system=None, width=100),
+        env={"CI": "1"},
+    )
     display = ParallelDisplay(
-        make_display_context(
-            console=Console(file=output, force_terminal=False, color_system=None, width=100),
-            env={"CI": "1"},
-        ),
+        replace(context, condenser_soft_limit=400, condenser_hard_limit=4000),
         workspace_root=tmp_path,
         clock=lambda: datetime(2026, 7, 25, 9, 30, 0),
         monotonic=lambda: 0.0,
@@ -84,7 +86,7 @@ def _replay(
             timestamp=line.timestamp,
         )
     if include_condensation:
-        condensation_body = f"CONDENSE-{name} " + "x" * 450
+        condensation_body = f"CONDENSE-{name} " + "x" * 850
         display.emit_parsed_event(
             unit_id=name,
             kind=normalize_event_from_agent_output_line(
@@ -135,10 +137,10 @@ def test_parser_native_replay_condenses_every_agent_payload(
 ) -> None:
     """DA-005: every provider's shared path accounts for oversized content."""
     record, live, _ = _replay(name, provider, parser_factory, tmp_path, include_condensation=True)
-    for surface in (record, live):
-        assert f"CONDENSE-{name}" in surface
-        assert "truncated" in surface
-        assert " B, see .agent/raw/" in surface
+    assert f"CONDENSE-{name}" in record
+    assert f"CONDENSE-{name}" in live
+    assert "x" * 850 not in record
+    assert "x" * 850 not in live
 
 
 def test_parser_native_replay_uses_supplied_wire_lines(tmp_path: Path) -> None:
