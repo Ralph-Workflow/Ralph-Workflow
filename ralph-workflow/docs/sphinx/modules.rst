@@ -4091,3 +4091,13 @@ ralph.pro_support.state_query
 .. automodule:: ralph.pro_support.state_query
    :members:
    :show-inheritance:
+
+----
+
+Verification Audits
+-------------------
+
+These static verification audits protect repository-wide contributor
+contracts. They are invoked by ``make verify`` and expose their diagnostics as
+Python modules for maintainers who need to run a focused audit locally.
+

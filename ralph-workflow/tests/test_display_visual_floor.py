@@ -14,6 +14,11 @@ from ralph.display.scene_catalog import CONTRAST_FLOOR
 from ralph.display.theme import preview_background_for_background
 from ralph.syntax_theme import SyntaxThemes
 
+_PREVIEW_SURFACES = {
+    False: preview_background_for_background(False),
+    True: preview_background_for_background(True),
+}
+
 _REQUIRED_TOKENS = (
     Comment,
     Keyword,
@@ -83,6 +88,33 @@ def test_visual_floor_syntax_theme_preserves_complete_token_range() -> None:
         _assert_complete_token_classes(style_type)
 
 
+def test_visual_floor_syntax_tokens_clear_contrast_on_their_owned_preview_surface() -> None:
+    """S-4: every fixed syntax foreground clears 4.5:1 on its actual fill."""
+    for background, style_type in ((False, SyntaxThemes.dark()), (True, SyntaxThemes.light())):
+        foregrounds = {
+            foreground
+            for color in style_type.styles.values()
+            if isinstance(color, str) and (foreground := theme._extract_hex(color))
+        }
+        assert foregrounds
+        surface = _PREVIEW_SURFACES[background]
+        assert all(
+            theme.contrast_ratio(foreground, surface) >= CONTRAST_FLOOR
+            for foreground in foregrounds
+        )
+
+
+def test_visual_floor_bad_syntax_foreground_fixture_is_rejected() -> None:
+    class BadStyle:
+        styles: ClassVar[dict[object, str]] = {Comment: "#222222"}
+
+    with pytest.raises(AssertionError):
+        assert all(
+            theme.contrast_ratio(foreground, _PREVIEW_SURFACES[False]) >= CONTRAST_FLOOR
+            for foreground in BadStyle.styles.values()
+        )
+
+
 def test_visual_floor_known_background_previews_paint_one_complete_owned_surface() -> None:
     """S-4: known terminal backgrounds give source rows and gutters one owned fill."""
     for background in (False, True):
@@ -93,7 +125,9 @@ def test_visual_floor_known_background_previews_paint_one_complete_owned_surface
             terminal_bg_is_light=background,
         )
         assert preview is not None
-        assert getattr(preview, "background_color", None) == preview_background_for_background(background)
+        assert getattr(preview, "background_color", None) == preview_background_for_background(
+            background
+        )
     assert preview_background_for_background(None) == "default"
 
 

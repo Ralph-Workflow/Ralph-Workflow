@@ -385,7 +385,7 @@ def test_probe_codex_registry_does_not_grow_across_repeated_calls(
     def failing_handshake(_server: UpstreamMcpServer) -> None:
         raise PreflightError("simulated handshake failure")
 
-    monkeypatch.setattr(agent_probe, "_server_handshake", failing_handshake)
+    monkeypatch.setattr(agent_probe, "server_handshake", failing_handshake)
 
     n_iterations = 10
     for _ in range(n_iterations):

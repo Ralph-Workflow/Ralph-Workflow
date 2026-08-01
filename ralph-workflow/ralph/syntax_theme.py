@@ -23,7 +23,7 @@ class SyntaxThemes:
     def dark() -> type[PygmentsStyle]:
         return _style(
             "#D0D0D0",
-            ("#0CB9F2", "#B543BF", "#6DDCF2", "#77D9B0", "#C9D921", "#94D90B"),
+            ("#0CB9F2", "#C85BD0", "#6DDCF2", "#77D9B0", "#C9D921", "#94D90B"),
             ("#94D90B", "#0CB9F2", "#77D9B0"),
         )
 
@@ -31,8 +31,8 @@ class SyntaxThemes:
     def light() -> type[PygmentsStyle]:
         return _style(
             "#202020",
-            ("#854985", "#251947", "#3C7F85", "#3E4712", "#70703E", "#330B03"),
-            ("#330B03", "#3E4712", "#3C7F85"),
+            ("#854985", "#251947", "#36747A", "#3E4712", "#70703E", "#330B03"),
+            ("#330B03", "#3E4712", "#36747A"),
         )
 
     @staticmethod
