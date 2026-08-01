@@ -333,7 +333,7 @@ environment after that.
    * - ``COLUMNS``
      - Positive integer overrides the console's auto-detected width.
 
-**Color**
+**Color and background**
 
 .. list-table::
    :header-rows: 1
@@ -342,9 +342,11 @@ environment after that.
    * - Variable
      - Effect
    * - ``NO_COLOR``
-     - Any value disables color.  Takes precedence over ``FORCE_COLOR``.
+     - Any value disables color. Takes precedence over ``FORCE_COLOR``.
    * - ``FORCE_COLOR``
-     - Any value forces color on non-TTY streams.
+     - Any value forces color on render-capable non-TTY streams.
+   * - ``RALPH_TERMINAL_BG``
+     - Declares the terminal background as ``light`` or ``dark`` (or a ``#RRGGBB`` value) when automatic detection is unavailable. This selects the corresponding fixed-RGB semantic and preview palette; an unresolved background uses the dual-safe fallback.
 
 **Glyphs**
 
