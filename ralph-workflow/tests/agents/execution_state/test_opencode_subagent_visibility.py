@@ -36,6 +36,7 @@ import json
 
 from ralph.agents.agent_activity_kind import AgentActivityKind
 from ralph.agents.execution_state import AgentExecutionState, strategy_for_command
+from ralph.agents.execution_state._helpers import parse_opencode_child_id
 from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
 from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import get_parser
@@ -83,6 +84,17 @@ def test_task_tool_classifies_as_child_progress() -> None:
         f"OpenCode 'task' is a native subagent dispatch and MUST classify as"
         f" CHILD_PROGRESS so the watchdog's subagent channel is fed; got {signal.kind}"
     )
+
+
+def test_native_task_identity_does_not_misattribute_ordinary_tool_call() -> None:
+    """S-3: only native subagent tools may supply a child identity.
+
+    Every OpenCode tool has a ``part.callID``. Treating an ordinary MCP tool's
+    call ID as a child ID would let future generic child-signal handling refresh
+    child evidence for parent work, masking an idle parent as a live subagent.
+    """
+    assert parse_opencode_child_id(_tool_event("ralph_read_file", call_id="call_parent")) is None
+    assert parse_opencode_child_id(_tool_event("task", call_id="call_child")) == "call_child"
 
 
 def test_task_tool_observe_line_refreshes_subagent_activity_sink() -> None:

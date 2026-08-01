@@ -617,12 +617,18 @@ def parse_opencode_child_id(line: str) -> str | None:
     child_id = _opencode_child_id_from_object(obj)
     if child_id is not None:
         return child_id
+    return _opencode_native_task_call_id(obj)
+
+
+def _opencode_native_task_call_id(obj: dict[str, object]) -> str | None:
+    """Return a native subagent call ID without treating ordinary tools as children."""
+    if _opencode_tool_name(obj) not in _OPENCODE_SUBAGENT_TOOLS:
+        return None
     part = obj.get("part")
-    if isinstance(part, dict):
-        call_id = part.get("callID")
-        if isinstance(call_id, str) and call_id:
-            return call_id
-    return None
+    if not isinstance(part, dict):
+        return None
+    call_id = part.get("callID")
+    return call_id if isinstance(call_id, str) and call_id else None
 
 
 def _route_opencode_line_to_registry(
