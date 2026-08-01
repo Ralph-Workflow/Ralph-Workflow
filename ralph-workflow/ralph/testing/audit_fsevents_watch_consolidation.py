@@ -441,13 +441,9 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
                 )
             )
             continue
-        # Most modules cannot possibly own an attribute-style ``.schedule``
-        # call or alias. Skip their AST construction: parsing every production
-        # module made this static audit exceed its 10-second test contract on
-        # the full package tree. Source without the literal cannot match either
-        # AST predicate below, while unreadable files still fail closed above.
-        if ".schedule" not in source:
-            continue
+        # Every discovered production module is parsed. A syntactically invalid
+        # new module must fail closed even when it has no textual ``.schedule``
+        # marker; otherwise it could conceal an unrecognized watch owner.
         try:
             tree = ast.parse(source, filename=str(module_path))
         except (SyntaxError, ValueError) as exc:
@@ -480,11 +476,21 @@ def audit_fsevents_watch_consolidation(
     """Walk the production source tree and return all violations.
 
     Scans every production module for raw schedules and enforces INV-1..INV-5
-    on the canonical ``_workspace.py`` owner. Returns an empty list when
-    ``package_root`` is not a directory (the CLI reports a bad root separately).
+    on the canonical ``_workspace.py`` owner. A missing package root produces
+    a violation so programmatic callers also fail closed.
     """
     if not package_root.is_dir():
-        return []
+        return [
+            FseventsWatchViolation(
+                kind="missing_package_root",
+                file_path=str(package_root),
+                line=0,
+                message=(
+                    "package root does not exist or is not a directory; cannot prove "
+                    "package-wide watch ownership, so the audit fails closed"
+                ),
+            )
+        ]
 
     module_path: Path = package_root / _WORKSPACE_MONITOR_MODULE
     rel_path: str = _WORKSPACE_MONITOR_MODULE

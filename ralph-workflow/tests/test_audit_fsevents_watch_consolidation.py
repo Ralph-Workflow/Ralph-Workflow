@@ -306,6 +306,39 @@ def test_audit_flags_invalid_workspace_module(tmp_path: Path) -> None:
     assert "fail closed" in violations[0].message
 
 
+def test_audit_fails_closed_for_missing_package_root(tmp_path: Path) -> None:
+    """S-8: a non-existent package root cannot pass an ownership audit."""
+    missing_root = tmp_path / "missing"
+
+    violations = audit.audit_fsevents_watch_consolidation(missing_root)
+
+    assert [violation.kind for violation in violations] == ["missing_package_root"]
+    assert "fail closed" in violations[0].message
+
+
+def test_audit_fails_closed_for_invalid_non_owner_module_without_schedule_marker(
+    tmp_path: Path,
+) -> None:
+    """S-8: every discovered module is parsed even when it lacks ``.schedule``."""
+    package_root = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    invalid_module = package_root / "pipeline" / "invalid.py"
+    invalid_module.parent.mkdir(parents=True)
+    invalid_module.write_text("def broken(:\n", encoding="utf-8")
+
+    violations = audit.audit_fsevents_watch_consolidation(package_root)
+
+    assert [violation.kind for violation in violations] == ["invalid_production_module"]
+    assert violations[0].file_path == "pipeline/invalid.py"
+    assert "fail closed" in violations[0].message
+
+
 def test_audit_flags_missing_workspace_module(tmp_path: Path) -> None:
     """A package root WITHOUT ``agents/invoke/_workspace.py`` triggers ``missing_workspace_module``.
 
