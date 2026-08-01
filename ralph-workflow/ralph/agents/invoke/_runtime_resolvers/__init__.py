@@ -37,6 +37,62 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ralph.config.models import AgentConfig
+    from ralph.mcp.upstream.config import UpstreamMcpServer
+
+
+class _InvokeCompatibilitySeam(Protocol):
+    """Typed package-level compatibility seam retained for resolver tests."""
+
+    def _apply_upstream_env(
+        self,
+        upstreams: tuple[UpstreamMcpServer, ...],
+        workspace_path: Path | None,
+        runtime_env: dict[str, str],
+        server_env: dict[str, str],
+    ) -> None: ...
+
+    def discover_http_mcp_tool_names(self, endpoint: str) -> list[str]: ...
+
+    def build_opencode_provider_config(
+        self, existing: str | None, endpoint: str, *, unsafe_mode: bool = False
+    ) -> tuple[str, tuple[UpstreamMcpServer, ...]]: ...
+
+    def build_nanocoder_mcp_config(
+        self,
+        existing: str | None,
+        endpoint: str,
+        *,
+        always_allow: tuple[str, ...] = (),
+        unsafe_mode: bool = False,
+        workspace_path: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> tuple[str, tuple[UpstreamMcpServer, ...]]: ...
+
+    def load_existing_nanocoder_upstream_servers(
+        self, workspace_path: Path | None, *, env: dict[str, str] | None = None
+    ) -> tuple[UpstreamMcpServer, ...]: ...
+
+    def prepare_codex_home_with_upstreams(
+        self,
+        endpoint: str | None,
+        *,
+        workspace_path: Path | None,
+        existing_home: str | None,
+        master_prompt_file: str | None,
+        unsafe_mode: bool = False,
+    ) -> tuple[str, tuple[UpstreamMcpServer, ...]]: ...
+
+    def load_existing_claude_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[UpstreamMcpServer, ...]: ...
+
+    def load_existing_agy_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[UpstreamMcpServer, ...]: ...
+
+    def load_existing_cursor_upstream_servers(
+        self, workspace_path: Path | None = None
+    ) -> tuple[UpstreamMcpServer, ...]: ...
 
 
 @runtime_checkable
@@ -130,14 +186,14 @@ class RuntimeResolver(Protocol):
         ...
 
 
-def _invoke_module() -> _InvokeModule:
-    """Return the package-level compatibility seam used by runtime tests."""
-    return cast("_InvokeModule", sys.modules["ralph.agents.invoke"])
+def _invoke_module() -> _InvokeCompatibilitySeam:
+    """Return the typed package-level compatibility seam used by runtime tests."""
+    return cast("_InvokeCompatibilitySeam", sys.modules["ralph.agents.invoke"])
 
 
 
 def _apply_upstream_env(
-    upstreams: tuple[object, ...],
+    upstreams: tuple[UpstreamMcpServer, ...],
     workspace_path: Path | None,
     runtime_env: dict[str, str],
     server_env: dict[str, str],

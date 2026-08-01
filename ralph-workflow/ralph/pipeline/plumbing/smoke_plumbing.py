@@ -758,6 +758,29 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
     )
 
 
+def _parser_diagnostics(config: AgentConfig, lines: list[str]) -> list[str]:
+    """Return parser and empty-transcript failures from the transport boundary."""
+    diagnostics: list[str] = []
+    if parser_error := _parser_event_error(config, lines):
+        diagnostics.append(parser_error)
+    if empty_opencode_error := _opencode_empty_transcript_error(config, lines):
+        diagnostics.append(empty_opencode_error)
+    return diagnostics
+
+
+def _opencode_empty_transcript_error(
+    config: AgentConfig,
+    lines: list[str],
+) -> str | None:
+    """Explain an OpenCode process failure that produced no parser input."""
+    if lines or config.transport != AgentTransport.OPENCODE:
+        return None
+    return (
+        "OpenCode produced no transcript output; verify the configured provider/model with "
+        "`opencode models` and inspect its stderr."
+    )
+
+
 def _tool_activity_seen_for_errors(
     params: SmokeRunParams,
     lines: list[str],
@@ -839,8 +862,7 @@ def _detect_smoke_errors(
     if not _explicit_completion_seen(params.workspace_root, run_id=run_id):
         errors.append("completion sentinel was not observed")
 
-    if parser_error := _parser_event_error(params.config, lines):
-        errors.append(parser_error)
+    errors.extend(_parser_diagnostics(params.config, lines))
 
     if not _tool_activity_seen_for_errors(params, lines, tool_activity_seen, artifact_submitted):
         errors.append("no tool activity was observed")

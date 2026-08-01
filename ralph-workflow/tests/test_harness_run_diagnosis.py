@@ -517,6 +517,36 @@ def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output(
     assert "no tool activity was observed" not in errors
 
 
+def test_smoke_diagnosis_regression_reports_empty_opencode_transcript_actionably(
+    tmp_path: Path,
+) -> None:
+    """S-6: an OpenCode process failure must name the next diagnostic step."""
+    output_file = tmp_path / "tmp" / "interactive-opencode-smoke" / "todo-list.js"
+    params = SmokeRunParams(
+        agent_name="opencode/minimax-coding-plan/MiniMax-M3",
+        config=AgentConfig(
+            cmd="opencode",
+            json_parser=JsonParserType.OPENCODE,
+            transport=AgentTransport.OPENCODE,
+        ),
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert (
+        "OpenCode produced no transcript output; verify the configured provider/model with "
+        "`opencode models` and inspect its stderr."
+        in errors
+    )
+
+
 def test_smoke_diagnosis_regression_accepts_one_agy_parser_visible_result(
     tmp_path: Path,
 ) -> None:
