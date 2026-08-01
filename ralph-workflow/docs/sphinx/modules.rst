@@ -3985,6 +3985,13 @@ ralph.testing.audit_terminal_escape_containment
    :members:
    :show-inheritance:
 
+ralph.testing.audit_filesystem_write_consolidation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_filesystem_write_consolidation
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_watchdog_drift
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

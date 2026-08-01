@@ -307,7 +307,11 @@ def _resolve_opencode_part_tool_call(
     tool name, so the caller skips the observation rather than feeding the
     breaker a meaningless blob.
     """
-    if str(part.get("type", "")) != "tool":
+    part_type = part.get("type")
+    # Match the parser and activity classifier: OpenCode fixtures may omit
+    # the optional discriminator, while an explicit non-tool part remains
+    # ineligible for repetition tracking.
+    if part_type is not None and part_type != "tool":
         return None
     tool_name_raw = part.get("tool")
     if not isinstance(tool_name_raw, str):

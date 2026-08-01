@@ -51,6 +51,7 @@ def _opencode_tool_line(
     *,
     call_id: str = "call_1",
     status: str = "completed",
+    include_part_type: bool = True,
 ) -> str:
     """Build a real OpenCode ``tool_use`` line (shape from a live 1.17.15 run)."""
     state: dict[str, object] = {"status": status, "input": tool_input}
@@ -58,17 +59,19 @@ def _opencode_tool_line(
         state["output"] = "ok"
     elif status == "error":
         state["error"] = "MCP error -32001: Request timed out"
+    part: dict[str, object] = {
+        "tool": tool,
+        "callID": call_id,
+        "state": state,
+    }
+    if include_part_type:
+        part["type"] = "tool"
     return json.dumps(
         {
             "type": "tool_use",
             "timestamp": 1785133508187,
             "sessionID": "ses_05dc0769cffeI7fO3oF7uFd0BQ",
-            "part": {
-                "type": "tool",
-                "tool": tool,
-                "callID": call_id,
-                "state": state,
-            },
+            "part": part,
         }
     )
 
@@ -119,6 +122,36 @@ def test_extract_tool_call_returns_none_when_nothing_distinguishing() -> None:
     line = json.dumps({"type": "tool_use"})
 
     assert extract_tool_call_from_activity_signal(line) is None
+
+
+def test_opencode_strategy_regression_classifies_untyped_tool_part_as_tool_use() -> None:
+    """S-2: fixture-compatible OpenCode tool envelopes reach the watchdog."""
+    strategy = strategy_for_transport(AgentTransport.OPENCODE)
+    line = _opencode_tool_line(
+        "ralph_read_file",
+        {"path": "/tmp/x"},
+        include_part_type=False,
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert extract_tool_call_from_activity_signal(signal.raw) == (
+        "ralph_read_file",
+        {"path": "/tmp/x"},
+    )
+
+
+def test_opencode_strategy_regression_classifies_untyped_task_part_as_child_progress() -> None:
+    """S-2: a native task dispatch without part.type keeps child work visible."""
+    strategy = strategy_for_transport(AgentTransport.OPENCODE)
+    line = _opencode_tool_line("task", {"prompt": "inspect"}, include_part_type=False)
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
 
 def test_opencode_strategy_classifies_tool_use_as_tool_use() -> None:

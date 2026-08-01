@@ -189,7 +189,12 @@ def _opencode_tool_name(obj: dict[str, object]) -> str | None:
     if not isinstance(part, dict):
         return None
     part_obj = cast("dict[str, object]", part)
-    if str(part_obj.get("type", "")) != "tool":
+    part_type = part_obj.get("type")
+    # The parser and captured OpenCode wire fixtures accept tool parts that
+    # omit ``part.type``. Keep explicit non-tool parts (such as step-start)
+    # excluded, but let a non-blank nested tool name establish this as a tool
+    # call when the optional discriminator is absent.
+    if part_type is not None and part_type != "tool":
         return None
     return str(part_obj.get("tool", "")).strip() or None
 
