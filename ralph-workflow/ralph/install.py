@@ -87,7 +87,10 @@ def write_dev_launcher(path: Path, content: str) -> None:
 def _write_build_flavor(package_dir: Path, flavor: str) -> None:
     build_meta = package_dir / "ralph" / "_build_meta.py"
     content = build_meta.read_text(encoding="utf-8")
-    build_meta.write_text(content.replace('BUILD_FLAVOR: str = ""', f'BUILD_FLAVOR: str = "{flavor}"'), encoding="utf-8")
+    updated_content = content.replace(
+        'BUILD_FLAVOR: str = ""', f'BUILD_FLAVOR: str = "{flavor}"'
+    )
+    write_text_if_changed(DEFAULT_FILE_BACKEND, build_meta, updated_content, encoding="utf-8")
 
 
 def install_dev_checkout(

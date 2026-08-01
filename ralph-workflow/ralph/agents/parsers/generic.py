@@ -97,33 +97,6 @@ class GenericParser(NdjsonParserBase):
             return
         yield AgentOutputLine(type="raw", content=normalized, raw=stripped)
 
-    def _handle_lifecycle_event(
-        self,
-        obj: dict[str, object],
-        event_type: str,
-    ) -> Iterator[AgentOutputLine] | None:
-        """Flush text and emit stop for GenericParser's terminal lifecycle events.
-
-        ``stop`` / ``done`` / ``complete`` / ``finish`` / ``end`` are part of
-        the shared lifecycle set in ``is_lifecycle_event``, so the base
-        class short-circuits to this hook instead of routing the event
-        through ``_dispatch_json_object``. The pre-refactor contract
-        required every terminal marker to flush the text accumulator and
-        yield a stop line; we preserve that here.
-        """
-        if event_type in self._STOP_TYPES:
-            return self._flush_stop_event(obj, event_type)
-        return iter(())
-
-    def _flush_stop_event(
-        self,
-        obj: dict[str, object],
-        event_type: str,
-    ) -> Iterator[AgentOutputLine]:
-        """Flush the text accumulator and yield a stop line."""
-        yield from self._flush_accumulator()
-        yield AgentOutputLine(type="stop", raw=event_type, metadata=obj)
-
     def _dispatch_json_object(
         self,
         obj: dict[str, object],
@@ -173,6 +146,24 @@ class GenericParser(NdjsonParserBase):
         yield from self._flush_accumulator()
         yield AgentOutputLine(type="unknown", raw=stripped, metadata=obj)
 
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
+        """Flush text and emit stop for generic terminal lifecycle events."""
+        if event_type in self._STOP_TYPES:
+            return self._flush_stop_event(obj, event_type)
+        return super()._handle_lifecycle_event(obj, event_type)
+
+    def _flush_stop_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Flush the text accumulator and yield the terminal lifecycle marker."""
+        yield from self._flush_accumulator()
+        yield AgentOutputLine(type="stop", raw=event_type, metadata=obj)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         yield from self._flush_accumulator()

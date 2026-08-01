@@ -39,6 +39,8 @@ from ralph.display.parallel_display import (
 )
 from ralph.git.operations import stage_files
 from ralph.mcp.artifacts.canonical_submit import _clear_worker_artifacts
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
 from ralph.phases.required_artifacts import (
@@ -1431,7 +1433,7 @@ def _write_terminal_missing_artifact_hint(
         hint = build_retry_hint(str(ctx.effect.phase), str(exc), registry=registry)
         hint_file = workspace_root / retry_hint_path(str(ctx.effect.phase))
         hint_file.parent.mkdir(parents=True, exist_ok=True)
-        hint_file.write_text(hint, encoding="utf-8")
+        write_text_if_changed(DEFAULT_FILE_BACKEND, hint_file, hint, encoding="utf-8")
     except Exception:
         return
 
