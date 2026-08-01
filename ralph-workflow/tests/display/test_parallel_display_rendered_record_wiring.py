@@ -100,7 +100,7 @@ def test_streaming_kinds_coalesce_to_single_record_entry(tmp_path: Path) -> None
     (the ``_close_block`` single close entry), so streaming
     fragments share the same coalesced passage that the live log
     shows. Five ``TEXT`` events for the same unit produce one coalesced
-    entry with a span/duration heading and one hanging passage; the
+    entry with its span, duration, and joined passage on one row; the
     per-fragment record entries are gone.
     """
     pd, _buf = _make_display(tmp_path)
@@ -115,10 +115,9 @@ def test_streaming_kinds_coalesce_to_single_record_entry(tmp_path: Path) -> None
     expected_path = tmp_path / ".agent" / "raw" / f"{safe_id_for('pi')}.rendered.log"
     body = expected_path.read_text(encoding="utf-8")
     lines = [line for line in body.splitlines() if line.strip()]
-    assert len(lines) == 2, f"expected a heading and coalesced passage, got {lines!r}"
+    assert len(lines) == 1, f"expected one coalesced entry, got {lines!r}"
     assert "→" in lines[0] and "0s" in lines[0]
-    assert lines[1].startswith("  ")
-    # Joined passage carries all five fragments.
+    # Joined passage carries all five fragments on the same entry.
     for index in range(5):
         assert f"event {index} body" in body
 

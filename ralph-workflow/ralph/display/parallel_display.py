@@ -1570,40 +1570,25 @@ class ParallelDisplay:
         else:
             duration_str = "0s"
         display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
-        body = f"\u22ef {display_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
+        body = f"\u22ef {display_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str} \u00b7 {visible}"
         # S-7 (AC-07): quiet mode suppresses the terminal surface;
         # the record append below still runs so the file surface
         # keeps the same close entry.
         if not self._is_quiet:
-            # DA-002 / DA-004 (S-4 + S-5): the close-entry body has
-            # the span header on its own line then the joined
-            # passage. Wrap each line independently so a wide
-            # console stays at the body_measure cap and a narrow
-            # console's continuations hang at the badge column.
-            # ``no_wrap=True`` prevents Rich from reflowing our
-            # manually wrapped lines (the pre-fix bug dropped
-            # continuations to column 0 on a 40-col console because
-            # Rich re-wrapped the ``close_hang_prefix + wrapped_cont``
-            # embedded-newline string and only the first embedded
-            # line carried the prefix).
-            header = f"⋯ {display_tag} · {start_str} → {end_str} · {duration_str}"
-            # Output metadata and bodies retain independent carriers for cold
-            # transcript searches. Reasoning remains one logical close entry.
-            rows = [header, visible] if display_tag == "output" else [f"{header}\n{visible}"]
-            for row in rows:
-                self._console.print(
-                    self._activity_text(
-                        timestamp,
-                        display_tag,
-                        rendered_unit_id,
-                        row,
-                        kind="thinking" if base_tag == "think" else "text",
-                    ),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=True,
-                    overflow="ignore",
-                )
+            # Keep the header and passage on one carrier row so each close
+            # entry is independently greppable.
+            self._console.print(
+                self._activity_text(
+                    timestamp,
+                    display_tag,
+                    rendered_unit_id,
+                    body,
+                    kind="thinking" if base_tag == "think" else "text",
+                ),
+                markup=False,
+                highlight=False,
+                soft_wrap=True,
+            )
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
         # also the single record entry for the streaming block. Map the
         # base_tag back to an ``ActivityEventKind`` so the record line

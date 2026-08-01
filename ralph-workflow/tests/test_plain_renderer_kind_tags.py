@@ -261,8 +261,8 @@ def test_close_line_carries_joined_passage_and_span_duration() -> None:
     """S-13 close line carries joined passage + sketch-J span and duration.
 
     Format: ``INFO [<tag>][<unit>] \u22ef <tag> \u00b7 <start HH:MM:SS> \u2192 <end
-    HH:MM:SS> \u00b7 <duration>`` followed by the joined passage on the next
-    line. The ``fragments`` / ``chars`` plumbing is retired; the operator
+    HH:MM:SS> \u00b7 <duration> \u00b7 <joined passage>`` on one carrier row. The
+    ``fragments`` / ``chars`` plumbing is retired; the operator
     sees the human-vocabulary span and duration instead.
     """
     pd, buf = _make_display()
@@ -274,7 +274,7 @@ def test_close_line_carries_joined_passage_and_span_duration() -> None:
     assert "hello world" in out
     # Sketch-J span and duration markers are present.
     assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
-    assert "s\n" in out or out.endswith("s"), f"close line missing duration suffix 's': {out!r}"
+    assert " \u00b7 0s \u00b7 hello world" in out, f"close line missing duration: {out!r}"
     # No retired plumbing leaks.
     assert "fragments" not in out
     assert "chars" not in out

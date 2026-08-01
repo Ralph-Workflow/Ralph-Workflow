@@ -37,7 +37,9 @@ def _make_color_renderer() -> tuple[ParallelDisplay, StringIO]:
         width=200,
         highlight=False,
     )
-    return ParallelDisplay(make_display_context(console=console, env={})), buf
+    return ParallelDisplay(
+        make_display_context(console=console, env={"RALPH_TERMINAL_BG": "light"})
+    ), buf
 
 
 def _make_plain_renderer() -> tuple[ParallelDisplay, StringIO]:
