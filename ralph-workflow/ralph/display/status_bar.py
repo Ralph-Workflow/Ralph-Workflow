@@ -1625,6 +1625,13 @@ class StatusBar:
         # as terminal-capable solely because the caller requested colour.
         if self._real_tty() or (self._started and self._ctx().console.is_terminal) or bool(self._display._is_quiet):
             return
+        # A redirected stream receives only operator-actionable status changes.
+        # Phase-only footer updates are transient presentation state and must not
+        # create a line on a force-terminal StringIO console; an attention state
+        # is a durable transition an operator needs to review after the run.
+        model = self._model
+        if model is None or model.attention is None:
+            return
         renderable = self._renderable()
         if renderable.plain == self._durable_frame:
             return

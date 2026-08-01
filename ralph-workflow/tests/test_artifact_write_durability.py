@@ -56,3 +56,19 @@ def test_artifact_write_regression_fsyncs_written_file(
 
     assert path.read_text() == "durable content"
     assert len(fsynced_descriptors) == 1
+
+
+def test_artifact_write_regression_fsyncs_written_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-3: changed byte content keeps the concrete backend's durability barrier."""
+    fsynced_descriptors: list[int] = []
+    monkeypatch.setattr(os, "fsync", fsynced_descriptors.append)
+
+    path = tmp_path / "artifact.bin"
+    payload = b"\x00durable\xff"
+    PathFileBackend().write_bytes(path, payload)
+
+    assert path.read_bytes() == payload
+    assert len(fsynced_descriptors) == 1

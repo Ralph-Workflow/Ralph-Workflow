@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING
 from ralph.mcp.artifacts.file_backend import FileBackend
 
 if TYPE_CHECKING:
-    from collections.abc import Dict, Set
     from pathlib import Path
 
 
 class MemoryBackend(FileBackend):
     def __init__(self) -> None:
-        self._files: Dict[Path, str] = {}
-        self._directories: Set[Path] = set()
+        self._files: dict[Path, str] = {}
+        self._directories: set[Path] = set()
 
     def exists(self, path: Path) -> bool:
         return path in self._files or path in self._directories
@@ -34,6 +33,12 @@ class MemoryBackend(FileBackend):
         self._directories.add(path.parent)
         self._directories.update(path.parent.parents)
         self._files[path] = content
+
+    def read_bytes(self, path: Path) -> bytes:
+        return self._files[path].encode("utf-8")
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        self.write_text(path, content.decode("utf-8"))
 
     def replace(self, source: Path, destination: Path) -> None:
         self._directories.add(destination.parent)

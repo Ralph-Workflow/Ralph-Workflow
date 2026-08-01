@@ -24,9 +24,9 @@ The helpers do NOT create parent directories — ``mkdir`` stays
 the caller's responsibility so existing directory-creation
 semantics are unchanged at every converted call site.
 
-The atomic helper writes ``content`` to a caller-supplied temporary
-path and then delegates to ``backend.replace`` to move it on top of
-``destination``. A byte-identical ``destination`` short-circuits
+The atomic helper derives a unique same-directory staging path from a
+caller-supplied temporary-path stem and then delegates to
+``backend.replace`` to move it on top of ``destination``. A byte-identical ``destination`` short-circuits
 both the temp write and the replace so no filesystem mutation
 occurs.
 """
@@ -146,8 +146,9 @@ def atomic_write_text_if_changed(
 ) -> bool:
     """Atomic temp+replace write of ``content`` to ``destination``, skipping on identity.
 
-    Writes ``content`` to ``tmp_path`` then delegates to
-    ``backend.replace(tmp_path, destination)``. Mirrors
+    Derives a unique same-directory staging path from ``tmp_path``, writes
+    ``content`` there, then delegates to ``backend.replace(staging_path,
+    destination)``. Mirrors
     :func:`write_text_if_changed` on the destination so a
     byte-identical existing destination short-circuits both the
     temp write and the replace.
@@ -162,14 +163,16 @@ def atomic_write_text_if_changed(
           or already contains the requested bytes; it does not probe existence
           separately.
         * If ``backend.read_text(destination)`` raises ``OSError`` or
-          ``UnicodeDecodeError``: writes ``tmp_path``, replaces onto
+          ``UnicodeDecodeError``: writes a unique staging path derived from
+          ``tmp_path``, replaces it onto
           ``destination``, and returns ``True`` (fail-open — missing, partial,
           corrupt, or undecodable prior files self-heal on the next call).
         * If the read-back content equals ``content``: returns
           ``False`` without calling ``backend.write_text`` or
           ``backend.replace`` (the skip).
-        * Otherwise: calls ``prepare_write`` when supplied, writes ``tmp_path``,
-          replaces onto ``destination``, and returns ``True``.
+        * Otherwise: calls ``prepare_write`` when supplied, writes a unique
+          staging path derived from ``tmp_path``, replaces it onto
+          ``destination``, and returns ``True``.
 
     Args:
         prepare_write: Optional pre-write action such as creating the destination
