@@ -281,6 +281,22 @@ class ChildLivenessRegistry:
             terminal_count=terminal_count,
         )
 
+    def has_active_phase(self, scope_prefix: str, phase: str) -> bool:
+        """Return whether a scoped non-terminal child reports ``phase``.
+
+        Native OpenCode task calls report a durable ``running`` state but no
+        PID or separate heartbeat frames. Their terminal event is the only
+        authoritative acknowledgement that the delegated work stopped, so the
+        execution strategy needs to distinguish that explicit lifecycle state
+        from stale generic child evidence.
+        """
+        return any(
+            rec.scope_prefix.startswith(scope_prefix)
+            and rec.terminal_state is None
+            and rec.last_known_phase == phase
+            for rec in self._records.values()
+        )
+
     def active_pids(self, scope_prefix: str) -> set[int]:
         """Return non-terminal PIDs of children matching ``scope_prefix``.
 

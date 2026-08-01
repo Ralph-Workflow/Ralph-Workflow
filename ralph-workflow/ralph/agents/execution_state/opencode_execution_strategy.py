@@ -226,6 +226,13 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             had_scoped_records = registry.has_records(probe_prefix)
             if had_scoped_records:
                 self._scoped_records_seen = True
+            # Native OpenCode ``task`` calls expose an explicit ``running``
+            # lifecycle state but no heartbeat/PID while the delegated agent
+            # works. That state remains authoritative until the matching
+            # completed/error frame arrives; treating it as ordinary stale
+            # evidence kills healthy subagent runs at the parent idle deadline.
+            if registry.has_active_phase(probe_prefix, "running"):
+                return AgentExecutionState.WAITING_ON_CHILD
             try:
                 reg_snap = registry.snapshot(probe_prefix)
                 verdict = classify_child_snapshot(reg_snap)

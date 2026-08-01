@@ -35,13 +35,15 @@ from __future__ import annotations
 import json
 
 from ralph.agents.agent_activity_kind import AgentActivityKind
-from ralph.agents.execution_state import strategy_for_command
+from ralph.agents.execution_state import AgentExecutionState, strategy_for_command
 from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
 from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import get_parser
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.process.child_liveness import ChildLivenessRegistry
+from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 
 def _tool_event(tool: str, *, status: str = "completed", call_id: str = "call_1") -> str:
@@ -116,6 +118,33 @@ def test_task_tool_observe_line_records_native_task_lifecycle() -> None:
     snapshot = registry.snapshot("agent:parent:")
     assert snapshot.active_count == 0
     assert snapshot.terminal_count == 1
+
+
+def test_native_running_task_regression_defers_idle_watchdog_until_child_ceiling() -> None:
+    """S-3: OpenCode's native task has no heartbeat frames while it runs.
+
+    A live smoke run showed the task's explicit ``running`` dispatch followed by
+    over 30 seconds without parent stdout. Treating that task as stale at the
+    ordinary output deadline killed a healthy run and forced a session retry.
+    The native running state is authoritative child-lifecycle evidence; it must
+    defer through the child-wait path, whose absolute ceiling remains enforced.
+    """
+    clock = FakeClock()
+    registry = ChildLivenessRegistry(
+        progress_ttl=30.0,
+        heartbeat_ttl=30.0,
+        stale_label_ttl=30.0,
+        exit_reconcile=30.0,
+        now=clock.monotonic,
+    )
+    strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
+
+    strategy.observe_line(_tool_event("task", status="running", call_id="call_live_task"))
+    clock.advance(31.0)
+
+    assert strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe(active=False)) == (
+        AgentExecutionState.WAITING_ON_CHILD
+    )
 
 
 def test_ordinary_tool_classifies_as_tool_use() -> None:
