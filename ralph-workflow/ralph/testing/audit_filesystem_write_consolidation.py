@@ -257,7 +257,11 @@ def _raw_write_text_call(node: ast.Call) -> str | None:
     return attr if attr in {"write_text", "write_bytes"} else None
 
 
-def _raw_builtin_open_call(node: ast.Call) -> bool:
+def _raw_builtin_open_call(
+    node: ast.Call,
+    direct_open_aliases: frozenset[str],
+    open_module_aliases: frozenset[str],
+) -> bool:
     """True if ``node`` is a builtin ``open(path, mode, ...)`` with write/append mode.
 
     ``open`` is the only commonly-used write primitive whose
@@ -267,11 +271,15 @@ def _raw_builtin_open_call(node: ast.Call) -> bool:
     ``ast.Attribute`` whose deepest name is ``open``, we treat it
     as the builtin too.
     """
-    if isinstance(node.func, ast.Name) and node.func.id == "open":
+    if isinstance(node.func, ast.Name) and node.func.id in {"open", *direct_open_aliases}:
         return _is_write_mode_open(node)
     if isinstance(node.func, ast.Attribute) and node.func.attr == "open":
         receiver = node.func.value
-        if isinstance(receiver, ast.Name) and receiver.id in {"builtins", "io"}:
+        if isinstance(receiver, ast.Name) and receiver.id in {
+            "builtins",
+            "io",
+            *open_module_aliases,
+        }:
             return _is_write_mode_open(node)
         # `webbrowser.open(...)` is not a filesystem operation.  The audit
         # matches calls by method name, so exclude this standard-library API
@@ -306,34 +314,49 @@ def _call_root_name(node: ast.AST) -> str | None:
     return None
 
 
-def _import_aliases(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]:
-    """Return module and directly imported raw-mutation aliases from *tree*.
+def _import_aliases(
+    tree: ast.Module,
+) -> tuple[dict[str, str], dict[str, str], frozenset[str], frozenset[str]]:
+    """Return module, mutation, and mode-sensitive ``open`` aliases from *tree*.
 
     Import aliases must not turn package-wide enforcement into an easily
-    evaded spelling convention: ``import os as filesystem`` and
-    ``from os import replace as publish`` remain raw filesystem mutations.
+    evaded spelling convention: ``import os as filesystem``, ``from os import
+    replace as publish``, and ``from io import open as persist`` remain raw
+    filesystem mutations. ``open`` aliases are kept separate because their
+    mode determines whether the call mutates.
     """
     module_aliases: dict[str, str] = {}
     direct_mutations: dict[str, str] = {}
+    direct_open_aliases: set[str] = set()
+    open_module_aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for imported in node.names:
                 root = imported.name.split(".", maxsplit=1)[0]
                 if root in _RAW_MUTATION_QUALIFIERS or root == "pathlib":
                     module_aliases[imported.asname or root] = root
-        elif isinstance(node, ast.ImportFrom) and node.module in {"os", "shutil", "pathlib"}:
+                elif imported.name in {"io", "builtins"}:
+                    open_module_aliases.add(imported.asname or imported.name)
+        elif isinstance(node, ast.ImportFrom):
             for imported in node.names:
                 local_name = imported.asname or imported.name
-                if node.module == "pathlib" and imported.name in {
+                if node.module in {"io", "builtins"} and imported.name == "open":
+                    direct_open_aliases.add(local_name)
+                elif node.module == "pathlib" and imported.name in {
                     "Path",
                     "PurePath",
                     "PosixPath",
                     "WindowsPath",
                 }:
                     module_aliases[local_name] = "Path"
-                elif imported.name in _RAW_MUTATION_ATTRS:
+                elif node.module in {"os", "shutil", "pathlib"} and imported.name in _RAW_MUTATION_ATTRS:
                     direct_mutations[local_name] = imported.name
-    return module_aliases, direct_mutations
+    return (
+        module_aliases,
+        direct_mutations,
+        frozenset(direct_open_aliases),
+        frozenset(open_module_aliases),
+    )
 
 
 def _raw_direct_import_mutation_call(
@@ -502,7 +525,7 @@ def _scan_module(
         if reason:
             marker_lines.add(idx)
 
-    module_aliases, direct_mutations = _import_aliases(tree)
+    module_aliases, direct_mutations, direct_open_aliases, open_module_aliases = _import_aliases(tree)
     violations: list[FilesystemWriteViolation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -522,7 +545,7 @@ def _scan_module(
             )
             continue
         # builtin / Path.open(path, "w" / "a" / ...)
-        if _raw_builtin_open_call(node):
+        if _raw_builtin_open_call(node, direct_open_aliases, open_module_aliases):
             if _has_marker_on_or_before(node.lineno, marker_lines):
                 continue
             violations.append(

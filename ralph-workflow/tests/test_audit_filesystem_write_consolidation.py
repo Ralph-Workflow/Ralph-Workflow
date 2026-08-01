@@ -622,6 +622,67 @@ def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
     assert any(v.kind == "raw_open_write" for v in violations)
 
 
+@pytest.mark.parametrize("module", ["io", "builtins"])
+def test_flags_direct_imported_open_alias_in_write_mode(tmp_path: Path, module: str) -> None:
+    """S-8 regression: direct ``open`` aliases cannot evade write enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            f"from {module} import open as persist\n"
+            "def write(path, content):\n"
+            '    with persist(path, "w") as stream:\n'
+            "        stream.write(content)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_open_write"]
+    assert "idempotent_write" in violations[0].message
+
+
+@pytest.mark.parametrize("module", ["io", "builtins"])
+def test_flags_module_import_open_alias_in_write_mode(tmp_path: Path, module: str) -> None:
+    """S-8 regression: renamed ``io``/``builtins`` modules cannot evade enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            f"import {module} as file_api\n"
+            "def write(path, content):\n"
+            '    with file_api.open(path, "w") as stream:\n'
+            "        stream.write(content)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_open_write"]
+    assert "idempotent_write" in violations[0].message
+
+
+@pytest.mark.parametrize("module", ["io", "builtins"])
+def test_does_not_flag_direct_imported_open_alias_in_read_mode(
+    tmp_path: Path, module: str
+) -> None:
+    """S-8 regression: direct ``open`` aliases preserve read-only access."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        f"from {module} import open as load\ndef read(path):\n    return load(path, \"rb\").read()\n",
+    )
+
+    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+
+
 def test_flags_raw_path_open_write_mode(tmp_path: Path) -> None:
     """``Path.open(\"a\")`` is a raw append outside an approved stream boundary."""
     module_rel = "alpha/example.py"
