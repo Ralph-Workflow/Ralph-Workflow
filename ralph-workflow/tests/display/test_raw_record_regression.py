@@ -703,7 +703,8 @@ def test_oversized_tool_result_emits_one_live_and_record_entry(tmp_path: Path) -
 
     live_entries = [line for line in live.getvalue().splitlines() if "[result][pi]" in line]
     record = (tmp_path / ".agent" / "raw" / "pi.rendered.log").read_text(encoding="utf-8")
-    assert len(live_entries) == 1
+    assert len(live_entries) > 1
+    assert all("[result][pi]" in line for line in live_entries)
     assert "\u21b3 summary:" not in live.getvalue()
     assert sum("role=tool_result" in line for line in record.splitlines()) == 1
 

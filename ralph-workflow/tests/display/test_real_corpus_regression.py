@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from itertools import pairwise
 from pathlib import Path
 
@@ -9,6 +10,13 @@ from ralph.agents.parsers import CodexParser, PiParser
 from ralph.display.activity_provider import ActivityProvider
 from tests.display.test_raw_record_regression import _drive_fixture_through_production
 from tests.display.test_universality_replay import _replay
+
+_CONTINUATION_CARRIER_RE = re.compile(r"\d{2}:\d{2}:\d{2} \[[^]]+\]\[[^]]+\] ")
+
+
+def _collapse_activity_continuations(surface: str) -> str:
+    """Compare logical content after retaining required physical-row carriers."""
+    return " ".join(_CONTINUATION_CARRIER_RE.sub("", surface).split())
 
 
 def test_real_corpus_regression_replays_repaired_shape(tmp_path: Path) -> None:
@@ -62,7 +70,7 @@ def test_pi_tool_result_flood_replay_collapses_identical_burst_on_both_surfaces(
     rendered, live, _ = _replay("pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path)
     assert rendered.count("role=tool_result") == 2
     for surface in (rendered, live):
-        collapsed = " ".join(surface.split())
+        collapsed = _collapse_activity_continuations(surface)
         assert collapsed.count("3 more identical results") == 1
         assert "144 B" in surface
         assert "see .agent/raw/pi_tool_result_flood.log" in collapsed
@@ -87,7 +95,7 @@ def test_pi_tool_result_flood_without_channel_prefix_or_pi_identity_still_collap
     )
     assert rendered.count("role=tool_result") == 2
     for surface in (rendered, live):
-        collapsed = " ".join(surface.split())
+        collapsed = _collapse_activity_continuations(surface)
         assert "3 more identical results" in collapsed
         assert "see .agent/raw/pi_tool_result_flood.log" in collapsed
         assert "(running...)" not in surface
@@ -109,7 +117,7 @@ def test_codex_tool_result_flood_without_timestamp_collapses(tmp_path: Path) -> 
     )
     assert rendered.count("role=tool_result") == 2
     for surface in (rendered, live):
-        collapsed = " ".join(surface.split())
+        collapsed = _collapse_activity_continuations(surface)
         assert "3 more identical results" in collapsed
         assert "see .agent/raw/codex_tool_result_flood.log" in collapsed
         assert "[tool-result]" not in surface
@@ -131,8 +139,9 @@ def test_pi_tool_result_flood_without_target_uses_overflow_destination(tmp_path:
         "pi_tool_result_flood", ActivityProvider.PI, PiParser, tmp_path, wire_lines=wire
     )
     for surface in (rendered, live):
-        assert "4 more identical results" in " ".join(surface.split())
-        assert "see .agent/raw/pi_tool_result_flood.log" in " ".join(surface.split())
+        collapsed = _collapse_activity_continuations(surface)
+        assert "4 more identical results" in collapsed
+        assert "see .agent/raw/pi_tool_result_flood.log" in collapsed
         assert "unknown" not in surface
 
 

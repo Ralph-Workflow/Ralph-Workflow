@@ -866,6 +866,21 @@ class ParallelDisplay:
         if budget <= 0 or cell_len(body) <= budget:
             return body
 
+        def split_to_cells(value: str) -> list[str]:
+            """Fold an unbroken value without cutting a display cell budget."""
+            chunks: list[str] = []
+            chunk = ""
+            for character in value:
+                candidate = chunk + character
+                if chunk and cell_len(candidate) > budget:
+                    chunks.append(chunk)
+                    chunk = character
+                else:
+                    chunk = candidate
+            if chunk:
+                chunks.append(chunk)
+            return chunks or [value]
+
         def wrap_line(line: str) -> list[str]:
             if not line:
                 return [line]
@@ -875,9 +890,11 @@ class ParallelDisplay:
                 candidate = token if not row else f"{row} {token}"
                 if row and cell_len(candidate) > budget:
                     rows.append(row)
-                    row = token
+                    row = ""
+                if cell_len(token) > budget:
+                    rows.extend(split_to_cells(token))
                 else:
-                    row = candidate
+                    row = token if not row else candidate
             if row:
                 rows.append(row)
             return rows or [line]
@@ -1100,16 +1117,12 @@ class ParallelDisplay:
             # Rich truncated the body (the pre-fix bug on
             # level-1 entries like ``[result]``).
             effective_prefix_for_wrap = level_indent + full_chrome_prefix
-            # Raw output is not otherwise self-identifying, so every wrapped
-            # transcript row repeats its category and unit carrier. Structured
-            # renderer output already carries its own state and continuation
-            # marker; preserving its existing hanging-only shape avoids turning
-            # one logical tool call into multiple ``[call]`` entries.
-            hang_prefix = (
-                level_indent + (" " * cell_len(chrome_prefix)) + badge_prefix
-                if kind == "raw"
-                else level_indent + " " * cell_len(full_chrome_prefix)
-            )
+            # Every physical transcript row must remain independently greppable.
+            # Repeat the source timestamp plus category and unit carrier rather
+            # than replacing them with whitespace on structured continuations.
+            # The repeated prefix also keeps the continuation body in its stable
+            # grid column without relying on surrounding context.
+            hang_prefix = level_indent + full_chrome_prefix
             # DA-002 (S-4): wrap the body against the FULL
             # chrome+badge prefix so the first body token column
             # on the first line equals the hang column on every

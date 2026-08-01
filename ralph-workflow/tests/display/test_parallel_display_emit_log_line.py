@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from io import StringIO
 
+from rich.cells import cell_len
 from rich.console import Console
 
 from ralph.display.context import make_display_context
@@ -71,6 +72,32 @@ def test_emit_log_line_regression_wrapped_rows_retain_grep_carriers() -> None:
     output_lines = [line for line in buf.getvalue().splitlines() if line]
     assert len(output_lines) > 1
     assert all("[output][unit-wide]" in line for line in output_lines)
+    assert all(line[0:2].isdigit() and line[2] == ":" for line in output_lines)
+
+
+def test_emit_activity_line_regression_wrapped_structured_rows_retain_grep_carriers() -> None:
+    """S-5: structured continuations retain their event and unit carriers."""
+    pd, buf = _make_display(width=40)
+    pd.emit_activity_line("unit-wide", "error", "alpha bravo charlie delta echo foxtrot")
+    pd.stop()
+    output_lines = [line for line in buf.getvalue().splitlines() if line]
+    assert len(output_lines) > 1
+    assert all("[error][unit-wide]" in line for line in output_lines)
+    assert all(line[0:2].isdigit() and line[2] == ":" for line in output_lines)
+
+
+def test_emit_log_line_regression_folds_unbroken_content_to_the_supported_width() -> None:
+    """S-5: an overlong path-like token folds without clipping its recovery tail."""
+    pd, buf = _make_display(width=40)
+    token = "/workspace/" + "x" * 60 + "/important-tail.py"
+    pd.emit_log_line("unit-wide", token)
+    pd.stop()
+    output_lines = [line for line in buf.getvalue().splitlines() if line]
+    assert len(output_lines) > 1
+    assert all(cell_len(line) <= 40 for line in output_lines)
+    body_chunks = [line.partition("[unit-wide] ")[2] for line in output_lines]
+    assert "".join(body_chunks) == token
+    assert body_chunks[-1].endswith("y")
 
 
 def test_emit_log_line_preserves_unit_id_verbatim() -> None:
