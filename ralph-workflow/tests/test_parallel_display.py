@@ -299,11 +299,10 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
     assert "see .agent/raw/unit-1.log" in rendered
     # The full 500 chars do NOT appear (condenser truncated head-only).
     assert soft_limit_content not in rendered
-    # One logical close entry uses a metadata row plus a body row; both retain
-    # the grep-critical carrier for cold transcript searches.
+    # One logical close entry retains the grep-critical carrier for cold
+    # transcript searches; its metadata stays on the same row as the body.
     content_rows = [line for line in rendered.splitlines() if "[output][unit-1]" in line]
-    assert len(content_rows) == 2, f"expected metadata and body rows:\n{rendered}"
-    assert all("[output][unit-1]" in line for line in content_rows)
+    assert len(content_rows) == 1, f"expected one close row:\n{rendered}"
 
 
 def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:

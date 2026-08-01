@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.workspace.protocol import WorkspaceSnapshot
+from ralph.workspace._snapshot import WorkspaceSnapshot
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 #: Default maximum file size in bytes for ``read_lines`` (any mode).

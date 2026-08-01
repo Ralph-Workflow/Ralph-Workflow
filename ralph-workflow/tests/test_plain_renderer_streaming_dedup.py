@@ -66,8 +66,8 @@ def test_identical_consecutive_text_fragments_emit_one_logical_close_entry() -> 
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     content_rows = [ln for ln in lines if "[output][u]" in ln]
-    assert len(content_rows) == 2
-    assert any("⋯ output" in row for row in content_rows)
+    assert len(content_rows) == 1
+    assert "⋯ output" in content_rows[0]
     # The joined passage appears exactly once.
     assert out.count("same content") == 1, (
         f"Joined passage must appear once, got {out.count('same content')}: {out!r}"
@@ -82,7 +82,7 @@ def test_differing_text_fragments_emit_one_logical_close_entry_with_joined_passa
     pd.flush_blocks()
     out = buf.getvalue()
     content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_rows) == 2
+    assert len(content_rows) == 1
     # Both fragments visible in the joined passage.
     assert "first content" in out
     assert "second content" in out
@@ -108,7 +108,7 @@ def test_dedup_disabled_by_env_still_emits_one_logical_close_entry() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_rows) == 2
+    assert len(content_rows) == 1
     # With dedup off, all 3 fragments are buffered; the joined
     # passage shows them all separated by spaces (S-13 sketch-J shape
     # carries the span and duration in the close header instead of
@@ -148,7 +148,7 @@ def test_dedup_does_not_suppress_first_fragment_of_new_block() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_rows) == 2
+    assert len(content_rows) == 1
     # The buffered fragment list kept only the first occurrence.
     accumulated = pd._active_block.pop("u", None)  # already drained by flush
     assert (
@@ -171,7 +171,7 @@ def test_dedup_with_three_different_then_identical() -> None:
     pd.flush_blocks()
     out = buf.getvalue()
     content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
-    assert len(content_rows) == 2
+    assert len(content_rows) == 1
     # With dedup on, the buffer holds 2 entries; joined is "first second".
     assert "first second" in out
 

@@ -313,11 +313,10 @@ def test_flush_blocks_emits_one_logical_close_entry_per_active_block() -> None:
     pd.emit_activity_line("u", "text", "partial content")
     pd.flush_blocks()
     out = buf.getvalue()
-    # One logical output close entry uses metadata and body rows; both retain
-    # the carrier for cold transcript searches.
+    # One logical output close entry retains the carrier and content together.
     content_rows = [ln for ln in _plain_lines(out) if "[output][u]" in ln]
-    assert len(content_rows) == 2
-    assert any("partial content" in row for row in content_rows)
+    assert len(content_rows) == 1
+    assert "partial content" in content_rows[0]
 
 
 def test_streaming_block_closed_by_non_streaming_event() -> None:

@@ -51,10 +51,9 @@ def test_push_text_line_emits_content_tag(tmp_path: Path) -> None:
     assert "[u]" in out
     assert "hello world" in out
     content_rows = [line for line in out.splitlines() if "[output][u]" in line]
-    # One logical close entry may use a metadata row plus a body row; both
-    # retain the carrier so cold transcript searches remain reliable.
-    assert len(content_rows) == 2
-    assert any("hello world" in line for line in content_rows)
+    # One logical close entry keeps its carrier and body on the same row.
+    assert len(content_rows) == 1
+    assert "hello world" in content_rows[0]
 
 
 def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
@@ -119,9 +118,9 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     assert len(out) < _LONG_TEXT_LEN
     assert "…" in out or "truncated" in out or "raw unavailable" in out
     content_rows = [line for line in out.splitlines() if "[output][u]" in line]
-    assert len(content_rows) == 2
-    assert any("⋯ output" in line for line in content_rows)
-    assert any("AAAAAAAA" in line for line in content_rows)
+    assert len(content_rows) == 1
+    assert "⋯ output" in content_rows[0]
+    assert "AAAAAAAA" in content_rows[0]
 
 
 def test_only_one_activity_router_per_parallel_display(tmp_path: Path) -> None:
@@ -207,8 +206,8 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
     assert "[output" in out
     assert ".agent/raw/u.log" in out
     content_rows = [line for line in out.splitlines() if "[output][u]" in line]
-    assert len(content_rows) == 2
-    assert any(".agent/raw/u.log" in line for line in content_rows)
+    assert len(content_rows) == 1
+    assert ".agent/raw/u.log" in content_rows[0]
 
 
 def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) -> None:

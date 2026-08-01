@@ -850,10 +850,7 @@ class ParallelDisplay:
         }.get(kind, "info")
         state_style = statuses[state][0]
         chrome_style = statuses["info"][0]
-        unit_style = identity_color(
-            unit_id,
-            terminal_bg_is_light=self._terminal_bg_is_light,
-        )
+        unit_style = f"bold {identity_color(unit_id, terminal_bg_is_light=self._terminal_bg_is_light)}"
         text = Text(leading_indent)
         text.append(timestamp, style=chrome_style)
         text.append(" ")

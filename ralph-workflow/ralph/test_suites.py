@@ -66,16 +66,15 @@ if TYPE_CHECKING:
 
 # The 1.0 s per-test ITIMER_REAL budget charges wall clock. Plain-pytest
 # shards avoid xdist's shared-worker contention while preserving exact-once
-# test assignment. The automatic profile always uses the measured 24-shard
-# ceiling so low-core hosts retain enough parallelism to meet the immutable
-# 60-second combined budget; higher concurrency exceeds the per-test timeout
-# under load. Operators may explicitly override ``PYTEST_WORKERS`` for a
-# measured environment.
+# test assignment. The automatic profile uses eight shards: higher concurrency
+# starves SQLite-backed tests long enough to trip their one-second test cap,
+# while fewer shards breach the combined suite deadline. Operators may
+# explicitly override ``PYTEST_WORKERS`` for a measured environment.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 24
+_MAX_PYTEST_WORKERS = 8
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two

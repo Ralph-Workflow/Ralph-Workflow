@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
 
-from ralph.workspace.protocol import WorkspaceSnapshot
+from ralph.workspace._snapshot import WorkspaceSnapshot
 
 
 class MemoryWorkspace:

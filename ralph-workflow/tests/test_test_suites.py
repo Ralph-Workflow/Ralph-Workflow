@@ -322,10 +322,9 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: the default profile must meet the immutable 60-second
-    # budget even on a low-core host, so auto uses the measured fixed ceiling
-    # rather than scaling down with available CPUs.
-    assert test_suites_module._pytest_workers() == "24"
+    # Regression: eight shards avoid starving SQLite-backed tests while still
+    # keeping the default profile within the immutable combined budget.
+    assert test_suites_module._pytest_workers() == "8"
 
 
 def test_explicit_worker_count_overrides_the_auto_resolution(

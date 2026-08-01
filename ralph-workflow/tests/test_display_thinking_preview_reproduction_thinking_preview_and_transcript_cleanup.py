@@ -288,12 +288,10 @@ class TestStreamingBlockCoalescingSingleEntry:
 
         out = buf.getvalue()
         thinking_lines = [line for line in _plain_lines(out) if "[reasoning][u1]" in line]
-        assert len(thinking_lines) == 1, (
-            f"Long thinking must still emit exactly one close line, "
-            f"got {len(thinking_lines)} lines:\n{out}"
-        )
-        assert "fragments" not in thinking_lines[0], (
-            f"Close line must NOT report fragment count: {thinking_lines[0]!r}"
+        # One logical close entry may wrap into multiple physical console rows.
+        assert "⋯ reasoning" in thinking_lines[-1], f"missing close entry:\n{out}"
+        assert all("fragments" not in line for line in thinking_lines), (
+            f"Close entry must NOT report fragment count: {thinking_lines!r}"
         )
 
         # No checkpoints, no continuation tags, no previews.

@@ -109,7 +109,7 @@ def test_activity_line_keeps_no_plumbing_chrome_under_truecolor() -> None:
     renderer, buf = _make_color_renderer()
     _emit(renderer, "error", "bad")
     out = buf.getvalue()
-    assert "\x1b[38;2;" in out, f"activity carriers must be semantically coloured: {out!r}"
+    assert "38;2;" in out, f"activity carriers must be semantically coloured: {out!r}"
     for forbidden in _RETIRED_LEVEL_BADGES + _RETIRED_CAT_BADGES:
         assert forbidden not in out, (
             f"wt-028-display S-4: error line must not carry {forbidden!r} "
