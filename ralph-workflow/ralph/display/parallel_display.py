@@ -1100,20 +1100,16 @@ class ParallelDisplay:
             # Rich truncated the body (the pre-fix bug on
             # level-1 entries like ``[result]``).
             effective_prefix_for_wrap = level_indent + full_chrome_prefix
-            # DA-002 (S-4): the continuation lines carry ONLY the
-            # hanging indent (spaces matching the chrome column),
-            # NOT a fresh chrome prefix. The pre-fix bug stamped
-            # ``10:27:44 SUCCESS OUT [result][u1]`` on every
-            # continuation line, which broke the one-entry-per-event
-            # invariant for multi-line bodies and turned a single
-            # tool_result into N records. The hang column is still
-            # the badge column on the first line; the chrome is
-            # dropped because the badge itself is the structural
-            # marker and the reader can scroll back to the first
-            # line for the timestamp. The wrap budget below still
-            # uses the FULL prefix so the body lands at the same
-            # column on the first line.
-            hang_prefix = level_indent + " " * cell_len(full_chrome_prefix)
+            # Raw output is not otherwise self-identifying, so every wrapped
+            # transcript row repeats its category and unit carrier. Structured
+            # renderer output already carries its own state and continuation
+            # marker; preserving its existing hanging-only shape avoids turning
+            # one logical tool call into multiple ``[call]`` entries.
+            hang_prefix = (
+                level_indent + (" " * cell_len(chrome_prefix)) + badge_prefix
+                if kind == "raw"
+                else level_indent + " " * cell_len(full_chrome_prefix)
+            )
             # DA-002 (S-4): wrap the body against the FULL
             # chrome+badge prefix so the first body token column
             # on the first line equals the hang column on every

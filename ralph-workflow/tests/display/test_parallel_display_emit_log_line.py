@@ -63,6 +63,16 @@ def test_emit_log_line_routes_via_activity_line() -> None:
     assert "[unit-x]" in output, f"unit_id marker missing: {output!r}"
 
 
+def test_emit_log_line_regression_wrapped_rows_retain_grep_carriers() -> None:
+    """S-5: every wrapped row remains independently greppable by category and unit."""
+    pd, buf = _make_display(width=40)
+    pd.emit_log_line("unit-wide", "alpha bravo charlie delta echo foxtrot golf hotel")
+    pd.stop()
+    output_lines = [line for line in buf.getvalue().splitlines() if line]
+    assert len(output_lines) > 1
+    assert all("[output][unit-wide]" in line for line in output_lines)
+
+
 def test_emit_log_line_preserves_unit_id_verbatim() -> None:
     """Various unit_id shapes are preserved without rewriting characters."""
     pd, buf = _make_display()
