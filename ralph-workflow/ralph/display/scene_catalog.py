@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from io import StringIO
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -11,9 +12,17 @@ if TYPE_CHECKING:
 
 from rich.text import Text
 
+from ralph.display._run_start_orientation import RunStartOrientation
+from ralph.display.completion_summary import CompletionSummaryOptions
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.edit_preview import build_edit_preview
+from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.phase_entry_model import PhaseEntryModel
+from ralph.display.phase_exit_model import PhaseExitModel
+from ralph.display.snapshot import PipelineSnapshot
+from ralph.display.status_bar import StatusBarModel, render_status_bar
 from ralph.display.surface_catalog import SURFACE_CATALOG, SurfaceSpec
-from ralph.display.theme import diff_fill_styles, make_console, pick_status_styles
+from ralph.display.theme import diff_fill_styles, make_console
 
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
@@ -26,14 +35,13 @@ FULL_LAYOUT_WIDTH: Final[int] = 80
 GRACEFUL_WIDTH_FLOOR: Final[int] = 40
 GRACEFUL_HEIGHT_FLOOR: Final[int] = 12
 INDENT_UNIT: Final[str] = "  "
+_SCENE_PROMPT_PATH: Final[str] = ".agent/PROMPT.md"
 
-# Test-facing stream formats exercised by generated scenes. Each value retains
-# its carrier when read without surrounding phase context.
 CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
-    "duration": "elapsed=MM:SS",
+    "duration": "<minutes>m<seconds>s",
     "count": "count=<decimal>",
-    "path": "project=<verbatim-or-folded-path>",
-    "identifier": "agent=<stable-id> when present",
+    "path": "workspace=<verbatim-or-folded-path>",
+    "identifier": "[category][agent-id]",
 }
 
 
@@ -85,13 +93,12 @@ def render_scene(
     *,
     terminal_bg_is_light: bool | None,
 ) -> str:
-    """Render one deterministic reference scene through a real Rich console.
+    """Render a deterministic reference scene through production display seams.
 
-    This is intentionally a compact probe rather than a replacement display
-    path. It exercises the canonical semantic palette plus production write and
-    diff preview builders for all declared destination modes, giving floor tests
-    generated output instead of stored captures. Real pipeline scenes retain
-    their focused display tests.
+    The catalog is a driver, not a second renderer: lifecycle, activity,
+    status-bar, completion, and preview text are produced by the public owners
+    used by a live run. Fixed clocks and in-memory streams retain the support
+    matrix's deterministic, bounded test profile.
     """
     if scene_name not in SCENE_NAMES:
         raise ValueError(f"unknown scene {scene_name!r}")
@@ -106,11 +113,139 @@ def render_scene(
         width=case.width,
         height=case.height,
     )
-    styles = pick_status_styles(terminal_bg_is_light)
-    console.print(Text(f"SCENE {scene_name}", style=styles["info"][0]))
-    _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs, width=case.width)
-    _render_scene_previews(console, terminal_bg_is_light=terminal_bg_is_light)
+    context = make_display_context(
+        console=console,
+        env=_scene_environment(case),
+        force_width=case.width,
+        force_height=case.height,
+    )
+    display = ParallelDisplay(
+        context,
+        clock=lambda: datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
+        monotonic=lambda: 123.0,
+    )
+    console.print(Text(f"SCENE {scene_name}", style="theme.cat.meta"))
+    _drive_production_scene(display, console, context, scene_name)
+    if scene_name in {"clean_run", "burst"}:
+        _render_scene_previews(console, terminal_bg_is_light=terminal_bg_is_light)
+    display.stop()
     return stream.getvalue()
+
+
+def _scene_environment(case: SupportCase) -> dict[str, str]:
+    """Return explicit environment inputs for one support-matrix case."""
+    environment: dict[str, str] = {"RALPH_FORCE_ASCII": "1" if case.glyphs == "ascii" else "0"}
+    if case.background != "unknown":
+        environment["RALPH_TERMINAL_BG"] = case.background
+    if case.colour == "none":
+        environment["NO_COLOR"] = "1"
+    elif case.destination in {"redirect", "ci"}:
+        environment["FORCE_COLOR"] = "1"
+    return environment
+
+
+def _scene_snapshot(*, failed: bool) -> PipelineSnapshot:
+    """Build fixed production completion input without pipeline execution."""
+    return PipelineSnapshot(
+        phase="failed" if failed else "complete",
+        previous_phase="review",
+        review_issues_found=failed,
+        interrupted_by_user=False,
+        last_error="tests failed: assertion output retained" if failed else None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=3,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path=_SCENE_PROMPT_PATH,
+        prompt_preview=(),
+        run_id="scene-run",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        plan_summary="Render production display surfaces",
+        plan_scope_items=("display",),
+        plan_total_steps=1,
+        plan_current_step=1,
+        decision_log=(
+            ("review", "revise" if failed else "proceed", "scene evidence", "2026-01-02T03:04:05+00:00"),
+        ),
+        is_terminal_success=not failed,
+        is_terminal_failure=failed,
+    )
+
+
+def _drive_production_scene(
+    display: ParallelDisplay,
+    console: Console,
+    context: DisplayContext,
+    scene_name: str,
+) -> None:
+    """Drive public production display entry points with fixed scenario data."""
+    if scene_name == "first_screen":
+        display.emit_welcome_banner(version="0.0.0-scene")
+        display.emit_first_run_panel([Text("Production display scene")])
+        display.emit_run_start(
+            RunStartOrientation(
+                prompt_path=_SCENE_PROMPT_PATH,
+                workspace_root="/work/café",
+                developer_agent="pi",
+                plan_present=True,
+            )
+        )
+    elif scene_name == "clean_run":
+        entry = PhaseEntryModel(
+            "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
+        )
+        display.begin_phase("development")
+        display.emit_phase_start_from_entry(entry)
+        display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
+        display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
+        display.emit_phase_transition("development", "review")
+        display.emit_phase_close_from_exit(
+            PhaseExitModel(
+                "development", "execution", "pi", artifact_outcome="artifacts ready", content_blocks=1
+            )
+        )
+    elif scene_name == "failure":
+        display.emit_activity_line("reviewer", "error", "tests failed: assertion output retained")
+        display.emit_warn_line("reviewer", "warning", "raw machine detail is retained in the transcript")
+        display.emit_completion_summary_panel(
+            _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
+        )
+    elif scene_name == "burst":
+        display.emit_activity_line(
+            "codex", "tool_use", "edit_file path=café.py", tool_signature=("edit_file", "café.py")
+        )
+        display.emit_activity_line("codex", "tool_result", "edit_file complete")
+        display.emit_activity_line(
+            "codex",
+            "raw",
+            "output condensed count=3 bytes=96",
+            condensed_flag=True,
+            condensed_ref=".agent/raw/run.log",
+        )
+    elif scene_name == "idle_stretch":
+        model = StatusBarModel(
+            workspace_root="/work/café",
+            phase_label="Development",
+            phase_style="theme.phase.development",
+            elapsed_seconds=123.0,
+            agent_name="pi",
+            attention="waiting",
+        )
+        # Exercise the public push seam first. StatusBar intentionally emits no
+        # Live region to redirected/CI streams, so the catalog then uses its
+        # production pure renderer to capture the documented durable cold view.
+        # This is not a second formatter: render_status_bar is StatusBar's sole
+        # layout owner and shares the stored model above.
+        display.update_status_bar(model)
+        console.print(render_status_bar(model, context, home="/work", now_monotonic=123.0))
+    else:
+        display.emit_run_end(phase="complete", total_agent_calls=3)
+        display.emit_completion_summary_panel(
+            _scene_snapshot(failed=False), options=CompletionSummaryOptions(elapsed_seconds=123.0)
+        )
 
 
 def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | None) -> None:
@@ -137,93 +272,8 @@ def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | Non
         console.print(diff_preview)
 
 
-def _render_scene_narrative(
-    console: Console,
-    scene_name: str,
-    styles: dict[str, tuple[str, str, str]],
-    *,
-    glyphs: GlyphMode,
-    width: int,
-) -> None:
-    """Render scene-specific greppable carriers through the canonical palette."""
-
-    def marker(state: str) -> str:
-        return styles[state][1] if glyphs == "unicode" else styles[state][2]
-
-    if scene_name == "first_screen":
-        console.print(
-            Text(
-                f"{marker('running')} RUN OPEN phase=planning project=/work/café",
-                style=styles["running"][0],
-            )
-        )
-    elif scene_name == "clean_run":
-        console.print(
-            Text(f"{marker('running')} phase=development agent=pi", style=styles["running"][0])
-        )
-        console.print(Text(f"{marker('success')} PASS success", style=styles["success"][0]))
-    elif scene_name == "failure":
-        console.print(
-            Text(
-                f"{marker('error')} FAIL error phase=review cause=tests failed",
-                style=styles["error"][0],
-            )
-        )
-        console.print(
-            Text(
-                f"{marker('warning')} WARN raw=assertion output retained",
-                style=styles["warning"][0],
-            )
-        )
-    elif scene_name == "burst":
-        console.print(
-            Text(f"{marker('running')} agent=codex tool=edit_file", style=styles["running"][0])
-        )
-        if width < FULL_LAYOUT_WIDTH:
-            console.print(Text("REPEATED count=3 bytes=96", style=styles["info"][0]), no_wrap=True)
-            console.print(
-                Text("REPEATED recovery=.agent/raw/run.log", style=styles["info"][0]), no_wrap=True
-            )
-        else:
-            console.print(
-                Text(
-                    "REPEATED count=3 bytes=96 recovery=.agent/raw/run.log",
-                    style=styles["info"][0],
-                )
-            )
-    elif scene_name == "idle_stretch":
-        console.print(
-            Text(
-                f"{marker('pending')} WAIT pending state=waiting elapsed=02:03",
-                style=styles["pending"][0],
-            )
-        )
-    else:
-        console.print(
-            Text(
-                f"{marker('success')} RUN COMPLETE outcome=success elapsed=02:03",
-                style=styles["success"][0],
-            )
-        )
-    elision_style = styles["info"][0]
-    if width < FULL_LAYOUT_WIDTH:
-        # Every physical continuation retains the event carrier: cold transcripts
-        # are grepped line-by-line, so a wrapped recovery path cannot stand alone.
-        console.print(Text("ELIDED count=2 bytes=24", style=elision_style), no_wrap=True)
-        console.print(Text("ELIDED recovery=.agent/raw/run.log", style=elision_style), no_wrap=True)
-    else:
-        console.print(
-            Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=elision_style)
-        )
-
-
 def support_matrix() -> tuple[SupportCase, ...]:
-    """Return the complete declared support matrix.
-
-    Reference widths cover the graceful floor, fully laid-out threshold, and
-    a wide terminal. Destination is orthogonal to colour: redirected output
-    may retain colour when explicitly forced, while no-colour never emits ANSI.
-    """
+    """Return the complete declared support matrix."""
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
     glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")

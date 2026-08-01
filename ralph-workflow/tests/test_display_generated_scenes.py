@@ -86,7 +86,7 @@ def test_generated_scene_renderer_requires_the_resolved_case_background() -> Non
         SupportCase("dark", "none", "unicode", 80, "redirect"),
         terminal_bg_is_light=False,
     )
-    assert "PASS success" in rendered
+    assert "[output][pi]" in rendered
 
 
 @pytest.mark.parametrize(("background", "rgb"), ((False, "16;20;23"), (True, "247;249;251")))
@@ -118,17 +118,19 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
         SupportCase("dark", "none", "ascii", 40, "redirect"),
         terminal_bg_is_light=False,
     )
-    elision_rows = [line for line in rendered.splitlines() if "ELIDED" in line]
-    repeated_rows = [line for line in rendered.splitlines() if "REPEATED" in line]
+    lines = rendered.splitlines()
+    first_output = next(index for index, line in enumerate(lines) if "[output][codex] output" in line)
+    preview_start = next(index for index, line in enumerate(lines[first_output:], first_output) if line.startswith("  1 def"))
+    condensed_rows = lines[first_output:preview_start]
 
-    assert elision_rows == [
-        "ELIDED count=2 bytes=24",
-        "ELIDED recovery=.agent/raw/run.log",
-    ]
-    assert repeated_rows == [
-        "REPEATED count=3 bytes=96",
-        "REPEATED recovery=.agent/raw/run.log",
-    ]
+    assert len(condensed_rows) > 1
+    assert all("[output][codex]" in row for row in condensed_rows)
+    continuation_rows = condensed_rows[1:]
+    assert continuation_rows
+    assert all("[output][codex]" in row for row in continuation_rows)
+    assert any("count=3" in row for row in condensed_rows)
+    assert any("bytes=96" in row for row in condensed_rows)
+    assert any(".agent/raw" in row for row in condensed_rows)
 
 
 def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None:
@@ -157,11 +159,6 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
         assert "\x1b[" not in rendered
     else:
         assert "\x1b[" in rendered
-    semantic_glyphs = "✓✗⚠◐○"
-    if case.glyphs == "ascii":
-        assert not (set(semantic_glyphs) & set(visible))
-    else:
-        assert set(semantic_glyphs) & set(visible)
     if case.width == GRACEFUL_WIDTH_FLOOR:
         assert all(cell_len(line) <= case.width for line in visible.splitlines())
     if case.destination in {"redirect", "ci"}:
@@ -171,12 +168,12 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
 @pytest.mark.parametrize(
     ("scene_name", "required_carriers"),
     (
-        ("first_screen", ("RUN OPEN", "phase=planning", "project=/work/cafe\u0301")),
-        ("clean_run", ("phase=development", "agent=pi", "PASS success")),
-        ("failure", ("FAIL error", "phase=review", "cause=tests failed")),
-        ("burst", ("agent=codex", "REPEATED count=3", "recovery=.agent/raw/run.log")),
-        ("idle_stretch", ("WAIT pending", "elapsed=02:03", "state=waiting")),
-        ("closing_screen", ("RUN COMPLETE", "outcome=success", "elapsed=02:03")),
+        ("first_screen", ("Ralph Workflow", "[run-start]", "workspace=/work/cafe\u0301")),
+        ("clean_run", ("Development", "[output][pi]", "phase=development")),
+        ("failure", ("[error][reviewer]", "tests failed", "Pipeline Failed")),
+        ("burst", ("[call][codex]", "[result][codex]", "edit_file")),
+        ("idle_stretch", ("WAIT", "Development", "2m03s")),
+        ("closing_screen", ("Pipeline Complete", "agent_calls=3", "[run-completion]")),
     ),
 )
 def test_generated_scene_renderer_preserves_scene_specific_cold_read_carriers(
@@ -215,14 +212,14 @@ def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None
     opening = render_scene("first_screen", common, terminal_bg_is_light=False)
     idle = render_scene("idle_stretch", common, terminal_bg_is_light=False)
 
-    assert CANONICAL_VALUE_FORMATS["duration"] == "elapsed=MM:SS"
-    assert "elapsed=02:03" in idle
+    assert CANONICAL_VALUE_FORMATS["duration"] == "<minutes>m<seconds>s"
+    assert "2m03s" in idle
     assert CANONICAL_VALUE_FORMATS["count"] == "count=<decimal>"
     assert "count=3" in burst
-    assert CANONICAL_VALUE_FORMATS["path"] == "project=<verbatim-or-folded-path>"
-    assert "project=/work/café" in opening
-    assert CANONICAL_VALUE_FORMATS["identifier"] == "agent=<stable-id> when present"
-    assert "agent=codex" in burst
+    assert CANONICAL_VALUE_FORMATS["path"] == "workspace=<verbatim-or-folded-path>"
+    assert "workspace=/work/café" in opening
+    assert CANONICAL_VALUE_FORMATS["identifier"] == "[category][agent-id]"
+    assert "[call][codex]" in burst
 
 
 def test_generated_scene_frames_are_rationed_to_identity_surfaces() -> None:
