@@ -622,8 +622,20 @@ def _route_opencode_line_to_registry(
     obj = cast("dict[str, object]", parsed)
     event_type = str(obj.get("type", ""))
     child_id = str(obj.get("child_id") or obj.get("id") or "")
-    if not child_id:
+    if child_id:
+        _route_opencode_lifecycle_event(obj, registry, scope_prefix, child_id, event_type)
         return
+    _route_opencode_native_task(obj, registry, scope_prefix)
+
+
+def _route_opencode_lifecycle_event(
+    obj: dict[str, object],
+    registry: ChildLivenessRegistry,
+    scope_prefix: str,
+    child_id: str,
+    event_type: str,
+) -> None:
+    """Route an explicit OpenCode child lifecycle frame into the registry."""
     if event_type in _OPENCODE_CHILD_SPAWN_TYPES:
         pid_raw = obj.get("pid")
         pid = int(pid_raw) if isinstance(pid_raw, int | float) else None
@@ -636,6 +648,37 @@ def _route_opencode_line_to_registry(
     elif event_type in _OPENCODE_CHILD_TERMINAL_TYPES:
         terminal_state = str(obj.get("terminal_state", "complete"))
         registry.record_terminal_ack(child_id, terminal_state=terminal_state)
+
+
+def _route_opencode_native_task(
+    obj: dict[str, object],
+    registry: ChildLivenessRegistry,
+    scope_prefix: str,
+) -> None:
+    """Represent OpenCode's native ``task`` tool as a scoped child lifecycle.
+
+    The native wire protocol uses ``part.callID`` rather than standalone
+    ``child_*`` frames. Its running and completed states therefore need to
+    update the same child-evidence registry that the watchdog consults.
+    """
+    if _opencode_tool_name(obj) not in _OPENCODE_SUBAGENT_TOOLS:
+        return
+    part = obj.get("part")
+    if not isinstance(part, dict):
+        return
+    part_obj = cast("dict[str, object]", part)
+    call_id = part_obj.get("callID")
+    state = part_obj.get("state")
+    if not isinstance(call_id, str) or not call_id or not isinstance(state, dict):
+        return
+    state_obj = cast("dict[str, object]", state)
+    status = str(state_obj.get("status", ""))
+    if status not in {"running", "completed", "error"}:
+        return
+    registry.register_child(call_id, scope_prefix)
+    registry.record_progress(call_id, phase=status)
+    if status in {"completed", "error"}:
+        registry.record_terminal_ack(call_id, terminal_state=status)
 
 
 def _os_descendant_state(

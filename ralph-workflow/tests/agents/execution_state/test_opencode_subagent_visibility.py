@@ -39,7 +39,9 @@ from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
 from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import get_parser
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
+from ralph.process.child_liveness import ChildLivenessRegistry
 
 
 def _tool_event(tool: str, *, status: str = "completed", call_id: str = "call_1") -> str:
@@ -90,6 +92,30 @@ def test_task_tool_observe_line_refreshes_subagent_activity_sink() -> None:
     strategy.observe_line(line)
 
     assert sink_calls == [line]
+
+
+def test_task_tool_observe_line_records_native_task_lifecycle() -> None:
+    """S-3: a native task callID must become one scoped child lifecycle.
+
+    OpenCode does not emit separate ``child_*`` frames for the native task
+    tool. The task's ``callID`` is therefore the only identity Ralph can use
+    to track dispatch, work, and completion while the subagent executes.
+    """
+    clock = FakeClock()
+    registry = ChildLivenessRegistry(
+        progress_ttl=30.0,
+        heartbeat_ttl=30.0,
+        stale_label_ttl=30.0,
+        exit_reconcile=30.0,
+        now=clock.monotonic,
+    )
+    strategy = OpenCodeExecutionStrategy(label_scope="parent", registry=registry)
+
+    strategy.observe_line(_tool_event("task", call_id="call_native_task"))
+
+    snapshot = registry.snapshot("agent:parent:")
+    assert snapshot.active_count == 0
+    assert snapshot.terminal_count == 1
 
 
 def test_ordinary_tool_classifies_as_tool_use() -> None:
