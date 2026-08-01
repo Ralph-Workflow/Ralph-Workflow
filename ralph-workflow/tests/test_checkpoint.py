@@ -132,13 +132,13 @@ def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path
     original_replace = Path.replace
     staging_paths: list[Path] = []
 
-    def raise_on_tmp(self: Path, target: Path) -> Path:
+    def raise_on_destination(self: Path, target: Path) -> Path:
         if self.parent == path.parent and self.name.startswith(tmp_prefix):
             staging_paths.append(self)
             raise RuntimeError("disk busy")
         return original_replace(self, target)
 
-    monkeypatch.setattr(Path, "replace", raise_on_tmp)
+    monkeypatch.setattr(Path, "replace", raise_on_destination)
 
     with pytest.raises(RuntimeError):
         ckpt.save(state, path)
