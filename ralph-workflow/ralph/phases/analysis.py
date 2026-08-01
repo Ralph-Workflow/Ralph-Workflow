@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PlanArtifactValidationError, is_noop_plan
+from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
+from ralph.mcp.artifacts.plan._validation import PlanArtifactValidationError, is_noop_plan
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     artifact_validation_failure_event,

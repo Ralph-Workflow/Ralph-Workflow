@@ -5,10 +5,9 @@ from __future__ import annotations
 import os
 import shutil
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.agent_install_links import install_url_for
-from ralph.agents.builtin import builtin_supports
 from ralph.onboarding import (
     STARTER_PROMPT_SENTINEL,
     missing_prompt_validation_hint,
@@ -50,6 +49,12 @@ _AGY_ALIAS_HELP = (
     "claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium. "
     "Accepted effort suffixes: low, medium, high."
 )
+
+@runtime_checkable
+class _AgentSupport(Protocol):
+    name: str
+    cmd: str
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -341,7 +346,17 @@ def validate_chain_agents_on_path(
     warn: Callable[[str], None] | None = None,
 ) -> None:
     """Fail before spawning when a configured chain has no available CLI."""
-    supports = {support.name: support for support in builtin_supports()}
+    # Resolve only during PATH validation to avoid policy loading re-entering
+    # the execution-state package while it is being initialized.
+    # The catalog import is intentionally deferred to avoid the import cycle
+    # above; this module performs the same typed normalization at the boundary.
+    builtin = import_module("ralph.agents.builtin")
+    raw_supports = cast("tuple[object, ...]", builtin.builtin_supports())
+    supports = {
+        support.name: support
+        for item in raw_supports
+        if isinstance((support := cast("_AgentSupport", item)), _AgentSupport)
+    }
 
     def is_available(agent_name: str) -> bool:
         if available is not None:
@@ -352,6 +367,7 @@ def validate_chain_agents_on_path(
         command = os.environ.get(override_name) if override_name is not None else None
         return (
             support is not None
+            and isinstance(support, _AgentSupport)
             and shutil.which((command or support.cmd).split(maxsplit=1)[0]) is not None
         )
 

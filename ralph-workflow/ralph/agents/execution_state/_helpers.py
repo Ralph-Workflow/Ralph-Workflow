@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, cast
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
-from ralph.agents.parsers.base import extract_error_message
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -14,6 +14,13 @@ from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
+
+
+class _ParserBaseModule(Protocol):
+    def extract_error_message(self, obj: dict[str, object]) -> str: ...
+
+
+if TYPE_CHECKING:
     from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.liveness import LivenessProbe
 
@@ -56,7 +63,10 @@ def _error_message_from_error_field(obj: dict[str, object]) -> str:
     error and could fire REPEATED_ERROR_LOOP on a sequence that is not a loop
     -- while every diagnostic showed the operator only ``"APIError"``.
     """
-    return extract_error_message(obj)
+    # Load only when processing an error event: importing the parser package
+    # during execution-state initialization re-enters the agent catalog graph.
+    parser_base = cast("_ParserBaseModule", import_module("ralph.agents.parsers.base"))
+    return parser_base.extract_error_message(obj)
 
 
 def _tool_state_error_message(obj: dict[str, object]) -> str | None:

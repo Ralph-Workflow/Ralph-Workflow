@@ -7,7 +7,7 @@ Module family (reading order):
 
 # ruff: noqa: I001 RUF022  (compact import + __all__ layout keeps this file under 60 lines)
 from __future__ import annotations
-from ralph.mcp.artifacts.plan._noop import PlanArtifactValidationError, is_noop_plan
+from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
 from ralph.mcp.artifacts.plan._plan_step import PlanStep
 from ralph.mcp.artifacts.plan._size_limits import (
     PLAN_SIZE_LIMITS,
@@ -51,8 +51,10 @@ from ralph.mcp.artifacts.plan._step_contract import (
     requires_targets,
     requires_verify_handle,
 )
+
 from ralph.mcp.artifacts.plan._validation import (
     PlanArtifact,
+    is_noop_plan,
     normalize_plan_artifact_content,
     validate_plan_section,
 )

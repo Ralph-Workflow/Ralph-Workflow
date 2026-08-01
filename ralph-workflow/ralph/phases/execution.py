@@ -29,8 +29,8 @@ from ralph.mcp.artifacts.md_draft_io import (
     seeded_draft_workspace_path,
     unsubmitted_draft_divergence,
 )
-from ralph.mcp.artifacts.plan import (
-    PLAN_ARTIFACT_PATH,
+from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
+from ralph.mcp.artifacts.plan._validation import (
     PlanArtifactValidationError,
     is_noop_plan,
     normalize_plan_artifact_content,

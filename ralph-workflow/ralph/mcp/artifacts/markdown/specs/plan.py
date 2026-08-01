@@ -31,7 +31,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.checked_accessors import as_str, optional_str
 from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
@@ -71,8 +72,13 @@ from ralph.mcp.artifacts.markdown.specs._plan_steps import (
 )
 from ralph.mcp.artifacts.markdown.specs._plan_subplans import subplan_units_content
 from ralph.mcp.artifacts.markdown.specs._plan_work_units import attach_owned_step_ids
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_TYPE, normalize_plan_artifact_content
+from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_TYPE
 from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
+
+
+class _PlanValidationModule(Protocol):
+    def normalize_plan_artifact_content(self, content: Content) -> Content: ...
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -1492,6 +1498,19 @@ def _apply_validation_overrides(
     return overridden
 
 
+def _normalize_plan_artifact_content(content: Content) -> Content:
+    """Lazily normalize plan content after the artifact-spec registry loads.
+
+    Importing the plan validator while this spec is imported creates a cycle
+    through the display and pipeline packages. The normalizer is only needed
+    after parsing a submitted plan, so defer that dependency to its call site.
+    """
+    validation = cast(
+        "_PlanValidationModule", import_module("ralph.mcp.artifacts.plan._validation")
+    )
+    return validation.normalize_plan_artifact_content(content)
+
+
 def _minimal_noop_variant(
     document: ParsedDocument,
 ) -> tuple[Content | None, list[Diagnostic]]:
@@ -1537,7 +1556,7 @@ PLAN_SPEC = MdArtifactSpec(
     # and edges document-wide without turning narrative lists into requirements.
     allow_unknown_sections=True,
     to_content=_to_content,
-    normalize_content=normalize_plan_artifact_content,
+    normalize_content=_normalize_plan_artifact_content,
     validate_document=_document_warnings,
     validate_text=detect_not_a_plan,
     severity_policy=apply_plan_severity_policy,

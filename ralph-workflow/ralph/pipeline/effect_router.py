@@ -12,8 +12,8 @@ from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
 )
-from ralph.mcp.artifacts.plan import (
-    PLAN_ARTIFACT_PATH,
+from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
+from ralph.mcp.artifacts.plan._validation import (
     PlanArtifactValidationError,
     is_noop_plan,
     normalize_plan_artifact_content,
