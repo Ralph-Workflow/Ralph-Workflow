@@ -466,9 +466,9 @@ def init_sentry(user_id: str, session_id: str) -> None:
         # metadata-only breadcrumbs and metrics instead.
         enable_logs=False,
         # Disable local-variable capture on stack frames: the scrubber can
-        # only redact known prefixes (home/cwd/argv) so a local like
-        # ``inline_prompt`` could otherwise be forwarded verbatim. We want
-        # stack frames (file/line/function) but never their locals.
+        # only redact known prefixes (home/cwd/argv), so arbitrary local
+        # values could otherwise be forwarded verbatim. We want stack frames
+        # (file/line/function) but never their locals.
         include_local_variables=False,
         before_send=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         before_send_transaction=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
