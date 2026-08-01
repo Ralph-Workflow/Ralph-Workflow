@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import OrderedDict
+from collections.abc import Iterator
 from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,12 +32,18 @@ MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 #: cache files were evicted. The dedup-by-artifact_id list comprehension
 #: still runs every add, so same-id replacement is immediate (AC-10).
 _MEDIA_PRUNE_INTERVAL: int = 32
-_media_add_counter = count(1)
+_media_add_counter: Iterator[int] | int = count(1)
 
 
 def _advance_media_prune_counter() -> bool:
-    """Advance the bounded-frequency prune counter."""
-    return next(_media_add_counter) % _MEDIA_PRUNE_INTERVAL == 0
+    """Advance the injectable prune counter and report whether this is a tick."""
+    counter = _media_add_counter
+    if isinstance(counter, int):
+        next_count = counter + 1
+        object.__setattr__(sys.modules[__name__], "_media_add_counter", next_count)
+    else:
+        next_count = next(counter)
+    return next_count % _MEDIA_PRUNE_INTERVAL == 0
 
 
 

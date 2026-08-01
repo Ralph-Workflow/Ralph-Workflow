@@ -2,18 +2,15 @@
 
 Ralph Workflow skips byte-identical full-file rewrites on stable paths to
 reduce filesystem mutations and macOS fseventsd load without changing the
-post-condition that each file contains the requested content. This audit
-locks that consolidation across a curated set of persistence modules: every
-allowlisted module must exist and must not call a raw ``write_text`` method.
+post-condition that each file contains the requested content. Package-wide
+fail-closed enforcement lives in ``audit_filesystem_write_consolidation``;
+this focused audit remains as preservation coverage for the known hot paths.
+Every listed module must exist and must not call a raw ``write_text`` method.
 Those writes must route through ``write_text_if_changed`` or
-``atomic_write_text_if_changed`` instead.
-
-The allowlist intentionally excludes writers whose payload includes a fresh
-``created_at`` or ``updated_at`` timestamp because those bytes are expected to
-change on every operation. It also excludes UUID-keyed and one-time paths,
-where an identity comparison cannot avoid a repeat mutation. The curated
-scope prevents false positives for legitimate append, temporary-file, and
-replace operations outside the stable-path consolidation.
+``atomic_write_text_if_changed`` instead. A timestamped, one-time, append, or
+transient writer is not silently exempted by this focused check: the
+package-wide audit requires it to use the shared primitive or carry a local
+``# filesystem-write-ok: <reason>`` exception.
 
 The audit uses only ``ast`` and ``Path.read_text`` over source files. It does
 not start subprocesses, sleep, access the network, or mutate production data.
@@ -182,9 +179,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"  {violation}")
         print()
         print(
-            "Fix the drift: stable full-file persistence writes in allowlisted modules "
-            "must use write_text_if_changed or atomic_write_text_if_changed so "
-            "byte-identical content does not reinflate macOS fseventsd activity."
+            "Fix the drift: stable full-file persistence writes in these preserved hot paths "
+            "must use write_text_if_changed or atomic_write_text_if_changed. For every "
+            "other production writer, run audit_filesystem_write_consolidation: it "
+            "enforces the same rule package-wide and requires local exceptions."
         )
         return 1
 

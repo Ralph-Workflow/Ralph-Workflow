@@ -95,6 +95,12 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify OpenCode output for idle-watchdog activity."""
+        # Error envelopes take precedence over generic tool/step lifecycle
+        # frames: a failing tool must feed the repeated-error breaker rather
+        # than reset it as ordinary activity.
+        error_signal = _error_output_signal(line)
+        if error_signal is not None:
+            return error_signal
         frame_signal = _opencode_step_frame_signal(line)
         if frame_signal is not None:
             return frame_signal
@@ -104,9 +110,6 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         progress_signal = _progress_report_signal(line)
         if progress_signal is not None:
             return progress_signal
-        error_signal = _error_output_signal(line)
-        if error_signal is not None:
-            return error_signal
         return _non_blank_output_signal(line)
 
     def observe_line(self, line: str) -> None:

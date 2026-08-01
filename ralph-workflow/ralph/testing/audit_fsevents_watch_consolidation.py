@@ -9,10 +9,11 @@ Ralph Workflow commits to scheduling **exactly one** recursive root
 watch from ``WorkspaceMonitor.start()`` so the fseventsd footprint
 is the minimal single recursive stream.
 
-This audit locks that consolidation structurally. It parses
-``ralph/agents/invoke/_workspace.py`` with the ``ast`` module only
-(no subprocess, no ``time.sleep``, no real file I/O outside reading
-source) and enforces four invariants:
+This audit locks that consolidation structurally. It walks every production
+module under ``ralph/`` and permits ``observer.schedule(...)`` only in the
+canonical ``WorkspaceMonitor.start()`` owner. It then parses that owner with
+the ``ast`` module only (no subprocess, no ``time.sleep``, no real file I/O
+outside reading source) and enforces five invariants:
 
   1. **INV-1 (count)** -- the module contains exactly one
      ``ast.Call`` whose function is an ``ast.Attribute`` named
@@ -39,6 +40,10 @@ source) and enforces four invariants:
      under ``package_root``.  Missing raises
      ``missing_workspace_module`` because the file's absence is
      itself drift.
+  5. **INV-5 (package-wide ownership)** -- every production module other
+     than the canonical owner is scanned for ``.schedule(...)`` calls.
+     Any such call raises ``unowned_watch_schedule``. New production modules
+     therefore fail closed rather than silently adding an overlapping watch.
 
 Usage::
 
@@ -73,6 +78,7 @@ _WORKSPACE_MONITOR_MODULE: str = "agents/invoke/_workspace.py"
 #: cannot schedule a watchdog watch, so the expensive AST pass is
 #: skipped for them.
 _SCHEDULE_CALL_MARKER: str = ".schedule("
+_EXCLUDED_DIRECTORY_NAMES: frozenset[str] = frozenset({"__pycache__", "testing"})
 
 
 @dataclass(frozen=True)
@@ -347,15 +353,75 @@ def _wrong_enclosing_function_violation(
     )
 
 
+def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolation]:
+    """Reject watch schedules outside the lifecycle-owned monitor module.
+
+    Test/audit modules and bytecode caches are excluded; every other Python
+    module is production code and is automatically in scope. Unreadable or
+    unparsable source fails closed because the watch audit cannot prove it
+    contains no raw schedule call.
+    """
+    violations: list[FseventsWatchViolation] = []
+    for module_path in sorted(package_root.rglob("*.py")):
+        rel_path = module_path.relative_to(package_root).as_posix()
+        if rel_path == _WORKSPACE_MONITOR_MODULE:
+            continue
+        if any(part in _EXCLUDED_DIRECTORY_NAMES for part in module_path.parts):
+            continue
+        try:
+            source = module_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            violations.append(
+                FseventsWatchViolation(
+                    kind="unreadable_production_module",
+                    file_path=rel_path,
+                    line=0,
+                    message=(
+                        "production module could not be read; restore readable source so "
+                        "the package-wide watch ownership audit can fail closed"
+                    ),
+                )
+            )
+            continue
+        try:
+            tree = ast.parse(source, filename=str(module_path))
+        except (SyntaxError, ValueError) as exc:
+            violations.append(
+                FseventsWatchViolation(
+                    kind="invalid_production_module",
+                    file_path=rel_path,
+                    line=exc.lineno if isinstance(exc, SyntaxError) and exc.lineno else 0,
+                    message=(
+                        "production module could not be parsed; restore valid source so "
+                        "the package-wide watch ownership audit can fail closed"
+                    ),
+                )
+            )
+            continue
+        violations.extend(
+            FseventsWatchViolation(
+                kind="unowned_watch_schedule",
+                file_path=rel_path,
+                line=call.lineno,
+                message=(
+                    "observer.schedule(...) is outside the lifecycle-owned "
+                    "WorkspaceMonitor.start(); route workspace events through the "
+                    "canonical monitor instead of adding an overlapping watch"
+                ),
+            )
+            for call in _find_schedule_calls(tree)
+        )
+    return violations
+
+
 def audit_fsevents_watch_consolidation(
     package_root: Path,
 ) -> list[FseventsWatchViolation]:
     """Walk the production source tree and return all violations.
 
-    Parses only the single canonical ``_workspace.py`` module and
-    enforces INV-1..INV-4.  Returns an empty list when ``package_root``
-    is not a directory (fail-closed: the audit does not silently
-    pass on a missing root).
+    Scans every production module for raw schedules and enforces INV-1..INV-5
+    on the canonical ``_workspace.py`` owner. Returns an empty list when
+    ``package_root`` is not a directory (the CLI reports a bad root separately).
     """
     if not package_root.is_dir():
         return []
@@ -395,7 +461,7 @@ def audit_fsevents_watch_consolidation(
             )
         ]
 
-    return _check_module(module_path, rel_path, source)
+    return _check_module(module_path, rel_path, source) + _unowned_schedule_violations(package_root)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

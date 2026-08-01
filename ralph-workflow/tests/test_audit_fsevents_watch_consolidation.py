@@ -63,6 +63,7 @@ def _write_fake_package(
     return package_root
 
 
+@pytest.mark.timeout_seconds(10)
 def test_audit_passes_real_production_tree() -> None:
     """The audit returns zero violations against the committed ralph/ tree.
 
@@ -193,6 +194,39 @@ def test_audit_flags_schedule_call_inside_for_loop_in_start(tmp_path: Path) -> N
         f"expected dynamic_watch_schedule violation for for-loop-inside-start;"
         f" got kinds: {sorted(kinds)}"
     )
+
+
+def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) -> None:
+    """A watch added outside the lifecycle owner fails package-wide by default.
+
+    The canonical monitor may own the one recursive workspace watch. A new
+    production module must not independently arm another observer because it
+    duplicates the workspace event surface (P1).
+    """
+    package_root: Path = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    extra_module = package_root / "pipeline" / "extra_watch.py"
+    extra_module.parent.mkdir(parents=True)
+    extra_module.write_text(
+        "def start(observer, handler, root):\n"
+        "    observer.schedule(handler, root, recursive=True)\n",
+        encoding="utf-8",
+    )
+
+    violations: list[audit.FseventsWatchViolation] = (
+        audit.audit_fsevents_watch_consolidation(package_root)
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "unowned_watch_schedule"
+    assert violations[0].file_path == "pipeline/extra_watch.py"
+    assert "WorkspaceMonitor.start" in violations[0].message
 
 
 def test_audit_flags_missing_workspace_module(tmp_path: Path) -> None:
