@@ -88,6 +88,29 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
         assert "\r" not in rendered
 
 
+@pytest.mark.parametrize(
+    ("scene_name", "required_carriers"),
+    (
+        ("first_screen", ("RUN OPEN", "phase=planning", "project=/work/cafe\u0301")),
+        ("clean_run", ("phase=development", "agent=pi", "PASS success")),
+        ("failure", ("FAIL error", "phase=review", "cause=tests failed")),
+        ("burst", ("agent=codex", "REPEATED count=3", "recovery=.agent/raw/run.log")),
+        ("idle_stretch", ("WAIT pending", "elapsed=02:03", "state=waiting")),
+        ("closing_screen", ("RUN COMPLETE", "outcome=success", "elapsed=02:03")),
+    ),
+)
+def test_generated_scene_renderer_preserves_scene_specific_cold_read_carriers(
+    scene_name: str, required_carriers: tuple[str, ...]
+) -> None:
+    rendered = render_scene(
+        scene_name,
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+    for carrier in required_carriers:
+        assert carrier in rendered
+
+
 def test_generated_scene_frames_are_rationed_to_identity_surfaces() -> None:
     framed = {surface.name for surface in SURFACE_CATALOG if surface.frame_entitled}
     assert framed == {

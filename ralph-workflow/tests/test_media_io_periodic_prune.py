@@ -28,6 +28,7 @@ fixtures as load-bearing for the regression assertion.
 from __future__ import annotations
 
 import json
+from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -142,7 +143,7 @@ def test_prune_gated_skips_stat_pass_between_ticks(
     """
     # Reset the module-level counter so the test starts at a known state
     # (earlier tests in the suite may have incremented it).
-    _media_io_mod._media_add_counter = 0
+    _media_io_mod._media_add_counter = count(1)
 
     real_workspace = FsWorkspace(tmp_path)
 

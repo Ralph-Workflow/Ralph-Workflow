@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import StringIO
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 from rich.syntax import Syntax
 from rich.text import Text
 
+from ralph.display.surface_catalog import SURFACE_CATALOG, SurfaceSpec
 from ralph.display.theme import (
-    SYNTAX_BACKGROUND_TRANSPARENT,
     make_console,
     pick_status_styles,
     syntax_theme_for_background,
@@ -27,18 +30,6 @@ FULL_LAYOUT_WIDTH: Final[int] = 80
 GRACEFUL_WIDTH_FLOOR: Final[int] = 40
 GRACEFUL_HEIGHT_FLOOR: Final[int] = 12
 INDENT_UNIT: Final[str] = "  "
-
-
-@dataclass(frozen=True)
-class _SurfaceSpec:
-    """One user-visible display surface and its structural entitlement."""
-
-    name: str
-    owner: str
-    frame_entitled: bool = False
-
-
-SurfaceSpec = _SurfaceSpec
 
 
 @dataclass(frozen=True)
@@ -82,30 +73,6 @@ SCENE_NAMES: Final[tuple[str, ...]] = (
     "closing_screen",
 )
 
-SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
-    SurfaceSpec("welcome", "parallel_display", True),
-    SurfaceSpec("first_run", "parallel_display", True),
-    SurfaceSpec("run_open", "parallel_display", True),
-    SurfaceSpec("phase_open", "parallel_display"),
-    SurfaceSpec("phase_close", "parallel_display"),
-    SurfaceSpec("phase_transition", "parallel_display"),
-    SurfaceSpec("agent_text", "agent_event_renderer"),
-    SurfaceSpec("reasoning", "agent_event_renderer"),
-    SurfaceSpec("tool_call", "agent_event_renderer"),
-    SurfaceSpec("tool_result", "agent_event_renderer"),
-    SurfaceSpec("tool_error", "agent_event_renderer"),
-    SurfaceSpec("raw_warning_status", "parallel_display"),
-    SurfaceSpec("table", "parallel_display"),
-    SurfaceSpec("panel", "parallel_display"),
-    SurfaceSpec("artifact", "parallel_display"),
-    SurfaceSpec("syntax_preview", "edit_preview"),
-    SurfaceSpec("diff_preview", "edit_preview"),
-    SurfaceSpec("elision", "content_condenser"),
-    SurfaceSpec("status_bar", "status_bar"),
-    SurfaceSpec("completion_success", "completion_summary", True),
-    SurfaceSpec("completion_failure", "completion_summary", True),
-)
-
 
 def render_scene(
     scene_name: str,
@@ -132,23 +99,46 @@ def render_scene(
         height=case.height,
     )
     styles = pick_status_styles(terminal_bg_is_light)
-    console.print(Text(f"[{scene_name}] ", style=styles["info"][0]), end="")
-    for state in ("running", "pending", "warning", "success", "error"):
-        style, glyph, label = styles[state]
-        marker = glyph if case.glyphs == "unicode" else label
-        console.print(Text(f"{marker} {label} ", style=style), end="")
-    console.print(Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=styles["info"][0]))
+    console.print(Text(f"SCENE {scene_name}", style=styles["info"][0]))
+    _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs)
     console.print(
         Syntax(
-            "def café(value: str) -> int:\\n    return len(value)",
+            "def cafe\u0301(value: str) -> int:\\n    return len(value)",
             "python",
             theme=syntax_theme_for_background(terminal_bg_is_light),
             line_numbers=True,
             word_wrap=True,
-            background_color=SYNTAX_BACKGROUND_TRANSPARENT,
         )
     )
     return stream.getvalue()
+
+
+def _render_scene_narrative(
+    console: Console,
+    scene_name: str,
+    styles: dict[str, tuple[str, str, str]],
+    *,
+    glyphs: GlyphMode,
+) -> None:
+    """Render scene-specific greppable carriers through the canonical palette."""
+    def marker(state: str) -> str:
+        return styles[state][1] if glyphs == "unicode" else styles[state][2]
+    if scene_name == "first_screen":
+        console.print(Text(f"{marker('running')} RUN OPEN phase=planning project=/work/cafe\u0301", style=styles["running"][0]))
+    elif scene_name == "clean_run":
+        console.print(Text(f"{marker('running')} phase=development agent=pi", style=styles["running"][0]))
+        console.print(Text(f"{marker('success')} PASS success", style=styles["success"][0]))
+    elif scene_name == "failure":
+        console.print(Text(f"{marker('error')} FAIL error phase=review cause=tests failed", style=styles["error"][0]))
+        console.print(Text(f"{marker('warning')} WARN raw=assertion output retained", style=styles["warning"][0]))
+    elif scene_name == "burst":
+        console.print(Text(f"{marker('running')} agent=codex tool=edit_file", style=styles["running"][0]))
+        console.print(Text("REPEATED count=3 bytes=96 recovery=.agent/raw/run.log", style=styles["info"][0]))
+    elif scene_name == "idle_stretch":
+        console.print(Text(f"{marker('pending')} WAIT pending state=waiting elapsed=02:03", style=styles["pending"][0]))
+    else:
+        console.print(Text(f"{marker('success')} RUN COMPLETE outcome=success elapsed=02:03", style=styles["success"][0]))
+    console.print(Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=styles["info"][0]))
 
 
 def support_matrix() -> tuple[SupportCase, ...]:

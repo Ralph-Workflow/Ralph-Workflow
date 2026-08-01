@@ -68,6 +68,7 @@ def _parse(path: pathlib.Path) -> ast.AST:
 # function body so the per-call cost is the regex match, not the
 # regex compile.
 _DEF_NAME_RE = re.compile(r"(?:async\s+def|def)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+_DISPLAY_CONTEXT_CONSTRUCTION_RE = re.compile(r"^\s*DisplayContext\s*\(")
 
 
 @cache
@@ -991,7 +992,7 @@ class TestNoModuleLevelDisplayContext:
             if any(s in str(rel) for s in excluded_substrs):
                 continue
             for lineno, line in enumerate(_read(path).splitlines(), start=1):
-                if re.search(r"^\s*DisplayContext\s*\(", line):
+                if "DisplayContext" in line and _DISPLAY_CONTEXT_CONSTRUCTION_RE.search(line):
                     violations.append(f"{rel}:{lineno}:{line.rstrip()}")
         assert not violations, "Module-level DisplayContext(...) construction found:\n" + "\n".join(
             violations

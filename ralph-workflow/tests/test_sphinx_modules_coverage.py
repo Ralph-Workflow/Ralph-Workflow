@@ -35,6 +35,7 @@ _EXCLUDED: dict[str, str] = {
     "display.phase_exit_model": "internal display model, not public API",
     "display.pipeline_snapshot": "internal display type, not public API",
     "display.plan_summary": "internal display type, not public API",
+    "display.surface_catalog": "internal display metadata, not public API",
     "display.worker_snapshot": "internal display type, not public API",
     "exit_pause.exit_outcome": "internal exit type, not public API",
     "exit_pause.pause_on_exit_mode": "internal exit type, not public API",

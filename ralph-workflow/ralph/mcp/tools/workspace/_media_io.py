@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import OrderedDict
+from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
 
