@@ -16,6 +16,7 @@ from ralph.display.surface_catalog import SURFACE_CATALOG, SurfaceSpec
 from ralph.display.theme import (
     make_console,
     pick_status_styles,
+    preview_background_for_background,
     syntax_theme_for_background,
 )
 
@@ -105,11 +106,12 @@ def render_scene(
     _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs)
     console.print(
         Syntax(
-            "def cafe\u0301(value: str) -> int:\\n    return len(value)",
+            "def cafe\u0301(value: str) -> int:\n    return len(value)",
             "python",
             theme=syntax_theme_for_background(terminal_bg_is_light),
             line_numbers=True,
             word_wrap=True,
+            background_color=preview_background_for_background(terminal_bg_is_light),
         )
     )
     return stream.getvalue()

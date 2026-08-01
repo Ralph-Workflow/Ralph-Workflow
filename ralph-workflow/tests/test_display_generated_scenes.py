@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from io import StringIO
 
 import pytest
@@ -19,6 +20,7 @@ from ralph.display.scene_catalog import (
     render_scene,
     support_matrix,
 )
+from ralph.display.theme import preview_background_for_background
 
 
 def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> None:
@@ -83,6 +85,28 @@ def test_generated_scene_renderer_requires_the_resolved_case_background() -> Non
         terminal_bg_is_light=False,
     )
     assert "PASS success" in rendered
+
+
+@pytest.mark.parametrize(("background", "rgb"), ((False, "16;20;23"), (True, "247;249;251")))
+def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
+    background: bool, rgb: str
+) -> None:
+    """S-4: generated scenes render every preview row on the declared owned fill."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("light" if background else "dark", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=background,
+    )
+
+    preview_fill = f"\x1b[48;2;{rgb}m"
+    visible = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
+
+    assert preview_background_for_background(background) != "default"
+    # Both source rows own the same complete surface. A partial syntax-token
+    # fill would emit fewer than two row fills and leave the gutter/row band ragged.
+    assert rendered.count(preview_fill) >= 2
+    assert "def " in visible
+    assert "return len(value)" in visible
 
 
 def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None:
