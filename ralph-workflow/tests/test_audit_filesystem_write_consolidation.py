@@ -99,6 +99,57 @@ def test_ignores_guarded_write_via_canonical_helper(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_media_cache_regression_identical_bytes_skip_the_persistence_boundary() -> None:
+    """S-3: replaying one media cache payload does not physically rewrite it."""
+    from ralph.mcp.tools.workspace._media_io import _write_durable_media_cache
+
+    class RecordingBackend:
+        def __init__(self) -> None:
+            self.files: dict[Path, bytes] = {}
+            self.writes: list[tuple[Path, bytes]] = []
+            self.created_directories: list[Path] = []
+
+        def read_bytes(self, path: Path) -> bytes:
+            return self.files[path]
+
+        def write_bytes(self, path: Path, content: bytes) -> None:
+            self.writes.append((path, content))
+            self.files[path] = content
+
+        def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+            del parents, exist_ok
+            self.created_directories.append(path)
+
+    class CacheWorkspace:
+        def absolute_path(self, path: str) -> str:
+            return f"/virtual-workspace/{path}"
+
+    def no_cache_prune(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    backend = RecordingBackend()
+    workspace = CacheWorkspace()
+
+    first = _write_durable_media_cache(
+        workspace,
+        "same-artifact",
+        b"payload",
+        backend=backend,
+        cache_pruner=no_cache_prune,
+    )
+    second = _write_durable_media_cache(
+        workspace,
+        "same-artifact",
+        b"payload",
+        backend=backend,
+        cache_pruner=no_cache_prune,
+    )
+
+    assert first == second
+    assert backend.writes == [(Path("/virtual-workspace") / first, b"payload")]
+    assert backend.created_directories == [Path("/virtual-workspace") / ".agent/tmp/media"]
+
+
 def test_ignores_byte_write_via_canonical_helper(tmp_path: Path) -> None:
     """S-3: the audited byte-specific persistence boundary is available to new writers."""
     module_rel = "alpha/example.py"

@@ -1587,11 +1587,9 @@ class ParallelDisplay:
             # embedded-newline string and only the first embedded
             # line carried the prefix).
             header = f"⋯ {display_tag} · {start_str} → {end_str} · {duration_str}"
-            # The renderer adds the [tag][unit] carrier exactly once. Keep the
-            # block header and joined passage in that same logical entry rather
-            # than independently rendering a metadata row and content row.
-            # This preserves a single greppable close record for live consumers.
-            rows = [f"{header}\n{visible}"]  # fix(filesystem): enforce observer ownership and preserve close records
+            # Output metadata and bodies retain independent carriers for cold
+            # transcript searches. Reasoning remains one logical close entry.
+            rows = [header, visible] if display_tag == "output" else [f"{header}\n{visible}"]
             for row in rows:
                 self._console.print(
                     self._activity_text(

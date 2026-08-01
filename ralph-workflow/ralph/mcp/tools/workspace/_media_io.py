@@ -9,6 +9,8 @@ from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_bytes_if_changed
 from ralph.mcp.tools._cache_retention import prune_cache_files
 from ralph.prompts.debug_dump import (
     media_cache_artifact_path,
@@ -17,7 +19,20 @@ from ralph.prompts.debug_dump import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Protocol
+
+    from ralph.mcp.tools._cache_retention import CachePruneResult
     from ralph.workspace import Workspace
+
+    class CachePruner(Protocol):
+        def __call__(
+            self,
+            files: Iterable[Path],
+            *,
+            max_total_bytes: int,
+            keep_paths: Iterable[Path] = (),
+        ) -> CachePruneResult: ...
 
 _MEDIA_SESSION_SCHEMA_VERSION = "2"
 MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
@@ -88,6 +103,9 @@ def _write_durable_media_cache(
     workspace: Workspace,
     artifact_id: str,
     raw_bytes: bytes,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    cache_pruner: CachePruner = prune_cache_files,
 ) -> str:
     """Write raw bytes to the durable media cache and return the workspace-relative path."""
     if len(raw_bytes) > MEDIA_CACHE_MAX_TOTAL_BYTES:
@@ -95,10 +113,13 @@ def _write_durable_media_cache(
     cache_path = media_cache_artifact_path(artifact_id)
     try:
         abs_path = Path(workspace.absolute_path(cache_path))
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-        # filesystem-write-ok: artifact_id-keyed media cache (each call uses a distinct artifact_id path)
-        abs_path.write_bytes(raw_bytes)
-        prune_cache_files(
+        write_bytes_if_changed(
+            backend,
+            abs_path,
+            raw_bytes,
+            prepare_write=lambda: backend.mkdir(abs_path.parent, parents=True, exist_ok=True),
+        )
+        cache_pruner(
             abs_path.parent.glob("*"),
             max_total_bytes=MEDIA_CACHE_MAX_TOTAL_BYTES,
             keep_paths=(abs_path,),
