@@ -1768,6 +1768,13 @@ class ParallelDisplay:
             # the ``[output][<unit>]`` row count remains exactly one
             # (the pre-fix split-prints emitted two chrome rows; the
             # pre-fix single-print + ``crop=True`` clipped the body).
+            # This is the wt-028-display P1 fix for "preserve
+            # phase-close markers on folded stream output" (commit
+            # 52781b683): the trailer-aware ``crop=not is_trailer``
+            # keeps the ``(truncated, ... B, see .agent/raw/<unit>.log)``
+            # recovery marker visible on width-bounded consoles so a
+            # cold-transcript grep that matches the marker still
+            # finds it on the folded row.
             hang_prefix = self._close_hang_prefix(timestamp, display_tag, rendered_unit_id)
             wrapped_rows = self._wrap_close_body(
                 header,
