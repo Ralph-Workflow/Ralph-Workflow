@@ -143,6 +143,27 @@ def test_render_status_bar_regression_wide_unicode_respects_terminal_cells() -> 
     assert cell_len(rendered.plain) <= ctx.width
 
 
+def test_render_status_bar_regression_wide_custom_outer_label_uses_cell_width() -> None:
+    """S-5: a wide custom cycle label fits by terminal cells without clipping its cap."""
+    model = StatusBarModel(
+        workspace_root="/work/project/terminal-tail",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+        inner_analysis=1,
+        inner_analysis_cap=3,
+        agent_name="pi",
+        outer_label="界界界界界界界界界界",
+    )
+    ctx = _make_display_context(width=120)
+
+    rendered = render_status_bar(model, ctx, home=None)
+
+    assert "界界界界界界界界界界 2/3" in rendered.plain
+    assert cell_len(rendered.plain) <= ctx.width
+
+
 def test_render_status_bar_shows_integration_alert() -> None:
     """An unresolved integration conflict renders a leading alert segment."""
     model = StatusBarModel(

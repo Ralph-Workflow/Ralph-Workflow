@@ -840,6 +840,11 @@ def _field_overhead_and_label_budgets(
     )
 
 
+def _pad_to_cells(text: str, width: int) -> str:
+    """Pad ``text`` to an exact terminal-cell width without misplacing wide glyphs."""
+    return text + " " * max(0, width - cell_len(text))
+
+
 def _format_dev_label(
     n: int,
     cap: int | None,
@@ -877,8 +882,8 @@ def _format_dev_label(
             # caller's noun. Safe because format_dev_cycle produces
             # ``Cycle N/cap`` / ``Cycle #N`` -- both start with 'Cycle '.
             rendered = f"{outer_label} {label.split(' ', 1)[1]}"
-            return rendered[:max_chars].ljust(max_chars)
-        return label.ljust(max_chars)
+            return _pad_to_cells(_tail_truncate(rendered, max_chars), max_chars)
+        return _pad_to_cells(label, max_chars)
     if max_chars >= _OUTER_DEV_LABEL_COMPACT_MAX_CHARS:
         label = format_dev_cycle_compact(n, cap)
         if outer_label:
@@ -889,14 +894,14 @@ def _format_dev_label(
             # tight 4-char budget).
             initial = outer_label[:1]
             rendered = f"{initial}{label[1:]}"
-            return rendered[:max_chars].ljust(max_chars)
-        return label.ljust(max_chars)
+            return _pad_to_cells(_tail_truncate(rendered, max_chars), max_chars)
+        return _pad_to_cells(label, max_chars)
     # Minimal form has no prefix to swap -- at this tight budget the
     # canonical cap-bearing string must be preserved so the operator
     # still sees ``N/cap``; truncate defensively in case ``max_chars``
     # is below the minimal form's width.
     minimal = format_dev_cycle_minimal(n, cap)
-    return minimal[:max_chars].ljust(max_chars)
+    return _pad_to_cells(_tail_truncate(minimal, max_chars), max_chars)
 
 
 def _outer_label_canonical_chars(outer_label: str | None) -> int:
@@ -920,7 +925,7 @@ def _outer_label_canonical_chars(outer_label: str | None) -> int:
     suffix_max = _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS
     if outer_label is None:
         return _OUTER_DEV_LABEL_MAX_CHARS
-    return len(outer_label) + 1 + suffix_max
+    return cell_len(_safe_single_line(outer_label)) + 1 + suffix_max
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -1221,12 +1226,13 @@ def render_status_bar(
 
     has_outer_dev = model.outer_dev_iteration is not None
     has_inner_analysis = model.inner_analysis is not None
+    outer_label = _safe_single_line(model.outer_label) if model.outer_label else None
     budgets = _field_overhead_and_label_budgets(
         ctx,
         has_outer_dev=has_outer_dev,
         has_inner_analysis=has_inner_analysis,
         has_agent=model.agent_name is not None,
-        outer_label_canonical_chars=_outer_label_canonical_chars(model.outer_label),
+        outer_label_canonical_chars=_outer_label_canonical_chars(outer_label),
     )
 
     # wt-028-display S-2 (AC-01): elapsed NO LONGER participates in
@@ -1319,7 +1325,7 @@ def render_status_bar(
                 model.outer_dev_iteration or 0,
                 model.outer_dev_cap,
                 budgets.outer_dev_label_max_chars,
-                outer_label=model.outer_label,
+                outer_label=outer_label,
             )
         )
     if render_inner_analysis:
