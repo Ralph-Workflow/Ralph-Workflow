@@ -301,8 +301,8 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # The profile uses up to 32 shard processes where runner capacity permits,
-    # while retaining a 16-process floor for small runners.
+    # Regression: resource contention must not revive the failed 32-shard
+    # profile; auto resolution uses the measured safe 16-shard profile.
     for cores, expected in (
         (4, "16"),
         (5, "16"),
@@ -311,9 +311,9 @@ def test_auto_worker_count_caps_concurrency_at_the_verified_safe_profile(
         (8, "16"),
         (12, "16"),
         (16, "16"),
-        (20, "20"),
-        (21, "21"),
-        (64, "32"),
+        (20, "16"),
+        (21, "16"),
+        (64, "16"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected

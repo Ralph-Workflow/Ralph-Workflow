@@ -3943,24 +3943,10 @@ ralph.testing.audit_fenced_artifact_examples
    :members:
    :show-inheritance:
 
-ralph.testing.audit_filesystem_write_consolidation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_write_consolidation
-   :members:
-   :show-inheritance:
-
 ralph.testing.audit_idempotent_write_adoption
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_idempotent_write_adoption
-   :members:
-   :show-inheritance:
-
-ralph.testing.audit_filesystem_write_consolidation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_write_consolidation
    :members:
    :show-inheritance:
 

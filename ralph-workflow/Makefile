@@ -1,7 +1,8 @@
 .PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
-# Default: `auto` uses one worker per core, capped at sixteen shards. The 1.0 s
+#
+# Default: `auto` resolves to the measured safe 16-shard profile. The 1.0 s
 # per-test SIGALRM budget charges wall clock; higher shard counts starve
 # collection on the maintained runner. The capped profile keeps the maintained
 # suite below the immutable 60 s budget.
@@ -14,6 +15,7 @@
 # override:
 #   PYTEST_WORKERS=16 make test   # measured automatic cap
 #   PYTEST_WORKERS=2  make test
+#   PYTEST_WORKERS=16 make test   # may exceed 1s per-test under load
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
