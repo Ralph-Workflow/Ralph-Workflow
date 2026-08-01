@@ -179,6 +179,32 @@ def test_install_stable_release_pins_requested_version() -> None:
     ]
 
 
+def test_install_stable_release_marks_local_wheel_as_manual_build() -> None:
+    commands: list[tuple[Sequence[str], Path]] = []
+    flavors: list[tuple[Path, str]] = []
+
+    def fake_run(command: Sequence[str], *, cwd: Path) -> None:
+        commands.append((tuple(command), cwd))
+
+    install_module.install_stable_release(
+        run=fake_run,
+        uv_executable="/usr/local/bin/uv",
+        cwd=Path("/tmp/ralph-workflow"),
+        from_path=Path("/tmp/ralph-workflow/dist/ralph.whl"),
+        write_flavor=lambda path, flavor: flavors.append((path, flavor)),
+    )
+
+    assert commands == [
+        (
+            ("/usr/local/bin/uv", "tool", "install", "--force", "/tmp/ralph-workflow/dist/ralph.whl"),
+            Path("/tmp/ralph-workflow"),
+        ),
+    ]
+    assert flavors == [
+        (Path.home() / ".local/share/uv/tools/ralph-workflow", "-build"),
+    ]
+
+
 def test_install_stable_release_requires_uv() -> None:
     commands: list[tuple[Sequence[str], Path]] = []
 
@@ -255,6 +281,17 @@ def test_main_default_installs_dev_checkout(monkeypatch: pytest.MonkeyPatch) -> 
         "cwd": Path(install_module.__file__).resolve().parents[1],
         "launcher_dir": Path("/home/u/.local/bin"),
     }
+
+
+def test_write_build_flavor_changes_only_the_runtime_suffix(tmp_path: Path) -> None:
+    package_dir = tmp_path / "snapshot"
+    build_meta = package_dir / "ralph" / "_build_meta.py"
+    build_meta.parent.mkdir(parents=True)
+    build_meta.write_text('BUILD_FLAVOR: str = ""\n', encoding="utf-8")
+
+    install_module._write_build_flavor(package_dir, "-dev")
+
+    assert build_meta.read_text(encoding="utf-8") == 'BUILD_FLAVOR: str = "-dev"\n'
 
 
 def test_render_dev_launcher_runs_checkout_via_uv() -> None:
