@@ -441,6 +441,13 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
                 )
             )
             continue
+        # Most modules cannot possibly own an attribute-style ``.schedule``
+        # call or alias. Skip their AST construction: parsing every production
+        # module made this static audit exceed its 10-second test contract on
+        # the full package tree. Source without the literal cannot match either
+        # AST predicate below, while unreadable files still fail closed above.
+        if ".schedule" not in source:
+            continue
         try:
             tree = ast.parse(source, filename=str(module_path))
         except (SyntaxError, ValueError) as exc:
