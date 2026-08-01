@@ -12,18 +12,27 @@ without tests or other guardrails.
 
 ## Install
 
+From a checkout, choose the build you need:
+
 ```bash
-pipx install ralph-workflow
-ralph --version
+cd ralph-workflow
+make install       # self-contained manual snapshot; rdev --version ends in -build
+make dev           # self-contained development snapshot; rdev --version ends in -dev
+make stable        # published release; ralph --version has no local suffix
 ```
 
-`pipx` keeps the install isolated from your other Python projects; the
-post-condition is that `ralph --version` prints the installed package
-version. `pip install ralph-workflow` also works.
+`make install` and `make dev` copy the checkout and its bundled templates to
+their own snapshot, so `rdev` does not depend on the cloned repository. Before
+any install changes files, Ralph Workflow detects an existing global `ralph`:
+in a terminal, choose continue, remove a pipx/uv-tool install, or abort.
+Non-interactive conflicts abort safely.
+
+Use `pipx install ralph-workflow` or `pip install ralph-workflow` only when the
+Makefile workflow is unavailable.
 
 ## First run
 
-1. Install Ralph Workflow (`pipx` or `pip`, above).
+1. Install Ralph Workflow with the build that fits your workflow (above).
 2. In your project: `ralph --init` — creates user-global config and a
    starter `PROMPT.md`; it does not create `.agent/`. Advanced project-local
    overrides are explicit opt-in via `ralph --init-local-config` (alias:
