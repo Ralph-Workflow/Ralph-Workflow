@@ -208,8 +208,13 @@ def _drive_production_scene(
             )
         )
     elif scene_name == "failure":
-        display.emit_activity_line("reviewer", "error", "tests failed: assertion output retained")
-        display.emit_warn_line("reviewer", "warning", "raw machine detail is retained in the transcript")
+        raw_machine_detail = "tests failed: assertion output retained; " + "trace-detail " * 48
+        display.emit_activity_line("reviewer", "error", raw_machine_detail)
+        display.emit_warn_line(
+            "reviewer",
+            "warning",
+            "raw machine detail is retained in .agent/raw/reviewer.log",
+        )
         display.emit_completion_summary_panel(
             _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
         )

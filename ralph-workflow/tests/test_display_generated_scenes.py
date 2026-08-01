@@ -173,7 +173,10 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
     (
         ("first_screen", ("Ralph Workflow", "[run-start]", "workspace=/work/cafe\u0301")),
         ("clean_run", ("Development", "[output][pi]", "phase=development")),
-        ("failure", ("[error][reviewer]", "tests failed", "Pipeline Failed")),
+        (
+            "failure",
+            ("[error][reviewer]", "tests failed", "Pipeline Failed", ".agent/raw/reviewer.log"),
+        ),
         ("burst", ("[call][codex]", "[result][codex]", "edit_file")),
         ("idle_stretch", ("WAIT", "Development", "2m03s")),
         ("closing_screen", ("Pipeline Complete", "agent_calls=3", "[run-completion]")),
