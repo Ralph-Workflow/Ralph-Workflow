@@ -216,8 +216,18 @@ def _check_module(
     """
     try:
         tree: ast.Module = ast.parse(source, filename=str(module_path))
-    except (SyntaxError, ValueError):
-        return []
+    except (SyntaxError, ValueError) as exc:
+        return [
+            FseventsWatchViolation(
+                kind="invalid_workspace_module",
+                file_path=rel_path,
+                line=exc.lineno if isinstance(exc, SyntaxError) and exc.lineno else 0,
+                message=(
+                    "canonical workspace monitor source could not be parsed; restore valid "
+                    "source so the package-wide watch ownership audit can fail closed"
+                ),
+            )
+        ]
 
     schedule_calls: list[ast.Call] = _find_schedule_calls(tree)
     invariants_violations: list[FseventsWatchViolation] = _check_schedule_call_invariants(
@@ -445,7 +455,17 @@ def audit_fsevents_watch_consolidation(
     try:
         source: str = module_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return []
+        return [
+            FseventsWatchViolation(
+                kind="unreadable_workspace_module",
+                file_path=rel_path,
+                line=0,
+                message=(
+                    "canonical workspace monitor source could not be read; restore readable "
+                    "source so the package-wide watch ownership audit can fail closed"
+                ),
+            )
+        ]
 
     if _SCHEDULE_CALL_MARKER not in source:
         return [

@@ -31,12 +31,40 @@ MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 #: cache files were evicted. The dedup-by-artifact_id list comprehension
 #: still runs every add, so same-id replacement is immediate (AC-10).
 _MEDIA_PRUNE_INTERVAL: int = 32
-_media_add_counter: Iterator[int] = count(1)
+
+
+class _MediaPruneCounter:
+    """Own the bounded periodic-prune counter without mutable module globals."""
+
+    def __init__(self, counter: Iterator[int] | int | None = None) -> None:
+        self._counter = count(1) if counter is None else counter
+
+    def advance(self) -> bool:
+        """Advance the injectable counter and report whether this is a prune tick."""
+        counter = self._counter
+        if isinstance(counter, int):
+            next_count = counter + 1
+            self._counter = next_count
+        else:
+            next_count = next(counter)
+        return next_count % _MEDIA_PRUNE_INTERVAL == 0
+
+    def reset(self, counter: Iterator[int] | int | None = None) -> None:
+        """Reset the test-injectable counter to a deterministic starting point."""
+        self._counter = count(1) if counter is None else counter
+
+
+_media_prune_counter = _MediaPruneCounter()
 
 
 def _advance_media_prune_counter() -> bool:
-    """Advance the injectable prune counter and report whether this is a tick."""
-    return next(_media_add_counter) % _MEDIA_PRUNE_INTERVAL == 0
+    """Advance the bounded media prune counter and report whether this is a tick."""
+    return _media_prune_counter.advance()
+
+
+def _reset_media_prune_counter(counter: Iterator[int] | int | None = None) -> None:
+    """Reset the injectable prune counter for deterministic tests."""
+    _media_prune_counter.reset(counter)
 
 
 def _media_session_identity(entry: dict[str, str]) -> str:

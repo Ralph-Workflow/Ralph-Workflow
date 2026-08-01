@@ -229,6 +229,21 @@ def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) 
     assert "WorkspaceMonitor.start" in violations[0].message
 
 
+def test_audit_flags_invalid_workspace_module(tmp_path: Path) -> None:
+    """An unparsable canonical owner fails closed instead of silently passing."""
+    package_root: Path = _write_fake_package(
+        tmp_path,
+        workspace_body="class WorkspaceMonitor:\n    def start(self) -> None:\n",
+    )
+
+    violations = audit.audit_fsevents_watch_consolidation(package_root)
+
+    assert len(violations) == 1
+    assert violations[0].kind == "invalid_workspace_module"
+    assert violations[0].file_path == "agents/invoke/_workspace.py"
+    assert "fail closed" in violations[0].message
+
+
 def test_audit_flags_missing_workspace_module(tmp_path: Path) -> None:
     """A package root WITHOUT ``agents/invoke/_workspace.py`` triggers ``missing_workspace_module``.
 

@@ -32,10 +32,10 @@ from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import ralph.mcp.tools.workspace._media_io as _media_io_mod
 from ralph.mcp.tools.workspace._media_io import (
     _MEDIA_PRUNE_INTERVAL,
     _persist_media_registry_entry,
+    _reset_media_prune_counter,
 )
 from ralph.workspace.fs import FsWorkspace
 
@@ -143,7 +143,7 @@ def test_prune_gated_skips_stat_pass_between_ticks(
     """
     # Reset the module-level counter so the test starts at a known state
     # (earlier tests in the suite may have incremented it).
-    _media_io_mod._media_add_counter = count(1)
+    _reset_media_prune_counter(count(1))
 
     real_workspace = FsWorkspace(tmp_path)
 
