@@ -106,10 +106,10 @@ _IO_ALLOWLIST: set[str] = {
     "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
-    # Documentation-source invariants inspect repository documentation and
-    # canonical production modules. Their read targets are the subjects under
-    # test, so replacing the reads with fixtures would make the regression
-    # guards meaningless; this file's callback guidance test also pins the
+    # Documentation-source and CLI callback source-sync invariants inspect
+    # repository documentation and production modules. Their read targets are
+    # the subjects under test, so fixtures or a tmp_path copy would make the
+    # regression guards meaningless; the callback guidance test also pins the
     # explicit-only local-config boundary.
     "test_documentation_command_sync",
     # AC-08 silent-skip audit that reads auto_integrate.py source to
@@ -341,11 +341,11 @@ class TestPolicyAuditor(ast.NodeVisitor):
                 f"{func_name}(...) — dynamic sleep call; inject a clock abstraction instead",
             )
 
-    def _check_io_call(self, node: ast.Call) -> None:  # noqa: PLR0911
+    def _check_io_call(self, node: ast.Call) -> None:
         """Detect real I/O operations."""
         func_name = self._get_func_name(node)
         if func_name is None:
-            # Check for Path(expr).method() pattern where receiver is a Call
+            # Check for Path(expr).method() pattern where receiver is a Call.
             if (
                 isinstance(node.func, ast.Attribute)
                 and node.func.attr in _PATH_IO_METHODS
@@ -357,36 +357,23 @@ class TestPolicyAuditor(ast.NodeVisitor):
                     "io",
                     f".{node.func.attr}() — real filesystem I/O in test; use tmp_path fixture",
                 )
-            return
-
-        # Detect open() calls (file I/O).
-        if func_name == "open":
-            # Monkeypatch presence makes open() OK — it's being faked.
-            if self._has_monkeypatch:
-                return
+        elif func_name == "open" and not self._has_monkeypatch:
             self._add_violation(
                 node,
                 "io",
                 "open() — real file I/O in test; use MemoryWorkspace, tmp_path, or monkeypatch",
             )
-            return
-
-        # Detect Path().read_text / write_text etc.
-        if any(func_name == f"Path.{m}" for m in _PATH_IO_METHODS):
-            if self._has_monkeypatch:
-                return
-            # Allow if using tmp_path (detected via string pattern).
-            if self._is_using_tmp_path():
-                return
+        elif (
+            any(func_name == f"Path.{method}" for method in _PATH_IO_METHODS)
+            and not self._has_monkeypatch
+            and not self._is_using_tmp_path()
+        ):
             self._add_violation(
                 node,
                 "io",
                 f"{func_name}() — real filesystem I/O in test; use tmp_path fixture",
             )
-            return
-
-        # Detect subprocess calls.
-        if func_name in (
+        elif func_name in (
             "subprocess.run",
             "subprocess.Popen",
             "subprocess.call",
@@ -396,19 +383,13 @@ class TestPolicyAuditor(ast.NodeVisitor):
             "asyncio.create_subprocess_shell",
             "os.system",
             "os.popen",
-        ):
-            # Allow if file is marked subprocess_e2e (excluded at file level).
-            if self._has_subprocess_e2e_marker:
-                return
+        ) and not self._has_subprocess_e2e_marker:
             self._add_violation(
                 node,
                 "io",
                 f"{func_name}() — subprocess call in test; use MockProcessExecutor",
             )
-            return
-
-        # Detect network I/O.
-        if func_name in (
+        elif func_name in (
             "socket.socket",
             "socket.create_connection",
             "urllib.request.urlopen",
@@ -416,15 +397,12 @@ class TestPolicyAuditor(ast.NodeVisitor):
             "requests.post",
             "httpx.get",
             "httpx.post",
-        ):
-            if self._has_monkeypatch:
-                return
+        ) and not self._has_monkeypatch:
             self._add_violation(
                 node,
                 "io",
                 f"{func_name}() — network I/O in test; use mock/patch at the boundary",
             )
-            return
 
     def _check_wall_clock_call(self, node: ast.Call) -> None:
         """Detect time.monotonic()/time.perf_counter() in elapsed-time loops."""
@@ -598,48 +576,21 @@ def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
     )
 
 
-def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0911
-    """Audit a single test file for policy violations.
-
-    Returns a list of violations found.
-    """
+def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:
+    """Audit a single test file for policy violations."""
     if not file_path.is_file() or file_path.suffix != ".py":
         return []
-
     try:
         source = file_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
-
-    # Skip subprocess_e2e marked files.
-    file_stem = file_path.stem
-
-    if file_stem in _SUBPROCESS_E2E_FILES:
-        return []
-
-    # Skip files in the sleep allowlist.
-    if file_stem in _SLEEP_ALLOWLIST:
-        return []
-
-    # Skip files in the I/O allowlist.
-    if file_stem in _IO_ALLOWLIST:
-        return []
-
-    # Skip files in the wall-clock allowlist (legitimate time.monotonic()/
-    # time.perf_counter() for single-point measurements, FakeClock
-    # comparison, or timing correctness assertions).
-    if file_stem in _WALL_CLOCK_ALLOWLIST:
-        return []
-
-    try:
         tree = ast.parse(source, filename=str(file_path))
-    except SyntaxError:
-        # Skip files with syntax errors — not our concern.
+    except (OSError, UnicodeDecodeError, SyntaxError):
         return []
-
+    if file_path.stem in (
+        _SUBPROCESS_E2E_FILES | _SLEEP_ALLOWLIST | _IO_ALLOWLIST | _WALL_CLOCK_ALLOWLIST
+    ):
+        return []
     auditor = TestPolicyAuditor(str(file_path), source)
     auditor.visit(tree)
-
     return auditor.violations
 
 
@@ -648,8 +599,8 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
 
     Returns (violations, files_checked).
     """
-    global _SUBPROCESS_E2E_FILES  # noqa: PLW0603
-    _SUBPROCESS_E2E_FILES = _collect_subprocess_e2e_files(tests_root)
+    _SUBPROCESS_E2E_FILES.clear()
+    _SUBPROCESS_E2E_FILES.update(_collect_subprocess_e2e_files(tests_root))
 
     all_violations: list[TestPolicyViolation] = []
     files_checked = 0

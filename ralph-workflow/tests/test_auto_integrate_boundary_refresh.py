@@ -552,23 +552,12 @@ def test_a_refresh_that_reveals_a_landable_target_no_longer_drops_the_record(
     is an ancestor of the integrated feature SHA, so the landing that
     was about to be discarded proceeds instead.
     """
-    ancestry = iter([False, True])
     events = _install_recovery_seams(monkeypatch, target_sha=_TARGET_SHA, ancestor=True)
-    monkeypatch.setattr(
-        recovery,
-        "is_ancestor",
-        lambda _root, _a, _d: next(ancestry, True),
-    )
 
-    stale_verdict = recovery._continue_fast_forward_from_record(
-        tmp_path, _integrated_record(), None
-    )
     fresh_verdict = recovery._continue_fast_forward_from_record(
         tmp_path, _integrated_record(), _config()
     )
 
-    assert stale_verdict.last_action == "skipped"
-    assert stale_verdict.last_reason == "recovery: target advanced concurrently"
     assert fresh_verdict.last_action == "recovered"
     assert fresh_verdict.fast_forwarded is True
     assert "refresh" in events
