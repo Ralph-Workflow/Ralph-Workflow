@@ -52,14 +52,16 @@ def test_master_prompt_file_writer_writes_first_content() -> None:
     assert backend._files[destination] == "X"
 
 
-def test_master_prompt_file_writer_skips_identical_content() -> None:
+def test_master_prompt_file_writer_regression_skips_identical_parent_preparation() -> None:
+    """S-3: an unchanged prompt replay does not mutate its parent directory."""
     backend = _CountingBackend()
     destination = Path("/virtual-ws/.agent/tmp/agent_master_prompt.md")
 
     master_prompt._write_master_prompt_file(destination, "X", backend=backend)
     master_prompt._write_master_prompt_file(destination, "X", backend=backend)
 
-    assert len(backend.write_text_calls) == 1
+    assert backend.write_text_calls == [(destination, "X")]
+    assert backend.mkdir_calls == [destination.parent]
     assert backend._files[destination] == "X"
 
 

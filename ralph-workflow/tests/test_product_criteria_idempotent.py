@@ -54,7 +54,8 @@ def test_persist_product_criteria_writes_first_content() -> None:
     assert backend._files[destination] == "X"
 
 
-def test_persist_product_criteria_skips_identical_content() -> None:
+def test_persist_product_criteria_regression_skips_identical_parent_preparation() -> None:
+    """S-3: unchanged criteria do not rewrite the parent directory metadata."""
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
     destination = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
@@ -63,7 +64,8 @@ def test_persist_product_criteria_skips_identical_content() -> None:
     result = persist_product_criteria(workspace_root, "X", backend=backend)
 
     assert result == str(destination)
-    assert len(backend.write_text_calls) == 1
+    assert backend.write_text_calls == [(destination, "X")]
+    assert backend.mkdir_calls == [destination.parent]
     assert backend._files[destination] == "X"
 
 

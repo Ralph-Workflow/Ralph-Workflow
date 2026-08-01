@@ -62,7 +62,6 @@ def persist_product_criteria(
         if worker_namespace is not None
         else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     )
-    backend.mkdir(product_criteria_path.parent, parents=True, exist_ok=True)
     if prompt_content is None and backend.exists(product_criteria_path):
         return str(product_criteria_path)
     write_text_if_changed(
@@ -70,6 +69,9 @@ def persist_product_criteria(
         product_criteria_path,
         prompt_content or "No requirements provided",
         encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(
+            product_criteria_path.parent, parents=True, exist_ok=True
+        ),
     )
     return str(product_criteria_path)
 

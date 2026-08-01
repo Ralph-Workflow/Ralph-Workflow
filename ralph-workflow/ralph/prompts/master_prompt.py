@@ -22,8 +22,15 @@ def _write_master_prompt_file(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    backend.mkdir(master_prompt_path.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, master_prompt_path, content, encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        master_prompt_path,
+        content,
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(
+            master_prompt_path.parent, parents=True, exist_ok=True
+        ),
+    )
 
 
 def materialize_master_prompt(
