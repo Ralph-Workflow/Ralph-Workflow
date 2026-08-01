@@ -148,6 +148,17 @@ class SubprocessAgentExecutor:
         if raw_log is not None:
             raw_log.close()
 
+    @staticmethod
+    async def _cancel_wait_and_terminate(
+        wait_task: asyncio.Task[int],
+        handle: ManagedAsyncProcess,
+    ) -> None:
+        """Stop a sibling wait task before terminating its managed process."""
+        wait_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await wait_task
+        await handle.terminate(grace_period_s=0)
+
     async def run(
         self,
         unit: WorkUnit,
@@ -227,13 +238,20 @@ class SubprocessAgentExecutor:
                 # block always terminates a non-terminal handle, so a
                 # healthy-but-slow agent is not killed by a hard ceiling.
                 # The drain_output() coroutine exits on stdout EOF.
-                await asyncio.gather(
-                    drain_output(),
-                    handle.wait(),  # mcp-timeout-ok: idle-wd-bounded
-                )
+                wait_task = asyncio.create_task(handle.wait())  # mcp-timeout-ok: idle-wd-bounded
+                await asyncio.gather(drain_output(), wait_task)
             except asyncio.CancelledError:
                 assert handle is not None
                 await handle.terminate(grace_period_s=0)
+                raise
+            except BaseException:
+                # ``asyncio.gather`` propagates a drain failure without
+                # cancelling its sibling wait. Cancel that task before
+                # termination so a parser/output fault cannot race a
+                # naturally-exiting child into an EXITED record and leave its
+                # process tree alive.
+                assert handle is not None
+                await self._cancel_wait_and_terminate(wait_task, handle)
                 raise
         finally:
             if self._subagent_sink_token is not None:

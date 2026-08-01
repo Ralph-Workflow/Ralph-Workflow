@@ -19,10 +19,10 @@ from __future__ import annotations
 import json
 import re
 import threading
-import typing
 from pathlib import Path
 
 import pytest
+from typing_extensions import get_protocol_members
 
 from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server.runtime_session import FileBackedSession
@@ -58,10 +58,10 @@ def _make_agent_session() -> AgentSession:
 def _all_mcp_session_members() -> list[str]:
     """Return every public McpSession member name from the Protocol itself.
 
-    Derived from typing.get_protocol_members() so adding a new @property
+    Derived from typing_extensions.get_protocol_members() so adding a new @property
     or method to McpSession extends this list automatically.
     """
-    return sorted(typing.get_protocol_members(McpSession))
+    return sorted(get_protocol_members(McpSession))
 
 
 def test_mcp_session_protocol_has_expected_member_count() -> None:
