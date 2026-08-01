@@ -124,7 +124,10 @@ class RunStateDB:
             "SELECT hmac FROM receipts WHERE run_id = ? AND artifact_type = ?",
             (run_id, artifact_type),
         )
-        row: object = cursor.fetchone()
+        try:
+            row: object = cursor.fetchone()
+        finally:
+            cursor.close()
         if row is None:
             return MISSING
         return _coerce_hmac(row)
@@ -156,7 +159,10 @@ class RunStateDB:
             "SELECT hmac FROM completion_sentinels WHERE run_id = ?",
             (run_id,),
         )
-        row: object = cursor.fetchone()
+        try:
+            row: object = cursor.fetchone()
+        finally:
+            cursor.close()
         if row is None:
             return MISSING
         return _coerce_hmac(row)

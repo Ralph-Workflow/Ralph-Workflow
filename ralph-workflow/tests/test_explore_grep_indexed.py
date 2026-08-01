@@ -97,6 +97,7 @@ def test_is_fts_eligible_rejects_empty() -> None:
     assert is_fts_eligible("", is_regex=False, whole_word=False) is False
 
 
+@pytest.mark.timeout_seconds(5)
 def test_indexed_grep_returns_compact_match(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")

@@ -63,7 +63,7 @@ def _compute_skill_hash(name: str) -> str:
 
 def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
     """Create a symlink without sharing mutable Path method state with tests."""
-    os.symlink(target, path, target_is_directory=target_is_directory)  # noqa: PTH211
+    path.symlink_to(target, target_is_directory=target_is_directory)
 
 
 def _mirror_skill_to_sibling_root(

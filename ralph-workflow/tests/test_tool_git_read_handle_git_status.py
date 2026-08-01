@@ -220,38 +220,36 @@ class TestHandleGitStatus:
         payload must NOT emit any ``changed_symbols`` hints
         because freshness is unknown.
         """
-        from ralph.mcp.explore.handlers import build_explore_index
-        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+        class _FailingDirtyPathsStore:
+            def get_setting(self, _key: str) -> str:
+                return "1"
 
-        workspace_dir = tmp_path / "ws"
-        workspace_dir.mkdir()
-        (workspace_dir / "a.py").write_text("def hello():\n    return 1\n")
-        handle = build_explore_index(workspace_dir)
-        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
-        try:
-            # Force ``peek_dirty_paths`` to raise.
-            handle.store.peek_dirty_paths = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
-            session = MockSession({GIT_STATUS_READ_CAPABILITY})
-            session.explore_index = handle
-            workspace = MockWorkspaceRoot(workspace_dir)
-            completed = subprocess.CompletedProcess(
-                args=["git", "status", "--porcelain"],
-                returncode=0,
-                stdout=b"M  a.py\n",
-                stderr=b"",
-            )
-            with patch(
-                "ralph.mcp.tools.git_read.run_git_command_lenient",
-                return_value=completed,
-            ):
-                result = handle_git_status(session, workspace, {"format": "compact"})
-            payload = json.loads(result.content[0].text)
-            assert payload["index_used"] is False
-            assert payload["index_status"] == "unavailable"
-            assert payload["fallback_reason"] == "dirty_paths_read_failed"
-            assert payload["changed_symbols"] == {}
-        finally:
-            handle.store.close()
+            def peek_dirty_paths(self) -> list[str]:
+                raise RuntimeError("boom")
+
+        class _FakeHandle:
+            store = _FailingDirtyPathsStore()
+            reindex_in_progress = False
+
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        session.explore_index = _FakeHandle()
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            stdout=b"M  a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(session, workspace, {"format": "compact"})
+        payload = json.loads(result.content[0].text)
+        assert payload["index_used"] is False
+        assert payload["index_status"] == "unavailable"
+        assert payload["fallback_reason"] == "dirty_paths_read_failed"
+        assert payload["changed_symbols"] == {}
 
     def test_status_compact_marks_index_stale_when_deleted_file_present(
         self, tmp_path: Path

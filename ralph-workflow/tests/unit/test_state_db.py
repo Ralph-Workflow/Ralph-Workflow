@@ -10,18 +10,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_receipt_roundtrip(tmp_path: Path) -> None:
+def test_receipt_roundtrip_distinguishes_null_hmac_from_missing(tmp_path: Path) -> None:
     db = RunStateDB(tmp_path)
     assert db.get_receipt_hmac("run-1", "plan") is MISSING
     db.upsert_receipt("run-1", "plan", "abc123")
     assert db.get_receipt_hmac("run-1", "plan") == "abc123"
     db.delete_receipt("run-1", "plan")
     assert db.get_receipt_hmac("run-1", "plan") is MISSING
-    db.close()
-
-
-def test_receipt_null_hmac_distinct_from_missing(tmp_path: Path) -> None:
-    db = RunStateDB(tmp_path)
     db.upsert_receipt("run-1", "plan", None)
     assert db.get_receipt_hmac("run-1", "plan") is None
     db.close()

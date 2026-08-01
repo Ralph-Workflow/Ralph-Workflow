@@ -81,11 +81,13 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         monotonic_vals = iter([0.0, 0.1, 0.2])
 
+        original_event_wait = threading.Event.wait
+
         def _fake_event_wait(self: object, timeout: object = None) -> object:
             if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
                 call_count[0] += 1
                 return None
-            return threading.Event.wait(self, timeout)
+            return original_event_wait(self, timeout)
 
         with (
             patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
