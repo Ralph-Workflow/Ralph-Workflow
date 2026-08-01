@@ -2766,7 +2766,7 @@ class ParallelDisplay:
                                 overflow_ref=overflow_ref,
                                 glyphs_enabled=self._ctx.glyphs_enabled,
                             )[0]
-                            or text,
+                            or (text_content if "↳" in text_content else ""),
                             text_content,
                         )
                         or None
