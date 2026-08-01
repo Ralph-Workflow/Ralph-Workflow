@@ -209,8 +209,15 @@ def _write_legacy_receipt_fallback(
     if hmac_hex is not None:
         payload["hmac"] = hmac_hex
     try:
-        backend.mkdir(_receipt_dir(workspace_root, run_id), parents=True, exist_ok=True)
-        write_text_if_changed(backend, path, json.dumps(payload), encoding="utf-8")
+        write_text_if_changed(
+            backend,
+            path,
+            json.dumps(payload),
+            encoding="utf-8",
+            prepare_write=lambda: backend.mkdir(
+                _receipt_dir(workspace_root, run_id), parents=True, exist_ok=True
+            ),
+        )
     except OSError:
         return False  # Both DB and legacy paths failed - nothing durable to write.
     return True

@@ -393,6 +393,49 @@ def test_write_artifact_receipt_raises_when_db_upsert_and_legacy_both_fail(
         )
 
 
+class _RecordingReceiptBackend:
+    """In-memory legacy-receipt boundary that records observable mutations."""
+
+    def __init__(self, files: dict[Path, str]) -> None:
+        self.files = files
+        self.mkdir_calls: list[Path] = []
+        self.write_calls: list[tuple[Path, str]] = []
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del parents, exist_ok
+        self.mkdir_calls.append(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del encoding
+        return self.files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        del encoding
+        self.write_calls.append((path, content))
+        self.files[path] = content
+
+
+def test_legacy_receipt_fallback_regression_identical_replay_skips_parent_mutation(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """S-3: replaying a fallback receipt does not recreate its existing parent directory."""
+
+    def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite)
+    path = tmp_path / ".agent" / "receipts" / "run-1" / "plan.json"
+    payload = json.dumps({"run_id": "run-1", "artifact_type": "plan"})
+    backend = _RecordingReceiptBackend({path: payload})
+
+    result = write_artifact_receipt(tmp_path, "run-1", "plan", backend=backend)
+
+    assert result == path
+    assert backend.mkdir_calls == []
+    assert backend.write_calls == []
+    assert backend.files[path] == payload
+
+
 def test_write_artifact_receipt_does_not_raise_when_legacy_fallback_writes(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
