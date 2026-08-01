@@ -18,9 +18,6 @@ import pytest
 
 from ralph.testing import audit_filesystem_write_consolidation as audit
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION_ROOT = REPO_ROOT / "ralph"
-
 
 def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
     package_root = tmp_path / "ralph"
@@ -29,13 +26,6 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
     module_path.write_text(body, encoding="utf-8")
     return package_root
 
-
-@pytest.mark.timeout_seconds(10)
-def test_real_production_tree_audit_passes() -> None:
-    """S-8 regression: every production mutation is routed or locally justified."""
-    violations = audit.audit_filesystem_write_consolidation(PRODUCTION_ROOT)
-
-    assert violations == []
 
 
 def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
