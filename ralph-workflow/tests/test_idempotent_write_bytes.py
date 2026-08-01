@@ -138,8 +138,11 @@ def test_atomic_byte_write_regression_fails_open_when_destination_is_unreadable(
     )
 
     assert changed is True
-    assert backend.byte_writes == [(temporary, b"recovered")]
-    assert backend.replacements == [(temporary, destination)]
+    staging_path = backend.byte_writes[0][0]
+    assert backend.byte_writes == [(staging_path, b"recovered")]
+    assert backend.replacements == [(staging_path, destination)]
+    assert staging_path.parent == temporary.parent
+    assert staging_path.name.startswith(f"{temporary.name}.")
     assert backend.files[destination] == b"recovered"
 
 
@@ -158,8 +161,11 @@ def test_atomic_byte_write_regression_changed_content_publishes_exact_bytes_once
     )
 
     assert changed is True
-    assert backend.byte_writes == [(temporary, b"new\x00")]
-    assert backend.replacements == [(temporary, destination)]
+    staging_path = backend.byte_writes[0][0]
+    assert backend.byte_writes == [(staging_path, b"new\x00")]
+    assert backend.replacements == [(staging_path, destination)]
+    assert staging_path.parent == temporary.parent
+    assert staging_path.name.startswith(f"{temporary.name}.")
     assert backend.directory_syncs == [destination.parent]
     assert backend.files[destination] == b"new\x00"
-    assert temporary not in backend.files
+    assert staging_path not in backend.files

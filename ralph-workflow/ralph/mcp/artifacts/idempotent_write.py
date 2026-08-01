@@ -34,6 +34,7 @@ occurs.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -120,6 +121,18 @@ def write_bytes_if_changed(
     return True
 
 
+def _unique_staging_path(tmp_path: Path) -> Path:
+    """Return a same-directory staging path that cannot collide with another writer.
+
+    ``tmp_path`` supplies the caller's visible stem and destination filesystem;
+    a random suffix scopes the actual staging file to one publication. This
+    avoids shared caller-derived staging names, so concurrent atomic updates do
+    not overwrite or remove each other's staging payload before ``replace``
+    publishes it.
+    """
+    return tmp_path.with_name(f"{tmp_path.name}.{uuid4().hex}")
+
+
 def atomic_write_text_if_changed(
     backend: FileBackend,
     destination: Path,
@@ -177,8 +190,13 @@ def atomic_write_text_if_changed(
         return False
     if prepare_write is not None:
         prepare_write()
-    backend.write_text(tmp_path, content, encoding=encoding)
-    backend.replace(tmp_path, destination)
+    staging_path = _unique_staging_path(tmp_path)
+    try:
+        backend.write_text(staging_path, content, encoding=encoding)
+        backend.replace(staging_path, destination)
+    except Exception:
+        backend.unlink(staging_path, missing_ok=True)
+        raise
     if sync_directory:
         backend.sync_directory(destination.parent)
     return True
@@ -207,8 +225,13 @@ def atomic_write_bytes_if_changed(
         return False
     if prepare_write is not None:
         prepare_write()
-    backend.write_bytes(tmp_path, content)
-    backend.replace(tmp_path, destination)
+    staging_path = _unique_staging_path(tmp_path)
+    try:
+        backend.write_bytes(staging_path, content)
+        backend.replace(staging_path, destination)
+    except Exception:
+        backend.unlink(staging_path, missing_ok=True)
+        raise
     if sync_directory:
         backend.sync_directory(destination.parent)
     return True

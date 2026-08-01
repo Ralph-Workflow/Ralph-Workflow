@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import FileBackend
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.artifacts.idempotent_write import (
+    atomic_write_text_if_changed,
+    write_text_if_changed,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Dict
@@ -45,8 +48,17 @@ class _CountingBackend(FileBackend):
         self.write_text_calls.append((path, content))
         self._files[path] = content
 
+    def read_bytes(self, path: Path) -> bytes:
+        return self._files[path].encode("utf-8")
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        self._files[path] = content.decode("utf-8")
+
     def replace(self, source: Path, destination: Path) -> None:
-        del source, destination
+        self._files[destination] = self._files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        del path
 
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         if missing_ok:
@@ -179,3 +191,30 @@ def test_text_write_regression_recovers_from_undecodable_existing_content() -> N
     assert result is True
     assert backend.write_text_calls == [(path, "recovered")]
     assert backend._files[path] == "recovered"
+
+
+def test_atomic_write_regression_uses_distinct_staging_paths_for_same_destination() -> None:
+    """S-3: independent atomic updates cannot clobber a shared staging file."""
+    backend = _CountingBackend()
+    destination = Path("/virtual-ws/artifact.md")
+    shared_stage_name = destination.with_suffix(".md.tmp")
+
+    atomic_write_text_if_changed(
+        backend,
+        destination,
+        "first",
+        tmp_path=shared_stage_name,
+    )
+    atomic_write_text_if_changed(
+        backend,
+        destination,
+        "second",
+        tmp_path=shared_stage_name,
+    )
+
+    staging_paths = [path for path, _content in backend.write_text_calls]
+    assert len(staging_paths) == 2
+    assert all(path.parent == destination.parent for path in staging_paths)
+    assert all(path != shared_stage_name for path in staging_paths)
+    assert staging_paths[0] != staging_paths[1]
+    assert backend._files[destination] == "second"

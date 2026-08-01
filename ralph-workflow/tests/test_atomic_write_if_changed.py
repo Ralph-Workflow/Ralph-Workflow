@@ -20,6 +20,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 
@@ -93,6 +95,14 @@ class _UndecodableReadBackend(_ReplacingCountingBackend):
         raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
 
 
+class _FailingReplaceBackend(_ReplacingCountingBackend):
+    """Persistence boundary that fails publication after staging content."""
+
+    def replace(self, source: Path, destination: Path) -> None:
+        del source, destination
+        raise OSError("publication failed")
+
+
 def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -> None:
     """AC-01: fresh destination performs one tmp-write plus one replace returning True.
 
@@ -114,10 +124,13 @@ def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -
     )
 
     assert result is True
-    assert backend.write_text_calls == [(tmp_path, "fresh")]
-    assert backend.replace_calls == [(tmp_path, destination)]
+    staging_path = backend.write_text_calls[0][0]
+    assert backend.write_text_calls == [(staging_path, "fresh")]
+    assert backend.replace_calls == [(staging_path, destination)]
+    assert staging_path.parent == tmp_path.parent
+    assert staging_path.name.startswith(f"{tmp_path.name}.")
     assert backend._files[destination] == "fresh"
-    assert tmp_path not in backend._files
+    assert staging_path not in backend._files
 
 
 def test_atomic_write_regression_skips_write_and_replace_when_content_identical() -> None:
@@ -191,10 +204,25 @@ def test_atomic_write_regression_writes_and_replaces_when_content_changed() -> N
     )
 
     assert result is True
-    assert backend.write_text_calls == [(tmp_path, "new")]
-    assert backend.replace_calls == [(tmp_path, destination)]
+    staging_path = backend.write_text_calls[0][0]
+    assert backend.write_text_calls == [(staging_path, "new")]
+    assert backend.replace_calls == [(staging_path, destination)]
+    assert staging_path.parent == tmp_path.parent
+    assert staging_path.name.startswith(f"{tmp_path.name}.")
     assert backend._files[destination] == "new"
-    assert tmp_path not in backend._files
+    assert staging_path not in backend._files
+
+
+def test_atomic_write_regression_removes_unique_staging_file_when_publication_fails() -> None:
+    """S-3: failed publication cleans its unique transient staging file."""
+    backend = _FailingReplaceBackend()
+    destination = Path("/virtual-ws/checkpoint.json")
+    tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
+
+    with pytest.raises(OSError, match="publication failed"):
+        atomic_write_text_if_changed(backend, destination, "fresh", tmp_path=tmp_path)
+
+    assert backend._files == {}
 
 
 def test_atomic_write_regression_fails_open_when_read_text_raises_oserror() -> None:
@@ -217,8 +245,11 @@ def test_atomic_write_regression_fails_open_when_read_text_raises_oserror() -> N
     )
 
     assert result is True
-    assert backend.write_text_calls == [(tmp_path, "recovered")]
-    assert backend.replace_calls == [(tmp_path, destination)]
+    staging_path = backend.write_text_calls[0][0]
+    assert backend.write_text_calls == [(staging_path, "recovered")]
+    assert backend.replace_calls == [(staging_path, destination)]
+    assert staging_path.parent == tmp_path.parent
+    assert staging_path.name.startswith(f"{tmp_path.name}.")
     assert backend._files[destination] == "recovered"
 
 
@@ -236,6 +267,9 @@ def test_atomic_text_write_regression_recovers_from_undecodable_destination() ->
     )
 
     assert result is True
-    assert backend.write_text_calls == [(tmp_path, "recovered")]
-    assert backend.replace_calls == [(tmp_path, destination)]
+    staging_path = backend.write_text_calls[0][0]
+    assert backend.write_text_calls == [(staging_path, "recovered")]
+    assert backend.replace_calls == [(staging_path, destination)]
+    assert staging_path.parent == tmp_path.parent
+    assert staging_path.name.startswith(f"{tmp_path.name}.")
     assert backend._files[destination] == "recovered"
