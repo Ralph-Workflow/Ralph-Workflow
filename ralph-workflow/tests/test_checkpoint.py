@@ -126,13 +126,13 @@ def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path
     """Ensure failed saves clean up the temporary file."""
 
     path = tmp_path / "checkpoint.json"
-    tmp = path.with_suffix(".tmp")
+    tmp_prefix = f"{path.with_suffix('.tmp').name}."
     state = PipelineState(phase="planning")
 
     original_replace = Path.replace
 
     def raise_on_tmp(self: Path, target: Path) -> Path:
-        if self == tmp:
+        if self.parent == path.parent and self.name.startswith(tmp_prefix):
             raise RuntimeError("disk busy")
         return original_replace(self, target)
 
@@ -141,7 +141,7 @@ def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path
     with pytest.raises(RuntimeError):
         ckpt.save(state, path)
 
-    assert not tmp.exists()
+    assert not any(path.parent.glob(f"{tmp_prefix}*"))
 
 
 def test_load_corrupt_checkpoint_returns_none(tmp_path: Path) -> None:

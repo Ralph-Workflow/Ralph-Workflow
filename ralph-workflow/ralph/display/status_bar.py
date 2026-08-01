@@ -1386,9 +1386,9 @@ def _append_optional_segment(
     agent_width = (
         _AGENT_LABEL_FIXED_WIDTH
         if ctx.width < _CANONICAL_FIT_THRESHOLD
-        else len("Agent pi · minimax/MiniMax-3")
+        else cell_len("Agent pi · minimax/MiniMax-3")
     )
-    label = _tail_truncate(label, agent_width).ljust(agent_width)
+    label = _pad_to_cells(_tail_truncate(label, agent_width), agent_width)
     if label.startswith("Agent ") and model.agent_name:
         agent_prefix, agent_rest = _split_agent_label(label)
         if agent_prefix:

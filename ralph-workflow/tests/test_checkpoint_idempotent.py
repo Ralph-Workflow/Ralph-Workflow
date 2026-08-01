@@ -88,15 +88,19 @@ def test_checkpoint_save_regression_writes_and_replaces_on_first_save() -> None:
     """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
-    tmp = dest.with_suffix(".tmp")
+    tmp_prefix = f"{dest.with_suffix('.tmp').name}."
     state = PipelineState(phase="planning")
 
     ckpt.save(state, dest, backend=backend)
 
-    assert backend.write_text_calls == [(tmp, state.model_dump_json(indent=2))]
-    assert backend.replace_calls == [(tmp, dest)]
+    assert len(backend.write_text_calls) == 1
+    staging_path, written = backend.write_text_calls[0]
+    assert staging_path.name.startswith(tmp_prefix)
+    assert staging_path.parent == dest.parent
+    assert written == state.model_dump_json(indent=2)
+    assert backend.replace_calls == [(staging_path, dest)]
     assert backend._files[dest] == state.model_dump_json(indent=2)
-    assert tmp not in backend._files
+    assert staging_path not in backend._files
     # Parent directory creation is routed through the injected backend, not
     # the real filesystem.
     assert dest.parent in backend.mkdir_calls
