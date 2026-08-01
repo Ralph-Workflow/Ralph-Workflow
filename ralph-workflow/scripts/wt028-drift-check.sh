@@ -129,15 +129,27 @@ UNTRACKED_FILES="$GREP_DIR/untracked.list"
 UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
 : >"$GREP_DIR/scan.err"
 (
+    # Handle every scan status explicitly below. This prevents Bash's
+    # inherited ``errexit`` from escaping this background subshell before
+    # the parent can normalize an upstream failure to the rc=2 envelope.
+    set +e
     # Enumerate tracked files in the working tree. The call lives
     # inside the backgrounded subshell so a git failure (rc != 0)
     # is captured by ``wait`` rather than tripping ``set -e`` and
     # aborting the script with the raw exit code (e.g. 127 from a
     # stub git on PATH). The drift gate then maps any non-trivial
     # git failure to the script's canonical rc=2 error envelope.
+    tracked_files_rc=0
     git ls-files -z -- ralph tests docs \
         | tr '\0' '\n' \
-        > "$TRACKED_OUT"
+        > "$TRACKED_OUT" || tracked_files_rc=$?
+    if [ "$tracked_files_rc" -ne 0 ]; then
+        exit "$tracked_files_rc"
+    fi
+    # A no-match result (rc=1) is expected; it must not end the scan
+    # before untracked probes are checked. Real search failures (>1) remain
+    # fail-closed and are normalized by the parent to its rc=2 envelope.
+    tracked_scan_rc=0
     git grep -lzIF --threads 8 \
         -e NARROW_THRESHOLD \
         -e MEDIUM_THRESHOLD \
@@ -150,10 +162,18 @@ UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
             git grep -lIE --threads 8 "$DRIFT_PATTERNS" -- "$candidate"
         done \
         2>>"$GREP_DIR/scan.err" \
-        > "$TRACKED_OUT"
+        > "$TRACKED_OUT" || tracked_scan_rc=$?
+    if [ "$tracked_scan_rc" -gt 1 ]; then
+        exit "$tracked_scan_rc"
+    fi
     # Finish untracked enumeration before deciding there are no probes.
     # A slow walk is bounded by this scan's watchdog rather than silently skipped.
-    git ls-files --others --exclude-standard -z -- ralph tests docs > "$UNTRACKED_FILES"
+    untracked_files_rc=0
+    git ls-files --others --exclude-standard -z -- ralph tests docs > "$UNTRACKED_FILES" \
+        || untracked_files_rc=$?
+    if [ "$untracked_files_rc" -ne 0 ]; then
+        exit "$untracked_files_rc"
+    fi
     if [ -s "$UNTRACKED_FILES" ]; then
         # --no-index tells git grep to ignore the index and search
         # the working tree, so it picks up files the index scan
@@ -171,9 +191,14 @@ UNTRACKED_OUT="$GREP_DIR/scan_untracked.out"
         done < "$UNTRACKED_FILES"
     fi
     sort -u "$TRACKED_OUT" > "$GREP_DIR/scan.out"
+    sort_rc=$?
+    if [ "$sort_rc" -ne 0 ]; then
+        exit "$sort_rc"
+    fi
+    exit 0
 ) &
 SCAN_PID="$!"
-SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" | tr -d ' ')"
+SCAN_PGID="$(ps -o pgid= -p "$SCAN_PID" 2>/dev/null | tr -d ' ' || true)"
 (
     sleep "$GREP_TIMEOUT_SECONDS"
     : >"$GREP_DIR/timed_out"
