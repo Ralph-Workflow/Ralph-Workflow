@@ -90,6 +90,7 @@ import time
 from dataclasses import dataclass
 from typing import IO, TYPE_CHECKING, Protocol
 
+from rich.cells import cell_len
 from rich.text import Text
 
 from ralph.display.phase_status import (
@@ -432,29 +433,41 @@ def _home_relative(path: str, home: str | None) -> str:
     return path
 
 
+def _slice_to_cells(text: str, budget: int) -> str:
+    """Return the longest prefix of ``text`` that fits in ``budget`` cells."""
+    if budget <= 0:
+        return ""
+    result: list[str] = []
+    used = 0
+    for char in text:
+        width = cell_len(char)
+        if used + width > budget:
+            break
+        result.append(char)
+        used += width
+    return "".join(result)
+
+
 def _middle_truncate_path(path: str, budget: int) -> str:
-    """Return ``path`` truncated to at most ``budget`` characters via middle-ellipsis."""
-    if len(path) <= budget:
+    """Return ``path`` truncated to at most ``budget`` terminal cells via middle ellipsis."""
+    if cell_len(path) <= budget:
         return path
     last_sep = path.rfind(os.sep)
     last_segment = path[last_sep + 1 :] if last_sep >= 0 else path
-    separator_budget = _ELLIPSIS_LEN + 1
-    if budget >= len(last_segment) + separator_budget:
+    separator_budget = cell_len(_ELLIPSIS) + 1
+    if budget >= cell_len(last_segment) + separator_budget:
         return f".../{last_segment}"
     return _tail_truncate(last_segment, budget)
 
 
 def _tail_truncate(text: str, budget: int) -> str:
-    """Return ``text`` tail-truncated to ``budget`` chars ending with ``...``.
-
-    Trailing whitespace is stripped to keep the ellipsis visually clean.
-    If ``text`` fits in ``budget`` it is returned unchanged.
-    """
-    if len(text) <= budget:
+    """Return ``text`` tail-truncated to ``budget`` terminal cells ending with ``...``."""
+    if cell_len(text) <= budget:
         return text
-    if budget <= _ELLIPSIS_LEN:
-        return text[:budget]
-    return text[: budget - _ELLIPSIS_LEN].rstrip() + "..."
+    ellipsis_width = cell_len(_ELLIPSIS)
+    if budget <= ellipsis_width:
+        return _slice_to_cells(text, budget)
+    return _slice_to_cells(text, budget - ellipsis_width).rstrip() + _ELLIPSIS
 
 
 def _field_separator(ctx: DisplayContext) -> str:
@@ -1328,15 +1341,16 @@ def render_status_bar(
     # higher-priority segment.  The allocator is deliberately conservative,
     # but this final measurement prevents the defensive whole-line clamp
     # from silently clipping a basename when its chrome estimate differs.
-    path_room = ctx.width - len(text.plain) - len(separator)
+    path_room = ctx.width - cell_len(text.plain) - cell_len(separator)
     last_segment = path_display.rsplit(os.sep, 1)[-1]
+    last_segment_width = cell_len(last_segment)
     path_display = (
         _middle_truncate_path(path_display, path_room)
-        if path_room >= len(last_segment) + _ELLIPSIS_LEN + 1
+        if path_room >= last_segment_width + cell_len(_ELLIPSIS) + 1
         # A final segment is still an honest, recognizable path when full
         # left elision cannot fit; omit it only when even that would clip.
         else last_segment
-        if path_room >= len(last_segment)
+        if path_room >= last_segment_width
         else ""
     )
     _append_path_segment(text, path_display, separator, ctx.width)
@@ -1344,7 +1358,7 @@ def render_status_bar(
     # floor and hostile optional alerts; normal layouts fit by allocation.
     if ctx.width < 1:
         return Text(" ")
-    if len(text.plain) > ctx.width:
+    if cell_len(text.plain) > ctx.width:
         text.truncate(ctx.width)
     return text
 

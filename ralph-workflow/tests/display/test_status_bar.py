@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 import rich.live
+from rich.cells import cell_len
 from rich.console import Console
 
 import ralph.pipeline.run_loop as _run_loop_module
@@ -125,6 +126,21 @@ def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
     assert "my-cool-project" in plain
     assert "Cycle 1/3" in plain
     assert "iter 2/5" in plain
+
+
+def test_render_status_bar_regression_wide_unicode_respects_terminal_cells() -> None:
+    """S-5: wide and combining input never makes the live bar exceed its cell budget."""
+    model = StatusBarModel(
+        workspace_root="/work/界界界/cafe\u0301/finish.py",
+        phase_label="Development 界界界",
+        phase_style="theme.phase.development",
+        agent_name="pi界",
+    )
+    ctx = _make_display_context(width=40)
+
+    rendered = render_status_bar(model, ctx, home=None)
+
+    assert cell_len(rendered.plain) <= ctx.width
 
 
 def test_render_status_bar_shows_integration_alert() -> None:
