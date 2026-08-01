@@ -131,6 +131,39 @@ def _read_lines(
     )
 
 
+def test_opencode_regression_verified_completion_stops_live_stdout_stream() -> None:
+    """S-4: durable completion ends an OpenCode stream that never closes stdout."""
+    blocked = threading.Event()
+
+    def live_stdout() -> Iterator[str]:
+        yield '{"type":"text","part":{"text":"complete"}}\n'
+        blocked.wait()
+
+    class _CompletionHandle(_FakeManagedHandle):
+        def terminate(self, grace_period_s: float | None = None) -> None:
+            super().terminate(grace_period_s)
+            blocked.set()
+
+    handle = _CompletionHandle(live_stdout())
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=5.0,
+        max_session_seconds=5.0,
+        idle_poll_interval_seconds=0.01,
+        drain_window_seconds=0.0,
+    )
+    ctx = ProcessReaderCtx(
+        config=AgentConfig(cmd="opencode", transport=AgentTransport.OPENCODE),
+        policy=policy,
+        execution_strategy=OpenCodeExecutionStrategy(),
+        completion_is_terminal=lambda: True,
+    )
+
+    lines = list(read_lines_from_process(handle, ctx=ctx, _clock=FakeClock()))
+
+    assert lines == ['{"type":"text","part":{"text":"complete"}}\n']
+    assert handle._terminated is True
+
+
 def test_session_ceiling_fires_under_continuous_output() -> None:
     """SESSION_CEILING_EXCEEDED fires even when the agent produces continuous output.
 

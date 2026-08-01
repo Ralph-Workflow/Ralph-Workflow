@@ -148,9 +148,13 @@ def test_no_sys_exit_in_idle_watchdog_or_process_reader() -> None:
 
 
 def test_teardown_subtree_calls_are_verdict_guarded() -> None:
-    """Invariant 2: every teardown_subtree AND _handle.terminate call
-    is guarded by a FIRE verdict (i.e. only fires when the watchdog
-    has actually decided to kill).
+    """Invariant 2: process termination requires a watchdog fire or durable completion.
+
+    The only non-watchdog path is a session-continuing transport whose
+    completion evaluator has already confirmed the durable sentinel and any
+    required artifact receipt. That completion path may stop a CLI which keeps
+    stdout open after it has completed, preventing an otherwise successful run
+    from hanging during bridge teardown.
 
     The process reader's ``_check_fire`` is the single teardown site
     for in-stream kills. It is only entered when the watchdog returned
@@ -173,24 +177,25 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
     tree = _parse(PROCESS_READER)
 
     def _has_verdict_check(func: ast.FunctionDef) -> bool:
-        """Return True if the function body compares verdict to FIRE somewhere.
+        """Return True if the function has a watchdog-fire or completion guard.
 
         Two families of fire verdicts are allowed:
           - ``WatchdogVerdict.FIRE`` (in-stream kills via IdleWatchdog)
           - ``PostExitVerdict.FIRE_*`` (post-exit kills via PostExitWatchdog)
         """
         for node in ast.walk(func):
-            if not isinstance(node, ast.Compare):
-                continue
-            for comparator in node.comparators:
-                if not (
-                    isinstance(comparator, ast.Attribute) and isinstance(comparator.value, ast.Name)
-                ):
-                    continue
-                if comparator.value.id == "WatchdogVerdict" and comparator.attr == "FIRE":
-                    return True
-                if comparator.value.id == "PostExitVerdict" and comparator.attr.startswith("FIRE_"):
-                    return True
+            if isinstance(node, ast.Compare):
+                for comparator in node.comparators:
+                    if not (
+                        isinstance(comparator, ast.Attribute) and isinstance(comparator.value, ast.Name)
+                    ):
+                        continue
+                    if comparator.value.id == "WatchdogVerdict" and comparator.attr == "FIRE":
+                        return True
+                    if comparator.value.id == "PostExitVerdict" and comparator.attr.startswith("FIRE_"):
+                        return True
+            if isinstance(node, ast.Attribute) and node.attr == "_completion_is_terminal":
+                return True
         return False
 
     def _is_handle_terminate_call(node: ast.Call) -> bool:
@@ -269,7 +274,7 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
             msg = (
                 f"{label} at {PROCESS_READER}:{call.lineno} "
                 f"(in function {func_name}) is not preceded by a "
-                "`verdict == WatchdogVerdict.FIRE` check"
+                "watchdog-fire or durable-completion guard"
             )
             raise AssertionError(msg)
 

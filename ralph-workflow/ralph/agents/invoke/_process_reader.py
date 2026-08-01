@@ -17,6 +17,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from ralph.agents.activity import AgentActivityKind
+from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import AgentExecutionState, GenericExecutionStrategy
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -230,6 +231,7 @@ class _ProcessLineReader:
         self._monitor = ctx.monitor
         self._connectivity_state_provider = ctx.connectivity_state_provider
         self._is_waiting_state_provider = ctx.is_waiting_state_provider
+        self._completion_is_terminal = ctx.completion_is_terminal
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
@@ -515,6 +517,22 @@ class _ProcessLineReader:
             alive_by=alive_by,
         )
 
+    def _start_read_thread(self) -> threading.Thread:
+        """Start the stdout reader thread."""
+        reader = threading.Thread(target=self._read_thread, daemon=True)
+        reader.start()
+        return reader
+
+    def _finish_terminal_completion(self) -> bool:
+        """Stop a process whose completion evidence is already durable."""
+        if self._completion_is_terminal is None:
+            return False
+        with contextlib.suppress(Exception):
+            if self._completion_is_terminal():
+                self._terminate_completed_process()
+                return True
+        return False
+
     def _read_thread(self) -> None:
         stdout_pipe = cast(
             "IO[str] | None", self._handle.stdout
@@ -552,6 +570,20 @@ class _ProcessLineReader:
         if self._pre_output_listener is not None:
             with contextlib.suppress(Exception):
                 self._pre_output_listener()
+
+    def _terminate_completed_process(self) -> None:
+        """Stop the agent process after verified completion without waiting for stdout EOF."""
+        if self._completion_is_terminal is None:
+            return
+        self._handle.terminate(grace_period_s=0.5)
+        pid = cast(
+            "int | None", getattr(self._handle, "pid", None)
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        if pid is not None:
+            if self._process_teardown is None:
+                teardown_subtree(pid)
+            else:
+                self._process_teardown.teardown_subtree(pid)
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -789,12 +821,11 @@ class _ProcessLineReader:
                 return None
             self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
-    def read_lines(self) -> Iterator[str]:
-        reader = threading.Thread(target=self._read_thread, daemon=True)
-        reader.start()
+    def _build_process_monitor(self) -> ProcessMonitor | None:
+        """Build the monitor with transport-scoped child evidence."""
         subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
-        process_monitor = _make_process_monitor(
+        return _make_process_monitor(
             self._handle,
             self._config,
             self._policy,
@@ -802,6 +833,10 @@ class _ProcessLineReader:
             registry=registry,
             scope_prefix=scope_prefix,
         )
+
+    def read_lines(self) -> Iterator[str]:
+        reader = self._start_read_thread()
+        process_monitor = self._build_process_monitor()
         # R1 (Trustworthy Idle Watchdog spec): store the monitor so
         # ``_corroborate`` can read the FILTERED subagent count from
         # ``spawned_subagent_count()`` (preferred) instead of the
@@ -872,6 +907,9 @@ class _ProcessLineReader:
                         raise exc
                     break
 
+                if self._finish_terminal_completion():
+                    break
+
                 result = self._check_fire(
                     watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
                 )
@@ -930,6 +968,27 @@ def _run_subprocess_and_read_lines(
             msg = "Failed to capture stdout"
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
+        completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
+
+        def completion_is_terminal() -> bool:
+            if (
+                not ctx.requires_completion_evidence
+                or ctx.workspace_path is None
+                or not strategy.supports_session_continuation()
+            ):
+                return False
+            evaluator = ctx.evaluate_completion_fn or evaluate_completion
+            signals = evaluator(
+                ctx.workspace_path,
+                required_artifact=ctx.required_artifact,
+                run_id=completion_run_id,
+                sentinel_secret=_parent_broker_secret(),
+                receipt_secret=_parent_broker_secret(),
+            )
+            return strategy.classify_exit(handle, signals, liveness_probe=probe) == (
+                AgentExecutionState.TERMINAL_COMPLETE
+            )
+
         reader_ctx = _ProcessReaderCtx(
             config=ctx.config,
             policy=ctx.policy,
@@ -943,6 +1002,7 @@ def _run_subprocess_and_read_lines(
             workspace_path=ctx.workspace_path,
             connectivity_state_provider=ctx.connectivity_state_provider,
             is_waiting_state_provider=ctx.is_waiting_state_provider,
+            completion_is_terminal=completion_is_terminal,
         )
         reader = _ProcessLineReader(handle, reader_ctx, clock)
         lines_iter = reader.read_lines()
@@ -1041,7 +1101,7 @@ def _run_subprocess_and_read_lines(
                 requires_completion_evidence=ctx.requires_completion_evidence,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
-                completion_run_id=completion_run_id_from_extra_env(ctx.extra_env),
+                completion_run_id=completion_run_id,
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
                 last_observed_tool_call=last_tool_call_str,
                 last_evidence_summary=evidence_summary_str,

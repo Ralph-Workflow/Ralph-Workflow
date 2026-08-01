@@ -39,6 +39,7 @@ class _ProcessReaderCtx:
     workspace_path: Path | None = None
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
+    completion_is_terminal: Callable[[], bool] | None = None
 
 
 __all__ = [
