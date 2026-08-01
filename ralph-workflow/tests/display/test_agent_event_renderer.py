@@ -196,6 +196,24 @@ def test_error_renders_with_error_carrier() -> None:
     assert "FAIL" in rendered.plain or "ERROR" in rendered.plain
 
 
+@pytest.mark.parametrize(
+    ("terminal_background", "expected_style"),
+    (("dark", "#D55E00"), ("light", "#993F00")),
+)
+def test_event_renderer_resolves_semantic_style_for_context_background(
+    terminal_background: str, expected_style: str
+) -> None:
+    """S-3 regression: event-state colour follows the shared context palette."""
+    import io as _io
+
+    context = make_display_context(
+        console=Console(file=_io.StringIO(), force_terminal=True, color_system="truecolor"),
+        env={"RALPH_TERMINAL_BG": terminal_background},
+    )
+    rendered = render_event(_event(ActivityEventKind.ERROR, "boom"), context)
+    assert any(expected_style in str(span.style) for span in rendered.spans)
+
+
 def test_lifecycle_renders_message() -> None:
     ctx = _ctx()
     rendered = render_event(_event(ActivityEventKind.LIFECYCLE, "phase=development"), ctx)
