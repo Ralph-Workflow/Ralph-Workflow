@@ -274,7 +274,16 @@ def test_close_line_carries_joined_passage_and_span_duration() -> None:
     assert "hello world" in out
     # Sketch-J span and duration markers are present.
     assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
-    assert " \u00b7 0s \u00b7 hello world" in out, f"close line missing duration: {out!r}"
+    # S-7: the close entry is a SINGLE logical row, so the duration
+    # marker must sit on the same ``[output][<unit>]`` line as the
+    # joined passage.
+    content_rows = [ln for ln in out.splitlines() if "[output][u]" in ln]
+    assert len(content_rows) == 1, (
+        f"S-7 expects exactly one [output][u] row, got {len(content_rows)}: {out!r}"
+    )
+    assert "\u2192" in content_rows[0]
+    assert "0s" in content_rows[0]
+    assert "hello world" in content_rows[0]
     # No retired plumbing leaks.
     assert "fragments" not in out
     assert "chars" not in out

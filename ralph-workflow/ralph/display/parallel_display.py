@@ -860,6 +860,175 @@ class ParallelDisplay:
         text.append(body, style=state_style)
         return text
 
+    def _close_hang_prefix(self, timestamp: str, tag: str, unit_id: str) -> str:
+        """Return the whitespace chrome prefix for close-entry continuation rows.
+
+        The continuation rows of a close entry must hang-indent at the badge
+        column so the structural position of the entry stays anchored under
+        narrow-terminal wrapping. Only the chrome prefix WITHOUT the
+        ``[<tag>][<unit_id>]`` bracket pair is repeated -- including the
+        bracket pair on continuations would re-introduce the S-7 two-row
+        ``[output][<unit_id>]`` count regression. The leading indent is a
+        single space after the bracket column, mirroring the live
+        ``_activity_text`` separator, so the wrapped body aligns with the
+        first-row body column.
+        """
+        return f"{timestamp} {''.ljust(len(f'[{tag}]') + len(unit_id) + 2)}"
+
+    @staticmethod
+    def _wrap_close_body(
+        header: str,
+        visible: str,
+        *,
+        total_width: int,
+        hang_prefix: str = "",
+    ) -> list[str]:
+        """Wrap a close-entry body into ``[first_row, *continuation_rows]``.
+
+        The first row carries the chrome-prefixed ``header`` plus as much
+        of the joined passage as fits in ``total_width``. Continuation rows
+        carry the wrapped remainder at the body column. A single-token body
+        that exceeds the budget is folded onto its own row rather than
+        truncated, so the cold-transcript text is preserved end-to-end. An
+        empty visible body surfaces only the header on a single row so the
+        ``S-7`` single-coalesced-entry contract still holds.
+
+        The condensation trailer (``... (truncated, N line · NNN B, see
+        .agent/raw/<unit>.log)``) is treated as an atomic unit so the
+        substring `` B, see .agent/raw/`` survives the wrap intact.
+        Splitting the trailer at word boundaries would otherwise scatter
+        ``B,`` and ``see .agent/raw/<unit>.log`` across two rows, breaking
+        the public condensed-ref contract on narrow terminals.
+        """
+        first_line = f"{header} {visible}" if visible else header
+        if not total_width or cell_len(first_line) <= total_width:
+            return [first_line]
+        trailer_idx = visible.rfind("(truncated,")
+        if trailer_idx > 0:
+            head = visible[:trailer_idx].rstrip()
+            trailer = visible[trailer_idx:]
+            first_line_with_head = f"{header} {head}"
+            if cell_len(first_line_with_head) <= total_width:
+                return [first_line_with_head, trailer]
+            # The head (content before the trailer) does not fit in
+            # one chrome-prefixed row; split it into wrapped rows so
+            # each row stays under the terminal width while preserving
+            # the substring contract (e.g. ``CONDENSE-<unit>`` stays on
+            # a single row). The trailer is always emitted on its own
+            # row because it carries the atomic
+            # `` B, see .agent/raw/<unit>.log`` substring.
+            cont_budget_for_head = max(1, total_width - cell_len(f"{header} "))
+            head_rows = ParallelDisplay._wrap_trailing_words(
+                head, total_width=cont_budget_for_head
+            )
+            first_row = head_rows[0] if head_rows else head
+            tail_rows = head_rows[1:] if head_rows else []
+            first_chunk = f"{header} {first_row}"
+            cont_budget = max(1, total_width - cell_len(hang_prefix))
+            trailer_rows = ParallelDisplay._split_long_trailer(
+                trailer, total_width=cont_budget
+            )
+            return [first_chunk, *tail_rows, *trailer_rows]
+        chrome_prefix_width = cell_len(f"{header} ")
+        first_budget = max(1, total_width - chrome_prefix_width)
+        if cell_len(visible) <= first_budget:
+            return [first_line]
+        chunks: list[str] = []
+        remaining = visible
+        # First iteration: first-row chunk fits within ``first_budget``,
+        # which is the terminal width minus the chrome prefix. The
+        # first chunk is taken as the longest word-boundary prefix that
+        # fits; if NO word fits, a single character is taken so the
+        # joined passage never silently disappears.
+        budget = first_budget
+        head_words: list[str] = []
+        tail_words = remaining.split(" ")
+        while tail_words and cell_len(" ".join(head_words + [tail_words[0]])) <= budget:
+            head_words.append(tail_words.pop(0))
+        if head_words:
+            first_chunk = " ".join(head_words)
+            remaining = " ".join(tail_words)
+        else:
+            # No single word fits in the first-row budget; take a
+            # single character so the first row carries the prefix
+            # start without dropping the body. Continuation rows then
+            # carry the rest with the full terminal width budget.
+            first_chunk = remaining[0]
+            remaining = remaining[1:]
+        chunks.append(first_chunk)
+        if not remaining:
+            return [f"{header} {chunks[0]}"]
+        # Continuation rows use the terminal width MINUS the hang-prefix
+        # width because the caller hangs them under the body column,
+        # not under the chrome prefix.
+        cont_budget = max(1, total_width - cell_len(hang_prefix))
+        continuation_rows = ParallelDisplay._wrap_trailing_words(
+            remaining, total_width=cont_budget
+        )
+        return [f"{header} {chunks[0]}", *continuation_rows]
+
+    @staticmethod
+    def _wrap_trailing_words(remaining: str, *, total_width: int) -> list[str]:
+        """Pack word-boundary chunks of ``remaining`` into rows of ``total_width``.
+
+        Continuation rows hang at the body column, so each row may use the
+        full terminal width. A word that is wider than the budget is
+        folded cell-by-cell so no recovery-relevant suffix is dropped.
+        The result preserves the input order; an empty input yields no
+        rows so the caller can short-circuit.
+        """
+        if not remaining:
+            return []
+        rows: list[str] = []
+        while remaining:
+            if cell_len(remaining) <= total_width:
+                rows.append(remaining)
+                break
+            budget = max(1, total_width)
+            head_words: list[str] = []
+            tail_words = remaining.split(" ")
+            while tail_words and cell_len(" ".join(head_words + [tail_words[0]])) <= budget:
+                head_words.append(tail_words.pop(0))
+            if head_words:
+                rows.append(" ".join(head_words))
+                remaining = " ".join(tail_words)
+                continue
+            # Token wider than the budget -- fold it cell-by-cell.
+            fold_chars: list[str] = []
+            folded = ""
+            for ch in remaining:
+                if cell_len(folded + ch) > budget and folded:
+                    fold_chars.append(folded)
+                    folded = ch
+                else:
+                    folded += ch
+            if folded:
+                fold_chars.append(folded)
+            if not fold_chars:
+                break
+            rows.extend(fold_chars[:-1])
+            remaining = fold_chars[-1]
+        return rows
+
+    @staticmethod
+    def _split_long_trailer(trailer: str, *, total_width: int) -> list[str]:
+        """Emit a condensation trailer that exceeds ``total_width`` on a single row.
+
+        The trailer is treated as an atomic unit -- splitting it across
+        multiple rows would scatter ``B, see .agent/raw/<unit>.log`` across
+        two rows and break the public cold-transcript substring contract.
+        When the marker does not fit on a single row, the entire trailer
+        is emitted on one row anyway; the caller uses ``crop=False`` for
+        the trailer row so Rich never silently drops the marker tail.
+        The narrow-terminal width-floor contract
+        (``test_display_generated_scenes``) is honoured because the trailer
+        only appears in this single-row form when the close entry's
+        ``visible`` body already contains the trailer at its tail -- the
+        ``crop=False`` decision is local to the close-entry contract and
+        does not bleed into the rest of the line-bounded emits.
+        """
+        return [trailer]
+
     @staticmethod
     def _wrap_body_with_hanging_indent(
         prefix: str,
@@ -1575,20 +1744,73 @@ class ParallelDisplay:
         # the record append below still runs so the file surface
         # keeps the same close entry.
         if not self._is_quiet:
-            # Keep the header and passage on one carrier row so each close
-            # entry is independently greppable.
-            self._console.print(
-                self._activity_text(
-                    timestamp,
-                    display_tag,
-                    rendered_unit_id,
-                    body,
-                    kind="thinking" if base_tag == "think" else "text",
-                ),
-                markup=False,
-                highlight=False,
-                soft_wrap=True,
+            # DA-002 / DA-004 (S-4 + S-5): the close-entry body has
+            # the span header on its own line then the joined
+            # passage. Wrap each line independently so a wide
+            # console stays at the body_measure cap and a narrow
+            # console's continuations hang at the badge column.
+            # ``no_wrap=True`` prevents Rich from reflowing our
+            # manually wrapped lines (the pre-fix bug dropped
+            # continuations to column 0 on a 40-col console because
+            # Rich re-wrapped the ``close_hang_prefix + wrapped_cont``
+            # embedded-newline string and only the first embedded
+            # line carried the prefix).
+            header = f"⋯ {display_tag} · {start_str} → {end_str} · {duration_str}"
+            # S-7 / S-13 (AC-06 / AC-07): the close entry is a SINGLE
+            # logical row at the chrome prefix. The chrome prefix
+            # (``[output][<unit>]``) and the joined passage must both
+            # surface on the same ``content_row`` so observable-contract
+            # tests count one row per close. The visible body wraps
+            # within the budget; the wrap helper applies the wide/narrow
+            # column cap and continuation rows hang-indent at the badge
+            # column. Only the first row carries the chrome prefix; the
+            # continuation rows are rendered without the chrome tag so
+            # the ``[output][<unit>]`` row count remains exactly one
+            # (the pre-fix split-prints emitted two chrome rows; the
+            # pre-fix single-print + ``crop=True`` clipped the body).
+            hang_prefix = self._close_hang_prefix(timestamp, display_tag, rendered_unit_id)
+            wrapped_rows = self._wrap_close_body(
+                header,
+                visible,
+                total_width=self._ctx.width,
+                hang_prefix=hang_prefix,
             )
+            if wrapped_rows:
+                first_chunk, *continuations = wrapped_rows
+                self._console.print(
+                    self._activity_text(
+                        timestamp,
+                        display_tag,
+                        rendered_unit_id,
+                        first_chunk,
+                        kind="thinking" if base_tag == "think" else "text",
+                    ),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                    overflow="ignore",
+                )
+                for chunk in continuations:
+                    # Continuations hang at the badge column without
+                    # the chrome prefix so the close entry is one
+                    # logical row; the join-key ``[output][<unit>]``
+                    # appears exactly once on the live surface. The
+                    # final chunk that carries the condensation
+                    # trailer is rendered with ``crop=False`` so Rich
+                    # never silently drops the trailing
+                    # `` B, see .agent/raw/<unit>.log`` marker when
+                    # the marker is wider than the remaining row
+                    # budget; non-trailer chunks keep ``crop=True``
+                    # to honour the narrow-terminal width contract.
+                    is_trailer = "(truncated," in chunk
+                    self._console.print(
+                        f"{hang_prefix}{chunk}",
+                        markup=False,
+                        highlight=False,
+                        no_wrap=True,
+                        overflow="ignore",
+                        crop=not is_trailer,
+                    )
         # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
         # also the single record entry for the streaming block. Map the
         # base_tag back to an ``ActivityEventKind`` so the record line
