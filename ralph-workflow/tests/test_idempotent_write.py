@@ -70,6 +70,14 @@ class _RaisingBackend(_CountingBackend):
         raise OSError("permission denied")
 
 
+class _InvalidTextBackend(_CountingBackend):
+    """FileBackend whose existing bytes cannot be decoded as requested text."""
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del path, encoding
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+
 def test_skips_write_when_content_identical() -> None:
     """Identical existing content: returns False, zero write_text calls, bytes unchanged."""
     backend = _CountingBackend()
@@ -159,3 +167,15 @@ def test_writes_when_read_text_raises_oserror() -> None:
     assert result is True
     assert len(backend.write_text_calls) == 1
     assert backend.write_text_calls[0] == (path, "recovered")
+
+
+def test_text_write_regression_recovers_from_undecodable_existing_content() -> None:
+    """S-3: undecodable prior bytes are read uncertainty, so requested text publishes."""
+    backend = _InvalidTextBackend()
+    path = Path("/virtual-ws/invalid.txt")
+
+    result = write_text_if_changed(backend, path, "recovered")
+
+    assert result is True
+    assert backend.write_text_calls == [(path, "recovered")]
+    assert backend._files[path] == "recovered"

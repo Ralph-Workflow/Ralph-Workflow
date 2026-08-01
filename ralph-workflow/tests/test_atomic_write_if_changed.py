@@ -85,6 +85,14 @@ class _RaisingReadBackend(_ReplacingCountingBackend):
         raise OSError("permission denied")
 
 
+class _UndecodableReadBackend(_ReplacingCountingBackend):
+    """FileBackend that cannot decode an existing text destination."""
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del path, encoding
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+
 def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -> None:
     """AC-01: fresh destination performs one tmp-write plus one replace returning True.
 
@@ -200,6 +208,25 @@ def test_atomic_write_regression_fails_open_when_read_text_raises_oserror() -> N
     backend = _RaisingReadBackend()
     destination = Path("/virtual-ws/locked.json")
     tmp_path = Path("/virtual-ws/locked.json.tmp")
+
+    result = atomic_write_text_if_changed(
+        backend,
+        destination,
+        "recovered",
+        tmp_path=tmp_path,
+    )
+
+    assert result is True
+    assert backend.write_text_calls == [(tmp_path, "recovered")]
+    assert backend.replace_calls == [(tmp_path, destination)]
+    assert backend._files[destination] == "recovered"
+
+
+def test_atomic_text_write_regression_recovers_from_undecodable_destination() -> None:
+    """S-3: undecodable destination content must not block atomic self-healing."""
+    backend = _UndecodableReadBackend()
+    destination = Path("/virtual-ws/invalid.json")
+    tmp_path = Path("/virtual-ws/invalid.json.tmp")
 
     result = atomic_write_text_if_changed(
         backend,

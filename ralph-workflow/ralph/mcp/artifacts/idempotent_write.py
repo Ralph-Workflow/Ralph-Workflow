@@ -15,7 +15,7 @@ load) without altering any observable behavior: the file still
 contains ``content`` after the call.
 
 The helpers are intentionally fail-open: any read uncertainty
-(``OSError`` on ``read_text``, a missing path, or a content
+(``OSError`` or ``UnicodeDecodeError`` on ``read_text``, a missing path, or a content
 mismatch) falls through to a real write so the post-condition
 "file contains ``content``" always holds and a partial or corrupt
 prior file self-heals on the next write.
@@ -61,9 +61,10 @@ def write_text_if_changed(
         * Reads once to determine whether the destination is absent, unreadable,
           or already contains the requested bytes; it does not probe existence
           separately.
-        * If ``backend.read_text(path)`` raises ``OSError``: writes and returns
-          ``True`` (fail-open — missing, partial, or corrupt prior files self-heal
-          on the next call).
+        * If ``backend.read_text(path)`` raises ``OSError`` or
+          ``UnicodeDecodeError``: writes and returns ``True`` (fail-open —
+          missing, partial, corrupt, or undecodable prior files self-heal on the
+          next call).
         * If the read-back content equals ``content``: returns ``False``
           without calling ``backend.write_text`` (the skip).
         * Otherwise: calls ``prepare_write`` when supplied, writes, and returns
@@ -80,9 +81,11 @@ def write_text_if_changed(
     """
     try:
         existing = backend.read_text(path, encoding=encoding)
-    except (KeyError, OSError):
+    except (KeyError, OSError, UnicodeDecodeError):
         # In-memory FileBackend implementations represent a missing path as
         # KeyError; OS-backed implementations raise FileNotFoundError/OSError.
+        # Undecodable existing bytes are also read uncertainty: publish the
+        # requested text so a corrupt prior file self-heals.
         existing = None
     if existing is not None and existing == content:
         return False
@@ -144,10 +147,10 @@ def atomic_write_text_if_changed(
         * Reads once to determine whether the destination is absent, unreadable,
           or already contains the requested bytes; it does not probe existence
           separately.
-        * If ``backend.read_text(destination)`` raises ``OSError``: writes
-          ``tmp_path``, replaces onto ``destination``, returns ``True``
-          (fail-open — missing, partial, or corrupt prior files self-heal on
-          the next call).
+        * If ``backend.read_text(destination)`` raises ``OSError`` or
+          ``UnicodeDecodeError``: writes ``tmp_path``, replaces onto
+          ``destination``, and returns ``True`` (fail-open — missing, partial,
+          corrupt, or undecodable prior files self-heal on the next call).
         * If the read-back content equals ``content``: returns
           ``False`` without calling ``backend.write_text`` or
           ``backend.replace`` (the skip).
@@ -164,9 +167,11 @@ def atomic_write_text_if_changed(
     """
     try:
         existing = backend.read_text(destination, encoding=encoding)
-    except (KeyError, OSError):
+    except (KeyError, OSError, UnicodeDecodeError):
         # In-memory FileBackend implementations represent a missing path as
         # KeyError; OS-backed implementations raise FileNotFoundError/OSError.
+        # Undecodable existing bytes are also read uncertainty: atomically
+        # publish the requested text so a corrupt prior file self-heals.
         existing = None
     if existing is not None and existing == content:
         return False
