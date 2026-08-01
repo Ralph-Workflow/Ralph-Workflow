@@ -69,8 +69,9 @@ Background-aware highlighting
 -----------------------------
 
 Highlight colours are supplied by the fixed-RGB, contrast-tested Pygments
-themes in :func:`ralph.display.theme.syntax_theme_for_background`. The
-background is transparent, so previews retain the operator's terminal surface.
+themes in :func:`ralph.display.theme.syntax_theme_for_background`. Known
+backgrounds use one owned surface across the complete preview; an unknown
+background deliberately falls back to transparent, dual-safe rendering.
 
 The previous implementation pinned pygments' ``default`` theme, which
 is a *light-background* theme: it renders plain identifiers and
@@ -96,6 +97,8 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.markdown import CodeBlock, Markdown, MarkdownElement
+from rich.padding import Padding
+from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -339,7 +342,19 @@ class _BackgroundAwareMarkdown(Markdown):
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         with markdown_theme_context(console, terminal_bg_is_light=self.terminal_bg_is_light):
-            yield from super().__rich_console__(console, options)
+            content = tuple(super().__rich_console__(console, options))
+        surface = preview_background_for_background(self.terminal_bg_is_light)
+        if surface == "default":
+            yield from content
+            return
+        # An expanded style wrapper paints every Markdown row (including prose,
+        # padding, and fenced code) without introducing body-frame chrome.
+        yield Padding(
+            Group(*cast("tuple[RenderableType, ...]", content)),
+            pad=(0, 0),
+            style=Style(bgcolor=surface),
+            expand=True,
+        )
 
 
 def render_markdown_preview(
@@ -365,9 +380,9 @@ def _make_syntax(
 ) -> Syntax:
     """Build the themed ``Syntax`` renderable used by both preview shapes.
 
-    ``background_color`` is transparent and the theme uses fixed RGB,
-    so the block never paints over the terminal background while its token
-    colours remain contrast-tested rather than operator-slot dependent.
+    Known backgrounds are an owned, complete preview surface while the theme
+    uses fixed RGB token colours. Unknown backgrounds intentionally use the
+    dual-safe transparent fallback rather than terminal-defined ANSI slots.
     """
     return Syntax(
         body,

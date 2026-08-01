@@ -201,6 +201,13 @@ def test_generated_scene_catalog_declares_canonical_value_and_structure_formats(
     assert formats["completion_success"] == "frame: outcome, metrics, recovery"
 
 
+def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_every_surface() -> None:
+    """S-1: catalog entries declare the complete production-display contract."""
+    assert {surface.scene for surface in SURFACE_CATALOG} <= set(SCENE_NAMES)
+    assert all(surface.owner for surface in SURFACE_CATALOG)
+    assert all(surface.overflow_policy for surface in SURFACE_CATALOG)
+
+
 def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None:
     """S-1: generated output exercises every catalogued stream format."""
     common = SupportCase("dark", "none", "unicode", 80, "redirect")

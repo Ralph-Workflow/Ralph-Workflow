@@ -252,13 +252,12 @@ def test_identity_color_collision_nudge_picks_different_color() -> None:
     identities that hash to the same slot are still distinguishable
     on the live display.
     """
-    # Take the deterministic slot of "claude" out of the running;
-    # the returned color must not be that slot.
+    # An identity does not compete with itself: its deterministic slot remains
+    # available until a distinct active identity occupies it.
     base = identity_color("claude", terminal_bg_is_light=False)
-    nudged = identity_color("claude", active=["claude"], terminal_bg_is_light=False)
-    assert nudged != base
-    # The nudged color is still in the palette.
-    assert nudged in IDENTITY_PALETTE
+    resolved = identity_color("claude", active=["claude"], terminal_bg_is_light=False)
+    assert resolved == base
+    assert resolved in IDENTITY_PALETTE
 
 
 def test_identity_color_active_must_not_contain_self() -> None:

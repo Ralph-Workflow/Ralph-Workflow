@@ -311,11 +311,10 @@ def identity_color(
     simultaneously-rendered identities can never read as the same
     color under any of the three simulations.
 
-    Resolution is two-pass: every name in ``active`` is resolved
-    with the deterministic base slot first, then each name is
-    nudged so it cannot collide with any other name's RESOLVED
-    color. This prevents N identities that share K base slots from
-    all landing on the same nudge slot.
+    Active names resolve in deterministic sorted order. Each identity
+    reserves its first CVD-safe slot before the next one is considered,
+    so it never competes with its own base colour and active-set order
+    cannot change the result.
     """
     if terminal_bg_is_light is True:
         palette = IDENTITY_PALETTE_ON_LIGHT_BG
@@ -334,12 +333,8 @@ def identity_color(
     )
 
     def _resolve_hexes(names: Iterable[str]) -> dict[str, str]:
-        # First pass: deterministic base slot for every name.
-        resolved: dict[str, str] = {other: palette[_identity_slot(other)] for other in names}
-        # Second pass: nudge each name away from already-resolved
-        # peers. We iterate in sorted order so the resolution is
-        # stable across runs.
-        for other in sorted(resolved):
+        resolved: dict[str, str] = {}
+        for other in sorted(names):
             base = _identity_slot(other)
             occupied = set(resolved.values())
             occupied_cvd = {
@@ -348,7 +343,7 @@ def identity_color(
                 for matrix in cvd_matrices
             }
             chosen = palette[base]
-            # Try the CVD-distinct slot first.
+            # Try the CVD-distinct base slot before nudging forward.
             for offset in range(len(palette)):
                 slot = (base + offset) % len(palette)
                 candidate = palette[slot]

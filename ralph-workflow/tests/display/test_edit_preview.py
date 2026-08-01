@@ -51,6 +51,23 @@ def test_build_edit_preview_artifact_uses_markdown_renderer() -> None:
     assert isinstance(preview, Markdown)
 
 
+def test_markdown_preview_regression_owns_known_background_for_prose_and_code() -> None:
+    """S-4: complete Markdown previews own one known surface, not just fences."""
+    for terminal_bg_is_light in (False, True):
+        rendered = _render_truecolor(
+            render_markdown_preview(
+                "# Heading\n\nBody prose.\n\n```python\nvalue = 1\n```",
+                width=80,
+                terminal_bg_is_light=terminal_bg_is_light,
+            )
+        )
+        surface = preview_background_for_background(terminal_bg_is_light)
+        sgr = f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
+        assert sgr in rendered
+        assert "Heading" in _plain(rendered)
+        assert "value = 1" in _plain(rendered)
+
+
 def test_markdown_preview_regression_wraps_prose_without_wrapping_fenced_code() -> None:
     """S-1: prose wraps while a fenced source line remains a single row."""
     rendered = _plain(
