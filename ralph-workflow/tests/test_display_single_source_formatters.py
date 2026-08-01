@@ -26,13 +26,19 @@ def _display_trees() -> tuple[ast.Module, ...]:
     )
 
 
-def _function_def_count(name: str) -> int:
-    return sum(
-        1
+@lru_cache(maxsize=1)
+def _display_function_names() -> tuple[str, ...]:
+    """Return all display function names after one bounded AST traversal."""
+    return tuple(
+        node.name
         for tree in _display_trees()
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == name
+        if isinstance(node, ast.FunctionDef)
     )
+
+
+def _function_def_count(name: str) -> int:
+    return _display_function_names().count(name)
 
 
 @pytest.mark.timeout_seconds(2)

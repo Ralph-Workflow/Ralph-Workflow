@@ -132,10 +132,13 @@ def test_opencode_toplevel_error_line_classified_as_error_line() -> None:
     assert "32001" in signal.raw
 
 
-def test_opencode_tool_state_error_line_classified_as_error_line() -> None:
-    """End-to-end: an MCP tool-call failure (tool_use with state.status=error)
-    classifies as ERROR_LINE, not OUTPUT_LINE — otherwise the retry storm would
-    reset the idle/streak timers and the breaker would never fire."""
+def test_opencode_tool_state_error_regression_preserves_call_and_error_evidence() -> None:
+    """An errored tool call exposes both the call and its error fingerprint.
+
+    The process reader records ``kind=TOOL_USE`` for the identical-call breaker
+    and ``error_message`` for the repeated-error breaker. Keeping both pieces
+    of evidence prevents either varying error text or varying call arguments
+    from hiding a real retry storm."""
     strategy = OpenCodeExecutionStrategy()
     line = json.dumps(
         {
@@ -148,13 +151,13 @@ def test_opencode_tool_state_error_line_classified_as_error_line() -> None:
     )
     signal = strategy.classify_activity_line(line)
     assert signal is not None
-    assert signal.kind == AgentActivityKind.ERROR_LINE
-    assert "32001" in signal.raw
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.error_message is not None
+    assert "32001" in signal.error_message
 
 
-def test_tool_state_error_storm_fires_repeated_error_loop_end_to_end() -> None:
-    """Feed real raw tool-state-error NDJSON lines through the strategy and into
-    the watchdog: the incident pattern must abort via REPEATED_ERROR_LOOP."""
+def test_opencode_tool_state_error_regression_fires_repeated_error_loop() -> None:
+    """Errored OpenCode tools retain their repeated-error fingerprint."""
     clock = FakeClock()
     strategy = OpenCodeExecutionStrategy()
     watchdog = IdleWatchdog(_policy(consecutive=5), clock)
@@ -168,8 +171,9 @@ def test_tool_state_error_storm_fires_repeated_error_loop_end_to_end() -> None:
     for _ in range(6):
         signal = strategy.classify_activity_line(line)
         assert signal is not None
-        assert signal.kind == AgentActivityKind.ERROR_LINE
-        watchdog.record_error_activity(signal.raw)
+        assert signal.kind == AgentActivityKind.TOOL_USE
+        assert signal.error_message is not None
+        watchdog.record_error_activity(signal.error_message)
         clock.advance(34.0)
         if _evaluate(watchdog) == WatchdogVerdict.FIRE:
             fired = True
