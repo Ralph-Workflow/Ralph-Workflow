@@ -199,8 +199,9 @@ def _drive_production_scene(
         )
         display.begin_phase("development")
         display.emit_phase_start_from_entry(entry)
-        display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
-        display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
+        if context.width > GRACEFUL_WIDTH_FLOOR:
+            display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
+            display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
         display.emit_phase_transition("development", "review")
         display.emit_metrics_table({"events": 2, "artifacts": 1})
         display.emit_info_panel(title="Production note", content="Preview and records stay recoverable.")
