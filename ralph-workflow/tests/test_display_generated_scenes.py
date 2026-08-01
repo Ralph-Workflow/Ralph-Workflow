@@ -110,6 +110,21 @@ def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
     assert "return len(value)" in visible
 
 
+def test_generated_scene_narrow_elision_keeps_a_greppable_event_carrier_on_every_row() -> None:
+    """S-5: folded narrow elisions never leave a bare recovery continuation."""
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "none", "ascii", 40, "redirect"),
+        terminal_bg_is_light=False,
+    )
+    elision_rows = [line for line in rendered.splitlines() if "ELIDED" in line]
+
+    assert elision_rows == [
+        "ELIDED count=2 bytes=24",
+        "ELIDED recovery=.agent/raw/run.log",
+    ]
+
+
 def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None:
     assert CONTRAST_FLOOR == 4.5
     assert FULL_LAYOUT_WIDTH == 80

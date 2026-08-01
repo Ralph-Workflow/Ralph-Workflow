@@ -112,7 +112,7 @@ def render_scene(
     )
     styles = pick_status_styles(terminal_bg_is_light)
     console.print(Text(f"SCENE {scene_name}", style=styles["info"][0]))
-    _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs)
+    _render_scene_narrative(console, scene_name, styles, glyphs=case.glyphs, width=case.width)
     console.print(
         Syntax(
             "def cafe\u0301(value: str) -> int:\n    return len(value)",
@@ -132,6 +132,7 @@ def _render_scene_narrative(
     styles: dict[str, tuple[str, str, str]],
     *,
     glyphs: GlyphMode,
+    width: int,
 ) -> None:
     """Render scene-specific greppable carriers through the canonical palette."""
 
@@ -184,9 +185,16 @@ def _render_scene_narrative(
                 style=styles["success"][0],
             )
         )
-    console.print(
-        Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=styles["info"][0])
-    )
+    elision_style = styles["info"][0]
+    if width < FULL_LAYOUT_WIDTH:
+        # Every physical continuation retains the event carrier: cold transcripts
+        # are grepped line-by-line, so a wrapped recovery path cannot stand alone.
+        console.print(Text("ELIDED count=2 bytes=24", style=elision_style), no_wrap=True)
+        console.print(Text("ELIDED recovery=.agent/raw/run.log", style=elision_style), no_wrap=True)
+    else:
+        console.print(
+            Text("ELIDED count=2 bytes=24 recovery=.agent/raw/run.log", style=elision_style)
+        )
 
 
 def support_matrix() -> tuple[SupportCase, ...]:
