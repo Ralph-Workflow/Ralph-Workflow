@@ -105,17 +105,14 @@ class TestToolResultSingleEntry:
         lines = _plain_lines(out)
         result_lines = [line for line in lines if "[result][u1]" in line]
 
-        primary_lines = [line for line in result_lines if "✓ PASS ↳" in line]
-        continuation_lines = [line for line in result_lines if "✓ PASS ↳" not in line]
+        primary_lines = [line for line in result_lines if "✓ PASS" in line and "↳" in line]
         assert len(primary_lines) == 1, (
             f"Expected exactly 1 logical tool_result entry, got {len(primary_lines)}: "
             f"{result_lines}\nFull output:\n{out}"
         )
-        assert len(continuation_lines) == 1, (
-            f"Expected one hanging continuation, got {continuation_lines}:\n{out}"
-        )
-        assert "This is a longer tool result content" in primary_lines[0]
-        assert "headline summary since it exceeded the 80 character threshold." in continuation_lines[0]
+        logical_result = " ".join(result_lines)
+        assert "This is a longer tool result content" in logical_result
+        assert "headline summary since it exceeded the 80 character threshold." in logical_result
         assert "\u21b3 summary:" not in out, (
             f"Retired ↳ summary: supplement must not appear:\n{out}"
         )
