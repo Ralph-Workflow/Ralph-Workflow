@@ -104,8 +104,8 @@ def test_fail_badge_label_present_on_plain() -> None:
     assert "[FAIL]" in buf.getvalue()
 
 
-def test_badge_reason_text_dim_in_themed_output() -> None:
-    """_make_badge_text applies dim muted style to reason text in themed output."""
+def test_badge_reason_text_uses_coloured_muted_style_in_themed_output() -> None:
+    """Badge reason text remains visibly coloured without relying on dim alone."""
     buf = StringIO()
     console = Console(
         file=buf,
@@ -119,5 +119,5 @@ def test_badge_reason_text_dim_in_themed_output() -> None:
     console.print(t, markup=False, highlight=False, no_wrap=True)
     out = buf.getvalue()
     assert "Development Analysis: proceed" in out
-    # dim ANSI code (\x1b[2m) must be present since theme.text.muted = 'dim'
-    assert "\x1b[2m" in out
+    # The muted role emits a fixed teal foreground, not dim-only ANSI styling.
+    assert "\x1b[38;2;23;131;131m" in out

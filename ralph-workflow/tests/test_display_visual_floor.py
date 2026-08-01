@@ -58,6 +58,19 @@ def test_visual_floor_semantic_palettes_use_fixed_contrast_safe_foregrounds() ->
     _assert_palette_contrast(theme.STATUS_STYLES_ON_UNKNOWN_BG, ("#000000", "#FFFFFF"))
 
 
+def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
+    """S-3: semantic chrome retains an identifiable hue, not dim-only styling."""
+    semantic_roles = (
+        "theme.cat.meta",
+        "theme.text.muted",
+        "theme.status.bar_marker",
+        "theme.status.path_marker",
+        "theme.status.path",
+    )
+    for role in semantic_roles:
+        assert theme._extract_hex(theme._THEME_STYLES[role]), role
+
+
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
     bad = dict(theme.STATUS_STYLES)
     bad["waiting"] = ("dim", "?", "WAIT")
