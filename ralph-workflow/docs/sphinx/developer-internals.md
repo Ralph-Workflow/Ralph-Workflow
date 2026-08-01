@@ -150,10 +150,23 @@ immediately, including 12-row and temporarily below-floor terminals.
 background) once during construction. Code and diff previews use a complete
 fixed surface when that background is known, including source rows, gutters,
 and padding; an unknown background deliberately falls back to transparency.
-Event identities and the Status Bar use
-the matching identity palette; unknown backgrounds keep the dark-safe default.
-The text label remains the identity carrier, so color is never required to
-understand an entry.
+Event identities, semantic event states, and the Status Bar use the matching
+palette. An undetermined background uses the explicit dual-safe palette rather
+than assuming a dark terminal. The text label remains the identity carrier, so
+color is never required to understand an entry.
+
+### Display support contract
+
+The reference display supports dark, light, and undetermined backgrounds;
+truecolour, reduced-colour, and no-colour output; Unicode and ASCII glyphs;
+and TTY, redirected, and CI destinations. Fully laid-out composition begins at
+80 columns and degrades intentionally to the 40-column floor (including a
+12-row terminal). Semantic and preview foregrounds target a 4.5:1 contrast
+ratio on their resolved surface. `NO_COLOR` disables escapes; `FORCE_COLOR`
+retains ANSI colour for render-capable redirected or CI capture. Motion is
+reserved for a real TTY; redirected and CI output instead records durable state
+transitions and elapsed-time heartbeats. Condensed output identifies its count,
+byte size, and `.agent/raw/` recovery destination.
 
 ### Canonical activity presentation
 

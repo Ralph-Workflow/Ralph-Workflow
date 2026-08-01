@@ -9,9 +9,12 @@ import pytest
 from pygments.token import Comment, Generic, Keyword, Name, Number, Operator, Punctuation, String
 
 from ralph.display import theme
+from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.display.agent_event_renderer import make_event_for_emit, render_event
+from ralph.display.context import make_display_context
 from ralph.display.edit_preview import build_edit_preview
 from ralph.display.scene_catalog import CONTRAST_FLOOR
-from ralph.display.theme import preview_background_for_background
+from ralph.display.theme import pick_status_styles, preview_background_for_background
 from ralph.syntax_theme import SyntaxThemes
 
 _PREVIEW_SURFACES = {
@@ -74,6 +77,19 @@ def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
     )
     for role in semantic_roles:
         assert theme._extract_hex(theme._THEME_STYLES[role]), role
+
+
+def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> None:
+    """S-3: an undetermined terminal background must not silently render as dark."""
+    context = make_display_context(env={})
+    rendered = render_event(
+        make_event_for_emit(ActivityEventKind.TEXT, "operator-visible event"),
+        ctx=context,
+    )
+
+    expected_style = pick_status_styles(None)["info"][0]
+    assert context.terminal_background_is_light is None
+    assert any(span.style == expected_style for span in rendered.spans)
 
 
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
