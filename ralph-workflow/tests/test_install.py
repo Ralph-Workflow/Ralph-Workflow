@@ -341,7 +341,7 @@ def test_flavored_version_reports_build_and_dev_suffixes(monkeypatch: pytest.Mon
     """S-2: installer flavor suffixes appear in the public version."""
     assert _build_meta.flavored_version() == _build_meta._BASE_VERSION
 
-    for flavor in ("-build", "-dev"):
+    for flavor in ("", "-build", "-dev"):
         monkeypatch.setattr(_build_meta, "BUILD_FLAVOR", flavor)
         assert _build_meta.flavored_version() == _build_meta._BASE_VERSION + flavor
 

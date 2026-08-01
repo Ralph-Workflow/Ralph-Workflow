@@ -1597,22 +1597,19 @@ class ParallelDisplay:
                 # protects every physical continuation at narrow widths.
                 rows = self._wrap_body_with_hanging_indent(
                     close_badge_prefix,
-                    f"{header} · {visible}",
+                    f"{visible} · {header}",
                     total_width=self._ctx.width,
                     body_measure=max(
                         self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)),
                 ).split("\n")
             else:
-                # Agent output keeps a compact metadata row followed by
-                # independently greppable content rows, so the duration is
-                # never obscured by a long passage.
-                rows = [header, *self._wrap_body_with_hanging_indent(
+                rows = self._wrap_body_with_hanging_indent(
                     close_badge_prefix,
-                    visible,
+                    f"{visible} · {header}",
                     total_width=self._ctx.width,
                     body_measure=max(
                         self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)),
-                ).split("\n")]
+                ).split("\n")
             for row in rows:
                 self._console.print(
                     self._activity_text(
