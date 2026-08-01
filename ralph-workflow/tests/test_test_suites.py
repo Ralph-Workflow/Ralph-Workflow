@@ -301,19 +301,21 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: ten shards keep the full profile within the immutable
-    # combined budget while avoiding the prior SQLite contention ceiling.
+    # Regression: automatic sharding follows available cores without
+    # exceeding the measured 32-shard ceiling.
     for cores, expected in (
-        (4, "10"),
-        (5, "10"),
-        (6, "10"),
-        (7, "10"),
-        (8, "10"),
-        (12, "10"),
-        (16, "10"),
-        (20, "10"),
-        (21, "10"),
-        (64, "10"),
+        (1, "1"),
+        (4, "4"),
+        (5, "5"),
+        (6, "6"),
+        (7, "7"),
+        (8, "8"),
+        (12, "12"),
+        (16, "16"),
+        (20, "20"),
+        (21, "21"),
+        (32, "32"),
+        (64, "32"),
     ):
         monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
         assert test_suites_module._pytest_workers() == expected
