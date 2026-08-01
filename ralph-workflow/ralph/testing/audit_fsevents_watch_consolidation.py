@@ -15,9 +15,11 @@ canonical ``WorkspaceMonitor.start()`` owner. It then parses that owner with
 the ``ast`` module only (no subprocess, no ``time.sleep``, no real file I/O
 outside reading source) and enforces five invariants:
 
-  1. **INV-1 (count)** -- the module contains exactly one
+  1. **INV-1 (count)** -- the module contains exactly one direct
      ``ast.Call`` whose function is an ``ast.Attribute`` named
-     ``schedule``.  The TYPE_CHECKING ``_ObserverProtocol`` signature
+     ``schedule``.  Binding ``.schedule`` to another name is rejected
+     as ``aliased_watch_schedule`` so an indirect call cannot evade
+     the single-watch check. The TYPE_CHECKING ``_ObserverProtocol`` signature
      (``def schedule(...)``) is an ``ast.FunctionDef``, not an
      ``ast.Call``, so it is excluded by construction.  Zero matches
      raises ``missing_watch_schedule``; ``N > 1`` raises one
@@ -147,6 +149,24 @@ def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
     return calls
 
 
+def _find_schedule_aliases(tree: ast.Module) -> list[ast.Attribute]:
+    """Return every ``.schedule`` attribute bound for later invocation.
+
+    The canonical owner must call ``self._observer.schedule(...)`` directly.
+    A bound method assignment such as ``schedule = self._observer.schedule``
+    can otherwise hide a subsequent invocation from the AST call matcher and
+    evade the package-wide single-watch rule.
+    """
+    aliases: list[ast.Attribute] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
+            continue
+        value = node.value
+        if isinstance(value, ast.Attribute) and value.attr == "schedule":
+            aliases.append(value)
+    return aliases
+
+
 def _has_recursive_true_kwarg(call: ast.Call) -> bool:
     """Return True iff ``call`` passes ``recursive=True`` as a kwarg.
 
@@ -224,6 +244,10 @@ def _check_module(
             )
         ]
 
+    schedule_aliases: list[ast.Attribute] = _find_schedule_aliases(tree)
+    if schedule_aliases:
+        return [_aliased_watch_schedule_violation(rel_path, alias.lineno) for alias in schedule_aliases]
+
     schedule_calls: list[ast.Call] = _find_schedule_calls(tree)
     invariants_violations: list[FseventsWatchViolation] = _check_schedule_call_invariants(
         rel_path, schedule_calls
@@ -297,6 +321,33 @@ def _check_schedule_call_location(
         return [_wrong_enclosing_function_violation(rel_path, schedule_call.lineno, actual_name)]
 
     return []
+
+
+def _unowned_watch_schedule_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
+    """INV-5 failure: a production module attempts to own a watch schedule."""
+    return FseventsWatchViolation(
+        kind="unowned_watch_schedule",
+        file_path=rel_path,
+        line=lineno,
+        message=(
+            "observer.schedule(...) is outside the lifecycle-owned "
+            "WorkspaceMonitor.start(); route workspace events through the "
+            "canonical monitor instead of adding an overlapping watch"
+        ),
+    )
+
+
+def _aliased_watch_schedule_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
+    """INV-1 failure: a bound ``.schedule`` method hides its call site."""
+    return FseventsWatchViolation(
+        kind="aliased_watch_schedule",
+        file_path=rel_path,
+        line=lineno,
+        message=(
+            "observer.schedule must be invoked directly inside WorkspaceMonitor.start(); "
+            "a bound schedule alias can hide an overlapping watch from the fail-closed audit"
+        ),
+    )
 
 
 def _missing_watch_schedule_violation(rel_path: str) -> FseventsWatchViolation:
@@ -404,17 +455,12 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
             )
             continue
         violations.extend(
-            FseventsWatchViolation(
-                kind="unowned_watch_schedule",
-                file_path=rel_path,
-                line=call.lineno,
-                message=(
-                    "observer.schedule(...) is outside the lifecycle-owned "
-                    "WorkspaceMonitor.start(); route workspace events through the "
-                    "canonical monitor instead of adding an overlapping watch"
-                ),
-            )
+            _unowned_watch_schedule_violation(rel_path, call.lineno)
             for call in _find_schedule_calls(tree)
+        )
+        violations.extend(
+            _unowned_watch_schedule_violation(rel_path, alias.lineno)
+            for alias in _find_schedule_aliases(tree)
         )
     return violations
 

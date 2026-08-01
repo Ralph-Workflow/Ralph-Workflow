@@ -122,6 +122,26 @@ def test_audit_flags_second_schedule_call_in_start(tmp_path: Path) -> None:
     )
 
 
+def test_audit_flags_aliased_schedule_call(tmp_path: Path) -> None:
+    """A bound ``schedule`` method alias cannot bypass the single-watch audit."""
+    package_root: Path = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        schedule = self._observer.schedule\n"
+            "        schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+
+    violations: list[audit.FseventsWatchViolation] = audit.audit_fsevents_watch_consolidation(
+        package_root
+    )
+
+    assert [violation.kind for violation in violations] == ["aliased_watch_schedule"]
+    assert "directly" in violations[0].message
+
+
 def test_audit_flags_non_recursive_schedule_call(tmp_path: Path) -> None:
     """``recursive=False`` triggers ``watch_not_recursive``.
 
