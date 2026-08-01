@@ -105,12 +105,15 @@ def _state_payload(state: str) -> tuple[str, str, str]:
 
 
 def _state_payload_for_context(
-    state: str, ctx: DisplayContext | None
+    state: str, terminal_bg_is_light: bool
 ) -> tuple[str, str, str]:
-    """Resolve a state through the context palette or default palette."""
-    if ctx is None:
-        return _state_payload(state)
-    payload = pick_status_styles(ctx.terminal_background_is_light)[state]
+    """Resolve a semantic state through the caller's resolved terminal palette.
+
+    Plain-text callers explicitly pass ``False`` for the canonical dark
+    compatibility palette. Rich renderers pass the value that their
+    ``DisplayContext`` resolved once for the active terminal.
+    """
+    payload = pick_status_styles(terminal_bg_is_light)[state]
     return (payload[0], payload[1], payload[2])
 
 
@@ -352,7 +355,9 @@ def _render_text_event(
     style_name = "info"
     if event.kind is ActivityEventKind.THINKING:
         style_name = "running"
-    style, icon, label = _state_payload_for_context(style_name, ctx)
+    style, icon, label = _state_payload_for_context(
+        style_name, bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -379,7 +384,9 @@ def _render_status_event(
     message. Heartbeat uses the ``info`` carrier; progress uses
     ``running``; subagent_progress uses ``info``.
     """
-    style, icon, label = _state_payload_for_context("info", ctx)
+    style, icon, label = _state_payload_for_context(
+        "info", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -436,7 +443,9 @@ def _render_tool_use_event(
     When ``unit_id`` is set the caller's badge carries it once; the
     body remains tool name plus arguments so all consumers share one shape.
     """
-    style, icon, label = _state_payload_for_context("running", ctx)
+    style, icon, label = _state_payload_for_context(
+        "running", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     raw_name = _normalized_event_content(event) or "tool"
     tool_name = friendly_tool_name(raw_name)
     args_str = _format_event_input(event.metadata)
@@ -506,7 +515,9 @@ def _render_tool_result_event(
     """
     is_error = outcome_is_failure(event.metadata)
     state = "error" if is_error else "success"
-    style, icon, label = _state_payload_for_context(state, ctx)
+    style, icon, label = _state_payload_for_context(
+        state, bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     raw_body = _normalized_event_content(event)
     if not raw_body:
         result_meta = event.metadata.get("result")
@@ -566,7 +577,9 @@ def _render_error_event(
     The ``error`` carrier (VERMILLION + ✗ + FAIL) is paired with the
     body so the meaning persists with color disabled.
     """
-    style, icon, label = _state_payload_for_context("error", ctx)
+    style, icon, label = _state_payload_for_context(
+        "error", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _normalized_event_content(event) or "unknown error"
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -582,7 +595,9 @@ def _render_lifecycle_event(
     escape_body: bool = True,
 ) -> Text:
     """Render a lifecycle event (phase transitions, run start / end)."""
-    style, icon, label = _state_payload_for_context("info", ctx)
+    style, icon, label = _state_payload_for_context(
+        "info", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -602,7 +617,9 @@ def _render_progress_event(
     Both event kinds render with the ``running`` carrier so an
     in-progress signal never accidentally reads as success/failure.
     """
-    style, icon, label = _state_payload_for_context("running", ctx)
+    style, icon, label = _state_payload_for_context(
+        "running", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -618,7 +635,9 @@ def _render_heartbeat_event(
     escape_body: bool = True,
 ) -> Text:
     """Render a heartbeat event (idle-waitdog liveness ping)."""
-    style, icon, label = _state_payload_for_context("info", ctx)
+    style, icon, label = _state_payload_for_context(
+        "info", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _format_body_with_unit(_normalized_event_content(event) or "alive", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -645,7 +664,9 @@ def _render_unknown_event(
     summary is rendered instead so the operator still sees the
     key=value context.
     """
-    style, icon, label = _state_payload_for_context("info", ctx)
+    style, icon, label = _state_payload_for_context(
+        "info", bool(ctx.terminal_background_is_light) if ctx is not None else False
+    )
     body = _normalized_event_content(event)
     text = Text()
     text.append(f"{icon} {label} ", style=style)

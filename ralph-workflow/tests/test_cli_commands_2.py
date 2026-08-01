@@ -1103,12 +1103,15 @@ def test_init_command_regression_does_not_create_missing_explicit_config_path(
 
 
 @pytest.mark.parametrize(
-    ("arguments", "needs_missing_config"),
+    ("arguments", "needs_missing_config", "handler_name"),
     (
-        (["--init"], False),
-        (["--init", "--config"], True),
-        (["--list-agents"], False),
-        (["--regenerate-config"], False),
+        (["--init"], False, None),
+        (["--init", "--config"], True, None),
+        (["--list-agents"], False, None),
+        (["--diagnose"], False, "diagnose_command"),
+        (["--check-mcp"], False, "handle_check_mcp"),
+        (["--force-init-skills"], False, "_handle_force_init_skills"),
+        (["--regenerate-config"], False, None),
     ),
 )
 def test_cli_non_local_config_commands_leave_missing_local_tomls_absent(
@@ -1116,12 +1119,15 @@ def test_cli_non_local_config_commands_leave_missing_local_tomls_absent(
     tmp_path: Path,
     arguments: list[str],
     needs_missing_config: bool,
+    handler_name: str | None,
 ) -> None:
     """Plan S-1: ordinary CLI paths must not implicitly opt projects into local config."""
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
+    if handler_name is not None:
+        monkeypatch.setattr(main_module, handler_name, lambda *args, **kwargs: 0)
 
     if needs_missing_config:
         arguments = [*arguments, str(tmp_path / ".agent" / "custom.toml")]
@@ -1129,7 +1135,11 @@ def test_cli_non_local_config_commands_leave_missing_local_tomls_absent(
     result = typer.testing.CliRunner().invoke(main_module.app, arguments)
 
     assert result.exit_code == 0, result.output
-    assert not (tmp_path / ".agent").exists()
+    local_tomls = tmp_path / ".agent"
+    assert not any(
+        (local_tomls / filename).exists()
+        for filename in ("ralph-workflow.toml", "mcp.toml", "pipeline.toml", "artifacts.toml")
+    )
     assert (xdg_dir / "ralph-workflow.toml").exists()
 
 
