@@ -38,17 +38,27 @@ def test_real_production_tree_audit_passes() -> None:
     assert violations == []
 
 
-def test_candidate_free_module_skips_ast_parse(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """DA-001 regression: inert modules avoid parse cost without narrowing the walk."""
+def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
+    """S-8 regression: invalid source cannot bypass the package-wide audit."""
+    module_rel = "alpha/broken.py"
+    package_root = _write_fake_package(tmp_path, module_rel, "def broken(:\n")
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "invalid_module"
+    assert violations[0].file_path == module_rel
+    assert violations[0].line == 1
+    assert "module could not be parsed" in violations[0].message
+
+
+def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
+    """A valid inert production module remains accepted by the audit."""
     module_rel = "alpha/inert.py"
     package_root = _write_fake_package(tmp_path, module_rel, "VALUE = 1\n")
-
-    def fail_parse(*args: object, **kwargs: object) -> None:
-        raise AssertionError("candidate-free source must not be parsed")
-
-    monkeypatch.setattr(audit.ast, "parse", fail_parse)
 
     assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
 
