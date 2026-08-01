@@ -165,6 +165,7 @@ def build_presented_entry(
     body = _strip_live_chrome(
         strip_parser_channel_prefix(body),
         identity,
+        preserve_before_pair=event.kind is ActivityEventKind.TOOL_USE,
     )
     if event.kind in {ActivityEventKind.TEXT, ActivityEventKind.THINKING}:
         body = _strip_markdown_emphasis(body)
@@ -248,8 +249,16 @@ def _tool_result_record_body(body: str, metadata: dict[str, object], severity: s
 
 
 def _tool_call_record_body(body: str, metadata: dict[str, object]) -> str:
-    """Preserve a tool name and provider-supplied continuation glyph in each record call."""
-    body = body.rstrip().removesuffix("↳").rstrip().removeprefix("↳ ")
+    """Preserve a tool name and any continuation glyph on every record call."""
+    body = body.rstrip()
+    input_obj = metadata.get("input", metadata.get("args"))
+    input_dict = input_obj if isinstance(input_obj, dict) else {}
+    # Structured calls already carry their tool target in the record body.
+    # The live-only pairing arrow would make independent, greppable records
+    # look like continuations; retain it only for an explicitly preformatted
+    # (unstructured) wrapped call.
+    if any(input_dict.get(key) for key in ("path", "command", "pattern")):
+        body = body.removeprefix("↳ ").removesuffix(" ↳").rstrip()
     raw_tool = next(
         (
             value
@@ -297,7 +306,7 @@ _LIVE_BADGE_ONLY = re.compile(r"^(?:\d{2}:\d{2}:\d{2}\s+)?\S+$")
 _LIVE_BADGE_IDENTITY_ONLY = re.compile(r"^\d{2}:\d{2}:\d{2}\s+[^\s]+$")
 
 
-def _strip_live_chrome(body: str, identity: str) -> str:
+def _strip_live_chrome(body: str, identity: str, *, preserve_before_pair: bool = False) -> str:
     """Remove a live-rendered badge/identity prefix from a record body.
 
     The canonical entry is text-first; status, time, and identity belong to
@@ -308,7 +317,7 @@ def _strip_live_chrome(body: str, identity: str) -> str:
     if match is None:
         return body
     remainder = body[match.end() :].strip()
-    if "↳" in remainder:
+    if "↳" in remainder and not preserve_before_pair:
         return remainder.split("↳", 1)[1].strip()
     if identity and remainder == identity:
         return ""
