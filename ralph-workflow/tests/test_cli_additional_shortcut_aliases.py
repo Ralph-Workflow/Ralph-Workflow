@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+from typer import Exit
 from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.main import (
@@ -13,7 +16,6 @@ from ralph.cli.main import (
 from ralph.display.context import DisplayContext, make_display_context
 
 if TYPE_CHECKING:
-    import pytest
     from rich.console import Console
 
 RUN_PIPELINE_SUCCESS = 42
@@ -69,3 +71,27 @@ class TestAdditionalShortcutAliases:
         result = runner.invoke(app, ["-C"], catch_exceptions=False)
 
         assert result.exit_code == 0
+
+
+def test_version_callback_displays_flavored_runtime_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-1: CLI version output uses runtime metadata rather than package metadata."""
+    cli_main = import_module("ralph.cli.main")
+
+    displayed: list[str] = []
+
+    class FakeDisplay:
+        def emit_welcome_banner(self, *, version: str) -> None:
+            displayed.append(version)
+
+    monkeypatch.setattr(cli_main, "flavored_version", lambda: "0.9.8-dev")
+    monkeypatch.setattr(
+        "ralph.display.parallel_display.resolve_active_display",
+        lambda _display, _ctx: FakeDisplay(),
+    )
+
+    with pytest.raises(Exit):
+        cli_main.version_callback(True, ctx=object())
+
+    assert displayed == ["0.9.8-dev"]

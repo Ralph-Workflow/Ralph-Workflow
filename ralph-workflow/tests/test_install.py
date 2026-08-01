@@ -585,3 +585,41 @@ def test_installed_wheel_migrates_legacy_global_config_before_plain_ralph(
         'development_commit = "reviewer"',
     ):
         assert line in migrated, migrated
+
+
+def test_copy_install_tree_preserves_runtime_assets_and_omits_build_artifacts(
+    tmp_path: Path,
+) -> None:
+    """S-3: the dev snapshot keeps runtime assets after its source checkout is gone."""
+    from ralph._install_copy_tree import copy_install_tree
+
+    source = tmp_path / "source"
+    destination = tmp_path / "snapshot"
+    (source / "ralph" / "prompts" / "templates").mkdir(parents=True)
+    (source / "ralph" / "policy" / "defaults").mkdir(parents=True)
+    (source / "ralph" / "prompts" / "templates" / "task.jinja").write_text("task", encoding="utf-8")
+    (source / "ralph" / "policy" / "defaults" / "pipeline.toml").write_text("[x]", encoding="utf-8")
+    (source / ".git").mkdir()
+    (source / ".git" / "config").write_text("ignored", encoding="utf-8")
+    (source / ".venv").mkdir()
+    (source / ".venv" / "marker").write_text("ignored", encoding="utf-8")
+
+    assert copy_install_tree(source, destination) == destination
+    assert (destination / "ralph" / "prompts" / "templates" / "task.jinja").read_text() == "task"
+    assert (destination / "ralph" / "policy" / "defaults" / "pipeline.toml").read_text() == "[x]"
+    assert not (destination / ".git").exists()
+    assert not (destination / ".venv").exists()
+
+
+def test_install_stable_release_leaves_published_package_flavor_clean() -> None:
+    """S-4: only a local manual wheel receives the build suffix."""
+    writes: list[tuple[Path, str]] = []
+
+    install_module.install_stable_release(
+        run=lambda _command, *, cwd: None,
+        uv_executable="uv",
+        cwd=Path("/checkout"),
+        write_flavor=lambda path, flavor: writes.append((path, flavor)),
+    )
+
+    assert writes == []

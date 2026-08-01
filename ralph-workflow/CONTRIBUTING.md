@@ -76,13 +76,13 @@ make dev
 
 ### Dev build vs stable build
 
-You can keep a self-contained **dev build** and a pinned **stable build** side by
+You can keep a self-contained **dev build** and a published **stable build** side by
 side. They never collide because the dev build registers no global `ralph` command.
 
 | | Command to run it | How to install / refresh | Tracks |
 |---|---|---|---|
 | **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` | a self-contained snapshot (`-dev`); rerun after edits |
-| **Stable build** | `ralph …` (anywhere) | `make stable` | a pinned release, isolated via `uv tool` |
+| **Stable build** | `ralph …` (anywhere) | `make stable` | a published release, isolated via `uv tool` |
 
 - **Dev build** — `make install` copies this checkout to
   `~/.local/share/ralph-workflow-dev/current`, syncs that copy, and writes an
@@ -111,9 +111,11 @@ side. They never collide because the dev build registers no global `ralph` comma
   ralph --version  # -> stable release version (~/.local/bin/ralph)
   ```
 
-  Bump the stable pin later with `uv tool upgrade ralph-workflow`, or remove it
+  Bump the stable install later with `uv tool upgrade ralph-workflow`, or remove it
   entirely with `uv tool uninstall ralph-workflow`. Remove the dev launcher with
-  `rm ~/.local/bin/rdev`.
+  `rm ~/.local/bin/rdev`. To install a locally built wheel as a manual build,
+  run `python -m ralph.install --from dist/ralph_workflow-<version>-py3-none-any.whl`;
+  its `ralph --version` ends in `-build`.
 
 > `uv` is required for the dev and stable builds, and `~/.local/bin` must be on
 > your `PATH`. Do not install the dev build as a global `ralph` (via pipx or
