@@ -829,16 +829,24 @@ def _default_lifecycle_deps() -> LifecycleDeps:
 
 
 def _create_session_file(root: Path, session: SessionLike) -> Path:
-    # Session metadata lives outside .agent/tmp so it survives prompt-triggered
-    # tmp cleanup and the run-start aged retention sweep for the MCP server's lifetime.
-    session_dir = root / ".agent"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json", dir=session_dir)
-    os.close(fd)
+    """Create one run-scoped MCP handshake file outside the watched workspace.
+
+    The subprocess receives the absolute path through ``MCP_SESSION_FILE_ENV``;
+    no user-visible or resume-facing contract requires this transient handshake
+    payload to live below ``root``. Keeping it in the system temporary directory
+    prevents a server start or restart from emitting workspace watch events.
+    """
+    del root
+    fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json")
     path = Path(temp_path)
-    # filesystem-write-ok: unique-keyed MCP session file (mkstemp ensures distinct path per invocation)
-    path.write_text(session_payload_json(session), encoding="utf-8")
-    return path
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:  # filesystem-write-ok: unique run-scoped transient handshake file, removed by StandaloneMcpProcess.shutdown
+            stream.write(session_payload_json(session))
+        return path
+    except BaseException:
+        # filesystem-write-ok: cleanup of an unpublished transient handshake file after write failure
+        path.unlink(missing_ok=True)
+        raise
 
 
 def session_payload_json(session: SessionLike) -> str:

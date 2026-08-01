@@ -9,6 +9,19 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 
 
+def test_session_metadata_uses_system_temporary_storage_outside_workspace(tmp_path: Path) -> None:
+    """S-3 regression: transient MCP metadata never creates a workspace-tree file."""
+    session = AgentSession(session_id="session", run_id="run", drain="planning", capabilities=set())
+
+    session_file = lifecycle._create_session_file(tmp_path, session)
+
+    try:
+        assert not session_file.is_relative_to(tmp_path)
+        assert session_file.read_text(encoding="utf-8") == lifecycle.session_payload_json(session)
+    finally:
+        session_file.unlink(missing_ok=True)
+
+
 def test_spawn_failure_removes_created_session_file(tmp_path: Path) -> None:
     def fail_spawn(
         _command: list[str], _cwd: Path, _env: dict[str, str], *, phase: str | None = None
