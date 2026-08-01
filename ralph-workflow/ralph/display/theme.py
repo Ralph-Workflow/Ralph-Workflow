@@ -27,7 +27,7 @@ from rich.theme import Theme
 from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Iterable, Mapping
     from typing import TextIO
 
 ORANGE: Final[str] = "#E69F00"

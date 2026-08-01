@@ -322,6 +322,18 @@ def test_cli_returns_bad_root_when_missing(tmp_path: Path) -> None:
     assert audit.main([str(tmp_path / "missing")]) == 2
 
 
+def test_missing_package_root_fails_closed(tmp_path: Path) -> None:
+    """S-8 regression: an unavailable requested root cannot silently pass."""
+    missing_root = tmp_path / "missing"
+
+    violations = audit.audit_filesystem_write_consolidation(missing_root)
+
+    assert len(violations) == 1
+    assert violations[0].kind == "missing_package_root"
+    assert violations[0].file_path == str(missing_root)
+    assert "could not be walked" in violations[0].message
+
+
 # ---------------------------------------------------------------------------
 # Raw qualified-mutation detection (DA-001: open/write/rename/replace/...).
 # Each test exercises one entry in the audit's qualified-mutation table.

@@ -582,7 +582,17 @@ def audit_filesystem_write_consolidation(
     new code (D1).
     """
     if not package_root.is_dir():
-        return []
+        return [
+            FilesystemWriteViolation(
+                kind="missing_package_root",
+                file_path=str(package_root),
+                line=0,
+                message=(
+                    "package root could not be walked; restore the requested production "
+                    "root so the filesystem-write audit can fail closed"
+                ),
+            )
+        ]
 
     exempt = _coerce_exempt_paths(exempt_paths)
     roots = _coerce_package_roots(package_root, package_roots)
