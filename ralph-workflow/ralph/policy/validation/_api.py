@@ -56,6 +56,11 @@ class _AgentSupport(Protocol):
     cmd: str
 
 
+@runtime_checkable
+class _BuiltinAgentModule(Protocol):
+    def builtin_supports(self) -> tuple[_AgentSupport, ...]: ...
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -350,13 +355,10 @@ def validate_chain_agents_on_path(
     # the execution-state package while it is being initialized.
     # The catalog import is intentionally deferred to avoid the import cycle
     # above; this module performs the same typed normalization at the boundary.
-    builtin = import_module("ralph.agents.builtin")
-    raw_supports = cast("tuple[object, ...]", builtin.builtin_supports())
-    supports = {
-        support.name: support
-        for item in raw_supports
-        if isinstance((support := cast("_AgentSupport", item)), _AgentSupport)
-    }
+    builtin: object = import_module("ralph.agents.builtin")
+    if not isinstance(builtin, _BuiltinAgentModule):
+        raise TypeError("ralph.agents.builtin lacks builtin_supports")
+    supports = {support.name: support for support in builtin.builtin_supports()}
 
     def is_available(agent_name: str) -> bool:
         if available is not None:

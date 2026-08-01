@@ -487,7 +487,7 @@ def audit_fsevents_watch_consolidation(
                 line=0,
                 message=(
                     "package root does not exist or is not a directory; cannot prove "
-                    "package-wide watch ownership, so the audit fails closed"
+                    "package-wide watch ownership, so the audit must fail closed"
                 ),
             )
         ]

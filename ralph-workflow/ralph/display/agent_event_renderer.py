@@ -95,22 +95,11 @@ _ICON_KEY = "icon"
 _LABEL_KEY = "label"
 
 
-#: Suffix appended to the unit identity before a leading space
-#: so the renderer can split the prefix back out at rendering time
-#: without losing the source ``unit_id`` (e.g. for plain-text paths
-#: that need to surface the bare name). The :func:`render_event`
-#: registry's :func:`_format_body_with_unit` helper joins the unit
-#: id with the body using this sentinel.
 _UNIT_ID_DELIMITER: str = " "
 
 
 def _state_payload(state: str) -> tuple[str, str, str]:
-    """Return the ``(style, icon, label)`` triple for a STATUS_STYLES key.
-
-    Raises ``KeyError`` (matching ``format_status``'s contract) when the
-    state is unknown so the registry surface can't silently drop a
-    state to ``unknown``.
-    """
+    """Return the ``(style, icon, label)`` triple for a status key."""
     payload = STATUS_STYLES[state]
     return (payload[0], payload[1], payload[2])
 
@@ -118,13 +107,7 @@ def _state_payload(state: str) -> tuple[str, str, str]:
 def _state_payload_for_context(
     state: str, ctx: DisplayContext | None
 ) -> tuple[str, str, str]:
-    """Resolve a semantic state through the display context's background palette.
-
-    The no-context compatibility path retains the canonical dark palette for
-    plain-text consumers. Rich renderers receive their ``DisplayContext`` and
-    therefore use the light, dark, or dual-safe unknown palette selected once
-    for the active terminal.
-    """
+    """Resolve a state through the context palette or default palette."""
     if ctx is None:
         return _state_payload(state)
     payload = pick_status_styles(ctx.terminal_background_is_light)[state]

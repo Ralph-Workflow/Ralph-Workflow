@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
 
 
+@runtime_checkable
 class _ParserBaseModule(Protocol):
     def extract_error_message(self, obj: dict[str, object]) -> str: ...
 
@@ -65,7 +66,9 @@ def _error_message_from_error_field(obj: dict[str, object]) -> str:
     """
     # Load only when processing an error event: importing the parser package
     # during execution-state initialization re-enters the agent catalog graph.
-    parser_base = cast("_ParserBaseModule", import_module("ralph.agents.parsers.base"))
+    parser_base: object = import_module("ralph.agents.parsers.base")
+    if not isinstance(parser_base, _ParserBaseModule):
+        raise TypeError("ralph.agents.parsers.base lacks extract_error_message")
     return parser_base.extract_error_message(obj)
 
 

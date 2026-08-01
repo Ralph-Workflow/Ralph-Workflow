@@ -36,6 +36,18 @@ def _has_required_background(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bo
     return False
 
 
+def _has_resolved_background(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Accept an explicit background flag or a required DisplayContext carrier."""
+    if _has_required_background(node):
+        return True
+    return any(
+        argument.arg == "ctx"
+        and any(isinstance(child, ast.Name) and child.id == "DisplayContext" for child in ast.walk(argument.annotation))
+        for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        if argument.annotation is not None
+    )
+
+
 def _violations(tree: ast.AST) -> list[str]:
     """Return colour builders that do not require their resolved background."""
     guarded_classes = {
@@ -68,7 +80,7 @@ def _violations(tree: ast.AST) -> list[str]:
         for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and _requires_background(node)
-        and not _has_required_background(node)
+        and not _has_resolved_background(node)
     )
     return sorted(violations)
 
