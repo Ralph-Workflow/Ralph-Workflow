@@ -803,13 +803,23 @@ class ParallelDisplay:
         and ``cat`` parameters are kept (so existing call sites
         still typecheck) but rendered as nothing.
         """
-        del level
-        del cat
+        statuses = pick_status_styles(self._terminal_bg_is_light)
+        state = {
+            "ERROR": "error",
+            "WARN": "warning",
+            "SUCCESS": "success",
+            "MILESTONE": "running",
+        }.get(level, "info")
         t = Text()
         if leading_indent:
             t.append(leading_indent)
-        t.append(timestamp + " ")
-        t.append(suffix)
+        t.append(timestamp, style=statuses["info"][0])
+        t.append(" ")
+        # Snapshot and lifecycle surfaces retain their explicit bracket labels
+        # in colour-off mode while the semantic foreground makes the same
+        # category visible in every render-capable destination.
+        t.append(suffix, style=statuses[state][0])
+        del cat
         return t
 
     def _activity_text(

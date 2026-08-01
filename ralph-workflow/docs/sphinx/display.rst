@@ -29,9 +29,12 @@ an implementation input rather than a post-hoc description:
 - width: fully laid out from 80 columns, with marked graceful degradation to
   the 40-column and 12-row floor.
 
-Every fixed foreground clears WCAG 4.5:1 against its actual surface. Semantic
-states retain a glyph or label when colour is unavailable. ``NO_COLOR`` wins
-over ``FORCE_COLOR``; forced colour may remain in render-capable redirected
+Every fixed foreground clears WCAG 4.5:1 against its actual surface. The
+meaning tier colours chrome, agent content, running, waiting, warning, failure,
+success, elision, and identity with fixed RGB resolved from the detected or
+operator-declared background; syntax and diff remain a separate content tier.
+Semantic states retain a glyph or label when colour is unavailable. ``NO_COLOR``
+wins over ``FORCE_COLOR``; forced colour may remain in render-capable redirected
 captures, but motion is restricted to a real TTY. Redirected output is durable,
 has no repaint debris, and uses the rendered record plus the unabridged raw
 transcript as recovery destinations when content is condensed. Every wrapped
@@ -406,7 +409,9 @@ state does not shift neighbouring fields.
 At 120 columns every segment is shown. At 80 columns the directory is
 left-elided; at 60 it drops, the phase abbreviates, and the agent remains; at
 the supported 40-column floor attention, phase, liveness, elapsed time, and
-position remain.
+position remain. On a real TTY this is one bounded transient ``Live`` footer;
+on redirected or CI streams it becomes durable, non-repainting state-transition
+lines so waiting, elapsed time, phase, and identity remain readable cold.
 The footer never wraps. Below that floor it uses a plain minimal form until the
 terminal recovers. Resizing reflows the footer immediately in both width and
 height; it remains one row on a 12-row viewport.

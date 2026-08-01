@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
+from io import StringIO
 from typing import ClassVar
 
 import pytest
@@ -13,7 +15,9 @@ from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.agent_event_renderer import make_event_for_emit, render_event
 from ralph.display.context import make_display_context
 from ralph.display.edit_preview import build_edit_preview
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.scene_catalog import CONTRAST_FLOOR
+from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import pick_status_styles, preview_background_for_background
 from ralph.syntax_theme import SyntaxThemes
 
@@ -90,6 +94,44 @@ def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> N
     expected_style = pick_status_styles(None)["info"][0]
     assert context.terminal_background_is_light is None
     assert any(span.style == expected_style for span in rendered.spans)
+
+
+def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
+    """S-3: production snapshot chrome and state carriers are never default foreground."""
+    stream = StringIO()
+    context = make_display_context(
+        console=theme.make_console(
+            file=stream, force_terminal=True, color_system="truecolor", width=80
+        ),
+        env={"RALPH_TERMINAL_BG": "dark"},
+    )
+    display = ParallelDisplay(context)
+    snapshot = PipelineSnapshot(
+        phase="failed",
+        previous_phase="review",
+        review_issues_found=True,
+        interrupted_by_user=False,
+        last_error="operator-visible failure",
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=0,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="scene",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        is_terminal_success=False,
+        is_terminal_failure=True,
+    )
+
+    display.emit_snapshot(snapshot)
+
+    rendered = stream.getvalue()
+    assert "[failure] operator-visible failure" in rendered
+    assert "\x1b[38;2;" in rendered
 
 
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
