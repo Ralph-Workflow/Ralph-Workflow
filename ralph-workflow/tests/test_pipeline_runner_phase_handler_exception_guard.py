@@ -23,6 +23,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -140,7 +141,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     tmp_path: Path,
 ) -> None:
     policy_bundle = _policy_bundle_with_loop_counter("development_analysis_iteration", 5)
-    workspace = FsWorkspace(tmp_path)
+    workspace = MemoryWorkspace(str(tmp_path))
     workspace.write("PROMPT.md", "Create a fresh plan")
     workspace.write(
         ".agent/tmp/planning_prompt.md",
@@ -174,7 +175,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     tmp_path: Path,
 ) -> None:
     policy_bundle = _load_default_policy_bundle()
-    workspace = FsWorkspace(tmp_path)
+    workspace = MemoryWorkspace(str(tmp_path))
     workspace.write("PROMPT.md", "Revise the plan")
     workspace.write(
         ".agent/PLAN.md",
@@ -221,7 +222,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
     analysis_iteration: int,
 ) -> None:
     policy_bundle = _load_default_policy_bundle()
-    workspace = FsWorkspace(tmp_path)
+    workspace = MemoryWorkspace(str(tmp_path))
     workspace.write(
         "PROMPT.md",
         f"Continue development after analysis iteration {analysis_iteration}",

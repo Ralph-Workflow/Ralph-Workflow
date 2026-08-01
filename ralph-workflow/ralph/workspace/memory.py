@@ -6,7 +6,7 @@ stores file contents in memory for test isolation.
 
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 
 class MemoryWorkspace:
@@ -27,6 +27,16 @@ class MemoryWorkspace:
         # Optional ExploreIndex handle attached by the production
         # session bridge; ``None`` keeps the legacy contract.
         self.explore_index: object | None = None
+
+    @property
+    def root(self) -> Path:
+        """Return the logical workspace root for root-aware consumers."""
+        return Path(str(self._root))
+
+    @root.setter
+    def root(self, value: Path | str) -> None:
+        """Update the logical root, matching :class:`FsWorkspace` mutability."""
+        self._root = PurePosixPath(value)
 
     def _normalize(self, path: str) -> str:
         """Normalize path to POSIX-style relative path.

@@ -7,13 +7,13 @@ an existing install.
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from enum import StrEnum
 from os import environ as process_environ
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.update_check._install_kind import InstallKind
 from ralph.update_check.environment import detect_install
 
@@ -60,16 +60,14 @@ def resolve_package_file(executable: str) -> Path | None:
         return None
     interpreter = first_line[2:].split(" ", 1)[0]
     try:
-        result = subprocess.run(
-            (interpreter, "-c", _PACKAGE_FILE_SCRIPT),
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=5,
+        result = run_process(
+            interpreter,
+            ("-c", _PACKAGE_FILE_SCRIPT),
+            options=ProcessRunOptions(timeout=5),
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
         return None
-    if result.returncode != 0:
+    if not result.succeeded:
         return None
     resolved = result.stdout.strip()
     return Path(resolved) if resolved else None
