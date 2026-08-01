@@ -211,6 +211,15 @@ class _OpenCodeDispatch:
         if isinstance(tool_name, str) and tool_name:
             metadata["tool"] = tool_name
 
+        call_id = self._owner._tool_call_id(part)
+        if call_id is not None:
+            # Downstream consumers use one transport-neutral call identity for
+            # dispatch/result correlation. Preserve the native ``part`` for
+            # diagnostics, but normalize both OpenCode spellings here at the
+            # transport boundary so smoke evidence and display records do not
+            # each need to understand ``callID`` versus ``callId``.
+            metadata["call_id"] = call_id
+
         input_obj = part.get("input")
         if isinstance(input_obj, dict):
             metadata["input"] = input_obj

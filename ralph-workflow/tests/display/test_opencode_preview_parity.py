@@ -101,6 +101,9 @@ def test_opencode_preview_regression_parser_native_state_input_uses_shared_contr
     parsed = list(OpenCodeParser().parse(iter([raw])))
 
     assert [line.type for line in parsed] == ["tool_use", "tool_result"]
+    assert parsed[0].metadata["tool"] == tool_name
+    assert parsed[0].metadata["call_id"] == f"call_{tool_name}"
+    assert parsed[0].metadata["input"] == input_payload
     payload = payload_from_tool_event(parsed[0].content, parsed[0].metadata)
     assert payload is not None
     assert payload.operation == expected_operation
