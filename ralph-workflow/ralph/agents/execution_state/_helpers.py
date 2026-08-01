@@ -630,8 +630,12 @@ def _opencode_native_task_call_id(obj: dict[str, object]) -> str | None:
     part = obj.get("part")
     if not isinstance(part, dict):
         return None
-    call_id = part.get("callID")
-    return call_id if isinstance(call_id, str) and call_id else None
+    part_obj = cast("dict[str, object]", part)
+    for key in ("callID", "callId"):
+        call_id = part_obj.get(key)
+        if isinstance(call_id, str) and call_id:
+            return call_id
+    return None
 
 
 def _route_opencode_line_to_registry(
@@ -705,9 +709,9 @@ def _route_opencode_native_task(
     if not isinstance(part, dict):
         return
     part_obj = cast("dict[str, object]", part)
-    call_id = part_obj.get("callID")
+    call_id = _opencode_native_task_call_id(obj)
     state = part_obj.get("state")
-    if not isinstance(call_id, str) or not call_id or not isinstance(state, dict):
+    if call_id is None or not isinstance(state, dict):
         return
     state_obj = cast("dict[str, object]", state)
     status = str(state_obj.get("status", ""))

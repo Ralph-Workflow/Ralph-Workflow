@@ -47,8 +47,14 @@ from ralph.process.liveness import FakeLivenessProbe
 from tests.fake_handle import _FakeHandle
 
 
-def _tool_event(tool: str, *, status: str = "completed", call_id: str = "call_1") -> str:
-    """Build a REAL-shaped OpenCode tool event."""
+def _tool_event(
+    tool: str,
+    *,
+    status: str = "completed",
+    call_id: str = "call_1",
+    call_id_key: str = "callID",
+) -> str:
+    """Build a real-shaped OpenCode tool event with either supported call-ID spelling."""
     state: dict[str, object] = {"status": status, "input": {"description": "d"}}
     if status == "completed":
         state["output"] = "done"
@@ -60,7 +66,7 @@ def _tool_event(tool: str, *, status: str = "completed", call_id: str = "call_1"
             "part": {
                 "type": "tool",
                 "tool": tool,
-                "callID": call_id,
+                call_id_key: call_id,
                 "state": state,
             },
         }
@@ -95,6 +101,39 @@ def test_native_task_identity_does_not_misattribute_ordinary_tool_call() -> None
     """
     assert parse_opencode_child_id(_tool_event("ralph_read_file", call_id="call_parent")) is None
     assert parse_opencode_child_id(_tool_event("task", call_id="call_child")) == "call_child"
+
+
+def test_native_task_call_id_spelling_regression_keeps_parser_sink_and_registry_in_sync() -> None:
+    """S-2/S-3: both native OpenCode call-ID spellings have one child lifecycle.
+
+    The parser accepts ``callID`` and ``callId``.  The watchdog path must accept
+    exactly the same wire contract or a valid task dispatch disappears from its
+    activity sink and child registry while remaining visible in the transcript.
+    """
+    for call_id_key in ("callID", "callId"):
+        line = _tool_event("task", status="running", call_id="call_child", call_id_key=call_id_key)
+        sink_calls: list[str] = []
+        clock = FakeClock()
+        registry = ChildLivenessRegistry(
+            progress_ttl=30.0,
+            heartbeat_ttl=30.0,
+            stale_label_ttl=30.0,
+            exit_reconcile=30.0,
+            now=clock.monotonic,
+        )
+        strategy = OpenCodeExecutionStrategy(
+            label_scope="parent",
+            registry=registry,
+            subagent_activity_sink=sink_calls.append,
+        )
+
+        parsed = list(get_parser("opencode").parse(iter([line])))
+        strategy.observe_line(line)
+
+        assert [entry.type for entry in parsed] == ["tool_use"]
+        assert parse_opencode_child_id(line) == "call_child"
+        assert sink_calls == [line]
+        assert registry.snapshot("agent:parent:").active_count == 1
 
 
 def test_task_tool_observe_line_refreshes_subagent_activity_sink() -> None:
