@@ -511,6 +511,43 @@ def test_agy_smoke_regression_missing_artifact_is_reported_without_submit_instru
     assert "smoke_test_result artifact was not submitted" in result.errors
 
 
+def test_claude_smoke_regression_missing_artifact_is_reported_without_submit_instruction(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """S-3: stripped Claude submission instructions still report the missing artifact."""
+    params = _make_params(tmp_path, "claude/haiku", _claude_config())
+    prompt = _build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
+        transport=AgentTransport.CLAUDE,
+    )
+    stripped_prompt = prompt.split("- Call `ralph_submit_md_artifact`", maxsplit=1)[0]
+    assert "ralph_submit_md_artifact" not in stripped_prompt
+    params.prompt_file.write_text(stripped_prompt, encoding="utf-8")
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.extend(
+                (
+                    "I created the todo list implementation.",
+                    "tool_use: createTodoList",
+                    "File created at tmp/interactive-claude-smoke/todo-list.js.",
+                )
+            )
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id="interactive-claude-smoke")
+
+    assert "smoke_test_result artifact was not submitted" in result.errors
+
+
 def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

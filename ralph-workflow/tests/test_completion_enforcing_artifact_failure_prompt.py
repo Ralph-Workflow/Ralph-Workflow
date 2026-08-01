@@ -98,7 +98,13 @@ def _completion_failure_invoke(
 
 @pytest.mark.parametrize(
     ("agent_name", "transport"),
-    [("agy", AgentTransport.AGY), ("claude", AgentTransport.CLAUDE)],
+    [
+        ("agy", AgentTransport.AGY),
+        ("claude", AgentTransport.CLAUDE),
+        ("cursor", AgentTransport.CURSOR),
+        ("pi", AgentTransport.PI),
+        ("claude/interactive", AgentTransport.CLAUDE_INTERACTIVE),
+    ],
 )
 def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_hint(
     tmp_path: Path,
@@ -124,7 +130,7 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
 
     result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(agent_name=agent_name, phase="development", prompt_file=str(prompt_file)),
-        UnifiedConfig(general=GeneralConfig(max_retries=0)),
+        UnifiedConfig(general=GeneralConfig(max_retries=0, max_same_agent_retries=0)),
         deps,
         WorkspaceScope(tmp_path),
         display_context=display_context,

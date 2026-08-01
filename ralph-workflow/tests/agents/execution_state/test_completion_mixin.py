@@ -142,6 +142,8 @@ class TestCompletionEnforcingStrategy:
         AgentTransport.CLAUDE,
         AgentTransport.CLAUDE_INTERACTIVE,
         AgentTransport.PI,
+        AgentTransport.CURSOR,
+        AgentTransport.AGY,
     ),
 )
 def test_required_artifact_completion_is_consistent_across_transports(
