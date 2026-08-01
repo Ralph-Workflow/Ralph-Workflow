@@ -227,10 +227,7 @@ clean-dist:
 
 # Homebrew
 dist-homebrew: build-wheel
-	@mkdir -p Formula
-	@echo "Building Homebrew bottle..."
-	@python -m installer --print-blob --no-scrollbar ralph_python*.whl 2>/dev/null || \
-		echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
+	@bash scripts/packaging_operations.sh dist-homebrew
 
 # Distribution targets
 # Combined 60s test budget enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS (IMMUTABLE).
@@ -249,11 +246,7 @@ policy-loader-smoke:
 	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 
 packaging-smoke:
-	@mkdir -p "$(CURDIR)/../tmp"
-	@rm -rf "$(CURDIR)/../tmp/packaging-smoke"
-	@python -m venv --without-pip "$(CURDIR)/../tmp/packaging-smoke"
-	@PYTHONPATH="" uv pip install --quiet --python "$(CURDIR)/../tmp/packaging-smoke/bin/python" "$(CURDIR)"
-	-@rm -rf "$(CURDIR)/../tmp/packaging-smoke"
+	@bash scripts/packaging_operations.sh packaging-smoke
 
 dist-binary:
 	@echo "Building PyInstaller binary..."
@@ -269,12 +262,7 @@ dist-all: dist-binary dist-pypi
 	@echo "All distributions built successfully"
 
 formula-check:
-	@echo "Validating Homebrew formula..."
-	@if command -v ruby >/dev/null 2>&1; then \
-		ruby -c Formula/ralph-workflow.rb; \
-	else \
-		echo "Ruby not installed, skipping formula check (install Ruby to enable)"; \
-	fi
+	@bash scripts/packaging_operations.sh formula-check
 
 dead-code:
 	uv run --with vulture python -m vulture --config pyproject.toml

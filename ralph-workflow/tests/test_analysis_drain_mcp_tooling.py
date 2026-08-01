@@ -135,3 +135,23 @@ def test_planning_prompt_defaults_match_runtime_plan_tool_visibility(tmp_path: P
     assert prompt_tool_names & _PLANNING_REQUIRED_TOOLS == (
         runtime_tool_names & _PLANNING_REQUIRED_TOOLS
     )
+
+
+def test_analysis_prompt_tool_visibility_regression_uses_runtime_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan S-3: generic non-planning prompts must use a real analysis drain."""
+    prompt_capabilities, _ = default_caps_and_flags_for_drain(SessionDrain.ANALYSIS)
+    observed_drains: list[str] = []
+
+    def record_drain(capability_ids: list[str], *, drain: str) -> list[str]:
+        observed_drains.append(drain)
+        return capability_ids
+
+    monkeypatch.setattr(
+        "ralph.prompts.template_variables.visible_tool_names_for_capabilities", record_drain
+    )
+
+    visible_mcp_tool_names(prompt_capabilities)
+
+    assert observed_drains == [SessionDrain.ANALYSIS.value]

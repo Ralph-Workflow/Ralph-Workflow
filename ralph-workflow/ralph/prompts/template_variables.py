@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
 from ralph.mcp.tools.names import (
     RalphToolName,
@@ -18,7 +19,6 @@ from ralph.prompts._policy_flag import PolicyFlag
 from ralph.prompts._policy_flag_set import PolicyFlagSet
 
 if TYPE_CHECKING:
-    from ralph.mcp.protocol.capability_mapping import SessionDrain
     from ralph.mcp.protocol.session import AgentSession
 
 
@@ -168,7 +168,11 @@ def bool_to_string(value: bool) -> str:
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
     """Return canonical MCP tool names a session with the given capabilities may call."""
     capability_ids = [capability.value for capability in capabilities.to_vec()]
-    drain = "planning" if RalphCapability.ARTIFACT_PLAN_WRITE in capabilities.to_vec() else "prompt"
+    drain = (
+        SessionDrain.PLANNING
+        if RalphCapability.ARTIFACT_PLAN_WRITE in capabilities.to_vec()
+        else SessionDrain.ANALYSIS
+    )
     return visible_tool_names_for_capabilities(capability_ids, drain=drain)
 
 
