@@ -321,6 +321,21 @@ def test_marker_on_same_line_suppresses(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_default_scope_excludes_the_audit_implementation_tree(tmp_path: Path) -> None:
+    """S-8 regression: production verification does not recursively audit its audits."""
+    repo_root = tmp_path / "repo"
+    production = repo_root / "ralph"
+    production.mkdir(parents=True)
+    (production / "good.py").write_text("VALUE = 1\n", encoding="utf-8")
+    audit_dir = production / "testing"
+    audit_dir.mkdir()
+    (audit_dir / "raw_writer.py").write_text(
+        "def persist(path):\n    path.write_text('audit fixture')\n", encoding="utf-8"
+    )
+
+    assert audit.audit_filesystem_write_consolidation(repo_root) == []
+
+
 def test_default_scope_walks_only_production_package(tmp_path: Path) -> None:
     """Default audit scope finds ralph/ but ignores unrelated test fixtures."""
     repo_root = tmp_path / "repo"

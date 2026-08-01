@@ -51,6 +51,11 @@ outside reading source) and enforces five invariants:
      ``self._observer.schedule(...)`` expression. An unrelated scheduler must
      not satisfy the owner contract while the real observer is hidden behind a
      dynamic lookup.
+  7. **INV-7 (observer ownership)** -- every construction of watchdog's
+     ``Observer`` outside the canonical workspace-monitor module is rejected.
+     Scheduling-only enforcement can otherwise be evaded by creating another
+     observer behind a helper and scheduling it later. The lifecycle-owned
+     monitor is the sole place that may create the workspace event source.
 
 Usage::
 
@@ -174,6 +179,32 @@ def _nonliteral_observer_getattr_invocation_line(node: ast.AST) -> int | None:
     if isinstance(attribute, ast.Constant) and isinstance(attribute.value, str):
         return None
     return node.lineno
+
+
+def _observer_constructor_aliases(tree: ast.Module) -> frozenset[str]:
+    """Return local names that construct watchdog observers in one module.
+
+    The audit recognizes direct ``from watchdog.observers import Observer``
+    imports, including aliases. A new observer is a new watch source even when
+    scheduling is deferred through another helper, so ownership must be
+    rejected at construction rather than only at ``schedule``.
+    """
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.module != "watchdog.observers":
+            continue
+        aliases.update(imported.asname or imported.name for imported in node.names if imported.name == "Observer")
+    return frozenset(aliases)
+
+
+def _observer_constructor_lines(tree: ast.Module) -> list[int]:
+    """Return lines that construct a directly imported watchdog ``Observer``."""
+    aliases = _observer_constructor_aliases(tree)
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in aliases
+    ]
 
 
 def _find_schedule_calls(tree: ast.Module) -> list[ast.Call]:
@@ -410,6 +441,20 @@ def _check_schedule_call_location(
     return []
 
 
+def _unowned_watch_observer_violation(rel_path: str, lineno: int) -> FseventsWatchViolation:
+    """INV-7 failure: only the lifecycle owner may create a watch observer."""
+    return FseventsWatchViolation(
+        kind="unowned_watch_observer",
+        file_path=rel_path,
+        line=lineno,
+        message=(
+            "watchdog Observer() construction is outside the lifecycle-owned "
+            "WorkspaceMonitor; route workspace events through "
+            "WorkspaceMonitor.start() instead of creating another event source"
+        ),
+    )
+
+
 def _unowned_watch_schedule_violation(
     rel_path: str, lineno: int, *, dynamic_getattr: bool = False
 ) -> FseventsWatchViolation:
@@ -555,10 +600,16 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
             )
             continue
         # Most production modules cannot own a watch. Parse every module first
-        # so malformed source still fails closed. Direct and literal schedule
-        # forms are cheap to skip when their marker is absent, but every module
-        # still checks nonliteral ``getattr`` because AST cannot prove that such
-        # a lookup is unrelated to scheduling.
+        # so malformed source still fails closed. Observer construction is also
+        # ownership: a helper that creates an observer before scheduling it
+        # elsewhere would otherwise evade the schedule-only check.
+        violations.extend(
+            _unowned_watch_observer_violation(rel_path, line)
+            for line in _observer_constructor_lines(tree)
+        )
+        # Direct and literal schedule forms are cheap to skip when their marker
+        # is absent, but every module still checks nonliteral ``getattr`` because
+        # AST cannot prove that such a lookup is unrelated to scheduling.
         if "schedule" in source:
             violations.extend(
                 _unowned_watch_schedule_violation(rel_path, call.lineno)

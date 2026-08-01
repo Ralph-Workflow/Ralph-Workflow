@@ -214,7 +214,8 @@ def _collect_python_files(root: Path) -> list[Path]:
         return []
     result: list[Path] = []
     for path in sorted(root.rglob("*.py")):
-        if "__pycache__" in path.parts:
+        relative_parts = path.relative_to(root).parts
+        if "__pycache__" in path.parts or "testing" in relative_parts:
             continue
         if not path.is_file():
             continue
@@ -314,7 +315,7 @@ def _call_root_name(node: ast.AST) -> str | None:
 
 
 def _import_aliases(
-    tree: ast.Module,
+    nodes: list[ast.AST],
 ) -> tuple[dict[str, str], dict[str, str], frozenset[str], frozenset[str]]:
     """Return module, mutation, and mode-sensitive ``open`` aliases from *tree*.
 
@@ -328,7 +329,7 @@ def _import_aliases(
     direct_mutations: dict[str, str] = {}
     direct_open_aliases: set[str] = set()
     open_module_aliases: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Import):
             for imported in node.names:
                 root = imported.name.split(".", maxsplit=1)[0]
@@ -378,7 +379,9 @@ def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
 
 
 def _path_variable_names(
-    tree: ast.Module, module_aliases: dict[str, str]
+    nodes: list[ast.AST],
+    module_aliases: dict[str, str],
+    parents: dict[ast.AST, ast.AST],
 ) -> frozenset[tuple[int | None, str]]:
     """Return function-scoped local names directly initialized from pathlib.
 
@@ -389,10 +392,9 @@ def _path_variable_names(
     scoped to the function containing the assignment so a ``Path`` local in
     one function cannot misclassify a same-named string parameter elsewhere.
     """
-    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     names: set[tuple[int | None, str]] = set()
     pathlib_constructors = {"Path", "PurePath", "PosixPath", "WindowsPath"}
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
         if not isinstance(node.value, ast.Call):
@@ -593,11 +595,12 @@ def _scan_module(
         if reason:
             marker_lines.add(idx)
 
-    module_aliases, direct_mutations, direct_open_aliases, open_module_aliases = _import_aliases(tree)
-    path_variables = _path_variable_names(tree, module_aliases)
-    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    nodes = list(ast.walk(tree))
+    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
+    module_aliases, direct_mutations, direct_open_aliases, open_module_aliases = _import_aliases(nodes)
+    path_variables = _path_variable_names(nodes, module_aliases, parents)
     violations: list[FilesystemWriteViolation] = []
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         # Path.write_text / Path.write_bytes

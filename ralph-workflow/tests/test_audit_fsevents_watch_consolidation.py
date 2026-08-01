@@ -348,6 +348,32 @@ def test_audit_rejects_unrelated_canonical_schedule_receiver(tmp_path: Path) -> 
     assert "self._observer.schedule" in violations[0].message
 
 
+def test_audit_flags_observer_construction_in_unknown_production_module(tmp_path: Path) -> None:
+    """S-8 regression: a second observer cannot hide before it schedules a watch."""
+    package_root = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    extra_module = package_root / "pipeline" / "extra_observer.py"
+    extra_module.parent.mkdir(parents=True)
+    extra_module.write_text(
+        "from watchdog.observers import Observer\n\n"
+        "def start() -> None:\n"
+        "    Observer()\n",
+        encoding="utf-8",
+    )
+
+    violations = audit.audit_fsevents_watch_consolidation(package_root)
+
+    assert [violation.kind for violation in violations] == ["unowned_watch_observer"]
+    assert violations[0].file_path == "pipeline/extra_observer.py"
+    assert "WorkspaceMonitor" in violations[0].message
+
+
 def test_audit_flags_schedule_call_in_unknown_production_module(tmp_path: Path) -> None:
     """A watch added outside the lifecycle owner fails package-wide by default.
 

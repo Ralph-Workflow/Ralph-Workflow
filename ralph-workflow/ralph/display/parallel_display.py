@@ -1589,27 +1589,12 @@ class ParallelDisplay:
             # Rich re-wrapped the ``close_hang_prefix + wrapped_cont``
             # embedded-newline string and only the first embedded
             # line carried the prefix).
-            close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
             header = f"⋯ {display_tag} · {start_str} → {end_str} · {duration_str}"
-            if base_tag == "think":
-                # Reasoning is one logical passage: retain its single-row
-                # close shape when it fits, while the repeated carrier still
-                # protects every physical continuation at narrow widths.
-                rows = self._wrap_body_with_hanging_indent(
-                    close_badge_prefix,
-                    f"{visible} · {header}",
-                    total_width=self._ctx.width,
-                    body_measure=max(
-                        self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)),
-                ).split("\n")
-            else:
-                rows = self._wrap_body_with_hanging_indent(
-                    close_badge_prefix,
-                    f"{visible} · {header}",
-                    total_width=self._ctx.width,
-                    body_measure=max(
-                        self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)),
-                ).split("\n")
+            # The renderer adds the [tag][unit] carrier exactly once. Keep the
+            # block header and joined passage in that same logical entry rather
+            # than independently rendering a metadata row and content row.
+            # This preserves a single greppable close record for live consumers.
+            rows = [f"{header}\n{visible}"]  # fix(filesystem): enforce observer ownership and preserve close records
             for row in rows:
                 self._console.print(
                     self._activity_text(
