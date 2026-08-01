@@ -202,6 +202,11 @@ def _opencode_tool_name(obj: dict[str, object]) -> str | None:
     return str(part_obj.get("tool", "")).strip() or None
 
 
+def _is_opencode_subagent_tool(tool_name: str | None) -> bool:
+    """Return whether an OpenCode tool name denotes native delegated work."""
+    return tool_name is not None and tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS
+
+
 def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySignal | None:
     """Classify an OpenCode tool event from its REAL wire shape.
 
@@ -233,7 +238,7 @@ def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySig
     if tool_name is None:
         return None
     tool_error = _tool_state_error_message(obj)
-    if tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS:
+    if _is_opencode_subagent_tool(tool_name):
         part = obj.get("part")
         state = part.get("state") if isinstance(part, dict) else None
         status = state.get("status") if isinstance(state, dict) else None
@@ -636,7 +641,7 @@ def parse_opencode_child_id(line: str) -> str | None:
 
 def _opencode_native_task_call_id(obj: dict[str, object]) -> str | None:
     """Return a native subagent call ID without treating ordinary tools as children."""
-    if _opencode_tool_name(obj) not in _OPENCODE_SUBAGENT_TOOLS:
+    if not _is_opencode_subagent_tool(_opencode_tool_name(obj)):
         return None
     part = obj.get("part")
     if not isinstance(part, dict):
@@ -719,7 +724,7 @@ def _route_opencode_native_task(
     ``child_*`` frames. Its pending/running and completed states therefore need
     to update the same child-evidence registry that the watchdog consults.
     """
-    if _opencode_tool_name(obj) not in _OPENCODE_SUBAGENT_TOOLS:
+    if not _is_opencode_subagent_tool(_opencode_tool_name(obj)):
         return
     part = obj.get("part")
     if not isinstance(part, dict):

@@ -95,9 +95,10 @@ import json
 import re
 from typing import TYPE_CHECKING, ClassVar, Final, cast
 
-from rich.console import Console, ConsoleOptions, Group, RenderResult
+from rich.console import Console, ConsoleOptions, ConsoleRenderable, Group, RenderResult, RichCast
 from rich.markdown import CodeBlock, Markdown, MarkdownElement
 from rich.padding import Padding
+from rich.segment import Segment, Segments
 from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
@@ -347,10 +348,15 @@ class _BackgroundAwareMarkdown(Markdown):
         if surface == "default":
             yield from content
             return
+        segments = tuple(item for item in content if isinstance(item, Segment))
+        renderables = tuple(
+            item for item in content if isinstance(item, (ConsoleRenderable, RichCast, str))
+        )
+        child = Segments(segments) if segments else Group(*renderables)
         # An expanded style wrapper paints every Markdown row (including prose,
         # padding, and fenced code) without introducing body-frame chrome.
         yield Padding(
-            Group(*cast("tuple[RenderableType, ...]", content)),
+            child,
             pad=(0, 0),
             style=Style(bgcolor=surface),
             expand=True,

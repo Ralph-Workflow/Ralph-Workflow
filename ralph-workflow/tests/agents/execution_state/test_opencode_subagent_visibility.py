@@ -111,30 +111,36 @@ def test_native_task_call_id_spelling_regression_keeps_parser_sink_and_registry_
     exactly the same wire contract or a valid task dispatch disappears from its
     activity sink and child registry while remaining visible in the transcript.
     """
-    for call_id_key in ("callID", "callId"):
-        line = _tool_event("task", status="running", call_id="call_child", call_id_key=call_id_key)
-        sink_calls: list[str] = []
-        clock = FakeClock()
-        registry = ChildLivenessRegistry(
-            progress_ttl=30.0,
-            heartbeat_ttl=30.0,
-            stale_label_ttl=30.0,
-            exit_reconcile=30.0,
-            now=clock.monotonic,
-        )
-        strategy = OpenCodeExecutionStrategy(
-            label_scope="parent",
-            registry=registry,
-            subagent_activity_sink=sink_calls.append,
-        )
+    for tool_name in ("task", "Task"):
+        for call_id_key in ("callID", "callId"):
+            line = _tool_event(
+                tool_name,
+                status="running",
+                call_id="call_child",
+                call_id_key=call_id_key,
+            )
+            sink_calls: list[str] = []
+            clock = FakeClock()
+            registry = ChildLivenessRegistry(
+                progress_ttl=30.0,
+                heartbeat_ttl=30.0,
+                stale_label_ttl=30.0,
+                exit_reconcile=30.0,
+                now=clock.monotonic,
+            )
+            strategy = OpenCodeExecutionStrategy(
+                label_scope="parent",
+                registry=registry,
+                subagent_activity_sink=sink_calls.append,
+            )
 
-        parsed = list(get_parser("opencode").parse(iter([line])))
-        strategy.observe_line(line)
+            parsed = list(get_parser("opencode").parse(iter([line])))
+            strategy.observe_line(line)
 
-        assert [entry.type for entry in parsed] == ["tool_use"]
-        assert parse_opencode_child_id(line) == "call_child"
-        assert sink_calls == [line]
-        assert registry.snapshot("agent:parent:").active_count == 1
+            assert [entry.type for entry in parsed] == ["tool_use"]
+            assert parse_opencode_child_id(line) == "call_child"
+            assert sink_calls == [line]
+            assert registry.snapshot("agent:parent:").active_count == 1
 
 
 def test_native_task_terminal_result_regression_releases_watchdog_child_evidence() -> None:
