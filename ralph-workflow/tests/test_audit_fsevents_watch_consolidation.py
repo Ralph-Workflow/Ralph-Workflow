@@ -79,6 +79,32 @@ def test_audit_passes_real_production_tree() -> None:
     )
 
 
+def test_audit_skips_schedule_walk_for_modules_without_a_schedule_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: ownership scan avoids AST walks for irrelevant modules."""
+    package_root = _write_fake_package(
+        tmp_path,
+        workspace_body=(
+            "class WorkspaceMonitor:\n"
+            "    def start(self) -> None:\n"
+            "        self._observer.schedule(handler, workspace_str, recursive=True)\n"
+        ),
+    )
+    (package_root / "unrelated.py").write_text("value = 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        audit,
+        "_find_schedule_calls",
+        lambda _tree: (_ for _ in ()).throw(AssertionError("unexpected schedule walk")),
+    )
+
+    violations = audit._unowned_schedule_violations(package_root)
+
+    assert violations == []
+
+
 def test_audit_fails_closed_for_invalid_workspace_source_without_schedule_marker(
     tmp_path: Path,
 ) -> None:

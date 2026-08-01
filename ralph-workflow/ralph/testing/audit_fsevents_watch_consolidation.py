@@ -517,6 +517,12 @@ def _unowned_schedule_violations(package_root: Path) -> list[FseventsWatchViolat
                 )
             )
             continue
+        # Most production modules cannot own a watch. Parse every module first
+        # so malformed source still fails closed, then avoid two full AST walks
+        # unless the source can name schedule capability at all. Every direct,
+        # aliased, or dynamic schedule form necessarily contains this marker.
+        if "schedule" not in source:
+            continue
         violations.extend(
             _unowned_watch_schedule_violation(rel_path, call.lineno)
             for call in _find_schedule_calls(tree)
