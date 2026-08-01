@@ -101,6 +101,7 @@ def install_dev_checkout(
     copy_tree: Callable[[Path, Path], Path] = copy_install_tree,
     write_flavor: Callable[[Path, str], None] = _write_build_flavor,
     write_launcher: LauncherWriter = write_dev_launcher,
+    flavor: str = "-dev",
 ) -> None:
     """Set up the current checkout as a dev build via ``uv sync``.
 
@@ -118,7 +119,7 @@ def install_dev_checkout(
         install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev"
     ) / "current"
     copied_dir = copy_tree(cwd, destination)
-    write_flavor(copied_dir, "-dev")
+    write_flavor(copied_dir, flavor)
     run((uv_executable, "sync", "--extra", "dev"), cwd=copied_dir)
     write_launcher(launcher_dir / DEV_LAUNCHER_NAME, render_dev_launcher(copied_dir))
 
@@ -172,6 +173,7 @@ class _InstallArgs(argparse.Namespace):
     """Typed arguments parsed by the installer entry point."""
 
     stable: bool
+    build: bool
     version: str | None
     from_path: Path | None
 
@@ -185,6 +187,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--stable",
         action="store_true",
         help="Install a pinned stable release as the global `ralph` command via uv tool.",
+    )
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Install a self-contained manual build snapshot with a -build version suffix.",
     )
     parser.add_argument(
         "--version",
@@ -201,16 +208,16 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _parse_args(argv: Sequence[str] | None) -> tuple[bool, str | None, Path | None]:
+def _parse_args(argv: Sequence[str] | None) -> tuple[bool, bool, str | None, Path | None]:
     parsed = _InstallArgs()
     _build_parser().parse_args(argv, namespace=parsed)
-    return parsed.stable, parsed.version, parsed.from_path
+    return parsed.stable, parsed.build, parsed.version, parsed.from_path
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Install the dev build by default, or the stable build with ``--stable``."""
     sanitize_process_environment()
-    stable, version, from_path = _parse_args(argv)
+    stable, build, version, from_path = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
 
     if stable or version is not None or from_path is not None:
@@ -229,6 +236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             uv_executable=shutil.which("uv"),
             cwd=package_dir,
             launcher_dir=Path.home() / ".local" / "bin",
+            flavor="-build" if build else "-dev",
         )
     return 0
 

@@ -11,7 +11,7 @@ execution strategy from the transport and applies the default
 
 ## Prerequisites
 
-- `ralph-workflow` is installed (`make dev` from `ralph-workflow/`).
+- A dev snapshot is installed (`make dev` from `ralph-workflow/`; use `make install` for a manual `-build` snapshot).
 - The agent name is unique in your `AgentCatalog` (custom agents cannot
   reuse the eight built-in parser keys: `claude`, `claude-headless`,
   `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`).

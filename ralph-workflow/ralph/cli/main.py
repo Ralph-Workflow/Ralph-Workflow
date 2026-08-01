@@ -469,7 +469,6 @@ subcommand (or one of the bundled support subcommands such as
 
 Args:
     ctx: Typer context carrying subcommand resolution and shared state.
-    prompt: ``--prompt/-P`` inline prompt text for quick runs.
     config: ``--config/-c`` path to the ralph configuration file.
     developer_iters: ``--developer-iters/-D`` maximum developer agent
         iterations per run.
@@ -843,8 +842,6 @@ def main(
     Args:
         ctx: Typer context (carries the global CLI state; not
             directly consumed by this handler).
-        prompt: ``--prompt`` / ``-P`` inline prompt text (must be used
-            with ``--quick``).
         config: ``--config`` / ``-c`` path to an explicit configuration
             file.
         developer_iters: ``--developer-iters`` / ``-D`` developer-agent

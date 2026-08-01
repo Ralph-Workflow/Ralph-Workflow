@@ -59,10 +59,13 @@ def test_run_python_uses_uv_managed_interpreter() -> None:
 
 
 def test_install_targets_delegate_to_the_installer() -> None:
-    """S-6: install variants keep Makefile logic to one installer command."""
-    assert _target_body("install") == ["$(RUN_PYTHON) -m ralph.install"]
+    """S-4: install and dev select distinct snapshot flavors."""
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
+
+    assert _target_body("install") == ["$(RUN_PYTHON) -m ralph.install --build"]
     assert _target_body("stable") == ["$(RUN_PYTHON) -m ralph.install --stable"]
     assert _target_body("dev") == ["$(RUN_PYTHON) -m ralph.install"]
+    assert re.search(r"^install-dev: dev$", makefile_text, re.MULTILINE)
 
 
 def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:

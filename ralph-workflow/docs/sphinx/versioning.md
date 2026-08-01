@@ -18,10 +18,13 @@ Two install paths exist for Ralph Workflow, and they live on
 different tracks. This page documents how a release maps onto each
 track:
 
-- **Dev build** — a self-contained snapshot, run with `rdev` (or `uv run
-  ralph` from inside the repo). `make install` refreshes that snapshot;
+- **Manual build** — a self-contained snapshot, run with `rdev`.
+  `make install` refreshes it and its displayed version ends in `-build`.
+- **Dev build** — the self-contained iteration snapshot, run with `rdev`
+  (or `uv run ralph` from inside the repo). `make dev` refreshes it;
   its displayed version ends in `-dev` and it is the build you use to
-  verify a release candidate before publishing.
+  verify a release candidate before publishing. Neither source-checkout
+  build writes a global `ralph` command.
 - **Stable build** — what `make stable` installs via
   `uv tool install`. It tracks the published release, not the
   working tree, and is what `pipx install ralph-workflow` and PyPI

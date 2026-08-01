@@ -275,10 +275,12 @@ def test_main_default_installs_dev_checkout(monkeypatch: pytest.MonkeyPatch) -> 
         uv_executable: str | None,
         cwd: Path,
         launcher_dir: Path,
+        flavor: str,
     ) -> None:
         captured["uv_executable"] = uv_executable
         captured["cwd"] = cwd
         captured["launcher_dir"] = launcher_dir
+        captured["flavor"] = flavor
 
     def fail_stable(**_kwargs: object) -> None:
         raise AssertionError("default install must not touch the stable release")
@@ -293,7 +295,26 @@ def test_main_default_installs_dev_checkout(monkeypatch: pytest.MonkeyPatch) -> 
         "uv_executable": "/opt/bin/uv",
         "cwd": Path(install_module.__file__).resolve().parents[1],
         "launcher_dir": Path("/home/u/.local/bin"),
+        "flavor": "-dev",
     }
+
+
+def test_main_build_regression_writes_build_flavor_without_global_launcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_install_dev_checkout(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(install_module, "install_dev_checkout", fake_install_dev_checkout)
+    monkeypatch.setattr(install_module, "install_stable_release", lambda **_kwargs: None)
+    monkeypatch.setattr(install_module.shutil, "which", lambda name: f"/opt/bin/{name}")
+    monkeypatch.setattr(install_module.Path, "home", classmethod(lambda _cls: Path("/home/u")))
+
+    assert install_module.main(["--build"]) == 0
+    assert captured["flavor"] == "-build"
+    assert captured["launcher_dir"] == Path("/home/u/.local/bin")
 
 
 def test_main_default_install_preflights_existing_global_ralph(

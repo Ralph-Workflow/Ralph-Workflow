@@ -81,16 +81,17 @@ side. They never collide because the dev build registers no global `ralph` comma
 
 | | Command to run it | How to install / refresh | Tracks |
 |---|---|---|---|
-| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` or `make dev` | a self-contained snapshot (`-dev`); rerun after edits |
+| **Manual build** | `rdev …` (anywhere) | `make install` | a self-contained snapshot (`-build`); rerun after edits |
+| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make dev` | a self-contained snapshot (`-dev`); rerun after edits |
 | **Stable build** | `ralph …` (anywhere) | `make stable` | a published release, isolated via `uv tool` |
 
-- **Dev build** — `make install` copies this checkout to
+- **Manual build** — `make install` copies this checkout to
   `~/.local/share/ralph-workflow-dev/current`, syncs that copy, and writes an
-  `rdev` launcher to `~/.local/bin/rdev`. Its `--version` ends in `-dev`; rerun
-  `make install` after edits to refresh the snapshot. From inside the repo you
-  can still use `uv run ralph`. There is deliberately **no global `ralph`** for
-  the dev build — the distinct `rdev` name keeps it from shadowing the stable
-  one. (`make dev` is an alias for `make install`.)
+  `rdev` launcher to `~/.local/bin/rdev`. Its `--version` ends in `-build`.
+- **Dev build** — `make dev` refreshes the same self-contained snapshot and
+  `rdev` launcher, but its `--version` ends in `-dev`. From inside the repo you
+  can still use `uv run ralph`. Neither source-checkout build writes a global
+  `ralph`; the distinct `rdev` name keeps it from shadowing the stable one.
 - **Stable build** — `make stable` runs `uv tool install --force --upgrade
   ralph-workflow`, putting an isolated `ralph` on your `PATH`
   (`~/.local/bin/ralph`), independent of the working tree. Re-running `make
@@ -109,15 +110,16 @@ side. They never collide because the dev build registers no global `ralph` comma
   build; nothing to toggle. Verify which is which with:
 
   ```bash
-  rdev --version   # -> working-tree version  (~/.local/bin/rdev)
+  rdev --version   # -> manual (-build) or dev (-dev) snapshot (~/.local/bin/rdev)
   ralph --version  # -> stable release version (~/.local/bin/ralph)
   ```
 
   Bump the stable install later with `uv tool upgrade ralph-workflow`, or remove it
-  entirely with `uv tool uninstall ralph-workflow`. Remove the dev launcher with
-  `rm ~/.local/bin/rdev`. To install a locally built wheel as a manual build,
-  run `python -m ralph.install --from dist/ralph_workflow-<version>-py3-none-any.whl`;
-  its `ralph --version` ends in `-build`.
+  entirely with `uv tool uninstall ralph-workflow`. Remove the source-snapshot
+  launcher with `rm ~/.local/bin/rdev`. To install a locally built wheel as a
+  global manual build, run `python -m ralph.install --from
+  dist/ralph_workflow-<version>-py3-none-any.whl`; its `ralph --version` ends
+  in `-build`.
 
 > `uv` is required for the dev and stable builds, and `~/.local/bin` must be on
 > your `PATH`. Do not install the dev build as a global `ralph` (via pipx or
