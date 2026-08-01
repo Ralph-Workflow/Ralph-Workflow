@@ -10,7 +10,7 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 
 from ralph.display.edit_preview import build_edit_preview, render_markdown_preview
-from ralph.display.theme import diff_fill_styles
+from ralph.display.theme import diff_fill_styles, preview_background_for_background
 
 
 def _render_truecolor(preview: object, *, width: int = 80) -> str:
@@ -47,8 +47,8 @@ def test_markdown_preview_regression_wraps_prose_without_wrapping_fenced_code() 
     assert sum("identifier_" in row for row in rows) == 1
 
 
-def test_diff_preview_regression_is_transparent_by_default_and_paints_when_opted_in() -> None:
-    """S-3: fills are explicit and retain marker/gutter structure and polarity."""
+def test_diff_preview_regression_uses_an_owned_surface_and_paints_polarity_when_opted_in() -> None:
+    """S-4: known backgrounds own the whole preview; diff fills add polarity."""
     payloads = (
         ("edit_file", {"path": "a.py", "edits": [{"oldText": "old = 1", "newText": "new = 2"}]}),
         ("git_diff", {"content": "@@ -1 +1 @@\n-old\n+new\n"}),
@@ -58,7 +58,12 @@ def test_diff_preview_regression_is_transparent_by_default_and_paints_when_opted
             preview = build_edit_preview(tool_name, payload, width=80, terminal_bg_is_light=terminal_bg_is_light)
             assert preview is not None
             rendered = _render_truecolor(preview)
-            assert "48;2;" not in rendered and "48;5;" not in rendered
+            surface = preview_background_for_background(terminal_bg_is_light)
+            if surface == "default":
+                assert "48;2;" not in rendered and "48;5;" not in rendered
+            else:
+                sgr = f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
+                assert sgr in rendered
             fills = diff_fill_styles(terminal_bg_is_light)
             painted = build_edit_preview(
                 tool_name,

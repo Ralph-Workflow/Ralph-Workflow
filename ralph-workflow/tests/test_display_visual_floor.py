@@ -9,7 +9,9 @@ import pytest
 from pygments.token import Comment, Generic, Keyword, Name, Number, Operator, Punctuation, String
 
 from ralph.display import theme
+from ralph.display.edit_preview import build_edit_preview
 from ralph.display.scene_catalog import CONTRAST_FLOOR
+from ralph.display.theme import preview_background_for_background
 from ralph.syntax_theme import SyntaxThemes
 
 _REQUIRED_TOKENS = (
@@ -64,6 +66,20 @@ def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
 def test_visual_floor_syntax_theme_preserves_complete_token_range() -> None:
     for style_type in (SyntaxThemes.dark(), SyntaxThemes.light(), SyntaxThemes.unknown()):
         _assert_complete_token_classes(style_type)
+
+
+def test_visual_floor_known_background_previews_paint_one_complete_owned_surface() -> None:
+    """S-4: known terminal backgrounds give source rows and gutters one owned fill."""
+    for background in (False, True):
+        preview = build_edit_preview(
+            "write_file",
+            {"path": "example.py", "content": "def render() -> int:\n    return 1\n"},
+            width=80,
+            terminal_bg_is_light=background,
+        )
+        assert preview is not None
+        assert getattr(preview, "background_color", None) == preview_background_for_background(background)
+    assert preview_background_for_background(None) == "default"
 
 
 def test_visual_floor_missing_token_fixture_is_rejected() -> None:

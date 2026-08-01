@@ -104,8 +104,8 @@ from ralph.display.language_inference import lexer_for_path
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
-    SYNTAX_BACKGROUND_TRANSPARENT,
     pick_status_styles,
+    preview_background_for_background,
     syntax_theme_for_background,
 )
 
@@ -319,7 +319,7 @@ class _BackgroundAwareCodeBlock(CodeBlock):
             str(self.text).rstrip(),
             self.lexer_name,
             theme=syntax_theme_for_background(self.terminal_bg_is_light),
-            background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+            background_color=preview_background_for_background(self.terminal_bg_is_light),
             padding=1,
         )
 
@@ -375,7 +375,7 @@ def _make_syntax(
         theme=syntax_theme_for_background(terminal_bg_is_light),
         line_numbers=True,
         word_wrap=is_markdown,
-        background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+        background_color=preview_background_for_background(terminal_bg_is_light),
         start_line=start_line,
     )
 

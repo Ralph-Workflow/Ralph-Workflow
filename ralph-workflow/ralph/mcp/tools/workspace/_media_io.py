@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from collections import OrderedDict
 from itertools import count
 from pathlib import Path
@@ -31,14 +30,12 @@ MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 #: cache files were evicted. The dedup-by-artifact_id list comprehension
 #: still runs every add, so same-id replacement is immediate (AC-10).
 _MEDIA_PRUNE_INTERVAL: int = 32
-_media_add_counter: int = 0
+_media_add_counter = count(1)
 
 
 def _advance_media_prune_counter() -> bool:
-    """Advance the module counter without a ``global`` declaration."""
-    next_count = _media_add_counter + 1
-    object.__setattr__(sys.modules[__name__], "_media_add_counter", next_count)
-    return next_count % _MEDIA_PRUNE_INTERVAL == 0
+    """Advance the bounded-frequency prune counter."""
+    return next(_media_add_counter) % _MEDIA_PRUNE_INTERVAL == 0
 
 
 

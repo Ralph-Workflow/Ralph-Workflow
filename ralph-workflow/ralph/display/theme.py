@@ -688,6 +688,26 @@ SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxTheme
 #: Named here so syntax-preview call sites never hard-code the literal.
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
+# A preview owns its surface whenever the terminal background is known. This
+# makes every source row, its gutter, and padding measurable against one fixed
+# surface; unknown terminals deliberately retain the transparent fallback.
+_PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = "#101417"
+_PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = "#F7F9FB"
+
+
+def preview_background_for_background(terminal_bg_is_light: bool | None) -> str:
+    """Return the complete owned preview surface for a resolved background.
+
+    Known backgrounds use a fixed fill shared by code, markdown, and diff
+    previews. The unknown path returns Rich's transparent ``default`` sentinel
+    because no terminal surface can be safely assumed.
+    """
+    if terminal_bg_is_light is True:
+        return _PREVIEW_BACKGROUND_ON_LIGHT_BG
+    if terminal_bg_is_light is False:
+        return _PREVIEW_BACKGROUND_ON_DARK_BG
+    return SYNTAX_BACKGROUND_TRANSPARENT
+
 
 # Diff washes are intentionally resolved alongside the syntax palette. The
 # unknown-background path remains transparent rather than assuming a terminal.

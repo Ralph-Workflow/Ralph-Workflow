@@ -147,7 +147,10 @@ immediately, including 12-row and temporarily below-floor terminals.
 ### Background-aware presentation
 
 `DisplayContext` resolves `RALPH_TERMINAL_BG` (`light`, `dark`, or a hex
-background) once during construction. Event identities and the Status Bar use
+background) once during construction. Code and diff previews use a complete
+fixed surface when that background is known, including source rows, gutters,
+and padding; an unknown background deliberately falls back to transparency.
+Event identities and the Status Bar use
 the matching identity palette; unknown backgrounds keep the dark-safe default.
 The text label remains the identity carrier, so color is never required to
 understand an entry.

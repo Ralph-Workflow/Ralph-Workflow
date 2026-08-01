@@ -28,6 +28,7 @@ from ralph.display.theme import (
     diff_fill_styles,
     diff_token_foregrounds,
     pick_status_styles,
+    preview_background_for_background,
     syntax_theme_for_background,
 )
 
@@ -55,11 +56,11 @@ def test_syntax_theme_selects_the_background_safe_ansi_variant() -> None:
         (None, SYNTAX_THEME_ON_UNKNOWN_BG),
     ],
 )
-def test_file_syntax_uses_accessible_ansi_theme_without_painting_background(
+def test_file_syntax_uses_accessible_ansi_theme_with_a_complete_owned_background(
     terminal_bg_is_light: bool | None,
     expected_theme: object,
 ) -> None:
-    """S-3: syntax inherits the operator palette and leaves status colors untouched."""
+    """S-4: syntax inherits the palette and owns a complete known-background surface."""
     preview = build_edit_preview(
         "read_file",
         {"path": "example.py", "content": "def render() -> int:\n    return 1\n"},
@@ -67,7 +68,7 @@ def test_file_syntax_uses_accessible_ansi_theme_without_painting_background(
         terminal_bg_is_light=terminal_bg_is_light,
     )
     assert isinstance(preview, Syntax)
-    assert preview.background_color == SYNTAX_BACKGROUND_TRANSPARENT
+    assert preview.background_color == preview_background_for_background(terminal_bg_is_light)
     assert preview._theme.__class__.__name__ == "PygmentsSyntaxTheme"
     assert syntax_theme_for_background(terminal_bg_is_light) == expected_theme
 
@@ -196,8 +197,8 @@ def test_derived_diff_fills_meet_the_painted_line_accessibility_contract(
         assert theme._simulate_cvd(fills[0], matrix) != theme._simulate_cvd(fills[1], matrix)
 
 
-def test_result_preview_uses_the_same_transparent_palette_contract() -> None:
-    """S-2: result previews use the shared safe palette without a fill."""
+def test_result_preview_uses_the_same_owned_palette_contract() -> None:
+    """S-4: result previews use the shared known-background surface."""
     preview = build_edit_preview(
         "read_file",
         {"path": "result.json", "content": '{"result": 1}'},
@@ -205,4 +206,4 @@ def test_result_preview_uses_the_same_transparent_palette_contract() -> None:
         terminal_bg_is_light=False,
     )
     assert isinstance(preview, Syntax)
-    assert preview.background_color == SYNTAX_BACKGROUND_TRANSPARENT
+    assert preview.background_color == preview_background_for_background(False)
