@@ -145,6 +145,8 @@ def _stub_clean_git(recovery: ModuleType, monkeypatch: MonkeyPatch, record: obje
     monkeypatch.setattr(recovery, "merge_state", lambda _root: recovery.MERGE_STATE_NONE)
     monkeypatch.setattr(recovery, "abort_merge", lambda _root: True)
     monkeypatch.setattr(recovery, "reset_hard", lambda _root, _sha: None)
+    monkeypatch.setattr(recovery, "post_attempt_verify", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(recovery, "_delete_rebase_backup_refs", lambda _root: None)
 
 
 def _boom(*_args: object, **_kwargs: object) -> None:
