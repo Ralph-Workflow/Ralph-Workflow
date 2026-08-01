@@ -84,8 +84,10 @@ class RawOverflowLog:
                     self._disabled = True
                     return False
                 if self._fh is None:
+                    # filesystem-write-ok: bounded binary overflow stream directory creation
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     mode = "wb" if self._first_write else "ab"
+                    # filesystem-write-ok: bounded binary overflow stream remains live until byte cap
                     handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
                     self._fh = cast(
                         "BinaryIO", handle_obj

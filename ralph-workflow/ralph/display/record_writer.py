@@ -419,7 +419,9 @@ class RenderedRecordWriter:
             lines = list(self._buffer)
             self._buffer.clear()
             try:
+                # filesystem-write-ok: live record stream directory creation on terminal flush
                 self._path.parent.mkdir(parents=True, exist_ok=True)
+                # filesystem-write-ok: batched live record stream flush preserves ordered output
                 with self._path.open("a", encoding="utf-8") as fp:
                     fp.write("\n".join(lines))
                     fp.write("\n")

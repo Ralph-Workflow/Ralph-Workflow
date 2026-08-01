@@ -126,7 +126,9 @@ class FsWorkspace:
             content: Content to append.
         """
         p = self._abs(path)
+        # filesystem-write-ok: caller-requested append preserves the live stream contract
         p.parent.mkdir(parents=True, exist_ok=True)
+        # filesystem-write-ok: caller-requested append preserves the live stream contract
         with p.open("a", encoding="utf-8") as fh:
             fh.write(content)
 

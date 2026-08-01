@@ -235,17 +235,18 @@ def _collect_python_files(root: Path) -> list[Path]:
     return result
 
 
-def _is_write_mode_open(call: ast.Call) -> bool:
-    """True if ``call`` is an ``open(...)`` whose mode is write/append/extend.
+def _is_write_mode_open(call: ast.Call, *, path_method: bool = False) -> bool:
+    """True if ``call`` opens a file in a write/append/update mode.
 
-    Inspects the second positional argument (the mode after the
-    path). When the mode is missing, the audit fails closed by
-    treating the call as a write — a conservative choice that is
-    safer than the inverse. Read modes (``"r"``, ``"rb"``, ``"rt"``)
-    are explicitly NOT flagged.
+    Builtin ``open(path, mode)`` takes its mode as the second positional
+    argument; ``Path.open(mode)`` takes it as the first.  When the mode is
+    dynamic the audit fails closed, while omitted modes preserve Python's
+    read-only default.
     """
+    mode_position = 0 if path_method else _OPEN_MODE_POSITION
+    minimum_args = 1 if path_method else _OPEN_MODE_MIN_ARGS
     mode_arg: ast.expr | None = (
-        call.args[_OPEN_MODE_POSITION] if len(call.args) >= _OPEN_MODE_MIN_ARGS else None
+        call.args[mode_position] if len(call.args) >= minimum_args else None
     )
     if mode_arg is None:
         mode_arg = next((keyword.value for keyword in call.keywords if keyword.arg == "mode"), None)
@@ -291,6 +292,17 @@ def _raw_builtin_open_call(node: ast.Call) -> bool:
         receiver = node.func.value
         if isinstance(receiver, ast.Name) and receiver.id in {"builtins", "io"}:
             return _is_write_mode_open(node)
+        # `webbrowser.open(...)` is not a filesystem operation.  The audit
+        # matches calls by method name, so exclude this standard-library API
+        # explicitly while retaining fail-closed handling for every other
+        # mutating `.open(...)` form.
+        if isinstance(receiver, ast.Name) and receiver.id in {"os", "webbrowser"}:
+            return False
+        # Path.open(...) is another raw file-writing entry point.  Its
+        # receiver may be a Path variable, a Path(...) call, or a chained
+        # pathlib expression, so treating every non-builtin ``.open`` call
+        # with a mutating mode as raw is the fail-closed policy.
+        return _is_write_mode_open(node, path_method=True)
     return False
 
 
@@ -473,7 +485,7 @@ def _scan_module(
                 )
             )
             continue
-        # builtin open(path, "w" / "a" / ...)
+        # builtin / Path.open(path, "w" / "a" / ...)
         if _raw_builtin_open_call(node):
             if _has_marker_on_or_before(node.lineno, marker_lines):
                 continue

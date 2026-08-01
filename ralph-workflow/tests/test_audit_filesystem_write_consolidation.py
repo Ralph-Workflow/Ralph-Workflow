@@ -516,6 +516,28 @@ def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
     assert any(v.kind == "raw_open_write" for v in violations)
 
 
+def test_flags_raw_path_open_write_mode(tmp_path: Path) -> None:
+    """``Path.open(\"a\")`` is a raw append outside an approved stream boundary."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def append(path, content):\n"
+            "    with Path(path).open(\"a\") as stream:\n"
+            "        stream.write(content)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_open_write"]
+    assert "filesystem-write-ok" in violations[0].message
+
+
 def test_does_not_flag_builtin_open_read_mode(tmp_path: Path) -> None:
     """``open(path, "r")`` is a read, not a write, and must not be flagged."""
     module_rel = "alpha/example.py"

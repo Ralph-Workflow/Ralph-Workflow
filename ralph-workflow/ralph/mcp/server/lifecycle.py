@@ -789,6 +789,7 @@ def _spawn_process(
     # inside a request handler (e.g. an AttributeError after SSE headers) left
     # no trace anywhere while the client hung to its request timeout (-32001).
     log_dir = cwd / ".agent" / "tmp"
+    # filesystem-write-ok: MCP server live diagnostic log directory
     log_dir.mkdir(parents=True, exist_ok=True)
     log_fd = os.open(  # resource-lifecycle-ok: closed in finally
         log_dir / "mcp-server.log",

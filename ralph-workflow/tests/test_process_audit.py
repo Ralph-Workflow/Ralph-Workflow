@@ -26,6 +26,10 @@ ALLOWLIST: list[tuple[str, str]] = [
         "intentionally uses subprocess.run with shell=True for unrestricted shell execution",
     ),
     (
+        "_install_conflicts.py",
+        "resolves an installed console script through its declared interpreter",
+    ),
+    (
         "testing/audit_mcp_timeout.py",
         "references subprocess.run/Popen as detection-pattern strings; does not call subprocess",
     ),
