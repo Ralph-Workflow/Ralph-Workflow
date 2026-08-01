@@ -135,6 +135,7 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
         "Missing/invalid issues artifact",
         "Missing required analysis artifact",
         "Missing fix_result artifact",
+        "required artifact receipt missing",
     }
 )
 

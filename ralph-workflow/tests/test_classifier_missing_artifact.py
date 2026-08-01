@@ -24,6 +24,7 @@ _AGENT = "claude"
         "Missing/invalid issues artifact: Artifact not found at .agent/artifacts/issues.md",
         "Missing required analysis artifact at .agent/artifacts/development_analysis_decision.md",
         "Missing fix_result artifact at .agent/artifacts/fix_result.md",
+        "agent exited without required completion evidence (completion sentinel missing, or required artifact receipt missing)",
     ],
 )
 def test_missing_artifact_message_classifies_as_artifact_validation(message: str) -> None:
@@ -42,6 +43,7 @@ def test_missing_artifact_message_classifies_as_artifact_validation(message: str
         "Missing/invalid issues artifact: file not found",
         "Missing required analysis artifact at .agent/artifacts/review_analysis_decision.md",
         "Missing fix_result artifact at .agent/artifacts/fix_result.md",
+        "agent exited without required completion evidence (completion sentinel missing, or required artifact receipt missing)",
     ],
 )
 def test_is_missing_artifact_message_helper(message: str) -> None:

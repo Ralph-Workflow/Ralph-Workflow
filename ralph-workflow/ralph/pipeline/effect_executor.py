@@ -41,6 +41,11 @@ from ralph.git.operations import stage_files
 from ralph.mcp.artifacts.canonical_submit import _clear_worker_artifacts
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
+from ralph.phases.required_artifacts import (
+    build_required_artifacts,
+    build_retry_hint,
+    retry_hint_path,
+)
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
 from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
 from ralph.pipeline._retry_progress_guard import (
@@ -67,6 +72,7 @@ from ralph.pipeline.session_bridge import reset_tool_registry_callback
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
@@ -539,6 +545,7 @@ def _invoke_agent_with_recovery(
         except ctx.deps.agent_invocation_error as exc:
             if raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError):
                 raise
+            _write_terminal_missing_artifact_hint(ctx, exc, resolved_required_artifact)
             return _handle_terminal_agent_invocation_error(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
@@ -1400,6 +1407,33 @@ _retry_intent_local: _threading.local = _threading.local()
 
 def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
     _retry_intent_local.intent = intent
+
+
+def _write_terminal_missing_artifact_hint(
+    ctx: _AgentInvocationCtx,
+    exc: Exception,
+    required_artifact: RequiredArtifact | None,
+) -> None:
+    """Persist canonical resubmission guidance only when the receipt is absent."""
+    if required_artifact is None or not is_unsubmitted_artifact_failure(
+        failure_detail_parts(exc)
+    ):
+        return
+    workspace_root = ctx.workspace_scope.root
+    if (workspace_root / required_artifact.artifact_path).exists():
+        return
+    try:
+        registry = (
+            build_required_artifacts(ctx.policy_bundle.artifacts)
+            if ctx.policy_bundle is not None
+            else None
+        )
+        hint = build_retry_hint(str(ctx.effect.phase), str(exc), registry=registry)
+        hint_file = workspace_root / retry_hint_path(str(ctx.effect.phase))
+        hint_file.parent.mkdir(parents=True, exist_ok=True)
+        hint_file.write_text(hint, encoding="utf-8")
+    except Exception:
+        return
 
 
 def _handle_terminal_agent_invocation_error(

@@ -29,7 +29,11 @@ from ralph.mcp.artifacts.smoke_test_result import (
 )
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
+from ralph.pipeline.plumbing.smoke_plumbing import (
+    SmokeRunParams,
+    _build_smoke_prompt,
+    _run_smoke_agent,
+)
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
@@ -468,6 +472,43 @@ def test_agy_smoke_regression_promotes_fallback_and_records_trusted_completion(
     assert result.artifact_submitted is True
     assert result.explicit_completion_seen is True
     assert "completion sentinel was not observed" not in result.errors
+
+
+def test_agy_smoke_regression_missing_artifact_is_reported_without_submit_instruction(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """S-2: stripping artifact instructions must still surface the artifact error."""
+    params = _make_params(tmp_path, "agy/test-model", _agy_config())
+    prompt = _build_smoke_prompt(
+        "tmp/interactive-agy-smoke/todo-list.js",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
+        transport=AgentTransport.AGY,
+    )
+    stripped_prompt = prompt.split("- Call `ralph_submit_md_artifact`", maxsplit=1)[0]
+    assert "ralph_submit_md_artifact" not in stripped_prompt
+    params.prompt_file.write_text(stripped_prompt, encoding="utf-8")
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.extend(
+                (
+                    "I created the todo list implementation.",
+                    "[plain] tool: createTodoList",
+                    "File created at tmp/interactive-agy-smoke/todo-list.js.",
+                )
+            )
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id="interactive-agy-smoke-test-model")
+
+    assert "smoke_test_result artifact was not submitted" in result.errors
 
 
 def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence(
