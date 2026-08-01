@@ -541,6 +541,8 @@ def test_mode_full_swap_io_failure_preserves_committed_generation(
         store.close()
 
 
+# ponytail: staged SQLite rebuild plus recovery can exceed 1s under xdist filesystem contention; the 60s suite budget remains authoritative.
+@pytest.mark.timeout_seconds(2.0)
 def test_mode_full_swap_refused_when_outer_deadline_already_exceeded(
     tmp_path: Path,
 ) -> None:

@@ -101,10 +101,33 @@ def _combine_tracked_and_untracked(tracked: str, untracked_raw: str) -> str:
     return f"{tracked}\n\n{untracked_section}"
 
 
+def _untracked_only_pending_work(workspace_root: Path) -> tuple[str, bool] | None:
+    """Return safe untracked work, or ``None`` when tracked work needs a diff.
+
+    ``git status`` answers the common cleanup case in one process.  A tracked
+    entry falls through to the full diff path, which is needed to include its
+    contents; an untracked-only tree needs only the bounded path list.
+    """
+    status = _git_output_or_empty(workspace_root, "status", "--porcelain=v1", "-z")
+    if not status:
+        return None
+    entries = [entry for entry in status.split("\0") if entry]
+    if any(not entry.startswith("?? ") for entry in entries):
+        return None
+    untracked_paths = [entry[3:] for entry in entries]
+    safe_untracked = [path for path in untracked_paths if not is_recognized_secret_path(path)]
+    return _format_untracked_section(safe_untracked), any(
+        is_recognized_secret_path(path) for path in untracked_paths
+    )
+
+
 def _secret_filtered_pending_diff(workspace_root: Path) -> tuple[str, bool]:
     """Return safe pending work and whether recognized secret work was hidden."""
     if not _is_inside_git_repo(workspace_root):
         return "", False
+    untracked_only = _untracked_only_pending_work(workspace_root)
+    if untracked_only is not None:
+        return untracked_only
     head_check = run_process(
         "git",
         ("rev-parse", "--verify", "HEAD"),

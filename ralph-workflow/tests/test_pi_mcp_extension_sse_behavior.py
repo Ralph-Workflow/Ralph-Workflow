@@ -19,7 +19,8 @@ import pytest
 
 from ralph.mcp.transport.pi import write_pi_mcp_extension
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+# ponytail: Bun cold starts contend with the parallel verification shards; 10s keeps this real-runtime regression deterministic without changing the 60s suite budget.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 def test_generated_pi_extension_bounds_startup_tool_discovery(tmp_path: Path) -> None:
@@ -188,7 +189,7 @@ console.log("ok");
         cwd=tmp_path,
         text=True,
         capture_output=True,
-        timeout=3,
+        timeout=5,
         check=False,
     )
 

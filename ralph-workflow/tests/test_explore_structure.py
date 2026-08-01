@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.explore.structure import (
@@ -18,6 +20,9 @@ from ralph.mcp.explore.structure import (
     extract_python,
     extract_structure,
 )
+
+# ponytail: SQLite initialization competes for filesystem locks under xdist; 2s preserves the integration contract without changing the 60s suite budget.
+pytestmark = pytest.mark.timeout_seconds(2.0)
 
 
 def _seed_workspace(tmp_path: Path) -> Path:

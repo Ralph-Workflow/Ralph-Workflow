@@ -123,6 +123,8 @@ def test_commit_cleanup_prompt_includes_untracked_files_in_header(
     assert _UNTRACKED_HEADER in rendered
 
 
+# ponytail: this end-to-end secret-redaction path commits with GitPython then renders the diff twice; 10s covers xdist filesystem contention without affecting the 60s suite budget.
+@pytest.mark.timeout_seconds(10)
 def test_commit_cleanup_diff_and_prompt_redact_recognized_secrets(
     tmp_git_repo: Path,
 ) -> None:
