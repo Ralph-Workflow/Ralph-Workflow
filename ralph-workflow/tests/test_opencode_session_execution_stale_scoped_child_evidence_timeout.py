@@ -332,6 +332,45 @@ class TestStaleScopedChildEvidenceTimeout:
             f"not {state!r}. Raw descendants must not override previously-stale scoped evidence."
         )
 
+    def test_classify_exit_stale_registry_after_pruning_with_raw_descendants_returns_resumable(
+        self,
+    ) -> None:
+        """Previously scoped child evidence remains stale after another reader prunes it.
+
+        The corroborator can snapshot and prune stale registry records before
+        completion checks call ``classify_exit``.  That must not downgrade known
+        stale Ralph evidence into unknown OS-descendant evidence and wait again.
+        """
+        t = [0.0]
+        registry = ChildLivenessRegistry(
+            progress_ttl=30.0,
+            heartbeat_ttl=30.0,
+            stale_label_ttl=60.0,
+            exit_reconcile=5.0,
+            now=lambda: t[0],
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="test", registry=registry)
+        strategy.observe_line(json.dumps({"type": "child_started", "child_id": "child-x"}))
+        strategy.observe_line(
+            json.dumps({"type": "child_progress", "child_id": "child-x", "phase": "running"})
+        )
+
+        t[0] = 1000.0
+        registry.snapshot("agent:test:")
+        assert not registry.has_records("agent:test:")
+
+        class _OldStyleProbe:
+            def any_agent_active(self, label_prefix: str) -> bool:
+                return False
+
+        state = strategy.classify_exit(
+            _FakeHandle(has_descendants=True),
+            CompletionSignals(False, False, ()),
+            _OldStyleProbe(),
+        )
+
+        assert state == AgentExecutionState.RESUMABLE_CONTINUE
+
     def test_evidence_precedence_no_scoped_evidence_with_raw_descendants_returns_waiting(
         self,
     ) -> None:

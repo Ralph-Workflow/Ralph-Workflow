@@ -808,6 +808,7 @@ def _evidence_precedence(
     label_prefix: str | None,
     *,
     registry: ChildLivenessRegistry | None = None,
+    scoped_evidence_seen: bool = False,
 ) -> AgentExecutionState:
     """Evidence-precedence exit classification.
 
@@ -822,13 +823,13 @@ def _evidence_precedence(
     if completion_signals_terminal(completion_signals):
         return AgentExecutionState.TERMINAL_COMPLETE
 
-    stale = False
+    stale = scoped_evidence_seen
 
     if registry is not None:
         state, reg_stale = _registry_check_for_exit(registry, label_prefix)
         if state is not None:
             return state
-        stale = reg_stale
+        stale = stale or reg_stale
 
     if liveness_probe is not None:
         state, probe_stale = _probe_check_exit(liveness_probe, label_prefix)

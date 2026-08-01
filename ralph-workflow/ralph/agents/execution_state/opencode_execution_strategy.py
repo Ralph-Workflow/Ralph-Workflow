@@ -273,6 +273,19 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
             "ChildLivenessRegistry | None", getattr(self, "_registry", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         label_prefix = self._active_label_prefix()
+        if self._scoped_records_seen:
+            # A prior reader may have pruned stale scoped records before this
+            # post-exit check. Preserve that invocation-level evidence so raw
+            # OS descendants cannot turn a known stale child back into a
+            # reason to wait indefinitely.
+            return _evidence_precedence(
+                handle,
+                completion_signals,
+                liveness_probe,
+                label_prefix,
+                registry=registry,
+                scoped_evidence_seen=True,
+            )
         return _evidence_precedence(
             handle, completion_signals, liveness_probe, label_prefix, registry=registry
         )
