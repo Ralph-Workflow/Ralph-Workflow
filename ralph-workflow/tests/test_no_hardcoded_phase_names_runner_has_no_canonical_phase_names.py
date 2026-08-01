@@ -72,6 +72,7 @@ class TestRunnerHasNoCanonicalPhaseNames:
     def runner_source(self) -> str:
         return (RALPH_ROOT / "pipeline" / "runner.py").read_text(encoding="utf-8")
 
+    @pytest.mark.timeout_seconds(5)
     def test_config_drain_candidates_has_no_suffix_alias_literals(self, runner_source: str) -> None:
         """_config_drain_candidates must not expand phase names by suffix."""
         literals = _string_literals_in_function(runner_source, "_config_drain_candidates")

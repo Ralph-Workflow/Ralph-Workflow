@@ -140,6 +140,7 @@ def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None
     assert GRACEFUL_HEIGHT_FLOOR == 12
 
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize("case", support_matrix())
 @pytest.mark.parametrize("scene_name", SCENE_NAMES)
 def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matrix(

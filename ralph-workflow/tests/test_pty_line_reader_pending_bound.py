@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import threading
 
+import pytest
+
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.timeout_clock import SystemClock
 from tests.agents.invoke.test_line_reader_queue_bound import _FakePtyHandle, _make_pty_ctx
@@ -18,6 +20,7 @@ def _write_all(fd: int, payload: bytes) -> None:
         os.close(fd)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_pty_reader_regression_overlong_pending_tail_yields_newest_complete_line() -> None:
     """S-5 / DA-002: the public reader retains the newest completed PTY line."""
     read_fd, write_fd = os.pipe()

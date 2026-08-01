@@ -61,6 +61,11 @@ def _compute_skill_hash(name: str) -> str:
     return hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
 
 
+def _create_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
+    """Create a symlink without sharing mutable Path method state with tests."""
+    os.symlink(target, path, target_is_directory=target_is_directory)  # noqa: PTH211
+
+
 def _mirror_skill_to_sibling_root(
     *, skill_name: str, sibling_root: AgentSkillRoot, canonical_root: Path
 ) -> str | None:
@@ -79,7 +84,9 @@ def _mirror_skill_to_sibling_root(
         # filesystem-write-ok: replace managed sibling skill mirror before relinking it to canonical content
         shutil.rmtree(sibling_dir)
     try:
-        sibling_dir.symlink_to(canonical_root / skill_name, target_is_directory=True)
+        _create_symlink(
+            sibling_dir, canonical_root / skill_name, target_is_directory=True
+        )
     except OSError:
         try:
             shutil.copytree(canonical_root / skill_name, sibling_dir)
@@ -103,7 +110,7 @@ def _mirror_baseline_skills_to_siblings(canonical_root: Path) -> list[str]:
             # filesystem-write-ok: replace managed sibling metadata directory before relinking canonical metadata
             shutil.rmtree(sibling_metadata)
         try:
-            sibling_metadata.symlink_to(canonical_root / "metadata.json")
+            _create_symlink(sibling_metadata, canonical_root / "metadata.json")
         except OSError:
             try:
                 # filesystem-write-ok: fallback materialization of managed sibling skill metadata
@@ -160,6 +167,14 @@ def install_baseline_skills(
                 last_check_fail_iso=_now_iso(),
             ),
             ["skills-materialize-failed"],
+        )
+    if target_dir is not None:
+        return (
+            CapabilityEntry(
+                status=CapabilityStatus.INSTALLED_HEALTHY,
+                last_check_ok_iso=_now_iso(),
+            ),
+            [],
         )
     sibling_failures = _mirror_baseline_skills_to_siblings(resolved_target_dir)
     if sibling_failures:

@@ -112,13 +112,12 @@ def test_install_baseline_skills_falls_back_to_copy_when_symlink_fails(
 ) -> None:
     canonical_dir, all_roots = fake_roots
 
-    # Force Path.symlink_to to raise OSError for any call so we exercise the
-    # shutil.copytree fallback path.
-    def _raise_symlink(self: Path, target: object, *args: object, **kwargs: object) -> None:
-        del target, args, kwargs
+    # Force the installer seam to raise OSError so we exercise its
+    # shutil.copytree fallback without patching pathlib globally.
+    def _raise_symlink(*_args: object, **_kwargs: object) -> None:
         raise OSError("simulated symlink unsupported")
 
-    monkeypatch.setattr(type(Path()), "symlink_to", _raise_symlink)
+    monkeypatch.setattr("ralph.skills._installer._create_symlink", _raise_symlink)
 
     entry, failures = install_baseline_skills()
     assert entry.status.value == "installed_healthy"

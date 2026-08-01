@@ -199,24 +199,25 @@ class TestAutoIntegrateCatchup:
         _stop_and_wait(worker)
 
     def test_tick_exception_does_not_kill_the_loop(self, tmp_path: Path) -> None:
-        second_tick = threading.Event()
         calls: list[int] = []
+        iteration = iter((False, False, True))
 
         def _tick() -> str:
             calls.append(1)
             if len(calls) == 1:
                 raise RuntimeError("boom")
-            second_tick.set()
             return catchup.CATCHUP_UP_TO_DATE
 
         worker = catchup.AutoIntegrateCatchupWorker(
-            _config(), tmp_path, interval_seconds=0.005, tick=_tick
+            _config(),
+            tmp_path,
+            interval_seconds=0.005,
+            tick=_tick,
+            wait=lambda _interval: next(iteration),
         )
-        worker.start()
-        try:
-            assert second_tick.wait(timeout=0.5)
-        finally:
-            _stop_and_wait(worker)
+        worker.run()
+
+        assert calls == [1, 1]
 
     def test_disabled_returns_none(self, tmp_path: Path) -> None:
         assert catchup.start_catchup_worker_if_enabled(_config(enabled=False), tmp_path) is None

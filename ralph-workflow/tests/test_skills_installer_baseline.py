@@ -9,15 +9,26 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.skills._agent_paths import AgentSkillRoot
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._content import get_skill_content
 from ralph.skills._installer import install_baseline_skills
 
 
 @pytest.fixture(autouse=True)
-def _isolate_baseline_install_from_user_siblings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep canonical-install behavior tests independent of user-global siblings."""
+def _isolate_baseline_install_from_user_siblings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep canonical-install behavior tests independent of user-global roots."""
+    canonical_root = AgentSkillRoot(
+        agent="claude",
+        path_segments=(str(tmp_path / "canonical"),),
+        source_url="",
+        is_canonical=True,
+    )
+    monkeypatch.setattr("ralph.skills._installer.canonical_agent_skill_root", lambda: canonical_root)
     monkeypatch.setattr("ralph.skills._installer.sibling_agent_skill_roots", lambda: ())
+    monkeypatch.setattr("ralph.skills._installer._mirror_baseline_skills_to_siblings", lambda _root: [])
 
 
 if TYPE_CHECKING:
@@ -77,7 +88,7 @@ def test_install_baseline_skills_writes_claude_discoverable_skill_directories(
 ) -> None:
     entry, failures = install_baseline_skills(target_dir=tmp_path)
 
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY, failures
     assert failures == []
     skill_file = tmp_path / "using-superpowers" / "SKILL.md"
     assert skill_file.exists()

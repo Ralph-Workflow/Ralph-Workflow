@@ -299,11 +299,9 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
     assert "see .agent/raw/unit-1.log" in rendered
     # The full 500 chars do NOT appear (condenser truncated head-only).
     assert soft_limit_content not in rendered
-    # One logical close entry keeps its header and payload together when the
-    # available width permits; narrower widths still repeat the grep-critical
-    # tag and unit carrier on every continuation.
+    # One logical close entry retains its grep-critical carrier on the header row.
     content_lines = [line for line in rendered.splitlines() if "[output][unit-1]" in line]
-    assert content_lines, f"expected a close entry:\n{rendered}"
+    assert len(content_lines) == 1, f"expected exactly one close entry:\n{rendered}"
     assert all("[output][unit-1]" in line for line in content_lines)
 
 

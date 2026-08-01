@@ -1590,21 +1590,25 @@ class ParallelDisplay:
             # embedded-newline string and only the first embedded
             # line carried the prefix).
             close_badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
-            flattened_body = body.replace("\n", " · ")
-            wrapped_first = self._wrap_body_with_hanging_indent(
-                close_badge_prefix,
-                flattened_body,
-                total_width=self._ctx.width,
-                body_measure=max(
-                    self._ctx.body_measure(), self._ctx.width - cell_len(close_badge_prefix)
-                ),
+            close_hang_prefix = " " * cell_len(close_badge_prefix)
+            wrapped_body = "\n".join(
+                self._wrap_body_with_hanging_indent(
+                    close_badge_prefix,
+                    chunk,
+                    total_width=self._ctx.width,
+                    body_measure=self._ctx.body_measure(),
+                )
+                for chunk in body.split("\n")
+            )
+            indented_body = "\n".join(
+                f"{close_hang_prefix}{line}" for line in wrapped_body.split("\n")
             )
             self._console.print(
                 self._activity_text(
                     timestamp,
                     display_tag,
                     rendered_unit_id,
-                    wrapped_first,
+                    indented_body,
                     kind="thinking" if base_tag == "think" else "text",
                 ),
                 markup=False,

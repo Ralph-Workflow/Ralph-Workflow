@@ -7,6 +7,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ralph.mcp.explore.dirty_paths import (
     NoOpExploreIndex,
     build_sqlite_index_handle,
@@ -258,6 +260,7 @@ def test_handle_move_file_marks_both_paths(tmp_path: Path) -> None:
         store.close()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_handle_copy_file_marks_dest(tmp_path: Path) -> None:
     workspace_root = tmp_path / "ws"
     workspace_root.mkdir()

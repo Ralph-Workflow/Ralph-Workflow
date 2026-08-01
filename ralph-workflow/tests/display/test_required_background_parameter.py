@@ -51,6 +51,32 @@ def _has_resolved_background(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bo
     )
 
 
+def _class_has_resolved_background(node: ast.ClassDef) -> bool:
+    """Accept a constructor with a required background flag or context carrier."""
+    initializer = next(
+        (
+            child
+            for child in node.body
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == "__init__"
+        ),
+        None,
+    )
+    if initializer is None or _has_required_background(initializer):
+        return initializer is not None
+    args = (*initializer.args.posonlyargs, *initializer.args.args)
+    required_count = len(args) - len(initializer.args.defaults)
+    return any(
+        argument.arg == "display_context"
+        and index < required_count
+        and argument.annotation is not None
+        and any(
+            isinstance(child, ast.Name) and child.id == "DisplayContext"
+            for child in ast.walk(argument.annotation)
+        )
+        for index, argument in enumerate(args)
+    )
+
+
 def _violations(tree: ast.AST) -> list[str]:
     """Return colour builders that do not require their resolved background."""
     guarded_classes = {
@@ -65,19 +91,9 @@ def _violations(tree: ast.AST) -> list[str]:
             )
         )
     }
-    violations: list[str] = []
-    for node in guarded_classes:
-        initializer = next(
-            (
-                child
-                for child in node.body
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and child.name == "__init__"
-            ),
-            None,
-        )
-        if initializer is None or not _has_resolved_background(initializer):
-            violations.append(f"{node.lineno} {node.name}")
+    violations = [
+        f"{node.lineno} {node.name}" for node in guarded_classes if not _class_has_resolved_background(node)
+    ]
     violations.extend(
         f"{node.lineno} {node.name}"
         for node in tree.body
@@ -118,3 +134,16 @@ class SneakyMarkdown(Markdown):
         self.terminal_bg_is_light = terminal_bg_is_light
 """)
     assert _violations(tree) == ["2 SneakyBlock", "9 SneakyMarkdown"]
+
+
+def test_s1_guard_accepts_display_context_constructor() -> None:
+    """DA-001: constructors may receive the resolved DisplayContext carrier."""
+    tree = ast.parse("""
+class ContextualBlock(CodeBlock):
+    def __init__(self, display_context: DisplayContext):
+        self.display_context = display_context
+
+    def __rich_console__(self):
+        return syntax_theme_for_background(True)
+""")
+    assert _violations(tree) == []

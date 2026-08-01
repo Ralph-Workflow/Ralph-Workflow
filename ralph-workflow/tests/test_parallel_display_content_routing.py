@@ -52,7 +52,7 @@ def test_push_text_line_emits_content_tag(tmp_path: Path) -> None:
     assert "hello world" in out
     content_lines = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\n{out}"
     )
 
 
@@ -81,7 +81,7 @@ def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
     assert "deep thought" in out
     thinking_lines = [line for line in out.splitlines() if "[reasoning][u]" in line]
     assert len(thinking_lines) == 1, (
-        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\\n{out}"
+        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\n{out}"
     )
 
 
@@ -119,7 +119,7 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     assert "…" in out or "truncated" in out or "raw unavailable" in out
     content_lines = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\n{out}"
     )
 
 
@@ -207,7 +207,7 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
     assert ".agent/raw/u.log" in out
     content_lines = [line for line in out.splitlines() if "[output][u]" in line]
     assert len(content_lines) == 1, (
-        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\\n{out}"
+        f"Expected exactly 1 [output] entry on close, got {len(content_lines)}:\n{out}"
     )
 
 
@@ -340,7 +340,7 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     assert "[reasoning" in out
     thinking_lines = [line for line in out.splitlines() if "[reasoning]" in line]
     assert len(thinking_lines) == 1, (
-        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\\n{out}"
+        f"Expected exactly 1 [reasoning] entry on close, got {len(thinking_lines)}:\n{out}"
     )
 
 

@@ -313,10 +313,10 @@ def test_flush_blocks_emits_one_close_line_per_active_block() -> None:
     pd.emit_activity_line("u", "text", "partial content")
     pd.flush_blocks()
     out = buf.getvalue()
-    # One logical close entry has header and body rows, both retaining the carrier.
+    # One logical close entry retains its carrier on the header row.
     content_lines = [ln for ln in _plain_lines(out) if "[output][u]" in ln]
-    assert len(content_lines) == 2, (
-        f"expected header and body rows for one close entry, got {len(content_lines)}: {out!r}"
+    assert len(content_lines) == 1, (
+        f"expected exactly 1 close entry, got {len(content_lines)}: {out!r}"
     )
 
 

@@ -133,6 +133,7 @@ def test_resolve_display_defaults_to_legacy_console_display() -> None:
     assert isinstance(display, runner_module.ParallelDisplay)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_planning_entry(
     tmp_path: Path,
 ) -> None:
