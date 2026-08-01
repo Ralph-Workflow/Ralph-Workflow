@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed, write_text_if_changed
 from ralph.mcp.artifacts.plan._size_limits import PlanSizeLimits
 
 if TYPE_CHECKING:
@@ -119,9 +120,14 @@ def save_md_draft(
     backend.mkdir(artifact_dir, parents=True, exist_ok=True)
     draft_path = md_draft_path(artifact_dir, artifact_type)
     tmp_path = draft_path.with_suffix(".md.tmp")
-    backend.write_text(tmp_path, content, encoding="utf-8")
-    backend.replace(tmp_path, draft_path)
-    backend.sync_directory(artifact_dir)
+    atomic_write_text_if_changed(
+        backend,
+        draft_path,
+        content,
+        tmp_path=tmp_path,
+        encoding="utf-8",
+        sync_directory=True,
+    )
     seeded_path = _seeded_draft_path(artifact_dir, artifact_type)
     if backend.exists(seeded_path):
         backend.unlink(seeded_path)
@@ -134,7 +140,12 @@ def mark_md_draft_seeded(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
     """Mark a draft copied from canonical content rather than authored incrementally."""
-    backend.write_text(_seeded_draft_path(artifact_dir, artifact_type), "", encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        _seeded_draft_path(artifact_dir, artifact_type),
+        "",
+        encoding="utf-8",
+    )
 
 
 def is_md_draft_seeded(

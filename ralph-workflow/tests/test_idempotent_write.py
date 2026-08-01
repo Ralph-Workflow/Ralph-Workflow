@@ -23,8 +23,10 @@ class _CountingBackend(FileBackend):
         self._files: Dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
         self.read_text_calls: int = 0
+        self.exists_calls: int = 0
 
     def exists(self, path: Path) -> bool:
+        self.exists_calls += 1
         return path in self._files
 
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
@@ -33,7 +35,10 @@ class _CountingBackend(FileBackend):
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         del encoding
         self.read_text_calls += 1
-        return self._files[path]
+        try:
+            return self._files[path]
+        except KeyError as exc:
+            raise FileNotFoundError(path) from exc
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         del encoding
@@ -76,6 +81,8 @@ def test_skips_write_when_content_identical() -> None:
     assert result is False
     assert backend.write_text_calls == []
     assert backend._files[path] == "alpha"  # content check
+    assert backend.exists_calls == 0
+    assert backend.read_text_calls == 1
 
 
 def test_writes_when_content_changed() -> None:

@@ -95,6 +95,8 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
 #: explicit and local). The format is fixed; an empty reason is
 #: treated as drift.
 _MARKER_TOKEN = "filesystem-write-ok:"
+_OPEN_MODE_POSITION = 1
+_OPEN_MODE_MIN_ARGS = 2
 
 #: Attribute names whose receiver is already routed through the canonical
 #: ``FileBackend`` abstraction. When the audit sees ``backend.write_text(...)``
@@ -241,7 +243,9 @@ def _is_write_mode_open(call: ast.Call) -> bool:
     safer than the inverse. Read modes (``"r"``, ``"rb"``, ``"rt"``)
     are explicitly NOT flagged.
     """
-    mode_arg: ast.expr | None = call.args[1] if len(call.args) >= 2 else None
+    mode_arg: ast.expr | None = (
+        call.args[_OPEN_MODE_POSITION] if len(call.args) >= _OPEN_MODE_MIN_ARGS else None
+    )
     if mode_arg is None:
         mode_arg = next((keyword.value for keyword in call.keywords if keyword.arg == "mode"), None)
     if mode_arg is None:
@@ -344,34 +348,15 @@ def _raw_qualified_mutation_call(node: ast.Call) -> str | None:
         # filesystem mutations. ``os``/``shutil`` primitives must be called
         # directly on the imported module; pathlib path construction is
         # deliberately allowed to be chained (``pathlib.Path(p).unlink()``).
-        if root in {"os", "shutil"} and not (
-            isinstance(receiver, ast.Name) and receiver.id == root
-        ):
-            return None
-        return attr
+        is_direct_module_call = isinstance(receiver, ast.Name) and receiver.id == root
+        return attr if root not in {"os", "shutil"} or is_direct_module_call else None
     # ``Path`` / ``PurePath`` / ``PosixPath`` / ``WindowsPath`` are
-    # typically imported from ``pathlib``; treat them as pathlib
-    # aliases when the import alias is in scope. The audit cannot
-    # resolve imports exhaustively, so it uses the heuristic that
-    # any call whose receiver is one of these names AND whose
-    # method is a pathlib primitive is flagged. This catches the
-    # common ``from pathlib import Path`` case; imports behind
-    # ``import pathlib as pl`` etc. fall back to the qualifier
-    # detection above (root name ``pl`` is not in the qualifier
-    # set, so they are NOT flagged — accepted limitation).
-    if root in {"Path", "PurePath", "PosixPath", "WindowsPath"} and attr in {
-        "write_text",
-        "write_bytes",
-        "replace",
-        "rename",
-        "unlink",
-        "mkdir",
-        "rmdir",
-        "touch",
-        "truncate",
-    }:
-        return attr
-    return None
+    # typically imported from ``pathlib``; treat them as pathlib aliases.
+    pathlib_aliases = {"Path", "PurePath", "PosixPath", "WindowsPath"}
+    pathlib_mutations = {
+        "write_text", "write_bytes", "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate"
+    }
+    return attr if root in pathlib_aliases and attr in pathlib_mutations else None
 
 
 def _violation_message(attr: str) -> str:
@@ -509,7 +494,10 @@ def _scan_module(
         if qattr is not None:
             if _has_marker_on_or_before(node.lineno, marker_lines):
                 continue
-            qualifier = _call_root_name(node.func.value) or "?"
+            func = node.func
+            if not isinstance(func, ast.Attribute):
+                continue
+            qualifier = _call_root_name(func.value) or "?"
             violations.append(
                 FilesystemWriteViolation(
                     kind=f"raw_{qattr}",

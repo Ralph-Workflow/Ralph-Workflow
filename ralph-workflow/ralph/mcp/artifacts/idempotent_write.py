@@ -53,10 +53,12 @@ def write_text_if_changed(
         write was skipped.
 
     Behavior:
-        * If ``backend.exists(path)`` is ``False``: writes and returns ``True``.
-        * If ``backend.read_text(path)`` raises ``OSError``: writes and
-          returns ``True`` (fail-open — partial/corrupt prior files
-          self-heal on the next call).
+        * Reads once to determine whether the destination is absent, unreadable,
+          or already contains the requested bytes; it does not probe existence
+          separately.
+        * If ``backend.read_text(path)`` raises ``OSError``: writes and returns
+          ``True`` (fail-open — missing, partial, or corrupt prior files self-heal
+          on the next call).
         * If the read-back content equals ``content``: returns ``False``
           without calling ``backend.write_text`` (the skip).
         * Otherwise: writes and returns ``True``.
@@ -65,13 +67,14 @@ def write_text_if_changed(
     caller's responsibility so directory-creation semantics at every
     converted call site are unchanged.
     """
-    if backend.exists(path):
-        try:
-            existing = backend.read_text(path, encoding=encoding)
-        except OSError:
-            existing = None
-        if existing is not None and existing == content:
-            return False
+    try:
+        existing = backend.read_text(path, encoding=encoding)
+    except (KeyError, OSError):
+        # In-memory FileBackend implementations represent a missing path as
+        # KeyError; OS-backed implementations raise FileNotFoundError/OSError.
+        existing = None
+    if existing is not None and existing == content:
+        return False
     backend.write_text(path, content, encoding=encoding)
     return True
 
@@ -99,12 +102,13 @@ def atomic_write_text_if_changed(
         byte-identical content and the helper skipped.
 
     Behavior:
-        * If ``backend.exists(destination)`` is ``False``: writes
-          ``tmp_path``, replaces onto ``destination``, returns ``True``.
-        * If ``backend.read_text(destination)`` raises ``OSError``:
-          writes ``tmp_path``, replaces onto ``destination``,
-          returns ``True`` (fail-open — partial/corrupt prior files
-          self-heal on the next call).
+        * Reads once to determine whether the destination is absent, unreadable,
+          or already contains the requested bytes; it does not probe existence
+          separately.
+        * If ``backend.read_text(destination)`` raises ``OSError``: writes
+          ``tmp_path``, replaces onto ``destination``, returns ``True``
+          (fail-open — missing, partial, or corrupt prior files self-heal on
+          the next call).
         * If the read-back content equals ``content``: returns
           ``False`` without calling ``backend.write_text`` or
           ``backend.replace`` (the skip).
@@ -115,13 +119,14 @@ def atomic_write_text_if_changed(
     caller's responsibility so directory-creation semantics at every
     converted call site are unchanged.
     """
-    if backend.exists(destination):
-        try:
-            existing = backend.read_text(destination, encoding=encoding)
-        except OSError:
-            existing = None
-        if existing is not None and existing == content:
-            return False
+    try:
+        existing = backend.read_text(destination, encoding=encoding)
+    except (KeyError, OSError):
+        # In-memory FileBackend implementations represent a missing path as
+        # KeyError; OS-backed implementations raise FileNotFoundError/OSError.
+        existing = None
+    if existing is not None and existing == content:
+        return False
     backend.write_text(tmp_path, content, encoding=encoding)
     backend.replace(tmp_path, destination)
     if sync_directory:
