@@ -36,6 +36,7 @@ def test_build_edit_preview_write_file_uses_path_lexer() -> None:
         terminal_bg_is_light=False,
     )
     assert isinstance(preview, Syntax)
+    assert preview.lexer is not None
     assert preview.lexer.name == "Python"
     assert "x = 1" in _plain(_render_truecolor(preview))
 
@@ -84,9 +85,9 @@ def test_markdown_preview_regression_wraps_prose_without_wrapping_fenced_code() 
     assert sum("identifier_" in row for row in rows) == 1
 
 
-def test_diff_preview_regression_uses_an_owned_surface_and_paints_polarity_when_opted_in() -> None:
-    """S-4: known backgrounds own the whole preview; diff fills add polarity."""
-    payloads = (
+def test_diff_preview_regression_uses_an_owned_surface_without_partial_polarity_bands() -> None:
+    """S-4: syntax and gutters share one surface; polarity belongs on markers."""
+    payloads: tuple[tuple[str, dict[str, object]], ...] = (
         ("edit_file", {"path": "a.py", "edits": [{"oldText": "old = 1", "newText": "new = 2"}]}),
         ("git_diff", {"content": "@@ -1 +1 @@\n-old\n+new\n"}),
     )
@@ -115,30 +116,12 @@ def test_diff_preview_regression_uses_an_owned_surface_and_paints_polarity_when_
             )
             assert painted is not None
             painted_rendered = _render_truecolor(painted)
-            if fills is None:
-                assert "48;2;" not in painted_rendered and "48;5;" not in painted_rendered
-            else:
-                removed, added = (
+            if fills is not None:
+                derived_fills = {
                     f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
                     for fill in fills
-                )
-                assert removed in painted_rendered and added in painted_rendered
-                rendered_rows = painted_rendered.splitlines()
-                plain_rows = [_plain(row) for row in rendered_rows]
-                if tool_name == "git_diff":
-                    removed_row = next(row for row in rendered_rows if "-old" in _plain(row))
-                    added_row = next(row for row in rendered_rows if "+new" in _plain(row))
-                else:
-                    removed_marker = next(
-                        index for index, row in enumerate(plain_rows) if row.strip() == "-"
-                    )
-                    added_marker = next(
-                        index for index, row in enumerate(plain_rows) if row.strip() == "+"
-                    )
-                    removed_row = rendered_rows[removed_marker + 1]
-                    added_row = rendered_rows[added_marker + 1]
-                assert removed in removed_row and added not in removed_row
-                assert added in added_row and removed not in added_row
+                }
+                assert not any(fill in painted_rendered for fill in derived_fills)
             plain = _plain(painted_rendered)
             assert "-" in plain and "+" in plain and "1" in plain
             if tool_name == "git_diff":
@@ -185,3 +168,28 @@ def test_build_edit_preview_long_content_reports_elision() -> None:
     )
     assert preview is not None
     assert "more line" in _plain(_render_truecolor(preview)).lower()
+
+
+def test_diff_preview_regression_never_paints_partial_polarity_background_bands() -> None:
+    """S-4: every known diff preview uses its complete owned surface only."""
+    payload: dict[str, object] = {
+        "path": "a.py",
+        "edits": [{"oldText": "old = 1", "newText": "new = 2"}],
+    }
+    for terminal_bg_is_light in (False, True):
+        fills = diff_fill_styles(terminal_bg_is_light)
+        assert fills is not None
+        preview = build_edit_preview(
+            "edit_file",
+            payload,
+            width=80,
+            terminal_bg_is_light=terminal_bg_is_light,
+            diff_fills=fills,
+        )
+        assert preview is not None
+        rendered = _render_truecolor(preview)
+        derived_fills = {
+            f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
+            for fill in fills
+        }
+        assert not any(fill in rendered for fill in derived_fills)

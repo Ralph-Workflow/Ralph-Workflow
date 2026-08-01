@@ -9,13 +9,7 @@ import pytest
 from rich.console import Console
 
 from ralph.display.edit_preview import build_edit_preview, render_markdown_preview
-from ralph.display.theme import (
-    contrast_ratio,
-    diff_fill_styles,
-    diff_token_foregrounds,
-    pick_status_styles,
-    preview_background_for_background,
-)
+from ralph.display.theme import contrast_ratio, diff_fill_styles, preview_background_for_background
 
 _RGB_SGR = re.compile(r"38;2;(\d+);(\d+);(\d+)")
 _SGR = re.compile(r"\x1b\[([0-9;]*)m")
@@ -126,30 +120,22 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
     for name, renderable in _shapes(terminal_bg_is_light).items():
         assert renderable is not None, name
         rendered = _render(renderable, color=True)
-        fills = diff_fill_styles(terminal_bg_is_light) if name.endswith("_painted") else None
         surface = preview_background_for_background(terminal_bg_is_light)
-        if fills is None and surface == "default":
+        if surface == "default":
             assert "48;2;" not in rendered and "48;5;" not in rendered, name
-        elif fills is None:
+        else:
             surface_sgr = (
                 f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
             )
             assert surface_sgr in rendered, name
-        else:
+        if name.endswith("_painted") and surface != "default":
+            fills = diff_fill_styles(terminal_bg_is_light)
+            assert fills is not None
             fill_sgrs = {
                 f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
                 for fill in fills
             }
-            assert all(sgr in rendered for sgr in fill_sgrs), name
-            markers = pick_status_styles(terminal_bg_is_light)
-            for color in (
-                *diff_token_foregrounds(terminal_bg_is_light),
-                *[
-                    re.search(r"#[0-9A-Fa-f]{6}", markers[status][0]).group()
-                    for status in ("error", "success")
-                ],
-            ):
-                assert all(contrast_ratio(color, fill) >= 4.5 for fill in fills)
+            assert not any(sgr in rendered for sgr in fill_sgrs), name
         _assert_no_operator_palette_sgr(rendered, name)
         colors = _RGB_SGR.findall(rendered)
         assert colors, f"contrast sweep emitted no truecolour tokens for {name}"
