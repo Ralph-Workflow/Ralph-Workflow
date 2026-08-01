@@ -575,11 +575,22 @@ def _classify_generic_child_signal_from_text(
     return None
 
 
+def _opencode_child_id_from_object(obj: dict[str, object]) -> str | None:
+    """Return a valid explicit child ID from a decoded OpenCode envelope."""
+    for key in (*_OPENCODE_CHILD_SCOPE_KEYS, "id"):
+        value = obj.get(key)
+        if isinstance(value, str) and value:
+            return value
+        if isinstance(value, int) and not isinstance(value, bool):
+            return str(value)
+    return None
+
+
 def parse_opencode_child_id(line: str) -> str | None:
     """Return an explicit OpenCode child or native-task call identifier.
 
-    Child lifecycle frames use top-level ``child_id`` or ``id``. Native
-    OpenCode ``task`` tools instead identify the logical subagent call as
+    Child lifecycle frames use every documented child-scope spelling or ``id``.
+    Native OpenCode ``task`` tools instead identify the logical subagent call as
     ``part.callID``. Both forms are attributable activity for the watchdog;
     only lifecycle frame types are routed into the child-liveness registry.
     """
@@ -593,8 +604,8 @@ def parse_opencode_child_id(line: str) -> str | None:
     if not isinstance(parsed, dict):
         return None
     obj = cast("dict[str, object]", parsed)
-    child_id = str(obj.get("child_id") or obj.get("id") or "")
-    if child_id:
+    child_id = _opencode_child_id_from_object(obj)
+    if child_id is not None:
         return child_id
     part = obj.get("part")
     if isinstance(part, dict):
@@ -621,11 +632,20 @@ def _route_opencode_line_to_registry(
         return
     obj = cast("dict[str, object]", parsed)
     event_type = str(obj.get("type", ""))
-    child_id = str(obj.get("child_id") or obj.get("id") or "")
-    if child_id:
+    child_id = _opencode_child_id_from_object(obj)
+    if child_id is not None:
         _route_opencode_lifecycle_event(obj, registry, scope_prefix, child_id, event_type)
         return
     _route_opencode_native_task(obj, registry, scope_prefix)
+
+
+def _opencode_pid(value: object) -> int | None:
+    """Return a positive integral OpenCode PID while rejecting bool and fractions."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    if isinstance(value, float) and value.is_integer() and value > 0:
+        return int(value)
+    return None
 
 
 def _route_opencode_lifecycle_event(
@@ -637,8 +657,7 @@ def _route_opencode_lifecycle_event(
 ) -> None:
     """Route an explicit OpenCode child lifecycle frame into the registry."""
     if event_type in _OPENCODE_CHILD_SPAWN_TYPES:
-        pid_raw = obj.get("pid")
-        pid = int(pid_raw) if isinstance(pid_raw, int | float) else None
+        pid = _opencode_pid(obj.get("pid"))
         registry.register_child(child_id, scope_prefix, pid=pid)
     elif event_type in _OPENCODE_CHILD_PROGRESS_TYPES:
         phase = str(obj.get("phase")) if obj.get("phase") is not None else None

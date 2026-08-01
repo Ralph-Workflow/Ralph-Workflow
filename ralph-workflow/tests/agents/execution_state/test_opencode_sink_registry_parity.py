@@ -203,6 +203,18 @@ def test_parse_opencode_child_id_returns_parsed_id() -> None:
             "xyz",
         ),
         (
+            '{"type":"child_progress","childId":"camel","phase":"p"}',
+            "camel",
+        ),
+        (
+            '{"type":"child_progress","subagent_id":"snake","phase":"p"}',
+            "snake",
+        ),
+        (
+            '{"type":"child_progress","subagentId":"mixed","phase":"p"}',
+            "mixed",
+        ),
+        (
             '{"type":"child_progress","child_id":7,"phase":"p"}',
             "7",
         ),
@@ -216,6 +228,31 @@ def test_parse_opencode_child_id_returns_parsed_id() -> None:
     for line, expected in cases:
         result = parse_opencode_child_id(line)
         assert result == expected, f"line {line!r}: expected {expected!r}, got {result!r}"
+
+
+def test_camel_case_child_id_routes_progress_to_sink_and_registry() -> None:
+    """S-3: childId must use the same attribution path as child_id."""
+    registry = _make_registry()
+    strategy, sink_calls, _registry = _make_strategy_with_sink(registry=registry)
+
+    strategy.observe_line('{"type":"child_started","childId":"child-A","pid":1234}')
+    strategy.observe_line('{"type":"child_progress","childId":"child-A","phase":"working"}')
+
+    assert sink_calls == ['{"type":"child_progress","childId":"child-A","phase":"working"}']
+    snapshot = registry.snapshot("agent:test:")
+    assert snapshot.active_count == 1
+    assert snapshot.has_fresh_progress
+
+
+def test_invalid_lifecycle_pids_are_not_published_as_subagent_pids() -> None:
+    """S-3: malformed PID values must not identify unrelated OS processes."""
+    registry = _make_registry()
+    strategy, _sink_calls, _registry = _make_strategy_with_sink(registry=registry)
+
+    for child_id, pid in (("boolean", "true"), ("fraction", "12.5"), ("zero", "0"), ("negative", "-1")):
+        strategy.observe_line(f'{{"type":"child_started","child_id":"{child_id}","pid":{pid}}}')
+
+    assert registry.active_pids("agent:test:") == set()
 
 
 def test_parity_sink_count_matches_registry_records_for_valid_lines() -> None:
