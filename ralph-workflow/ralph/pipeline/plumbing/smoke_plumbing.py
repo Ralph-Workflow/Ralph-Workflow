@@ -176,6 +176,7 @@ _SMOKE_MAX_SESSION_SECONDS = 120.0
 _AGENT_SESSION_CEILINGS = {  # bounded-accumulator-ok: static per-agent ceiling map, never mutated
     "claude": 120.0,
     "agy": 360.0,
+    "opencode": 360.0,
 }
 _SMOKE_MAX_TURNS = 5
 _SMOKE_TRANSCRIPT_MAX_LINES = 400

@@ -186,7 +186,11 @@ def payload_from_tool_event(tool_name: str, metadata: dict[str, object]) -> Prev
     payload = _input(metadata)
     if payload is None:
         return None
-    bare = tool_name.removeprefix("mcp__ralph__").removeprefix("ralph.")
+    bare = (
+        tool_name.removeprefix("ralph_mcp__ralph__")
+        .removeprefix("mcp__ralph__")
+        .removeprefix("ralph.")
+    )
     path = _path(payload)
     operations: dict[str, PreviewOperation] = {
         "read_file": "read",

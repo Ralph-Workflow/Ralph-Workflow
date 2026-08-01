@@ -877,11 +877,11 @@ def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
     )
 
 
-def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
+def test_agent_session_ceilings_opencode_gets_360s_agy_gets_360s_claude_gets_120s(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AGY uses a 360s session ceiling; Claude keeps the legacy 120s ceiling."""
+    """OpenCode and AGY get 360s; Claude retains the 120s smoke ceiling."""
     captured_params: list[SmokeRunParams] = []
 
     def fake_run_smoke_agent(
@@ -920,6 +920,28 @@ def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
         config=UnifiedConfig(),
         workspace_root=tmp_path,
         agent_name="agy/claude-sonnet-4-6",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert len(captured_params) == 1
+    assert captured_params[0].unified_config.general.agent_max_session_seconds == 360.0
+
+    captured_params.clear()
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="opencode/minimax/MiniMax-M3"),
+    )
+
+    smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="opencode/minimax/MiniMax-M3",
         prompt_file=tmp_path / "PROMPT.md",
         display_context=make_display_context(),
         pipeline_deps=PipelineDeps(

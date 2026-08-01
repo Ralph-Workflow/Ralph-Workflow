@@ -27,6 +27,14 @@ from ralph.display.preview_payload import payload_from_tool_event
             "x = 1",
             "x = 2",
         ),
+        (
+            "ralph_mcp__ralph__write_file",
+            {"path": "src/example.py", "content": "x = 1\n"},
+            "write",
+            "src/example.py",
+            "",
+            "",
+        ),
     ),
 )
 def test_opencode_preview_regression_bare_file_tools_use_shared_preview_contract(
@@ -43,6 +51,7 @@ def test_opencode_preview_regression_bare_file_tools_use_shared_preview_contract
     assert payload.operation == operation
     assert payload.path == path
     assert build_edit_preview(tool_name, payload, width=80, terminal_bg_is_light=False) is not None
+    assert build_edit_preview(tool_name, payload, width=80, terminal_bg_is_light=True) is not None
     if tool_name == "edit":
         assert len(payload.hunks) == 1
         assert payload.hunks[0].old_text == old_text
