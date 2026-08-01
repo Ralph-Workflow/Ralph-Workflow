@@ -60,6 +60,7 @@ def _make_display_context() -> DisplayContext:
 class TestInjectedDisplayContextIsHonored:
     """Tests that verify injected DisplayContext is used when provided."""
 
+    @pytest.mark.timeout_seconds(3)
     def test_run_pipeline_keyboard_interrupt_uses_injected_context(self) -> None:
         """Verify run_pipeline renders KeyboardInterrupt on the injected console."""
         ctx = _make_display_context()

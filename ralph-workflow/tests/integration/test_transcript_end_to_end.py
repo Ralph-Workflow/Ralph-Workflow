@@ -277,6 +277,7 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     assert "Pipeline Complete" in out or "Pipeline Failed" in out
 
 
+@pytest.mark.timeout_seconds(3)
 def test_quiet_mode_suppresses_run_start_and_phase_close(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,

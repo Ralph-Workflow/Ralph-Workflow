@@ -92,6 +92,7 @@ def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
