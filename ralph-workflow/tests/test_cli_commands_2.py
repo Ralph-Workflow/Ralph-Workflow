@@ -1102,6 +1102,37 @@ def test_init_command_regression_does_not_create_missing_explicit_config_path(
     assert (xdg_dir / "ralph-workflow.toml").exists()
 
 
+@pytest.mark.parametrize(
+    ("arguments", "needs_missing_config"),
+    (
+        (["--init"], False),
+        (["--init", "--config"], True),
+        (["--list-agents"], False),
+        (["--regenerate-config"], False),
+    ),
+)
+def test_cli_non_local_config_commands_leave_missing_local_tomls_absent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    arguments: list[str],
+    needs_missing_config: bool,
+) -> None:
+    """Plan S-1: ordinary CLI paths must not implicitly opt projects into local config."""
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    _stub_baseline_capabilities(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    if needs_missing_config:
+        arguments = [*arguments, str(tmp_path / ".agent" / "custom.toml")]
+
+    result = typer.testing.CliRunner().invoke(main_module.app, arguments)
+
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / ".agent").exists()
+    assert (xdg_dir / "ralph-workflow.toml").exists()
+
+
 def test_cli_init_with_missing_custom_config_keeps_local_config_absent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
