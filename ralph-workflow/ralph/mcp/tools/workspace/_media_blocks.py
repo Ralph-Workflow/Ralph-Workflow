@@ -30,7 +30,7 @@ from ralph.mcp.tools.workspace._media_io import (
     _load_artifact_bytes,
     _load_persisted_registry_entry,
     _persist_media_session_entry,
-    _write_durable_media_cache,
+    write_durable_media_cache,
 )
 from ralph.mcp.tools.workspace._media_session import (
     _get_media_manifest,
@@ -349,7 +349,7 @@ def _handle_workspace_media(
     # is forwarded via ``MediaEntryExtras.artifact_id`` so the
     # manifest uses the SAME id we used to write the cache file.
     artifact_id = new_artifact_id()
-    cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
+    cache_path = write_durable_media_cache(workspace, artifact_id, raw_bytes)
     entry = manifest.add(
         title=title,
         mime_type=mime_type,

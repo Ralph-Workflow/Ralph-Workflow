@@ -943,7 +943,7 @@ class ParallelDisplay:
         budget = first_budget
         head_words: list[str] = []
         tail_words = remaining.split(" ")
-        while tail_words and cell_len(" ".join(head_words + [tail_words[0]])) <= budget:
+        while tail_words and cell_len(" ".join([*head_words, tail_words[0]])) <= budget:
             head_words.append(tail_words.pop(0))
         if head_words:
             first_chunk = " ".join(head_words)
@@ -987,7 +987,7 @@ class ParallelDisplay:
             budget = max(1, total_width)
             head_words: list[str] = []
             tail_words = remaining.split(" ")
-            while tail_words and cell_len(" ".join(head_words + [tail_words[0]])) <= budget:
+            while tail_words and cell_len(" ".join([*head_words, tail_words[0]])) <= budget:
                 head_words.append(tail_words.pop(0))
             if head_words:
                 rows.append(" ".join(head_words))

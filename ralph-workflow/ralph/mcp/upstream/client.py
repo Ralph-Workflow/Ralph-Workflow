@@ -302,16 +302,16 @@ def _normalize_media_block(
                     "ralph.mcp.tools.workspace._media_session"
                 )
 
-                _write_durable_media_cache = cast(
+                write_durable_media_cache = cast(
                     "Callable[[object, str, bytes], str]",
-                    _media_io_mod._write_durable_media_cache,
+                    _media_io_mod.write_durable_media_cache,
                 )
                 _workspace_artifact_loader = cast(
                     "Callable[[object, str, str], Callable[[], bytes | None]]",
                     _media_session_mod._workspace_artifact_loader,
                 )
 
-                cache_path = _write_durable_media_cache(_workspace, artifact_id, raw_bytes)
+                cache_path = write_durable_media_cache(_workspace, artifact_id, raw_bytes)
                 if cache_path:
                     byte_loader = _workspace_artifact_loader(_workspace, cache_path, "")
             except Exception:

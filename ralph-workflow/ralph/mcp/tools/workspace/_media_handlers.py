@@ -26,7 +26,7 @@ from ralph.mcp.tools.workspace._media_blocks import (
 )
 from ralph.mcp.tools.workspace._media_io import (
     _persist_media_session_entry,
-    _write_durable_media_cache,
+    write_durable_media_cache,
 )
 from ralph.mcp.tools.workspace._media_session import (
     _get_media_manifest,
@@ -374,7 +374,7 @@ def _build_workspace_media_metadata(
                 source=MediaSource(source_path=source_path, raw_bytes=raw_bytes),
             )
             artifact_id = new_artifact_id()
-            cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
+            cache_path = write_durable_media_cache(workspace, artifact_id, raw_bytes)
             entry = manifest.add(
                 title=title,
                 mime_type=mime_type,
@@ -575,7 +575,7 @@ def persist_upstream_media_artifacts(
             raw_bytes = entry.load_bytes()
             if raw_bytes is None:
                 continue
-            cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
+            cache_path = write_durable_media_cache(workspace, artifact_id, raw_bytes)
             identity_key = entry.identity_key or build_media_identity(
                 modality=entry.modality,
                 mime_type=entry.mime_type,

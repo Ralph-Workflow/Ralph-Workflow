@@ -101,7 +101,7 @@ def test_ignores_guarded_write_via_canonical_helper(tmp_path: Path) -> None:
 
 def test_media_cache_regression_identical_bytes_skip_the_persistence_boundary() -> None:
     """S-3: replaying one media cache payload does not physically rewrite it."""
-    from ralph.mcp.tools.workspace._media_io import _write_durable_media_cache
+    from ralph.mcp.tools.workspace._media_io import write_durable_media_cache
 
     class RecordingBackend:
         def __init__(self) -> None:
@@ -130,14 +130,14 @@ def test_media_cache_regression_identical_bytes_skip_the_persistence_boundary() 
     backend = RecordingBackend()
     workspace = CacheWorkspace()
 
-    first = _write_durable_media_cache(
+    first = write_durable_media_cache(
         workspace,
         "same-artifact",
         b"payload",
         backend=backend,
         cache_pruner=no_cache_prune,
     )
-    second = _write_durable_media_cache(
+    second = write_durable_media_cache(
         workspace,
         "same-artifact",
         b"payload",

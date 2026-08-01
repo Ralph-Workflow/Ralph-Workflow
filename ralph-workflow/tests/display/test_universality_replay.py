@@ -65,8 +65,9 @@ def _replay(
     visible = [line for line in parsed if line.type not in {"stop", "status", "session"}]
     output = io.StringIO()
     context = make_display_context(
-        console=Console(file=output, force_terminal=False, color_system=None, width=100),
+        console=Console(file=output, force_terminal=False, color_system=None, width=200),
         env={"CI": "1"},
+        force_width=200,
     )
     display = ParallelDisplay(
         replace(context, condenser_soft_limit=400, condenser_hard_limit=4000),

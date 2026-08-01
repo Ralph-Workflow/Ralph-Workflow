@@ -99,7 +99,7 @@ def _media_session_identity(entry: dict[str, str]) -> str:
     return f"artifact-id:{artifact_id or uri}"
 
 
-def _write_durable_media_cache(
+def write_durable_media_cache(
     workspace: Workspace,
     artifact_id: str,
     raw_bytes: bytes,
