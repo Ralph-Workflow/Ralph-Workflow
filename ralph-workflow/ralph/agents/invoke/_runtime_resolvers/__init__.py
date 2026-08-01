@@ -8,13 +8,27 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+
+from loguru import logger
 
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
+from ralph.mcp.protocol.startup import (
+    PreflightError,
+    ensure_no_preflight_error,
+    extract_preflight_tool_names,
+    initialize_request,
+    initialized_notification,
+    parse_http_endpoint,
+    post_http_jsonrpc_with_session,
+    tools_list_request,
+)
+from ralph.mcp.tool_contract import canonicalize_tool_names
 from ralph.mcp.transport.codex import release_codex_home
 from ralph.mcp.transport.cursor import cursor_workspace_mcp_endpoint
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, write_pi_mcp_extension
@@ -60,6 +74,59 @@ class RuntimeResolver(Protocol):
         ...
 
 
+def _invoke_module() -> object:
+    """Return the package-level compatibility seam used by runtime tests."""
+    return sys.modules["ralph.agents.invoke"]
+
+
+def _apply_upstream_env(
+    upstreams: tuple[object, ...],
+    workspace_path: Path | None,
+    runtime_env: dict[str, str],
+    server_env: dict[str, str],
+) -> None:
+    """Delegate through the package seam so runtime tests can monkeypatch it."""
+    _invoke_module()._apply_upstream_env(
+        upstreams, workspace_path, runtime_env, server_env
+    )
+
+
+def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
+    try:
+        visible_tool_names = _invoke_module().discover_http_mcp_tool_names(endpoint)
+    except (PreflightError, ValueError) as exc:
+        logger.warning("Failed to discover Ralph MCP tools for provider allowlist: {}", exc)
+        return ()
+    return canonicalize_tool_names(visible_tool_names)
+
+
+def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:
+    target = parse_http_endpoint(endpoint)
+    initialize_response, session_id = post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        initialize_request(),
+    )
+    ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
+    initialized_response, session_id = post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        initialized_notification(),
+        session_id=session_id,
+    )
+    ensure_no_preflight_error(
+        "HTTP MCP notifications/initialized", initialized_response.get("error")
+    )
+    tools_response, _ = post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        tools_list_request(),
+        session_id=session_id,
+    )
+    ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
+    return extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
+
+
 def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> str | None:
     """Get MCP endpoint from runtime_env or base_env."""
     return runtime_env.get(MCP_ENDPOINT_ENV) or base_env.get(MCP_ENDPOINT_ENV)
@@ -79,11 +146,6 @@ class OpencodeRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            _apply_upstream_env,
-            build_opencode_provider_config,
-        )
-
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -100,7 +162,7 @@ class OpencodeRuntimeResolver:
         opencode_config = runtime_env.get("OPENCODE_CONFIG_CONTENT") or _env.get(
             "OPENCODE_CONFIG_CONTENT"
         )
-        provider_config, upstreams = build_opencode_provider_config(
+        provider_config, upstreams = _invoke_module().build_opencode_provider_config(
             opencode_config,
             endpoint,
             unsafe_mode=unsafe_mode,
@@ -130,8 +192,6 @@ class NanocoderRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        from ralph.agents.invoke import _apply_upstream_env  # noqa: PLC0415
-
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -147,13 +207,7 @@ class NanocoderRuntimeResolver:
             "NANOCODER_MCPSERVERS"
         )
 
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            _canonical_http_mcp_tool_names,
-            build_nanocoder_mcp_config,
-            load_existing_nanocoder_upstream_servers,
-        )
-
-        mcp_config, env_upstreams = build_nanocoder_mcp_config(
+        mcp_config, env_upstreams = _invoke_module().build_nanocoder_mcp_config(
             nanocoder_mcp_servers,
             endpoint,
             always_allow=_canonical_http_mcp_tool_names(endpoint),
@@ -164,7 +218,7 @@ class NanocoderRuntimeResolver:
         runtime_env["NANOCODER_MCPSERVERS"] = mcp_config
 
         _apply_upstream_env(
-            load_existing_nanocoder_upstream_servers(
+            _invoke_module().load_existing_nanocoder_upstream_servers(
                 workspace_path,
                 env=runtime_env or dict(_env),
             )
@@ -195,11 +249,6 @@ class CodexRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            _apply_upstream_env,
-            prepare_codex_home_with_upstreams,
-        )
-
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -210,7 +259,7 @@ class CodexRuntimeResolver:
         if not endpoint and master_prompt_file is None:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
-        codex_home, upstreams = prepare_codex_home_with_upstreams(
+        codex_home, upstreams = _invoke_module().prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
@@ -272,11 +321,6 @@ class ClaudeRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            _apply_upstream_env,
-            load_existing_claude_upstream_servers,
-        )
-
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -288,7 +332,7 @@ class ClaudeRuntimeResolver:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
         _apply_upstream_env(
-            load_existing_claude_upstream_servers(workspace_path),
+            _invoke_module().load_existing_claude_upstream_servers(workspace_path),
             workspace_path,
             runtime_env,
             server_env,
@@ -315,11 +359,6 @@ class AgyRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            _apply_upstream_env,
-            load_existing_agy_upstream_servers,
-        )
-
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -331,7 +370,7 @@ class AgyRuntimeResolver:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
         _apply_upstream_env(
-            load_existing_agy_upstream_servers(workspace_path),
+            _invoke_module().load_existing_agy_upstream_servers(workspace_path),
             workspace_path,
             runtime_env,
             server_env,
@@ -445,10 +484,6 @@ class CursorRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            _apply_upstream_env,
-        )
-
         _env = (
             base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -458,10 +493,6 @@ class CursorRuntimeResolver:
 
         if not endpoint:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
-
-        from ralph.agents.invoke import (  # noqa: PLC0415
-            load_existing_cursor_upstream_servers,
-        )
 
         # Write the merged Ralph entry to BOTH the workspace-local
         # ``.cursor/mcp.json`` and the user-global ``~/.cursor/mcp.json``
@@ -477,7 +508,7 @@ class CursorRuntimeResolver:
         write_ctx.__enter__()
         try:
             _apply_upstream_env(
-                load_existing_cursor_upstream_servers(resolved_workspace),
+                _invoke_module().load_existing_cursor_upstream_servers(resolved_workspace),
                 resolved_workspace,
                 runtime_env,
                 server_env,

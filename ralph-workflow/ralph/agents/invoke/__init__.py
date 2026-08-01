@@ -657,6 +657,10 @@ def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:
     return extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
 
 
+# Public monkeypatch seam for runtime resolver tests.
+discover_http_mcp_tool_names = _discover_http_mcp_tool_names
+
+
 # Public aliases — test-accessible names and monkeypatch interception points.
 # Internal callers must use the public name so that monkeypatches intercept correctly.
 bounded_output_lines = _bounded_output_lines
