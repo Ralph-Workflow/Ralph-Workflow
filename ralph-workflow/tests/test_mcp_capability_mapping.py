@@ -14,7 +14,6 @@ while reclaiming 20 module-level imports per shard.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -52,17 +51,13 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.policy.validation import PolicyValidationError
 from ralph.prompts.template_variables import CapabilitySet
 
-if TYPE_CHECKING:
-    from ralph.policy.models import AgentsPolicy as _AgentsPolicy
-
-
 # Drains for which web/visit access is restricted (commit-class).
 _COMMIT_DRAINS: frozenset[SessionDrain] = frozenset(
     {SessionDrain.DEVELOPMENT_COMMIT, SessionDrain.REVIEW_COMMIT, SessionDrain.COMMIT}
 )
 
 
-def _builtin_agents_policy() -> "_AgentsPolicy":
+def _builtin_agents_policy() -> AgentsPolicy:
     return load_agents_policy(Path("/nonexistent"))
 
 
