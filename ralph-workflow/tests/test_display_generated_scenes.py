@@ -370,11 +370,16 @@ def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_th
         "artifact": "(no plan artifact on disk)",
         "status_bar": "WAIT",
         "dry_run": "Dry run mode",
+        "capability": "Baseline Capabilities",
+        "snapshot": "[phase] review",
     }
     catalog = {surface.name: surface for surface in SURFACE_CATALOG}
     for surface, carrier in expected_carriers.items():
         rendered = render_scene(catalog[surface].scene, common, terminal_bg_is_light=False)
         assert carrier in rendered, surface
+
+    blank_gap = render_scene(catalog["blank_gap"].scene, common, terminal_bg_is_light=False)
+    assert blank_gap.startswith("SCENE clean_run\n\n\n")
 
 
 def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() -> None:

@@ -23,6 +23,7 @@ from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.status_bar import StatusBarModel
 from ralph.display.surface_catalog import SURFACE_CATALOG, SurfaceSpec
 from ralph.display.theme import diff_fill_styles, make_console
+from ralph.skills._capability_state import CapabilityState
 
 Background = Literal["dark", "light", "unknown"]
 ColourMode = Literal["truecolour", "reduced", "none"]
@@ -126,7 +127,17 @@ def render_scene(
         monotonic=lambda: 123.0,
     )
     console.print(Text(f"SCENE {scene_name}", style="theme.cat.meta"))
-    _drive_production_scene(display, console, context, scene_name)
+    _drive_production_scene(
+        display,
+        console,
+        context,
+        scene_name,
+        include_capability_summary=(
+            case.width == FULL_LAYOUT_WIDTH
+            and case.colour == "none"
+            and case.destination == "redirect"
+        ),
+    )
     if scene_name in {"clean_run", "burst"}:
         _render_scene_previews(console, terminal_bg_is_light=terminal_bg_is_light)
     display.stop()
@@ -186,6 +197,8 @@ def _drive_production_scene(
     console: Console,
     context: DisplayContext,
     scene_name: str,
+    *,
+    include_capability_summary: bool,
 ) -> None:
     """Drive public production display entry points with fixed scenario data."""
     if scene_name == "first_screen":
@@ -199,7 +212,10 @@ def _drive_production_scene(
                 plan_present=True,
             )
         )
+        if include_capability_summary:
+            display.emit_capability_summary(CapabilityState())
     elif scene_name == "clean_run":
+        display.emit_blank_line()
         entry = PhaseEntryModel(
             "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
         )
@@ -238,6 +254,7 @@ def _drive_production_scene(
             "raw machine detail is retained in .agent/raw/reviewer.log",
         )
         display.emit_warning("recover raw machine detail from .agent/raw/reviewer.log")
+        display.emit_snapshot(_scene_snapshot(failed=True))
         display.emit_completion_summary_panel(
             _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
         )
