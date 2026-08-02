@@ -754,6 +754,62 @@ def test_flags_raw_os_fsync(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_fsync"
 
 
+def test_regression_flags_path_chmod_metadata_mutation(tmp_path: Path) -> None:
+    """S-6: raw permission changes cannot bypass D1 metadata-mutation enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\ndef restrict(p):\n    Path(p).chmod(0o600)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_chmod"]
+    assert "filesystem-write-ok" in violations[0].message
+
+
+def test_regression_flags_path_variable_chmod_metadata_mutation(tmp_path: Path) -> None:
+    """S-6: pathlib provenance cannot let a local permission mutation evade D1."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def restrict(p):\n"
+            "    protected = Path(p)\n"
+            "    protected.chmod(0o600)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_chmod"]
+
+
+def test_reasoned_marker_allows_required_path_chmod_metadata_mutation(tmp_path: Path) -> None:
+    """D3: a local permission contract remains an explicit sanctioned exception."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "def restrict(p):\n"
+            "    protected = Path(p)\n"
+            "    # filesystem-write-ok: persistent identity staging must remain owner-readable only\n"
+            "    protected.chmod(0o600)\n"
+        ),
+    )
+
+    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+
+
 def test_flags_raw_path_touch(tmp_path: Path) -> None:
     """``Path.touch()`` is a raw mtime bump."""
     module_rel = "alpha/example.py"

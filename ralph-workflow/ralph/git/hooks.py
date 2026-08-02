@@ -304,6 +304,7 @@ def _make_executable(path: Path) -> None:
     if os.name == "nt":
         return
     with contextlib.suppress(OSError):
+        # filesystem-write-ok: installed Git hook must be executable for Git to invoke the retained script
         path.chmod(0o555)
 
 
@@ -311,6 +312,7 @@ def _make_writable(path: Path) -> None:
     if os.name == "nt":
         return
     with contextlib.suppress(OSError):
+        # filesystem-write-ok: restored Git hook must be writable before replacement or removal
         path.chmod(0o755)
 
 

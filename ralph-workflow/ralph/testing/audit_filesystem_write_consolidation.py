@@ -30,6 +30,7 @@ The audit detects the following raw mutation classes:
   * ``os.fsync`` / ``os.sync`` (raw durability barriers outside
     the canonical primitive)
   * ``Path.touch`` (raw mtime bumps)
+  * ``Path.chmod`` / ``os.chmod`` (raw permission metadata changes)
   * ``truncate`` (raw truncation)
 
 The audit uses only ``ast`` and ``Path.read_text`` over source
@@ -157,6 +158,8 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "route through an approved persistence primitive appropriate to the move or mark",
     "touch": "raw touch bumps mtime without content change; "
     "annotate with `# filesystem-write-ok: <reason>` or remove the call",
+    "chmod": "raw permission metadata mutation bypasses the filesystem activity guard; "
+    "retain only under a `# filesystem-write-ok: <reason>` marker naming the permission contract",
     "open": "raw os.open bypasses the canonical file-creation boundary; "
     "route through a shared persistence primitive or mark the local lifecycle reason",
     "truncate": "raw truncate bypasses the canonical truncation primitive; "
@@ -467,7 +470,7 @@ def _raw_qualified_mutation_call(
     receiver = node.func.value
     if isinstance(receiver, ast.Name) and (_scope_key(node, parents), receiver.id) in path_variables:
         return attr if attr in {
-            "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate"
+            "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate", "chmod"
         } else None
     root = _call_root_name(receiver)
     if root is None:
@@ -503,6 +506,7 @@ def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | 
         "mkdir",
         "rmdir",
         "touch",
+        "chmod",
         "truncate",
     }
     return attr if root in pathlib_aliases and attr in pathlib_mutations else None

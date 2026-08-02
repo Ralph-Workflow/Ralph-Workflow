@@ -95,6 +95,7 @@ def write_dev_launcher(path: Path, content: str) -> None:
     """Write ``content`` to ``path`` and mark it executable."""
     path.parent.mkdir(parents=True, exist_ok=True)
     write_text_if_changed(DEFAULT_FILE_BACKEND, path, content, encoding="utf-8")
+    # filesystem-write-ok: caller-visible dev launcher must be executable after retained content publication
     path.chmod(0o755)
 
 
