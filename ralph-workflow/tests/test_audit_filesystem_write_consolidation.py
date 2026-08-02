@@ -1066,6 +1066,23 @@ def test_regression_missing_default_production_root_fails_closed(tmp_path: Path)
     assert "fail closed" in violations[0].message
 
 
+def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Path) -> None:
+    """S-6: a supplied path outside production cannot bypass D1 enforcement."""
+    package_root = _write_fake_package(tmp_path, "alpha/inert.py", "VALUE = 1\n")
+    external_module = tmp_path / "outside.py"
+    external_module.write_text("VALUE = 1\n", encoding="utf-8")
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=("../outside.py",),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "invalid_module_path"
+    assert violations[0].file_path == "../outside.py"
+    assert "escapes the package root" in violations[0].message
+
+
 def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
     """DA-001 invariant: a synthetic unknown ``os.replace`` call must be flagged.
 

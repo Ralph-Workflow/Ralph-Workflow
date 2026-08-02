@@ -798,16 +798,34 @@ def audit_filesystem_write_consolidation(
                 )
                 for root in missing_roots
             ]
+    violations: list[FilesystemWriteViolation] = []
     if module_paths is not None:
-        candidates = [(package_root / rel, rel) for rel in module_paths]
+        candidates: list[tuple[Path, str]] = []
+        resolved_root = package_root.resolve()
+        for rel_path in module_paths:
+            candidate = package_root / rel_path
+            try:
+                candidate.resolve().relative_to(resolved_root)
+            except (OSError, ValueError):
+                violations.append(
+                    FilesystemWriteViolation(
+                        kind="invalid_module_path",
+                        file_path=rel_path,
+                        line=0,
+                        message=(
+                            "explicit module path escapes the package root; pass a relative "
+                            "production-module path so the filesystem-write audit can fail closed"
+                        ),
+                    )
+                )
+                continue
+            candidates.append((candidate, rel_path))
     else:
         candidates = []
         for root in roots:
             for path in _collect_python_files(root):
                 rel = path.relative_to(package_root).as_posix()
                 candidates.append((path, rel))
-
-    violations: list[FilesystemWriteViolation] = []
     for module_path, rel_path in candidates:
         if _is_exempt(rel_path, exempt):
             continue
