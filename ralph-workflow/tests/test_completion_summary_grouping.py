@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from io import StringIO
 
@@ -14,6 +15,7 @@ from ralph.display.completion_summary import (
 )
 from ralph.display.context import make_display_context
 from ralph.display.snapshot import BudgetProgress, PipelineSnapshot
+from ralph.display.theme import make_console
 
 
 def _make_snapshot(
@@ -113,6 +115,28 @@ def _render_group_full(
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
+
+
+def test_completion_summary_colours_the_exit_carrier_in_terminal_output() -> None:
+    """S-3/S-6: the standalone closing summary colours its durable exit state."""
+    buffer = StringIO()
+    console = make_console(
+        file=buffer,
+        force_terminal=True,
+        color_system="truecolor",
+        terminal_bg_is_light=False,
+        width=120,
+    )
+    context = make_display_context(console=console, env={"RALPH_TERMINAL_BG": "dark"})
+    console.print(
+        render_completion_summary_group(
+            _make_snapshot(), display_context=context, options=CompletionSummaryOptions()
+        ),
+        markup=False,
+        highlight=False,
+    )
+
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*m  exit=completed", buffer.getvalue())
 
 
 def test_group_contains_pipeline_complete_title() -> None:

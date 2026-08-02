@@ -226,7 +226,10 @@ def render_completion_summary_group(
     title = "Pipeline Failed" if failed else "Pipeline Complete"
 
     renderables: list[Rule | Text] = [Rule(title, style=style)]
-    renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}"))
+    # The exit trigger is the closing summary's primary durable state carrier.
+    # Give it the same fixed semantic colour as its outcome rule while retaining
+    # the explicit ``exit=`` label for no-colour and grep-oriented transcripts.
+    renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}", style=style))
     if failed:
         renderables.append(Text(f"  failed_phase={snapshot.phase}", style=style))
         renderables.append(Rule("Error Cause", style=style))
