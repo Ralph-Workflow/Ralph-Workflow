@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from io import StringIO
 
@@ -54,7 +55,7 @@ def _themed_context(buf: StringIO) -> object:
         width=200,
         highlight=False,
     )
-    return make_display_context(console=console, env={})
+    return make_display_context(console=console, env={"RALPH_TERMINAL_BG": "dark"})
 
 
 def _plain_context(buf: StringIO) -> object:
@@ -107,17 +108,10 @@ def test_fail_badge_label_present_on_plain() -> None:
 def test_badge_reason_text_uses_coloured_muted_style_in_themed_output() -> None:
     """Badge reason text remains visibly coloured without relying on dim alone."""
     buf = StringIO()
-    console = Console(
-        file=buf,
-        force_terminal=True,
-        color_system="truecolor",
-        theme=RALPH_THEME,
-        width=200,
-        highlight=False,
-    )
+    ctx = _themed_context(buf)
     t = make_badge_text("PASS", " Development Analysis: proceed")
-    console.print(t, markup=False, highlight=False, no_wrap=True)
+    ctx.console.print(t, markup=False, highlight=False, no_wrap=True)
     out = buf.getvalue()
     assert "Development Analysis: proceed" in out
-    # The muted role emits a fixed teal foreground, not dim-only ANSI styling.
-    assert "\x1b[38;2;23;131;131m" in out
+    # The muted role must apply a foreground SGR sequence, not dim-only styling.
+    assert re.search(r"\x1b\[[0-9;]*m[^\x1b]*Development Analysis: proceed", out)

@@ -87,8 +87,8 @@ views used by CLI diagnostics and listing commands.
    - ``NO_COLOR`` (any non-empty value) — disables all color output. Takes precedence
      over ``FORCE_COLOR`` and is the supported way to turn colour off.
    - ``FORCE_COLOR`` (any non-empty value) — enables color output on non-TTY streams.
-     When no colour system is explicitly selected, Ralph uses Rich's ``"auto"``
-     mode; Rich's ``color_system=None`` disables ANSI output entirely.
+     When no colour system is explicitly selected, Ralph resolves it to
+     ``"truecolor"``; Rich's ``color_system=None`` disables ANSI output entirely.
    - ``RALPH_TERMINAL_BG`` (``light``/``dark`` or ``#RRGGBB``) — overrides
      terminal-background detection.
    - ``RALPH_TERMINAL_BG_TIMEOUT_MS`` (positive integer) — changes the bounded

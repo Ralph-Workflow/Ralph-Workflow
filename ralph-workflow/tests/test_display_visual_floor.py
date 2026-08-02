@@ -292,7 +292,9 @@ def test_visual_floor_completion_summary_metrics_use_a_semantic_colour_span() ->
 
     ParallelDisplay(context).emit_completion_summary_panel(snapshot)
 
-    assert "agent_calls=3" in stream.getvalue()
+    rendered = stream.getvalue()
+    assert "agent_calls=3" in rendered
+    assert re.search(r"\x1b\[[0-9;]*m[^\x1b]*agent_calls=3", rendered)
 
 
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:

@@ -174,10 +174,7 @@ def test_theme_console_resolves_unspecified_color_system() -> None:
     """The sole console factory must never pass Rich a bare None default."""
     code_lines = _scan_lines(_DISPLAY_DIR / "theme.py")
 
-    assert any(
-        'resolved_color_system = color_system if color_system is not None else "auto"' in line
-        for line in code_lines
-    )
+    assert any('else "truecolor"' in line for line in code_lines)
     assert any("color_system=resolved_color_system" in line for line in code_lines)
 
 

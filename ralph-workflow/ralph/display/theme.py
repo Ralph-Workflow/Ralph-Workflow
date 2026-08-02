@@ -926,7 +926,7 @@ def make_console(
         no_color: When ``True``, strip colour from the console.
         force_terminal: When ``True``, treat the console as a
             TTY even when it is not (useful for tests).
-        color_system: Rich colour-system override; omitted resolves to ``"auto"``.
+        color_system: Rich colour-system override; omitted resolves to ``"truecolor"``.
         width: Override the console width (default: auto-detect).
         height: Override the console height (default: auto-detect).
         terminal_bg_is_light: Resolved terminal background for semantic roles.
@@ -936,7 +936,11 @@ def make_console(
     """
     resolved_no_color = no_color if no_color is not None else False
     resolved_force_terminal = force_terminal
-    resolved_color_system = color_system if color_system is not None else "auto"
+    resolved_color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = (
+        color_system if color_system is not None else "truecolor"
+    )
+    if resolved_no_color:
+        resolved_color_system = None
     return Console(
         file=file,
         theme=theme_for_background(terminal_bg_is_light),

@@ -81,7 +81,7 @@ def test_make_console_prefers_no_color_over_force_color(monkeypatch: pytest.Monk
 
 def test_make_console_regression_default_color_auto_detection_respects_no_color() -> None:
     """S-2: default color detection emits truecolor while no_color wins."""
-    color_console = theme.make_console(force_terminal=True, color_system="truecolor")
+    color_console = theme.make_console(force_terminal=True)
     no_color_console = theme.make_console(force_terminal=True, no_color=True)
 
     with color_console.capture() as color_capture:
@@ -89,7 +89,7 @@ def test_make_console_regression_default_color_auto_detection_respects_no_color(
     with no_color_console.capture() as no_color_capture:
         no_color_console.print("[theme.phase.development]development[/]")
 
-    assert "\x1b[" in color_capture.get()
+    assert "\x1b[38;2;" in color_capture.get()
     assert "\x1b[38;2;" not in no_color_capture.get()
 
 
