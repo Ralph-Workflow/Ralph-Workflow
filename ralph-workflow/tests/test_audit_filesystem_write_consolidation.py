@@ -588,6 +588,28 @@ def test_path_provenance_does_not_leak_between_function_scopes(tmp_path: Path) -
     assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
 
 
+def test_flags_workspace_resolved_path_mutation(tmp_path: Path) -> None:
+    """S-2 regression: workspace path resolution cannot hide a raw deletion."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "class Workspace:\n"
+            "    def remove(self) -> None:\n"
+            "        target = self._abs('stale.txt')\n"
+            "        target.unlink(missing_ok=True)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_unlink"]
+    assert violations[0].line == 4
+
+
 def test_flags_raw_os_remove(tmp_path: Path) -> None:
     """``os.remove(path)`` is a raw delete."""
     module_rel = "alpha/example.py"

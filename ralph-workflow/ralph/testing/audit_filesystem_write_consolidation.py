@@ -385,8 +385,9 @@ def _path_variable_names(
 ) -> frozenset[tuple[int | None, str]]:
     """Return function-scoped local names directly initialized from pathlib.
 
-    This deliberately small provenance pass closes the common bypass where a
-    ``Path(...)`` value is assigned before its mutating method is called. It
+    This deliberately small provenance pass closes common bypasses where a
+    ``Path(...)`` value or the canonical workspace path resolvers (``_abs`` /
+    ``absolute_path``) are assigned before their mutating method is called. It
     does not guess that arbitrary objects are paths, avoiding false positives
     for domain methods named ``unlink`` or ``replace``. Provenance remains
     scoped to the function containing the assignment so a ``Path`` local in
@@ -394,13 +395,19 @@ def _path_variable_names(
     """
     names: set[tuple[int | None, str]] = set()
     pathlib_constructors = {"Path", "PurePath", "PosixPath", "WindowsPath"}
+    workspace_path_resolvers = {"_abs", "absolute_path"}
     for node in nodes:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
         if not isinstance(node.value, ast.Call):
             continue
         root = _call_root_name(node.value.func)
-        if root is None or module_aliases.get(root, root) not in pathlib_constructors:
+        is_path_constructor = root is not None and module_aliases.get(root, root) in pathlib_constructors
+        is_workspace_resolver = (
+            isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr in workspace_path_resolvers
+        )
+        if not is_path_constructor and not is_workspace_resolver:
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
         scope = _scope_key(node, parents)

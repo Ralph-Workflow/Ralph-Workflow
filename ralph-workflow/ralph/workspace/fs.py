@@ -517,6 +517,7 @@ class FsWorkspace:
             # filesystem-write-ok: explicit user-requested recursive workspace deletion
             shutil.rmtree(str(p))
         else:
+            # filesystem-write-ok: explicit user-requested workspace file deletion
             p.unlink()
 
     def allowed_roots(self) -> list[str]:
