@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from tests.test_runner_phase_transition_banner_helper__stubphasecounters import _StubPhaseCounters
-from tests.test_runner_phase_transition_banner_helper__stubsubscriber import _StubSubscriber
+from tests._runner_phase_transition_banner_helper__stubphasecounters import _StubPhaseCounters
+from tests._runner_phase_transition_banner_helper__stubsubscriber import _StubSubscriber
 
 if TYPE_CHECKING:
     from ralph.display.phase_lifecycle import PhaseExitModel

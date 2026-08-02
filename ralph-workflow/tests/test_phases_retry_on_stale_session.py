@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import MaterializeMasterPromptFn
 
 from tests._pipeline_deps_factory import make_test_pipeline_deps
-from tests.test_phases_retry_on_stale_session_helper__fakeregistryinstance import (
+from tests._phases_retry_on_stale_session_helper__fakeregistryinstance import (
     _FakeRegistryInstance,
 )
 

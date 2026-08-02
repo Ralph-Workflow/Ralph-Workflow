@@ -43,7 +43,7 @@ from ralph.testing.fake_process import (
     make_async_process_factory,
     make_sync_process_factory,
 )
-from tests.test_process_manager_pty_helper__fakeptyfactory import _FakePtyFactory
+from tests._process_manager_pty_helper__fakeptyfactory import _FakePtyFactory
 
 if TYPE_CHECKING:
     from ralph.process.manager._process_event import ProcessEvent

@@ -24,7 +24,7 @@ from ralph.mcp.artifacts.format_docs import (
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from ralph.mcp.artifacts.markdown.specs import ANALYSIS_DECISION_SPECS
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
 _ANALYSIS_DECISION_TYPES = tuple(spec.artifact_type for spec in ANALYSIS_DECISION_SPECS)

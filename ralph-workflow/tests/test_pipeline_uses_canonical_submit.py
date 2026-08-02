@@ -28,8 +28,8 @@ from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.testing.audit_artifact_submission_canonical_path import audit
 from ralph.workspace.scope import WorkspaceScope
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch

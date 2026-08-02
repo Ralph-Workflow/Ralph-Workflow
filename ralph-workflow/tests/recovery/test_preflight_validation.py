@@ -29,8 +29,8 @@ from ralph.policy.validation import (
     validate_recovery_config,
 )
 from ralph.workspace.scope import WorkspaceScope
-from tests.recovery.test_preflight_validation_helper__fakebundle import _FakeBundle
-from tests.recovery.test_preflight_validation_helper__fakechainconfig import _FakeChainConfig
+from tests.recovery._preflight_validation_helper__fakebundle import _FakeBundle
+from tests.recovery._preflight_validation_helper__fakechainconfig import _FakeChainConfig
 
 
 class _FakeAgentRegistry:

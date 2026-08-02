@@ -22,7 +22,7 @@ from ralph.mcp.artifacts.smoke_test_result import SMOKE_TEST_RESULT_ARTIFACT_TYP
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 pytestmark = pytest.mark.smoke
 

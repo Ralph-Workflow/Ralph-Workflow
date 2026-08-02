@@ -34,8 +34,8 @@ from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_recording_bridge_factory, make_test_pipeline_deps
-from tests.test_pipeline_runner_execute_agent_effect_2_a_agent_error import AgentError
-from tests.test_pipeline_runner_execute_agent_effect_2_a_fake_bridge import _FakeBridge
+from tests._pipeline_runner_execute_agent_effect_2_a_agent_error import AgentError
+from tests._pipeline_runner_execute_agent_effect_2_a_fake_bridge import _FakeBridge
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch

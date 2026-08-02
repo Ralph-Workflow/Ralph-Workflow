@@ -34,7 +34,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _build_smoke_prompt,
     _run_smoke_agent,
 )
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

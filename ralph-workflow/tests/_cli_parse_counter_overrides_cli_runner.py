@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.main import app
-from tests.test_cli_parse_counter_overrides_cli_result import CliResult
+from tests._cli_parse_counter_overrides_cli_result import CliResult
 
 if TYPE_CHECKING:
     from collections.abc import ContextManager, Iterator

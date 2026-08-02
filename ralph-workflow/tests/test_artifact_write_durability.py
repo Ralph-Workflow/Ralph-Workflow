@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts._path_file_backend import PathFileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_memory_backend import MemoryBackend
 
 if TYPE_CHECKING:
     import pytest

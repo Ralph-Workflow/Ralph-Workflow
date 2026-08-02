@@ -30,8 +30,8 @@ from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases.required_artifacts import RequiredArtifact
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

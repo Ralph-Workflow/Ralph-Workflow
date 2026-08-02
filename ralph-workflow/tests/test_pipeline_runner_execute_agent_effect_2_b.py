@@ -36,7 +36,7 @@ if TYPE_CHECKING:
         PolicyBundle,
     )
 from tests._pipeline_deps_factory import make_test_pipeline_deps
-from tests.test_pipeline_runner_execute_agent_effect_2_b_helper_agenterror import AgentError
+from tests._pipeline_runner_execute_agent_effect_2_b_helper_agenterror import AgentError
 
 DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2

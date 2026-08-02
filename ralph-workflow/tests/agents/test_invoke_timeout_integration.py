@@ -42,8 +42,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.child_liveness import ChildLivenessRegistry, MutableRecord
 from ralph.process.liveness import FakeLivenessProbe
-from tests.agents.test_invoke_timeout_integration_helper__raisingstrategy import _RaisingStrategy
-from tests.agents.test_invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
+from tests.agents._invoke_timeout_integration_helper__raisingstrategy import _RaisingStrategy
+from tests.agents._invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
 
 
 class _FakeManagedHandle:

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from tests.integration.test_pipeline_memory_regression_helper__ccsconfigstub import (
+from tests.integration._pipeline_memory_regression_helper__ccsconfigstub import (
     _CcsConfigStub,
 )
-from tests.integration.test_pipeline_memory_regression_helper__generalconfigstub import (
+from tests.integration._pipeline_memory_regression_helper__generalconfigstub import (
     _GeneralConfigStub,
 )
 

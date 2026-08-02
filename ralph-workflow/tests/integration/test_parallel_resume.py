@@ -20,7 +20,7 @@ from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 if TYPE_CHECKING:
     from pathlib import Path
 
-from tests.integration.test_parallel_resume_helper__fakedisplay import _FakeDisplay
+from tests.integration._parallel_resume_helper__fakedisplay import _FakeDisplay
 
 # Per-test pytest marker: the fan-out resume tests in this
 # file exercise the production ``execute_fan_out_sync`` path

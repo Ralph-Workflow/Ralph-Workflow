@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.display.context import DisplayContext
-from tests.test_config_welcome_helper__fakeregistry import _FakeRegistry
+from tests._config_welcome_helper__fakeregistry import _FakeRegistry
 
 _MIN_PRINT_CALLS = 2
 

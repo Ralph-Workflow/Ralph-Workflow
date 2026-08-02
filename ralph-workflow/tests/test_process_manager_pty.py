@@ -8,13 +8,13 @@ import pytest
 from ralph.process import ProcessManager, ProcessManagerPolicy, ProcessStatus, PtySpawnOptions
 from ralph.process import pty as pty_module
 from ralph.testing.fake_process import FakePsutil, FakePsutilProcess
-from tests.test_process_manager_pty_helper__fakeprocess import _FakePtyProcess
+from tests._process_manager_pty_helper__fakeprocess import _FakePtyProcess
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-from tests.test_process_manager_pty_helper__fakeptyfactory import _FakePtyFactory
-from tests.test_process_manager_pty_helper__timeoutthenkillptyfactory import (
+from tests._process_manager_pty_helper__fakeptyfactory import _FakePtyFactory
+from tests._process_manager_pty_helper__timeoutthenkillptyfactory import (
     _TimeoutThenKillPtyFactory,
 )
 

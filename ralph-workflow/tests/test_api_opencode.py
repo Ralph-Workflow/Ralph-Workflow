@@ -7,7 +7,7 @@ import pytest
 from ralph.agents.timeout_clock import FakeClock
 from ralph.api import opencode
 from ralph.executor.process import ProcessResult
-from tests.test_api_opencode_helper__fakeclient import _FakeClient
+from tests._api_opencode_helper__fakeclient import _FakeClient
 
 
 class _FakeResponse:

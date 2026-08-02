@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from tests.recovery.test_classifier_session_helper__agentinactivitytimeouterror import (
+from tests.recovery._classifier_session_helper__agentinactivitytimeouterror import (
     _AgentInactivityTimeoutError,
 )
 

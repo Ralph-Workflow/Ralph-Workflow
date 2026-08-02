@@ -46,8 +46,8 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig, UnifiedConfig
 from tests._pipeline_deps_factory import make_test_pipeline_deps
-from tests.integration.test_pipeline_memory_regression_helper__configstub import _ConfigStub
-from tests.integration.test_pipeline_memory_regression_helper__registryfactory import (
+from tests.integration._pipeline_memory_regression_helper__configstub import _ConfigStub
+from tests.integration._pipeline_memory_regression_helper__registryfactory import (
     _RegistryFactory,
 )
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tests.test_mcp_factory_impl_helper_fakeprocess import FakeProcess
+from tests._mcp_factory_impl_helper_fakeprocess import FakeProcess
 
 
 class FakeBridge:

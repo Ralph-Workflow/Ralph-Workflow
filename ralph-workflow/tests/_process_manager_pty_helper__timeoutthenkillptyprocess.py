@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tests.test_process_manager_pty_helper__fakeprocess import _FakePtyProcess
+from tests._process_manager_pty_helper__fakeprocess import _FakePtyProcess
 
 
 class _TimeoutThenKillPtyProcess(_FakePtyProcess):

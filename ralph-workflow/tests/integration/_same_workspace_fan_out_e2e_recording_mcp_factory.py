@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ralph.mcp.server.factory import McpServerHandle
-from tests.integration.test_same_workspace_fan_out_e2e_recorded_handle import _RecordedHandle
+from tests.integration._same_workspace_fan_out_e2e_recorded_handle import _RecordedHandle
 
 
 class _RecordingMcpFactory:

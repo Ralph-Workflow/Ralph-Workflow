@@ -15,7 +15,7 @@ from ralph.mcp.artifacts.md_draft_io import (
 )
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.phases.required_artifacts import RequiredArtifact
-from tests.test_tool_artifact_2_helper_memorybackend import MemoryBackend
+from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
 
 
 def _worker_plan() -> RequiredArtifact:

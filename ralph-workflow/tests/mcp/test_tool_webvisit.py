@@ -14,8 +14,8 @@ from ralph.mcp.webvisit.fetcher import FetchOutcome
 
 if TYPE_CHECKING:
     import pytest
-from tests.mcp.test_tool_webvisit_helper__deniedsession import _DeniedSession
-from tests.mcp.test_tool_webvisit_helper__stubworkspace import _StubWorkspace
+from tests.mcp._tool_webvisit_helper__deniedsession import _DeniedSession
+from tests.mcp._tool_webvisit_helper__stubworkspace import _StubWorkspace
 
 _HTTP_404 = 404
 

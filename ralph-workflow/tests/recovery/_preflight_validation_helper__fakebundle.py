@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tests.recovery.test_preflight_validation_helper__fakechainconfig import _FakeChainConfig
+    from tests.recovery._preflight_validation_helper__fakechainconfig import _FakeChainConfig
 
 
 class _FakeBundle:

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-from tests.test_claude_interactive_pty_helper__fakeptymanager import _FakePtyManager
+from tests._claude_interactive_pty_helper__fakeptymanager import _FakePtyManager
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,7 @@ from importlib import import_module
 
 import pytest
 
-from tests.mcp.websearch.test_searxng_backend_helper__explodingresponse import _ExplodingResponse
+from tests.mcp.websearch._searxng_backend_helper__explodingresponse import _ExplodingResponse
 
 
 def _import_searxng_module() -> object:

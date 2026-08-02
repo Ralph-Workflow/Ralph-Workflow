@@ -31,7 +31,7 @@ from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,
 )
-from tests.test_tool_artifact_1_helper_memorybackend import MemoryBackend
+from tests._tool_artifact_1_helper_memorybackend import MemoryBackend
 
 if TYPE_CHECKING:
     from pathlib import Path

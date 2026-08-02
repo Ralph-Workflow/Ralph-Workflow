@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.parallel.mode import SameWorkspaceContext
-from tests.test_parallel_coordinator_helper_recordingdisplay import RecordingDisplay
+from tests._parallel_coordinator_helper_recordingdisplay import RecordingDisplay
 
 RunFanOut = Callable[..., Awaitable[list[Event]]]
 TOTAL_CAP_UNITS = 5

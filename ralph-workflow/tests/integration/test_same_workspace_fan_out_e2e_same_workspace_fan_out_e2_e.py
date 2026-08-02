@@ -31,9 +31,9 @@ from ralph.policy.models import PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
-from tests.integration.test_same_workspace_fan_out_e2e_fake_display import _FakeDisplay
-from tests.integration.test_same_workspace_fan_out_e2e_recording_display import RecordingDisplay
-from tests.integration.test_same_workspace_fan_out_e2e_recording_mcp_factory import (
+from tests.integration._same_workspace_fan_out_e2e_fake_display import _FakeDisplay
+from tests.integration._same_workspace_fan_out_e2e_recording_display import RecordingDisplay
+from tests.integration._same_workspace_fan_out_e2e_recording_mcp_factory import (
     _RecordingMcpFactory,
 )
 from tests.plan_fixtures import development_result_markdown

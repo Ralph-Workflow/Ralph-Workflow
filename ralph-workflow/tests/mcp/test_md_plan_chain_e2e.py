@@ -46,8 +46,8 @@ from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 from ralph.mcp.artifacts.markdown.specs.plan import analyze_plan_document
 from ralph.mcp.tools.md_artifact import handle_verify_md_artifact
 from ralph.prompts.template_context import TemplateContext
-from tests.test_tool_artifact_2_helper_mocksession import MockSession
-from tests.test_tool_artifact_2_helper_mockworkspace import MockWorkspace
+from tests._tool_artifact_2_helper_mocksession import MockSession
+from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
 
 _ADVISORY_COST_RE = re.compile(r"the run cost is [^;]+(?:;[^;]+)*; resolve by [^;]+(?:;[^;]+)*$")
 _BLOCKING_CONSUMER_RE = re.compile(

@@ -29,7 +29,7 @@ from ralph.testing.fake_process import (
     make_async_process_factory,
     make_sync_process_factory,
 )
-from tests.test_mcp_transport_helper__fakethread import _FakeThread
+from tests._mcp_transport_helper__fakethread import _FakeThread
 
 PYTHON = sys.executable
 

@@ -19,9 +19,9 @@ from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,
 )
-from tests.test_tool_artifact_2_helper_memorybackend import MemoryBackend
-from tests.test_tool_artifact_2_helper_mocksession import MockSession
-from tests.test_tool_artifact_2_helper_mockworkspace import MockWorkspace
+from tests._tool_artifact_2_helper_memorybackend import MemoryBackend
+from tests._tool_artifact_2_helper_mocksession import MockSession
+from tests._tool_artifact_2_helper_mockworkspace import MockWorkspace
 
 
 def _product_spec() -> str:

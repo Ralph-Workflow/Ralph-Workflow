@@ -10,8 +10,8 @@ from tests._support.typed_accessors import (
     must_dict_list,
     must_str,
 )
-from tests.test_artifact_format_docs_mock_session import planning_session
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_mock_session import planning_session
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

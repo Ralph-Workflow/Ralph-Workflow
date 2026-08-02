@@ -8,7 +8,7 @@ import pytest
 
 from ralph.mcp.artifacts import submit_artifact_canonical
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_canonical_artifact_submit import DEVELOPMENT_RESULT, _parsed
 
 if TYPE_CHECKING:

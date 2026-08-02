@@ -8,7 +8,7 @@ from types import ModuleType
 import pytest
 from _pytest.mark import Mark, MarkDecorator
 
-from tests.mcp.websearch.test_brave_backend_helper__explodingresponse import _ExplodingResponse
+from tests.mcp.websearch._brave_backend_helper__explodingresponse import _ExplodingResponse
 
 NETWORK_MARK = MarkDecorator(Mark("network", (), {}))
 

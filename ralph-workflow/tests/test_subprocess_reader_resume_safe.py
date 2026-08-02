@@ -45,7 +45,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig
-from tests.agents.test_invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
+from tests.agents._invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

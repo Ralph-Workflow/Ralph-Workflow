@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
-from tests.test_artifact_format_docs_mock_session import planning_session
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_mock_session import planning_session
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

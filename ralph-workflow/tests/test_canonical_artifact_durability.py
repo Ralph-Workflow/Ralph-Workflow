@@ -17,7 +17,7 @@ from ralph.mcp.artifacts.completion_receipts import (
 )
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_canonical_artifact_submit import (
     COMMIT_MESSAGE,
     DEVELOPMENT_RESULT,

@@ -18,7 +18,7 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 if TYPE_CHECKING:
     from pathlib import Path
-from tests.test_same_workspace_parallel_no_git_status_fallback_helper__fakemcpserverfactory import (
+from tests._same_workspace_parallel_no_git_status_fallback_helper__fakemcpserverfactory import (
     _FakeMcpServerFactory,
 )
 

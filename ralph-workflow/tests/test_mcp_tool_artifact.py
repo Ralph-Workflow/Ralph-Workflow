@@ -13,8 +13,8 @@ from ralph.mcp.tools.md_artifact import handle_submit_md_artifact, handle_verify
 from tests._support.typed_accessors import (
     must_dict_list,
 )
-from tests.test_artifact_format_docs_mock_session import MockSession, planning_session
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_mock_session import MockSession, planning_session
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

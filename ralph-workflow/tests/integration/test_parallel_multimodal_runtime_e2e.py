@@ -48,13 +48,13 @@ if TYPE_CHECKING:
 
     from ralph.agents.executor import WorkerResult
 from tests.integration import (
-    test_parallel_multimodal_runtime_e2e_helper__capturedcontext as capturedcontext_helper,
+    _parallel_multimodal_runtime_e2e_helper__capturedcontext as capturedcontext_helper,
 )
 from tests.integration import (
-    test_parallel_multimodal_runtime_e2e_helper__fakeagentexecutorwithartifacts as artifacts_helper,
+    _parallel_multimodal_runtime_e2e_helper__fakeagentexecutorwithartifacts as artifacts_helper,
 )
 from tests.integration import (
-    test_parallel_multimodal_runtime_e2e_helper__sessioncontract as sessioncontract_helper,
+    _parallel_multimodal_runtime_e2e_helper__sessioncontract as sessioncontract_helper,
 )
 
 pytestmark = pytest.mark.subprocess_e2e

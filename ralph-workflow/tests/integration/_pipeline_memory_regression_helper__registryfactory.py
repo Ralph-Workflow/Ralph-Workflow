@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tests.integration.test_pipeline_memory_regression_helper__registryinstance import (
+from tests.integration._pipeline_memory_regression_helper__registryinstance import (
     _RegistryInstance,
 )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.test_claude_interactive_pty_helper__fakeptyhandle import _FakePtyHandle
+from tests._claude_interactive_pty_helper__fakeptyhandle import _FakePtyHandle
 
 
 class _FakePtyManager:

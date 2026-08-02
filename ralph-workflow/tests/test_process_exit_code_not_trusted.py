@@ -22,7 +22,7 @@ from ralph.process.manager import (
     reset_process_manager,
 )
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
-from tests.test_process_exit_code_not_trusted_helper__recordingmcpfactory import (
+from tests._process_exit_code_not_trusted_helper__recordingmcpfactory import (
     _RecordingMcpFactory,
 )
 

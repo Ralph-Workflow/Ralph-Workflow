@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
     from ralph.mcp.server import lifecycle
 
-from tests.test_mcp_factory_impl_helper_fakebridge import FakeBridge
-from tests.test_mcp_factory_impl_helper_fakeprocess import FakeProcess
+from tests._mcp_factory_impl_helper_fakebridge import FakeBridge
+from tests._mcp_factory_impl_helper_fakeprocess import FakeProcess
 
 
 def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:

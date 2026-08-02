@@ -10,8 +10,8 @@ from ralph.agents.completion_signals import _check_completion_sentinel
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
-from tests.test_artifact_format_docs_memory_backend import MemoryBackend
-from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+from tests._artifact_format_docs_memory_backend import MemoryBackend
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

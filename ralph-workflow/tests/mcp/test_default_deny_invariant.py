@@ -15,7 +15,7 @@ from ralph.config.mcp_models import McpConfig
 from ralph.mcp.tools.bridge import ToolSpec, tool_specs
 from ralph.mcp.tools.coordination import ToolResult
 from ralph.mcp.tools.names import ALL_RALPH_TOOLS
-from tests.mcp.test_default_deny_invariant_helper__fakeworkspace import _FakeWorkspace
+from tests.mcp._default_deny_invariant_helper__fakeworkspace import _FakeWorkspace
 
 
 class _DenyAllSession:

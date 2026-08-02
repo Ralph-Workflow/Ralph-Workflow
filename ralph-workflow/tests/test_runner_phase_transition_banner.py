@@ -20,7 +20,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     RecoveryPolicy,
 )
-from tests.test_runner_phase_transition_banner_helper__stubdisplay import _StubDisplay
+from tests._runner_phase_transition_banner_helper__stubdisplay import _StubDisplay
 
 _DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" / "defaults")
 _EXPECTED_ELAPSED_SECONDS = 12.5

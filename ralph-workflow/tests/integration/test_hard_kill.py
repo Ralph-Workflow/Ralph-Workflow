@@ -18,7 +18,7 @@ from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.process.manager import reset_process_manager
-from tests.integration.test_hard_kill_helper_sleeperexecutor import SleeperExecutor
+from tests.integration._hard_kill_helper_sleeperexecutor import SleeperExecutor
 
 pytestmark = pytest.mark.subprocess_e2e
 

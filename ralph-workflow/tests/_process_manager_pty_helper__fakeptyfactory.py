@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 from typing import TYPE_CHECKING
 
-from tests.test_process_manager_pty_helper__fakeprocess import _FakePtyProcess
+from tests._process_manager_pty_helper__fakeprocess import _FakePtyProcess
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

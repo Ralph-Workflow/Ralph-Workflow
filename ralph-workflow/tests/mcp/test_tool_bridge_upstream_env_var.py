@@ -18,11 +18,11 @@ from ralph.mcp.upstream.registry import UpstreamRegistry
 
 if TYPE_CHECKING:
     import pytest
-from tests.mcp.test_tool_bridge_upstream_env_var_helper__allowedsession import _AllowedSession
-from tests.mcp.test_tool_bridge_upstream_env_var_helper__fakeupstreamclientfactory import (
+from tests.mcp._tool_bridge_upstream_env_var_helper__allowedsession import _AllowedSession
+from tests.mcp._tool_bridge_upstream_env_var_helper__fakeupstreamclientfactory import (
     _FakeUpstreamClientFactory,
 )
-from tests.mcp.test_tool_bridge_upstream_env_var_helper__fakeworkspace import _FakeWorkspace
+from tests.mcp._tool_bridge_upstream_env_var_helper__fakeworkspace import _FakeWorkspace
 
 
 class TestUpstreamEnvVar:
