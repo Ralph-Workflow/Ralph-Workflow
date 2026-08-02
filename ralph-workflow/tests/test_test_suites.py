@@ -368,11 +368,44 @@ def test_explicit_worker_count_overrides_the_auto_resolution(
     assert test_suites_module._pytest_workers() == "3"
 
 
+@pytest.mark.parametrize(
+    ("cpu_count", "shard_count", "expected_workers"),
+    (
+        (None, "1", "2"),
+        (1, "1", "1"),
+        (2, "1", "2"),
+        (16, "15", "1"),
+        (32, "16", "2"),
+        (64, "16", "4"),
+    ),
+)
+def test_auto_xdist_worker_count_respects_available_cores(
+    monkeypatch: pytest.MonkeyPatch,
+    cpu_count: int | None,
+    shard_count: str,
+    expected_workers: str,
+) -> None:
+    monkeypatch.delenv("PYTEST_XDIST_WORKERS_PER_SHARD", raising=False)
+    monkeypatch.setenv("PYTEST_WORKERS", shard_count)
+    monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
+
+    assert test_suites_module._xdist_workers_per_shard() == expected_workers
+
+
+def test_explicit_xdist_worker_count_overrides_auto_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "3")
+
+    assert test_suites_module._xdist_workers_per_shard() == "3"
+
+
 def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "0")
     monkeypatch.setattr(
         test_suites_module,
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
