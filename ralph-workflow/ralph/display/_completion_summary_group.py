@@ -103,11 +103,12 @@ def _plan_section(
 ) -> list[Text | Rule]:
     items: list[Text | Rule] = []
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
-        items.append(Rule("Plan", style=style_for_role("terminal", pipeline_policy)))
+        style = style_for_role("terminal", pipeline_policy)
+        items.append(Rule("Plan", style=style))
         if snapshot.plan_summary:
-            items.append(Text(f"  {snapshot.plan_summary}"))
+            items.append(Text(f"  {snapshot.plan_summary}", style=style))
         if snapshot.plan_scope_items:
-            items.append(Text(f"  Scope: {len(snapshot.plan_scope_items)} item(s)"))
+            items.append(Text(f"  Scope: {len(snapshot.plan_scope_items)} item(s)", style=style))
     return items
 
 
@@ -127,7 +128,10 @@ def _review_section(
     badge, summary_text = review_line
     return [
         Rule("Review", style=style_for_role("terminal", pipeline_policy)),
-        Text(f"  [{badge}] {summary_text}".upper()),
+        Text(
+            f"  [{badge}] {summary_text}".upper(),
+            style=style_for_role("terminal", pipeline_policy),
+        ),
     ]
 
 
@@ -157,7 +161,7 @@ def _activity_section(
         activity_parts.append(f"raw_overflow={options.overflow_path}")
     items: list[Text | Rule] = [
         Rule("Activity", style=style),
-        Text("  " + " ".join(activity_parts)),
+        Text("  " + " ".join(activity_parts), style=style),
     ]
     return items
 
@@ -238,7 +242,9 @@ def render_completion_summary_group(
         if diagnostic:
             renderables.append(Text(f"  {diagnostic}"))
     if options.elapsed_seconds is not None:
-        renderables.append(Text(f"  elapsed={format_elapsed_seconds(options.elapsed_seconds)}"))
+        renderables.append(
+            Text(f"  elapsed={format_elapsed_seconds(options.elapsed_seconds)}", style=style)
+        )
 
     renderables.extend(
         _plan_section(snapshot, options.pipeline_policy, options.include_context_sections)
