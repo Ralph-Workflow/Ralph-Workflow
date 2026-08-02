@@ -516,3 +516,15 @@ def test_unrelated_method_chain_passes(tmp_path: Path) -> None:
         package_root,
         module_paths=(module_rel,),
     ) == []
+
+
+def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:
+    """S-6: a repository without its expected ralph/ root cannot pass the audit."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+
+    violations = audit.audit_filesystem_read_consolidation(repository_root)
+
+    assert len(violations) == 1
+    assert violations[0].kind == "missing_production_root"
+    assert violations[0].file_path == "ralph"
