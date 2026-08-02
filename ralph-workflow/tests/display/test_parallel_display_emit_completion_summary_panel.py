@@ -15,7 +15,6 @@ finish in < 0.5 s.
 from __future__ import annotations
 
 import dataclasses
-import sys
 from datetime import UTC, datetime
 from io import StringIO
 from typing import TYPE_CHECKING
@@ -144,12 +143,8 @@ def test_emit_completion_summary_panel_failed_uses_failed_title() -> None:
         ),
         options=CompletionSummaryOptions(),
     )
-    sys.stderr.write(f"\nDEBUG before stop output: {buf.getvalue()!r}\n")
-    sys.stderr.flush()
     pd.stop()
     output = buf.getvalue()
-    sys.stderr.write(f"\nDEBUG failure test output: {output!r}\n")
-    sys.stderr.flush()
     assert "Pipeline Failed" in output, (
         f"expected 'Pipeline Failed' title in failure body: {output!r}"
     )

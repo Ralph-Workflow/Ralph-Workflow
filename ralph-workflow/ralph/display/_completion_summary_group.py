@@ -250,7 +250,8 @@ def render_completion_summary_group(
             f"continuations={snapshot.total_continuations} "
             f"fallbacks={snapshot.total_fallbacks} "
             f"retries={snapshot.total_retries} "
-            f"pushes={snapshot.push_count}"
+            f"pushes={snapshot.push_count}",
+            style="theme.text.muted",
         )
     )
     renderables.extend(_decisions_section(snapshot, style))

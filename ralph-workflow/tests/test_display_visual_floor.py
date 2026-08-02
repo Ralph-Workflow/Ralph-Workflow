@@ -246,6 +246,41 @@ def test_visual_floor_cli_status_and_warning_keep_semantic_colour_and_plain_labe
     assert "WARN configuration needs attention" in plain
 
 
+def test_visual_floor_completion_summary_metrics_use_a_semantic_colour_span() -> None:
+    """S-3 regression: closing-summary metrics are content, never default foreground."""
+    stream = StringIO()
+    context = make_display_context(
+        console=theme.make_console(
+            file=stream, force_terminal=True, color_system="truecolor", width=120
+        ),
+        env={"RALPH_TERMINAL_BG": "dark"},
+    )
+    snapshot = PipelineSnapshot(
+        phase="complete",
+        previous_phase="review",
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=3,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="scene",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        is_terminal_success=True,
+        is_terminal_failure=False,
+    )
+
+    ParallelDisplay(context).emit_completion_summary_panel(snapshot)
+
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*m  agent_calls=3", stream.getvalue())
+
+
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
     bad = dict(theme.STATUS_STYLES)
     bad["waiting"] = ("dim", "?", "WAIT")
