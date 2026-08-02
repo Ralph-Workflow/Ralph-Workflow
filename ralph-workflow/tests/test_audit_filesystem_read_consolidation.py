@@ -81,6 +81,27 @@ def test_flags_raw_path_open_read(tmp_path: Path) -> None:
     assert violations[0].line == 3
 
 
+def test_regression_flags_raw_builtin_open_read(tmp_path: Path) -> None:
+    """S-6: builtin ``open`` reads cannot evade the R1/R3 boundary."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def load() -> str:\n"
+        "    with open('x', encoding='utf-8') as handle:\n"
+        "        return handle.read()\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_open"
+    assert violations[0].line == 2
+
+
 def test_flags_raw_pathlib_module_read_text(tmp_path: Path) -> None:
     """``pathlib.Path(...).read_text()`` is flagged."""
     module_rel = "alpha/example.py"

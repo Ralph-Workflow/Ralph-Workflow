@@ -157,6 +157,8 @@ def _read_call_details(
 ) -> tuple[str, str, bool] | None:
     """Return raw filesystem call details when ``node`` reaches a tracked API."""
     direct_name = node.func.id if isinstance(node.func, ast.Name) else None
+    if direct_name == "open":
+        return "open", direct_name, True
     if direct_name in direct_read_names:
         return direct_read_names[direct_name], direct_name, True
     attr = _attr_name(node)
