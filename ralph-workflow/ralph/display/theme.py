@@ -95,6 +95,14 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
+# Compatibility for display accessibility tests and internal callers: CVD
+# helpers remain owned by _identity, while theme remains their established seam.
+_DEUTERANOPIA_MATRIX = identity_helpers._DEUTERANOPIA_MATRIX
+_PROTANOPIA_MATRIX = identity_helpers._PROTANOPIA_MATRIX
+_TRITANOPIA_MATRIX = identity_helpers._TRITANOPIA_MATRIX
+_simulate_cvd = identity_helpers.simulate_cvd
+_normalize_identity_name = identity_helpers.normalize_identity_name
+
 
 def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     """Return False when glyphs should fall back to ASCII, True for Unicode.

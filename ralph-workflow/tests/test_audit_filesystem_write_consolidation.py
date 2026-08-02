@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.testing import audit_filesystem_write_consolidation as audit
 
 
