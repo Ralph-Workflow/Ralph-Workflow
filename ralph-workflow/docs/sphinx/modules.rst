@@ -3830,13 +3830,6 @@ ralph.prompts.payload_refs
    :members:
    :show-inheritance:
 
-ralph.prompts.reviewer
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.prompts.reviewer
-   :members:
-   :show-inheritance:
-
 ralph.prompts.master_prompt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3940,6 +3933,13 @@ ralph.testing.audit_fenced_artifact_examples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_fenced_artifact_examples
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_filesystem_read_consolidation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_filesystem_read_consolidation
    :members:
    :show-inheritance:
 

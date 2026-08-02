@@ -25,6 +25,8 @@ For cumulative volume bottlenecks (many fast tests where per-item overhead domin
 
 Tests in `_IO_ALLOWLIST` (e.g., memory regression tests) that require real I/O for valid assertions must not be refactored to test doubles — optimize their fixtures instead.
 
+For the test-optimization strategy — move equivalent coverage down the test pyramid, remove duplicates, and refactor seams for testability — see [Testing Policy: Test optimization strategy](../ralph-workflow-policy/testing-policy.md#test-optimization-strategy). Consult a target repository's own strategy first when it has one.
+
 Override only when genuinely required:
 
 ```python

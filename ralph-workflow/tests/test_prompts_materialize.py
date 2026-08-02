@@ -33,6 +33,7 @@ from ralph.workspace.memory import MemoryWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pytest import MonkeyPatch
 
 FIX_RESULT_DOC = """---
 type: fix_result
@@ -381,7 +382,6 @@ def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
 
-    # Create plan history files
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
@@ -390,7 +390,6 @@ def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
-    # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
     analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
@@ -412,18 +411,21 @@ def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
         ),
     )
 
-    # Plan history is cleared (clear_on_fresh_entry=true for planning)
+    # Planning and development history is cleared; analysis history is preserved.
     assert not plan_archived.exists(), "plan archive must be removed on fresh planning entry"
     assert not plan_index.exists(), "plan history index must be removed on fresh planning entry"
-    # planning_analysis_decision history is preserved (clear_on_fresh_entry=false)
     assert analysis_archived.exists(), "planning_analysis_decision archive must be preserved"
     assert analysis_index.exists(), "planning_analysis_decision history index must be preserved"
 
 
 def test_planning_analysis_to_development_clears_history_per_policy(
     tmp_path: Path,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     """planning_analysis→development clears planning and development history per policy."""
+    monkeypatch.setattr(
+        "ralph.prompts.materialize.SkillManager.get_docs_mcp_available", lambda *_args, **_kwargs: False
+    )
     pipeline_policy = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -504,7 +506,6 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
-    # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
     dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
@@ -532,7 +533,6 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     # planning_analysis_decision history is preserved (clear_on_fresh_entry=false)
     assert analysis_archived.exists(), "planning_analysis_decision archive must be preserved"
     assert analysis_index.exists(), "planning_analysis_decision history index must be preserved"
-    # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed"
     assert not dev_index.exists(), "development_result history index must be removed"
 

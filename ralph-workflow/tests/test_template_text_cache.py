@@ -5,8 +5,7 @@ The wt-024 P2 + P3 fixes:
   - **P2**: The four call sites that read packaged .jinja templates
     from disk (master_prompt._unattended_mode_text,
     commit._select_template (commit_message.jinja),
-    commit.prompt_commit_message_for_opencode (commit_simplified.jinja),
-    reviewer._load_packaged_review_template (review.jinja)) all
+    commit.prompt_commit_message_for_opencode (commit_simplified.jinja))
     re-read the file on EVERY call. The fix adds a small clearable
     memoizing loader so each packaged template is read ONCE per
     process.
@@ -30,7 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.prompts import commit, master_prompt, reviewer
+from ralph.prompts import commit, master_prompt
 from ralph.prompts.template_registry import (
     TemplateRegistry,
     _packaged_template_cache,
@@ -199,34 +198,6 @@ def test_commit_opencode_simplified_uses_cache() -> None:
     assert state["calls"] == 1, (
         f"prompt_commit_message_for_opencode must read"
         f" commit_simplified.jinja once, got {state['calls']}"
-    )
-
-
-def test_reviewer_load_packaged_template_uses_cache() -> None:
-    """reviewer._load_packaged_review_template reads review.jinja via the cache."""
-
-    state: dict[str, int] = {"calls": 0}
-
-    def reader(_path: Path) -> str:
-        state["calls"] += 1
-        return "REVIEW-BODY"
-
-    original_reader = _packaged_template_cache._reader
-    _packaged_template_cache._reader = reader
-    _packaged_template_cache.clear()
-    try:
-        first = reviewer._load_packaged_review_template()
-        second = reviewer._load_packaged_review_template()
-        third = reviewer._load_packaged_review_template()
-    finally:
-        _packaged_template_cache._reader = original_reader
-        _packaged_template_cache.clear()
-
-    assert first == "REVIEW-BODY"
-    assert second == "REVIEW-BODY"
-    assert third == "REVIEW-BODY"
-    assert state["calls"] == 1, (
-        f"_load_packaged_review_template must read review.jinja once, got {state['calls']}"
     )
 
 

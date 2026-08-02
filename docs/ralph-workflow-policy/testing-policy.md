@@ -124,6 +124,25 @@ keep producing bugs.
 * Fix the coupling in the production design. Raising the timeout, splitting
   the suite to dodge the budget, or skipping the test is FORBIDDEN.
 
+## Test optimization strategy
+
+When a suite is slow or a test is added, consult the target repository's
+optimization strategy when it has one; otherwise apply these moves before
+splitting or quarantining tests:
+
+* **Collapse down the pyramid.** Move a behavior from E2E to integration, or
+  from integration to unit, when the lower layer can assert the same observable
+  contract. Delete an E2E test once a deterministic integration test covers
+  the behavior it existed to prove.
+* **Delete redundant coverage.** TDD scaffolding that duplicates a later,
+  clearer regression test is debt: keep the test that best expresses the
+  contract and delete the duplicate. Never delete the sole coverage for a
+  path.
+* **Refactor for testability, not speed-hacking.** Extract the I/O seam so
+  deterministic lower-level tests can replace slow real-world setup. Preserve
+  the smallest higher-layer test that covers the boundary the lower layer
+  cannot.
+
 ## Verification
 
 Run every gate below before claiming a change complies with this policy.
@@ -186,6 +205,11 @@ This policy MUST be reviewed in the same workflow as any of:
   title: "Test Pyramid"
   http: https://martinfowler.com/bliki/TestPyramid.html
   review date: 2026-07-12
+
+* publisher: Martin Fowler
+  title: "TestCoverage"
+  http: https://martinfowler.com/bliki/TestCoverage.html
+  review date: 2026-08-02
 
 ## Living document contract
 

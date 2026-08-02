@@ -17,7 +17,7 @@ Submit the required artifact on this attempt.
 
 ## Fresh review evidence
 
-Bring evidence the implementation phase did not have. Compare the changed files against the plan and requirements, follow callers, tests, and error paths as needed, and report only material findings with concrete cost and exact remediation; `no_issues` is a normal result.
+Bring evidence the implementation phase did not have. Judge the current state of the relevant files against the plan and requirements; read them as they are now, follow callers, tests, and error paths as needed, and report only material findings with concrete cost and exact remediation; `no_issues` is a normal result.
 
 Use the shared decision contract as the single source for review dimensions, admissible evidence, and limits. Record a specific not-applicable reason under `## Review Evidence` for a dimension without a relevant surface. Run the project's fast path before broader verification when available, then its meaningful full gate.
 
@@ -25,7 +25,6 @@ Use independent read-only subagents and parallel checks when they add fresh evid
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
-{{ render_payload_section('CHANGES', CHANGES, CHANGES_PATH) }}
 
 {{ render_payload_section('FIX_RESULT', FIX_RESULT, FIX_RESULT_PATH) }}
 
