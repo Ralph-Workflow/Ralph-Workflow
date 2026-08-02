@@ -31,6 +31,7 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
     }
 )
 _MARKER_TOKEN = "filesystem-poll-ok:"
+_GETATTR_MIN_ARGS = 2
 
 
 @dataclass(frozen=True)
@@ -136,6 +137,23 @@ def _attribute_root(node: ast.Attribute) -> str | None:
     return value.id if isinstance(value, ast.Name) else None
 
 
+def _dynamic_subprocess_launcher(node: ast.Call, subprocess_names: dict[str, str]) -> bool:
+    """True for a statically resolved ``getattr(subprocess, launcher)(...)`` call."""
+    func = node.func
+    if not (
+        isinstance(func, ast.Call)
+        and isinstance(func.func, ast.Name)
+        and func.func.id == "getattr"
+        and len(func.args) >= _GETATTR_MIN_ARGS
+        and isinstance(func.args[0], ast.Name)
+        and subprocess_names.get(func.args[0].id) == "subprocess"
+        and isinstance(func.args[1], ast.Constant)
+        and isinstance(func.args[1].value, str)
+    ):
+        return False
+    return func.args[1].value in _SUBPROCESS_CALLS
+
+
 _VIOLATION_MESSAGES: dict[str, str] = {
     "raw_observer_construction": "P1/P4 raw watchdog Observer construction; use lifecycle-owned WorkspaceMonitor",
     "raw_subprocess_invocation": "direct product-owned subprocess choice; route through the typed process executor",
@@ -161,7 +179,9 @@ def _violation_for_call(
     )
     root = _attribute_root(func) if isinstance(func, ast.Attribute) else None
     kind = (
-        "raw_observer_construction"
+        "raw_subprocess_invocation"
+        if _dynamic_subprocess_launcher(node, subprocess_names)
+        else "raw_observer_construction"
         if (name == "Observer" and (name in observer_names or root in observer_names))
         else "raw_sleep_poll"
         if (

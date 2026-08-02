@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import ast
 import sys
+import tokenize
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -228,15 +230,15 @@ def _read_call_details(
     return attr, root, False
 
 
-def _marker_line_indices(source_lines: list[str]) -> set[int]:
+def _marker_line_indices(source: str) -> set[int]:
+    """Return zero-based lines with a reasoned D3 marker in a real comment."""
     indices: set[int] = set()
-    for idx, line in enumerate(source_lines):
-        marker_idx = line.find(_MARKER_TOKEN)
-        if marker_idx < 0:
+    for token in tokenize.generate_tokens(StringIO(source).readline):
+        if token.type != tokenize.COMMENT or _MARKER_TOKEN not in token.string:
             continue
-        reason = line[marker_idx + len(_MARKER_TOKEN) :].strip()
-        if reason:
-            indices.add(idx)
+        marker_idx = token.string.find(_MARKER_TOKEN)
+        if token.string[marker_idx + len(_MARKER_TOKEN) :].strip():
+            indices.add(token.start[0] - 1)
     return indices
 
 
@@ -292,8 +294,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
                 message=f"module could not be parsed ({exc.msg}); invalid modules fail closed",
             )
         ]
-    source_lines = source.splitlines()
-    marker_lines = _marker_line_indices(source_lines)
+    marker_lines = _marker_line_indices(source)
     nodes = list(ast.walk(tree))
     parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
     path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(tree, parents)

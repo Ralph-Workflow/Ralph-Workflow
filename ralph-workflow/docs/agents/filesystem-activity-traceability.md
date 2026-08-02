@@ -85,3 +85,12 @@ contract at the call site.
 ## Next Step
 
 Use the next unresolved row to create a red black-box test before changing production code. The highest-value current gap is an instrumented workspace observation boundary that can prove R1/R3/R4 behavior without host filesystem access.
+
+## Documentation review note
+
+This is an internal traceability and operator-reference page, rather than a
+first-run route. It consolidates the durable filesystem contract, approved
+boundaries, exception syntax, and verification commands in one place; it does
+not duplicate onboarding documentation or add public-product claims. Unresolved
+rows are intentionally retained as the implementation backlog so operators and
+maintainers can distinguish present proof from planned closure.

@@ -528,3 +528,23 @@ def test_regression_missing_default_production_root_fails_closed(tmp_path: Path)
     assert len(violations) == 1
     assert violations[0].kind == "missing_production_root"
     assert violations[0].file_path == "ralph"
+
+
+def test_regression_marker_in_string_literal_does_not_bypass_enforcement(tmp_path: Path) -> None:
+    """S-6: D3 read markers must be comments rather than payload text."""
+    module_rel = "alpha/string_marker.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        "    reason = 'filesystem-read-ok: not a comment'\n"
+        "    return Path('x').read_text()\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_path_read_text"]

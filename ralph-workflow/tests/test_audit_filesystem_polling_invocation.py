@@ -200,3 +200,22 @@ def test_local_reasoned_marker_remains_an_explicit_exception(tmp_path: Path) -> 
         )
         == []
     )
+
+
+def test_regression_dynamic_subprocess_launcher_fails_closed(tmp_path: Path) -> None:
+    """S-6: a statically named dynamic launcher cannot evade typed ownership."""
+    module_rel = "feature/dynamic_invoke.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import subprocess\n"
+        "def invoke() -> None:\n"
+        "    getattr(subprocess, 'run')(['tool'])\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_subprocess_invocation"]
