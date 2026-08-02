@@ -289,7 +289,9 @@ class TestStreamingBlockCoalescingSingleEntry:
         out = buf.getvalue()
         thinking_lines = [line for line in _plain_lines(out) if "[reasoning][u1]" in line]
         # One logical close entry may wrap into multiple physical console rows.
-        assert "⋯ reasoning" in thinking_lines[-1], f"missing close entry:\n{out}"
+        # Continuations repeat the transcript carrier, and a final overflow
+        # trailer is therefore a valid final physical row.
+        assert any("⋯ reasoning" in line for line in thinking_lines), f"missing close entry:\n{out}"
         assert all("fragments" not in line for line in thinking_lines), (
             f"Close entry must NOT report fragment count: {thinking_lines!r}"
         )

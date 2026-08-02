@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -51,6 +51,13 @@ _TWO_ARG_ARITY: int = 2
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
 
 
+@runtime_checkable
+class _HasDestPath(Protocol):
+    """Structural watchdog event protocol for move destinations."""
+
+    dest_path: str
+
+
 class _HandlerWithDispatch(Protocol):
     """Structural type of the per-monitor watchdog handler.
 
@@ -84,6 +91,11 @@ def _make_change_tracker(monitor: WorkspaceMonitor) -> object:
                 monitor._workspace, event.src_path
             ):
                 monitor.record_event(event.src_path)
+                return
+            if isinstance(event, _HasDestPath) and _is_within_workspace(
+                monitor._workspace, event.dest_path
+            ):
+                monitor.record_event(event.dest_path)
 
     return _ChangeTrackerHandler()
 
@@ -375,9 +387,9 @@ class WorkspaceMonitor:
         need this -- the watchdog backend dispatches events into the
         handler returned by ``_make_change_tracker(self)`` itself.
 
-        The handler routes every event through ``record_event`` (if it
-        has ``src_path``), mirroring the production watchdog dispatch
-        path.
+        The handler routes in-root source paths, or an in-root move
+        destination when the source is outside, through ``record_event``;
+        this mirrors the production watchdog dispatch path.
 
         Args:
             event: A watchdog-style event object. The handler

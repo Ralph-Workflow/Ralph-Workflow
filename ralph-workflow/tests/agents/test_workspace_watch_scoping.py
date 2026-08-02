@@ -316,6 +316,31 @@ def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress(
     assert monitor.last_event_at is None
 
 
+def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-5 regression: a file moved into the root refreshes workspace activity.
+
+    The observer reports the source outside the root and the destination inside
+    it. The monitor must classify the destination through its public dispatch
+    seam without adding another recursive watch.
+    """
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+    monitor.start()
+    initial_count = len(fake.scheduled)
+
+    monitor.dispatch_event(_FakeEvent("/other-project/app.py", dest_path="/ws/src/app.py"))
+
+    assert monitor.event_count == 1
+    assert monitor.changed_files == {"/ws/src/app.py"}
+    assert len(fake.scheduled) == initial_count
+
+
 def test_dispatched_directory_event_schedules_no_additional_watch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
