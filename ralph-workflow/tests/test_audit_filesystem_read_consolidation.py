@@ -59,6 +59,28 @@ def test_flags_raw_path_constructor_read_text(tmp_path: Path) -> None:
     assert violations[0].line == 3
 
 
+def test_flags_raw_path_open_read(tmp_path: Path) -> None:
+    """Raw ``Path.open`` read handles cannot evade the R1/R3 boundary."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> bytes:\n"
+        "    with Path('x').open('rb') as handle:\n"
+        "        return handle.read()\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_path_open"
+    assert violations[0].line == 3
+
+
 def test_flags_raw_pathlib_module_read_text(tmp_path: Path) -> None:
     """``pathlib.Path(...).read_text()`` is flagged."""
     module_rel = "alpha/example.py"

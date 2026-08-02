@@ -34,6 +34,7 @@ _RAW_READ_QUALIFIERS: frozenset[str] = frozenset({"os", "os.path", "pathlib"})
 _RAW_READ_ATTRS: dict[str, str] = {
     "read_text": "R1/R3 raw full-file read; route through FileBackend.read_text or annotate",
     "read_bytes": "R1/R3 raw full-file byte load; route through FileBackend.read_bytes",
+    "open": "R1/R3 raw file handle read; route through FileBackend or Workspace",
     "exists": "R4 raw existence probe; use FileBackend.exists",
     "is_file": "R4 raw existence probe; use FileBackend.exists",
     "is_dir": "R4 raw existence probe; use FileBackend.exists",
@@ -253,7 +254,13 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         is_path_traversal = attr in {"iterdir", "glob", "rglob"} and (
             root in path_variables or root in _PATHLIBS
         )
-        if is_direct_read or is_raw_qualifier or is_os_traversal or is_glob_traversal:
+        is_path_open = attr == "open" and (root in path_variables or root in _PATHLIBS)
+        if (
+            is_direct_read
+            or (is_raw_qualifier and attr != "open")
+            or is_os_traversal
+            or is_glob_traversal
+        ):
             kind = f"raw_{attr}"
             message = _RAW_READ_ATTRS[attr]
         elif root in path_variables or root in _PATHLIBS:
@@ -262,6 +269,8 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
             if attr in _GLOB_TRAVERSAL_ATTRS and not (is_path_traversal or is_glob_traversal):
                 continue
             if attr in {"iterdir", "glob", "rglob"} and not is_path_traversal:
+                continue
+            if attr == "open" and not is_path_open:
                 continue
             kind = f"raw_path_{attr}"
             message = _RAW_READ_ATTRS[attr]

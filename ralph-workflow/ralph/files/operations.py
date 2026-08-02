@@ -38,6 +38,7 @@ class FileSystemState:
 def calculate_checksum(path: Path | str) -> str:
     """Return the SHA-256 checksum for a file."""
     digest = hashlib.sha256()
+    # filesystem-read-ok: bounded streaming checksum avoids materializing tracked files
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(_READ_CHUNK_SIZE), b""):
             digest.update(chunk)
