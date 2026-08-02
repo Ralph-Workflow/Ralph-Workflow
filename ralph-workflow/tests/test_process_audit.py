@@ -87,6 +87,11 @@ TESTS_ALLOWLIST: set[str] = {
     # subprocess calls -- the audit is exercised through monkeypatched
     # sources). Mirrors the existing allowlist pattern for audit
     # test files that maintain POS|CO process-marker literals.
+    "test_idle_watchdog.py",
+    # drives an end-to-end psutil children-recursion regression by
+    # spawning a real python interpreter that itself forks a long-lived
+    # child. The test must own the host process directly so the
+    # ProcessManager fake cannot mask the bug it pins.
     "test_git_merge.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
     "test_auto_integrate.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
     "test_auto_integrate_resolution.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; conflict-resolution + ff-retry tests)

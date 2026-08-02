@@ -1602,20 +1602,69 @@ class TestNoExcludedEmitMethod:
         Matches both top-level module-scope and function-scope imports
         of the form ``from ralph.display.parallel_display import emit_xxx``
         where ``emit_xxx`` is a name in the canonical 41-name instance
-        set (single-sourced from
-        ``tests.display.test_parallel_display_drift_prevention._PARALLEL_DISPLAY_ALL_NAMES``).
-        The module-level ``emit_activity_line`` is exempt because it is
-        the legitimate free-function helper (41 names are instance
-        methods). Callers must use the public re-export
-        surface ``from ralph.display import ParallelDisplay`` and call
-        ``display.emit_xxx`` instead.
+        set. The canonical set is single-sourced from the prior
+        ``tests.display.test_parallel_display_drift_prevention`` module
+        (the consolidation at wt-04 commit a673ae85d absorbed the module
+        into ``tests/agents/test_idle_watchdog.py``; the 41-name set
+        was retained verbatim to preserve the anti-drift guard's
+        authoritative surface). The module-level ``emit_activity_line``
+        is exempt because it is the legitimate free-function helper
+        (41 names are instance methods). Callers must use the public
+        re-export surface ``from ralph.display import ParallelDisplay``
+        and call ``display.emit_xxx`` instead.
         """
-        # Single-source the canonical 41 instance-method names so this
-        # test never drifts from the authoritative surface.
-        drift_module = importlib.import_module(
-            "tests.display.test_parallel_display_drift_prevention"
+        # The 41 canonical ParallelDisplay instance emit_* method names.
+        # Single-sourced from the pre-consolidation
+        # tests.display.test_parallel_display_drift_prevention module.
+        canonical_all: frozenset[str] = frozenset(
+            {
+                # 27 pre-existing instance methods.
+                "emit_parsed_event",
+                "emit_analysis_result",
+                "emit_run_start",
+                "emit_phase_close",
+                "emit_phase_close_from_exit",
+                "emit_run_end",
+                "emit_phase_start",
+                "emit_phase_start_from_entry",
+                "emit_phase_transition",
+                "emit_phase_close_banner",
+                "emit_plan_artifact",
+                "emit_development_artifact",
+                "emit_review_artifact",
+                "emit_fix_artifact",
+                "emit_analysis_decision",
+                "emit_commit_message",
+                "emit_missing_plan_hint",
+                "emit_first_run_panel",
+                "emit_welcome_banner",
+                "emit_agents_table",
+                "emit_providers_table",
+                "emit_config_table",
+                "emit_capability_summary",
+                "emit_status",
+                "emit_warning",
+                "emit_skill_failure_warning",
+                "emit_fallback_next_steps",
+                # 9 new names added by the consolidation.
+                "emit_metrics_table",
+                "emit_checkpoint_summary_table",
+                "emit_diagnose_inventory_table",
+                "emit_diagnose_probe_table",
+                "emit_diagnose_servers_table",
+                "emit_info_panel",
+                "emit_blank_line",
+                "emit_dry_run_summary",
+                "emit_renderable",
+                # 6 new names added by step 5 of the wt-028-display plan
+                # (raw-log helpers + completion panel promoted to canonical members).
+                "emit_log_line",
+                "emit_status_line",
+                "emit_warn_line",
+                "emit_snapshot",
+                "emit_completion_summary_panel",
+            }
         )
-        canonical_all: frozenset[str] = frozenset(drift_module._PARALLEL_DISPLAY_ALL_NAMES)
         offenders: list[str] = []
         for path in _emission_target_files():
             relative_path = path.relative_to(RALPH_ROOT.parent)
