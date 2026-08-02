@@ -596,6 +596,19 @@ if not any("audit_filesystem_polling_invocation" in label for label, *_rest in _
         "_VERIFY_STEPS (the filesystem polling/invocation ownership contract cannot be silently dropped)"
     )
 
+# (g) The package-wide write and read audits must remain wired. The tests
+# exercise these guards under normal and optimized interpreters so neither D1
+# enforcement boundary can be silently removed while the narrower audits stay.
+for _filesystem_audit in (
+    "audit_filesystem_write_consolidation",
+    "audit_filesystem_read_consolidation",
+):
+    if not any(_filesystem_audit in label for label, *_rest in _VERIFY_STEPS):
+        raise RuntimeError(
+            f"A verify step running '{_filesystem_audit}' must be present in "
+            "_VERIFY_STEPS (the filesystem consolidation contract cannot be silently dropped)"
+        )
+
 
 def _default_runner(
     command: str,

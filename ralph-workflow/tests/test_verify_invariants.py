@@ -82,6 +82,10 @@ def _invariant_cases() -> list[_CaseSpec]:
         '"filesystem polling/invocation ownership audit (audit_filesystem_polling_invocation)"'
     )
     polling_label_gone = '"filesystem polling/invocation ownership audit (REMOVED)"'
+    write_label_anchor = '"filesystem write consolidation audit (audit_filesystem_write_consolidation)"'
+    write_label_gone = '"filesystem write consolidation audit (REMOVED)"'
+    read_label_anchor = '"filesystem read consolidation audit (audit_filesystem_read_consolidation)"'
+    read_label_gone = '"filesystem read consolidation audit (REMOVED)"'
 
     return [
         {
@@ -251,6 +255,34 @@ def _invariant_cases() -> list[_CaseSpec]:
             "minus_o": True,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "audit_filesystem_polling_invocation"],
+        },
+        {
+            "name": "filesystem_write_consolidation_audit_step_must_be_present",
+            "patches": [(write_label_anchor, write_label_gone)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_filesystem_write_consolidation"],
+        },
+        {
+            "name": "filesystem_write_consolidation_audit_survives_minus_o",
+            "patches": [(write_label_anchor, write_label_gone)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_filesystem_write_consolidation"],
+        },
+        {
+            "name": "filesystem_read_consolidation_audit_step_must_be_present",
+            "patches": [(read_label_anchor, read_label_gone)],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_filesystem_read_consolidation"],
+        },
+        {
+            "name": "filesystem_read_consolidation_audit_survives_minus_o",
+            "patches": [(read_label_anchor, read_label_gone)],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "audit_filesystem_read_consolidation"],
         },
     ]
 
