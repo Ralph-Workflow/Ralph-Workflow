@@ -312,6 +312,31 @@ def test_pick_status_styles_resolves_a_known_state() -> None:
 # --- Identity palette disjoint from status-role hexes --------------------
 
 
+def test_status_bar_regression_colours_agent_identity_not_its_static_label() -> None:
+    """S-6/S-9: the footer's identity pigment lands on the agent name itself."""
+    ctx = _ctx(width=120, height=40)
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        elapsed_seconds=0.0,
+        agent_name="pi",
+    )
+
+    rendered = render_status_bar(model, ctx, now_monotonic=100.0)
+    agent_start = rendered.plain.index("Agent pi") + len("Agent ")
+    agent_style = identity_color(
+        "pi",
+        active=(*theme._DISPLAY_IDENTITY_ACTIVE_SET, "pi"),
+        terminal_bg_is_light=ctx.terminal_background_is_light,
+    )
+
+    assert any(
+        span.start <= agent_start and span.end >= agent_start + len("pi") and span.style == agent_style
+        for span in rendered.spans
+    )
+
+
 def test_identity_palette_disjoint_from_status_roles() -> None:
     """AC-15 acceptance: identity colors never reuse a status-role hex."""
     identity_hexes = {color.lower() for color in IDENTITY_PALETTE}

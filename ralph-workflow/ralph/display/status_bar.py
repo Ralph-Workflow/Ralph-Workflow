@@ -1401,16 +1401,16 @@ def _append_optional_segment(
     if label.startswith("Agent ") and model.agent_name:
         agent_prefix, agent_rest = _split_agent_label(label)
         if agent_prefix:
+            text.append(agent_prefix, style="theme.status.info")
+        if agent_rest:
             text.append(
-                agent_prefix,
+                agent_rest,
                 style=identity_color(
                     model.agent_name,
                     active=(*_DISPLAY_IDENTITY_ACTIVE_SET, model.agent_name),
                     terminal_bg_is_light=ctx.terminal_background_is_light,
                 ),
             )
-        if agent_rest:
-            text.append(agent_rest, style="theme.status.info")
     else:
         text.append(label, style="theme.status.info")
 
