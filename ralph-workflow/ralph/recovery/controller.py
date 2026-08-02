@@ -190,6 +190,7 @@ def _assert_two_state_invariant() -> None:
     """
     _source, tree = _controller_source_tree(
         parse_fn=_parse_source,
+        # filesystem-read-ok: import-time self-inspection is cached once by _controller_source_tree.
         read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
     )
     class_node: ast.ClassDef | None = None
@@ -326,6 +327,7 @@ def _assert_never_exit_invariant() -> None:
     """
     _source, tree = _controller_source_tree(
         parse_fn=_parse_source,
+        # filesystem-read-ok: import-time self-inspection is cached once by _controller_source_tree.
         read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
     )
     class_node: ast.ClassDef | None = None

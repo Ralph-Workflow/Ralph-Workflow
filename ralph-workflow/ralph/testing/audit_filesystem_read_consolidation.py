@@ -26,7 +26,6 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
         "prompts/template_registry.py",
         "prompts/master_prompt.py",
         "prompts/render/jinja.py",
-        "recovery/controller.py",
         "agents/invoke/_workspace.py",
     }
 )
