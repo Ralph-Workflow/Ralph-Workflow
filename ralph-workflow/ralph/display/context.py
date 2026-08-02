@@ -76,8 +76,12 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     Returns:
         _ResolvedEnv with all display-relevant env settings resolved.
     """
-    no_color = bool(env.get("NO_COLOR"))
-    force_color = bool(env.get("FORCE_COLOR"))
+    # Presence is the conventional NO_COLOR signal; FORCE_COLOR follows the
+    # same explicit-value convention so an empty inherited variable cannot
+    # accidentally alter a caller's injected console. NO_COLOR remains the
+    # final authority when both are present.
+    no_color = bool(env.get("NO_COLOR", "").strip())
+    force_color = bool(env.get("FORCE_COLOR", "").strip())
 
     force_ascii_val = env.get("RALPH_FORCE_ASCII", "").lower().strip()
     force_ascii = force_ascii_val in _RALPH_FORCE_ASCII_TRUTHY
