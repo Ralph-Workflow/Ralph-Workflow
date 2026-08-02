@@ -139,8 +139,8 @@ test-subprocess-e2e:
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
 
-# Focused profile over the same explicit 24-file registry used by
-# the combined ``make test`` invocation.
+# Focused profile over the same explicit registry used by the
+# combined ``make test`` invocation.
 test-auto-integrate-e2e:
 	$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e
 

@@ -3,7 +3,7 @@
 S-7 (wt-028-display P1) retired the per-fragment/preview/checkpoint emission
 machinery. Streaming kinds (``text`` / ``thinking``) are now silent during
 open / continue and emit exactly ONE entry on block close carrying the
-joined passage plus fragment and char counts (sketch J shape).
+joined passage plus its start/end span and duration (sketch-J shape).
 
 Tests in this file pin the new shape:
 
@@ -11,8 +11,8 @@ Tests in this file pin the new shape:
   line directly (``tool_use``, ``tool_result``, ``error``, ``progress``,
   ``lifecycle``, ``raw``);
 * streaming kinds (``text`` / ``thinking``) buffer fragments silently and
-  emit ONE line on close: ``[<tag>][<unit>] \u22ef <tag> \u00b7 <n> fragments \u00b7
-  <chars> chars`` followed by the joined passage on the next line;
+  emit ONE carrier line on close: ``[<tag>][<unit>] \u22ef <tag> \u00b7 <start> \u2192
+  <end> \u00b7 <duration> \u00b7 <joined passage>``;
 * no ``[content-start]``, ``[content-continue#N]``, ``[thinking-start]``,
   ``[thinking-continue#N]``, ``[content-end]``, ``[thinking-end]``,
   ``[content-checkpoint#N]``, ``[thinking-checkpoint#N]`` tags surface;
