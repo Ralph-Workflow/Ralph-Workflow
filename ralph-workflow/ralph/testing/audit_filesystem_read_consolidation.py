@@ -1,6 +1,7 @@
-"""Package-wide filesystem-read consolidation audit (R1, R3, R4).
+"""Package-wide filesystem-read and traversal consolidation audit (R1-R5).
 
-See module docstring continuation below.
+New production modules fail closed when they use raw content reads, probes, or
+traversals instead of the typed FileBackend and Workspace observation seams.
 """
 
 from __future__ import annotations
@@ -32,16 +33,24 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
 _MARKER_TOKEN: str = "filesystem-read-ok:"
 _RAW_READ_QUALIFIERS: frozenset[str] = frozenset({"os", "os.path", "pathlib"})
 _RAW_READ_ATTRS: dict[str, str] = {
-    "read_text": "raw full-file read; route through FileBackend.read_text or annotate",
-    "read_bytes": "raw full-file byte load; route through FileBackend.read_bytes",
-    "exists": "raw existence probe; use FileBackend.exists",
-    "is_file": "raw existence probe; use FileBackend.exists",
-    "is_dir": "raw existence probe; use FileBackend.exists",
-    "lexists": "raw existence probe; use FileBackend.exists",
-    "stat": "raw stat probe; use FileBackend.stat",
-    "lstat": "raw stat probe; use FileBackend.stat",
+    "read_text": "R1/R3 raw full-file read; route through FileBackend.read_text or annotate",
+    "read_bytes": "R1/R3 raw full-file byte load; route through FileBackend.read_bytes",
+    "exists": "R4 raw existence probe; use FileBackend.exists",
+    "is_file": "R4 raw existence probe; use FileBackend.exists",
+    "is_dir": "R4 raw existence probe; use FileBackend.exists",
+    "lexists": "R4 raw existence probe; use FileBackend.exists",
+    "stat": "R4 raw stat probe; use FileBackend.stat",
+    "lstat": "R4 raw stat probe; use FileBackend.stat",
+    "iterdir": "R2 raw directory traversal; use Workspace.list_dir",
+    "glob": "R2 raw directory traversal; use Workspace.iter_files",
+    "rglob": "R2 raw recursive traversal; use Workspace.iter_files",
+    "walk": "R2 raw recursive traversal; use Workspace.iter_files",
+    "scandir": "R2 raw directory traversal; use Workspace.list_dir",
+    "iglob": "R2 raw recursive traversal; use Workspace.iter_files",
 }
 _PATHLIBS: frozenset[str] = frozenset({"Path", "PurePath", "PosixPath", "WindowsPath", "pathlib"})
+_OS_TRAVERSAL_ATTRS: frozenset[str] = frozenset({"walk", "scandir"})
+_GLOB_TRAVERSAL_ATTRS: frozenset[str] = frozenset({"glob", "iglob"})
 
 
 @dataclass(frozen=True)
@@ -87,17 +96,26 @@ def _call_root_name(node: ast.AST) -> str | None:
     return None
 
 
-def _import_alias_names(tree: ast.Module, names: set[str]) -> None:
-    """Record from pathlib import X / import pathlib as X aliases (in-place)."""
+def _import_alias_names(
+    tree: ast.Module,
+    path_names: set[str],
+    os_names: set[str],
+    glob_names: set[str],
+) -> None:
+    """Record pathlib constructors and filesystem-module aliases (in-place)."""
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module == "pathlib":
             for alias in node.names:
                 if alias.name in _PATHLIBS:
-                    names.add(alias.asname or alias.name)
+                    path_names.add(alias.asname or alias.name)
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == "pathlib" and alias.asname:
-                    names.add(alias.asname)
+                if alias.name == "pathlib":
+                    path_names.add(alias.asname or alias.name)
+                elif alias.name == "os":
+                    os_names.add(alias.asname or alias.name)
+                elif alias.name == "glob":
+                    glob_names.add(alias.asname or alias.name)
 
 
 def _assign_target_names(value: ast.expr, target: ast.expr, names: set[str]) -> None:
@@ -111,16 +129,19 @@ def _assign_target_names(value: ast.expr, target: ast.expr, names: set[str]) -> 
         names.add(target.id)
 
 
-def _collect_path_variables(tree: ast.Module) -> set[str]:
-    names: set[str] = set()
-    _import_alias_names(tree, names)
+def _collect_read_provenance(tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
+    """Return known pathlib values and filesystem-module aliases for a module."""
+    path_names: set[str] = set()
+    os_names: set[str] = set()
+    glob_names: set[str] = set()
+    _import_alias_names(tree, path_names, os_names, glob_names)
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                _assign_target_names(node.value, target, names)
+                _assign_target_names(node.value, target, path_names)
         elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.expr):
-            _assign_target_names(node.value, node.target, names)
-    return names
+            _assign_target_names(node.value, node.target, path_names)
+    return path_names, os_names, glob_names
 
 
 def _marker_line_indices(source_lines: list[str]) -> set[int]:
@@ -189,7 +210,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         ]
     source_lines = source.splitlines()
     marker_lines = _marker_line_indices(source_lines)
-    path_variables = _collect_path_variables(tree)
+    path_variables, os_names, glob_names = _collect_read_provenance(tree)
 
     violations: list[FilesystemReadViolation] = []
     for node in ast.walk(tree):
@@ -207,10 +228,22 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         zero_based = line_idx - 1
         if zero_based in marker_lines or (zero_based - 1) in marker_lines:
             continue
-        if root in _RAW_READ_QUALIFIERS:
+        is_os_traversal = attr in _OS_TRAVERSAL_ATTRS and root in os_names
+        is_glob_traversal = attr in _GLOB_TRAVERSAL_ATTRS and root in glob_names
+        is_raw_qualifier = root in _RAW_READ_QUALIFIERS
+        is_path_traversal = attr in {"iterdir", "glob", "rglob"} and (
+            root in path_variables or root in _PATHLIBS
+        )
+        if is_raw_qualifier or is_os_traversal or is_glob_traversal:
             kind = f"raw_{attr}"
             message = _RAW_READ_ATTRS[attr]
         elif root in path_variables or root in _PATHLIBS:
+            if attr in _OS_TRAVERSAL_ATTRS and not is_os_traversal:
+                continue
+            if attr in _GLOB_TRAVERSAL_ATTRS and not (is_path_traversal or is_glob_traversal):
+                continue
+            if attr in {"iterdir", "glob", "rglob"} and not is_path_traversal:
+                continue
             kind = f"raw_path_{attr}"
             message = _RAW_READ_ATTRS[attr]
         else:

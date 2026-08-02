@@ -392,11 +392,11 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
     (
         # Package-wide fail-closed filesystem read audit. Mirrors the
-        # write-consolidation contract for R1/R3/R4: every raw read,
-        # existence/stat probe, or full-file load under ralph/ must route
-        # through a shared compliant boundary (FileBackend, Workspace,
-        # idempotent helpers) or carry a local filesystem-read-ok reason
-        # marker. AST + Path.read_text only -- no subprocess, no sleep,
+        # write-consolidation contract for R1-R4: every raw read,
+        # existence/stat probe, full-file load, or directory traversal under
+        # ralph/ must route through a shared compliant boundary (FileBackend,
+        # Workspace, idempotent helpers) or carry a local filesystem-read-ok
+        # reason marker. AST + Path.read_text only -- no subprocess, no sleep,
         # no real I/O. Appended LAST so the index-based timeout assertions
         # in tests/test_verify.py are not shifted; NOT budget-tracked
         # (does not count against the immutable 60-second combined test

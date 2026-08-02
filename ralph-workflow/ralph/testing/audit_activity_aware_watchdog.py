@@ -110,6 +110,7 @@ def _iter_py_files(root: Path) -> list[Path]:
     walk, which is friendlier to the OS page cache.
     """
     result: list[Path] = []
+    # filesystem-read-ok: audit scanner prunes ignored directories in-place for bounded verification.
     for parent, dirs, files in os.walk(root):
         # Prune excluded directories in-place so os.walk does not
         # descend into them -- avoids the cost of stat()'ing
@@ -653,6 +654,7 @@ def _compute_fingerprint(package_root: Path) -> str | None:
     if not package_root.is_dir():
         return None
     hasher = hashlib.sha1()
+    # filesystem-read-ok: audit fingerprint prunes ignored directories in-place for bounded verification.
     for parent, dirs, files in os.walk(package_root):
         dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
         for name in files:

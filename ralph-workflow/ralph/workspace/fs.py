@@ -540,6 +540,7 @@ class FsWorkspace:
             return ()
 
         results: list[str] = []
+        # filesystem-read-ok: canonical Workspace traversal applies the shared recursive skip set.
         for root, dirs, files in os.walk(str(base_abs)):
             root_path = Path(root)
             dirs[:] = [d for d in dirs if d not in RECURSIVE_SKIP_DIRECTORY_NAMES]

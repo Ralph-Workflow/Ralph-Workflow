@@ -235,17 +235,84 @@ def test_main_module_entry_point_violations_returns_one(tmp_path: Path) -> None:
     assert audit.main([str(package_root)]) == 1
 
 
-def test_unrelated_method_chain_passes(tmp_path: Path) -> None:
-    """Attribute calls that are NOT in the raw-read set are not flagged."""
+def test_flags_raw_path_traversal_methods(tmp_path: Path) -> None:
+    """Path traversal bypasses the bounded Workspace enumeration seam (S-6)."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def enumerate_files() -> object:\n"
+        "    return Path('x').iterdir(), Path('x').glob('*.py'), Path('x').rglob('*.py')\n",
+    )
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+    assert [violation.kind for violation in violations] == [
+        "raw_path_iterdir",
+        "raw_path_glob",
+        "raw_path_rglob",
+    ]
+
+
+def test_flags_raw_os_and_glob_traversal_aliases(tmp_path: Path) -> None:
+    """Aliased filesystem-module traversals cannot evade the audit (S-6)."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import glob as patterns\n"
+        "import os as filesystem\n"
+        "def enumerate_files(root: str) -> object:\n"
+        "    return filesystem.walk(root), filesystem.scandir(root), patterns.glob('*.py'), patterns.iglob('*.py')\n",
+    )
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+    assert [violation.kind for violation in violations] == [
+        "raw_walk",
+        "raw_scandir",
+        "raw_glob",
+        "raw_iglob",
+    ]
+
+
+def test_marked_traversal_is_exempt_but_unmarked_traversal_is_not(tmp_path: Path) -> None:
+    """Traversal exceptions remain local, reasoned, and fail closed when empty (S-6)."""
     module_rel = "alpha/example.py"
     package_root = _write_fake_package(
         tmp_path,
         module_rel,
         "import os\n"
-        "def getenv(name):\n"
+        "def allowed(root: str) -> object:\n"
+        "    # filesystem-read-ok: canonical workspace implementation owns bounded traversal\n"
+        "    return os.walk(root)\n"
+        "def rejected(root: str) -> object:\n"
+        "    return os.scandir(root)  # filesystem-read-ok:\n",
+    )
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+    assert [violation.kind for violation in violations] == ["raw_scandir"]
+
+
+def test_unrelated_method_chain_passes(tmp_path: Path) -> None:
+    """Non-filesystem lookups and arbitrary similarly named methods remain accepted."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import os\n"
+        "def getenv(name: str) -> str | None:\n"
         "    return os.getenv(name)\n"
-        "def walk(root):\n"
-        "    return list(os.walk(root))\n",
+        "class Catalog:\n"
+        "    def walk(self, root: str) -> tuple[str, ...]:\n"
+        "        return (root,)\n"
+        "def enumerate_catalog(catalog: Catalog) -> tuple[str, ...]:\n"
+        "    return catalog.walk('x')\n",
     )
     assert audit.audit_filesystem_read_consolidation(
         package_root,

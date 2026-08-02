@@ -755,6 +755,7 @@ def iter_indexable_files(workspace_root: Path) -> Iterator[Path]:
     them with :func:`normalize_index_path`.
     """
     root = Path(workspace_root).resolve()
+    # filesystem-read-ok: canonical explore index traversal prunes skip directories in-place.
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
         for name in filenames:

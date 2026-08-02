@@ -185,6 +185,7 @@ def _collect_py_files(root: Path) -> list[Path]:
         base = root / subtree
         if not base.is_dir():
             continue
+        # filesystem-read-ok: audit scanner excludes bytecode caches during bounded verification.
         for parent, dirs, fs in os.walk(base):
             dirs[:] = [d for d in dirs if d != "__pycache__"]
             for name in fs:

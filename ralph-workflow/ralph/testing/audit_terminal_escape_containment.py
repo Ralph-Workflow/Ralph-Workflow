@@ -449,6 +449,7 @@ class PackageWideCallSiteInvariant:
         if cls._PACKAGE_FILE_LIST_CACHE is None:
             cls._PACKAGE_FILE_LIST_CACHE = sorted(
                 str((Path(root) / name).relative_to(_PACKAGE_ROOT).as_posix())
+                # filesystem-read-ok: audit cache scans package source for terminal-containment coverage.
                 for root, _dirs, files in os.walk(_PACKAGE_ROOT)
                 for name in files
                 if name.endswith(".py")
