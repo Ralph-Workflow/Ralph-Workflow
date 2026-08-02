@@ -17,6 +17,7 @@ SPHINX_DIR = REPO_ROOT / "docs" / "sphinx"
 DEVELOPER_INTERNALS_PATH = SPHINX_DIR / "developer-internals.md"
 REFERENCE_MD_PATH = SPHINX_DIR / "reference.md"
 README_PATH = REPO_ROOT / "README.md"
+DISPLAY_DOC_PATH = REPO_ROOT / "docs" / "sphinx" / "display.rst"
 
 # Public packages that must have non-empty docstrings (pydoc-first contract)
 _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS = [
@@ -61,6 +62,15 @@ def _index_toctree_docnames(index_content: str) -> list[str]:
         docnames.append(stripped)
 
     return docnames
+
+
+def test_display_manual_documents_the_background_query_timeout() -> None:
+    """S-8: the operator manual lists the bounded OSC 11 timeout override."""
+    content = DISPLAY_DOC_PATH.read_text(encoding="utf-8")
+
+    assert "RALPH_TERMINAL_BG_TIMEOUT_MS" in content
+    assert "100 ms" in content
+    assert "positive integer" in content
 
 
 def test_sphinx_conf_uses_package_version() -> None:

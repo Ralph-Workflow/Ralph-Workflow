@@ -377,6 +377,8 @@ environment after that.
      - Any value forces color on render-capable non-TTY streams.
    * - ``RALPH_TERMINAL_BG``
      - Declares the terminal background as ``light`` or ``dark`` (or a ``#RRGGBB`` value) when automatic detection is unavailable. This selects the corresponding fixed-RGB semantic and preview palette; an unresolved background uses the dual-safe fallback.
+   * - ``RALPH_TERMINAL_BG_TIMEOUT_MS``
+     - A positive integer override for the bounded OSC 11 background-query deadline; defaults to 100 ms. Invalid or non-positive values retain the 100 ms deadline.
 
 **Glyphs**
 

@@ -50,6 +50,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **docs(display): document the bounded terminal-background query timeout** — the operator manual now lists `RALPH_TERMINAL_BG_TIMEOUT_MS`, including its positive-integer input contract and 100 ms fallback. Locked by `tests/test_sphinx_documentation_setup.py`.
 - **fix(display): exercise catalogued console seams in generated scenes** — phase-close and every operator table now render through their production owners with observable transcript carriers; empty analysis-decision and commit-message artifacts remain intentionally silent. Locked by `tests/test_display_generated_scenes.py` and `tests/test_parallel_display_markdown_handoff.py`.
 - **fix(display): make every clean-run warning and artifact carrier executable** — generated scenes now exercise skill-install failures, fallback guidance, analysis-decision, and commit-message entry points alongside their semantic section markers. Locked by `tests/test_display_generated_scenes.py`.
 - **fix(display): make generated scene ownership executable** — scene drivers now exercise status, warning, raw-log, renderable, and dry-run production seams, and catalogued scene assignments are asserted against their visible carriers. Locked by `tests/test_display_generated_scenes.py`.
