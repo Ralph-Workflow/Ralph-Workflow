@@ -185,6 +185,26 @@ def test_flags_raw_os_path_exists(tmp_path: Path) -> None:
     assert violations[0].line == 3
 
 
+def test_flags_os_path_module_aliases(tmp_path: Path) -> None:
+    """Aliased ``os.path`` probes cannot bypass R4 enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from os import path as filesystem_path\n"
+        "import os.path as alternate_path\n"
+        "def has(p: str) -> bool:\n"
+        "    return filesystem_path.exists(p) or alternate_path.isfile(p)\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_exists", "raw_isfile"]
+
+
 def test_flags_raw_os_stat(tmp_path: Path) -> None:
     """Stat probes via ``os.stat`` are flagged (R4)."""
     module_rel = "alpha/example.py"

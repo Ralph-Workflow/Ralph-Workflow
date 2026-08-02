@@ -38,6 +38,8 @@ _RAW_READ_ATTRS: dict[str, str] = {
     "exists": "R4 raw existence probe; use FileBackend.exists",
     "is_file": "R4 raw existence probe; use FileBackend.exists",
     "is_dir": "R4 raw existence probe; use FileBackend.exists",
+    "isfile": "R4 raw existence probe; use FileBackend.exists",
+    "isdir": "R4 raw existence probe; use FileBackend.exists",
     "lexists": "R4 raw existence probe; use FileBackend.exists",
     "stat": "R4 raw stat probe; use FileBackend.stat",
     "lstat": "R4 raw stat probe; use FileBackend.stat",
@@ -112,13 +114,16 @@ def _import_alias_names(
                         path_names.add(alias.asname or alias.name)
             elif node.module in {"os", "os.path", "glob"}:
                 for alias in node.names:
-                    if alias.name in _RAW_READ_ATTRS:
-                        direct_read_names[alias.asname or alias.name] = alias.name
+                    local_name = alias.asname or alias.name
+                    if node.module == "os" and alias.name == "path":
+                        os_names.add(local_name)
+                    elif alias.name in _RAW_READ_ATTRS:
+                        direct_read_names[local_name] = alias.name
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "pathlib":
                     path_names.add(alias.asname or alias.name)
-                elif alias.name == "os":
+                elif alias.name in {"os", "os.path"}:
                     os_names.add(alias.asname or alias.name)
                 elif alias.name == "glob":
                     glob_names.add(alias.asname or alias.name)
@@ -285,7 +290,8 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         zero_based = line_idx - 1
         if zero_based in marker_lines or (zero_based - 1) in marker_lines:
             continue
-        is_os_traversal = attr in _OS_TRAVERSAL_ATTRS and root in os_names
+        is_os_path_read = root in os_names and attr != "open"
+        is_os_traversal = attr in _OS_TRAVERSAL_ATTRS and is_os_path_read
         is_glob_traversal = attr in _GLOB_TRAVERSAL_ATTRS and root in glob_names
         is_raw_qualifier = root in _RAW_READ_QUALIFIERS
         is_path_value = any((scope, root) in path_variables for scope in _scope_keys(node, parents))
@@ -296,7 +302,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         if (
             is_direct_read
             or (is_raw_qualifier and attr != "open")
-            or is_os_traversal
+            or is_os_path_read
             or is_glob_traversal
         ):
             kind = f"raw_{attr}"
