@@ -115,7 +115,8 @@ class RunStateDB:
             params: tuple[str | None, ...] = (run_id, artifact_type, hmac_hex)
             self._conn.execute(
                 "INSERT INTO receipts (run_id, artifact_type, hmac) VALUES (?, ?, ?) "
-                "ON CONFLICT(run_id, artifact_type) DO UPDATE SET hmac=excluded.hmac",
+                "ON CONFLICT(run_id, artifact_type) DO UPDATE SET "
+                "hmac=excluded.hmac, created_at=unixepoch('subsec')",
                 params,
             )
 
@@ -150,7 +151,8 @@ class RunStateDB:
             params: tuple[str | None, ...] = (run_id, hmac_hex)
             self._conn.execute(
                 "INSERT INTO completion_sentinels (run_id, hmac) VALUES (?, ?) "
-                "ON CONFLICT(run_id) DO UPDATE SET hmac=excluded.hmac",
+                "ON CONFLICT(run_id) DO UPDATE SET "
+                "hmac=excluded.hmac, created_at=unixepoch('subsec')",
                 params,
             )
 

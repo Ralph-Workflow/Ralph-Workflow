@@ -44,6 +44,25 @@ def test_completion_sentinel_roundtrip(tmp_path: Path) -> None:
     db.close()
 
 
+def test_upsert_regression_refreshes_retention_age(tmp_path: Path) -> None:
+    """S-2: renewed machine state is retained instead of pruned as stale."""
+    db = RunStateDB(tmp_path)
+    db.upsert_receipt("renewed", "plan", "old-receipt")
+    db.upsert_completion_sentinel("renewed", "old-sentinel")
+    with db._conn:
+        db._conn.execute("UPDATE receipts SET created_at = 0 WHERE run_id = ?", ("renewed",))
+        db._conn.execute(
+            "UPDATE completion_sentinels SET created_at = 0 WHERE run_id = ?", ("renewed",)
+        )
+    db.upsert_receipt("renewed", "plan", "new-receipt")
+    db.upsert_completion_sentinel("renewed", "new-sentinel")
+
+    assert db.prune_older_than(1.0) == 0
+    assert db.get_receipt_hmac("renewed", "plan") == "new-receipt"
+    assert db.get_completion_sentinel_hmac("renewed") == "new-sentinel"
+    db.close()
+
+
 def test_cross_connection_visibility(tmp_path: Path) -> None:
     """Simulates MCP-server-writes / engine-reads across processes."""
     writer = RunStateDB(tmp_path)
