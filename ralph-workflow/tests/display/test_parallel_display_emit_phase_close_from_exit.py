@@ -77,7 +77,7 @@ def test_emit_phase_close_from_exit_folds_all_unique_counters_at_40_columns() ->
     carrier = rows[0].split(" ", 1)[0]
     assert carrier.startswith("[phase-close][")
     assert all(row.startswith(carrier) for row in rows)
-    assert all(len(row) <= 40 for row in rows)
+    assert all(cell_len(row) <= 40 for row in rows)
     joined = " ".join(rows)
     for carrier in ("content_blocks=12", "thinking_blocks=34", "tool_calls=56", "errors=7"):
         assert carrier in joined
