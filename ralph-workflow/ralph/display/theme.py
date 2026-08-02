@@ -26,6 +26,15 @@ from rich.theme import Theme
 import ralph.display._identity as identity_helpers
 from ralph.syntax_theme import SyntaxThemes
 
+# Accessibility tests and downstream display extensions historically import
+# these helpers from ``theme``. Keep that established surface while the shared
+# implementation lives in the focused identity module.
+_normalize_identity_name = identity_helpers.normalize_identity_name
+_simulate_cvd = identity_helpers.simulate_cvd
+_DEUTERANOPIA_MATRIX = identity_helpers._DEUTERANOPIA_MATRIX
+_PROTANOPIA_MATRIX = identity_helpers._PROTANOPIA_MATRIX
+_TRITANOPIA_MATRIX = identity_helpers._TRITANOPIA_MATRIX
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from typing import TextIO

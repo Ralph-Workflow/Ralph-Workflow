@@ -377,3 +377,25 @@ def test_load_config_absent_override_keeps_default() -> None:
     """A CLI run without --unsafe-mode keeps the default of False."""
     cfg = load_config(workspace_scope=WorkspaceScope(Path("/tmp")), cli_overrides={})
     assert cfg.general.workflow.unsafe_mode is False
+
+
+# === consolidated from test_agents_invoke_6.py (AGY command construction) ===
+
+
+def test_agy_command_includes_add_dir_workspace_path(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY, print_flag="--print")
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    add_dir_index = cmd.index("--add-dir")
+    print_index = cmd.index("--print")
+    assert add_dir_index < print_index
+    assert cmd[add_dir_index + 1] == str(tmp_path)
+    assert cmd[-1] == prompt_text
