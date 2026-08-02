@@ -570,7 +570,12 @@ def run_test_suites(
     # An activated external environment can export site-packages through
     # PYTHONPATH. Pytest shards must use the same interpreter selected by
     # ``sys.executable`` rather than importing incompatible binary wheels.
-    inherited_env.pop("PYTHONPATH", None)
+    # The Makefile deliberately exports this package root, however, so retain
+    # that exact, single-entry value: it prevents Python from falling back to
+    # packages compiled for an unrelated interpreter.
+    pythonpath = inherited_env.get("PYTHONPATH")
+    if pythonpath is None or Path(pythonpath).resolve() != cwd.resolve():
+        inherited_env.pop("PYTHONPATH", None)
     env = build_timeout_env(
         base_env=inherited_env,
         test_timeout_seconds=timeout_seconds_from_env(

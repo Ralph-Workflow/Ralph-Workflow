@@ -368,6 +368,32 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     assert "RALPH_VERIFY_REQUIRED_AUTO_INTEGRATE_E2E" not in env
 
 
+def test_run_test_suites_preserves_only_its_own_project_pythonpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py",),
+    )
+    spawner = _StubSpawner([_FakeShardProcess([0])])
+
+    assert (
+        test_suites_module.run_test_suites(
+            cwd=tmp_path,
+            spawner=spawner,
+            file_discoverer=lambda _cwd: ("tests/test_alpha.py",),
+            file_weigher=lambda _cwd, _path: 1,
+            wait=lambda _seconds: None,
+        )
+        == 0
+    )
+    assert spawner.calls[0][2]["PYTHONPATH"] == str(tmp_path)
+
+
 def test_run_test_suites_does_not_leak_another_environment_pythonpath(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
