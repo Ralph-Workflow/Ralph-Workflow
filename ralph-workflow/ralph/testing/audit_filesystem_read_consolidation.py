@@ -46,12 +46,27 @@ _PATHLIBS: frozenset[str] = frozenset({"Path", "PurePath", "PosixPath", "Windows
 
 @dataclass(frozen=True)
 class FilesystemReadViolation:
+    """One filesystem-read consolidation violation surfaced by the audit.
+
+    Attributes:
+        kind: Short violation tag (e.g. ``raw_path_read_text``). Drives
+            remediation guidance and stable diagnostics.
+        file_path: POSIX path of the offending module relative to the
+            package root passed to :func:`audit_filesystem_read_consolidation`.
+        line: 1-based source line of the flagged call. ``0`` when the
+            violation refers to the package root itself (missing or
+            unreadable).
+        message: Human-readable description naming the violated
+            criterion and the approved replacement seam (D2).
+    """
+
     kind: str
     file_path: str
     line: int
     message: str
 
     def __str__(self) -> str:
+        """Return the canonical ``path:line: kind: message`` diagnostic line."""
         return f"{self.file_path}:{self.line}: {self.kind}: {self.message}"
 
 
@@ -218,6 +233,36 @@ def audit_filesystem_read_consolidation(
     exempt_paths: frozenset[str] | Sequence[str] | None = None,
     package_roots: Sequence[str] | None = None,
 ) -> list[FilesystemReadViolation]:
+    """Walk ``package_root`` and report raw filesystem-read call sites.
+
+    The audit is AST + ``Path.read_text`` only — no subprocess, no
+    ``sleep``, no real I/O beyond the one targeted source read per
+    module. Every newly-added Python module under ``package_root``
+    participates automatically (D1); there is no module allowlist to
+    maintain. Diagnostics name the violated criterion (R1/R3/R4) and
+    the approved replacement seam (D2).
+
+    Args:
+        package_root: Workspace directory whose ``ralph/`` subtree is
+            walked. The first path that is not a directory produces a
+            single ``missing_package_root`` violation so the caller can
+            fail closed without raising.
+        module_paths: Optional explicit list of relative POSIX paths
+            restricting the walk. When ``None`` every ``.py`` file
+            under ``package_roots`` is scanned.
+        exempt_paths: Optional explicit POSIX path set whose violations
+            are suppressed. Defaults to
+            :data:`_DEFAULT_EXEMPT_PATHS` (canonical FileBackend,
+            registry/render modules, and the audit module itself).
+        package_roots: Optional relative subpath list whose
+            ``.py`` descendants are scanned. Defaults to
+            :data:`_DEFAULT_PACKAGE_ROOTS` (single ``"ralph"`` entry).
+
+    Returns:
+        A list of :class:`FilesystemReadViolation` records. Empty list
+        means the scanned tree satisfies the read consolidation
+        contract.
+    """
     if not package_root.is_dir():
         return [
             FilesystemReadViolation(
@@ -246,6 +291,20 @@ def audit_filesystem_read_consolidation(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point for the filesystem-read consolidation audit.
+
+    Args:
+        argv: Optional positional list whose first element overrides
+            the default package root (``<repo>/ralph-workflow``).
+            Empty ``argv`` walks the package that contains this
+            module.
+
+    Returns:
+        ``0`` when the scanned tree satisfies the consolidation
+        contract, ``1`` when one or more violations were reported
+        (the violations are printed to ``stdout``), or ``2`` when
+        the resolved package root is not a directory.
+    """
     if argv is None:
         argv = sys.argv[1:]
     package_root = Path(argv[0]) if argv else Path(__file__).parent.parent.parent
