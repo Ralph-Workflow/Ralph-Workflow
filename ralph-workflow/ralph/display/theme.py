@@ -26,15 +26,6 @@ from rich.theme import Theme
 import ralph.display._identity as identity_helpers
 from ralph.syntax_theme import SyntaxThemes
 
-# The display theme is the public palette boundary. Keep the documented CVD
-# simulation constants available here so palette consumers test the same
-# transforms identity allocation uses rather than duplicating matrices.
-_DEUTERANOPIA_MATRIX = identity_helpers._DEUTERANOPIA_MATRIX
-_PROTANOPIA_MATRIX = identity_helpers._PROTANOPIA_MATRIX
-_TRITANOPIA_MATRIX = identity_helpers._TRITANOPIA_MATRIX
-_simulate_cvd = identity_helpers.simulate_cvd
-_normalize_identity_name = identity_helpers.normalize_identity_name
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from typing import TextIO
@@ -103,14 +94,6 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
 }
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
-
-# Compatibility for display accessibility tests and internal callers: CVD
-# helpers remain owned by _identity, while theme remains their established seam.
-_DEUTERANOPIA_MATRIX = identity_helpers._DEUTERANOPIA_MATRIX
-_PROTANOPIA_MATRIX = identity_helpers._PROTANOPIA_MATRIX
-_TRITANOPIA_MATRIX = identity_helpers._TRITANOPIA_MATRIX
-_simulate_cvd = identity_helpers.simulate_cvd
-_normalize_identity_name = identity_helpers.normalize_identity_name
 
 
 def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
@@ -534,6 +517,7 @@ def _fresh_style(style: str) -> Style:
 
 def _fresh_theme(styles: Mapping[str, str]) -> Theme:
     return Theme({name: _fresh_style(style) for name, style in styles.items()})
+
 
 def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
     """Return a new theme so ANSI caching cannot downgrade another console."""

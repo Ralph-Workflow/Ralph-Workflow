@@ -2474,6 +2474,7 @@ def test_status_bar_regression_agent_name_reflow_at_60_keeps_preceding_columns()
 
 def test_status_bar_regression_width_ladder_and_agent_identity_are_stable() -> None:
     """DA-001/DA-002: the documented width ladder is monotonic and agent-safe."""
+    contexts = {width: _make_display_context(width=width) for width in range(40, 121)}
 
     def render(width: int, agent_name: str = "claude") -> str:
         return render_status_bar(
@@ -2488,7 +2489,7 @@ def test_status_bar_regression_width_ladder_and_agent_identity_are_stable() -> N
                 elapsed_seconds=761,
                 agent_name=agent_name,
             ),
-            _make_display_context(width=width),
+            contexts[width],
             home="/Users/alice",
         ).plain
 
