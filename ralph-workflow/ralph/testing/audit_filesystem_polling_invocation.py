@@ -178,6 +178,23 @@ def _attribute_root(node: ast.Attribute) -> str | None:
     return value.id if isinstance(value, ast.Name) else None
 
 
+def _dynamic_observer_constructor(node: ast.Call, observer_names: set[str]) -> bool:
+    """True for a statically resolved ``getattr(watchdog, 'Observer')()`` call."""
+    func = node.func
+    if not (
+        isinstance(func, ast.Call)
+        and isinstance(func.func, ast.Name)
+        and func.func.id == "getattr"
+        and len(func.args) >= _GETATTR_MIN_ARGS
+        and isinstance(func.args[0], ast.Name)
+        and func.args[0].id in observer_names
+        and isinstance(func.args[1], ast.Constant)
+        and isinstance(func.args[1].value, str)
+    ):
+        return False
+    return func.args[1].value == "Observer"
+
+
 def _dynamic_subprocess_launcher(node: ast.Call, subprocess_names: dict[str, str]) -> bool:
     """True for a statically resolved ``getattr(subprocess, launcher)(...)`` call."""
     func = node.func
@@ -223,7 +240,8 @@ def _violation_for_call(
         "raw_subprocess_invocation"
         if _dynamic_subprocess_launcher(node, subprocess_names)
         else "raw_observer_construction"
-        if (name == "Observer" and (name in observer_names or root in observer_names))
+        if _dynamic_observer_constructor(node, observer_names)
+        or (name == "Observer" and (name in observer_names or root in observer_names))
         else "raw_sleep_poll"
         if (
             name == "sleep"
