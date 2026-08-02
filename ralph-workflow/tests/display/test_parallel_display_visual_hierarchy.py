@@ -33,13 +33,12 @@ from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
-_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+\-]\d{2}:\d{2}")
-# Wall-clock-based `elapsed=Ns` substring (e.g. `elapsed=0.0s`, `elapsed=12.3s`).
-# `ParallelDisplay` reads real `time.monotonic()` and rounds to 1 decimal; the
-# two display paths can emit a different rounded value when the system clock
-# is under load (e.g. `0.0s` on the TTY path, `0.1s` on the non-TTY path).
-# Normalizing the substring makes the parity assertion deterministic without
-# forcing the production code to inject a clock.
+_TIMESTAMP_RE = re.compile(
+    r"(?:\d{4}-\d{2}-\d{2}T)?\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+\-]\d{2}:\d{2})?"
+)
+# The display emits wall-clock timestamps and monotonic elapsed values. The
+# two sequential render paths can cross a second boundary under load, so both
+# are normalized before asserting their formatting parity.
 _ELAPSED_RE = re.compile(r"elapsed=\d+(?:\.\d+)?s")
 # Pre-built ANSI prefix for theme.banner.border in the dark palette (#56B4E9).
 # The fixture makes the terminal background explicit, so this pins the intended
