@@ -99,7 +99,14 @@ def test_sync_script_fetches_upstream_content(tmp_path: Path) -> None:
     port = _free_port()
     handler = partial(SimpleHTTPRequestHandler, directory=str(upstream_root))
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # Keep shutdown below the immutable one-second test ceiling: serve_forever()
+    # otherwise waits up to its 0.5s polling interval before releasing the thread.
+    server.timeout = 0.01
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": 0.01},
+        daemon=True,
+    )
     thread.start()
     try:
         script = Path(__file__).parent.parent / "skills-package" / "bin" / "sync-upstream-skills.js"
