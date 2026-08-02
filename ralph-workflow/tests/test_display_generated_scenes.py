@@ -164,6 +164,35 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
     assert any(".agent/raw" in row for row in condensed_rows)
 
 
+def test_generated_scene_colours_every_named_semantic_category() -> None:
+    """S-3 regression: named categories have a non-default foreground on their real surface."""
+    cases = (
+        ("first_screen", "SCENE first_screen", "38;2;23;131;131"),
+        ("clean_run", "implemented Unicode-safe output", "38;2;23;131;131"),
+        ("burst", "edit_file path=café-00.py", "38;2;0;116;232"),
+        ("burst", "edit_file complete", "38;2;19;136;78"),
+        ("clean_run", "waiting for an external review response", "38;2;23;131;131"),
+        ("failure", "tests failed", "38;2;176;92;92"),
+        ("idle_stretch", "WAITING", "38;2;186;93;0"),
+        ("burst", "output condensed count=24 bytes=768", "38;2;144;96;192"),
+        ("burst", "-", "38;2;186;93;0"),
+        ("burst", "+", "38;2;0;116;232"),
+    )
+    sgr = r"\x1b\[[0-9;]*"
+    for scene_name, carrier, foreground in cases:
+        rendered = render_scene(
+            scene_name,
+            SupportCase("unknown", "truecolour", "unicode", 80, "tty"),
+            terminal_bg_is_light=None,
+        )
+        visible = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
+        assert carrier in visible
+        assert re.search(
+            rf"{sgr}{foreground}m(?:[^\x1b]*?){re.escape(carrier)}",
+            rendered,
+        ), carrier
+
+
 def test_generated_scene_colours_primary_agent_content_and_waiting_state() -> None:
     """S-3/S-6 regression: content and waiting labels never fall back to default foreground."""
     clean = render_scene(
