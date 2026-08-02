@@ -25,8 +25,8 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
     {
         "agents/invoke/_workspace.py",
         "executor/process.py",
-        "process/manager/__init__.py",
-        "process/manager/_process_manager.py",
+        "process/manager/__init__.py",  # typed process owner constructs processes
+        "process/manager/_process_manager.py",  # bounded termination grace, not polling
         "testing/audit_filesystem_polling_invocation.py",
     }
 )
@@ -55,7 +55,25 @@ def _collect_python_files(root: Path) -> list[Path]:
 
 
 def _is_exempt(rel_path: str, exempt_paths: frozenset[str]) -> bool:
-    return rel_path in exempt_paths or any(rel_path.endswith("/" + item) for item in exempt_paths)
+    """Return whether a candidate is one of the canonical lifecycle owners.
+
+    Exact matching prevents an unrelated module such as
+    ``unrelated/agents/invoke/_workspace.py`` from borrowing the owner's
+    exemption and silently bypassing P1-P4 enforcement.
+    """
+    return rel_path.removeprefix("ralph/") in exempt_paths
+
+
+def _is_canonical_owner(module_path: Path, package_root: Path) -> bool:
+    """Return whether a path is a canonical lifecycle owner under the package root.
+
+    The public entry point accepts either the repository root (where module
+    paths begin with ``ralph/``) or the package directory itself. Normalize
+    only that leading canonical production root; no suffix match is accepted.
+    """
+    relative_path = module_path.relative_to(package_root).as_posix()
+    normalized_path = relative_path.removeprefix("ralph/")
+    return normalized_path in _DEFAULT_EXEMPT_PATHS
 
 
 def _marker_lines(source: str) -> set[int]:
@@ -289,6 +307,7 @@ def audit_filesystem_polling_invocation(
             )
         ]
     exempt = frozenset(exempt_paths) if exempt_paths is not None else _DEFAULT_EXEMPT_PATHS
+    violations: list[FilesystemPollingInvocationViolation] = []
     if module_paths is None:
         missing_roots = [
             package_root / root_name
@@ -312,11 +331,29 @@ def audit_filesystem_polling_invocation(
             for path in _collect_python_files(package_root / root_name)
         ]
     else:
-        candidates = [(package_root / rel_path, rel_path) for rel_path in module_paths]
-    violations: list[FilesystemPollingInvocationViolation] = []
+        candidates = []
+        resolved_root = package_root.resolve()
+        for rel_path in module_paths:
+            candidate = package_root / rel_path
+            try:
+                candidate.resolve().relative_to(resolved_root)
+            except (OSError, ValueError):
+                violations.append(
+                    FilesystemPollingInvocationViolation(
+                        "invalid_module_path",
+                        rel_path,
+                        0,
+                        "explicit module path escapes the package root; pass a relative "
+                        "production-module path so the filesystem polling/invocation "
+                        "audit can fail closed",
+                    )
+                )
+                continue
+            candidates.append((candidate, rel_path))
     for module_path, rel_path in candidates:
-        if not _is_exempt(rel_path, exempt):
-            violations.extend(_scan_module(module_path, rel_path))
+        if _is_exempt(rel_path, exempt) and _is_canonical_owner(module_path, package_root):
+            continue
+        violations.extend(_scan_module(module_path, rel_path))
     return violations
 
 

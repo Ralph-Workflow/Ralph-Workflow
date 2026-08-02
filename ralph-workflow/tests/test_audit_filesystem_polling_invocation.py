@@ -25,6 +25,39 @@ def test_regression_missing_default_production_root_fails_closed(tmp_path: Path)
     assert "fail closed" in violations[0].message
 
 
+def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Path) -> None:
+    """S-6: explicit candidates outside production root must fail closed."""
+    package_root = _write_fake_package(tmp_path, "feature/inert.py", "VALUE = 1\n")
+    external_module = tmp_path / "outside.py"
+    external_module.write_text("VALUE = 1\n", encoding="utf-8")
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=("../outside.py",),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "invalid_module_path"
+    assert violations[0].file_path == "../outside.py"
+
+
+def test_regression_exempt_suffix_cannot_skip_unrelated_module(tmp_path: Path) -> None:
+    """S-6: canonical exemptions cannot silently allow similarly named modules."""
+    module_rel = "unrelated/agents/invoke/_workspace.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import time\ndef poll() -> None:\n    time.sleep(1)\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_sleep_poll"]
+
+
 def test_regression_marker_in_string_literal_does_not_bypass_enforcement(tmp_path: Path) -> None:
     """S-6: D3 markers must be local comments, not text inside a payload."""
     module_rel = "feature/poller.py"
