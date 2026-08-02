@@ -26,6 +26,15 @@ from rich.theme import Theme
 import ralph.display._identity as identity_helpers
 from ralph.syntax_theme import SyntaxThemes
 
+# The display theme is the public palette boundary. Keep the documented CVD
+# simulation constants available here so palette consumers test the same
+# transforms identity allocation uses rather than duplicating matrices.
+_DEUTERANOPIA_MATRIX = identity_helpers._DEUTERANOPIA_MATRIX
+_PROTANOPIA_MATRIX = identity_helpers._PROTANOPIA_MATRIX
+_TRITANOPIA_MATRIX = identity_helpers._TRITANOPIA_MATRIX
+_simulate_cvd = identity_helpers.simulate_cvd
+_normalize_identity_name = identity_helpers.normalize_identity_name
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from typing import TextIO
