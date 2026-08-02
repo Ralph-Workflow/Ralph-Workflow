@@ -570,6 +570,74 @@ def test_run_test_suites_uses_one_parent_deadline_and_reaps_all_on_timeout(
     assert all(process.terminated and process.reaped for process in processes)
 
 
+def test_run_test_suites_spawn_deadline_names_already_started_shard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py", "tests/test_bravo.py"),
+    )
+    clock = _FakeClock()
+    process = _FakeShardProcess([None])
+
+    def spawn_after_deadline(
+        command: Sequence[str], *, cwd: Path, env: Mapping[str, str]
+    ) -> _FakeShardProcess:
+        del command, cwd, env
+        clock.advance(5.0)
+        return process
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        suite_timeout_seconds=5.0,
+        spawner=spawn_after_deadline,
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py", "tests/test_bravo.py"),
+        file_weigher=lambda _cwd, _path: 1,
+        monotonic=clock,
+        wait=clock.advance,
+    )
+
+    assert exit_code == 124
+    assert process.terminated and process.reaped
+    assert capsys.readouterr().err.splitlines()[:1] == [
+        "pytest shard 0 timed out after 5.00s; files: tests/test_alpha.py",
+    ]
+
+
+def test_run_test_suites_timeout_names_each_incomplete_shard_and_its_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py", "tests/test_bravo.py"),
+    )
+    clock = _FakeClock()
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        suite_timeout_seconds=5.0,
+        spawner=_StubSpawner([_FakeShardProcess([None]), _FakeShardProcess([None])]),
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py", "tests/test_bravo.py"),
+        file_weigher=lambda _cwd, _path: 1,
+        monotonic=clock,
+        wait=clock.advance,
+    )
+
+    assert exit_code == 124
+    assert capsys.readouterr().err.splitlines()[:2] == [
+        "pytest shard 0 timed out after 5.00s; files: tests/test_alpha.py",
+        "pytest shard 1 timed out after 5.00s; files: tests/test_bravo.py",
+    ]
+
+
 def test_completed_shard_cleans_descendants_before_draining_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

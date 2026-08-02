@@ -426,6 +426,26 @@ def _print_shard_outputs(outputs: Sequence[tuple[str, str]]) -> None:
             print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
 
 
+def _print_timeout_diagnostics(
+    shards: Sequence[Sequence[str]],
+    processes: Sequence[ShardProcess],
+    *,
+    started_at: float,
+    monotonic: Callable[[], float],
+) -> None:
+    """Name each incomplete shard before deadline cleanup loses its pytest output."""
+    elapsed_seconds = monotonic() - started_at
+    for index, (shard, process) in enumerate(
+        zip(shards[: len(processes)], processes, strict=True)
+    ):
+        if process.poll() is None:
+            print(
+                f"pytest shard {index} timed out after {elapsed_seconds:.2f}s; "
+                f"files: {', '.join(shard)}",
+                file=sys.stderr,
+            )
+
+
 def _run_shards(
     shards: Sequence[Sequence[str]],
     *,
@@ -433,6 +453,7 @@ def _run_shards(
     env: Mapping[str, str],
     basetemp_root: Path,
     deadline: float,
+    started_at: float,
     spawner: ShardSpawner,
     monotonic: Callable[[], float],
     wait: Callable[[float], None],
@@ -442,6 +463,9 @@ def _run_shards(
     try:
         for shard_index, shard in enumerate(shards):
             if _remaining_seconds(deadline, monotonic) <= 0:
+                _print_timeout_diagnostics(
+                    shards, processes, started_at=started_at, monotonic=monotonic
+                )
                 outputs = _terminate_and_reap(
                     processes,
                     deadline=deadline,
@@ -469,6 +493,9 @@ def _run_shards(
     completed: dict[int, tuple[str, str]] = {}
     while len(completed) < len(processes):
         if _remaining_seconds(deadline, monotonic) <= 0:
+            _print_timeout_diagnostics(
+                shards, processes, started_at=started_at, monotonic=monotonic
+            )
             outputs = _terminate_and_reap(
                 processes,
                 deadline=deadline,
@@ -557,7 +584,8 @@ def run_test_suites(
         ``RALPH_PYTEST_TEST_TIMEOUT_SECONDS`` and
         ``RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`` populated.
     """
-    deadline = monotonic() + suite_timeout_seconds
+    started_at = monotonic()
+    deadline = started_at + suite_timeout_seconds
     env = build_timeout_env(
         test_timeout_seconds=timeout_seconds_from_env(
             TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS
@@ -600,6 +628,7 @@ def run_test_suites(
             env=env,
             basetemp_root=Path(basetemp_root),
             deadline=deadline,
+            started_at=started_at,
             spawner=spawner,
             monotonic=monotonic,
             wait=wait,
