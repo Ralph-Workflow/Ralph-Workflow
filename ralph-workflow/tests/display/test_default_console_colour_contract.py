@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from io import StringIO
-from typing import TYPE_CHECKING
 
+import pytest
+from rich.console import Console
 from rich.text import Text
-
-if TYPE_CHECKING:
-    import pytest
 
 from ralph.display.context import make_display_context
 from ralph.display.theme import make_console
@@ -61,6 +59,29 @@ def test_make_console_regression_none_override_still_enables_colour() -> None:
     console = make_console(force_terminal=True, color_system=None)
 
     assert console.color_system is not None
+
+
+@pytest.mark.parametrize(
+    "env",
+    (
+        _colour_env(),
+        {**_colour_env(), "RALPH_TERMINAL_BG": "dark"},
+        {**_colour_env(), "RALPH_TERMINAL_BG": "light"},
+    ),
+)
+def test_display_context_regression_injected_console_keeps_semantic_theme(
+    env: dict[str, str],
+) -> None:
+    """S-2: injected consoles render semantic styles on every background path."""
+    stream = StringIO()
+    ctx = make_display_context(
+        console=Console(file=stream, force_terminal=True, color_system="truecolor", highlight=False),
+        env=env,
+    )
+
+    assert ctx.console.get_style("theme.status.success").color is not None
+    ctx.console.print(Text("coloured", style="theme.status.success"))
+    assert "38;2;" in stream.getvalue()
 
 
 def test_no_color_still_disables_output() -> None:

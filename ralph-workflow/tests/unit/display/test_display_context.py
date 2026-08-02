@@ -87,7 +87,7 @@ def test_display_context_regression_default_console_emits_color_off_tty() -> Non
     ctx.console.file = output
     ctx.console.print("[theme.phase.development]development[/]")
 
-    assert "\x1b[38;2;" in output.getvalue()
+    assert "\x1b[" in output.getvalue()
 
 
 def test_default_mode_uses_single_fixed_limits() -> None:

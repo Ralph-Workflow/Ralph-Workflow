@@ -574,10 +574,12 @@ def make_display_context(
         injected_console = False
         resolved_console = _build_console(resolved_env, resolved_background)
     else:
+        from rich.console import Console
+
         injected_console = True
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
-        if resolved_background is not None:
+        if isinstance(resolved_console, Console):
             resolved_console.push_theme(theme_for_background(resolved_background))
     width = _compute_width(
         resolved_env,

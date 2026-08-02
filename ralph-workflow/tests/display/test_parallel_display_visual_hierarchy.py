@@ -30,7 +30,7 @@ from ralph.display.completion_summary import CompletionSummaryOptions
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
-from ralph.display.theme import RALPH_THEME
+from ralph.display.theme import RALPH_THEME, RALPH_THEME_ON_UNKNOWN_BG
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+\-]\d{2}:\d{2}")
@@ -41,10 +41,10 @@ _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+\-]\
 # Normalizing the substring makes the parity assertion deterministic without
 # forcing the production code to inject a clock.
 _ELAPSED_RE = re.compile(r"elapsed=\d+(?:\.\d+)?s")
-# Pre-built ANSI prefix for theme.banner.border (#56B4E9 = sky-blue). When Rich
-# applies a hex color to a Text span it emits \x1b[38;2;86;180;233m (24-bit
-# truecolor) on a `truecolor` color_system console.
-_SKY_BLUE_24BIT_ANSI = "\x1b[38;2;86;180;233m"
+# Pre-built ANSI prefix for theme.banner.border in the unknown-background
+# palette (#0074E8). The context must use this fallback when no background
+# signal is available.
+_UNKNOWN_BG_BORDER_24BIT_ANSI = "\x1b[38;2;0;116;232m"
 # Pre-built ANSI prefix for bold (theme.banner.title wraps `bold #56B4E9`).
 # The escape `\x1b[1;...m` starts with `\x1b[1` (bold attribute) before the
 # color code; we match the bold attribute alone.
@@ -60,7 +60,7 @@ def _make_display(*, force_terminal: bool) -> tuple[ParallelDisplay, io.StringIO
         force_terminal=force_terminal,
         color_system=("truecolor" if force_terminal else None),
         width=120,
-        theme=RALPH_THEME,
+        theme=RALPH_THEME_ON_UNKNOWN_BG,
     )
     ctx = make_display_context(console=console, env={"CI": "1"})
     return ParallelDisplay(ctx), buf
@@ -89,9 +89,9 @@ def test_section_rule_uses_banner_border_style() -> None:
     text = buf.getvalue()
     rule_line = _section_rule_line(text)
     assert rule_line is not None, f"section rule line not found in:\n{text!r}"
-    assert _SKY_BLUE_24BIT_ANSI in rule_line, (
-        f"section rule line must carry the theme.banner.border sky-blue ANSI "
-        f"({_SKY_BLUE_24BIT_ANSI!r}); got:\n{rule_line!r}"
+    assert _UNKNOWN_BG_BORDER_24BIT_ANSI in rule_line, (
+        f"section rule line must carry the unknown-background theme.banner.border ANSI "
+        f"({_UNKNOWN_BG_BORDER_24BIT_ANSI!r}); got:\n{rule_line!r}"
     )
     assert "─" in rule_line, f"section rule line must contain the rule glyph; got:\n{rule_line!r}"
 
@@ -446,9 +446,9 @@ def test_visual_hierarchy_emit_completion_summary_panel() -> None:
     text = buf.getvalue()
     assert "[run-completion]" in text, f"missing [run-completion] section rule: {text!r}"
     assert "Pipeline Complete" in text, f"missing body title: {text!r}"
-    assert _SKY_BLUE_24BIT_ANSI in text, (
-        f"section rule line must carry the theme.banner.border sky-blue ANSI "
-        f"({_SKY_BLUE_24BIT_ANSI!r}); got:\n{text!r}"
+    assert _UNKNOWN_BG_BORDER_24BIT_ANSI in text, (
+        f"section rule line must carry the unknown-background theme.banner.border ANSI "
+        f"({_UNKNOWN_BG_BORDER_24BIT_ANSI!r}); got:\n{text!r}"
     )
 
 

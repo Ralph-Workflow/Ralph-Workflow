@@ -251,7 +251,7 @@ def render_completion_summary_group(
             f"fallbacks={snapshot.total_fallbacks} "
             f"retries={snapshot.total_retries} "
             f"pushes={snapshot.push_count}",
-            style="theme.text.muted",
+            style=style,
         )
     )
     renderables.extend(_decisions_section(snapshot, style))

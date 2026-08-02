@@ -917,7 +917,7 @@ def make_console(
     keeps plaintext inside tool output uncoloured), and the
     same ``no_color`` / ``force_terminal`` / ``width`` resolver
     semantics. Rich interprets ``color_system=None`` as no ANSI
-    output, so Ralph resolves an unspecified system to ``"auto"``;
+    output, so Ralph resolves an unspecified system to ``"truecolor"``;
     use ``no_color=True`` to disable colour. Tests and runtime code
     use this helper to keep the colour behaviour consistent.
 
