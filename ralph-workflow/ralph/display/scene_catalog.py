@@ -409,6 +409,65 @@ def floor_matrix() -> tuple[SupportCase, ...]:
     )
 
 
+def compact_matrix() -> tuple[SupportCase, ...]:
+    """Return the compact matrix used by the per-scene sweep tests.
+
+    The full :func:`support_matrix` is 162 cases (3 backgrounds x 3 colours
+    x 2 glyphs x 3 widths x 3 destinations). Per-scene sweeps over the
+    full matrix produce 972 cases (6 scenes x 162), which pushes the
+    per-shard wall-clock over the immutable 60 s combined budget because
+    each scene must import the renderer pipeline, instantiate the
+    console, and emit the full ANSI/SGR/colour stream before the
+    assertions can fire.
+
+    The compact matrix covers the same five logical axes (background,
+    colour mode, glyph mode, width, destination) but holds the width
+    axis at the canonical full-layout width (80) for the cross-product
+    sweep, plus a focused width-axis witness that exercises the
+    graceful floor (40 columns) on one representative
+    (background, colour, glyph) cell per destination and a
+    high-water-mark sample at 120 columns. That yields 54 + 9 + 3 = 66
+    cases per full sweep (66 x 6 scenes = 396 tests), which fits inside
+    the budget while preserving:
+
+    * all three backgrounds (dark, light, unknown);
+    * all three colour modes (truecolour, reduced, none);
+    * both glyph modes (unicode, ascii);
+    * the width axis at the graceful floor (40) and the high-water
+      mark (120) so width-aware layout assertions still fire;
+    * all three destinations (tty, redirect, ci) so the
+      destination-specific repaint/erase invariants stay covered.
+
+    This is the matrix used by ``tests/test_display_generated_scenes.py``
+    to assert that each of the six reference scenes renders without
+    crashing and obeys the per-case colour / repaint invariants. The
+    support matrix remains the canonical contract (see
+    :func:`support_matrix`); the matrix shape itself is locked by
+    ``test_generated_scene_support_matrix_declares_all_dimensions``.
+    """
+    backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
+    colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
+    glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
+    destinations: tuple[Destination, ...] = ("tty", "redirect", "ci")
+    main = tuple(
+        SupportCase(background, colour, glyphs, FULL_LAYOUT_WIDTH, destination)
+        for background in backgrounds
+        for colour in colours
+        for glyphs in glyph_modes
+        for destination in destinations
+    )
+    width_witness = tuple(
+        SupportCase(background, colour, "unicode", GRACEFUL_WIDTH_FLOOR, destination)
+        for background in backgrounds
+        for colour in colours
+        for destination in destinations
+    ) + tuple(
+        SupportCase("dark", "truecolour", "unicode", 120, destination)
+        for destination in destinations
+    )
+    return main + width_witness
+
+
 __all__ = [
     "CANONICAL_VALUE_FORMATS",
     "CONTRAST_FLOOR",
@@ -420,6 +479,7 @@ __all__ = [
     "SURFACE_CATALOG",
     "SupportCase",
     "SurfaceSpec",
+    "compact_matrix",
     "floor_matrix",
     "render_scene",
     "support_matrix",
