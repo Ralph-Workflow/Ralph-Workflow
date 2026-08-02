@@ -471,7 +471,9 @@ def test_generated_scene_regression_burst_preserves_structural_carriers_under_vo
         terminal_bg_is_light=False,
     )
 
-    assert rendered.count("[call][codex]") >= 24
+    # A burst must preserve its representative call and recovery carrier without
+    # flushing structural beats off-screen as 24 equal-weight rows.
+    assert rendered.count("[call][codex]") == 1
     assert "count=24" in rendered
     assert ".agent/raw/run.log" in rendered
 

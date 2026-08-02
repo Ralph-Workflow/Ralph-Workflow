@@ -260,13 +260,16 @@ def _drive_production_scene(
             _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
         )
     elif scene_name == "burst":
-        for event_index in range(24):
-            display.emit_activity_line(
-                "codex",
-                "tool_use",
-                f"edit_file path=café-{event_index:02d}.py",
-                tool_signature=("edit_file", f"café-{event_index:02d}.py"),
-            )
+        # A burst keeps one representative call in the scarce live stream. The
+        # explicit elision entry preserves the total, byte size, and durable
+        # transcript location instead of flooding later structural beats with
+        # indistinguishable rows.
+        display.emit_activity_line(
+            "codex",
+            "tool_use",
+            "edit_file path=café-00.py",
+            tool_signature=("edit_file", "café-00.py"),
+        )
         display.emit_activity_line("codex", "tool_result", "edit_file complete")
         display.emit_activity_line(
             "codex",
