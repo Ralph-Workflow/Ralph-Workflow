@@ -337,7 +337,7 @@ class MemoryWorkspace:
         if normalized in self._storage:
             return {
                 "type": "file",
-                "size_bytes": len(self._storage[normalized]),
+                "size_bytes": len(self._storage[normalized].encode("utf-8")),
                 "created_unix": None,
                 "modified_unix": None,
                 "mode": None,

@@ -37,3 +37,14 @@ class TestFsWorkspaceStat:
 
             result = ws.stat("missing.txt")
             assert result["type"] == "missing"
+
+    def test_stat_reports_utf8_byte_size(self) -> None:
+        from ralph.workspace.memory import MemoryWorkspace
+
+        workspace = MemoryWorkspace()
+        workspace.write("unicode.txt", "é")
+
+        result = workspace.stat("unicode.txt")
+
+        assert result["type"] == "file"
+        assert result["size_bytes"] == 2
