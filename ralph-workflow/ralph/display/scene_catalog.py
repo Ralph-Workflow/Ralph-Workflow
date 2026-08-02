@@ -246,6 +246,7 @@ def _drive_production_scene(
             )
         )
     elif scene_name == "failure":
+        display.emit_phase_start("review", agent_name="reviewer")
         raw_machine_detail = "tests failed: assertion output retained; " + "trace-detail " * 48
         display.emit_activity_line("reviewer", "error", raw_machine_detail)
         display.emit_warn_line(

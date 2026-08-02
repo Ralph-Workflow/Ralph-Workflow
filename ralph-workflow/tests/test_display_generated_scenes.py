@@ -449,6 +449,20 @@ def test_generated_scene_regression_clean_run_never_emits_an_empty_structural_ru
     assert not re.search(r"^───\s+$", rendered, flags=re.MULTILINE)
 
 
+def test_generated_scene_failure_leads_with_phase_and_cause_before_machine_detail() -> None:
+    """S-6/S-7 regression: the failure scene exposes phase and cause before its raw detail."""
+    rendered = render_scene(
+        "failure",
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+
+    phase_open = rendered.index("[phase-open]")
+    cause = rendered.index("tests failed: assertion output retained")
+    machine_detail = rendered.index("trace-detail")
+    assert phase_open < cause < machine_detail
+
+
 def test_generated_scene_regression_burst_preserves_structural_carriers_under_volume() -> None:
     """S-6: the burst scene exercises repetition without losing its recovery marker."""
     rendered = render_scene(
