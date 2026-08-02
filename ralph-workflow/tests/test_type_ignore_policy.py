@@ -51,7 +51,7 @@ def _repo_python_files() -> tuple[Path, ...]:
     return tuple(
         path
         for path in REPO_ROOT.rglob("*.py")
-        if ".venv" not in path.parts
+        if not any(part.startswith(".venv") for part in path.parts)
         and "tmp" not in path.parts
         and path.stem not in _TYPE_IGNORE_POLICY_EXEMPT_STEMS
     )

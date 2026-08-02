@@ -202,6 +202,7 @@ def test_inline_path_threads_outcome_into_returned_state(monkeypatch) -> None:
     expected_outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     integrate = MagicMock(return_value=expected_outcome)
     monkeypatch.setattr(runner, "_integrate_on_phase_transition", integrate)
+    monkeypatch.setattr(runner.ckpt, "save", lambda *_args: None)
     workspace_scope = MagicMock()
     # The display used by the seam; the inline path must pass it
     # through so the log line surfaces the integration in operator
