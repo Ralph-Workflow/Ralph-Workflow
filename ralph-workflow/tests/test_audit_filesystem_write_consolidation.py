@@ -960,6 +960,16 @@ def test_marker_suppresses_raw_shutil_rmtree(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:
+    """S-6: a missing default root cannot make the write audit silently pass."""
+    violations = audit.audit_filesystem_write_consolidation(tmp_path)
+
+    assert len(violations) == 1
+    assert violations[0].kind == "missing_production_root"
+    assert violations[0].file_path == "ralph"
+    assert "fail closed" in violations[0].message
+
+
 def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
     """DA-001 invariant: a synthetic unknown ``os.replace`` call must be flagged.
 

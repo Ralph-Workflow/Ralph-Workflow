@@ -756,6 +756,21 @@ def audit_filesystem_write_consolidation(
     exempt = _coerce_exempt_paths(exempt_paths)
     roots = _coerce_package_roots(package_root, package_roots)
 
+    if module_paths is None:
+        missing_roots = [root for root in roots if not root.is_dir()]
+        if missing_roots:
+            return [
+                FilesystemWriteViolation(
+                    kind="missing_production_root",
+                    file_path=root.relative_to(package_root).as_posix(),
+                    line=0,
+                    message=(
+                        "expected production root could not be walked; restore it so "
+                        "the filesystem-write audit can fail closed"
+                    ),
+                )
+                for root in missing_roots
+            ]
     if module_paths is not None:
         candidates = [(package_root / rel, rel) for rel in module_paths]
     else:

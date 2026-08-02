@@ -15,6 +15,36 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
     return package_root
 
 
+def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:
+    """S-6: a missing default root cannot make lifecycle enforcement silently pass."""
+    violations = audit.audit_filesystem_polling_invocation(tmp_path)
+
+    assert len(violations) == 1
+    assert violations[0].kind == "missing_production_root"
+    assert violations[0].file_path == "ralph"
+    assert "fail closed" in violations[0].message
+
+
+def test_regression_marker_in_string_literal_does_not_bypass_enforcement(tmp_path: Path) -> None:
+    """S-6: D3 markers must be local comments, not text inside a payload."""
+    module_rel = "feature/poller.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import time\n"
+        "def poll() -> None:\n"
+        "    reason = 'filesystem-poll-ok: not a comment'\n"
+        "    time.sleep(1)\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_sleep_poll"]
+
+
 def test_non_utf8_candidate_module_fails_closed(tmp_path: Path) -> None:
     """S-6: undecodable new source cannot bypass lifecycle ownership enforcement."""
     module_rel = "feature/non_utf8.py"

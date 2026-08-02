@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import ast
 import sys
+import tokenize
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,11 +58,18 @@ def _is_exempt(rel_path: str, exempt_paths: frozenset[str]) -> bool:
 
 
 def _marker_lines(source: str) -> set[int]:
-    return {
-        line_number
-        for line_number, line in enumerate(source.splitlines(), start=1)
-        if _MARKER_TOKEN in line and line.split(_MARKER_TOKEN, maxsplit=1)[1].strip()
-    }
+    """Return local D3 exception comments with a stated lifecycle contract."""
+    try:
+        tokens = tokenize.generate_tokens(StringIO(source).readline)
+        return {
+            token.start[0]
+            for token in tokens
+            if token.type == tokenize.COMMENT
+            and _MARKER_TOKEN in token.string
+            and token.string.split(_MARKER_TOKEN, maxsplit=1)[1].strip()
+        }
+    except tokenize.TokenError:
+        return set()
 
 
 def _has_local_marker(line: int, marker_lines: set[int]) -> bool:
@@ -237,6 +246,22 @@ def audit_filesystem_polling_invocation(
         ]
     exempt = frozenset(exempt_paths) if exempt_paths is not None else _DEFAULT_EXEMPT_PATHS
     if module_paths is None:
+        missing_roots = [
+            package_root / root_name
+            for root_name in _DEFAULT_PACKAGE_ROOTS
+            if not (package_root / root_name).is_dir()
+        ]
+        if missing_roots:
+            return [
+                FilesystemPollingInvocationViolation(
+                    "missing_production_root",
+                    root.relative_to(package_root).as_posix(),
+                    0,
+                    "expected production root could not be walked; restore it so the "
+                    "filesystem polling/invocation audit can fail closed",
+                )
+                for root in missing_roots
+            ]
         candidates = [
             (path, path.relative_to(package_root).as_posix())
             for root_name in _DEFAULT_PACKAGE_ROOTS
