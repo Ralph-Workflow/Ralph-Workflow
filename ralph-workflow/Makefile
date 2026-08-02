@@ -2,7 +2,7 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: `auto` resolves to the fixed measured-safe twenty-four-shard profile,
+# Default: `auto` resolves to the fixed measured-safe eight-shard profile,
 # independent of available CPU count. The 1.0 s per-test SIGALRM budget charges
 # wall clock; this profile keeps the maintained suite below the immutable 60 s
 # budget even on low-core hosts.
