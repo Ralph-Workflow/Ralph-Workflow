@@ -135,8 +135,13 @@ def _write_worker_prompt(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
     """Persist a rendered worker prompt without rewriting identical content."""
-    backend.mkdir(prompt_path.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, prompt_path, rendered_prompt, encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        prompt_path,
+        rendered_prompt,
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(prompt_path.parent, parents=True, exist_ok=True),
+    )
 
 
 def _emit_deferred_integration_line(

@@ -49,8 +49,12 @@ def write_cycle_baseline(
     baseline_path = workspace_root / _BASELINE_FILENAME
     if not force and backend.exists(baseline_path):
         return
-    backend.mkdir(baseline_path.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, baseline_path, sha.strip() + "\n")
+    write_text_if_changed(
+        backend,
+        baseline_path,
+        sha.strip() + "\n",
+        prepare_write=lambda: backend.mkdir(baseline_path.parent, parents=True, exist_ok=True),
+    )
 
 
 def read_cycle_baseline(workspace_root: Path) -> str | None:

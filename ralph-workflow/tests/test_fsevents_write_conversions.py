@@ -136,6 +136,7 @@ def test_parallel_worker_prompt_regression_skips_byte_identical_rewrite() -> Non
     write_prompt(prompt_path, "worker prompt", backend=backend)
 
     assert backend.write_text_calls == 1
+    assert backend.mkdir_calls == 1
     assert backend.files[prompt_path] == "worker prompt"
 
 
@@ -163,6 +164,7 @@ def test_cycle_baseline_regression_skips_byte_identical_rewrite() -> None:
 
     expected_path = root / ".agent" / "start_commit"
     assert backend.write_text_calls == 1
+    assert backend.mkdir_calls == 1
     assert backend.files[expected_path] == "sha-x\n"
 
 

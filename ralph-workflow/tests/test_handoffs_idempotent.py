@@ -105,6 +105,7 @@ def test_parallel_summary_handoff_skips_write_when_content_identical() -> None:
     write_parallel_summary_handoff(workspace_root, _SUMMARY, backend=backend)
 
     assert len(backend.write_text_calls) == 1
+    assert backend.mkdir_calls == [workspace_root / ".agent"]
 
 
 def test_parallel_summary_handoff_writes_when_content_changed() -> None:

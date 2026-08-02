@@ -226,9 +226,12 @@ def write_parallel_summary_handoff(
     if relative_path is None:
         return None
     destination = workspace_root / relative_path
-    backend.mkdir(destination.parent, parents=True, exist_ok=True)
     write_text_if_changed(
-        backend, destination, _render_parallel_summary_markdown(summary), encoding="utf-8"
+        backend,
+        destination,
+        _render_parallel_summary_markdown(summary),
+        encoding="utf-8",
+        prepare_write=lambda: backend.mkdir(destination.parent, parents=True, exist_ok=True),
     )
     return relative_path
 
