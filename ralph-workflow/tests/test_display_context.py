@@ -34,7 +34,13 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
     assert isinstance(ctx, DisplayContext)
     assert ctx.width > 0
     assert ctx.console is not None
-    assert ctx.theme is theme_for_background(ctx.terminal_background_is_light)
+    expected = theme_for_background(ctx.terminal_background_is_light)
+    assert set(ctx.theme.styles) == set(expected.styles)
+    assert {
+        name: str(style) for name, style in ctx.theme.styles.items()
+    } == {
+        name: str(style) for name, style in expected.styles.items()
+    }
 
 
 @pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])

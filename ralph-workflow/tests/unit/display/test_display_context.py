@@ -116,7 +116,13 @@ def test_display_context_is_frozen() -> None:
 
 def test_display_context_has_theme_for_resolved_background() -> None:
     ctx = make_display_context(env={})
-    assert ctx.theme is theme_for_background(ctx.terminal_background_is_light)
+    expected = theme_for_background(ctx.terminal_background_is_light)
+    assert set(ctx.theme.styles) == set(expected.styles)
+    assert {
+        name: str(style) for name, style in ctx.theme.styles.items()
+    } == {
+        name: str(style) for name, style in expected.styles.items()
+    }
 
 
 def test_make_display_context_creates_console_when_none() -> None:

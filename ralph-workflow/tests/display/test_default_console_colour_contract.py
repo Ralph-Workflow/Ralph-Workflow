@@ -103,6 +103,27 @@ def test_display_context_regression_unknown_background_themes_injected_console(
     assert "38;2;" in stream.getvalue()
 
 
+def test_display_context_regression_standard_console_does_not_downgrade_later_truecolor() -> None:
+    """DA-001: one ANSI console cannot poison later truecolor semantic output."""
+    standard_stream = StringIO()
+    standard_context = make_display_context(
+        console=Console(
+            file=standard_stream,
+            force_terminal=True,
+            color_system="standard",
+            highlight=False,
+        ),
+        env={},
+    )
+    standard_context.console.print(Text("development", style="theme.phase.development"))
+
+    truecolor_stream = StringIO()
+    truecolor_console = make_console(file=truecolor_stream, force_terminal=True)
+    truecolor_console.print(Text("development", style="theme.phase.development"))
+
+    assert "38;2;" in truecolor_stream.getvalue()
+
+
 def test_no_color_still_disables_output() -> None:
     """The explicit standard disable switch remains authoritative."""
     env = {**_colour_env(), "NO_COLOR": "1"}

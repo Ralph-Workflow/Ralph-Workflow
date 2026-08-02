@@ -21,6 +21,7 @@ import zlib
 from typing import TYPE_CHECKING, Final, Literal
 
 from rich.console import Console
+from rich.style import Style
 from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
 
@@ -39,7 +40,6 @@ VERMILLION: Final[str] = "#D55E00"
 REDDISH_PURPLE: Final[str] = "#CC79A7"
 BLACK: Final[str] = "#000000"
 
-# Glyph tables for Unicode and ASCII modes
 UNICODE_GLYPHS: Final[dict[str, str]] = {
     "success": "\u2713",
     "error": "\u2717",
@@ -153,7 +153,6 @@ IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
     "#556B2F", "#5A4FCF", "#483D8B", "#A52A2A", "#3D3D3D", "#1A1A1A",
 )
 
-#: Mid-luminance identity colours proven readable on both black and white.
 IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
     "#0070F0", "#0080A0", "#3070E0", "#308080", "#508040", "#6070C0",
     "#608000", "#7060F0", "#807080", "#9060C0", "#907000", "#907030",
@@ -459,10 +458,7 @@ _THEME_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
 }
 RALPH_THEME_ON_LIGHT_BG: Final[Theme] = Theme(_THEME_STYLES_ON_LIGHT_BG)
 
-# An undetermined terminal background is still a display surface. Use only
-# fixed mid-luminance pigments that clear the contrast floor against both black
-# and white; assuming the dark palette here made chrome disappear on an
-# undetected light terminal.
+# Unknown backgrounds use fixed mid-luminance pigments readable on black and white.
 _THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
     **_THEME_STYLES,
     "theme.level.info": "bold #178383",
@@ -521,13 +517,29 @@ _THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
 RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
 
+def _fresh_style(style: str) -> Style:
+    """Build one style whose mutable ANSI cache cannot cross consoles."""
+    tokens = style.split()
+    fresh = Style(
+        color=next((token for token in tokens if token.startswith("#")), None),
+        bold="bold" in tokens,
+        italic="italic" in tokens,
+    )
+    fresh._hash = id(fresh)
+    return fresh
+
+
+def _fresh_theme(styles: Mapping[str, str]) -> Theme:
+    return Theme({name: _fresh_style(style) for name, style in styles.items()})
+
+
 def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
-    """Return the semantic Rich theme resolved for a known or unknown background."""
+    """Return a new theme so ANSI caching cannot downgrade another console."""
     if terminal_bg_is_light is True:
-        return RALPH_THEME_ON_LIGHT_BG
+        return _fresh_theme(_THEME_STYLES_ON_LIGHT_BG)
     if terminal_bg_is_light is False:
-        return RALPH_THEME
-    return RALPH_THEME_ON_UNKNOWN_BG
+        return _fresh_theme(_THEME_STYLES)
+    return _fresh_theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
 
 _MIN_CONTRAST_RATIO: Final[float] = 4.5
@@ -694,21 +706,15 @@ def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
     )
 
 
-#: Syntax-highlight palettes selected for dark and light terminal backgrounds.
-#: They use fixed RGB because stock ANSI slots are operator-configurable and
-#: therefore cannot satisfy the enforced contrast and CVD contract.
+#: Fixed-RGB syntax palettes for each terminal background.
 SYNTAX_THEME_ON_DARK_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.dark())
 SYNTAX_THEME_ON_LIGHT_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.light())
 SYNTAX_THEME_ON_UNKNOWN_BG: Final[SyntaxTheme] = PygmentsSyntaxTheme(SyntaxThemes.unknown())
 
-#: Rich's ``Syntax(background_color=...)`` sentinel meaning "do not
-#: paint a background; let the terminal's own background show through".
-#: Named here so syntax-preview call sites never hard-code the literal.
+#: Rich's transparent syntax-background sentinel.
 SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
 
-# A preview owns its surface whenever the terminal background is known. This
-# makes every source row, its gutter, and padding measurable against one fixed
-# surface; unknown terminals deliberately retain the transparent fallback.
+# Known backgrounds own previews; unknown terminals stay transparent.
 _PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = "#101417"
 _PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = "#F7F9FB"
 
@@ -727,8 +733,7 @@ def preview_background_for_background(terminal_bg_is_light: bool | None) -> str:
     return SYNTAX_BACKGROUND_TRANSPARENT
 
 
-# Diff washes are intentionally resolved alongside the syntax palette. The
-# unknown-background path remains transparent rather than assuming a terminal.
+# Unknown-background diffs remain transparent.
 _DIFF_REMOVED_FILL_ON_DARK_BG: Final[str] = "#101112"
 _DIFF_ADDED_FILL_ON_DARK_BG: Final[str] = "#121110"
 _DIFF_REMOVED_FILL_ON_LIGHT_BG: Final[str] = "#F5F1F0"
