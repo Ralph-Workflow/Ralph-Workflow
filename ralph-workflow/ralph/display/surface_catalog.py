@@ -48,30 +48,35 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "phase_open",
         "parallel_display",
         format="rule: phase, state, duration",
+        scene="clean_run",
         entry_points=("emit_phase_start", "emit_phase_start_from_entry"),
     ),
     SurfaceSpec(
         "phase_close",
         "parallel_display",
         format="rule: phase, outcome, duration",
+        scene="clean_run",
         entry_points=("emit_phase_close", "emit_phase_close_from_exit", "emit_phase_close_banner"),
     ),
     SurfaceSpec(
         "phase_transition",
         "parallel_display",
         format="rule: previous outcome, next phase",
+        scene="clean_run",
         entry_points=("emit_phase_transition",),
     ),
     SurfaceSpec(
         "agent_text",
         "agent_event_renderer",
         format="grid: timestamp | category | unit | body",
+        scene="clean_run",
         entry_points=("emit_activity_line", "emit_log_line", "emit_parsed_event"),
     ),
     SurfaceSpec(
         "reasoning",
         "agent_event_renderer",
         format="grid: timestamp | category | unit | body",
+        scene="clean_run",
         entry_points=("emit_analysis_result",),
     ),
     SurfaceSpec(
@@ -188,6 +193,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         True,
         "frame: cause, metrics, recovery",
         scene="failure",
+        entry_points=("emit_completion_summary_panel",),
     ),
     SurfaceSpec(
         "capability",
@@ -207,6 +213,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "blank_gap",
         "parallel_display",
         format="gap: deliberate structural separation",
+        scene="clean_run",
         entry_points=("emit_blank_line",),
     ),
     SurfaceSpec(

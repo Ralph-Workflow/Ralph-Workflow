@@ -165,6 +165,31 @@ def test_status_and_warning_rows_repeat_greppable_carriers_when_folded_at_40_col
     assert all(cell_len(row) <= 40 for row in rows)
 
 
+def test_emit_phase_close_from_exit_uses_zero_exit_counters_over_local_activity() -> None:
+    """S-5 regression: an exit model's explicit zero remains authoritative."""
+    pd, buf = _display()
+    pd.begin_phase("development")
+    pd.emit_activity_line("pi", "text", "locally counted content")
+    pd.emit_phase_close_from_exit(
+        PhaseExitModel(
+            phase_name="development",
+            phase_role="execution",
+            agent_name="pi",
+            content_blocks=0,
+            thinking_blocks=0,
+            tool_calls=3,
+            errors=0,
+        )
+    )
+    pd.stop()
+
+    output = buf.getvalue()
+    assert "content_blocks=0" in output
+    assert "thinking_blocks=0" in output
+    assert "tool_calls=3" in output
+    assert "errors=0" in output
+
+
 def test_emit_phase_close_from_exit_quiet_mode_emits_nothing() -> None:
     """AC-05: quiet mode produces no output."""
     pd, buf = _display()

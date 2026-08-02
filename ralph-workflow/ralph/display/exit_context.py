@@ -11,10 +11,10 @@ class ExitContext:
 
     elapsed_seconds: float = 0.0
     exit_trigger: str | None = None
-    content_blocks: int = 0
-    thinking_blocks: int = 0
-    tool_calls: int = 0
-    errors: int = 0
+    content_blocks: int | None = None
+    thinking_blocks: int | None = None
+    tool_calls: int | None = None
+    errors: int | None = None
     artifact_outcome: str = ""
     review_issues_found: bool | None = None
     routing_note: str | None = None

@@ -3809,23 +3809,21 @@ class ParallelDisplay:
             counters = _PhaseCounters()
         if opts.counter_overrides is not None:
             cb = (
-                opts.counter_overrides.content_blocks
-                if opts.counter_overrides.content_blocks
-                else counters.content_blocks
+                counters.content_blocks
+                if opts.counter_overrides.content_blocks is None
+                else opts.counter_overrides.content_blocks
             )
             tb = (
-                opts.counter_overrides.thinking_blocks
-                if opts.counter_overrides.thinking_blocks
-                else counters.thinking_blocks
+                counters.thinking_blocks
+                if opts.counter_overrides.thinking_blocks is None
+                else opts.counter_overrides.thinking_blocks
             )
             tc = (
-                opts.counter_overrides.tool_calls
-                if opts.counter_overrides.tool_calls
-                else counters.tool_calls
+                counters.tool_calls
+                if opts.counter_overrides.tool_calls is None
+                else opts.counter_overrides.tool_calls
             )
-            err = (
-                opts.counter_overrides.errors if opts.counter_overrides.errors else counters.errors
-            )
+            err = counters.errors if opts.counter_overrides.errors is None else opts.counter_overrides.errors
         else:
             cb = counters.content_blocks
             tb = counters.thinking_blocks
@@ -3913,19 +3911,12 @@ class ParallelDisplay:
                     else None
                 ),
             )
-            counter_overrides = None
-            if (
-                exit_model.content_blocks > 0
-                or exit_model.thinking_blocks > 0
-                or exit_model.tool_calls > 0
-                or exit_model.errors > 0
-            ):
-                counter_overrides = _PhaseCloseCounters(
-                    content_blocks=exit_model.content_blocks,
-                    thinking_blocks=exit_model.thinking_blocks,
-                    tool_calls=exit_model.tool_calls,
-                    errors=exit_model.errors,
-                )
+            counter_overrides = _PhaseCloseCounters(
+                content_blocks=exit_model.content_blocks,
+                thinking_blocks=exit_model.thinking_blocks,
+                tool_calls=exit_model.tool_calls,
+                errors=exit_model.errors,
+            )
             self._emit_phase_close_body(
                 exit_model.phase_name,
                 exit_model.artifact_outcome,
@@ -4448,23 +4439,22 @@ class ParallelDisplay:
 
     def _build_phase_close_stats_line(self, exit_model: PhaseExitModel) -> Text | None:
         """Return an activity-stats supplementary line for the phase-close banner."""
-        total = (
-            exit_model.content_blocks
-            + exit_model.thinking_blocks
-            + exit_model.tool_calls
-            + exit_model.errors
-        )
+        content_blocks = exit_model.content_blocks or 0
+        thinking_blocks = exit_model.thinking_blocks or 0
+        tool_calls = exit_model.tool_calls or 0
+        errors = exit_model.errors or 0
+        total = content_blocks + thinking_blocks + tool_calls + errors
         if total == 0:
             return None
         stats = Text()
         stats.append("    \u21b3 stats: ", style="theme.text.muted")
         parts: list[tuple[str, str]] = [
-            (f"content={exit_model.content_blocks}", "theme.text.muted"),
-            (f"thinking={exit_model.thinking_blocks}", "theme.text.muted"),
-            (f"tools={exit_model.tool_calls}", "theme.text.muted"),
+            (f"content={content_blocks}", "theme.text.muted"),
+            (f"thinking={thinking_blocks}", "theme.text.muted"),
+            (f"tools={tool_calls}", "theme.text.muted"),
         ]
-        if exit_model.errors > 0:
-            parts.append((f"errors={exit_model.errors}", "theme.level.error"))
+        if errors > 0:
+            parts.append((f"errors={errors}", "theme.level.error"))
         for i, (part_text, part_style) in enumerate(parts):
             if i > 0:
                 stats.append("  ", style="theme.text.muted")

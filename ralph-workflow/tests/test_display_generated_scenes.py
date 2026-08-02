@@ -394,7 +394,10 @@ def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() 
         if name.startswith("emit_") and callable(getattr(ParallelDisplay, name))
     }
     assert production_emitters == catalogued
-    assert len(entry_points) == len(catalogued)
+    # Completion success and failure deliberately share the final-summary
+    # renderer; catalog ownership is one-to-many rather than a false claim
+    # that either outcome owns a private renderer.
+    assert entry_points.count("emit_completion_summary_panel") == 2
 
 
 def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scene_inputs() -> None:
@@ -402,6 +405,7 @@ def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scen
     common = SupportCase("dark", "none", "unicode", 80, "redirect")
     expected_carriers = {
         "emit_activity_line": "[output][pi]",
+        "emit_completion_summary_panel": "[run-completion]",
         "emit_log_line": "[output][pi] raw transcript carrier remains available",
         "emit_status_line": "[status][pi] waiting for an external review response",
         "emit_warn_line": "[warning][pi] waiting for an external review response",

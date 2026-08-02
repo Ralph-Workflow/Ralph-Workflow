@@ -3,7 +3,7 @@ Display Architecture
 
 This maintainer-facing page explains the internal display architecture built around :class:`~ralph.display.context.DisplayContext`.
 
-If you only need to understand what appears in the terminal during a run, start with the [Streaming Blocks and Long-Content Display](developer-internals.md#streaming-blocks-and-long-content-display) section in `developer-internals.md` instead.
+If you only need to understand what appears in the terminal during a run, start with the `Streaming Blocks and Long-Content Display <developer-internals.html#streaming-blocks-and-long-content-display>`_ section instead.
 
 .. contents:: On this page
    :local:
@@ -23,6 +23,8 @@ run, failure, burst, idle stretch, and closing screen. Each catalogued public
 ``emit_*`` seam with deterministic scene inputs is driven through its production
 owner and checked for an observable transcript carrier; the catalog cannot
 claim a representative surface that its assigned scene does not render. The
+six scenes run at 40, 80, and 120 columns, including the 12-row graceful
+floor, across the declared destination and colour cases. The
 clean-run driver also covers warning recovery, skill-install failure, and
 fallback next-step emitters, so their section carriers stay visible in both
 live and cold-read output. Analysis-decision and commit-message renderers emit
@@ -80,10 +82,8 @@ Single display owner
 --------------------
 
 :class:`~ralph.display.parallel_display.ParallelDisplay` is the **only**
-display class in Ralph Workflow. Every public display helper lives in
-exactly one module (``ralph/display/parallel_display.py`` or
-``ralph/display/context.py``) and is re-exported through
-:mod:`ralph.display`. The complete public surface is:
+display class in Ralph Workflow. Every public display helper has one production owner and is re-exported through
+:mod:`ralph.display`. The core operational seams are:
 
 .. list-table::
    :header-rows: 1
@@ -108,8 +108,8 @@ exactly one module (``ralph/display/parallel_display.py`` or
    * - :func:`~ralph.display.parallel_display.strip_markup`
      - ``ralph/display/parallel_display.py``
 
-The 42 consolidated ``emit_*`` methods on ``ParallelDisplay`` (41
-instance methods + the module-level ``emit_activity_line``) own every
+The 43 named ``emit_*`` seams (42 ``ParallelDisplay`` instance methods
+plus the module-level ``emit_activity_line`` helper) own every
 user-facing banner, table, panel, and one-shot status surface. The
 persistent bottom Status Bar is intentionally outside the ``emit_*``
 surface: it is composed via the ``ralph.display.status_bar`` module
@@ -117,8 +117,10 @@ surface: it is composed via the ``ralph.display.status_bar`` module
 ``render_status_bar``), reachable through ``ParallelDisplay.status_bar``,
 and pushed to via ``ParallelDisplay.update_status_bar(model)``. The
 persistent footer renders on the ``_STATUS_BAR_REFRESH_PER_SECOND``
-cadence (4.0 Hz / 250 ms) and is gated on a real-TTY run, so
-non-interactive output stays clean. ``DisplayContext`` resolves the terminal
+cadence (4.0 Hz / 250 ms) and is gated on a real-TTY run. Non-interactive
+streams receive no Live/repaint bytes; changed attention states produce
+one deduplicated durable line, while ordinary phase-only updates remain
+transient. ``DisplayContext`` resolves the terminal
 background once from its environment; event identities and the footer use the
 matching dark/light identity palette without each renderer probing the terminal.
 When background detection is unavailable, they use the dedicated unknown-background
@@ -195,6 +197,16 @@ First-run and welcome
 
 - ``emit_welcome_banner`` — emit the welcome ASCII banner.
 - ``emit_first_run_panel`` — emit the first-run panel.
+
+Transcript and completion
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- ``emit_log_line`` — emit a raw transcript line with its activity carrier.
+- ``emit_status_line`` — emit a per-unit durable status line.
+- ``emit_warn_line`` — emit a per-unit durable warning line.
+- ``emit_snapshot`` — emit the pipeline snapshot surface.
+- ``emit_completion_summary_panel`` — emit the final standalone completion panel.
+- ``emit_renderable`` — emit a shared arbitrary renderable through the display seam.
 
 Helpers
 ~~~~~~~
@@ -299,9 +311,9 @@ in ``tests/test_no_anti_drift_regression.py`` performs the same scan
 specifically for ``DisplayContext`` materialisation at import time.
 
 The :class:`tests.test_no_anti_drift_regression.TestPublicSurfaceImports`
-test pins the public surface by importing all nine canonical symbols from
-:mod:`ralph.display` and asserting they are all callable or class
-objects — this catches accidental re-export drift before users notice.
+test pins the canonical public imports from :mod:`ralph.display`, catching
+accidental re-export drift before users notice. The package ``__all__`` and the
+generated modules API remain the complete public-import inventory.
 
 Visual hierarchy
 ----------------
