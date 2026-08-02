@@ -428,8 +428,30 @@ def _path_variable_names(
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
         scope = _scope_key(node, parents)
-        names.update((scope, target.id) for target in targets if isinstance(target, ast.Name))
+        names.update(
+            (scope, target_key)
+            for target in targets
+            if (target_key := _path_target_key(target)) is not None
+        )
     return frozenset(names)
+
+
+def _path_target_key(target: ast.expr) -> str | None:
+    """Return a conservative key for a local or ``self``-held path target."""
+    if isinstance(target, ast.Name):
+        return target.id
+    if (
+        isinstance(target, ast.Attribute)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "self"
+    ):
+        return f"self.{target.attr}"
+    return None
+
+
+def _path_receiver_key(receiver: ast.expr) -> str | None:
+    """Return the matching provenance key for a mutation receiver."""
+    return _path_target_key(receiver)
 
 
 def _raw_qualified_mutation_call(
@@ -465,7 +487,8 @@ def _raw_qualified_mutation_call(
     if attr not in _RAW_MUTATION_ATTRS:
         return None
     receiver = node.func.value
-    if isinstance(receiver, ast.Name) and (_scope_key(node, parents), receiver.id) in path_variables:
+    receiver_key = _path_receiver_key(receiver)
+    if receiver_key is not None and (_scope_key(node, parents), receiver_key) in path_variables:
         return attr if attr in {
             "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate", "chmod"
         } else None

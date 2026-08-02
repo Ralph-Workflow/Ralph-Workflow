@@ -588,6 +588,29 @@ def test_flags_path_derived_variable_without_path_suffix(tmp_path: Path) -> None
     assert violations[0].line == 4
 
 
+def test_regression_instance_path_provenance_flags_raw_unlink(tmp_path: Path) -> None:
+    """S-1/S-6: a workspace-held path cannot evade write ownership enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "from pathlib import Path\n"
+            "class Workspace:\n"
+            "    def remove(self) -> None:\n"
+            "        self.target = Path('stale')\n"
+            "        self.target.unlink(missing_ok=True)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_unlink"]
+    assert violations[0].line == 5
+
+
 def test_path_provenance_does_not_leak_between_function_scopes(tmp_path: Path) -> None:
     """S-8 regression: a Path local cannot misclassify another function's domain object."""
     module_rel = "alpha/example.py"

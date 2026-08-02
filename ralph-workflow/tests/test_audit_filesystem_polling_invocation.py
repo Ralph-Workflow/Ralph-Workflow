@@ -122,6 +122,25 @@ def test_regression_aliased_watchdog_module_construction_fails_closed(tmp_path: 
     assert violations[0].kind == "raw_observer_construction"
 
 
+def test_regression_root_watchdog_package_observer_construction_fails_closed(tmp_path: Path) -> None:
+    """S-1/S-6: root watchdog imports cannot hide a second recursive watch."""
+    module_rel = "feature/watch.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import watchdog\n"
+        "def start() -> object:\n"
+        "    return watchdog.observers.Observer()\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_observer_construction"]
+
+
 def test_regression_unowned_observer_construction_fails_closed(tmp_path: Path) -> None:
     """S-6: a second watch owner is rejected with P1 lifecycle guidance."""
     module_rel = "feature/watch.py"

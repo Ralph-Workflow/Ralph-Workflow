@@ -85,11 +85,35 @@ _SUBPROCESS_CALLS: frozenset[str] = frozenset(
 def _module_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str], dict[str, str]]:
     time_names = _imported_names(tree, module="time", accepted={"time", "sleep"})
     asyncio_names = _imported_names(tree, module="asyncio", accepted={"asyncio", "sleep"})
-    observer_names = _imported_names(
-        tree, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
-    )
+    observer_names = _observer_aliases(tree)
     subprocess_names = _subprocess_aliases(tree)
     return time_names, asyncio_names, observer_names, subprocess_names
+
+
+def _observer_aliases(tree: ast.Module) -> set[str]:
+    """Return local roots that can construct watchdog observers.
+
+    ``import watchdog`` exposes the same observer constructor as a direct
+    ``watchdog.observers`` import.  Recognizing the root package keeps a new
+    watch owner from evading P1/P4 enforcement through attribute chaining.
+    """
+    aliases = _imported_names(
+        tree, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
+    )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            aliases.update(
+                imported.asname or imported.name
+                for imported in node.names
+                if imported.name == "watchdog"
+            )
+        elif isinstance(node, ast.ImportFrom) and node.module == "watchdog":
+            aliases.update(
+                imported.asname or imported.name
+                for imported in node.names
+                if imported.name == "observers"
+            )
+    return aliases
 
 
 def _subprocess_aliases(tree: ast.Module) -> dict[str, str]:

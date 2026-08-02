@@ -66,6 +66,7 @@ class ExploreStore(_ContentCacheMethods):
         busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
     ) -> None:
         self.index_dir = Path(index_dir)
+        # filesystem-write-ok: engine-internal SQLite directory creation is required before durable index publication.
         self.index_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self.index_dir / DEFAULT_INDEX_DB
         self._busy_timeout_ms = busy_timeout_ms
