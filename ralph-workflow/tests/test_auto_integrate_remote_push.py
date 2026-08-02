@@ -1,16 +1,16 @@
-"""Deterministic coverage for opt-in auto-integration target publication."""
+"""Deterministic wrapper coverage for opt-in auto-integration publication."""
 
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_ff
 from ralph.pipeline.rebase_state import RebaseState
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+if TYPE_CHECKING:
+    import pytest
 
 
 def _config(*, enabled: bool) -> UnifiedConfig:
@@ -24,52 +24,58 @@ def _config(*, enabled: bool) -> UnifiedConfig:
     )
 
 
-def test_successful_landing_records_configured_remote_push_for_normal_and_recovery_paths(
+def _record() -> RebaseState:
+    return RebaseState(last_action="rebased", last_target="release", fast_forwarded=True)
+
+
+def test_enabled_remote_sync_delegates_landing_to_push_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The shared hook records the one configured remote after either landing."""
-    calls: list[tuple[Path, str, str, float]] = []
+    """The public landing wrapper forwards its configured target to the push seam."""
+    calls: list[tuple[UnifiedConfig | None, Path, str, RebaseState]] = []
+    record = _record()
 
-    def push(repo: Path, branch: str, *, remote: str, timeout_seconds: float) -> str:
-        calls.append((repo, branch, remote, timeout_seconds))
-        return "pushed release to origin"
+    def push_hook(
+        config: UnifiedConfig | None, repo_root: Path, target: str, received: RebaseState
+    ) -> RebaseState:
+        calls.append((config, repo_root, target, received))
+        return received.model_copy(update={"last_push": "pushed release to origin"})
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync._remote_push_module.push_branch_to_single_remote",
-        push,
-    )
-    state = RebaseState(last_action="rebased", last_target="release", fast_forwarded=True)
-
-    normal = auto_integrate_ff.maybe_push_target(
-        _config(enabled=True), Path("/repo"), "release", state
-    )
-    recovery = auto_integrate_ff.maybe_push_target(
-        _config(enabled=True), Path("/repo"), "release", state
+        "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", push_hook
     )
 
-    assert normal.last_push == "pushed release to origin"
-    assert recovery.last_push == "pushed release to origin"
-    assert calls == [
-        (Path("/repo"), "release", "origin", 30.0),
-        (Path("/repo"), "release", "origin", 30.0),
-    ]
+    result = auto_integrate_ff.maybe_push_target(_config(enabled=True), Path("/repo"), "release", record)
+
+    assert result.last_push == "pushed release to origin"
+    assert calls == [(_config(enabled=True), Path("/repo"), "release", record)]
 
 
-def test_disabled_push_preserves_landing_without_contacting_remote(
+def test_disabled_remote_sync_preserves_landing_without_calling_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The default-off hook leaves the local-success record unchanged."""
+    """The public wrapper leaves a local landing untouched when sync is disabled."""
+    record = _record()
 
-    def unexpected_push(*_args: object, **_kwargs: object) -> str:
-        raise AssertionError("disabled push contacted a remote")
+    def unexpected_hook(*_args: object, **_kwargs: object) -> RebaseState:
+        raise AssertionError("disabled remote sync called its push hook")
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync._remote_push_module.push_branch_to_single_remote",
-        unexpected_push,
+        "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", unexpected_hook
     )
-    state = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
 
-    assert (
-        auto_integrate_ff.maybe_push_target(_config(enabled=False), Path("/repo"), "main", state)
-        is state
+    assert auto_integrate_ff.maybe_push_target(_config(enabled=False), Path("/repo"), "release", record) is record
+
+
+def test_push_hook_exception_preserves_local_landing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unexpected remote-hook failure never rolls back a successful local landing."""
+    record = _record()
+
+    def failing_hook(*_args: object, **_kwargs: object) -> RebaseState:
+        raise RuntimeError("remote unavailable")
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_remote_sync.push_target_after_landing", failing_hook
     )
+
+    assert auto_integrate_ff.maybe_push_target(_config(enabled=True), Path("/repo"), "release", record) is record

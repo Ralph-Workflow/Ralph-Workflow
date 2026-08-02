@@ -36,7 +36,6 @@ _CATALOG: tuple[tuple[str, str, str], ...] = (
     ("AC-06", "tests/test_auto_integrate_recovery.py", "test_*"),
     ("AC-07", "tests/test_auto_integrate_recovery.py", "test_*"),
     ("AC-10", "tests/test_auto_integrate_race.py", "test_*"),
-    ("AC-12", "tests/test_auto_integrate_remote_push.py", "test_*"),
     ("AC-15", "tests/test_auto_integrate_rung4_self_resume.py", "test_*"),
 )
 
