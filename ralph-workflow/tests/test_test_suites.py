@@ -15,9 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
-    "tests/test_auto_integrate_end_to_end.py",
-)
+EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
 
 
 class _FakeShardProcess:
@@ -285,6 +283,47 @@ def test_validate_exact_file_assignment_rejects_missing_and_unexpected_files() -
 def test_partition_selected_files_rejects_non_positive_worker_count() -> None:
     with pytest.raises(ValueError, match="worker_count must be positive"):
         test_suites_module.partition_selected_files(("tests/test_alpha.py",), worker_count=0)
+
+
+def test_static_discovery_excludes_only_module_marked_e2e_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_e2e_only.py").write_text(
+        "import pytest\npytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_mixed.py").write_text(
+        "import pytest\n\n@pytest.mark.subprocess_e2e\ndef test_boundary() -> None: pass\n\ndef test_default() -> None: pass\n",
+        encoding="utf-8",
+    )
+    (tests_root / "test_reassigned.py").write_text(
+        "import pytest\npytestmark = pytest.mark.subprocess_e2e\npytestmark = []\n",
+        encoding="utf-8",
+    )
+    required = tests_root / "test_required.py"
+    required.write_text(
+        "import pytest\npytestmark = pytest.mark.subprocess_e2e\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_required.py",),
+    )
+
+    assert test_suites_module.discover_test_files(tmp_path) == (
+        "tests/test_mixed.py",
+        "tests/test_reassigned.py",
+        "tests/test_required.py",
+    )
+    assert test_suites_module.discover_subprocess_e2e_files(tmp_path) == (
+        "tests/test_e2e_only.py",
+        "tests/test_mixed.py",
+        "tests/test_reassigned.py",
+        "tests/test_required.py",
+    )
 
 
 def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:

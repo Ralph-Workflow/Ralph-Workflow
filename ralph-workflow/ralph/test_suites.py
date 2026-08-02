@@ -254,8 +254,55 @@ def _shard_command(
     )
 
 
-def discover_test_files(cwd: Path) -> tuple[str, ...]:
-    """Return sorted pytest files using pytest's default filename patterns."""
+def _is_subprocess_e2e_marker(expression: ast.expr) -> bool:
+    """Return whether an expression is the ``pytest.mark.subprocess_e2e`` marker."""
+    return (
+        isinstance(expression, ast.Attribute)
+        and expression.attr == "subprocess_e2e"
+        and isinstance(expression.value, ast.Attribute)
+        and expression.value.attr == "mark"
+        and isinstance(expression.value.value, ast.Name)
+        and expression.value.value.id == "pytest"
+    )
+
+
+def _is_module_subprocess_e2e(source: str, *, filename: str) -> bool:
+    """Return whether a module-level ``pytestmark`` marks every item as E2E."""
+    if "pytestmark" not in source or "subprocess_e2e" not in source:
+        return False
+    tree = ast.parse(source, filename=filename)
+    final_marker: ast.expr | None = None
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in statement.targets
+        ):
+            final_marker = statement.value
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and (statement.target.id == "pytestmark")
+        ):
+            # An annotation without a value or a non-simple later assignment
+            # makes static classification uncertain, so retain the module.
+            final_marker = None
+        elif (
+            isinstance(statement, ast.AugAssign)
+            and isinstance(statement.target, ast.Name)
+            and (statement.target.id == "pytestmark")
+        ):
+            final_marker = None
+    if final_marker is None:
+        return False
+    if _is_subprocess_e2e_marker(final_marker):
+        return True
+    if not isinstance(final_marker, (ast.List, ast.Tuple, ast.Set)):
+        return False
+    return any(_is_subprocess_e2e_marker(element) for element in final_marker.elts)
+
+
+def _discover_all_test_files(cwd: Path) -> tuple[str, ...]:
+    """Return all pytest files using pytest's default filename patterns."""
     tests_root = cwd / "tests"
     selected_files = {
         path.relative_to(cwd).as_posix()
@@ -265,7 +312,17 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     }
     if not selected_files:
         raise RuntimeError(f"static pytest discovery selected no files under {tests_root}")
-    discovered = tuple(sorted(selected_files))
+    return tuple(sorted(selected_files))
+
+
+def discover_test_files(cwd: Path) -> tuple[str, ...]:
+    """Return verification files, excluding only statically proven E2E-only modules."""
+    discovered = tuple(
+        path
+        for path in _discover_all_test_files(cwd)
+        if path in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+        or not _is_module_subprocess_e2e((cwd / path).read_text(encoding="utf-8"), filename=path)
+    )
     validate_required_auto_integrate_selection(discovered)
     return discovered
 
@@ -278,7 +335,7 @@ def discover_subprocess_e2e_files(cwd: Path) -> tuple[str, ...]:
     expression within each selected file, preserving function-level exclusions.
     """
     selected: list[str] = []
-    for relative_path in discover_test_files(cwd):
+    for relative_path in _discover_all_test_files(cwd):
         source = (cwd / relative_path).read_text(encoding="utf-8")
         tree = ast.parse(source, filename=relative_path)
         if any(
@@ -415,9 +472,7 @@ def _print_timeout_diagnostics(
 ) -> None:
     """Name each incomplete shard before deadline cleanup loses its pytest output."""
     elapsed_seconds = monotonic() - started_at
-    for index, (shard, process) in enumerate(
-        zip(shards[: len(processes)], processes, strict=True)
-    ):
+    for index, (shard, process) in enumerate(zip(shards[: len(processes)], processes, strict=True)):
         if process.poll() is None:
             print(
                 f"pytest shard {index} timed out after {elapsed_seconds:.2f}s; "
