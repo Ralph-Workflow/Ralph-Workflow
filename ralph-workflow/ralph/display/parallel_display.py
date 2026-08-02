@@ -5028,7 +5028,11 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[status]")
-            self._console.print(message, markup=False, highlight=False)
+            self._console.print(
+                Text(f"INFO {strip_terminal_control(message)}", style="theme.status.info"),
+                markup=False,
+                highlight=False,
+            )
 
     def emit_warning(self, message: str) -> None:
         """Emit a warning line through the consolidated display.
@@ -5040,11 +5044,15 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[warning]")
-            # ``soft_wrap=True`` preserves long lines (warnings that mention a
-            # concrete file path or a re-run command) without truncating at
-            # the terminal width — critical because a clipped warning hides
-            # the fix-it phrase the operator needs to act on.
-            self._console.print(message, markup=False, highlight=False, soft_wrap=True)
+            # Rich folds recovery text at the current terminal width rather
+            # than clipping it, so a narrow transcript retains the full
+            # actionable phrase on subsequent physical rows.
+            self._console.print(
+                Text(f"WARN {strip_terminal_control(message)}", style="theme.status.warning"),
+                markup=False,
+                highlight=False,
+                overflow="fold",
+            )
 
     def emit_skill_failure_warning(self, failures: list[str]) -> None:
         """Emit a single warning line listing the skill-failure entries.

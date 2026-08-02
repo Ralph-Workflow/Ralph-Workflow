@@ -208,6 +208,7 @@ def _drive_production_scene(
             display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
         display.emit_phase_transition("development", "review")
         display.emit_metrics_table({"events": 2, "artifacts": 1})
+        display.emit_status("production display state is ready")
         display.emit_info_panel(title="Production note", content="Preview and records stay recoverable.")
         display.emit_missing_plan_hint()
         display.emit_phase_close_from_exit(
@@ -223,6 +224,7 @@ def _drive_production_scene(
             "warning",
             "raw machine detail is retained in .agent/raw/reviewer.log",
         )
+        display.emit_warning("recover raw machine detail from .agent/raw/reviewer.log")
         display.emit_completion_summary_panel(
             _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
         )

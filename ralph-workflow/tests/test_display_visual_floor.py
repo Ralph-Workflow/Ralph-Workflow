@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from io import StringIO
@@ -139,6 +140,40 @@ def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
     # than coupling to Rich's specific escape-format choice.
     assert "\x1b[38;" in rendered
     assert "\x1b[48;" not in rendered  # S-3 floor: never paint a background band by accident
+
+
+def test_visual_floor_cli_status_and_warning_keep_semantic_colour_and_plain_labels() -> None:
+    """S-3: CLI status surfaces never fall back to terminal-default foreground."""
+    colour_stream = StringIO()
+    colour_context = make_display_context(
+        console=theme.make_console(
+            file=colour_stream, force_terminal=True, color_system="truecolor", width=80
+        ),
+        env={"RALPH_TERMINAL_BG": "dark"},
+    )
+    colour_display = ParallelDisplay(colour_context)
+    colour_display.emit_status("configuration loaded")
+    colour_display.emit_warning("configuration needs attention")
+    colour_display.stop()
+
+    coloured = colour_stream.getvalue()
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*mINFO configuration loaded", coloured)
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*mWARN configuration needs attention", coloured)
+
+    plain_stream = StringIO()
+    plain_context = make_display_context(
+        console=theme.make_console(file=plain_stream, no_color=True, width=80),
+        env={"NO_COLOR": "1", "RALPH_TERMINAL_BG": "dark"},
+    )
+    plain_display = ParallelDisplay(plain_context)
+    plain_display.emit_status("configuration loaded")
+    plain_display.emit_warning("configuration needs attention")
+    plain_display.stop()
+
+    plain = plain_stream.getvalue()
+    assert "\x1b[" not in plain
+    assert "INFO configuration loaded" in plain
+    assert "WARN configuration needs attention" in plain
 
 
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:

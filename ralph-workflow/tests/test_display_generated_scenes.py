@@ -49,6 +49,8 @@ def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> No
         "tool_error",
         "raw_warning_status",
         "table",
+        "cli_status",
+        "cli_warning",
         "panel",
         "artifact",
         "syntax_preview",
@@ -179,7 +181,13 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
         ("clean_run", ("Development", "[output][pi]", "phase=development")),
         (
             "failure",
-            ("[error][reviewer]", "tests failed", "Pipeline Failed", ".agent/raw/reviewer.log"),
+            (
+                "[error][reviewer]",
+                "WARN recover raw machine detail",
+                "tests failed",
+                "Pipeline Failed",
+                ".agent/raw/reviewer.log",
+            ),
         ),
         ("burst", ("[call][codex]", "[result][codex]", "edit_file")),
         ("idle_stretch", ("WAIT", "Development", "2m03s")),
@@ -203,6 +211,8 @@ def test_generated_scene_catalog_declares_canonical_value_and_structure_formats(
     assert formats["run_open"] == "frame: outcome-first run identity"
     assert formats["phase_open"] == "rule: phase, state, duration"
     assert formats["agent_text"] == "grid: timestamp | category | unit | body"
+    assert formats["cli_status"] == "label: INFO state message"
+    assert formats["cli_warning"] == "label: WARN recovery message"
     assert formats["syntax_preview"] == "indent: shared unit; numbered source rows"
     assert formats["elision"] == "marker: count, bytes, recovery destination"
     assert formats["completion_success"] == "frame: outcome, metrics, recovery"
@@ -215,7 +225,13 @@ def test_generated_scene_clean_run_reaches_catalogued_table_panel_and_artifact_s
         SupportCase("dark", "none", "unicode", 80, "redirect"),
         terminal_bg_is_light=False,
     )
-    for carrier in ("Pipeline Metrics", "Production note", "[plan]", "(no plan artifact on disk)"):
+    for carrier in (
+        "Pipeline Metrics",
+        "INFO production display state is ready",
+        "Production note",
+        "[plan]",
+        "(no plan artifact on disk)",
+    ):
         assert carrier in rendered
 
 

@@ -46,6 +46,8 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "raw_warning_status", "parallel_display", format="grid: timestamp | state | unit | body", scene="failure"
     ),
     SurfaceSpec("table", "parallel_display", format="table: aligned labels and values", scene="closing_screen"),
+    SurfaceSpec("cli_status", "parallel_display", format="label: INFO state message", scene="clean_run"),
+    SurfaceSpec("cli_warning", "parallel_display", format="label: WARN recovery message", scene="failure"),
     SurfaceSpec("panel", "parallel_display", format="indent: titled content when populated", scene="first_screen"),
     SurfaceSpec("artifact", "parallel_display", format="indent: label, path, recovery", scene="clean_run"),
     SurfaceSpec(
