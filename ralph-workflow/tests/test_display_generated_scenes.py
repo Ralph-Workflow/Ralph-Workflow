@@ -99,6 +99,19 @@ def test_generated_scene_renderer_requires_the_resolved_case_background() -> Non
     assert "(no plan artifact on disk)" in rendered
 
 
+def test_generated_scene_light_background_uses_the_light_semantic_theme() -> None:
+    """S-3 regression: a light scene must not render through the unknown theme."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("light", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=True,
+    )
+
+    # ``theme.cat.meta`` is the first semantic carrier in every scene. Its
+    # light-background pigment is distinct from the dual-safe unknown fallback.
+    assert "\x1b[38;2;0;106;106mSCENE clean_run" in rendered
+
+
 @pytest.mark.parametrize(("background", "rgb"), ((False, "16;20;23"), (True, "247;249;251")))
 def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
     background: bool, rgb: str

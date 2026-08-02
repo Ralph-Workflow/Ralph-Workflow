@@ -112,6 +112,7 @@ def render_scene(
         color_system=case.color_system,
         width=case.width,
         height=case.height,
+        terminal_bg_is_light=terminal_bg_is_light,
     )
     context = make_display_context(
         console=console,
