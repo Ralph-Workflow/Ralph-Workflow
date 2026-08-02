@@ -111,6 +111,11 @@ def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
         options=ProcessRunOptions(
             cwd=tmp_path,
             env={
+                # This isolated watchdog contract needs only pytest and the
+                # explicitly loaded timeout plugin. Avoid importing every
+                # project-installed pytest plugin in a subprocess whose
+                # timing is itself the assertion.
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
                 SUITE_TIMEOUT_ENV: "0.2",
                 TEST_TIMEOUT_ENV: "5.0",
             },
