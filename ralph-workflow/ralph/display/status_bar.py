@@ -1335,7 +1335,8 @@ def render_status_bar(
                 model.outer_dev_cap,
                 budgets.outer_dev_label_max_chars,
                 outer_label=outer_label,
-            )
+            ),
+            style="theme.outer_dev",
         )
     if render_inner_analysis:
         text.append(separator, style="theme.status.path_marker")
@@ -1346,7 +1347,8 @@ def render_status_bar(
                 model.inner_analysis or 0,
                 model.inner_analysis_cap,
                 budgets.inner_analysis_label_max_chars,
-            )
+            ),
+            style="theme.inner_analysis",
         )
     for label in optional_segments:
         _append_optional_segment(text, label, model, separator, ctx)

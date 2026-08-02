@@ -46,7 +46,7 @@ from ralph.display.status_bar import (
     StatusBarModel,
     render_status_bar,
 )
-from ralph.display.theme import RALPH_THEME
+from ralph.display.theme import RALPH_THEME, theme_for_background
 
 if TYPE_CHECKING:
     from rich.text import Text
@@ -100,6 +100,35 @@ def _make_display_context(
 # ---------------------------------------------------------------------------
 # render_status_bar — single default-mode layout shows all four fields
 # ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_regression_iteration_labels_use_semantic_colours() -> None:
+    """S-3: cycle and iteration labels retain their semantic colours, not defaults."""
+    context = make_display_context(
+        console=Console(width=140, theme=RALPH_THEME),
+        env={"RALPH_TERMINAL_BG": "dark"},
+        force_width=140,
+    )
+    model = StatusBarModel(
+        workspace_root="/work/display",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+
+    rendered = render_status_bar(model, context, home=None)
+    cycle_offset = rendered.plain.index("Cycle 1/3")
+    iteration_offset = rendered.plain.index("iter 2/5")
+
+    assert rendered.get_style_at_offset(context.console, cycle_offset).color == theme_for_background(
+        False
+    ).styles["theme.outer_dev"].color
+    assert rendered.get_style_at_offset(context.console, iteration_offset).color == theme_for_background(
+        False
+    ).styles["theme.inner_analysis"].color
 
 
 def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
