@@ -5,7 +5,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_TARGETS = {"Syntax", "Markdown", "CodeBlock", "syntax_theme_for_background", "pick_status_styles"}
+_TARGETS = {
+    "Syntax",
+    "Markdown",
+    "CodeBlock",
+    "build_edit_preview",
+    "syntax_theme_for_background",
+    "pick_status_styles",
+}
 
 
 def _called_name(call: ast.Call) -> str | None:

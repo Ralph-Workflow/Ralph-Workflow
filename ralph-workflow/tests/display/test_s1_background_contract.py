@@ -42,16 +42,6 @@ def test_s1_markdown_fences_use_the_fixed_transparent_syntax_palette() -> None:
     assert "48;2;" not in rendered
 
 
-def test_s1_preview_background_argument_is_required() -> None:
-    """S-1: preview construction cannot silently choose a terminal palette."""
-    try:
-        build_edit_preview("write_file", {"path": "x.py", "content": "x = 1"}, width=80)
-    except TypeError:
-        pass
-    else:
-        raise AssertionError("terminal_bg_is_light must be required")
-
-
 def test_s1_preview_unknown_background_keeps_syntax_highlighting() -> None:
     preview = build_edit_preview(
         "write_file", {"path": "x.py", "content": "x = 1"}, width=80, terminal_bg_is_light=None
