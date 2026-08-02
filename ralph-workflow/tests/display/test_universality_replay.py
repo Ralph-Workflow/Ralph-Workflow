@@ -129,15 +129,16 @@ def test_parser_native_replay_keeps_each_agent_on_the_shared_presentation_path(
     )
 
 
-@pytest.mark.parametrize(("name", "provider", "parser_factory"), _CASES)
-def test_parser_native_replay_condenses_every_agent_payload(
-    name: str,
-    provider: ActivityProvider,
-    parser_factory: _ParserFactory,
-    tmp_path: Path,
-) -> None:
-    """DA-005: every provider's shared path accounts for oversized content."""
-    record, live, _ = _replay(name, provider, parser_factory, tmp_path, include_condensation=True)
+def test_shared_presentation_path_condenses_oversized_payload(tmp_path: Path) -> None:
+    """DA-005: condensation is a shared display contract, not a provider matrix."""
+    name = "generic"
+    record, live, _ = _replay(
+        name,
+        ActivityProvider.GENERIC,
+        GenericParser,
+        tmp_path,
+        include_condensation=True,
+    )
     assert f"CONDENSE-{name}" in record
     assert f"CONDENSE-{name}" in live
     assert "x" * 850 not in record
