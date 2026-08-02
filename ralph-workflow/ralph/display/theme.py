@@ -34,14 +34,6 @@ from ralph.display._identity import (
 )
 from ralph.syntax_theme import SyntaxThemes
 
-# The display theme is the public palette boundary. Keep the documented CVD
-# simulation constants available here so palette consumers test the same
-# transforms identity allocation uses rather than duplicating matrices. The
-# import above binds the canonical matrices directly into this module's
-# namespace so downstream consumers and legacy tests reading
-# ``theme._DEUTERANOPIA_MATRIX`` (and friends) still see the same object
-# references as ``ralph.display._identity``.
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from typing import TextIO
