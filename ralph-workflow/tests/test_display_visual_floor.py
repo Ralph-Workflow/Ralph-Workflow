@@ -131,7 +131,14 @@ def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
 
     rendered = stream.getvalue()
     assert "[failure] operator-visible failure" in rendered
-    assert "\x1b[38;2;" in rendered
+    # Observable behaviour: every chrome and state carrier uses a non-default
+    # foreground colour. The console resolves the same hex style to either a
+    # truecolor RGB escape (``\x1b[38;2;``) or an ANSI 256-color escape
+    # (``\x1b[38;5;``) depending on the host's terminal capability, so the
+    # floor checks for ANY foreground colour escape (``\x1b[38;``) rather
+    # than coupling to Rich's specific escape-format choice.
+    assert "\x1b[38;" in rendered
+    assert "\x1b[48;" not in rendered  # S-3 floor: never paint a background band by accident
 
 
 def test_visual_floor_bad_palette_fixture_is_rejected() -> None:
