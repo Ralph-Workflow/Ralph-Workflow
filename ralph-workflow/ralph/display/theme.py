@@ -446,6 +446,78 @@ _THEME_STYLES: Final[dict[str, str]] = {
 
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
 
+# Semantic chrome has its own light-background palette. These roles are used by
+# banners, panels, phase rules, tables, and completion summaries, so resolving
+# only status labels would leave large parts of a light terminal illegible.
+# Keep role names stable: renderers select meaning, while this module selects
+# the contrast-tested pigment for the resolved surface.
+_THEME_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
+    **_THEME_STYLES,
+    "theme.level.info": "#002B5C",
+    "theme.level.success": "bold #006B4D",
+    "theme.level.warn": "bold #A06A00",
+    "theme.level.error": "bold #993F00",
+    "theme.level.milestone": "bold #1F5F8B",
+    "theme.cat.meta": "#006A6A",
+    "theme.cat.cont": "#002B5C",
+    "theme.cat.out": "#002B5C",
+    "theme.log.error": "bold #993F00",
+    "theme.log.info": "#002B5C",
+    "theme.log.milestone": "bold #1F5F8B",
+    "theme.log.success": "bold #006B4D",
+    "theme.log.warn": "bold #A06A00",
+    "theme.panel.border": "#1F5F8B",
+    "theme.panel.title": "bold #1F5F8B",
+    "theme.phase.commit": "#002B5C",
+    "theme.phase.complete": "bold #006B4D",
+    "theme.phase.development": "#006B4D",
+    "theme.phase.development_analysis": "#6B2C6E",
+    "theme.phase.development_commit": "#002B5C",
+    "theme.phase.failed": "bold #993F00",
+    "theme.phase.fix": "#993F00",
+    "theme.phase.planning": "#1F5F8B",
+    "theme.phase.review": "#A06A00",
+    "theme.phase.review_analysis": "#6B2C6E",
+    "theme.phase.review_commit": "#002B5C",
+    "theme.status.error": "bold #993F00",
+    "theme.status.failure": "bold #993F00",
+    "theme.status.info": "#002B5C",
+    "theme.status.pending": "#555555",
+    "theme.status.running": "#1F5F8B",
+    "theme.status.skipped": "#5A6200",
+    "theme.status.success": "bold #006B4D",
+    "theme.status.warning": "bold #A06A00",
+    "theme.text.dim_italic": "italic #6B2C6E",
+    "theme.text.emphasis": "bold #1F5F8B",
+    "theme.text.muted": "#006A6A",
+    "theme.banner.ascii": "bold #1F5F8B",
+    "theme.banner.border": "#1F5F8B",
+    "theme.banner.tagline": "#006A6A",
+    "theme.banner.title": "bold #1F5F8B",
+    "theme.banner.version": "bold #006B4D",
+    "theme.banner.welcome": "bold #1F5F8B",
+    "theme.outer_dev": "bold #1F5F8B",
+    "theme.inner_analysis": "#6B2C6E",
+    "theme.review_pass": "bold #006B4D",
+    "theme.review_fail": "bold #993F00",
+    "theme.proceed": "bold #006B4D",
+    "theme.revise": "bold #A06A00",
+    "theme.status.bar_marker": "#006A6A",
+    "theme.status.path_marker": "#006A6A",
+    "theme.status.path": "#006A6A",
+}
+RALPH_THEME_ON_LIGHT_BG: Final[Theme] = Theme(_THEME_STYLES_ON_LIGHT_BG)
+
+
+def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
+    """Return the semantic Rich theme for the resolved terminal background.
+
+    Unknown backgrounds retain the dark reference theme because no complete
+    terminal surface is owned outside previews; individual activity/status
+    carriers use their dual-safe fallback tables on that path.
+    """
+    return RALPH_THEME_ON_LIGHT_BG if terminal_bg_is_light is True else RALPH_THEME
+
 
 _MIN_CONTRAST_RATIO: Final[float] = 4.5
 
@@ -885,6 +957,7 @@ def make_console(
     color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = None,
     width: int | None = None,
     height: int | None = None,
+    terminal_bg_is_light: bool | None = None,
 ) -> Console:
     """Construct a Rich ``Console`` wired with the Ralph theme.
 
@@ -903,6 +976,7 @@ def make_console(
         color_system: Rich colour-system override.
         width: Override the console width (default: auto-detect).
         height: Override the console height (default: auto-detect).
+        terminal_bg_is_light: Resolved terminal background for semantic roles.
 
     Returns:
         A ``rich.console.Console`` instance with the Ralph theme.
@@ -912,7 +986,7 @@ def make_console(
     resolved_color_system = color_system if color_system is not None else "auto"
     return Console(
         file=file,
-        theme=RALPH_THEME,
+        theme=theme_for_background(terminal_bg_is_light),
         no_color=resolved_no_color,
         force_terminal=resolved_force_terminal,
         color_system=resolved_color_system,
@@ -932,6 +1006,7 @@ __all__ = [
     "IDENTITY_PALETTE_ON_UNKNOWN_BG",
     "ORANGE",
     "RALPH_THEME",
+    "RALPH_THEME_ON_LIGHT_BG",
     "REDDISH_PURPLE",
     "SKY_BLUE",
     "STATUS_STYLES",
@@ -959,4 +1034,5 @@ __all__ = [
     "pick_status_styles",
     "syntax_theme_for_background",
     "terminal_background_is_light",
+    "theme_for_background",
 ]

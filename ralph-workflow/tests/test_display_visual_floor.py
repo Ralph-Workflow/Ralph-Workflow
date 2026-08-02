@@ -84,6 +84,30 @@ def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
         assert theme._extract_hex(theme._THEME_STYLES[role]), role
 
 
+def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface() -> None:
+    """S-3 regression: every semantic Rich role changes to a contrast-safe light palette."""
+    dark = theme.theme_for_background(False)
+    light = theme.theme_for_background(True)
+    roles = (
+        "theme.cat.meta",
+        "theme.banner.title",
+        "theme.panel.border",
+        "theme.phase.development",
+        "theme.status.running",
+        "theme.level.success",
+        "theme.level.warn",
+        "theme.level.error",
+        "theme.text.muted",
+    )
+    for role in roles:
+        dark_hex = theme._extract_hex(str(dark.styles[role]))
+        light_hex = theme._extract_hex(str(light.styles[role]))
+        assert dark_hex and light_hex, role
+        assert theme.contrast_ratio(dark_hex, "#000000") >= CONTRAST_FLOOR, role
+        assert theme.contrast_ratio(light_hex, "#FFFFFF") >= CONTRAST_FLOOR, role
+        assert dark_hex != light_hex, role
+
+
 def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> None:
     """S-3: an undetermined terminal background must not silently render as dark."""
     context = make_display_context(env={})

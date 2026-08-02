@@ -257,6 +257,25 @@ def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_e
     assert all(surface.overflow_policy for surface in SURFACE_CATALOG)
 
 
+def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_that_renders_them() -> (
+    None
+):
+    """S-1 regression: catalog scenes are executable evidence, not decorative labels."""
+    common = SupportCase("dark", "none", "unicode", 80, "redirect")
+    expected_carriers = {
+        "table": "Pipeline Metrics",
+        "cli_status": "INFO production display state is ready",
+        "panel": "Production note",
+        "artifact": "(no plan artifact on disk)",
+    }
+    catalog = {surface.name: surface for surface in SURFACE_CATALOG}
+    for surface, carrier in expected_carriers.items():
+        rendered = render_scene(
+            catalog[surface].scene, common, terminal_bg_is_light=False
+        )
+        assert carrier in rendered, surface
+
+
 def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() -> None:
     """S-1 regression: a new production ``emit_*`` seam cannot bypass the catalog."""
     entry_points = tuple(

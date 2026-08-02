@@ -46,11 +46,11 @@ from ralph.display._resolved_env import _ResolvedEnv
 from ralph.display.mode import DEFAULT_MODE
 from ralph.display.theme import (
     ASCII_GLYPHS,
-    RALPH_THEME,
     UNICODE_GLYPHS,
     detect_glyph_capability,
     make_console,
     terminal_background_is_light,
+    theme_for_background,
 )
 
 if TYPE_CHECKING:
@@ -139,7 +139,9 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
             console.no_color = False
 
 
-def _build_console(resolved_env: _ResolvedEnv) -> Console:
+def _build_console(
+    resolved_env: _ResolvedEnv, terminal_bg_is_light: bool | None
+) -> Console:
     """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
 
     Args:
@@ -149,10 +151,14 @@ def _build_console(resolved_env: _ResolvedEnv) -> Console:
         Configured Console instance.
     """
     if resolved_env.no_color:
-        return make_console(no_color=True, force_terminal=False)
+        return make_console(
+            no_color=True, force_terminal=False, terminal_bg_is_light=terminal_bg_is_light
+        )
     if resolved_env.force_color:
-        return make_console(no_color=False, force_terminal=True)
-    return make_console(force_terminal=True)
+        return make_console(
+            no_color=False, force_terminal=True, terminal_bg_is_light=terminal_bg_is_light
+        )
+    return make_console(force_terminal=True, terminal_bg_is_light=terminal_bg_is_light)
 
 
 def _compute_width(
@@ -561,13 +567,16 @@ def make_display_context(
     env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)
+    resolved_background = terminal_background_is_light(env_dict)
     if console is None:
         injected_console = False
-        resolved_console = _build_console(resolved_env)
+        resolved_console = _build_console(resolved_env, resolved_background)
     else:
         injected_console = True
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
+        if resolved_background is not None:
+            resolved_console.push_theme(theme_for_background(resolved_background))
     width = _compute_width(
         resolved_env,
         resolved_console,
@@ -624,7 +633,7 @@ def make_display_context(
 
     return DisplayContext(
         console=resolved_console,
-        theme=RALPH_THEME,
+        theme=theme_for_background(resolved_background),
         width=width,
         mode=mode,
         height=height_value,
@@ -640,7 +649,7 @@ def make_display_context(
         thinking_preview_min_chars=limits.thinking_preview_min_chars,
         tool_result_headline_min_chars=limits.tool_result_headline_min_chars,
         body_measure_cap=limits.body_measure_cap,
-        terminal_background_is_light=terminal_background_is_light(env_dict),
+        terminal_background_is_light=resolved_background,
         env=env_dict,
         _resolved_env=resolved_env,
         _force_width=force_width,

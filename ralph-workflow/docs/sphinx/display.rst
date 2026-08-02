@@ -32,7 +32,9 @@ an implementation input rather than a post-hoc description:
 Every fixed foreground clears WCAG 4.5:1 against its actual surface. The
 meaning tier colours chrome, agent content, running, waiting, warning, failure,
 success, elision, and identity with fixed RGB resolved from the detected or
-operator-declared background; syntax and diff remain a separate content tier.
+operator-declared background; banners, panels, tables, phase rules, and the
+closing summary use that same resolved semantic theme. Syntax and diff remain a
+separate content tier.
 Semantic states retain a glyph or label when colour is unavailable. ``NO_COLOR``
 wins over ``FORCE_COLOR``; forced colour may remain in render-capable redirected
 captures, but motion is restricted to a real TTY. Redirected output is durable,

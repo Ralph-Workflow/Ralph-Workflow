@@ -50,6 +50,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(display): resolve every semantic console role for light terminals** — banners, panels, tables, phase rules, and completion summaries now share a contrast-safe light-background theme, while generated scene ownership is checked against the scene that renders it. Locked by `tests/test_display_visual_floor.py` and `tests/test_display_generated_scenes.py`.
 - **fix(display): fold phase-close recaps without losing greppable counters** — narrow phase boundaries now repeat their phase carrier on every folded row so outcomes and metrics remain readable in live and redirected output. Locked by `tests/display/test_parallel_display_emit_phase_close_from_exit.py`.
 - **fix(display): document and assert Status Bar width in terminal display cells** — wide and combining Unicode values now have one explicit cell-width contract in the footer implementation, tests, and display manual. Locked by `tests/display/test_status_bar.py`.
 - **feat(display): colour snapshot and lifecycle carriers with the resolved semantic palette** — phase, waiting, activity, and result rows now apply fixed-RGB spans to their timestamp and state-bearing text, keeping colour-off labels intact while matching the activity-feed hierarchy. Locked by `tests/test_display_visual_floor.py`.

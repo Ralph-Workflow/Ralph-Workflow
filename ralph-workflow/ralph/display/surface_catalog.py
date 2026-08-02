@@ -103,7 +103,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "table",
         "parallel_display",
         format="table: aligned labels and values",
-        scene="closing_screen",
+        scene="clean_run",
         entry_points=(
             "emit_agents_table",
             "emit_providers_table",
@@ -119,6 +119,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "cli_status",
         "parallel_display",
         format="label: INFO state message",
+        scene="clean_run",
         entry_points=("emit_status",),
     ),
     SurfaceSpec(
@@ -132,13 +133,14 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "panel",
         "parallel_display",
         format="indent: titled content when populated",
-        scene="first_screen",
+        scene="clean_run",
         entry_points=("emit_info_panel", "emit_renderable"),
     ),
     SurfaceSpec(
         "artifact",
         "parallel_display",
         format="indent: label, path, recovery",
+        scene="clean_run",
         entry_points=(
             "emit_plan_artifact",
             "emit_development_artifact",
