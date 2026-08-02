@@ -84,7 +84,7 @@ _MAX_PYTEST_WORKERS = 16
 _DEFAULT_XDIST_WORKERS_PER_SHARD = "auto"
 # Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
 # Combined with ``_MAX_PYTEST_WORKERS`` (16 shards) this gives a maximum
-# fan-out of 16 * 4 = 64 workers; the 32-core CI profile uses 16 * 2 = 32.
+# fan-out of 16 * 8 = 128 workers; the 32-core CI profile uses 16 * 2 = 32.
 # ``_MAX_XDIST_WORKERS_PER_SHARD = 0`` would mean "no xdist in shards" and
 # is reserved for an explicit operator override (it is NOT the default
 # because the default 16-shard fan-out is no longer sufficient on its own
