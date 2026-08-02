@@ -12,17 +12,18 @@ outside :mod:`ralph.pipeline.auto_integrate`.
 
 from __future__ import annotations
 
-import contextlib
 import json
-import os
-import tempfile
-from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 from pydantic import ConfigDict
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.pydantic_compat import RalphBaseModel
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
 
@@ -96,31 +97,34 @@ def record_path(workspace_root: Path) -> Path:
     return workspace_root / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
 
 
-def write_record(workspace_root: Path, record: IntegrationRecord) -> None:
-    """Atomically write ``record`` to the durable record path.
+def write_record(
+    workspace_root: Path,
+    record: IntegrationRecord,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Atomically persist ``record`` only when its durable bytes changed.
 
-    The atomic-write pattern (temp file in the same directory + ``os.replace``)
-    mirrors the existing ``ralph.git.operations._atomic_append_text``
-    contract: a crash mid-write never leaves a half-written record on
-    disk. If ``os.replace`` fails, the staging file is removed before
-    re-raising.
+    Publication uses the shared same-directory atomic primitive. It preserves
+    the crash-safe replace and directory durability barrier for changed state,
+    while an identical replay avoids creating the parent, staging a file,
+    replacing the record, or syncing its directory.
+
+    Args:
+        workspace_root: Workspace that owns this run-scoped recovery record.
+        record: Durable auto-integration state to publish.
+        backend: Persistence boundary; injectable for in-memory contract tests.
     """
     record_file = record_path(workspace_root)
-    record_file.parent.mkdir(parents=True, exist_ok=True)
     payload = record.model_dump_json().encode("utf-8")
-    fd, staging_path = tempfile.mkstemp(
-        prefix=record_file.name + ".staging.", dir=str(record_file.parent)
+    atomic_write_bytes_if_changed(
+        backend,
+        record_file,
+        payload,
+        tmp_path=record_file.with_suffix(record_file.suffix + ".staging"),
+        sync_directory=True,
+        prepare_write=lambda: backend.mkdir(record_file.parent, parents=True, exist_ok=True),
     )
-    try:
-        with os.fdopen(fd, "wb") as staging:
-            staging.write(payload)
-        # filesystem-write-ok: atomic publication of a durable auto-integration record
-        Path(staging_path).replace(record_file)
-    except BaseException:
-        with contextlib.suppress(FileNotFoundError):
-            # filesystem-write-ok: cleanup of failed auto-integration staging file
-            Path(staging_path).unlink()
-        raise
 
 
 def read_record(workspace_root: Path) -> IntegrationRecord | None:
