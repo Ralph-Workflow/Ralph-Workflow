@@ -205,6 +205,29 @@ def test_flags_os_path_module_aliases(tmp_path: Path) -> None:
     assert [violation.kind for violation in violations] == ["raw_exists", "raw_isfile"]
 
 
+def test_regression_flags_path_constructor_alias_assignment(tmp_path: Path) -> None:
+    """S-6: aliases of pathlib constructors cannot evade R1/R3 enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "path_factory = Path\n"
+        "def load() -> str:\n"
+        "    source = path_factory('x')\n"
+        "    return source.read_text(encoding='utf-8')\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_path_read_text"
+    assert violations[0].line == 5
+
+
 def test_flags_raw_os_stat(tmp_path: Path) -> None:
     """Stat probes via ``os.stat`` are flagged (R4)."""
     module_rel = "alpha/example.py"

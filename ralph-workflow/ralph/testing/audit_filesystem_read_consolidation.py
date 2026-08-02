@@ -156,6 +156,7 @@ def _assign_target_names(
     value: ast.expr,
     target: ast.expr,
     names: set[tuple[int | None, str]],
+    constructor_names: set[str],
     *,
     scope: int | None,
 ) -> None:
@@ -163,7 +164,7 @@ def _assign_target_names(
     if not isinstance(value, ast.Call):
         return
     root = _call_root_name(value.func)
-    if root is None or root not in _PATHLIBS:
+    if root is None or (root not in _PATHLIBS and root not in constructor_names):
         return
     if isinstance(target, ast.Name):
         names.add((scope, target.id))
@@ -178,14 +179,33 @@ def _collect_read_provenance(
     glob_names: set[str] = set()
     direct_read_names: dict[str, str] = {}
     _import_alias_names(tree, imported_path_names, os_names, glob_names, direct_read_names)
+    constructor_names = set(imported_path_names)
     path_names: set[tuple[int | None, str]] = {(None, name) for name in imported_path_names}
     for node in ast.walk(tree):
         scope = _scope_key(node, parents)
         if isinstance(node, ast.Assign):
+            if isinstance(node.value, ast.Name) and node.value.id in constructor_names:
+                constructor_names.update(
+                    target.id for target in node.targets if isinstance(target, ast.Name)
+                )
             for target in node.targets:
-                _assign_target_names(node.value, target, path_names, scope=scope)
+                _assign_target_names(
+                    node.value, target, path_names, constructor_names, scope=scope
+                )
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            _assign_target_names(node.value, node.target, path_names, scope=scope)
+            if (
+                isinstance(node.value, ast.Name)
+                and node.value.id in constructor_names
+                and isinstance(node.target, ast.Name)
+            ):
+                constructor_names.add(node.target.id)
+            _assign_target_names(
+                node.value,
+                node.target,
+                path_names,
+                constructor_names,
+                scope=scope,
+            )
     return path_names, os_names, glob_names, direct_read_names
 
 
