@@ -341,6 +341,41 @@ def test_recovery_controller_is_not_exempt_from_read_enforcement(tmp_path: Path)
     assert violations[0].kind in {"raw_path_read_text", "raw_read_text"}
 
 
+def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Path) -> None:
+    """S-6: an explicit candidate outside the package fails closed rather than passing."""
+    package_root = _write_fake_package(tmp_path, "alpha/inert.py", "VALUE = 1\n")
+    external_module = tmp_path / "outside.py"
+    external_module.write_text("VALUE = 1\n", encoding="utf-8")
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=("../outside.py",),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "invalid_module_path"
+    assert violations[0].file_path == "../outside.py"
+
+
+def test_regression_exempt_suffix_cannot_skip_unrelated_module(tmp_path: Path) -> None:
+    """S-6: only the canonical boundary path can be exempt from read enforcement."""
+    module_rel = "unrelated/mcp/artifacts/file_backend.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        "    return Path('x').read_text(encoding='utf-8')\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_path_read_text"]
+
+
 def test_exempt_paths_are_skipped(tmp_path: Path) -> None:
     """The default exempt set keeps the canonical primitives clean."""
     module_rel = "mcp/artifacts/file_backend.py"

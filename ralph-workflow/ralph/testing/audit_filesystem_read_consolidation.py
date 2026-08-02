@@ -249,9 +249,8 @@ def _collect_python_files(root: Path) -> list[Path]:
 
 
 def _is_exempt(rel_path: str, exempt: frozenset[str]) -> bool:
-    if rel_path in exempt:
-        return True
-    return any(rel_path == entry or rel_path.endswith("/" + entry) for entry in exempt)
+    """Return whether ``rel_path`` is one of the canonical exempt boundaries."""
+    return rel_path in exempt
 
 
 def _coerce_exempt_paths(exempt_paths: frozenset[str] | Sequence[str] | None) -> frozenset[str]:
@@ -415,15 +414,34 @@ def audit_filesystem_read_consolidation(
                 )
                 for root in missing_roots
             ]
+    violations: list[FilesystemReadViolation] = []
     if module_paths is not None:
-        candidates = [(package_root / rel, rel) for rel in module_paths]
+        candidates: list[tuple[Path, str]] = []
+        resolved_root = package_root.resolve()
+        for rel in module_paths:
+            candidate = package_root / rel
+            try:
+                candidate.resolve().relative_to(resolved_root)
+            except (OSError, ValueError):
+                violations.append(
+                    FilesystemReadViolation(
+                        kind="invalid_module_path",
+                        file_path=rel,
+                        line=0,
+                        message=(
+                            "explicit module path escapes the package root; pass a relative "
+                            "production-module path so the filesystem-read audit can fail closed"
+                        ),
+                    )
+                )
+                continue
+            candidates.append((candidate, rel))
     else:
         candidates = []
         for root in roots:
             for path in _collect_python_files(root):
                 rel = path.relative_to(package_root).as_posix()
                 candidates.append((path, rel))
-    violations: list[FilesystemReadViolation] = []
     for module_path, rel_path in candidates:
         if _is_exempt(rel_path, exempt):
             continue
