@@ -100,13 +100,19 @@ def _import_alias_names(
     path_names: set[str],
     os_names: set[str],
     glob_names: set[str],
+    direct_read_names: dict[str, str],
 ) -> None:
     """Record pathlib constructors and filesystem-module aliases (in-place)."""
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == "pathlib":
-            for alias in node.names:
-                if alias.name in _PATHLIBS:
-                    path_names.add(alias.asname or alias.name)
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "pathlib":
+                for alias in node.names:
+                    if alias.name in _PATHLIBS:
+                        path_names.add(alias.asname or alias.name)
+            elif node.module in {"os", "os.path", "glob"}:
+                for alias in node.names:
+                    if alias.name in _RAW_READ_ATTRS:
+                        direct_read_names[alias.asname or alias.name] = alias.name
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "pathlib":
@@ -128,19 +134,37 @@ def _assign_target_names(value: ast.expr, target: ast.expr, names: set[str]) -> 
         names.add(target.id)
 
 
-def _collect_read_provenance(tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
-    """Return known pathlib values and filesystem-module aliases for a module."""
+def _collect_read_provenance(tree: ast.Module) -> tuple[set[str], set[str], set[str], dict[str, str]]:
+    """Return known path values plus filesystem module and function aliases."""
     path_names: set[str] = set()
     os_names: set[str] = set()
     glob_names: set[str] = set()
-    _import_alias_names(tree, path_names, os_names, glob_names)
+    direct_read_names: dict[str, str] = {}
+    _import_alias_names(tree, path_names, os_names, glob_names, direct_read_names)
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 _assign_target_names(node.value, target, path_names)
         elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.expr):
             _assign_target_names(node.value, node.target, path_names)
-    return path_names, os_names, glob_names
+    return path_names, os_names, glob_names, direct_read_names
+
+
+def _read_call_details(
+    node: ast.Call,
+    direct_read_names: dict[str, str],
+) -> tuple[str, str, bool] | None:
+    """Return raw filesystem call details when ``node`` reaches a tracked API."""
+    direct_name = node.func.id if isinstance(node.func, ast.Name) else None
+    if direct_name in direct_read_names:
+        return direct_read_names[direct_name], direct_name, True
+    attr = _attr_name(node)
+    if attr is None or attr not in _RAW_READ_ATTRS or not isinstance(node.func, ast.Attribute):
+        return None
+    root = _call_root_name(node.func.value)
+    if root is None:
+        return None
+    return attr, root, False
 
 
 def _marker_line_indices(source_lines: list[str]) -> set[int]:
@@ -209,20 +233,16 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         ]
     source_lines = source.splitlines()
     marker_lines = _marker_line_indices(source_lines)
-    path_variables, os_names, glob_names = _collect_read_provenance(tree)
+    path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(tree)
 
     violations: list[FilesystemReadViolation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        attr = _attr_name(node)
-        if attr is None or attr not in _RAW_READ_ATTRS:
+        call_details = _read_call_details(node, direct_read_names)
+        if call_details is None:
             continue
-        if not isinstance(node.func, ast.Attribute):
-            continue
-        root = _call_root_name(node.func.value)
-        if root is None:
-            continue
+        attr, root, is_direct_read = call_details
         line_idx = node.lineno
         zero_based = line_idx - 1
         if zero_based in marker_lines or (zero_based - 1) in marker_lines:
@@ -233,7 +253,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         is_path_traversal = attr in {"iterdir", "glob", "rglob"} and (
             root in path_variables or root in _PATHLIBS
         )
-        if is_raw_qualifier or is_os_traversal or is_glob_traversal:
+        if is_direct_read or is_raw_qualifier or is_os_traversal or is_glob_traversal:
             kind = f"raw_{attr}"
             message = _RAW_READ_ATTRS[attr]
         elif root in path_variables or root in _PATHLIBS:

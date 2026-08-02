@@ -299,6 +299,34 @@ def test_flags_raw_os_and_glob_traversal_aliases(tmp_path: Path) -> None:
     ]
 
 
+def test_direct_imported_read_and_traversal_functions_cannot_evade_audit(tmp_path: Path) -> None:
+    """S-1/S-6 regression: direct filesystem imports remain fail-closed."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from glob import glob as matching_paths, iglob\n"
+        "from os import scandir as scan, walk\n"
+        "from os.path import exists as path_exists, stat as path_stat\n"
+        "def inspect(root: str) -> object:\n"
+        "    return path_exists(root), path_stat(root), walk(root), scan(root), matching_paths('*.py'), iglob('*.py')\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == [
+        "raw_exists",
+        "raw_stat",
+        "raw_walk",
+        "raw_scandir",
+        "raw_glob",
+        "raw_iglob",
+    ]
+
+
 def test_marked_traversal_is_exempt_but_unmarked_traversal_is_not(tmp_path: Path) -> None:
     """Traversal exceptions remain local, reasoned, and fail closed when empty (S-6)."""
     module_rel = "alpha/example.py"
