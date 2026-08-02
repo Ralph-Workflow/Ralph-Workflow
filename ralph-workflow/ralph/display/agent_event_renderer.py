@@ -558,7 +558,7 @@ def _render_error_event(
     body = _normalized_event_content(event) or "unknown error"
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)
+    _append_body_with_unit(text, body, unit_id, style, ctx=ctx, escape_body=escape_body)
     return text
 
 

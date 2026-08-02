@@ -121,6 +121,20 @@ def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> N
     assert any(span.style == expected_style for span in rendered.spans)
 
 
+def test_visual_floor_error_event_resolves_identity_against_light_background() -> None:
+    """S-3 regression: error-line identities use the resolved light palette."""
+    context = make_display_context(env={"RALPH_TERMINAL_BG": "light"})
+    rendered = render_event(
+        make_event_for_emit(ActivityEventKind.ERROR, "claude failed"),
+        ctx=context,
+        unit_id="claude",
+    )
+
+    expected = theme.identity_color("claude", terminal_bg_is_light=True)
+    assert context.terminal_background_is_light is True
+    assert any(span.style == expected for span in rendered.spans)
+
+
 def test_visual_floor_snapshot_lines_apply_semantic_fixed_rgb_spans() -> None:
     """S-3: production snapshot chrome and state carriers are never default foreground."""
     stream = StringIO()
