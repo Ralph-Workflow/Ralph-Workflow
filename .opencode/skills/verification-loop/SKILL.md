@@ -74,10 +74,15 @@ grep -rn "api_key" --include="*.ts" --include="*.js" . 2>/dev/null | head -10
 grep -rn "console.log" --include="*.ts" --include="*.tsx" src/ 2>/dev/null | head -10
 ```
 
-### Phase 6: Current-State Review
+### Phase 6: Diff Review
+```bash
+# Show what changed
+git diff --stat
+git diff HEAD~1 --name-only
+```
 
-Review every relevant file as it currently exists, together with the verification results above. Check for:
-- Unintended behavior
+Review each changed file for:
+- Unintended changes
 - Missing error handling
 - Potential edge cases
 
@@ -94,7 +99,7 @@ Types:     [PASS/FAIL] (X errors)
 Lint:      [PASS/FAIL] (X warnings)
 Tests:     [PASS/FAIL] (X/Y passed, Z% coverage)
 Security:  [PASS/FAIL] (X issues)
-Review:    [PASS/FAIL] (current state checked)
+Diff:      [X files changed]
 
 Overall:   [READY/NOT READY] for PR
 

@@ -189,8 +189,6 @@ After green only:
 - Improve names
 - Extract helpers
 
-When refactoring tests or a suite is slow, apply the project's test-optimization strategy: remove duplicate TDD scaffolding, collapse equivalent integration coverage to unit level, and retire E2E coverage that deterministic integration tests cover.
-
 Keep tests green. Don't add behavior.
 
 ### Repeat
