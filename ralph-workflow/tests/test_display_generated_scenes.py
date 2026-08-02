@@ -235,6 +235,22 @@ def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -
     assert all(cell_len(line) <= GRACEFUL_WIDTH_FLOOR for line in rendered.splitlines())
 
 
+def test_generated_scene_streaming_rows_repeat_their_greppable_carrier_at_the_40_column_floor() -> None:
+    """S-5 regression: folded stream closes retain their category and unit on every row."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("dark", "none", "ascii", GRACEFUL_WIDTH_FLOOR, "redirect"),
+        terminal_bg_is_light=False,
+    )
+
+    lines = rendered.splitlines()
+    first_stream_row = next(index for index, line in enumerate(lines) if "⋯ output" in line)
+    stream_rows = lines[first_stream_row : first_stream_row + 2]
+    assert len(stream_rows) == 2
+    assert all("[output][pi]" in line for line in stream_rows)
+    assert all(cell_len(line) <= GRACEFUL_WIDTH_FLOOR for line in stream_rows)
+
+
 def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None:
     assert CONTRAST_FLOOR == 4.5
     assert FULL_LAYOUT_WIDTH == 80

@@ -1814,18 +1814,17 @@ class ParallelDisplay:
             # recovery marker visible on width-bounded consoles so a
             # cold-transcript grep that matches the marker still
             # finds it on the folded row.
-            hang_prefix = self._close_hang_prefix(timestamp, display_tag, rendered_unit_id)
+            # Every physical stream row is independently greppable.  The
+            # continuation prefix deliberately repeats the timestamp, category,
+            # and unit carrier instead of substituting whitespace; those
+            # carriers are part of the durable transcript contract, not merely
+            # first-row chrome.
+            hang_prefix = f"{timestamp} [{display_tag}][{rendered_unit_id}] "
             # The first row is rendered through ``_activity_text`` which
-            # prepends the timestamp + badge chrome before the header.
-            # The wrap must account for that chrome width so a
-            # ``CONDENSE-<unit>`` (or any other) prefix on the visible
-            # body survives the wrap on a narrow terminal; otherwise
-            # the wrap overshoots the console width and Rich clips the
-            # middle of the marker. The chrome is one column wider
-            # than ``hang_prefix`` (which ljusts to
-            # ``[tag] + unit_id + 2``) so add one to match the actual
-            # emission: ``timestamp + ' ' + [tag] + [unit_id] + ' '``.
-            chrome_prefix_width = cell_len(hang_prefix) + 1
+            # prepends this exact timestamp + badge chrome before the header.
+            # Reserve its cell width before wrapping so neither the first row
+            # nor a repeated-carrier continuation can exceed the terminal.
+            chrome_prefix_width = cell_len(hang_prefix)
             wrapped_rows = self._wrap_close_body(
                 header,
                 visible,
@@ -1849,27 +1848,19 @@ class ParallelDisplay:
                     overflow="ignore",
                 )
                 for chunk in continuations:
-                    # Continuations hang at the badge column without
-                    # the chrome prefix so the close entry is one
-                    # logical row; the join-key ``[output][<unit>]``
-                    # appears exactly once on the live surface. The
-                    # final chunk that carries the condensation
-                    # trailer is rendered with ``crop=False`` so Rich
-                    # never silently drops the trailing
-                    # `` B, see .agent/raw/<unit>.log`` marker when
-                    # the marker is wider than the remaining row
-                    # budget; non-trailer chunks keep ``crop=True``
-                    # to honour the narrow-terminal width contract.
+                    # Continuations repeat their carrier so cold transcript
+                    # searches do not need adjacent lines for context. The
+                    # final condensation trailer remains uncropped because its
+                    # recovery destination is itself a required carrier.
                     is_trailer = "(truncated," in chunk
-                    continuation = Text(hang_prefix)
-                    continuation.append(
-                        chunk,
-                        style=pick_status_styles(self._terminal_bg_is_light)[
-                            "pending" if base_tag == "think" else "info"
-                        ][0],
-                    )
                     self._console.print(
-                        continuation,
+                        self._activity_text(
+                            timestamp,
+                            display_tag,
+                            rendered_unit_id,
+                            chunk,
+                            kind="thinking" if base_tag == "think" else "text",
+                        ),
                         markup=False,
                         highlight=False,
                         no_wrap=True,
