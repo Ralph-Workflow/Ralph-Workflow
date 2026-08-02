@@ -85,6 +85,14 @@ class _StopFailingObserver(_FakeObserver):
         raise OSError("watch release failed")
 
 
+class _ScheduleAndStopFailingObserver(_ScheduleFailingObserver):
+    """Observer whose failed startup rollback also fails during stop."""
+
+    def stop(self) -> None:
+        self.stopped = True
+        raise OSError("startup rollback release failed")
+
+
 # ---------------------------------------------------------------------------
 # AC-01: exactly one recursive root watch, every classifier config
 # ---------------------------------------------------------------------------
@@ -153,6 +161,28 @@ def test_start_failure_allows_a_later_watch_registration_retry(
 
     assert len(failing.scheduled) == 1
     assert failing.stopped is True
+    assert failing.joined is True
+    assert len(succeeding.scheduled) == 1
+    assert succeeding.started is True
+
+
+def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-5 regression: failed startup cleanup cannot strand watch ownership."""
+    failing = _ScheduleAndStopFailingObserver()
+    succeeding = _FakeObserver()
+    observers = iter((failing, succeeding))
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: next(observers),
+    )
+    monitor = WorkspaceMonitor(Path("/ws"), classifier=WorkspaceChangeClassifier())
+
+    with pytest.raises(OSError, match="watch registration failed"):
+        monitor.start()
+    monitor.start()
+
     assert failing.joined is True
     assert len(succeeding.scheduled) == 1
     assert succeeding.started is True

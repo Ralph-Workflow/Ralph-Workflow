@@ -6,6 +6,7 @@ import importlib
 import inspect
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -268,8 +269,10 @@ class WorkspaceMonitor:
             self._observer.schedule(handler, workspace_str, recursive=True)
             self._observer.start()
         except BaseException:
-            observer.stop()
-            observer.join(5)
+            with suppress(BaseException):
+                observer.stop()
+            with suppress(BaseException):
+                observer.join(5)
             self._observer = None
             self._handler = None
             raise
