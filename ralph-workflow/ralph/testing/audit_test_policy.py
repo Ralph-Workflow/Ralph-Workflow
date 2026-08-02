@@ -114,6 +114,10 @@ _IO_ALLOWLIST: set[str] = {
     "test_no_hardcoded_phase_names_register_role_handlers_is_generic",
     "test_no_hardcoded_phase_names_runner_artifact_handoff_is_generic",
     "test_no_hardcoded_phase_names_runner_has_no_canonical_phase_names",
+    # The seven source-inspection guards above were consolidated into this
+    # single module. Keep the aggregate filename exempt for the same reason:
+    # production source is the observable subject of these structural tests.
+    "test_no_hardcoded_phase_names",
     # Static analysis test that reads agent_event_renderer.py to enforce
     # the no-literal-hex invariant (the renderer must reference
     # STATUS_STYLES, not inline hex colours). The read target IS the
