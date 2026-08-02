@@ -41,6 +41,18 @@ checks performed by humans, or third-party hosted service reliability.
   works as documented) and one negative test (the behaviour rejects
   invalid input).
 
+## Test optimization
+
+Optimize a slow or over-budget suite before changing its limits. Preserve the
+clearest test for each contract while deleting TDD scaffolding once a clearer
+test covers the same behavior, collapsing integration cases to unit tests when
+an injectable seam expresses the same observable contract, and retiring an
+end-to-end test once a deterministic integration test covers that contract.
+Never delete sole coverage; retain the smallest higher-layer test for a
+boundary the lower layer cannot observe. Apply this lifecycle whenever a suite
+exceeds its budget or a test is slow, and refactor seams rather than splitting,
+skipping, or weakening the gate.
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents rely

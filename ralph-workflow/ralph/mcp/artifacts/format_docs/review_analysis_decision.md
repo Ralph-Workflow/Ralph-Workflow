@@ -5,7 +5,7 @@ the review's coverage, evidence, severity, and classifications against the code
 and checks you inspect; do not use this artifact to redo or directly fix the
 implementation.
 The submitted review is direct evidence of what the reviewer covered, reported,
-and classified. Use code, diff, and self-run checks to corroborate whether those
+and classified. Use current code and self-run checks to corroborate whether those
 judgments are correct and complete. Statuses grade the submitted review, never
 the implementation.
 Author markdown and submit with `ralph_submit_md_artifact`

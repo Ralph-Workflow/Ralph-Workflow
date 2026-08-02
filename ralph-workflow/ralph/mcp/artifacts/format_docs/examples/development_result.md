@@ -15,7 +15,7 @@ status: completed
 ## Plan Items Proven
 
 - [S-1] Created tests/auth/test_refresh_race.py; ran it before the fix and recorded the failure (AssertionError: token invalidated while in use).
-- [S-2] Added the per-token-key lock in src/auth/refresh.py; refresh_token() signature unchanged (verified with git diff — only the function body changed).
+- [S-2] Added the per-token-key lock in src/auth/refresh.py; refresh_token() signature unchanged after reading the current file, where only the function body differs.
 - [S-3] pytest tests/auth/test_refresh_race.py -q passed on three consecutive runs (exit 0 each time).
 - [S-4] pytest tests/auth -q passed: 47 passed in 8.2s, zero failures, no new warnings.
 

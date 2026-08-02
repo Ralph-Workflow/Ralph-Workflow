@@ -41,42 +41,30 @@ BLACK: Final[str] = "#000000"
 
 # Glyph tables for Unicode and ASCII modes
 UNICODE_GLYPHS: Final[dict[str, str]] = {
-    "success": "\u2713",  # ✓
-    "error": "\u2717",  # ✗
-    "warning": "\u26a0",  # ⚠
-    "running": "\u25d0",  # ◐
-    "pending": "\u25cb",  # ○
+    "success": "\u2713",
+    "error": "\u2717",
+    "warning": "\u26a0",
+    "running": "\u25d0",
+    "pending": "\u25cb",
     "info": "i",
-    "milestone": "\u25c6",  # ◆
-    "arrow": "\u2192",  # →
-    "start": "\u25b6",  # ▶
-    # New artistic glyphs
-    "phase_marker": "\u25a0",  # ■ - phase start marker
-    "iteration": "\u21bb",  # ↻ - iteration indicator
-    "budget": "\u25b2",  # ▲ - budget indicator
-    "review_pass": "\u2714",  # ✔ - review pass
-    "review_fail": "\u2718",  # ✘ - review fail
-    "outer_dev": "\u25ce",  # ◎ - outer dev indicator (bullseye: clear outer cycle marker)
-    "inner_analysis": "\u25b8",  # ▸ - inner analysis indicator (triangle: direction/analysis)
-    "proceed": "\u2191",  # ↑ - proceed arrow
-    "revise": "\u2193",  # ↓ - revise arrow
-    "rule": "\u2500\u2500\u2500",  # ─── - section rule
-    # P0 (wt-028-display AC-03): attention-state glyphs. Reuse the
-    # existing ``warning`` / ``pending`` / ``iteration`` glyphs where
-    # they apply; only the new ``stalled`` and ``terminated`` keys
-    # need bespoke entries so the reserved attention slot always has
-    # a glyph even when no other glyph applies.
-    "stalled": "\u26a0",  # ⚠ - stalled uses the warning glyph
-    "terminated": "\u25a0",  # ■ - terminal outcome uses the box marker
-    "waiting": "\u25cb",  # ○ - waiting uses the pending glyph
-    "retrying": "\u21bb",  # ↻ - retrying uses the iteration glyph
-    # wt-028-display S-3: liveness glyph (a spinning-cursor frame)
-    # sits between phase and elapsed. The Unicode form is the
-    # braille-pattern dot 8 (\u280b) - a low-noise spinner frame
-    # that is byte-stable in width across frames (each frame is one
-    # cell). The Live tick rewrites the cell per refresh; the
-    # byte-stable width is what keeps the neighbours stationary.
-    "liveness": "\u280b",  # braille dot 8 (spinner frame 0)
+    "milestone": "\u25c6",
+    "arrow": "\u2192",
+    "start": "\u25b6",
+    "phase_marker": "\u25a0",
+    "iteration": "\u21bb",
+    "budget": "\u25b2",
+    "review_pass": "\u2714",
+    "review_fail": "\u2718",
+    "outer_dev": "\u25ce",
+    "inner_analysis": "\u25b8",
+    "proceed": "\u2191",
+    "revise": "\u2193",
+    "rule": "\u2500\u2500\u2500",
+    "stalled": "\u26a0",
+    "terminated": "\u25a0",
+    "waiting": "\u25cb",
+    "retrying": "\u21bb",
+    "liveness": "\u280b",
 }
 
 ASCII_GLYPHS: Final[dict[str, str]] = {
@@ -89,7 +77,6 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "milestone": "*",
     "arrow": "->",
     "start": ">",
-    # New ASCII glyphs
     "phase_marker": "[]",
     "iteration": "~",
     "budget": "^",
@@ -100,17 +87,11 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "proceed": "^",
     "revise": "v",
     "rule": "---",
-    # P0 (wt-028-display AC-03): attention-state ASCII glyphs. The
-    # ASCII table has to mirror every key in the Unicode table so a
-    # ``force_glyphs=False`` context (CI logs, redirect-pipes) still
-    # resolves the attention slot to a printable character.
     "stalled": "[!]",
     "terminated": "[OK]",
     "waiting": "[ ]",
     "retrying": "[~]",
-    # wt-028-display S-3: ASCII parity for the liveness glyph
-    # (mirrors the braille-spinner entry in UNICODE_GLYPHS).
-    "liveness": "*",  # ASCII liveness fallback (a single asterisk)
+    "liveness": "*",
 }
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
@@ -163,49 +144,19 @@ STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
 }
 
 IDENTITY_PALETTE: Final[tuple[str, ...]] = (
-    "#E31A1C",
-    "#3288BD",
-    "#33A02C",
-    "#6A3D9A",
-    "#FF7F00",
-    "#B15928",
-    "#E7298A",
-    "#B2DF8A",
-    "#FDBF6F",
-    "#CAB2D6",
-    "#FFFF99",
-    "#A6CEE3",
+    "#E31A1C", "#3288BD", "#33A02C", "#6A3D9A", "#FF7F00", "#B15928",
+    "#E7298A", "#B2DF8A", "#FDBF6F", "#CAB2D6", "#FFFF99", "#A6CEE3",
 )
 
 IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
-    "#8B0000",
-    "#00008B",
-    "#006400",
-    "#4B0082",
-    "#663300",
-    "#8B008B",
-    "#556B2F",
-    "#5A4FCF",
-    "#483D8B",
-    "#A52A2A",
-    "#3D3D3D",
-    "#1A1A1A",
+    "#8B0000", "#00008B", "#006400", "#4B0082", "#663300", "#8B008B",
+    "#556B2F", "#5A4FCF", "#483D8B", "#A52A2A", "#3D3D3D", "#1A1A1A",
 )
 
 #: Mid-luminance identity colours proven readable on both black and white.
 IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
-    "#0070F0",
-    "#0080A0",
-    "#3070E0",
-    "#308080",
-    "#508040",
-    "#6070C0",
-    "#608000",
-    "#7060F0",
-    "#807080",
-    "#9060C0",
-    "#907000",
-    "#907030",
+    "#0070F0", "#0080A0", "#3070E0", "#308080", "#508040", "#6070C0",
+    "#608000", "#7060F0", "#807080", "#9060C0", "#907000", "#907030",
 )
 
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")

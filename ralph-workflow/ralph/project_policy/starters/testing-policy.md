@@ -121,6 +121,23 @@ thorough tests with no time limit — does NOT comply.
     to prevent, and it is also the usual cause of an over-budget suite
     (rule 10).
 
+## Test optimization
+
+Optimize a slow or over-budget suite before changing its limits. Apply these
+moves while preserving the clearest test for every contract:
+
+1. Delete TDD-scaffolding coverage once a clearer test pins the same behavior;
+   never delete the sole coverage for a path.
+2. Collapse an integration case to a unit test when an injectable seam can
+   express the same observable contract more cheaply.
+3. Retire an end-to-end test once a deterministic integration test covers the
+   same contract; retain the smallest higher-layer test for boundaries the
+   lower layer cannot observe.
+
+Use this lifecycle with rules 9, 10, 13, and 14 whenever a suite exceeds its
+budget or a test is slow. Refactor seams for testability rather than splitting,
+skipping, or weakening the gate.
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents rely
