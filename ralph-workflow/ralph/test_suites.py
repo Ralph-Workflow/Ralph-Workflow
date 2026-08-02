@@ -567,7 +567,13 @@ def run_test_suites(
     """
     started_at = monotonic()
     deadline = started_at + suite_timeout_seconds
+    inherited_env = dict(os.environ)
+    # An activated external environment can export site-packages through
+    # PYTHONPATH. Pytest shards must use the same interpreter selected by
+    # ``sys.executable`` rather than importing incompatible binary wheels.
+    inherited_env.pop("PYTHONPATH", None)
     env = build_timeout_env(
+        base_env=inherited_env,
         test_timeout_seconds=timeout_seconds_from_env(
             TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS
         ),
