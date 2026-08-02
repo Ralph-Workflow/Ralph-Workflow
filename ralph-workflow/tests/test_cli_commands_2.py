@@ -510,7 +510,9 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     output = stream.getvalue()
     assert "ralph_submit_md_artifact" in output
     assert 'result={"reason": "invalid' in output
-    assert 'payload", "status": "failed"}' in output
+    # The status surface folds long structured payloads at terminal width;
+    # physical line wrapping must not lose any diagnostic content.
+    assert 'payload", "status": "failed"}' in output.replace("\n", "")
 
 
 def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:
