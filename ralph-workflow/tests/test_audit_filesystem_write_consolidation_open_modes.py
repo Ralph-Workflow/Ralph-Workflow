@@ -23,6 +23,52 @@ def test_flags_raw_os_open_with_write_flags(tmp_path: Path) -> None:
     assert "filesystem-write-ok" in violations[0].message
 
 
+def test_flags_raw_os_fdopen_with_write_mode(tmp_path: Path) -> None:
+    """S-1 regression: descriptor-backed writes cannot evade enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'import os\ndef persist(fd):\n    with os.fdopen(fd, "w") as stream:\n        stream.write("content")\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,))
+    assert [violation.kind for violation in violations] == ["raw_fdopen_write"]
+    assert "filesystem-write-ok" in violations[0].message
+
+
+def test_flags_aliased_os_fdopen_with_write_mode(tmp_path: Path) -> None:
+    """S-1 regression: aliased descriptor-backed writes remain in scope."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'from os import fdopen as persist\ndef write(fd):\n    return persist(fd, "ab")\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,))
+    assert [violation.kind for violation in violations] == ["raw_fdopen_write"]
+
+
+def test_does_not_flag_os_fdopen_with_read_mode(tmp_path: Path) -> None:
+    """Descriptor-backed read access remains outside mutation enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path, module_rel, 'import os\ndef read(fd):\n    return os.fdopen(fd, "rb").read()\n'
+    )
+    assert audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,)) == []
+
+
+def test_flags_direct_workspace_resolver_unlink(tmp_path: Path) -> None:
+    """S-2 regression: direct workspace-resolver deletion cannot evade the audit."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        'class Workspace:\n    def _abs(self, path):\n        return path\n    def remove(self, path):\n        self._abs(path).unlink(missing_ok=True)\n',
+    )
+    violations = audit.audit_filesystem_write_consolidation(package_root, module_paths=(module_rel,))
+    assert [violation.kind for violation in violations] == ["raw_unlink"]
+
+
 def test_flags_raw_os_fsync(tmp_path: Path) -> None:
     """``os.fsync(fd)`` outside the canonical primitive is a raw durability barrier."""
     module_rel = "alpha/example.py"

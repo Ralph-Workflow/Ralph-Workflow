@@ -20,7 +20,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | W3 | Record/log writers | Buffered logging and record-writer tests | GAP: inventory every high-frequency producer. |
 | W4 | Stable persistence writers | Compare-before-write helpers | GAP: inventory time-varying payloads and document deliberate exceptions. |
 | W5 | Atomic artifact persistence | `tests/test_atomic_write_if_changed.py` cleanup cases | COVERED for atomic helper; other transient paths are GAP. |
-| W6 | Atomic artifact persistence | identical replay skips directory sync | COVERED for helper; durability policy inventory is GAP. |
+| W6 | Atomic artifact persistence | `tests/test_atomic_write_if_changed.py` (identical replay skips directory sync) | COVERED for helper; durability policy inventory is GAP. |
 | W7 | History, cache, and run directories | Existing retention owners | GAP: characterize every accumulating path and its policy. |
 | W8 | Engine-internal stores | Existing workspace/run scoping | GAP: identify watched-tree internal state eligible for relocation. |
 | R1 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: its one snapshot no longer composes `stat`/`read`; broader reader inventory remains GAP. |
@@ -30,21 +30,21 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | R5 | Explore index and workspace traversal | explore-index lifecycle tests | GAP: prove no-op index reuse rather than rewalk. |
 | P1 | `WorkspaceMonitor.start` | `tests/agents/test_workspace_watch_scoping.py`; baseline test | COVERED for one monitor; cross-process coordination is GAP. |
 | P2 | `WorkspaceChangeClassifier` | watch-scoping classifier tests | GAP: enumerate standing engine-internal exclusions. |
-| P3 | Watch and poll lifecycle owners | event-driven workspace monitor; `audit_filesystem_polling_invocation` | COVERED structurally: raw timer polling fails verification unless a local bounded-lifecycle reason is present. |
-| P4 | `WorkspaceMonitor.stop` | watch-scoping failure/release tests; `audit_filesystem_polling_invocation` | COVERED for monitor and enforced ownership; each exceptional poll documents its release-bound lifecycle. |
+| P3 | Watch and poll lifecycle owners | `tests/agents/test_workspace_watch_scoping.py`; `tests/test_audit_filesystem_polling_invocation.py`; event-driven workspace monitor | COVERED structurally: raw timer polling fails verification unless a local bounded-lifecycle reason is present. |
+| P4 | `WorkspaceMonitor.stop` | `tests/agents/test_workspace_watch_scoping.py` failure/release tests; `tests/test_audit_filesystem_polling_invocation.py` | COVERED for monitor and enforced ownership; each exceptional poll documents its release-bound lifecycle. |
 | B1 | Public workspace paths and bytes | baseline test final-content assertions | GAP: fixture comparison across all public outputs. |
 | B2 | Logging and artifact streams | existing stream tests | GAP: full stream/history inventory. |
-| B3 | Atomic publication helper | atomic replace and sync tests | COVERED for helper; all durability callers are GAP. |
+| B3 | Atomic publication helper | `tests/test_atomic_write_if_changed.py` (atomic replace and sync); `tests/test_idempotent_write.py` | COVERED for helper; all durability callers are GAP. |
 | B4 | Atomic staging helper | unique staging-path regression | GAP: process-safe concurrent publication proof. |
 | B5 | Live stream writers | existing flush/lifecycle tests | GAP: fake-clock live-latency comparison. |
 | B6 | Shared persistence/watch state | unique staging path behavior | GAP: independent-process coordination proof. |
-| D1 | Write/read/polling consolidation audits | all three audits are `ralph.verify` steps | COVERED for audited raw accesses, polling, watch construction, and direct process selection. |
-| D2 | Audit diagnostics | actionable audit messages and tests | COVERED for write/read audits. |
-| D3 | Local audit markers | marker parsing in write/read audits | COVERED for write/read markers; validate existing markers behaviorally. |
+| D1 | Write/read/polling consolidation audits | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py`; `tests/test_audit_filesystem_polling_invocation.py`; `tests/test_audit_fsevents_watch_consolidation.py` (all wired into `ralph.verify`) | COVERED for audited raw accesses, polling, watch construction, and direct process selection. |
+| D2 | Audit diagnostics | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py` (actionable messages and tests) | COVERED for write/read audits. |
+| D3 | Local audit markers | `tests/test_audit_filesystem_write_consolidation.py` (marker parsing); `tests/test_audit_filesystem_write_fail_closed.py`; `tests/test_audit_filesystem_read_consolidation.py` | COVERED for write/read markers; validate existing markers behaviorally. |
 | E1 | Persistence and watch fake boundaries | baseline, idempotent-write, and watch-scoping tests | GAP: add black-box evidence for every matrix GAP as it closes. |
 | E2 | Regression tests | unchanged replay and atomic-skip tests | GAP: each future elimination must have a revert-sensitive test. |
-| E3 | Documentation | no quantitative claim is made here | COVERED. |
-| E4 | Verification budget | injected fakes and project test budget | COVERED for current baseline; recheck full gate after every slice. |
+| E3 | Documentation | `scripts/fabrication_guard.py` (no unverified quantitative claim appears in this page) | COVERED. |
+| E4 | Verification budget | `tests/test_verify_invariants.py`; `tests/test_verify_budget_real_time.py` (injected fakes and project test budget) | COVERED for current baseline; recheck full gate after every slice. |
 
 ## S-1 Baseline
 

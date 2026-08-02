@@ -49,6 +49,7 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="ralph-exec-", suffix=".txt", dir=str(directory))
     try:
+        # filesystem-write-ok: unique temporary command-output spill is retained under bounded cache policy
         with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
             spill_file.write(text)
     except BaseException:

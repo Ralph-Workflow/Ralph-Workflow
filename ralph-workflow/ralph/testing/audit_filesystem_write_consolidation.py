@@ -14,9 +14,9 @@ deviations require a local marker; no blanket path allowlists.
 The audit detects the following raw mutation classes:
 
   * ``Path.write_text`` / ``Path.write_bytes`` (raw full-file overwrite)
-  * ``open(path, mode)`` with a write/append/extend mode
-    (``"w"``, ``"a"``, ``"x"``, ``"wb"``, ``"ab"``, ``"r+"``, ``"w+"``,
-    ``"a+"`` and their ``b``/``t`` variants)
+  * ``open(path, mode)`` and ``os.fdopen(fd, mode)`` with a write/append/
+    extend mode (``"w"``, ``"a"``, ``"x"``, ``"wb"``, ``"ab"``, ``"r+"``,
+    ``"w+"``, ``"a+"`` and their ``b``/``t`` variants)
   * ``os.replace`` / ``os.rename`` / ``os.renames`` / ``Path.replace`` /
     ``Path.rename`` (atomic moves)
   * ``Path.unlink`` / ``os.remove`` / ``os.unlink`` / ``Path.rmdir``
@@ -277,6 +277,28 @@ def _raw_write_text_call(node: ast.Call) -> str | None:
     return None
 
 
+def _raw_fdopen_call(
+    node: ast.Call,
+    direct_fdopen_aliases: frozenset[str],
+    fdopen_module_aliases: frozenset[str],
+) -> bool:
+    """True if ``node`` is an ``os.fdopen(fd, mode, ...)`` write acquisition.
+
+    Descriptor-backed file streams are still filesystem mutations.  Recognize
+    direct and imported aliases so that a temporary-file creation sequence
+    cannot evade the same local-contract requirement as ``open``.
+    """
+    if isinstance(node.func, ast.Name) and node.func.id in direct_fdopen_aliases:
+        return _is_write_mode_open(node)
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "fdopen"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in {"os", *fdopen_module_aliases}
+        and _is_write_mode_open(node)
+    )
+
+
 def _raw_builtin_open_call(
     node: ast.Call,
     direct_open_aliases: frozenset[str],
@@ -336,7 +358,14 @@ def _call_root_name(node: ast.AST) -> str | None:
 
 def _import_aliases(
     nodes: list[ast.AST],
-) -> tuple[dict[str, str], dict[str, str], frozenset[str], frozenset[str]]:
+) -> tuple[
+    dict[str, str],
+    dict[str, str],
+    frozenset[str],
+    frozenset[str],
+    frozenset[str],
+    frozenset[str],
+]:
     """Return module, mutation, and mode-sensitive ``open`` aliases from *tree*.
 
     Import aliases must not turn package-wide enforcement into an easily
@@ -349,12 +378,17 @@ def _import_aliases(
     direct_mutations: dict[str, str] = {}
     direct_open_aliases: set[str] = set()
     open_module_aliases: set[str] = set()
+    direct_fdopen_aliases: set[str] = set()
+    fdopen_module_aliases: set[str] = set()
     for node in nodes:
         if isinstance(node, ast.Import):
             for imported in node.names:
                 root = imported.name.split(".", maxsplit=1)[0]
                 if root in _RAW_MUTATION_QUALIFIERS or root == "pathlib":
-                    module_aliases[imported.asname or root] = root
+                    local_name = imported.asname or root
+                    module_aliases[local_name] = root
+                    if root == "os":
+                        fdopen_module_aliases.add(local_name)
                 elif imported.name in {"io", "builtins"}:
                     open_module_aliases.add(imported.asname or imported.name)
         elif isinstance(node, ast.ImportFrom):
@@ -362,6 +396,8 @@ def _import_aliases(
                 local_name = imported.asname or imported.name
                 if node.module in {"io", "builtins"} and imported.name == "open":
                     direct_open_aliases.add(local_name)
+                elif node.module == "os" and imported.name == "fdopen":
+                    direct_fdopen_aliases.add(local_name)
                 elif node.module == "pathlib" and imported.name in {
                     "Path",
                     "PurePath",
@@ -376,6 +412,8 @@ def _import_aliases(
         direct_mutations,
         frozenset(direct_open_aliases),
         frozenset(open_module_aliases),
+        frozenset(direct_fdopen_aliases),
+        frozenset(fdopen_module_aliases),
     )
 
 
@@ -491,7 +529,14 @@ def _raw_qualified_mutation_call(
         return None
     receiver = node.func.value
     receiver_key = _path_receiver_key(receiver)
-    if receiver_key is not None and (_scope_key(node, parents), receiver_key) in path_variables:
+    workspace_resolver_call = (
+        isinstance(receiver, ast.Call)
+        and isinstance(receiver.func, ast.Attribute)
+        and receiver.func.attr in {"_abs", "absolute_path"}
+    )
+    if workspace_resolver_call or (
+        receiver_key is not None and (_scope_key(node, parents), receiver_key) in path_variables
+    ):
         return attr if attr in {
             "replace", "rename", "unlink", "mkdir", "rmdir", "touch", "truncate", "chmod"
         } else None
@@ -651,7 +696,14 @@ def _scan_module(
 
     nodes = list(ast.walk(tree))
     parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
-    module_aliases, direct_mutations, direct_open_aliases, open_module_aliases = _import_aliases(nodes)
+    (
+        module_aliases,
+        direct_mutations,
+        direct_open_aliases,
+        open_module_aliases,
+        direct_fdopen_aliases,
+        fdopen_module_aliases,
+    ) = _import_aliases(nodes)
     path_variables = _path_variable_names(nodes, module_aliases, parents)
     violations: list[FilesystemWriteViolation] = []
     for node in nodes:
@@ -668,6 +720,25 @@ def _scan_module(
                     file_path=rel_path,
                     line=node.lineno,
                     message=_violation_message(attr),
+                )
+            )
+            continue
+        # os.fdopen(fd, "w" / "a" / ...) and aliases
+        if _raw_fdopen_call(node, direct_fdopen_aliases, fdopen_module_aliases):
+            if _has_marker_on_or_before(node.lineno, marker_lines):
+                continue
+            violations.append(
+                FilesystemWriteViolation(
+                    kind="raw_fdopen_write",
+                    file_path=rel_path,
+                    line=node.lineno,
+                    message=(
+                        "raw os.fdopen() with a write/append mode bypasses the "
+                        "filesystem activity guard; route stable content through "
+                        "ralph.mcp.artifacts.idempotent_write or annotate the call with "
+                        "`# filesystem-write-ok: <reason>` naming the transient or "
+                        "append-stream lifecycle contract"
+                    ),
                 )
             )
             continue

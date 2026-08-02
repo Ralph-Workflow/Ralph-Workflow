@@ -245,6 +245,27 @@ _DISPLAY_IDENTITY_ACTIVE_SET: Final[tuple[str, ...]] = (
     "cursor",
 )
 
+# Backwards-compatible re-exports of the CVD simulation matrices. The
+# matrices themselves live in ``ralph.display._identity`` after the
+# extraction refactor; legacy test modules and downstream consumers
+# historically imported them from this module's namespace.
+_DEUTERANOPIA_MATRIX: Final = identity_helpers._DEUTERANOPIA_MATRIX
+_PROTANOPIA_MATRIX: Final = identity_helpers._PROTANOPIA_MATRIX
+_TRITANOPIA_MATRIX: Final = identity_helpers._TRITANOPIA_MATRIX
+
+# Backwards-compatible alias for the identity normalization helper.
+# ``_identity`` owns the canonical implementation; legacy call sites
+# reference ``theme._normalize_identity_name`` directly.
+_normalize_identity_name = identity_helpers.normalize_identity_name
+
+
+def _simulate_cvd(
+    hex_color: str,
+    matrix: tuple[tuple[float, float, float], ...],
+) -> str:
+    """Return the documented color-vision-deficiency simulation for a hex color."""
+    return identity_helpers.simulate_cvd(hex_color, matrix, rgb=_rgb)
+
 
 def _identity_slot(name: str) -> int:
     """Return the deterministic palette slot for ``name``."""

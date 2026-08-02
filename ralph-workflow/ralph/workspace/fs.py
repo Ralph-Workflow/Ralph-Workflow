@@ -196,7 +196,7 @@ class FsWorkspace:
         Args:
             path: Relative path to the file.
         """
-        self._abs(path).unlink(missing_ok=True)
+        self._backend.unlink(self._abs(path), missing_ok=True)
 
     def list_dir(self, path: str) -> list[str]:
         """List directory contents.
@@ -471,7 +471,7 @@ class FsWorkspace:
         Args:
             path: Relative path to the directory to create.
         """
-        self._abs(path).mkdir(parents=True, exist_ok=True)
+        self._backend.mkdir(self._abs(path), parents=True, exist_ok=True)
 
     def move(self, src: str, dest: str, *, overwrite: bool = False) -> None:
         """Move a file or directory.

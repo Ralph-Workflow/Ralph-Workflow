@@ -171,6 +171,7 @@ def _write_user_id_file(config_path: Path, user_id: str) -> None:
         if os.name != "nt":
             # filesystem-write-ok: persistent telemetry identity staging must remain owner-readable only before publication
             temp_path.chmod(0o600)
+        # filesystem-write-ok: durable telemetry identity staging is atomically published below
         with os.fdopen(temp_fd, "w", encoding="utf-8") as stream:
             stream.write(content)
             stream.flush()
