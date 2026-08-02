@@ -72,16 +72,34 @@ _SUBPROCESS_CALLS: frozenset[str] = frozenset(
 )
 
 
-def _module_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str], set[str]]:
+def _module_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str], dict[str, str]]:
     time_names = _imported_names(tree, module="time", accepted={"time", "sleep"})
     asyncio_names = _imported_names(tree, module="asyncio", accepted={"asyncio", "sleep"})
     observer_names = _imported_names(
         tree, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
     )
-    subprocess_names = _imported_names(
-        tree, module="subprocess", accepted={"subprocess", *_SUBPROCESS_CALLS}
-    )
+    subprocess_names = _subprocess_aliases(tree)
     return time_names, asyncio_names, observer_names, subprocess_names
+
+
+def _subprocess_aliases(tree: ast.Module) -> dict[str, str]:
+    """Map local subprocess import names to their canonical API names.
+
+    Direct imports retain their canonical member so an alias such as
+    ``from subprocess import run as launch`` cannot evade the typed-process
+    ownership audit.
+    """
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for imported in node.names:
+                if imported.name == "subprocess":
+                    aliases[imported.asname or imported.name] = "subprocess"
+        elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+            for imported in node.names:
+                if imported.name in _SUBPROCESS_CALLS:
+                    aliases[imported.asname or imported.name] = imported.name
+    return aliases
 
 
 def _imported_names(tree: ast.Module, *, module: str, accepted: set[str]) -> set[str]:
@@ -122,7 +140,7 @@ def _violation_for_call(
     time_names: set[str],
     asyncio_names: set[str],
     observer_names: set[str],
-    subprocess_names: set[str],
+    subprocess_names: dict[str, str],
 ) -> tuple[str, str] | None:
     func = node.func
     name = (
@@ -142,7 +160,15 @@ def _violation_for_call(
             and (name in time_names or root in time_names or name in asyncio_names or root in asyncio_names)
         )
         else "raw_subprocess_invocation"
-        if (name in _SUBPROCESS_CALLS and (name in subprocess_names or root in subprocess_names))
+        if (
+            (isinstance(func, ast.Name) and subprocess_names.get(name) in _SUBPROCESS_CALLS)
+            or (
+                isinstance(func, ast.Attribute)
+                and name in _SUBPROCESS_CALLS
+                and root is not None
+                and subprocess_names.get(root) == "subprocess"
+            )
+        )
         else None
     )
     return (kind, _VIOLATION_MESSAGES[kind]) if kind is not None else None

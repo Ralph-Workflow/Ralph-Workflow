@@ -131,6 +131,27 @@ def test_regression_unowned_subprocess_choice_fails_closed(tmp_path: Path) -> No
     assert "typed process" in violations[0].message
 
 
+def test_regression_direct_import_subprocess_alias_fails_closed(tmp_path: Path) -> None:
+    """S-6: a directly imported subprocess launcher alias cannot evade D1."""
+    module_rel = "feature/invoke.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from subprocess import run as launch\n"
+        "def invoke() -> None:\n"
+        "    launch(['tool'])\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_subprocess_invocation"
+    assert "typed process" in violations[0].message
+
+
 def test_local_reasoned_marker_remains_an_explicit_exception(tmp_path: Path) -> None:
     """D3: a local non-empty lifecycle reason is the only exception path."""
     module_rel = "feature/poller.py"

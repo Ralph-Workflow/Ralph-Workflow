@@ -63,6 +63,26 @@ class TestFsWorkspaceReadLines:
         with pytest.raises(FileNotFoundError):
             ws.read_lines("missing.txt")
 
+    def test_read_lines_regression_allows_a_bounded_head_for_a_large_file(
+        self, tmp_path: Path
+    ) -> None:
+        """S-4: a head window is allowed when only the unbounded read exceeds its ceiling."""
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "large.txt").write_text("first\nsecond\nthird\n", encoding="utf-8")
+
+        content, meta = ws.read_lines("large.txt", head=1, max_bytes=10)
+
+        assert content == "first\n"
+        assert meta == {"total_lines": 3, "returned_lines": 1, "truncated": True}
+
+    def test_read_lines_regression_rejects_an_unbounded_large_file(self, tmp_path: Path) -> None:
+        """S-4: only a full line read is rejected by the configured byte ceiling."""
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "large.txt").write_text("first\nsecond\nthird\n", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="File too large for read_lines"):
+            ws.read_lines("large.txt", max_bytes=10)
+
     def test_read_lines_no_trailing_newline_full_file(self, tmp_path: Path) -> None:
         ws = FsWorkspace(tmp_path)
         (tmp_path / "sample.txt").write_text("alpha\nbeta", encoding="utf-8")

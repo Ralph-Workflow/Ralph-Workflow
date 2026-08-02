@@ -267,10 +267,10 @@ class FsWorkspace:
     ) -> tuple[str, dict[str, object]]:
         """Read lines from a file with slicing support.
 
-        Memory-bounded: a ``stat`` precheck rejects files above
-        ``max_bytes`` (default ``MAX_READ_LINES_BYTES`` = 5 MB) so a
-        partial read against a multi-GB file cannot OOM the agent.
-        Partial reads (``head`` / ``tail`` / ``start..end``) stream
+        Memory-bounded: a ``stat`` precheck rejects only unbounded full-file
+        reads above ``max_bytes`` (default ``MAX_READ_LINES_BYTES`` = 5 MB).
+        Partial reads (``head`` / ``tail`` / ``start..end``) remain available
+        for larger files because they stream
         the file and only materialize the requested window, so peak
         allocation is O(window) not O(file size). The full-file path
         also streams in 64KB chunks via ``readlines(hint=...)`` to
@@ -303,7 +303,7 @@ class FsWorkspace:
         abs_path = self._abs(path)
         ceiling = max_bytes if max_bytes is not None else MAX_READ_LINES_BYTES
         file_size = abs_path.stat().st_size
-        if file_size > ceiling:
+        if mode_count == 0 and file_size > ceiling:
             raise ValueError(
                 f"File too large for read_lines: {file_size} bytes exceeds "
                 f"limit of {ceiling} bytes (path={path!r}). "
