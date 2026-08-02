@@ -101,7 +101,11 @@ from ralph.display.phase_status import (
     format_dev_cycle_compact,
     format_dev_cycle_minimal,
 )
-from ralph.display.theme import _DISPLAY_IDENTITY_ACTIVE_SET, identity_color
+from ralph.display.theme import (
+    _DISPLAY_IDENTITY_ACTIVE_SET,
+    identity_color,
+    pick_status_styles,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1139,7 +1143,15 @@ def _append_attention_slot(
     if attention_state is not None:
         label, glyph_key, style = ATTENTION_PRESENTATION[attention_state]
         glyph = ctx.glyph_for(glyph_key)
-        text.append(f"{glyph} {label}", style=style)
+        status_name = {
+            "theme.status.error": "error",
+            "theme.status.warn": "warning",
+            "theme.status.info": "info",
+        }[style]
+        text.append(
+            f"{glyph} {label}",
+            style=pick_status_styles(ctx.terminal_background_is_light)[status_name][0],
+        )
         text.append(separator, style="theme.status.path_marker")
         # Pad to the reserved width when the rendered state is
         # shorter than the worst case (e.g. ``DONE`` is shorter

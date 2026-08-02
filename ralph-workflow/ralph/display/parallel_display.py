@@ -1879,8 +1879,15 @@ class ParallelDisplay:
                     # budget; non-trailer chunks keep ``crop=True``
                     # to honour the narrow-terminal width contract.
                     is_trailer = "(truncated," in chunk
+                    continuation = Text(hang_prefix)
+                    continuation.append(
+                        chunk,
+                        style=pick_status_styles(self._terminal_bg_is_light)[
+                            "pending" if base_tag == "think" else "info"
+                        ][0],
+                    )
                     self._console.print(
-                        f"{hang_prefix}{chunk}",
+                        continuation,
                         markup=False,
                         highlight=False,
                         no_wrap=True,

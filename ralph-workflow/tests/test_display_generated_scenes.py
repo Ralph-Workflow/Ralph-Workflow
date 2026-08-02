@@ -164,6 +164,26 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
     assert any(".agent/raw" in row for row in condensed_rows)
 
 
+def test_generated_scene_colours_primary_agent_content_and_waiting_state() -> None:
+    """S-3/S-6 regression: content and waiting labels never fall back to default foreground."""
+    clean = render_scene(
+        "clean_run",
+        SupportCase("dark", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+    idle = render_scene(
+        "idle_stretch",
+        SupportCase("dark", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    assert re.search(
+        r"\x1b\[[0-9;]*38;[^m]*mimplemented Unicode-safe output", clean
+    )
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*mchecking preview hierarchy", clean)
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*m○ WAITING", idle)
+
+
 def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -> None:
     """S-2/S-5 regression: graceful degradation keeps the activity carrier visible."""
     rendered = render_scene(
