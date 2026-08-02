@@ -546,22 +546,20 @@ _THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
 }
 RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
-
 def _fresh_style(style: str) -> Style:
     """Build one style whose mutable ANSI cache cannot cross consoles."""
     tokens = style.split()
+    background_index = tokens.index("on") + 1 if "on" in tokens else None
     fresh = Style(
-        color=next((token for token in tokens if token.startswith("#")), None),
-        bold="bold" in tokens,
-        italic="italic" in tokens,
+        color=next((token for index, token in enumerate(tokens) if token.startswith("#") and index != background_index), None), bgcolor=tokens[background_index] if background_index is not None else None,
+        bold=True if "bold" in tokens else None, dim=True if "dim" in tokens else None, italic=True if "italic" in tokens else None, underline=True if "underline" in tokens else None, reverse=True if "reverse" in tokens else None, strike=True if "strike" in tokens else None,
     )
+    # Per-instance hash isolates Rich's ANSI cache; equality differs, so adjacent segments may not merge.
     fresh._hash = id(fresh)
     return fresh
 
-
 def _fresh_theme(styles: Mapping[str, str]) -> Theme:
     return Theme({name: _fresh_style(style) for name, style in styles.items()})
-
 
 def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
     """Return a new theme so ANSI caching cannot downgrade another console."""
@@ -570,7 +568,6 @@ def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
     if terminal_bg_is_light is False:
         return _fresh_theme(_THEME_STYLES)
     return _fresh_theme(_THEME_STYLES_ON_UNKNOWN_BG)
-
 
 _MIN_CONTRAST_RATIO: Final[float] = 4.5
 

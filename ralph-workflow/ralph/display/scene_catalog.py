@@ -190,7 +190,7 @@ def _drive_production_scene(
     """Drive public production display entry points with fixed scenario data."""
     if scene_name == "first_screen":
         display.emit_welcome_banner(version="0.0.0-scene")
-        display.emit_first_run_panel([Text("Production display scene")])
+        display.emit_first_run_panel([Text("Production display scene", style="theme.text.muted")])
         display.emit_run_start(
             RunStartOrientation(
                 prompt_path=_SCENE_PROMPT_PATH,

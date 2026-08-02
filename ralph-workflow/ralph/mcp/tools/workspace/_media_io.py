@@ -53,9 +53,13 @@ class _MediaPruneCounter:
 
     def __init__(self, counter: Iterator[int] | int | None = None) -> None:
         self._counter = count(1) if counter is None else counter
+        self._workspace_key: str | None = None
 
-    def advance(self) -> bool:
-        """Advance the injectable counter and report whether this is a prune tick."""
+    def advance(self, workspace_key: str) -> bool:
+        """Advance one workspace's counter and report whether this is a prune tick."""
+        if workspace_key != self._workspace_key:
+            self._workspace_key = workspace_key
+            self._counter = count(1)
         counter = self._counter
         if isinstance(counter, int):
             next_count = counter + 1
@@ -67,14 +71,15 @@ class _MediaPruneCounter:
     def reset(self, counter: Iterator[int] | int | None = None) -> None:
         """Reset the test-injectable counter to a deterministic starting point."""
         self._counter = count(1) if counter is None else counter
+        self._workspace_key = None
 
 
 _media_prune_counter = _MediaPruneCounter()
 
 
-def _advance_media_prune_counter() -> bool:
-    """Advance the bounded media prune counter and report whether this is a tick."""
-    return _media_prune_counter.advance()
+def _advance_media_prune_counter(workspace: Workspace) -> bool:
+    """Advance the bounded workspace-local prune counter and report whether this is a tick."""
+    return _media_prune_counter.advance(workspace.absolute_path(media_registry_path()))
 
 
 def _reset_media_prune_counter(counter: Iterator[int] | int | None = None) -> None:
@@ -157,7 +162,7 @@ def _persist_media_registry_entry(
     """Write entry to the centralized media registry for cross-session lookup."""
     path = media_registry_path()
     artifact_id = entry["artifact_id"]
-    run_prune = _advance_media_prune_counter()
+    run_prune = _advance_media_prune_counter(workspace)
     try:
         artifacts: list[dict[str, str]] = []
         try:
@@ -247,7 +252,7 @@ def _persist_media_session_entry(
         "failure_kind": meta.get("failure_kind", ""),
         "identity_key": meta.get("identity_key", ""),
     }
-    run_prune = _advance_media_prune_counter()
+    run_prune = _advance_media_prune_counter(workspace)
     try:
         try:
             data: dict[str, object] = json.loads(workspace.read(path))

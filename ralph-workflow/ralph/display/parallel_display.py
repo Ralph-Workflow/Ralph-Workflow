@@ -4681,12 +4681,10 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             timestamp = datetime.now(UTC).isoformat()
-            self._console.print(
-                f"{timestamp} INFO META [plan] (no plan artifact on disk)",
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
+            hint = Text(timestamp, style="theme.level.info")
+            hint.append(" INFO ", style="theme.level.info")
+            hint.append("META [plan] (no plan artifact on disk)", style="theme.cat.meta")
+            self._console.print(hint, markup=False, highlight=False, no_wrap=True)
 
     @staticmethod
     def _analysis_handoff_artifact_type(drain: str) -> str:
@@ -4868,7 +4866,9 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[agents]")
-            table = Table(title="Configured Agents", show_header=True)
+            table = Table(
+                title="Configured Agents", show_header=True, border_style="theme.panel.border"
+            )
             table.add_column("Name", style="theme.cat.meta")
             table.add_column("Command")
             table.add_column("Parser", style="theme.cat.cont")
@@ -4894,7 +4894,9 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[providers]")
-            table = Table(title="Available Providers", show_header=True)
+            table = Table(
+                title="Available Providers", show_header=True, border_style="theme.panel.border"
+            )
             table.add_column("Provider", style="theme.cat.meta")
             table.add_column("Status", justify="center")
             if not providers:
@@ -4982,7 +4984,9 @@ class ParallelDisplay:
             from ralph.skills._capability_status import CapabilityStatus
 
             resolved_workspace = Path.cwd() if workspace_root is None else workspace_root
-            table = Table(title="Baseline Capabilities", show_header=True)
+            table = Table(
+                title="Baseline Capabilities", show_header=True, border_style="theme.panel.border"
+            )
             table.add_column("Capability", style="theme.cat.meta")
             table.add_column("Type")
             table.add_column("Status")
@@ -5023,7 +5027,7 @@ class ParallelDisplay:
             if state.skills.status != CapabilityStatus.NOT_INSTALLED:
                 self._console.print(Text("Skill root coverage", style="theme.cat.meta"))
                 skill_rows = collect_skill_root_rows(workspace_root=resolved_workspace)
-                skill_table = Table(show_header=True)
+                skill_table = Table(show_header=True, border_style="theme.panel.border")
                 skill_table.add_column("Agent", style="theme.cat.meta")
                 skill_table.add_column("Skill root", style="theme.text.muted")
                 skill_table.add_column("Scope", style="theme.cat.meta")
@@ -5098,7 +5102,11 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._emit_section_rule("[next-steps]")
             for index, line in enumerate(next_steps, start=1):
-                self._console.print(f"  {index}. {line}", markup=False, highlight=False)
+                self._console.print(
+                    Text(f"  {index}. {line}", style="theme.text.muted"),
+                    markup=False,
+                    highlight=False,
+                )
 
     # -- Consolidated table / panel / info methods (wt-007) ----------------
 
@@ -5140,7 +5148,7 @@ class ParallelDisplay:
                 # lines (paths, re-run commands) without
                 # truncating the operator's fix-it phrase.
                 self._console.print(
-                    content,
+                    Text(content, style="theme.text.muted"),
                     markup=False,
                     highlight=False,
                     soft_wrap=True,
@@ -5161,7 +5169,7 @@ class ParallelDisplay:
                 # would still let the wrapped body reach the
                 # terminal width through the panel's title bar).
                 panel = Panel(
-                    content,
+                    Text(content, style="theme.text.muted"),
                     title=title,
                     border_style="theme.phase.planning",
                     padding=(1, 2),
@@ -5185,6 +5193,7 @@ class ParallelDisplay:
                 expand=True,
                 title_style="theme.banner.title",
                 header_style="theme.text.emphasis",
+                border_style="theme.panel.border",
             )
             table.add_column("Metric", style="theme.cat.meta")
             table.add_column("Value", justify="right", style="theme.status.success")
@@ -5210,6 +5219,7 @@ class ParallelDisplay:
                 show_header=False,
                 expand=True,
                 title_style="theme.banner.title",
+                border_style="theme.panel.border",
             )
             table.add_column("Property", style="theme.cat.meta")
             table.add_column("Value")
@@ -5238,6 +5248,7 @@ class ParallelDisplay:
                 show_header=True,
                 title_style="theme.banner.title",
                 header_style="theme.text.emphasis",
+                border_style="theme.panel.border",
             )
             table.add_column("Server", style="theme.cat.meta")
             table.add_column("Origin", style="theme.text.muted")
@@ -5265,6 +5276,7 @@ class ParallelDisplay:
                 show_header=True,
                 title_style="theme.banner.title",
                 header_style="theme.text.emphasis",
+                border_style="theme.panel.border",
             )
             table.add_column("Server", style="theme.cat.meta")
             table.add_column("Claude", style="theme.text.muted")
@@ -5293,6 +5305,7 @@ class ParallelDisplay:
                 show_header=True,
                 title_style="theme.banner.title",
                 header_style="theme.text.emphasis",
+                border_style="theme.panel.border",
             )
             table.add_column("Server", style="theme.cat.meta")
             table.add_column("Transport", style="theme.text.muted")

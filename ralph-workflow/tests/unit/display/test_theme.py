@@ -4,6 +4,7 @@ import importlib
 
 import pytest
 from rich.console import Console
+from rich.style import Style
 from rich.theme import Theme
 
 from ralph.display.context import make_display_context
@@ -91,6 +92,36 @@ def test_make_console_regression_default_color_auto_detection_respects_no_color(
 
     assert "\x1b[38;2;" in color_capture.get()
     assert "\x1b[38;2;" not in no_color_capture.get()
+
+
+@pytest.mark.parametrize(
+    "styles",
+    (theme._THEME_STYLES, theme._THEME_STYLES_ON_LIGHT_BG, theme._THEME_STYLES_ON_UNKNOWN_BG),
+)
+def test_theme_regression_fresh_styles_preserve_rich_attributes(styles: dict[str, str]) -> None:
+    """S-6: per-console style rebuilding must preserve every supported style attribute."""
+    for style in styles.values():
+        expected = Style.parse(style)
+        actual = theme._fresh_style(style)
+        assert (
+            actual.color,
+            actual.bold,
+            actual.italic,
+            actual.dim,
+            actual.underline,
+            actual.reverse,
+            actual.bgcolor,
+            actual.strike,
+        ) == (
+            expected.color,
+            expected.bold,
+            expected.italic,
+            expected.dim,
+            expected.underline,
+            expected.reverse,
+            expected.bgcolor,
+            expected.strike,
+        )
 
 
 def test_ralph_theme_contains_required_style_keys() -> None:
