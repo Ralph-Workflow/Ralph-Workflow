@@ -53,7 +53,9 @@ from __future__ import annotations
 
 import ast
 import sys
+import tokenize
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -533,6 +535,19 @@ def _qualified_violation_message(qualifier: str, attr: str) -> str:
     )
 
 
+def _marker_comment_lines(source: str) -> set[int]:
+    """Return lines with a reasoned filesystem-write marker in a Python comment."""
+    marker_lines: set[int] = set()
+    for token in tokenize.generate_tokens(StringIO(source).readline):
+        if token.type != tokenize.COMMENT or _MARKER_TOKEN not in token.string:
+            continue
+        marker_idx = token.string.find(_MARKER_TOKEN)
+        reason = token.string[marker_idx + len(_MARKER_TOKEN) :].strip()
+        if reason:
+            marker_lines.add(token.start[0])
+    return marker_lines
+
+
 def _has_marker_on_or_before(line_idx: int, marker_lines: set[int]) -> bool:
     """True if any of the lines immediately before *line_idx* carries a marker.
 
@@ -603,19 +618,9 @@ def _scan_module(
         return prepared
     tree, source = prepared
 
-    # Pre-compute the lines that carry a filesystem-write-ok marker
-    # so we can answer "is this call suppressed?" in O(1). The
-    # marker MUST carry a non-empty reason — an empty reason fails
-    # closed (D3).
-    marker_lines: set[int] = set()
-    lines = source.splitlines()
-    for idx, line in enumerate(lines, start=1):
-        if _MARKER_TOKEN not in line:
-            continue
-        marker_idx = line.find(_MARKER_TOKEN)
-        reason = line[marker_idx + len(_MARKER_TOKEN) :].strip()
-        if reason:
-            marker_lines.add(idx)
+    # Pre-compute reasoned comment markers so a string or docstring
+    # cannot silently become a D3 exception annotation.
+    marker_lines = _marker_comment_lines(source)
 
     nodes = list(ast.walk(tree))
     parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
@@ -707,30 +712,6 @@ def _direct_import_violation(
         line=node.lineno,
         message=_qualified_violation_message("import", direct_attr),
     )
-
-
-def _has_named_marker_for_line(source: str, line_idx: int, marker_lines: set[int]) -> bool:
-    """True if the marker on/above ``line_idx`` carries a non-empty reason.
-
-    An empty reason (``# filesystem-write-ok:``) is treated as drift
-    per D3; the audit fails closed on those sites by reporting a
-    violation even though a token is present.
-    """
-    lines = source.splitlines()
-    candidates: list[int] = []
-    if line_idx in marker_lines:
-        candidates.append(line_idx)
-    if line_idx - 1 in marker_lines:
-        candidates.append(line_idx - 1)
-    for idx in candidates:
-        text = lines[idx - 1] if 1 <= idx <= len(lines) else ""
-        marker_idx = text.find(_MARKER_TOKEN)
-        if marker_idx == -1:
-            continue
-        reason = text[marker_idx + len(_MARKER_TOKEN) :].strip()
-        if reason:
-            return True
-    return False
 
 
 def audit_filesystem_write_consolidation(

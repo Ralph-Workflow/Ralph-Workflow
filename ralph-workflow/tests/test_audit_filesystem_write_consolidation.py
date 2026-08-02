@@ -373,6 +373,28 @@ def test_marker_on_prior_line_suppresses(tmp_path: Path) -> None:
     assert violations == []
 
 
+def test_regression_rejects_marker_token_inside_a_string_literal(tmp_path: Path) -> None:
+    """S-2: only a local comment may declare a filesystem-write exception."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "def persist(path, content):\n"
+            "    note = 'filesystem-write-ok: not an annotation'\n"
+            "    path.write_text(content)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_write_text"]
+    assert violations[0].line == 3
+
+
 def test_marker_on_same_line_suppresses(tmp_path: Path) -> None:
     """Marker may appear as a trailing comment on the same line."""
     module_rel = "alpha/example.py"
