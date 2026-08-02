@@ -21,8 +21,12 @@ under the per-file budget.
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
+import ralph.display._terminal_bg_query as terminal_query
+import ralph.display.theme as theme_module
 from ralph.display._terminal_bg_query import parse_osc11_reply
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
@@ -168,3 +172,83 @@ def test_syntax_theme_tracks_the_resolved_background() -> None:
     assert syntax_theme_for_background(True) == SYNTAX_THEME_ON_LIGHT_BG
     assert syntax_theme_for_background(False) == SYNTAX_THEME_ON_DARK_BG
     assert syntax_theme_for_background(None) == SYNTAX_THEME_ON_UNKNOWN_BG
+
+
+def test_terminal_background_regression_uses_dev_tty_when_stdin_is_redirected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4: a tty stdout opens /dev/tty when stdin is redirected."""
+    class _Stream(io.StringIO):
+        def isatty(self) -> bool:
+            return self is stdout
+
+    stdin = _Stream()
+    stdout = _Stream()
+    opened: list[tuple[str, int]] = []
+    monkeypatch.setattr(terminal_query.sys, "stdin", stdin)
+    monkeypatch.setattr(terminal_query.sys, "stdout", stdout)
+    monkeypatch.setattr(
+        terminal_query.os,
+        "open",
+        lambda path, flags: opened.append((path, flags)) or 77,
+    )
+    assert terminal_query._tty_fd() == (77, True)
+    assert opened == [("/dev/tty", terminal_query.os.O_RDWR | terminal_query.os.O_NOCTTY)]
+
+
+def test_terminal_background_regression_restores_tty_after_probe_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4: a failed raw-mode exchange restores the terminal and closes /dev/tty."""
+    monkeypatch.setattr(terminal_query, "_tty_fd", lambda: (77, True))
+    monkeypatch.setattr(terminal_query.sys, "platform", "linux")
+    restored: list[tuple[int, int, list[int]]] = []
+    closed: list[int] = []
+
+    class _Termios:
+        TCSANOW = 0
+        TCSADRAIN = 1
+
+        @staticmethod
+        def tcgetattr(_fd: int) -> list[int]:
+            return [1]
+
+        @staticmethod
+        def tcsetattr(fd: int, when: int, original: list[int]) -> None:
+            restored.append((fd, when, original))
+
+    class _Tty:
+        @staticmethod
+        def setraw(_fd: int, _when: int) -> None:
+            raise OSError("raw mode failed")
+
+    monkeypatch.setitem(__import__("sys").modules, "termios", _Termios)
+    monkeypatch.setitem(__import__("sys").modules, "tty", _Tty)
+    monkeypatch.setattr(terminal_query.os, "close", closed.append)
+    assert terminal_query._probe(0.1) == (True, None)
+    assert restored == [(77, 1, [1])]
+    assert closed == [77]
+
+
+def test_terminal_background_regression_no_tty_does_not_memoize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4: an unavailable tty remains retryable instead of caching None."""
+    terminal_query.reset_cache()
+    monkeypatch.setattr(terminal_query, "_probe", lambda _timeout: (False, None))
+    assert terminal_query.query_terminal_background_hex() is None
+    assert terminal_query._probed is False
+
+
+def test_terminal_background_regression_timeout_env_reaches_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-4: the documented millisecond override controls the OSC 11 deadline."""
+    observed: list[float] = []
+    monkeypatch.setattr(
+        terminal_query,
+        "query_terminal_background_hex",
+        lambda *, timeout: observed.append(timeout) or "#000000",
+    )
+    assert theme_module.detect_terminal_background_is_light({"RALPH_TERMINAL_BG_TIMEOUT_MS": "250"}) is False
+    assert observed == [0.25]

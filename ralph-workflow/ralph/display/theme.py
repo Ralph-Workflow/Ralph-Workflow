@@ -611,13 +611,27 @@ def terminal_background_is_light(
     return _colorfgbg_is_light(env)
 
 
+def _terminal_background_timeout_seconds(env: Mapping[str, str]) -> float:
+    """Return the bounded OSC 11 deadline, accepting a positive ms override."""
+    try:
+        milliseconds = int(env.get("RALPH_TERMINAL_BG_TIMEOUT_MS", "100"))
+    except ValueError:
+        return 0.1
+    return milliseconds / 1_000 if milliseconds > 0 else 0.1
+
+
 def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
     """Resolve the terminal background with OSC 11 unless overridden."""
     if env.get("RALPH_TERMINAL_BG", "").strip():
         return terminal_background_is_light(env)
     from ralph.display._terminal_bg_query import query_terminal_background_hex
 
-    return terminal_background_is_light(env, measured_bg_hex=query_terminal_background_hex())
+    return terminal_background_is_light(
+        env,
+        measured_bg_hex=query_terminal_background_hex(
+            timeout=_terminal_background_timeout_seconds(env)
+        ),
+    )
 
 
 #: Syntax-highlight palettes selected for dark and light terminal backgrounds.

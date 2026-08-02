@@ -26,8 +26,9 @@ Safety contract
 
 The probe touches the tty, so it is defensive by construction:
 
-* It runs only when stdin AND stdout are both a tty, and never on
-  Windows (no ``termios``).
+* It runs only when stdout is a tty, using stdin when available or
+  ``/dev/tty`` when stdin is redirected, and never on Windows (no
+  ``termios``).
 * It puts the tty in raw mode inside a ``try/finally`` that always
   restores the original attributes, including on exception.
 * It uses ``select`` with a short deadline (default 100 ms). A terminal
@@ -139,27 +140,32 @@ def _read_reply(fd: int, *, timeout: float) -> str:
             return buffer
 
 
-def _tty_fd() -> int | None:
-    """Return the stdin fd when both stdin and stdout are a real tty."""
+def _tty_fd() -> tuple[int, bool] | None:
+    """Return a usable tty fd and whether this call must close it."""
     stdin: object = sys.stdin
     stdout: object = sys.stdout
-    if not isinstance(stdin, IOBase) or not isinstance(stdout, IOBase):
+    if not isinstance(stdout, IOBase):
         return None
     try:
-        if not (stdin.isatty() and stdout.isatty()):
+        if not stdout.isatty():
             return None
-        return stdin.fileno()
+        if isinstance(stdin, IOBase) and stdin.isatty():
+            return stdin.fileno(), False
+        return os.open(  # resource-lifecycle-ok: closed in _probe's finally after one OSC exchange; filesystem-write-ok: transient controlling-tty fd, never persisted
+            "/dev/tty", os.O_RDWR | os.O_NOCTTY
+        ), True
     except Exception:
         return None
 
 
-def _probe(timeout: float) -> str | None:
-    """Run the OSC 11 exchange once; ``None`` on any failure."""
+def _probe(timeout: float) -> tuple[bool, str | None]:
+    """Run the OSC 11 exchange once, reporting whether a tty was usable."""
     if sys.platform == "win32":
-        return None
-    fd = _tty_fd()
-    if fd is None:
-        return None
+        return False, None
+    tty_fd = _tty_fd()
+    if tty_fd is None:
+        return False, None
+    fd, close_fd = tty_fd
 
     import termios
     import tty
@@ -168,18 +174,23 @@ def _probe(timeout: float) -> str | None:
         original = termios.tcgetattr(fd)
     except Exception:
         # Not a real tty, or the process is backgrounded.
-        return None
+        if close_fd:
+            with contextlib.suppress(Exception):
+                os.close(fd)
+        return False, None
     try:
         tty.setraw(fd, termios.TCSANOW)
-        sys.stdout.write(_OSC11_QUERY)
-        sys.stdout.flush()
+        os.write(fd, _OSC11_QUERY.encode())
         reply = _read_reply(fd, timeout=timeout)
     except Exception:
-        return None
+        return True, None
     finally:
         with contextlib.suppress(Exception):
             termios.tcsetattr(fd, termios.TCSADRAIN, original)
-    return parse_osc11_reply(reply)
+        if close_fd:
+            with contextlib.suppress(Exception):
+                os.close(fd)
+    return True, parse_osc11_reply(reply)
 
 
 def query_terminal_background_hex(
@@ -203,9 +214,10 @@ def query_terminal_background_hex(
     global _cached_background, _probed  # noqa: PLW0603 - process-lifetime memo of an immutable probe
     if _probed:
         return _cached_background
-    result = _probe(timeout)
-    _cached_background = result
-    _probed = True
+    attempted, result = _probe(timeout)
+    if attempted:
+        _cached_background = result
+        _probed = True
     return result
 
 

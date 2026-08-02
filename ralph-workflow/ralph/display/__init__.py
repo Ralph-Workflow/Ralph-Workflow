@@ -87,6 +87,10 @@ views used by CLI diagnostics and listing commands.
    - ``NO_COLOR`` (any non-empty value) — disables all color output.  Takes precedence
      over ``FORCE_COLOR``.
    - ``FORCE_COLOR`` (any non-empty value) — enables color output on non-TTY streams.
+   - ``RALPH_TERMINAL_BG`` (``light``/``dark`` or ``#RRGGBB``) — overrides
+     terminal-background detection.
+   - ``RALPH_TERMINAL_BG_TIMEOUT_MS`` (positive integer) — changes the bounded
+     OSC 11 background-query deadline from its 100 ms default.
 
    **Glyph environment variables:**
 

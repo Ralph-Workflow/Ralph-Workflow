@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import cast
+
+import pygments.token as pygments_token
 from pygments.style import Style as PygmentsStyle
 from pygments.token import (
     Comment,
@@ -14,6 +17,25 @@ from pygments.token import (
     String,
     Text,
 )
+
+
+def _child_token(parent: object, name: str) -> object:
+    """Resolve a Pygments child token despite its incomplete type stubs."""
+    return cast("object", getattr(parent, name))
+
+
+_NAME_CLASS = _child_token(Name, "Class")
+_NAME_NAMESPACE = _child_token(Name, "Namespace")
+_NAME_BUILTIN = _child_token(Name, "Builtin")
+_NAME_BUILTIN_PSEUDO = _child_token(_NAME_BUILTIN, "Pseudo")
+_NAME_DECORATOR = _child_token(Name, "Decorator")
+_NAME_ATTRIBUTE = _child_token(Name, "Attribute")
+_NAME_VARIABLE = _child_token(Name, "Variable")
+_NAME_CONSTANT = _child_token(Name, "Constant")
+_KEYWORD_TYPE = _child_token(Keyword, "Type")
+_KEYWORD_NAMESPACE = _child_token(Keyword, "Namespace")
+_LITERAL = _child_token(_child_token(pygments_token, "Token"), "Literal")
+_ERROR = _child_token(_child_token(pygments_token, "Token"), "Error")
 
 
 class SyntaxThemes:
@@ -53,11 +75,25 @@ def _style(
     deleted, inserted, subheading = diff_colors
     namespace: dict[str, object] = {
         "default_style": default,
-        "styles": {
+        "styles": cast(
+            "object",
+            {
             Comment: comment,
             Keyword: keyword,
             Name: default,
             Name.Function: function,
+            _NAME_CLASS: function,
+            _NAME_NAMESPACE: function,
+            _NAME_BUILTIN: keyword,
+            _NAME_BUILTIN_PSEUDO: keyword,
+            _NAME_DECORATOR: comment,
+            _NAME_ATTRIBUTE: function,
+            _NAME_VARIABLE: function,
+            _NAME_CONSTANT: number,
+            _KEYWORD_TYPE: keyword,
+            _KEYWORD_NAMESPACE: keyword,
+            _LITERAL: number,
+            _ERROR: comment,
             String: string,
             Number: number,
             Operator: operator,
@@ -67,6 +103,7 @@ def _style(
             Generic.Subheading: subheading,
             Generic.Deleted: deleted,
             Generic.Inserted: inserted,
-        },
+            },
+        ),
     }
     return type("RalphSyntaxTheme", (PygmentsStyle,), namespace)
