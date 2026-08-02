@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
+import ralph
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
@@ -104,6 +105,7 @@ def diagnose_command(
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     display.emit_status("Ralph Workflow Diagnostics")
+    _check_terminal_colour(ctx, display=display)
 
     workspace_scope = resolve_workspace_scope()
 
@@ -148,6 +150,22 @@ def diagnose_command(
     if not config_ok:
         return 1
     return 0
+
+
+def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
+    """Report the loaded package and effective terminal-colour settings."""
+    rows: list[tuple[object, ...]] = [
+        ("Loaded package", str(ralph.__file__ or "(unknown)"), "", "", ""),
+        ("Colour system", str(ctx.console.color_system), "", "", ""),
+        ("Colour disabled", str(ctx.console.no_color), "", "", ""),
+        ("Terminal", str(ctx.console.is_terminal), "", "", ""),
+        ("Background is light", str(ctx.terminal_background_is_light), "", "", ""),
+    ]
+    rows.extend(
+        (name, ctx.env.get(name, "(unset)"), "", "", "")
+        for name in ("TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR", "RALPH_TERMINAL_BG")
+    )
+    _emit_simple_table(display, "Terminal / colour", rows)
 
 
 def _check_capability_state(*, display: object) -> bool:
@@ -222,6 +240,7 @@ def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...
         "Pre-flight Validation": ["Check", "Result"],
         "Workspace Files": ["File", "Status"],
         "Filesystem Health": ["Volume", "Spotlight", "Journal", "Warnings"],
+        "Terminal / colour": ["Check", "Value"],
     }.get(title, ["Check", "Result"])
     column_styles = [
         "theme.cat.meta",

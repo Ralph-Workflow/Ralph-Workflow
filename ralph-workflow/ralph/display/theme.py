@@ -856,15 +856,17 @@ def make_console(
     surface inherits the same theme, ``highlight=False`` (which
     keeps plaintext inside tool output uncoloured), and the
     same ``no_color`` / ``force_terminal`` / ``width`` resolver
-    semantics. Tests and runtime code use this helper to keep
-    the colour behaviour consistent.
+    semantics. Rich interprets ``color_system=None`` as no ANSI
+    output, so Ralph resolves an unspecified system to ``"auto"``;
+    use ``no_color=True`` to disable colour. Tests and runtime code
+    use this helper to keep the colour behaviour consistent.
 
     Parameters:
         file: Optional output stream.
         no_color: When ``True``, strip colour from the console.
         force_terminal: When ``True``, treat the console as a
             TTY even when it is not (useful for tests).
-        color_system: Rich colour-system override.
+        color_system: Rich colour-system override; omitted resolves to ``"auto"``.
         width: Override the console width (default: auto-detect).
         height: Override the console height (default: auto-detect).
         terminal_bg_is_light: Resolved terminal background for semantic roles.

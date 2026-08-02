@@ -1,0 +1,53 @@
+"""Regression coverage for the production display colour default."""
+
+from __future__ import annotations
+
+from io import StringIO
+from typing import TYPE_CHECKING
+
+from rich.text import Text
+
+if TYPE_CHECKING:
+    import pytest
+
+from ralph.display.context import make_display_context
+from ralph.display.theme import make_console
+
+
+def _colour_env() -> dict[str, str]:
+    return {"TERM": "xterm-256color", "COLORTERM": "truecolor"}
+
+
+def test_default_console_emits_themed_truecolor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The production default must not pass Rich's colour-disabling None."""
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    for name in ("NO_COLOR", "FORCE_COLOR", "TTY_COMPATIBLE"):
+        monkeypatch.delenv(name, raising=False)
+
+    stream = StringIO()
+    console = make_console(file=stream, force_terminal=True)
+    console.print(Text("coloured", style="theme.status.success"))
+
+    assert console.color_system == "truecolor"
+    assert "38;2;" in stream.getvalue()
+
+
+def test_display_context_default_console_keeps_colour_enabled() -> None:
+    """The context's production construction path preserves Rich styling."""
+    ctx = make_display_context(console=None, env=_colour_env())
+
+    assert ctx.console.color_system is not None
+    assert ctx.console.no_color is False
+
+
+def test_no_color_still_disables_output() -> None:
+    """The explicit standard disable switch remains authoritative."""
+    env = {**_colour_env(), "NO_COLOR": "1"}
+    ctx = make_display_context(console=None, env=env)
+    stream = StringIO()
+    console = make_console(file=stream, force_terminal=True, no_color=ctx.console.no_color)
+    console.print(Text("plain", style="theme.status.success"))
+
+    assert ctx.console.no_color is True
+    assert "38;2;" not in stream.getvalue()

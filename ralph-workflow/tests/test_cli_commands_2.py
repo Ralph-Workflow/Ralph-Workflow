@@ -684,6 +684,9 @@ def test_diagnose_uses_display_context_console(
 
     output = stream.getvalue()
     assert "Diagnostics" in output
+    assert "Terminal / colour" in output
+    assert "Loaded package" in output
+    assert "Colour system" in output
     assert "Git Repository" in output
 
 
