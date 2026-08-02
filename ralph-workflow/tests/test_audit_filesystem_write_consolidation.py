@@ -726,6 +726,23 @@ def test_flags_raw_shutil_copy2(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_copy2"
 
 
+def test_regression_flags_raw_shutil_copytree(tmp_path: Path) -> None:
+    """S-6: raw recursive copies cannot bypass D1 write enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import shutil\ndef duplicate_tree(src, dst):\n    shutil.copytree(src, dst)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_copytree"]
+    assert "filesystem-write-ok" in violations[0].message
+
+
 def test_flags_raw_shutil_move(tmp_path: Path) -> None:
     """``shutil.move(src, dst)`` is a raw move."""
     module_rel = "alpha/example.py"

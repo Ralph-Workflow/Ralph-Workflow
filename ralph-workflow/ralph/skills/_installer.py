@@ -89,6 +89,7 @@ def _mirror_skill_to_sibling_root(
         )
     except OSError:
         try:
+            # filesystem-write-ok: fallback materialization preserves the managed sibling skill contract
             shutil.copytree(canonical_root / skill_name, sibling_dir)
         except OSError:
             return f"sibling-materialize-failed-{skill_name}"
@@ -239,6 +240,7 @@ def _materialize_project_sibling_dir(
         sibling_dir.symlink_to(relative_target, target_is_directory=True)
     except OSError:
         try:
+            # filesystem-write-ok: fallback materialization preserves the managed project sibling skill contract
             shutil.copytree(canonical_target, sibling_dir)
         except OSError:
             return f"sibling-materialize-failed-{skill_name}"

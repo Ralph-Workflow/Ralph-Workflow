@@ -20,5 +20,6 @@ def copy_install_tree(source: Path, destination: Path) -> Path:
     def ignore(_directory: str, names: list[str]) -> set[str]:
         return set(names) & _IGNORED_NAMES
 
+    # filesystem-write-ok: create the user-requested self-contained dev-install snapshot
     shutil.copytree(source, destination, ignore=ignore)
     return destination

@@ -254,6 +254,7 @@ def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
             destination.symlink_to(entry, target_is_directory=entry.is_dir())
         except OSError:
             if entry.is_dir():
+                # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input
                 shutil.copytree(entry, destination, dirs_exist_ok=True)
             else:
                 # filesystem-write-ok: fallback materialization of isolated temporary Codex-home input

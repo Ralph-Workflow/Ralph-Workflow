@@ -24,7 +24,8 @@ The audit detects the following raw mutation classes:
   * ``Path.mkdir`` / ``os.mkdir`` / ``os.makedirs`` / ``os.open``
     (raw directory or file creation)
   * ``shutil.rmtree`` / ``shutil.copy`` / ``shutil.copy2`` /
-    ``shutil.copyfile`` / ``shutil.copymode`` / ``shutil.move``
+    ``shutil.copyfile`` / ``shutil.copytree`` / ``shutil.copymode`` /
+    ``shutil.move``
     (raw copies / moves / tree deletes)
   * ``os.fsync`` / ``os.sync`` (raw durability barriers outside
     the canonical primitive)
@@ -149,6 +150,8 @@ _RAW_MUTATION_ATTRS: dict[str, str] = {
     "route through an approved persistence primitive appropriate to the copy or mark",
     "copyfile": "raw shutil.copyfile bypasses the canonical copy boundary; "
     "route through an approved persistence primitive appropriate to the copy or mark",
+    "copytree": "raw shutil.copytree bypasses the canonical directory-copy boundary; "
+    "route through Workspace.copy or mark the explicit user-requested tree contract",
     "copymode": "raw shutil.copymode bypasses the canonical copy primitive; "
     "mark with a reason or route through the canonical primitive",
     "move": "raw shutil.move bypasses the canonical move boundary; "

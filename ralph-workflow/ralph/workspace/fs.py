@@ -502,6 +502,7 @@ class FsWorkspace:
         if dest_abs.exists() and not overwrite:
             raise FileExistsError(f"Destination '{dest}' already exists")
         if src_abs.is_dir():
+            # filesystem-write-ok: explicit user-requested workspace directory copy preserves the tree contract
             shutil.copytree(str(src_abs), str(dest_abs), dirs_exist_ok=overwrite)
         else:
             dest_abs.parent.mkdir(parents=True, exist_ok=True)
