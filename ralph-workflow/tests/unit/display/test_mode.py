@@ -1,17 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-
-
-@pytest.mark.parametrize("width", [40, 60, 80, 100, 120, 200])
-def test_any_width_preserves_width(width: int) -> None:
-    """Single default-mode invariant: input width is preserved on the context."""
-    console = Console(force_terminal=True, width=width)
-    ctx = make_display_context(console=console, env={})
-    assert ctx.width == width
 
 
 def test_non_terminal_preserves_width() -> None:

@@ -277,6 +277,10 @@ class DefaultProcessTeardown:
             except psutil.Error:
                 pass
 
+        # SIGKILL delivery is asynchronous. Wait for the bounded escalation
+        # window so callers do not observe a just-killed descendant as live.
+        self._await_exit([proc for proc in procs if proc.pid not in gone])
+
         # Finally sweep the verified group: a descendant forked after the
         # enumeration above, or one that re-parented away from the host, is
         # still a member of the session we created.
@@ -305,7 +309,9 @@ class DefaultProcessTeardown:
                     gone.add(proc.pid)
             if len(gone) >= len(procs):
                 break
-            time.sleep(poll_interval)  # filesystem-poll-ok: bounded child-process teardown wait has no event source
+            time.sleep(
+                poll_interval
+            )  # filesystem-poll-ok: bounded child-process teardown wait has no event source
             poll_interval = min(poll_interval * 1.5, 0.025)
         return gone
 
@@ -333,7 +339,9 @@ class DefaultProcessTeardown:
                 return
             except (PermissionError, OSError):
                 return
-            time.sleep(0.05)  # filesystem-poll-ok: bounded SIGTERM-to-SIGKILL escalation has no event source
+            time.sleep(
+                0.05
+            )  # filesystem-poll-ok: bounded SIGTERM-to-SIGKILL escalation has no event source
 
         with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
             os.killpg(pgid, signal.SIGKILL)

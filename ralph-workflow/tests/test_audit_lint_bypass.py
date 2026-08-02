@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.testing.audit_lint_bypass import (
     _check_pyproject_config,
+    _collect_py_files,
     _find_noqa_violations,
     audit_codebase,
     main,
@@ -187,6 +188,15 @@ def test_missing_pyproject_no_error(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # audit_codebase integration tests
 # ---------------------------------------------------------------------------
+
+
+def test_collect_py_files_skips_alternate_virtual_environment(tmp_path: Path) -> None:
+    """A local alternate virtual environment is not first-party audit input."""
+    virtualenv_dir = tmp_path / ".venv312"
+    virtualenv_dir.mkdir()
+    (virtualenv_dir / "dependency.py").write_text("value = 1  # noqa\n")
+
+    assert list(_collect_py_files(tmp_path)) == []
 
 
 def test_clean_codebase_passes(tmp_path: Path) -> None:

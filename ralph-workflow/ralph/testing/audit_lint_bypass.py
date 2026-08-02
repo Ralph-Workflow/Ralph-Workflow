@@ -93,8 +93,14 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_waiting_branch", "PLR0912"),  # extracted waiting branch preserves suspect/hard-stop branches
     ("_waiting_branch", "PLR0915"),  # extracted waiting branch orchestrates 5 reasons
     ("_stuck_classifier", "PLR0911"),  # 7 distinct StuckKind outcomes
-    ("parallel_display", "PLR0911"),  # _wrap_close_body: chrome-prefix / continuation-budget / trailer branches
-    ("parallel_display", "PLR0912"),  # _wrap_close_body: too-many-branches from the chrome-prefix/continuation-budget matrix
+    (
+        "parallel_display",
+        "PLR0911",
+    ),  # _wrap_close_body: chrome-prefix / continuation-budget / trailer branches
+    (
+        "parallel_display",
+        "PLR0912",
+    ),  # _wrap_close_body: too-many-branches from the chrome-prefix/continuation-budget matrix
     ("heartbeat", "PLC0415"),
     ("canonical_submit", "PLC0415"),  # lazy import avoids cycle with tools.artifact
     ("artifact", "PLC0415"),  # lazy import avoids cycle with canonical_submit
@@ -243,6 +249,7 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
         ".venv",
+        ".venv312",
         ".mypy_cache",
         "tmp",
         ".ruff_cache",

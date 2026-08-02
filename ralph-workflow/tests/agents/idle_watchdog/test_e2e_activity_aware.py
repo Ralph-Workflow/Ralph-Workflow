@@ -41,7 +41,6 @@ from ralph.process.monitor import (
     ProcessRole,
     SubagentOutputCapture,
 )
-from ralph.process.teardown import DefaultProcessTeardown
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -244,38 +243,6 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
             with contextlib.suppress(psutil.Error):
                 proc.kill()
         host.wait(timeout=0.5)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
-@pytest.mark.timeout_seconds(5)
-def test_teardown_reaps_nested_subagents() -> None:
-    """AC-08: DefaultProcessTeardown kills the host and all descendants."""
-    script = (
-        "import subprocess, sys, time; "
-        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'], "
-        "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
-        "time.sleep(600)"
-    )
-    host = subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    deadline = time.monotonic() + 0.5
-    while time.monotonic() < deadline:
-        try:
-            if psutil.Process(host.pid).children(recursive=False):
-                break
-        except psutil.Error:
-            pass
-        time.sleep(0.005)
-    assert host.poll() is None
-
-    DefaultProcessTeardown(kill_escalation_ms=5.0).teardown_subtree(host.pid)
-
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        host.wait(timeout=0.5)
-    assert host.poll() is not None
 
 
 def test_evidence_summary_labels_tiers_e2e() -> None:

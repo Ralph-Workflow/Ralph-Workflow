@@ -76,11 +76,7 @@ def test_teardown_subtree_reaps_nested_children() -> None:
     # PID 1 reaps it. A zombie has no executable process and therefore cannot
     # survive teardown; requiring immediate PID reuse made this boundary test
     # environment-dependent without proving a stronger lifecycle contract.
-    survivors = {
-        pid
-        for pid in child_pids
-        if _is_live_process(pid)
-    }
+    survivors = {pid for pid in child_pids if _is_live_process(pid)}
     assert not survivors, f"some descendants survived teardown: {survivors}"
 
 
