@@ -10,6 +10,7 @@ from rich.cells import cell_len
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.scene_catalog import (
     CANONICAL_VALUE_FORMATS,
     CONTRAST_FLOOR,
@@ -59,6 +60,10 @@ def test_generated_scene_catalog_covers_every_required_scene_and_surface() -> No
         "status_bar",
         "completion_success",
         "completion_failure",
+        "capability",
+        "dry_run",
+        "blank_gap",
+        "snapshot",
     }
 
 
@@ -117,7 +122,9 @@ def test_generated_scene_syntax_preview_owns_the_resolved_complete_surface(
     assert "return len(value)" in visible
 
 
-def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier_on_every_row() -> None:
+def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier_on_every_row() -> (
+    None
+):
     """S-5: folded narrow condensed records never leave a bare recovery row."""
     rendered = render_scene(
         "burst",
@@ -125,8 +132,14 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
         terminal_bg_is_light=False,
     )
     lines = rendered.splitlines()
-    first_output = next(index for index, line in enumerate(lines) if "[output][codex] output" in line)
-    preview_start = next(index for index, line in enumerate(lines[first_output:], first_output) if line.startswith("  1 def"))
+    first_output = next(
+        index for index, line in enumerate(lines) if "[output][codex] output" in line
+    )
+    preview_start = next(
+        index
+        for index, line in enumerate(lines[first_output:], first_output)
+        if line.startswith("  1 def")
+    )
     condensed_rows = lines[first_output:preview_start]
 
     assert len(condensed_rows) > 1
@@ -235,11 +248,28 @@ def test_generated_scene_clean_run_reaches_catalogued_table_panel_and_artifact_s
         assert carrier in rendered
 
 
-def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_every_surface() -> None:
+def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_every_surface() -> (
+    None
+):
     """S-1: catalog entries declare the complete production-display contract."""
     assert {surface.scene for surface in SURFACE_CATALOG} <= set(SCENE_NAMES)
     assert all(surface.owner for surface in SURFACE_CATALOG)
     assert all(surface.overflow_policy for surface in SURFACE_CATALOG)
+
+
+def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() -> None:
+    """S-1 regression: a new production ``emit_*`` seam cannot bypass the catalog."""
+    entry_points = tuple(
+        entry_point for surface in SURFACE_CATALOG for entry_point in surface.entry_points
+    )
+    catalogued = set(entry_points)
+    production_emitters = {
+        name
+        for name in dir(ParallelDisplay)
+        if name.startswith("emit_") and callable(getattr(ParallelDisplay, name))
+    }
+    assert production_emitters == catalogued
+    assert len(entry_points) == len(catalogued)
 
 
 def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None:
