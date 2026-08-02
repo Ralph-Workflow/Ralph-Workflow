@@ -8,5 +8,7 @@ the maintained Python package.
 - [Project Policy Readiness traceability](project-policy-readiness-traceability.md) —
   26-row requirements-traceability matrix binding the spec's acceptance
   criteria to implementing symbols and passing deterministic tests
+- [Filesystem activity traceability](../agents/filesystem-activity-traceability.md) —
+  baseline evidence and closure map for proportional persistence, reads, and watches
 - Runtime internals:
   [`../sphinx/developer-internals.md`](../sphinx/developer-internals.md)
