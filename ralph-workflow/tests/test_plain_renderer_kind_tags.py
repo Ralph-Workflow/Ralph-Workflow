@@ -52,12 +52,14 @@ def _plain_lines(output: str) -> list[str]:
 # --- Per-event (non-streaming) kinds: single line on emit --------------
 
 
-def test_tool_use_kind_emits_call_tag() -> None:
+def test_tool_use_kind_emits_call_tag_without_retired_level_chrome() -> None:
+    """A tool-use event keeps its public call carrier without INFO chrome."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "tool_use", "bash")
     out = buf.getvalue()
     assert "[call][u]" in out
     assert "bash" in out
+    assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
 
 
 def test_tool_result_kind_emits_result_tag() -> None:
@@ -123,16 +125,6 @@ def test_lifecycle_kind_emits_lifecycle_line() -> None:
     pd.emit_activity_line("u", "lifecycle", "agent started")
     out = buf.getvalue()
     assert "MILESTONE" not in out, f"retired MILESTONE chrome leaked: {out!r}"
-
-
-def test_tool_use_kind_emits_tool_use_line() -> None:
-    """A tool_use event emits a [call] line; the INFO LEVEL text is retired (S-4)."""
-    pd, buf = _make_display()
-    pd.emit_activity_line("u", "tool_use", "bash")
-    out = buf.getvalue()
-    assert "INFO" not in out, f"retired INFO chrome leaked: {out!r}"
-    assert "[call][u]" in out
-    assert "bash" in out
 
 
 # --- Category prefix tests (non-streaming kinds surface CONT/META) ------
