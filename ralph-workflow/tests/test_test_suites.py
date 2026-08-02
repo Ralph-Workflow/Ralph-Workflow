@@ -345,14 +345,19 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
     assert policy.enable_zombie_reaper is False
 
 
-def test_auto_worker_count_uses_the_verified_safe_profile(
+@pytest.mark.parametrize(
+    ("cpu_count", "expected_workers"),
+    ((None, "1"), (1, "1"), (2, "1"), (16, "15"), (17, "16"), (64, "16")),
+)
+def test_auto_worker_count_preserves_one_core_and_caps_at_sixteen(
     monkeypatch: pytest.MonkeyPatch,
+    cpu_count: int | None,
+    expected_workers: str,
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
+    monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
 
-    # Regression: automatic resolution uses the fixed measured-safe profile,
-    # regardless of the host running the suite.
-    assert test_suites_module._pytest_workers() == "8"
+    assert test_suites_module._pytest_workers() == expected_workers
 
 
 def test_explicit_worker_count_overrides_the_auto_resolution(
