@@ -54,8 +54,10 @@ def _read_review_baseline(ctx: PhaseContext) -> str | None:
         return None
     marker_path = Path(marker)
     try:
+        # filesystem-read-ok: review baseline reads its one canonical marker for this explicit phase
         if not marker_path.exists():
             return None
+        # filesystem-read-ok: review baseline reads its one canonical marker for this explicit phase
         sha = marker_path.read_text(encoding="utf-8").strip()
     except OSError:
         return None

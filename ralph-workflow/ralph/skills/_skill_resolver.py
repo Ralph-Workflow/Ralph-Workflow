@@ -13,11 +13,14 @@ def get_inline_skill_content() -> str:
     if not raw_dir:
         return ""
     skill_dir = Path(raw_dir)
+    # filesystem-read-ok: explicit inline-skill injection validates and enumerates the user-selected skill directory once
     if not skill_dir.is_dir():
         return ""
 
     chunks: list[str] = []
+    # filesystem-read-ok: explicit inline-skill injection enumerates the user-selected directory once
     for md_file in sorted(skill_dir.glob("*.md")):
+        # filesystem-read-ok: each explicitly requested inline skill is loaded once for prompt injection
         content = md_file.read_text(encoding="utf-8").strip()
         if content:
             chunks.append(content)

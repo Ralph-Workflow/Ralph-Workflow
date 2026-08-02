@@ -397,6 +397,7 @@ def _rebase_base_sha(root: Path) -> str | None:
         if not onto.is_absolute():
             onto = root / onto
         try:
+            # filesystem-read-ok: git reports one rebase metadata path per explicit conflict resolution attempt
             sha = onto.read_text(encoding="utf-8").strip()
         except OSError:
             continue

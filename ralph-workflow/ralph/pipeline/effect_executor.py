@@ -1333,6 +1333,7 @@ def _write_agent_retry_prompt(
     # the prior behavior for fresh-session retries (stale-session,
     # new-chain) and for un-updated callers that have not been threaded
     # the new ``recovery_action`` keyword.
+    # filesystem-read-ok: retry construction reads the caller's original prompt once when it is available
     base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
     body_parts: list[str] = [
         error_block,

@@ -50,6 +50,7 @@ def resolve_package_file(executable: str) -> Path | None:
     """Resolve a console script to its interpreter's installed package file."""
     script = Path(executable).resolve()
     try:
+        # filesystem-read-ok: console-script shebang inspection occurs once per explicit install-conflict check
         first_line = script.read_text(encoding="utf-8").splitlines()[0]
     except (OSError, IndexError, UnicodeDecodeError):
         return None

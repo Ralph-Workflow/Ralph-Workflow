@@ -845,7 +845,9 @@ def _check_workspace_files(*, display: object) -> bool:
         path = Path(file_path)
         file_label = Text()
         file_label.append(f"{file_path} ({description})")
+        # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
         if path.exists():
+            # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
             size = path.stat().st_size
             rows.append(
                 (

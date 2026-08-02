@@ -119,7 +119,9 @@ def write_durable_media_cache(
             raw_bytes,
             prepare_write=lambda: backend.mkdir(abs_path.parent, parents=True, exist_ok=True),
         )
+        # filesystem-read-ok: bounded cache retention enumerates only the media-cache directory after publication
         cache_pruner(
+            # filesystem-read-ok: bounded cache retention enumerates only the media-cache directory after publication
             abs_path.parent.glob("*"),
             max_total_bytes=MEDIA_CACHE_MAX_TOTAL_BYTES,
             keep_paths=(abs_path,),

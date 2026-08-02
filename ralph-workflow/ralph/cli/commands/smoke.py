@@ -95,7 +95,9 @@ def _resolve_agy_binary_override() -> str | None:
             override,
             resolved,
         )
+    # filesystem-read-ok: explicit binary override validation needs executable-file metadata
     if shutil.which(str(resolved)) is None and not (
+        # filesystem-read-ok: explicit binary override validation needs executable-file metadata
         resolved.is_file() and os.access(resolved, os.X_OK)
     ):
         logger.warning(
@@ -136,7 +138,9 @@ def _resolve_cursor_binary_override() -> str | None:
             override,
             resolved,
         )
+    # filesystem-read-ok: explicit binary override validation needs executable-file metadata
     if shutil.which(str(resolved)) is None and not (
+        # filesystem-read-ok: explicit binary override validation needs executable-file metadata
         resolved.is_file() and os.access(resolved, os.X_OK)
     ):
         logger.warning(

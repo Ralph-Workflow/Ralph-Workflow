@@ -151,6 +151,7 @@ def _load_prompt_with_master(
     master_path = Path(master_prompt_file)
     if not master_path.is_absolute() and workspace_path is not None:
         master_path = workspace_path / master_path
+    # filesystem-read-ok: master prompt is a user-selected one-shot invocation input
     master = master_path.read_text(encoding="utf-8")
     return f"{master.rstrip()}\n\n{prompt}"
 

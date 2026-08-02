@@ -124,30 +124,63 @@ def _import_alias_names(
                     glob_names.add(alias.asname or alias.name)
 
 
-def _assign_target_names(value: ast.expr, target: ast.expr, names: set[str]) -> None:
-    """Record an ast.Name target when the right-hand side is a path constructor."""
+def _scope_keys(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> tuple[int | None, ...]:
+    """Return lexical function scopes from nearest to module scope.
+
+    A read in a nested function can close over a pathlib value assigned by an
+    outer function.  Returning every enclosing function identity preserves the
+    fail-closed audit boundary for those captures without mistaking a same-named
+    local from an unrelated function for a path.
+    """
+    keys: list[int | None] = []
+    current: ast.AST | None = node
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            keys.append(id(current))
+        current = parents.get(current)
+    keys.append(None)
+    return tuple(keys)
+
+
+def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
+    """Return the nearest function scope identity, or ``None`` at module scope."""
+    return _scope_keys(node, parents)[0]
+
+
+def _assign_target_names(
+    value: ast.expr,
+    target: ast.expr,
+    names: set[tuple[int | None, str]],
+    *,
+    scope: int | None,
+) -> None:
+    """Record a function-scoped name initialized from a pathlib constructor."""
     if not isinstance(value, ast.Call):
         return
     root = _call_root_name(value.func)
     if root is None or root not in _PATHLIBS:
         return
     if isinstance(target, ast.Name):
-        names.add(target.id)
+        names.add((scope, target.id))
 
 
-def _collect_read_provenance(tree: ast.Module) -> tuple[set[str], set[str], set[str], dict[str, str]]:
-    """Return known path values plus filesystem module and function aliases."""
-    path_names: set[str] = set()
+def _collect_read_provenance(
+    tree: ast.Module, parents: dict[ast.AST, ast.AST]
+) -> tuple[set[tuple[int | None, str]], set[str], set[str], dict[str, str]]:
+    """Return scoped path values plus filesystem module and function aliases."""
+    imported_path_names: set[str] = set()
     os_names: set[str] = set()
     glob_names: set[str] = set()
     direct_read_names: dict[str, str] = {}
-    _import_alias_names(tree, path_names, os_names, glob_names, direct_read_names)
-    for node in tree.body:
+    _import_alias_names(tree, imported_path_names, os_names, glob_names, direct_read_names)
+    path_names: set[tuple[int | None, str]] = {(None, name) for name in imported_path_names}
+    for node in ast.walk(tree):
+        scope = _scope_key(node, parents)
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                _assign_target_names(node.value, target, path_names)
-        elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.expr):
-            _assign_target_names(node.value, node.target, path_names)
+                _assign_target_names(node.value, target, path_names, scope=scope)
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            _assign_target_names(node.value, node.target, path_names, scope=scope)
     return path_names, os_names, glob_names, direct_read_names
 
 
@@ -236,10 +269,12 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         ]
     source_lines = source.splitlines()
     marker_lines = _marker_line_indices(source_lines)
-    path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(tree)
+    nodes = list(ast.walk(tree))
+    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
+    path_variables, os_names, glob_names, direct_read_names = _collect_read_provenance(tree, parents)
 
     violations: list[FilesystemReadViolation] = []
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         call_details = _read_call_details(node, direct_read_names)
@@ -253,10 +288,11 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         is_os_traversal = attr in _OS_TRAVERSAL_ATTRS and root in os_names
         is_glob_traversal = attr in _GLOB_TRAVERSAL_ATTRS and root in glob_names
         is_raw_qualifier = root in _RAW_READ_QUALIFIERS
+        is_path_value = any((scope, root) in path_variables for scope in _scope_keys(node, parents))
         is_path_traversal = attr in {"iterdir", "glob", "rglob"} and (
-            root in path_variables or root in _PATHLIBS
+            is_path_value or root in _PATHLIBS
         )
-        is_path_open = attr == "open" and (root in path_variables or root in _PATHLIBS)
+        is_path_open = attr == "open" and (is_path_value or root in _PATHLIBS)
         if (
             is_direct_read
             or (is_raw_qualifier and attr != "open")
@@ -265,7 +301,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolati
         ):
             kind = f"raw_{attr}"
             message = _RAW_READ_ATTRS[attr]
-        elif root in path_variables or root in _PATHLIBS:
+        elif is_path_value or root in _PATHLIBS:
             if attr in _OS_TRAVERSAL_ATTRS and not is_os_traversal:
                 continue
             if attr in _GLOB_TRAVERSAL_ATTRS and not (is_path_traversal or is_glob_traversal):

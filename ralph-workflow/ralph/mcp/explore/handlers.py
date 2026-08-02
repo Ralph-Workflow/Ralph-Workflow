@@ -132,6 +132,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             index_db = index_root / DEFAULT_INDEX_DB
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
+                # filesystem-read-ok: cold rebuild checks only known incompatible index sidecars
                 if target.exists():
                     # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()
@@ -145,6 +146,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             index_db = index_root / DEFAULT_INDEX_DB
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
+                # filesystem-read-ok: cold rebuild checks only known incompatible index sidecars
                 if target.exists():
                     # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()
@@ -157,6 +159,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
             index_db = index_root / DEFAULT_INDEX_DB
             for suffix in ("", "-wal", "-shm"):
                 target = Path(str(index_db) + suffix)
+                # filesystem-read-ok: cold rebuild checks only known incompatible index sidecars
                 if target.exists():
                     # filesystem-write-ok: remove incompatible internal explore index sidecar before cold rebuild
                     target.unlink()

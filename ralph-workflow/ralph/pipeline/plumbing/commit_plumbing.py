@@ -976,8 +976,10 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: 
 
 def _read_retry_prompt_text(prompt_file: str) -> str:
     path = Path(prompt_file)
+    # filesystem-read-ok: retry prompt reconstruction reads the requested prompt once for an explicit commit retry
     if not path.exists():
         return ""
+    # filesystem-read-ok: retry prompt reconstruction reads the requested prompt once for an explicit commit retry
     return path.read_text(encoding="utf-8")
 
 

@@ -197,6 +197,7 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
         # filesystem-write-ok: atomic checkpoint publication after staged durable write
         temp_path.replace(path)
     finally:
+        # filesystem-read-ok: failure cleanup only removes staging that this recovery operation created
         if temp_path.exists():
             # filesystem-write-ok: remove uncommitted checkpoint staging on publication failure
             temp_path.unlink()
@@ -207,6 +208,7 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
 
 def _backup_checkpoint() -> None:
     path = _checkpoint_path()
+    # filesystem-read-ok: backup recovery checks whether the dedicated checkpoint exists
     if not path.exists():
         return
 
@@ -224,6 +226,7 @@ def _backup_checkpoint() -> None:
         # filesystem-write-ok: atomically publish recovery backup from completed staging copy
         temp_path.replace(backup)
     finally:
+        # filesystem-read-ok: failure cleanup only removes staging that this recovery operation created
         if temp_path.exists():
             # filesystem-write-ok: remove uncommitted recovery backup staging after failure
             temp_path.unlink()
@@ -232,6 +235,7 @@ def _backup_checkpoint() -> None:
 def load_rebase_checkpoint() -> RebaseCheckpoint | None:
     """Load and validate the rebase checkpoint, falling back to backup on error."""
     path = _checkpoint_path()
+    # filesystem-read-ok: checkpoint recovery checks its single canonical path before loading
     if not path.exists():
         return None
 

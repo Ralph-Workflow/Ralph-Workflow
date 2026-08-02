@@ -51,12 +51,15 @@ def capture_file_snapshot(path: Path | str, *, root: Path | str | None = None) -
     workspace_root = Path(root) if root is not None else candidate.parent
     relative_path = _relative_path(candidate, workspace_root)
 
+    # filesystem-read-ok: checksum snapshot needs one existence-and-size observation for change detection
     if not candidate.exists():
         return FileSnapshot(path=relative_path, checksum="", size=0, exists=False)
 
+    # filesystem-read-ok: checksum snapshot needs size metadata paired with the digest observation
     return FileSnapshot(
         path=relative_path,
         checksum=calculate_checksum(candidate),
+        # filesystem-read-ok: checksum snapshot needs size metadata paired with the digest observation
         size=candidate.stat().st_size,
         exists=True,
     )

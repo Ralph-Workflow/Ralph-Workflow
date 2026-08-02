@@ -59,6 +59,52 @@ def test_flags_raw_path_constructor_read_text(tmp_path: Path) -> None:
     assert violations[0].line == 3
 
 
+def test_regression_flags_local_path_variable_read_text(tmp_path: Path) -> None:
+    """S-6: local pathlib values cannot bypass the R1/R3 audit boundary."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        "    source = Path('x')\n"
+        "    return source.read_text(encoding='utf-8')\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_path_read_text"
+    assert violations[0].line == 4
+
+
+def test_regression_flags_path_read_closed_over_by_nested_function(tmp_path: Path) -> None:
+    """S-6: nested functions cannot evade R1/R3 with a captured pathlib value."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def outer() -> str:\n"
+        "    source = Path('x')\n"
+        "    def inner() -> str:\n"
+        "        return source.read_text(encoding='utf-8')\n"
+        "    return inner()\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_path_read_text"
+    assert violations[0].line == 5
+
+
 def test_flags_raw_path_open_read(tmp_path: Path) -> None:
     """Raw ``Path.open`` read handles cannot evade the R1/R3 boundary."""
     module_rel = "alpha/example.py"
