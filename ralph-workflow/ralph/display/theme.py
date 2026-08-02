@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import re
 import zlib
+from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Literal
 
 from rich.console import Console
@@ -332,61 +333,63 @@ def identity_color(
     base_slot = _identity_slot(name)
     if active is None:
         return palette[base_slot]
-    active_names = frozenset(active)
+    return _identity_color_for_active_set(
+        name,
+        tuple(sorted(frozenset(active))),
+        terminal_bg_is_light,
+    )
+
+
+def _identity_color_for_active_set(
+    name: str,
+    active_names: tuple[str, ...],
+    terminal_bg_is_light: bool | None,
+) -> str:
+    """Resolve an identity against one bounded, normalized active-name set."""
+    if terminal_bg_is_light is True:
+        palette = IDENTITY_PALETTE_ON_LIGHT_BG
+    elif terminal_bg_is_light is False:
+        palette = IDENTITY_PALETTE
+    else:
+        palette = IDENTITY_PALETTE_ON_UNKNOWN_BG
+    base_slot = _identity_slot(name)
     cvd_matrices = (
         _DEUTERANOPIA_MATRIX,
         _PROTANOPIA_MATRIX,
         _TRITANOPIA_MATRIX,
     )
-
-    def _resolve_hexes(names: Iterable[str]) -> dict[str, str]:
-        resolved: dict[str, str] = {}
-        for other in sorted(names):
-            base = _identity_slot(other)
-            occupied = set(resolved.values())
-            occupied_cvd = {
-                _simulate_cvd(hex_color, matrix)
-                for hex_color in occupied
-                for matrix in cvd_matrices
-            }
-            chosen = palette[base]
-            # Try the CVD-distinct base slot before nudging forward.
+    resolved: dict[str, str] = {}
+    for other in active_names:
+        base = _identity_slot(other)
+        occupied = set(resolved.values())
+        occupied_cvd = {
+            _simulate_cvd(hex_color, matrix) for hex_color in occupied for matrix in cvd_matrices
+        }
+        chosen = palette[base]
+        for offset in range(len(palette)):
+            candidate = palette[(base + offset) % len(palette)]
+            if candidate in occupied:
+                continue
+            if {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices} & occupied_cvd:
+                continue
+            chosen = candidate
+            break
+        else:
             for offset in range(len(palette)):
-                slot = (base + offset) % len(palette)
-                candidate = palette[slot]
-                if candidate in occupied:
-                    continue
-                if {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices} & occupied_cvd:
-                    continue
-                chosen = candidate
-                break
-            else:
-                # Palette is exhausted under CVD constraints. Pick
-                # the first unused slot even if it's CVD-ambiguous:
-                # the spec allows reuse once all distinct colors
-                # are taken (the name label always remains).
-                for offset in range(len(palette)):
-                    slot = (base + offset) % len(palette)
-                    candidate = palette[slot]
-                    if candidate not in occupied:
-                        chosen = candidate
-                        break
-            resolved[other] = chosen
-        return resolved
-
-    resolved_active = _resolve_hexes(active_names)
-    if name in resolved_active:
-        return resolved_active[name]
-    # ``name`` is not in the active set: nudge away from the
-    # already-resolved active identities with the same logic.
-    active_hexes = set(resolved_active.values())
+                candidate = palette[(base + offset) % len(palette)]
+                if candidate not in occupied:
+                    chosen = candidate
+                    break
+        resolved[other] = chosen
+    if name in resolved:
+        return resolved[name]
+    active_hexes = set(resolved.values())
     active_cvd_simulated = {
         _simulate_cvd(hex_color, matrix) for hex_color in active_hexes for matrix in cvd_matrices
     }
     used = active_hexes | active_cvd_simulated
     for offset in range(len(palette)):
-        slot = (base_slot + offset) % len(palette)
-        candidate = palette[slot]
+        candidate = palette[(base_slot + offset) % len(palette)]
         if candidate in used:
             continue
         candidate_cvd = {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices}
@@ -394,6 +397,10 @@ def identity_color(
             continue
         return candidate
     return palette[base_slot]
+
+
+# Active identities are bounded by the display's in-memory recent-body window.
+_identity_color_for_active_set = lru_cache(maxsize=512)(_identity_color_for_active_set)
 
 
 _THEME_STYLES: Final[dict[str, str]] = {
