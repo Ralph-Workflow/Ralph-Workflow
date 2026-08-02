@@ -64,6 +64,7 @@ Source files:
 """
 
 from __future__ import annotations
+
 import ast
 import contextlib
 import functools
@@ -71,9 +72,6 @@ import inspect
 import io
 import json
 import os
-import psutil
-import pytest
-import ralph.agents.invoke._process_reader as _process_reader_module
 import re
 import subprocess
 import sys
@@ -81,7 +79,6 @@ import tempfile
 import threading
 import threading as _threading
 import time
-
 from collections.abc import (
     Callable,
     Iterator,
@@ -92,10 +89,26 @@ from dataclasses import (
     field,
     replace,
 )
-from loguru import logger
 from pathlib import Path
+from types import (
+    MethodType,
+    SimpleNamespace,
+)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+)
+
+import psutil
+import pytest
+from loguru import logger
+
+import ralph.agents.invoke._process_reader as _process_reader_module
 from ralph.agents import (
     invoke as invoke_module,
+)
+from ralph.agents import (
     invoke as ralph_invoke,
 )
 from ralph.agents.activity import (
@@ -141,30 +154,21 @@ from ralph.agents.idle_watchdog._evidence_tier import (
     EvidenceSummary,
     EvidenceTier,
 )
-from ralph.agents.idle_watchdog._post_exit_verdict import PostExitVerdict
 from ralph.agents.idle_watchdog._stuck_classifier import (
     ClassifyStuckInputs,
-    StuckKind,
     classify_stuck,
 )
 from ralph.agents.idle_watchdog._subagent_identity import _MAX_REGISTRY_ENTRIES
 from ralph.agents.idle_watchdog._watch_loop_base import WatchLoopBase
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.agents.idle_watchdog.idle_watchdog import (
-    CorroborationSnapshot,
     _EXPECTED_FIRE_REASONS,
 )
 from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
-from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
-from ralph.agents.idle_watchdog.waiting_status_event import (
-    WaitingStatusEvent,
-    WaitingStatusListener,
-)
-from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
-from ralph.agents.idle_watchdog.watchdog_verdict import WatchdogVerdict
 from ralph.agents.idle_watchdog_kill import (
     IdleWatchdogKilledError,
+)
+from ralph.agents.idle_watchdog_kill import (
     IdleWatchdogKilledError as IdleWatchdogKilledErrorTop,
 )
 from ralph.agents.invoke import (
@@ -177,16 +181,14 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import _IdleStreamTimeoutError
-from ralph.agents.invoke._idle_stream_timeout_error import _IdleStreamTimeoutError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
-from ralph.agents.invoke._invoke_options import InvokeOptions
 from ralph.agents.invoke._monitor_factory import _discovery_strategy_for_config
 from ralph.agents.invoke._process_reader import (
-    _ProcessLineReader,
     _RESUMABLE_FIRE_REASONS,
     _convert_idle_stream_timeout_to_agent_error,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
+    _ProcessLineReader,
 )
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._session import _bounded_output_lines
@@ -195,7 +197,6 @@ from ralph.agents.invoke._session_resume import (
     resolve_resume_session_id,
 )
 from ralph.agents.invoke._tool_call_extraction import extract_tool_call_from_activity_signal
-from ralph.agents.invoke._types import InvokeOptions
 from ralph.agents.parsers import (
     AgyParser,
     ClaudeInteractiveParser,
@@ -206,7 +207,6 @@ from ralph.agents.parsers import (
     PiParser,
     get_parser,
 )
-from ralph.agents.parsers.base import AgentParser
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.system_clock import SystemClock
 from ralph.agents.timeout_clock import FakeClock
@@ -228,13 +228,10 @@ from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import agent_retry_intent_for_failure
 from ralph.pipeline.effect_executor import _failure_requires_fresh_session
 from ralph.pipeline.state import (
-    AgentChainState,
     PipelineState,
 )
 from ralph.policy.loader import load_policy
-from ralph.process._alive_by import AliveBy
 from ralph.process.child_liveness import (
-    AliveBy,
     ChildLivenessRegistry,
     ChildLivenessSubagentPidSource,
 )
@@ -252,7 +249,6 @@ from ralph.process.monitor import (
     make_claude_subagent_pid_source,
     make_opencode_subagent_pid_source,
 )
-from ralph.process.monitor._subagent_output_capture import SubagentOutputCapture
 from ralph.recovery.classifier import (
     FailureClassifier,
     FailureContext,
@@ -267,15 +263,13 @@ from ralph.timeout_defaults import (
     STUCK_JOB_SUB_CEILING_SECONDS,
 )
 from tests.fake_handle import _FakeHandle
-from types import (
-    MethodType,
-    SimpleNamespace,
-)
-from typing import (
-    Any,
-    Literal,
-    TYPE_CHECKING,
-)
+
+if TYPE_CHECKING:
+    from ralph.agents.idle_watchdog.waiting_status_event import (
+        WaitingStatusEvent,
+        WaitingStatusListener,
+    )
+    from ralph.agents.parsers.base import AgentParser
 
 _IDLE_TIMEOUT = 0.1
 
@@ -809,7 +803,7 @@ def _no_output_at_start_make_watchdog(
                 silent_subagent_seconds=silent_subagent_seconds,
             ),
             clock,
-            process_monitor=process_monitor or _NoProcessMonitor_no_output_at_start(),
+            process_monitor=process_monitor or _NoProcessMonitorNoOutputAtStart(),
         ),
         clock,
     )
@@ -860,7 +854,7 @@ def _no_output_at_start_loading_make_watchdog(
             policy,
             clock,
             corroborator=_StubCorroborator(alive_by),
-            process_monitor=_NoProcessMonitor_no_output_at_start_loading(),
+            process_monitor=_NoProcessMonitorNoOutputAtStartLoading(),
         ),
         clock,
     )
@@ -954,7 +948,7 @@ def _pure_stall_wedge_make_watchdog() -> tuple[IdleWatchdog, FakeClock]:
         IdleWatchdog(
             policy,
             clock,
-            process_monitor=_NoProcessMonitor_pure_stall_wedge(),
+            process_monitor=_NoProcessMonitorPureStallWedge(),
             corroborator=_no_live_child_corroborator,
         ),
         clock,
@@ -980,7 +974,7 @@ def _resume_contract_invariant_make_watchdog() -> tuple[IdleWatchdog, FakeClock]
         no_progress_quiet_seconds=None,
         activity_evidence_ttl_seconds=180.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_resume_contract_invariant()), clock
+    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorResumeContractInvariant()), clock
 
 
 # === Helper for test_silent_after_tool_call_wedge.py ===
@@ -1008,7 +1002,7 @@ def _silent_after_tool_call_wedge_make_watchdog(
         IdleWatchdog(
             policy,
             clock,
-            process_monitor=_NoProcessMonitor_silent_after_tool_call_wedge(),
+            process_monitor=_NoProcessMonitorSilentAfterToolCallWedge(),
             corroborator=corroborator,
         ),
         clock,
@@ -1025,7 +1019,7 @@ def _silent_subagent_fires_make_watchdog() -> tuple[IdleWatchdog, FakeClock]:
         activity_evidence_ttl_seconds=30.0,
         silent_subagent_seconds=180.0,
     )
-    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_silent_subagent_fires())
+    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorSilentSubagentFires())
     return watchdog, clock
 
 
@@ -1043,7 +1037,7 @@ def _silent_subagent_runtime_make_watchdog(
         activity_evidence_ttl_seconds=activity_evidence_ttl_seconds,
         silent_subagent_seconds=silent_subagent_seconds,
     )
-    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_silent_subagent_runtime())
+    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorSilentSubagentRuntime())
     return watchdog, clock
 
 
@@ -1248,8 +1242,8 @@ def _strictly_stuck_ceiling_make_watchdog(
         IdleWatchdog(
             policy,
             clock,
-            corroborator=_StubCorroborator_strictly_stuck_ceiling(alive_by),
-            process_monitor=_NoProcessMonitor_strictly_stuck_ceiling(),
+            corroborator=_StubCorroboratorStrictlyStuckCeiling(alive_by),
+            process_monitor=_NoProcessMonitorStrictlyStuckCeiling(),
         ),
         clock,
     )
@@ -1291,8 +1285,8 @@ def _stuck_job_heartbeat_ceiling_make_watchdog(
         IdleWatchdog(
             policy,
             clock,
-            corroborator=_StubCorroborator_stuck_job_heartbeat_ceiling(alive_by),
-            process_monitor=_NoProcessMonitor_stuck_job_heartbeat_ceiling(),
+            corroborator=_StubCorroboratorStuckJobHeartbeatCeiling(alive_by),
+            process_monitor=_NoProcessMonitorStuckJobHeartbeatCeiling(),
         ),
         clock,
     )
@@ -1404,7 +1398,7 @@ def _stuck_job_sub_ceiling_waiting_on_child() -> AgentExecutionState:
 
 # === Helper for test_subagent_capture_eviction.py ===
 def _subagent_capture_eviction_make_watchdog(
-    monitor: _FakeProcessMonitor_subagent_capture_eviction,
+    monitor: _FakeProcessMonitorSubagentCaptureEviction,
 ) -> tuple[IdleWatchdog, FakeClock]:
     """Build a watchdog with the production cap.
 
@@ -1439,7 +1433,7 @@ def _subagent_progress_surface_make_watchdog() -> tuple[IdleWatchdog, FakeClock]
         no_progress_quiet_seconds=None,
         activity_evidence_ttl_seconds=180.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_subagent_progress_surface()), clock
+    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorSubagentProgressSurface()), clock
 
 
 # === Helper for test_tool_result_routing.py ===
@@ -1486,7 +1480,7 @@ def _waiting_subagent_progress_make_watchdog(
         policy,
         clock,
         listener=_listener,
-        process_monitor=_FakeProcessMonitor_waiting_subagent_progress(count=monitor_count),
+        process_monitor=_FakeProcessMonitorWaitingSubagentProgress(count=monitor_count),
     )
     return watchdog, clock, captured
 
@@ -1951,7 +1945,7 @@ def _build_deferred_fire_watchdog(
         branch of the StuckClassifier. With a stale ``subagent_output``
         channel (seeded via ``record_subagent_work``) and
         ``subagent_liveness`` showing ``alive_by=None`` (because
-        ``_HelpersOnlyMonitor_log_spam_throttle_public_surfa.live_subagent_count() == 0``), the
+        ``_HelpersOnlyMonitorLogSpamThrottlePublicSurface.live_subagent_count() == 0``), the
         classifier returns ``SILENT_SUBAGENT`` and ``_gate_fire``
         returns ``CONTINUE`` -- the deferred-fire path.
       * ``activity_evidence_ttl_seconds=0.0`` disables the
@@ -2098,7 +2092,7 @@ def _make_watchdog_for_waiting_fire() -> tuple[IdleWatchdog, FakeClock]:
         os_descendant_only_suspect_seconds=None,
         waiting_status_interval_seconds=100.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_non_resumable_end_to_end()), clock
+    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorNonResumableEndToEnd()), clock
 
 
 # === Helper: _make_watchdog_for_session_ceiling (from test_non_resumable_end_to_end.py) ===
@@ -2112,7 +2106,7 @@ def _make_watchdog_for_session_ceiling() -> tuple[IdleWatchdog, FakeClock]:
         activity_evidence_ttl_seconds=180.0,
         max_session_seconds=10.0,
     )
-    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_non_resumable_end_to_end()), clock
+    return IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorNonResumableEndToEnd()), clock
 
 
 # === Helper: _fire_in_stream_reason (from test_non_resumable_end_to_end.py) ===
@@ -2754,7 +2748,7 @@ def _probe_cache_cap() -> int:
     safe to call from any test that needs the cap.
     """
     captures = {f"probe-{i}": _StaticCaptureEmpty() for i in range(_PROBE_WORKER_COUNT)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
     return len(watchdog._subagent_output_captures)
@@ -2773,7 +2767,7 @@ def _probe_tombstone_cap() -> int:
     is dropped before the poll returns.
     """
     captures = {f"probe-{i}": _StaticCaptureEmpty() for i in range(_PROBE_WORKER_COUNT)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
     return len(watchdog._evicted_worker_tombstones)
@@ -5408,7 +5402,7 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
     log_file.write_text("line 1\n", encoding="utf-8")
 
     policy = _e2e_activity_aware_make_policy(activity_ttl=1000.0)
-    monitor = _FakeProcessMonitor_e2e_activity_aware(captures={"w1": FileSubagentOutputCapture(str(log_file))})
+    monitor = _FakeProcessMonitorE2eActivityAware(captures={"w1": FileSubagentOutputCapture(str(log_file))})
     wd, clock = _e2e_activity_aware_make_watchdog(policy, monitor)
     wd.record_activity()
     clock.advance(1.0)
@@ -6678,7 +6672,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
       3. ``_stale_subagent_corroborator`` returns
          ``scoped_child_active=True, alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS``
          -- required for the SUB-ceiling block to fire.
-      4. ``_HelpersOnlyMonitor_log_spam_throttle_public_surfa`` returns ``live_subagent_count()=0``
+      4. ``_HelpersOnlyMonitorLogSpamThrottlePublicSurface`` returns ``live_subagent_count()=0``
          -- the watchdog's ``subagent_liveness`` channel reports
          ``alive_by=None`` and ``can_defer=False``. Combined with the
          stale ``subagent_output`` channel, the
@@ -6976,7 +6970,7 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
         ``subagent_output`` channel is seeded (counter=1, age=5.1s,
         5.1 >= ``silent_subagent_seconds=1.0``) AND
         ``subagent_liveness`` has ``alive_by=None`` (the
-        ``_HelpersOnlyMonitor_log_spam_throttle_public_surfa`` returns ``live_subagent_count()=0``
+        ``_HelpersOnlyMonitorLogSpamThrottlePublicSurface`` returns ``live_subagent_count()=0``
         so the process-monitor live-subagent signal is absent). Gate
         emits the ``idle watchdog: silent subagent (deferred) ...``
         DEBUG record.
@@ -8074,7 +8068,7 @@ def test_no_output_at_start_fires_at_threshold_even_when_floor_unreached() -> No
     wd = IdleWatchdog(
         policy,
         clock,
-        process_monitor=_NoProcessMonitor_no_output_at_start(),
+        process_monitor=_NoProcessMonitorNoOutputAtStart(),
     )
     wd.record_invocation_start()
     # Advance to 60s: past the 30s NO_OUTPUT_AT_START threshold AND
@@ -10024,7 +10018,7 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     watchdog = IdleWatchdog(
         policy,
         clock,
-        process_monitor=_NoProcessMonitor_resume_after_kill_contract(),
+        process_monitor=_NoProcessMonitorResumeAfterKillContract(),
     )
     watchdog.record_invocation_start()
 
@@ -10044,7 +10038,7 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
     # Drive the real line-reader fire path with a fake reader self.
-    fake_self = _FakeCheckFireSelf_resume_after_kill_contract(_policy=policy, _clock=clock)
+    fake_self = _FakeCheckFireSelfResumeAfterKillContract(_policy=policy, _clock=clock)
     result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
     assert result is not None, "_check_fire must return a wrapper when the verdict is FIRE"
     pending_lines, wrapper = result
@@ -10246,7 +10240,7 @@ def test_no_output_at_start_fire_with_known_session_id_yields_resume_intent() ->
     watchdog = IdleWatchdog(
         policy,
         clock,
-        process_monitor=_NoProcessMonitor_resume_after_kill_contract(),
+        process_monitor=_NoProcessMonitorResumeAfterKillContract(),
     )
     watchdog.record_invocation_start()
 
@@ -10258,7 +10252,7 @@ def test_no_output_at_start_fire_with_known_session_id_yields_resume_intent() ->
     assert verdict == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
-    fake_self = _FakeCheckFireSelf_resume_after_kill_contract(_policy=policy, _clock=clock)
+    fake_self = _FakeCheckFireSelfResumeAfterKillContract(_policy=policy, _clock=clock)
     result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
     assert result is not None
     pending_lines, wrapper = result
@@ -10410,7 +10404,7 @@ def test_deferred_by_stuck_classifier_never_fires() -> None:
         no_progress_quiet_minimum_invocation_seconds=None,
         activity_evidence_ttl_seconds=180.0,
     )
-    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor_resume_contract_invariant())
+    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitorResumeContractInvariant())
     watchdog.record_invocation_start()
     watchdog.set_is_waiting_state(True)
 
@@ -11019,8 +11013,17 @@ def test_session_ceiling_exceeded_without_prior_session_returns_fresh() -> None:
 
 
 # === consolidated from test_session_ceiling_no_resume.py ===
-def test_session_ceiling_exceeded_does_not_resume() -> None:
-    """``SESSION_CEILING_EXCEEDED`` MUST NOT return ``'resume'`` or ``'new_session_with_id'``."""
+def test_session_ceiling_exceeded_does_not_resume_via_recovery_action() -> None:
+    """``SESSION_CEILING_EXCEEDED`` MUST NOT return ``'resume'`` or ``'new_session_with_id'``.
+
+    Companion to ``test_session_ceiling_exceeded_does_not_resume``
+    (consolidated from ``test_non_resumable_end_to_end.py``), which
+    drives the same invariant through the production
+    ``_convert_reason_to_agent_error`` seam. Renamed with the
+    ``_via_recovery_action`` suffix so the two distinct tests can
+    co-exist in the consolidated module (the F811 redefinition
+    block is the consolidation seam).
+    """
     for prior in (True, False):
         action = recovery_action_for_failure_reason(
             "SESSION_CEILING_EXCEEDED", has_prior_session=prior
@@ -11560,7 +11563,7 @@ def test_dumb_kill_one_agent_reading_product_criteria() -> None:
     Assertions:
       - verdict is FIRE at 300s with ``CHILDREN_PERSIST_TOO_LONG``.
     """
-    monitor = _LiveOnlyProcessMonitor_smart_verdict_dumb_kills(live_count=1)
+    monitor = _LiveOnlyProcessMonitorSmartVerdictDumbKills(live_count=1)
 
     def _os_desc_only_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
@@ -11641,7 +11644,7 @@ def test_children_persist_deferred_while_classifier_returns_loading() -> None:
       - verdict is FIRE at the 300s effective ceiling with
         ``CHILDREN_PERSIST_TOO_LONG``.
     """
-    monitor = _LiveOnlyProcessMonitor_smart_verdict_dumb_kills(live_count=1)
+    monitor = _LiveOnlyProcessMonitorSmartVerdictDumbKills(live_count=1)
 
     def _os_desc_only_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
@@ -11702,7 +11705,7 @@ def test_dumb_kill_two_pre_output_fragment() -> None:
       - verdict is FIRE at the 300s effective ceiling with
         ``CHILDREN_PERSIST_TOO_LONG``.
     """
-    monitor = _LiveOnlyProcessMonitor_smart_verdict_dumb_kills(live_count=1)
+    monitor = _LiveOnlyProcessMonitorSmartVerdictDumbKills(live_count=1)
 
     def _os_desc_only_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
@@ -12978,11 +12981,19 @@ def test_no_silent_subagent_when_no_subagent_evidence() -> None:
 
 
 # === consolidated from test_stuck_classifier.py ===
-def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none() -> None:
+def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none_via_classify_stuck() -> None:
     """When ``silent_subagent_seconds`` is None (or absent), the
     SILENT_SUBAGENT branch MUST NOT fire even if a subagent channel
     has stale evidence.  The diagnostic is opt-in via the
     ``silent_subagent_seconds`` TimeoutPolicy field.
+
+    Companion to ``test_silent_subagent_disabled_when_silent_subagent_seconds_is_none``
+    (consolidated from ``test_silent_subagent_runtime.py``), which
+    drives the same invariant through the production
+    ``_classify_stuck_now`` seam. Renamed with the
+    ``_via_classify_stuck`` suffix so the two distinct tests can
+    co-exist in the consolidated module (the F811 redefinition
+    block is the consolidation seam).
     """
     summary = _multi_summary(
         subagent_output_at=_NOW - 1000.0,
@@ -13391,7 +13402,7 @@ def test_stuck_classifier_returns_loading_defers_no_output_at_start() -> None:
     def _empty_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot()
 
-    monitor = _FakeProcessMonitor_stuck_job_intelligence(live_count=1)
+    monitor = _FakeProcessMonitorStuckJobIntelligence(live_count=1)
     watchdog = _stuck_job_intelligence_make_watchdog(
         config,
         clock,
@@ -13957,7 +13968,7 @@ def test_subagent_capture_cache_is_hard_bounded_by_cap() -> None:
     first_count = cap + _OVERFLOW_DELTA
 
     first_captures = {f"w-{i}": _StaticCaptureEmpty() for i in range(first_count)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(first_captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(first_captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
 
@@ -14010,7 +14021,7 @@ def test_subagent_capture_cache_does_not_evict_when_under_cap() -> None:
     cap = _probe_cache_cap()
     under_cap_count = cap // 2
     captures = {f"keep-{i}": _StaticCaptureEmpty() for i in range(under_cap_count)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
 
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
@@ -14037,7 +14048,7 @@ def test_subagent_capture_cache_eviction_skips_existing_workers() -> None:
     cap = _probe_cache_cap()
 
     primed = {f"primed-{i}": _StaticCaptureEmpty() for i in range(cap)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(primed)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(primed)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
     assert len(watchdog._subagent_output_captures) == cap
@@ -14065,7 +14076,7 @@ def test_subagent_capture_cache_polls_all_workers_then_enforces_cap() -> None:
     first_count = cap + _OVERFLOW_DELTA
 
     captures = {f"w-{i}": _StaticCapture() for i in range(first_count)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
 
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     fresh = watchdog.poll_subagent_output(now=clock.monotonic())
@@ -14115,7 +14126,7 @@ def test_subagent_capture_tombstone_prevents_duplicate_output_after_eviction() -
         lines = [f"line-{j}-worker-{i}" for j in range(line_count_per_worker)]
         captures[f"w-{i}"] = _StatefulCapture(lines)
 
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
 
     first_poll = watchdog.poll_subagent_output(now=clock.monotonic())
@@ -14169,7 +14180,7 @@ def test_subagent_capture_tombstone_cycles_out_when_worker_dies() -> None:
     # First poll: cap+5 workers. _OVERFLOW_DELTA are evicted and
     # tombstoned.
     first_captures = {f"w-{i}": _StaticCaptureEmpty() for i in range(first_count)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(first_captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(first_captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
     assert len(watchdog._evicted_worker_tombstones) == _OVERFLOW_DELTA
@@ -14213,7 +14224,7 @@ def test_subagent_capture_tombstone_is_itself_bounded() -> None:
     # 1 of the cap+1 evicted workers is dropped from the
     # tombstone at the end of the eviction step.
     first_captures = {f"w-{i}": _StaticCaptureEmpty() for i in range(first_count)}
-    monitor = _FakeProcessMonitor_subagent_capture_eviction(first_captures)
+    monitor = _FakeProcessMonitorSubagentCaptureEviction(first_captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
 
@@ -15911,7 +15922,7 @@ class _FakeDiscovery(DiscoveryStrategy):
 
 # === consolidated from test_e2e_activity_aware.py ===
 @dataclass
-class _FakeProcessMonitor_e2e_activity_aware(ProcessMonitor):
+class _FakeProcessMonitorE2eActivityAware(ProcessMonitor):
     """Test-only process monitor that exposes configurable captures."""
 
     captures: dict[str, SubagentOutputCapture] = field(default_factory=dict)
@@ -15965,7 +15976,7 @@ class _HelpersOnlyMonitor(ProcessMonitor):
 
 # === consolidated from test_log_spam_throttle_public_surface.py ===
 @dataclass
-class _HelpersOnlyMonitor_log_spam_throttle_public_surfa(ProcessMonitor):
+class _HelpersOnlyMonitorLogSpamThrottlePublicSurface(ProcessMonitor):
     """Protocol-typed fake ProcessMonitor (canonical R1/R6 fixture).
 
     Mirrors ``_HelpersOnlyMonitor`` from
@@ -16103,7 +16114,7 @@ class _JunkToolUseStrategy:
 
 # === consolidated from test_no_output_at_start.py ===
 @dataclass
-class _NoProcessMonitor_no_output_at_start(ProcessMonitor):
+class _NoProcessMonitorNoOutputAtStart(ProcessMonitor):
     """Fake process monitor: no live subagents, no captures."""
 
     live_count: int = 0
@@ -16124,7 +16135,7 @@ class _NoProcessMonitor_no_output_at_start(ProcessMonitor):
 
 # === consolidated from test_no_output_at_start_loading.py ===
 @dataclass
-class _NoProcessMonitor_no_output_at_start_loading:
+class _NoProcessMonitorNoOutputAtStartLoading:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16153,7 +16164,7 @@ class _StubCorroborator:
 
 # === consolidated from test_non_resumable_end_to_end.py ===
 @dataclass
-class _NoProcessMonitor_non_resumable_end_to_end:
+class _NoProcessMonitorNonResumableEndToEnd:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16202,7 +16213,7 @@ class _FakeCheckFireSelf:
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
 @dataclass
-class _FakeHandle:
+class _ProductionSubagentFakeHandle:
     """Minimal handle stub exposing ``has_live_descendants``.
 
     Used to prove that ``BaseExecutionStrategy.classify_quiet`` does
@@ -16211,6 +16222,11 @@ class _FakeHandle:
     ``has_descendants`` is True, only a non-empty filtered PID set
     should force WAITING_ON_CHILD; an empty filtered set MUST
     return ACTIVE even with helpers alive.
+
+    Renamed from the original ``_FakeHandle`` so it no longer
+    shadows the shared ``_FakeHandle`` imported from
+    ``tests.fake_handle``; the shared stub is the one the surviving
+    tests use.
     """
 
     has_descendants: bool = False
@@ -16219,7 +16235,7 @@ class _FakeHandle:
 
 # === consolidated from test_pure_stall_wedge.py ===
 @dataclass
-class _NoProcessMonitor_pure_stall_wedge:
+class _NoProcessMonitorPureStallWedge:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16237,7 +16253,7 @@ class _NoProcessMonitor_pure_stall_wedge:
 
 # === consolidated from test_resume_after_kill_contract.py ===
 @dataclass
-class _NoProcessMonitor_resume_after_kill_contract:
+class _NoProcessMonitorResumeAfterKillContract:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16254,7 +16270,7 @@ class _NoProcessMonitor_resume_after_kill_contract:
 
 
 # === consolidated from test_resume_after_kill_contract.py ===
-class _FakeManagedProcess_resume_after_kill_contract:
+class _FakeManagedProcessResumeAfterKillContract:
     """Fake process handle for exercising ``_ProcessLineReader._check_fire``.
 
     ``_check_fire`` calls ``terminate`` and reads ``pid``; we keep
@@ -16272,7 +16288,7 @@ class _FakeManagedProcess_resume_after_kill_contract:
 
 # === consolidated from test_resume_after_kill_contract.py ===
 @dataclass
-class _FakeCheckFireSelf_resume_after_kill_contract:
+class _FakeCheckFireSelfResumeAfterKillContract:
     """Minimal fake reader self for calling ``_ProcessLineReader._check_fire``.
 
     The method needs the policy, clock, lines queue, last hard-stop
@@ -16303,7 +16319,7 @@ class _NoOpStrategy:
 
 # === consolidated from test_resume_contract_invariant.py ===
 @dataclass
-class _NoProcessMonitor_resume_contract_invariant:
+class _NoProcessMonitorResumeContractInvariant:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16508,7 +16524,7 @@ class _FakeFiringPostExitWatchdog:
 
 # === consolidated from test_silent_after_tool_call_wedge.py ===
 @dataclass
-class _NoProcessMonitor_silent_after_tool_call_wedge:
+class _NoProcessMonitorSilentAfterToolCallWedge:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16526,7 +16542,7 @@ class _NoProcessMonitor_silent_after_tool_call_wedge:
 
 # === consolidated from test_silent_subagent_fires.py ===
 @dataclass
-class _NoProcessMonitor_silent_subagent_fires:
+class _NoProcessMonitorSilentSubagentFires:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16544,7 +16560,7 @@ class _NoProcessMonitor_silent_subagent_fires:
 
 # === consolidated from test_silent_subagent_runtime.py ===
 @dataclass
-class _NoProcessMonitor_silent_subagent_runtime:
+class _NoProcessMonitorSilentSubagentRuntime:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16562,7 +16578,7 @@ class _NoProcessMonitor_silent_subagent_runtime:
 
 # === consolidated from test_smart_verdict_dumb_kills.py ===
 @dataclass
-class _LiveOnlyProcessMonitor_smart_verdict_dumb_kills(ProcessMonitor):
+class _LiveOnlyProcessMonitorSmartVerdictDumbKills(ProcessMonitor):
     """Process monitor that reports 1 live subagent with no captures."""
 
     live_count: int = 1
@@ -16582,7 +16598,7 @@ class _LiveOnlyProcessMonitor_smart_verdict_dumb_kills(ProcessMonitor):
 
 # === consolidated from test_strictly_stuck_ceiling.py ===
 @dataclass
-class _NoProcessMonitor_strictly_stuck_ceiling:
+class _NoProcessMonitorStrictlyStuckCeiling:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16599,7 +16615,7 @@ class _NoProcessMonitor_strictly_stuck_ceiling:
 
 
 # === consolidated from test_strictly_stuck_ceiling.py ===
-class _StubCorroborator_strictly_stuck_ceiling:
+class _StubCorroboratorStrictlyStuckCeiling:
     def __init__(self, alive_by: AliveBy | None) -> None:
         self._alive_by = alive_by
 
@@ -16618,7 +16634,7 @@ class _ClassifyQuietStub:
 
 # === consolidated from test_stuck_job_heartbeat_ceiling.py ===
 @dataclass
-class _NoProcessMonitor_stuck_job_heartbeat_ceiling:
+class _NoProcessMonitorStuckJobHeartbeatCeiling:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16635,7 +16651,7 @@ class _NoProcessMonitor_stuck_job_heartbeat_ceiling:
 
 
 # === consolidated from test_stuck_job_heartbeat_ceiling.py ===
-class _StubCorroborator_stuck_job_heartbeat_ceiling:
+class _StubCorroboratorStuckJobHeartbeatCeiling:
     def __init__(self, alive_by: AliveBy | None) -> None:
         self._alive_by = alive_by
 
@@ -16645,7 +16661,7 @@ class _StubCorroborator_stuck_job_heartbeat_ceiling:
 
 # === consolidated from test_stuck_job_intelligence.py ===
 @dataclass
-class _FakeProcessMonitor_stuck_job_intelligence(ProcessMonitor):
+class _FakeProcessMonitorStuckJobIntelligence(ProcessMonitor):
     """Process monitor that reports 0 live subagents by default (no liveness)."""
 
     live_count: int = 0
@@ -16687,7 +16703,7 @@ class _StaticCaptureEmpty:
 
 
 # === consolidated from test_subagent_capture_eviction.py ===
-class _FakeProcessMonitor_subagent_capture_eviction:
+class _FakeProcessMonitorSubagentCaptureEviction:
     """ProcessMonitor whose ``discover_subagent_outputs`` is callable-driven."""
 
     def __init__(self, captures: Mapping[str, SubagentOutputCapture]) -> None:
@@ -16802,7 +16818,7 @@ class _RegistryPidSource:
 
 # === consolidated from test_subagent_progress_surface.py ===
 @dataclass
-class _NoProcessMonitor_subagent_progress_surface:
+class _NoProcessMonitorSubagentProgressSurface:
     """Fake process monitor: no live subagents, no captures."""
 
     def live_subagent_count(self) -> int:
@@ -16837,7 +16853,7 @@ class _ResultThenCallStrategy:
 
 # === consolidated from test_waiting_subagent_progress.py ===
 @dataclass
-class _FakeProcessMonitor_waiting_subagent_progress:
+class _FakeProcessMonitorWaitingSubagentProgress:
     """Fake process monitor with a configurable live-subagent count."""
 
     count: int = 0
