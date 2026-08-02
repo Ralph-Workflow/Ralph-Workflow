@@ -1536,6 +1536,26 @@ class ParallelDisplay:
             return
         self.emit_activity_line(unit_id, "raw", line)
 
+    def _emit_carrier_rows(self, unit_id: str, tag: str, body: str, *, kind: str) -> None:
+        """Emit cell-bounded physical rows, each retaining its grep carrier."""
+        timestamp = self._format_timestamp(self._clock())
+        rendered_unit_id = _render_unit_id(unit_id)
+        prefix = f"{timestamp} [{tag}][{rendered_unit_id}] "
+        rows = self._wrap_body_with_hanging_indent(
+            prefix,
+            body,
+            total_width=self._ctx.width,
+            body_measure=self._ctx.width,
+        ).split("\n")
+        for row in rows:
+            self._console.print(
+                self._activity_text(timestamp, tag, rendered_unit_id, row, kind=kind),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+                overflow="ignore",
+            )
+
     def emit_status_line(self, unit_id: str, status: str) -> None:
         """Emit a status line with the same TIMESTAMP LEVEL CAT badge as other lines.
 
@@ -1544,20 +1564,11 @@ class ParallelDisplay:
         """
         if self._is_quiet:
             return
-        timestamp = self._format_timestamp(self._clock())
-        sanitized = _strip_control_chars_for_render(status)
-        rendered_unit_id = _render_unit_id(unit_id)
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[status][{rendered_unit_id}] {sanitized}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=False,
-            overflow="fold",
+        self._emit_carrier_rows(
+            unit_id,
+            "status",
+            _strip_control_chars_for_render(status),
+            kind="status",
         )
 
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
@@ -1570,22 +1581,11 @@ class ParallelDisplay:
         the transcript line layout or inject control sequences into the
         user's scrollback.
         """
-        timestamp = self._format_timestamp(self._clock())
-        rendered_unit_id = _render_unit_id(unit_id)
-        sanitized_tag = _strip_control_chars_for_render(tag)
-        sanitized_message = _strip_control_chars_for_render(message)
-        self._console.print(
-            self._activity_text(
-                timestamp,
-                sanitized_tag,
-                rendered_unit_id,
-                sanitized_message,
-                kind="warning",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=False,
-            overflow="fold",
+        self._emit_carrier_rows(
+            unit_id,
+            _strip_control_chars_for_render(tag),
+            _strip_control_chars_for_render(message),
+            kind="warning",
         )
 
     # -- Streaming block helpers (inlined from PlainLogRenderer) -----------

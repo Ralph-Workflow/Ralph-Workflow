@@ -145,6 +145,26 @@ def test_emit_phase_close_from_exit_wide_phase_identifier_stays_cell_bounded_at_
         assert counter in joined
 
 
+def test_status_and_warning_rows_repeat_greppable_carriers_when_folded_at_40_columns() -> None:
+    """S-5 regression: every physical activity row remains independently greppable."""
+    buf = StringIO()
+    display = ParallelDisplay(
+        make_display_context(console=Console(file=buf, width=40, color_system=None), env={})
+    )
+    display.emit_status_line("reviewer", "waiting for " + "a recoverable response " * 4)
+    display.emit_warn_line("reviewer", "warning", "recover raw detail from " + ".agent/raw/reviewer.log " * 4)
+
+    rows = [row for row in buf.getvalue().splitlines() if row]
+    status_rows = [row for row in rows if "[status][reviewer]" in row]
+    warning_rows = [row for row in rows if "[warning][reviewer]" in row]
+
+    assert len(status_rows) > 1
+    assert len(warning_rows) > 1
+    assert all(row.count("[status][reviewer]") == 1 for row in status_rows)
+    assert all(row.count("[warning][reviewer]") == 1 for row in warning_rows)
+    assert all(cell_len(row) <= 40 for row in rows)
+
+
 def test_emit_phase_close_from_exit_quiet_mode_emits_nothing() -> None:
     """AC-05: quiet mode produces no output."""
     pd, buf = _display()
