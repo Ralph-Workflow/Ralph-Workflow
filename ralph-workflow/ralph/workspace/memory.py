@@ -252,6 +252,7 @@ class MemoryWorkspace:
         end: int | None = None,
         head: int | None = None,
         tail: int | None = None,
+        max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Read lines from a file with slicing support.
 
@@ -261,13 +262,16 @@ class MemoryWorkspace:
             end: 1-based line number to end at (inclusive).
             head: Return only the first N lines.
             tail: Return only the last N lines.
+            max_bytes: Ceiling for an unbounded full-file read. Partial
+                line windows remain available above this limit.
 
         Returns:
             Tuple of (text content, metadata dict) where metadata has
             total_lines, returned_lines, truncated keys.
 
         Raises:
-            ValueError: If conflicting params are supplied.
+            ValueError: If conflicting params are supplied or an unbounded
+                read exceeds ``max_bytes``.
             FileNotFoundError: If file doesn't exist.
         """
         # Count how many mode groups are specified
@@ -279,6 +283,13 @@ class MemoryWorkspace:
             raise ValueError("Only one of (start/end range), head, or tail may be specified")
 
         content = self.read(path)
+        content_bytes = len(content.encode("utf-8"))
+        if mode_count == 0 and max_bytes is not None and content_bytes > max_bytes:
+            raise ValueError(
+                f"File too large for read_lines: {content_bytes} bytes exceeds "
+                f"limit of {max_bytes} bytes (path={path!r}). "
+                "Use a partial read (head/tail/range) or raise max_bytes."
+            )
         all_lines = content.splitlines(keepends=True)
         total_lines = len(all_lines)
         returned_lines: list[str]

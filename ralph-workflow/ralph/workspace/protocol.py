@@ -122,6 +122,7 @@ class Workspace(Protocol):
         end: int | None = None,
         head: int | None = None,
         tail: int | None = None,
+        max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Read lines from a file with slicing support.
 
@@ -131,13 +132,16 @@ class Workspace(Protocol):
             end: 1-based line number to end at (inclusive).
             head: Return only the first N lines.
             tail: Return only the last N lines.
+            max_bytes: Ceiling for an unbounded full-file read. Partial
+                line windows remain available above this limit.
 
         Returns:
             Tuple of (text content, metadata dict) where metadata has
             total_lines, returned_lines, truncated keys.
 
         Raises:
-            ValueError: If conflicting params are supplied.
+            ValueError: If conflicting params are supplied or an unbounded
+                read exceeds ``max_bytes``.
             FileNotFoundError: If file doesn't exist.
         """
         ...
