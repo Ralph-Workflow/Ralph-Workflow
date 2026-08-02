@@ -151,7 +151,7 @@ def _violation_for_call(
 def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvocationViolation]:
     try:
         source = module_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return [
             FilesystemPollingInvocationViolation(
                 "unreadable_module",

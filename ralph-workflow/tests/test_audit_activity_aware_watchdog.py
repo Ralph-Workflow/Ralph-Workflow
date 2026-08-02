@@ -28,10 +28,12 @@ no ``time.sleep``, no real file I/O outside ``tmp_path``.
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.testing import audit_activity_aware_watchdog as audit
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _write_fake_package(tmp_path: Path) -> Path:

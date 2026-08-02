@@ -15,6 +15,24 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
     return package_root
 
 
+def test_non_utf8_candidate_module_fails_closed(tmp_path: Path) -> None:
+    """S-6: undecodable new source cannot bypass lifecycle ownership enforcement."""
+    module_rel = "feature/non_utf8.py"
+    package_root = tmp_path / "ralph"
+    module_path = package_root / module_rel
+    module_path.parent.mkdir(parents=True, exist_ok=True)
+    module_path.write_bytes(b"\xff")
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "unreadable_module"
+    assert violations[0].file_path == module_rel
+
+
 def test_regression_unowned_sleep_polling_fails_closed(tmp_path: Path) -> None:
     """S-6: a new timer-driven filesystem poll is rejected with P3 guidance."""
     module_rel = "feature/poller.py"

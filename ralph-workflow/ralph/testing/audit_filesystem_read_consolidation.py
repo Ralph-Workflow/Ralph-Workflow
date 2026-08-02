@@ -272,7 +272,7 @@ def _coerce_package_roots(
 def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemReadViolation]:
     try:
         source = module_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return [
             FilesystemReadViolation(
                 kind="unreadable_module",

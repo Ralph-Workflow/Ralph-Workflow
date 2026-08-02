@@ -50,9 +50,37 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 
 `tests/test_filesystem_activity_baseline.py` drives a workspace write and monitor lifecycle through an in-memory `FileBackend` and observer boundary. A first cycle publishes `alpha` and registers one recursive root watch. Repeating the same cycle preserves final bytes without another publication, directory preparation, or watch registration. A changed cycle publishes `beta` while retaining the same watch. This establishes the initial W1/W2/P1 characterization without real filesystem, observer, subprocess, or clock activity.
 
-## Polling and invocation ownership
+## Canonical boundaries and local exceptions
 
-`ralph.testing.audit_filesystem_polling_invocation` is the fail-closed owner for P1–P4 and Ralph-chosen subprocess execution. It scans every production module automatically and rejects raw `time.sleep`, watchdog `Observer` construction, and direct `subprocess` launch calls outside the lifecycle and typed-process owners. A local `# filesystem-poll-ok: <reason>` marker is accepted only with a non-empty explanation of the bounded external lifecycle; it is for unavoidable protocol keepalives, process-exit waits, teardown escalation, and cross-process lock acquisition, not ordinary filesystem polling.
+Stable full-file publication goes through `ralph.mcp.artifacts.idempotent_write` or
+`FsWorkspace.write`. A compare-before-write skip also skips deferred parent-directory
+creation, temporary staging, replacement, and the optional directory durability barrier.
+Atomic publication stages beside the destination with a unique name, then replaces the
+destination; callers opt into `sync_directory=True` only when their crash-recovery
+contract requires the directory entry to be durable. The retained destination path and
+final bytes are unchanged.
+
+`Workspace.snapshot` is the typed one-observation boundary for a request that needs
+metadata and content together. `read_lines` and `read_bytes` size-check before reading
+and expose only their requested window. `Workspace.iter_files` is the canonical recursive
+walk and applies `RECURSIVE_SKIP_DIRECTORY_NAMES`; raw reads, probes, and traversals are
+rejected by the package-wide read audit unless a local
+`# filesystem-read-ok: <reason>` explains the bounded boundary.
+
+`WorkspaceMonitor` is the lifecycle owner of one recursive workspace-root watch. It
+retains that watch across unchanged cycles and releases it on normal stop or startup
+failure. `ralph.testing.audit_filesystem_polling_invocation` rejects raw timer polling,
+watchdog observer construction, and product-owned direct subprocess choices outside their
+typed owners. A local `# filesystem-poll-ok: <reason>` marker requires a non-empty
+bounded-lifecycle explanation; it is for unavoidable protocol keepalives, process-exit
+waits, teardown escalation, and cross-process lock acquisition, not ordinary filesystem
+polling.
+
+All three filesystem audits fail closed for unreadable source, including non-UTF-8
+modules, so a newly added production file cannot evade enforcement by being undecodable.
+Write exceptions use the equivalent local `# filesystem-write-ok: <reason>` marker and
+must identify the user-requested, append-only, transient, durability, or retention
+contract at the call site.
 
 ## Next Step
 

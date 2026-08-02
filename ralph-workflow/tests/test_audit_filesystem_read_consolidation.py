@@ -29,6 +29,24 @@ def test_invalid_candidate_free_module_fails_closed(tmp_path: Path) -> None:
     assert violations[0].line == 1
 
 
+def test_non_utf8_candidate_module_fails_closed(tmp_path: Path) -> None:
+    """S-6: undecodable new source cannot escape the package-wide read audit."""
+    module_rel = "alpha/non_utf8.py"
+    package_root = tmp_path / "ralph"
+    module_path = package_root / module_rel
+    module_path.parent.mkdir(parents=True, exist_ok=True)
+    module_path.write_bytes(b"\xff")
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "unreadable_module"
+    assert violations[0].file_path == module_rel
+
+
 def test_valid_candidate_free_module_passes(tmp_path: Path) -> None:
     """A valid inert production module remains accepted."""
     module_rel = "alpha/inert.py"
