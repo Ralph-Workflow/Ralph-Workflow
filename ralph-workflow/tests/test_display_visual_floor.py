@@ -112,6 +112,20 @@ def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface()
         assert dark_hex != light_hex, role
 
 
+def test_visual_floor_unknown_background_theme_roles_clear_both_possible_terminal_surfaces() -> None:
+    """S-3 regression: unknown-background chrome must not inherit the dark palette."""
+    unknown = theme.theme_for_background(None)
+    foregrounds = {
+        theme._extract_hex(str(style))
+        for style in unknown.styles.values()
+        if theme._extract_hex(str(style))
+    }
+    assert foregrounds
+    for foreground in foregrounds:
+        assert theme.contrast_ratio(foreground, "#000000") >= CONTRAST_FLOOR
+        assert theme.contrast_ratio(foreground, "#FFFFFF") >= CONTRAST_FLOOR
+
+
 def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> None:
     """S-3: an undetermined terminal background must not silently render as dark."""
     context = make_display_context(env={})

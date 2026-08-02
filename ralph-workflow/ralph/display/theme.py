@@ -459,15 +459,75 @@ _THEME_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
 }
 RALPH_THEME_ON_LIGHT_BG: Final[Theme] = Theme(_THEME_STYLES_ON_LIGHT_BG)
 
+# An undetermined terminal background is still a display surface. Use only
+# fixed mid-luminance pigments that clear the contrast floor against both black
+# and white; assuming the dark palette here made chrome disappear on an
+# undetected light terminal.
+_THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
+    **_THEME_STYLES,
+    "theme.level.info": "bold #178383",
+    "theme.level.success": "bold #13884E",
+    "theme.level.warn": "bold #BA5D00",
+    "theme.level.error": "bold #B05C5C",
+    "theme.level.milestone": "bold #0074E8",
+    "theme.cat.meta": "#178383",
+    "theme.cat.cont": "#0074E8",
+    "theme.cat.out": "#0074E8",
+    "theme.log.error": "bold #B05C5C",
+    "theme.log.info": "#178383",
+    "theme.log.milestone": "bold #0074E8",
+    "theme.log.success": "bold #13884E",
+    "theme.log.warn": "bold #BA5D00",
+    "theme.panel.border": "#0074E8",
+    "theme.panel.title": "bold #0074E8",
+    "theme.phase.commit": "#0074E8",
+    "theme.phase.complete": "bold #13884E",
+    "theme.phase.development": "#13884E",
+    "theme.phase.development_analysis": "#9060C0",
+    "theme.phase.development_commit": "#0074E8",
+    "theme.phase.failed": "bold #B05C5C",
+    "theme.phase.fix": "#B05C5C",
+    "theme.phase.planning": "#0074E8",
+    "theme.phase.review": "#BA5D00",
+    "theme.phase.review_analysis": "#9060C0",
+    "theme.phase.review_commit": "#0074E8",
+    "theme.status.error": "bold #B05C5C",
+    "theme.status.failure": "bold #B05C5C",
+    "theme.status.info": "#178383",
+    "theme.status.pending": "#757575",
+    "theme.status.running": "#0074E8",
+    "theme.status.skipped": "#79773A",
+    "theme.status.success": "bold #13884E",
+    "theme.status.warning": "bold #BA5D00",
+    "theme.text.dim_italic": "italic #9060C0",
+    "theme.text.emphasis": "bold #0074E8",
+    "theme.text.muted": "#178383",
+    "theme.banner.ascii": "bold #0074E8",
+    "theme.banner.border": "#0074E8",
+    "theme.banner.tagline": "#178383",
+    "theme.banner.title": "bold #0074E8",
+    "theme.banner.version": "bold #13884E",
+    "theme.banner.welcome": "bold #0074E8",
+    "theme.outer_dev": "bold #0074E8",
+    "theme.inner_analysis": "#9060C0",
+    "theme.review_pass": "bold #13884E",
+    "theme.review_fail": "bold #B05C5C",
+    "theme.proceed": "bold #13884E",
+    "theme.revise": "bold #BA5D00",
+    "theme.status.bar_marker": "#178383",
+    "theme.status.path_marker": "#178383",
+    "theme.status.path": "#178383",
+}
+RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
+
 
 def theme_for_background(terminal_bg_is_light: bool | None) -> Theme:
-    """Return the semantic Rich theme for the resolved terminal background.
-
-    Unknown backgrounds retain the dark reference theme because no complete
-    terminal surface is owned outside previews; individual activity/status
-    carriers use their dual-safe fallback tables on that path.
-    """
-    return RALPH_THEME_ON_LIGHT_BG if terminal_bg_is_light is True else RALPH_THEME
+    """Return the semantic Rich theme resolved for a known or unknown background."""
+    if terminal_bg_is_light is True:
+        return RALPH_THEME_ON_LIGHT_BG
+    if terminal_bg_is_light is False:
+        return RALPH_THEME
+    return RALPH_THEME_ON_UNKNOWN_BG
 
 
 _MIN_CONTRAST_RATIO: Final[float] = 4.5
