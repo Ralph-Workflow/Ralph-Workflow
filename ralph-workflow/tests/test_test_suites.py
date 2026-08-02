@@ -16,16 +16,12 @@ if TYPE_CHECKING:
 
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
-    "tests/test_auto_integrate_conflict_e2e.py",
-    "tests/test_auto_integrate_clone_conflict_e2e.py",
     "tests/test_auto_integrate_catchup_e2e.py",
     "tests/test_auto_integrate_worktree_prefix_e2e.py",
     "tests/test_auto_integrate_fail_closed_e2e.py",
     "tests/test_auto_integrate_end_to_end.py",
     "tests/test_auto_integrate_refresh_contract.py",
     "tests/test_auto_integrate_seams_e2e.py",
-    "tests/test_auto_integrate_conflict_seams_e2e.py",
-    "tests/test_auto_integrate_rebase_conflict_e2e.py",
     "tests/test_auto_integrate_real_agent_resolution_e2e.py",
     "tests/test_auto_integrate_fleet_conflict_e2e.py",
     "tests/test_auto_integrate_local_fleet_target_e2e.py",

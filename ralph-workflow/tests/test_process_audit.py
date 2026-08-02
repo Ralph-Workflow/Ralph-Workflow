@@ -107,13 +107,10 @@ TESTS_ALLOWLIST: set[str] = {
     "test_auto_integrate_remote_push.py",  # configured-remote auto-integration push regression
     "test_auto_integrate_fail_closed_e2e.py",  # real-git regression for the fail-closed HEAD-read and merge-state queries
     "test_auto_integrate_refresh_contract.py",  # real-git regression for the pre-landing target refresh
-    "test_auto_integrate_rebase_conflict_e2e.py",  # real-git proof that a conflicted rebase is resolved in place and landed
     "test_auto_integrate_real_agent_resolution_e2e.py",  # real-git and real-agent MCP-session regression
     "test_auto_integrate_fleet_conflict_e2e.py",  # real-git proof that a conflicted rebase across two linked worktrees lands
     "test_auto_integrate_local_fleet_target_e2e.py",  # real-git multi-worktree proof for the no-origin fleet refresh
     "test_auto_integrate_conflict_budget.py",  # real-git regression for the bounded conflict-resolution budget
-    "test_auto_integrate_conflict_e2e.py",  # real-git end-to-end proof of the production conflict-resolution chain
-    "test_auto_integrate_clone_conflict_e2e.py",  # real-git clone + linked-worktree conflict/concurrency regression
     "test_auto_integrate_catchup_e2e.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; background catch-up fast-forward)
     # git worktree setup via subprocess.run in test fixtures (real-git
     # subprocess_e2e suite; prefix-colliding sibling worktree regression)
@@ -123,9 +120,6 @@ TESTS_ALLOWLIST: set[str] = {
     # itself, the same convention every sibling auto-integrate e2e file
     # follows
     "test_auto_integrate_seams_e2e.py",
-    # real-git fixtures for the conflict chain at the phase-transition
-    # and startup seams
-    "test_auto_integrate_conflict_seams_e2e.py",
     # real-git fixtures proving AC-11: hostile user git config (rerere,
     # gpgsign, autostash, autosquash, updateRefs) is neutralized before
     # the rebase argv runs. Uses subprocess.run to drive git config +

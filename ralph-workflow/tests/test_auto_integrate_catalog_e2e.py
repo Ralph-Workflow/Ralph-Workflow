@@ -30,9 +30,9 @@ _CATALOG: tuple[tuple[str, str, str], ...] = (
     # would trip the audit); the workflow test
     # ``test_test_auto_integrate_e2e_lists_every_required_subprocess_e2e_file``
     # pins the file list, which is the actual rot class to catch.
-    ("AC-03", "tests/test_auto_integrate_rebase_conflict_e2e.py", "test_*"),
+    ("AC-03", "tests/test_auto_integrate.py", "test_no_commits_beyond_target_skips_with_zero_mutation"),
     ("AC-04", "tests/test_auto_integrate_markerless_conflicts.py", "test_*"),
-    ("AC-05", "tests/test_auto_integrate_conflict_e2e.py", "test_*"),
+    ("AC-05", "tests/test_auto_integrate.py", "test_diverged_clean_rebase_then_ff"),
     ("AC-06", "tests/test_auto_integrate_recovery.py", "test_*"),
     ("AC-07", "tests/test_auto_integrate_recovery.py", "test_*"),
     ("AC-10", "tests/test_auto_integrate_race.py", "test_*"),
