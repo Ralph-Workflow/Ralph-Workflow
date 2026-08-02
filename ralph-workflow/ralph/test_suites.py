@@ -393,6 +393,8 @@ def _reap_process(
     try:
         stdout, stderr = process.communicate(timeout=max(0.0, timeout_seconds))
     except subprocess.TimeoutExpired:
+        if timeout_seconds <= 0.0:
+            return "", ""
         return "", "pytest shard did not exit after termination\n"
     return _decode_output(stdout), _decode_output(stderr)
 

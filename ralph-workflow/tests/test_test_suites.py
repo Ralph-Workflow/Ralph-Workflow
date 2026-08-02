@@ -636,6 +636,36 @@ def test_run_test_suites_timeout_names_each_incomplete_shard_and_its_files(
     ]
 
 
+def test_timeout_regression_deadline_without_drain_does_not_claim_shard_survived(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A zero-budget deadline cannot honestly diagnose a failed post-termination drain."""
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py",),
+    )
+    clock = _FakeClock()
+    process = _FakeShardProcess([None], communicate_times_out=True)
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        suite_timeout_seconds=1.0,
+        spawner=_StubSpawner([process]),
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py",),
+        file_weigher=lambda _cwd, _path: 1,
+        monotonic=clock,
+        wait=clock.advance,
+    )
+
+    assert exit_code == 124
+    assert process.terminated
+    assert "pytest shard did not exit after termination" not in capsys.readouterr().err
+
+
 def test_completed_shard_cleans_descendants_before_draining_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
