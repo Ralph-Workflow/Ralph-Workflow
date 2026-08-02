@@ -75,6 +75,7 @@ def _tail_items(
     pipeline_policy: PipelinePolicy | None,
     dropped_count: int,
     include_context_sections: bool,
+    style: str,
 ) -> list[Text | Rule]:
     """Render the tail-section content (error, dropped count, debug breadcrumbs).
 
@@ -88,11 +89,11 @@ def _tail_items(
     items: list[Text | Rule] = []
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
-        items.append(Text(f"  {dropped_line}"))
+        items.append(Text(f"  {dropped_line}", style=style))
     breadcrumb_lines = _debug_breadcrumb_lines(snapshot)
     if breadcrumb_lines:
         items.append(Rule("Debug", style="theme.text.muted"))
-        items.extend(Text(f"  {line}") for line in breadcrumb_lines)
+        items.extend(Text(f"  {line}", style=style) for line in breadcrumb_lines)
     return items
 
 
@@ -100,6 +101,7 @@ def _plan_section(
     snapshot: PipelineSnapshot,
     pipeline_policy: PipelinePolicy | None,
     include_context_sections: bool,
+    style: str,
 ) -> list[Text | Rule]:
     items: list[Text | Rule] = []
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
@@ -185,13 +187,14 @@ def _commit_section(
     if not commit_lines and not has_pr:
         return []
     items: list[Text | Rule] = [Rule("Commit", style=style_for_role("terminal", pipeline_policy))]
-    items.extend(Text(f"  {line}") for line in commit_lines)
+    style = style_for_role("terminal", pipeline_policy)
+    items.extend(Text(f"  {line}", style=style) for line in commit_lines)
     if has_pr:
-        items.append(Text(f"  PR: {pr_url}"))
+        items.append(Text(f"  PR: {pr_url}", style=style))
     return items
 
 
-def _auto_integrate_items(snapshot: PipelineSnapshot) -> list[Text]:
+def _auto_integrate_items(snapshot: PipelineSnapshot, style: str) -> list[Text]:
     """Render the auto-integration outcome line for the group receipt.
 
     Returns ``[]`` when no integration ran (``auto_integrate_action`` is
@@ -211,7 +214,7 @@ def _auto_integrate_items(snapshot: PipelineSnapshot) -> list[Text]:
         remote_sync=snapshot.auto_integrate_remote_sync,
         remote=snapshot.auto_integrate_remote,
     )
-    return [Text(f"  auto-integrate: {phrase}")]
+    return [Text(f"  auto-integrate: {phrase}", style=style)]
 
 
 def render_completion_summary_group(
@@ -240,14 +243,14 @@ def render_completion_summary_group(
         renderables.append(Text(f"  {snapshot.last_error or 'unknown failure'}", style=style))
         diagnostic = _children_persist_diagnostic_line(snapshot.last_error or "")
         if diagnostic:
-            renderables.append(Text(f"  {diagnostic}"))
+            renderables.append(Text(f"  {diagnostic}", style=style))
     if options.elapsed_seconds is not None:
         renderables.append(
             Text(f"  elapsed={format_elapsed_seconds(options.elapsed_seconds)}", style=style)
         )
 
     renderables.extend(
-        _plan_section(snapshot, options.pipeline_policy, options.include_context_sections)
+        _plan_section(snapshot, options.pipeline_policy, options.include_context_sections, style)
     )
     renderables.append(Rule("Metrics", style=style))
     renderables.append(
@@ -266,13 +269,13 @@ def render_completion_summary_group(
 
     if _has_iteration_context(snapshot):
         renderables.append(Rule("Iteration Context", style=style))
-        renderables.extend(Text(f"  {line}") for line in _iteration_context_lines(snapshot))
+        renderables.extend(Text(f"  {line}", style=style) for line in _iteration_context_lines(snapshot))
 
     renderables.extend(_activity_section(snapshot, options, style))
     renderables.extend(
         _commit_section(options.workspace_root, options.pipeline_policy, snapshot.pr_url)
     )
-    renderables.extend(_auto_integrate_items(snapshot))
+    renderables.extend(_auto_integrate_items(snapshot, style))
     renderables.extend(
         _tail_items(
             snapshot,
@@ -280,6 +283,7 @@ def render_completion_summary_group(
             options.pipeline_policy,
             options.dropped_count,
             options.include_context_sections,
+            style,
         )
     )
     renderables.append(Rule(style=style))

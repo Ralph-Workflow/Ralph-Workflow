@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from io import StringIO
 
@@ -103,6 +104,31 @@ def test_fail_badge_label_present_on_plain() -> None:
     ctx = _plain_context(buf)
     emit_completion_summary(_make_snapshot(), display_context=ctx)
     assert "[FAIL]" in buf.getvalue()
+
+
+def test_completion_summary_body_rows_retain_semantic_colour() -> None:
+    """Regression: S-8 completion details never fall back to the terminal default."""
+    buf = StringIO()
+    emit_completion_summary(_make_snapshot(), display_context=_themed_context(buf))
+
+    rendered = buf.getvalue()
+    for text in ("Test plan", "Scope: 1 item(s)", "agent_calls=3"):
+        assert re.search(rf"\x1b\[[0-9;]*m[^\x1b]*{re.escape(text)}", rendered), text
+
+
+def test_completion_summary_failure_cause_retains_semantic_colour() -> None:
+    """Regression: S-8 error detail remains visible in a coloured completion summary."""
+    buf = StringIO()
+    snapshot = replace(
+        _make_snapshot(),
+        phase="review",
+        is_terminal_success=False,
+        is_terminal_failure=True,
+        last_error="operator-visible failure",
+    )
+    emit_completion_summary(snapshot, display_context=_themed_context(buf))
+
+    assert re.search(r"\x1b\[[0-9;]*m[^\x1b]*operator-visible failure", buf.getvalue())
 
 
 def test_badge_reason_text_uses_coloured_muted_style_in_themed_output() -> None:
