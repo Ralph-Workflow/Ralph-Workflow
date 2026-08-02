@@ -810,6 +810,7 @@ class ParallelDisplay:
         *,
         kind: str,
         leading_indent: str = "",
+        body_style: str | None = None,
     ) -> Text:
         """Build the semantic-colour activity grid without relying on markup parsing.
 
@@ -838,7 +839,7 @@ class ParallelDisplay:
         text.append(f"[{tag}]", style=state_style)
         text.append(f"[{unit_id}]", style=unit_style)
         text.append(" ")
-        text.append(body, style=state_style)
+        text.append(body, style=body_style or state_style)
         return text
 
     def _close_hang_prefix(self, timestamp: str, tag: str, unit_id: str) -> str:
@@ -1426,6 +1427,7 @@ class ParallelDisplay:
                     first_chunk,
                     kind=kind,
                     leading_indent=level_indent,
+                    body_style="theme.display.elision" if opts.condensed_flag else None,
                 ),
                 markup=False,
                 highlight=False,
@@ -1455,6 +1457,7 @@ class ParallelDisplay:
                         continuation_body,
                         kind=kind,
                         leading_indent=level_indent,
+                        body_style="theme.display.elision" if opts.condensed_flag else None,
                     ),
                     markup=False,
                     highlight=False,

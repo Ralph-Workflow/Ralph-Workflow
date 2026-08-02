@@ -182,6 +182,17 @@ def test_generated_scene_colours_primary_agent_content_and_waiting_state() -> No
     assert re.search(r"\x1b\[[0-9;]*38;[^m]*m○ WAITING", idle)
 
 
+def test_generated_scene_elision_body_uses_its_named_semantic_colour() -> None:
+    """S-3/S-7 regression: a condensed body remains visibly distinct from its output carrier."""
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    assert re.search(r"\x1b\[38;2;204;121;167moutput condensed count=24 bytes=768", rendered)
+
+
 def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -> None:
     """S-2/S-5 regression: graceful degradation keeps the activity carrier visible."""
     rendered = render_scene(
