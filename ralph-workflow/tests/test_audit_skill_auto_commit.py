@@ -26,22 +26,15 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_audit_returns_zero_when_all_invariants_satisfied() -> None:
-    """Smoke test: on a clean tree, the audit exits 0."""
-    assert audit_main([]) == 0
-
-
-def test_audit_main_returns_zero_on_clean_tree() -> None:
-    """Second smoke test that exits with rc 0 and prints the OK summary."""
-    rc = audit_main([])
-    assert rc == 0
-
-
-def test_audit_module_path() -> None:
-    """The audit module exposes ``main`` for ``python -m`` invocation."""
-    assert hasattr(audit_module, "main")
-    assert hasattr(audit_module, "_SKILL_AUTO_COMMIT_SUBJECT")
-    assert hasattr(audit_module, "_SKILL_ROOT_PREFIXES")
+# NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied``,
+# ``test_audit_main_returns_zero_on_clean_tree``, and
+# ``test_audit_module_path`` were removed in the wt-05-test-opti pass.
+# The two clean-tree checks duplicate the audit already executed by
+# ``make verify`` (the ``audit_skill_auto_commit`` step in
+# ``_VERIFY_STEPS``), and the module-path test is a pure import smoke
+# that the same verify step implicitly proves. The remaining tests
+# cover the literal-string + AST regression contract with monkey-patched
+# sources.
 
 
 def test_audit_subject_literal_is_deterministic_chore_skills_sync_baseline_bundle() -> None:

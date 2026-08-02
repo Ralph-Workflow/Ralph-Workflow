@@ -1,4 +1,14 @@
-"""Tests for the optional-delegation planning guidance audit."""
+"""Tests for the optional-delegation planning guidance audit.
+
+The ``test_audit_returns_zero_when_all_invariants_satisfied`` and
+``test_audit_module_path`` tests were removed in the wt-05-test-opti pass
+because they duplicate the clean-tree audit already executed by
+``make verify`` (the ``audit_parallelization_dormant`` step in
+``_VERIFY_STEPS``). Running them again through pytest on the default
+profile added per-shard wall-clock cost while proving nothing the
+verify step does not already prove. The remaining tests cover the
+audit's regression contract with monkey-patched sources.
+"""
 
 from __future__ import annotations
 
@@ -9,14 +19,6 @@ from ralph.testing.audit_parallelization_dormant import main as audit_main
 
 if TYPE_CHECKING:
     import pytest
-
-
-def test_audit_returns_zero_when_all_invariants_satisfied() -> None:
-    assert audit_main([]) == 0
-
-
-def test_audit_module_path() -> None:
-    assert hasattr(audit_module, "main")
 
 
 def test_audit_blocks_required_guidance_regression(

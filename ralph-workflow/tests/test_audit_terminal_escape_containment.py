@@ -28,24 +28,14 @@ from ralph.testing.audit_terminal_escape_containment import (
 )
 from ralph.testing.audit_terminal_escape_containment import main as audit_main
 
-
-@pytest.mark.timeout_seconds(5)
-def test_audit_returns_zero_when_all_invariants_satisfied() -> None:
-    """``main()`` returns 0 on the in-tree literal set.
-
-    The audit walks every invariant's AST parse over real source files
-    (calls ``ast.parse`` on each scanned path); under 24-way sharding the
-    per-test SIGALRM cap charges wall-clock against contention from
-    sibling shards. The 5-second cap is just the resource headroom the
-    work needs; it does NOT mask a real regression (the audit either
-    finds zero violations or it doesn't).
-    """
-    assert audit_main([]) == 0
-
-
-def test_audit_module_path() -> None:
-    """Audit must be importable as ``ralph.testing.audit_terminal_escape_containment``."""
-    assert hasattr(audit_module, "main")
+# NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied`` and
+# ``test_audit_module_path`` were removed in the wt-05-test-opti pass.
+# The clean-tree check duplicates the audit already executed by
+# ``make verify`` (the ``audit_terminal_escape_containment`` step in
+# ``_VERIFY_STEPS``), and the module-path test is a pure import smoke
+# that the same verify step implicitly proves. The remaining tests
+# cover the AST + literal-string regression contract with monkey-patched
+# sources.
 
 
 def test_audit_invariant_count_matches_table() -> None:
