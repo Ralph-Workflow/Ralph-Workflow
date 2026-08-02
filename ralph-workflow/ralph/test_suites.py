@@ -65,17 +65,17 @@ if TYPE_CHECKING:
 
 # The 1.0 s per-test ITIMER_REAL budget charges wall clock. Plain-pytest
 # shards avoid xdist's shared-worker contention while preserving exact-once
-# test assignment. The automatic profile uses sixteen shards: profiling on the
-# maintained 32-core CI profile shows this keeps the slowest shard below the
-# combined deadline, while fewer shards breach it. Operators may explicitly
-# override ``PYTEST_WORKERS`` for a measured environment.
+# test assignment. Eight shards are the measured-safe automatic profile:
+# higher concurrency starves SQLite-backed tests, while fewer shards breach
+# the combined deadline. Operators may explicitly override ``PYTEST_WORKERS``
+# for a measured environment.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-# The runner owns plain pytest subprocesses rather than xdist workers, so
-# preserving one core for its deadline/cleanup loop avoids scheduler starvation.
-_MAX_PYTEST_WORKERS = max(1, min(16, (os.cpu_count() or 2) - 1))
+# A fixed cap keeps automatic behavior independent of host CPU count and
+# avoids shared-resource starvation under constrained runners.
+_MAX_PYTEST_WORKERS = 8
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two

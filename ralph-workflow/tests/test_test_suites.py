@@ -311,10 +311,9 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: preserve one core while capping the verified profile at
-    # sixteen shards, regardless of the host running the suite.
-    expected = str(max(1, min(16, (test_suites_module.os.cpu_count() or 2) - 1)))
-    assert test_suites_module._pytest_workers() == expected
+    # Regression: automatic resolution uses the fixed measured-safe profile,
+    # regardless of the host running the suite.
+    assert test_suites_module._pytest_workers() == "8"
 
 
 def test_explicit_worker_count_overrides_the_auto_resolution(
