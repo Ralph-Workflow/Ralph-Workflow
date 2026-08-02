@@ -17,6 +17,7 @@ class _ByteBackend:
 
     def __init__(self) -> None:
         self.files: dict[Path, bytes] = {}
+        self.byte_reads: list[Path] = []
         self.byte_writes: list[tuple[Path, bytes]] = []
         self.replacements: list[tuple[Path, Path]] = []
         self.directory_syncs: list[Path] = []
@@ -34,6 +35,7 @@ class _ByteBackend:
         self.files[path] = content.encode(encoding)
 
     def read_bytes(self, path: Path) -> bytes:
+        self.byte_reads.append(path)
         return self.files[path]
 
     def write_bytes(self, path: Path, content: bytes) -> None:
@@ -112,6 +114,25 @@ def test_byte_write_regression_changed_and_unreadable_content_publishes_exact_by
     assert changed_backend.files[path] == b"new\x00"
     assert unreadable_backend.byte_writes == [(path, b"new\x00")]
     assert unreadable_backend.files[path] == b"new\x00"
+
+
+def test_atomic_byte_write_regression_rejects_cross_directory_staging_without_mutation() -> None:
+    """S-2: byte publication never stages on a different filesystem directory."""
+    backend = _ByteBackend()
+    destination = Path("/workspace/state.db")
+
+    with pytest.raises(ValueError, match="same directory"):
+        atomic_write_bytes_if_changed(
+            backend,
+            destination,
+            b"fresh",
+            tmp_path=Path("/other-workspace/state.db.tmp"),
+        )
+
+    assert backend.byte_reads == []
+    assert backend.byte_writes == []
+    assert backend.replacements == []
+    assert backend.files == {}
 
 
 def test_atomic_byte_write_regression_identical_replay_skips_write_replace_and_barrier() -> None:

@@ -24,11 +24,11 @@ The helpers do NOT create parent directories — ``mkdir`` stays
 the caller's responsibility so existing directory-creation
 semantics are unchanged at every converted call site.
 
-The atomic helper derives a unique same-directory staging path from a
-caller-supplied temporary-path stem and then delegates to
-``backend.replace`` to move it on top of ``destination``. A byte-identical ``destination`` short-circuits
-both the temp write and the replace so no filesystem mutation
-occurs.
+The atomic helper requires a caller-supplied temporary-path stem in the
+destination directory, derives a unique staging path there, and then delegates to
+``backend.replace`` to move it on top of ``destination``. A byte-identical
+``destination`` short-circuits both the temp write and the replace so no
+filesystem mutation occurs.
 """
 
 from __future__ import annotations
@@ -122,6 +122,13 @@ def write_bytes_if_changed(
     return True
 
 
+def _validate_staging_directory(destination: Path, tmp_path: Path) -> None:
+    """Reject staging paths that cannot preserve atomic same-directory publication."""
+    if tmp_path.parent != destination.parent:
+        msg = "atomic staging path must be in the same directory as its destination"
+        raise ValueError(msg)
+
+
 def _unique_staging_path(tmp_path: Path) -> Path:
     """Return a same-directory staging path that cannot collide with another writer.
 
@@ -146,7 +153,8 @@ def atomic_write_text_if_changed(
 ) -> bool:
     """Atomic temp+replace write of ``content`` to ``destination``, skipping on identity.
 
-    Derives a unique same-directory staging path from ``tmp_path``, writes
+    Requires ``tmp_path`` in ``destination.parent``, derives a unique staging path
+    there, writes
     ``content`` there, then delegates to ``backend.replace(staging_path,
     destination)``. Mirrors
     :func:`write_text_if_changed` on the destination so a
@@ -162,6 +170,9 @@ def atomic_write_text_if_changed(
         * Reads once to determine whether the destination is absent, unreadable,
           or already contains the requested bytes; it does not probe existence
           separately.
+        * If ``tmp_path.parent`` differs from ``destination.parent``: raises
+          ``ValueError`` before reading or mutating so cross-filesystem publication
+          cannot silently lose atomicity.
         * If ``backend.read_text(destination)`` raises ``OSError`` or
           ``UnicodeDecodeError``: writes a unique staging path derived from
           ``tmp_path``, replaces it onto
@@ -182,6 +193,7 @@ def atomic_write_text_if_changed(
     caller's responsibility so directory-creation semantics at every converted
     call site are unchanged.
     """
+    _validate_staging_directory(destination, tmp_path)
     try:
         existing = backend.read_text(destination, encoding=encoding)
     except (KeyError, OSError, UnicodeDecodeError):
@@ -220,10 +232,12 @@ def atomic_write_bytes_if_changed(
 ) -> bool:
     """Atomically publish exact ``content`` bytes unless ``destination`` already matches.
 
-    A changed or unreadable destination is staged at ``tmp_path`` and atomically
-    replaced. An identical destination skips staging, replacement, preparation,
-    and the optional directory durability barrier.
+    A changed or unreadable destination is staged from a ``tmp_path`` in the
+    destination directory and atomically replaced. A cross-directory path raises
+    ``ValueError`` before any read or mutation. An identical destination skips
+    staging, replacement, preparation, and the optional directory durability barrier.
     """
+    _validate_staging_directory(destination, tmp_path)
     try:
         existing = backend.read_bytes(destination)
     except (KeyError, OSError):

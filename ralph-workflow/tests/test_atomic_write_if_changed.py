@@ -39,6 +39,7 @@ class _ReplacingCountingBackend(FileBackend):
 
     def __init__(self) -> None:
         self._files: Dict[Path, str] = {}
+        self.read_text_calls: list[Path] = []
         self.write_text_calls: list[tuple[Path, str]] = []
         self.replace_calls: list[tuple[Path, Path]] = []
         self.sync_directory_calls: list[Path] = []
@@ -51,6 +52,7 @@ class _ReplacingCountingBackend(FileBackend):
 
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
         del encoding
+        self.read_text_calls.append(path)
         return self._files[path]
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
@@ -117,6 +119,25 @@ class _CleanupFailingReplaceBackend(_FailingReplaceBackend):
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         del path, missing_ok
         raise OSError("staging cleanup failed")
+
+
+def test_atomic_write_regression_rejects_cross_directory_staging_without_mutation() -> None:
+    """S-2: atomic publication refuses staging outside the destination directory."""
+    backend = _ReplacingCountingBackend()
+    destination = Path("/virtual-ws/checkpoint.json")
+
+    with pytest.raises(ValueError, match="same directory"):
+        atomic_write_text_if_changed(
+            backend,
+            destination,
+            "fresh",
+            tmp_path=Path("/other-ws/checkpoint.json.tmp"),
+        )
+
+    assert backend.read_text_calls == []
+    assert backend.write_text_calls == []
+    assert backend.replace_calls == []
+    assert backend._files == {}
 
 
 def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -> None:
