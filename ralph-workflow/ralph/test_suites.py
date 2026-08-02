@@ -67,10 +67,15 @@ if TYPE_CHECKING:
 # pytest with xdist (``-n N`` per shard) so the in-shard wall clock scales
 # with the host's per-shard worker budget rather than with the count of
 # files in the shard. On a 32-core host the default profile is 16 shards *
-# 2 workers = 32 parallel pytest workers; lower-core hosts shrink the
-# per-shard worker count automatically. Operators may override
-# ``PYTEST_WORKERS`` for the shard count and ``PYTEST_XDIST_WORKERS_PER_SHARD``
-# for the in-shard worker count after measuring their own host.
+# 1 worker = 16 parallel pytest workers (plain pytest, no in-shard xdist).
+# In-shard xdist was previously defaulted to 2 workers per shard but the
+# empirical 32-core wall-clock measurement shows that the per-shard
+# pytest-xdist coordination overhead exceeds the parallelism gain when
+# the suite is already shard-saturated (16 shards on 32 cores). Plain
+# pytest per shard keeps the slowest shard well under the 60s combined
+# budget; operators on lower-core hosts (or hosts with idle cores beyond
+# the shard cap) may opt into in-shard xdist by setting
+# ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` or an explicit non-zero integer.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
@@ -81,14 +86,21 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # shard's work (more files per shard) and is therefore a budget-pressure
 # change, not a budget-relief change.
 _MAX_PYTEST_WORKERS = 16
-_DEFAULT_XDIST_WORKERS_PER_SHARD = "auto"
+# Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
+# because on the maintained 32-core CI profile the shard-saturated
+# 16-shard fan-out already uses one pytest process per shard and adding
+# xdist workers inside each shard shifts wall-clock budget from
+# parallel-IO back into pytest-coordination overhead. Operators may
+# override with ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` for the legacy
+# CPU-utilisation-maximising policy or an explicit integer for a custom
+# in-shard fan-out.
+_DEFAULT_XDIST_WORKERS_PER_SHARD = "0"
 # Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
 # Combined with ``_MAX_PYTEST_WORKERS`` (16 shards) this gives a maximum
-# fan-out of 16 * 8 = 128 workers; the 32-core CI profile uses 16 * 2 = 32.
-# ``_MAX_XDIST_WORKERS_PER_SHARD = 0`` would mean "no xdist in shards" and
-# is reserved for an explicit operator override (it is NOT the default
-# because the default 16-shard fan-out is no longer sufficient on its own
-# to keep the slowest shard below the 60s combined budget on 32-core CI).
+# fan-out of 16 * 8 = 128 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
+# is overridden to ``"auto"`` or a positive integer. The default plain-
+# pytest path keeps the slowest shard under the 60s combined budget on
+# 32-core CI without coordination overhead.
 _MAX_XDIST_WORKERS_PER_SHARD = 4
 
 #: Exact subprocess-E2E files required by the authoritative verification
@@ -224,16 +236,20 @@ def _pytest_workers() -> str:
 def _xdist_workers_per_shard() -> str:
     """Return the in-shard xdist worker count, or ``"0"`` to disable xdist.
 
-    The default ``auto`` policy sizes each shard's xdist fan-out so that
-    ``PYTEST_WORKERS`` shards * ``N`` in-shard workers does not exceed the
-    host's available CPU count. The default target keeps the slowest shard
-    well under the 60-second combined budget on the maintained 32-core CI
-    profile (16 shards * 2 workers = 32). On lower-core hosts the in-shard
-    worker count shrinks automatically. Operators may set
-    ``PYTEST_XDIST_WORKERS_PER_SHARD`` to an explicit non-negative integer;
-    ``0`` opts out of xdist per shard (preserves the legacy plain-pytest
-    behavior) and is reserved for an operator override, not for the
-    default.
+    The default is ``"0"`` (plain pytest per shard), which on the maintained
+    32-core CI profile keeps the slowest shard well under the 60-second
+    combined budget because the shard-saturated 16-shard fan-out already
+    uses one pytest process per shard and adding xdist workers inside each
+    shard trades parallel IO for pytest-coordination overhead. Operators
+    on hosts with idle cores beyond the shard cap (e.g. 64-core CI), or
+    hosts with very few shards, may opt into the legacy
+    CPU-utilisation-maximising policy by setting
+    ``PYTEST_XDIST_WORKERS_PER_SHARD=auto``; ``auto`` then sizes each
+    shard's xdist fan-out so that ``PYTEST_WORKERS`` shards * ``N``
+    in-shard workers does not exceed the host's available CPU count.
+    Setting ``PYTEST_XDIST_WORKERS_PER_SHARD`` to a positive integer
+    overrides the policy with an explicit per-shard fan-out; ``0`` opts
+    out of in-shard xdist (the default).
     """
     raw = os.getenv("PYTEST_XDIST_WORKERS_PER_SHARD", _DEFAULT_XDIST_WORKERS_PER_SHARD)
     if raw != "auto":

@@ -369,6 +369,40 @@ def test_explicit_worker_count_overrides_the_auto_resolution(
 
 
 @pytest.mark.parametrize(
+    ("cpu_count", "shard_count"),
+    (
+        (None, "1"),
+        (1, "1"),
+        (2, "1"),
+        (16, "15"),
+        (32, "16"),
+        (64, "16"),
+    ),
+)
+def test_default_xdist_workers_per_shard_is_zero(
+    monkeypatch: pytest.MonkeyPatch,
+    cpu_count: int | None,
+    shard_count: str,
+) -> None:
+    """Default in-shard xdist is disabled on every host profile.
+
+    The plain-pytest per-shard path keeps the slowest shard under the
+    combined 60-second budget on the maintained 32-core CI profile
+    because the shard-saturated 16-shard fan-out already maximises
+    pytest-process parallelism and adding in-shard xdist workers only
+    shifts wall-clock budget from parallel IO into pytest-coordination
+    overhead. Operators that want the legacy CPU-utilisation-maximising
+    policy must opt in by setting ``PYTEST_XDIST_WORKERS_PER_SHARD=auto``
+    (see ``test_auto_xdist_worker_count_respects_available_cores``).
+    """
+    monkeypatch.delenv("PYTEST_XDIST_WORKERS_PER_SHARD", raising=False)
+    monkeypatch.setenv("PYTEST_WORKERS", shard_count)
+    monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
+
+    assert test_suites_module._xdist_workers_per_shard() == "0"
+
+
+@pytest.mark.parametrize(
     ("cpu_count", "shard_count", "expected_workers"),
     (
         (None, "1", "2"),
@@ -385,7 +419,16 @@ def test_auto_xdist_worker_count_respects_available_cores(
     shard_count: str,
     expected_workers: str,
 ) -> None:
-    monkeypatch.delenv("PYTEST_XDIST_WORKERS_PER_SHARD", raising=False)
+    """``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` sizes in-shard fan-out from cores.
+
+    With the env var explicitly set to ``"auto"`` the resolver sizes the
+    in-shard xdist fan-out so that ``PYTEST_WORKERS`` shards * ``N``
+    in-shard workers does not exceed the host's available CPU count, up
+    to ``_MAX_XDIST_WORKERS_PER_SHARD``. This is the legacy
+    CPU-utilisation-maximising policy and is no longer the default; see
+    ``test_default_xdist_workers_per_shard_is_zero`` for the rationale.
+    """
+    monkeypatch.setenv("PYTEST_XDIST_WORKERS_PER_SHARD", "auto")
     monkeypatch.setenv("PYTEST_WORKERS", shard_count)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
 
