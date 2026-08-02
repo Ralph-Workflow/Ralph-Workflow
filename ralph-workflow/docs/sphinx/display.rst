@@ -41,9 +41,11 @@ captures, but motion is restricted to a real TTY. Redirected output is durable,
 has no repaint debris, and uses the rendered record plus the unabridged raw
 transcript as recovery destinations when content is condensed. Every wrapped
 activity row repeats its timestamp, event/category label, and unit identifier;
-phase-close rows repeat the same carrier on every folded physical row. Long
-unbroken values fold at cell boundaries rather than silently clipping their
-recovery tail.
+phase-close rows repeat the same carrier on every folded physical row. At the
+40-column graceful floor, the carrier is the compact
+``[phase-close][<phase-id>]`` form so phase identity, outcome, and counters
+all remain visible; wider layouts retain ``phase=<name>``. Long unbroken values
+fold at cell boundaries rather than silently clipping their recovery tail.
 
 Syntax and diff previews use complete background-aware token palettes for
 comments, keywords and types, names and functions, strings, numbers, operators,
@@ -530,9 +532,14 @@ Phase-close line format
 -----------------------
 
 After each phase ends, a structured ``[phase-close]`` line is written to the
-transcript::
+transcript. At normal widths it is::
 
-    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Cycle N/cap] [iter N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+    [phase-close] <glyph> phase=<name> [Cycle N/cap] [iter N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+
+At the 40-column graceful floor, every folded physical row instead repeats the
+short stable carrier ``[phase-close][<phase-id>]`` before its next outcome
+or counter fragment. This preserves an independently greppable phase identity
+without cropping a recovery-relevant value.
 
 - The ``<glyph>`` prefix (``◆`` Unicode, ``*`` ASCII) appears only for
   milestone-role phases (execution, review, fix).

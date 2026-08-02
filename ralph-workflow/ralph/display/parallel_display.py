@@ -97,6 +97,7 @@ import re
 import threading
 import time
 import uuid
+import zlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -3817,7 +3818,6 @@ class ParallelDisplay:
         """Inlined PlainLogRenderer.emit_phase_close body."""
         opts = options or PhaseCloseOptions()
         self.flush_blocks()
-        timestamp = self._format_timestamp(self._clock())
         clean_produced = strip_markup(produced).strip()
         counters = self._phase_counters
         if counters is not None:
@@ -3865,19 +3865,39 @@ class ParallelDisplay:
             iter_labels = " " + " ".join(
                 f"[{label}]" for label, _ in opts.iteration_context.context_labels()
             )
-        carrier = f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}"
+        # At the graceful 40-column floor, a compact stable phase identifier
+        # leaves a useful body column for the outcome and counters on every
+        # folded row. Wider layouts retain the full ``phase=<name>`` carrier.
+        full_carrier = f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}"
+        # Six CRC32 hex digits make the compact identifier deterministic and
+        # collision-resistant for a transcript while capping it at 21 cells;
+        # the remaining 18 cells keep the widest counter intact at width 40.
+        compact_phase = f"{zlib.crc32(phase.encode('utf-8')) & 0xFFFFFF:06x}"
+        compact_carrier = f"[phase-close][{compact_phase}]"
+        carrier = (
+            full_carrier
+            if self._ctx.width - cell_len(full_carrier) >= len("thinking_blocks=34")
+            else compact_carrier
+        )
         payload_parts = [part for part in (clean_produced, suffix.strip()) if part]
         payload = " ".join(payload_parts)
-        prefix = f"{timestamp} {carrier} "
+        # A phase-close row is its own durable category carrier.  At the
+        # 40-column floor, repeating a timestamp alongside
+        # ``[phase-close] phase=<name>`` would leave no room for either the
+        # outcome or its counters and Rich would crop the phase identifier.
+        # Keep the complete phase-close carrier on every physical row instead;
+        # ordinary activity rows retain their timestamp/category/unit grid.
+        prefix = f"{carrier} "
         folded_rows = self._wrap_body_with_hanging_indent(
             prefix,
             payload,
             total_width=self._ctx.width,
             body_measure=self._ctx.width,
         ).split("\n")
+        carrier_style = pick_status_styles(self._terminal_bg_is_light)["info"][0]
         for row in folded_rows:
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"{carrier} {row}"),
+                Text(f"{carrier} {row}", style=carrier_style),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
