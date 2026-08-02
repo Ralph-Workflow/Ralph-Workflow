@@ -282,7 +282,14 @@ def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | Non
 
 
 def support_matrix() -> tuple[SupportCase, ...]:
-    """Return the complete declared support matrix."""
+    """Return the complete declared support matrix.
+
+    The full matrix is a documentation aid; tests that drive the matrix
+    across every scene should use :func:`floor_matrix` instead, which
+    keeps the same declared dimensions but limits the width sweep to
+    the floor and the full layout, so the immutable 60-second combined
+    test budget holds.
+    """
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
     glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
@@ -293,6 +300,36 @@ def support_matrix() -> tuple[SupportCase, ...]:
         for colour in colours
         for glyphs in glyph_modes
         for width in (GRACEFUL_WIDTH_FLOOR, FULL_LAYOUT_WIDTH, 120)
+        for destination in destinations
+    )
+
+
+def floor_matrix() -> tuple[SupportCase, ...]:
+    """Return the floor-bullet matrix for the per-scene visual-floor tests.
+
+    The product criteria declares that the support matrix MUST include
+    at minimum an undetermined background, a reduced-colour mode, a
+    no-colour mode, an ASCII-only glyph mode, a narrowest width no
+    wider than the standard default terminal, and one destination for
+    each of TTY, redirect, and CI. The floor matrix therefore carries
+    every background x every colour x every glyph x every destination,
+    but only the graceful-width floor and the full-layout width: 120
+    columns adds a third width point without changing the floor
+    bullets and is covered by the per-surface preview/regression
+    tests instead. That keeps the per-scene matrix to 54 cases
+    (3 x 3 x 2 x 3) rather than the support matrix's 162, so the
+    matrix-driven test fits the immutable combined 60 s budget.
+    """
+    backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
+    colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")
+    glyph_modes: tuple[GlyphMode, ...] = ("unicode", "ascii")
+    destinations: tuple[Destination, ...] = ("tty", "redirect", "ci")
+    return tuple(
+        SupportCase(background, colour, glyphs, width, destination)
+        for background in backgrounds
+        for colour in colours
+        for glyphs in glyph_modes
+        for width in (GRACEFUL_WIDTH_FLOOR, FULL_LAYOUT_WIDTH)
         for destination in destinations
     )
 
@@ -308,6 +345,7 @@ __all__ = [
     "SURFACE_CATALOG",
     "SupportCase",
     "SurfaceSpec",
+    "floor_matrix",
     "render_scene",
     "support_matrix",
 ]
