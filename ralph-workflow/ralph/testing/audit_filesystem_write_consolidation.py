@@ -1,7 +1,6 @@
 """Package-wide filesystem-write consolidation audit.
 
-Replaces the curated allowlist of ``audit_idempotent_write_adoption.py``
-with a fail-closed, package-wide AST walk that rejects every raw
+Provides a fail-closed, package-wide AST walk that rejects every raw
 filesystem mutation under ``ralph/`` unless the call site carries
 an explicit ``# filesystem-write-ok: <reason>`` marker naming the
 behavioral contract (transient scratch, deliberately timestamped,
@@ -87,10 +86,8 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
         # canonical primitive boundary. Anything inside
         # ``_path_file_backend.py`` IS the abstraction.
         "mcp/artifacts/_path_file_backend.py",
-        # The audit module itself + the curated audit module that
-        # this one replaces.
+        # The audit module itself is outside its production target.
         "testing/audit_filesystem_write_consolidation.py",
-        "testing/audit_idempotent_write_adoption.py",
     }
 )
 

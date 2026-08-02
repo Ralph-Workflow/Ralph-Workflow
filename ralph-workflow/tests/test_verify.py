@@ -225,12 +225,6 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="log sink buffering audit ok\n",
         ),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")): _result(
-            command="uv",
-            args=("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
-            returncode=0,
-            stdout="idempotent write adoption audit ok\n",
-        ),
         (
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation"),
@@ -323,7 +317,6 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
-        ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_polling_invocation")),

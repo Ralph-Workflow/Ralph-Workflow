@@ -309,9 +309,8 @@ class DefaultProcessTeardown:
                     gone.add(proc.pid)
             if len(gone) >= len(procs):
                 break
-            time.sleep(
-                poll_interval
-            )  # filesystem-poll-ok: bounded child-process teardown wait has no event source
+            # filesystem-poll-ok: bounded child-process teardown wait has no event source
+            time.sleep(poll_interval)
             poll_interval = min(poll_interval * 1.5, 0.025)
         return gone
 
@@ -339,9 +338,8 @@ class DefaultProcessTeardown:
                 return
             except (PermissionError, OSError):
                 return
-            time.sleep(
-                0.05
-            )  # filesystem-poll-ok: bounded SIGTERM-to-SIGKILL escalation has no event source
+            # filesystem-poll-ok: bounded SIGTERM-to-SIGKILL escalation has no event source
+            time.sleep(0.05)
 
         with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
             os.killpg(pgid, signal.SIGKILL)
