@@ -8,6 +8,7 @@ This is the maintained closure map for the filesystem-proportional run plan. It 
 uv run pytest -q tests/test_filesystem_activity_baseline.py tests/test_fs_workspace_idempotent_write.py tests/agents/test_workspace_watch_scoping.py
 uv run python -m ralph.testing.audit_filesystem_write_consolidation
 uv run python -m ralph.testing.audit_filesystem_read_consolidation
+uv run python -m ralph.testing.audit_filesystem_polling_invocation
 ```
 
 ## Matrix
@@ -29,15 +30,15 @@ uv run python -m ralph.testing.audit_filesystem_read_consolidation
 | R5 | Explore index and workspace traversal | explore-index lifecycle tests | GAP: prove no-op index reuse rather than rewalk. |
 | P1 | `WorkspaceMonitor.start` | `tests/agents/test_workspace_watch_scoping.py`; baseline test | COVERED for one monitor; cross-process coordination is GAP. |
 | P2 | `WorkspaceChangeClassifier` | watch-scoping classifier tests | GAP: enumerate standing engine-internal exclusions. |
-| P3 | Watch and poll lifecycle owners | event-driven workspace monitor | GAP: inventory unavoidable pollers and their intervals. |
-| P4 | `WorkspaceMonitor.stop` | watch-scoping failure/release tests | COVERED for monitor; remaining pollers are GAP. |
+| P3 | Watch and poll lifecycle owners | event-driven workspace monitor; `audit_filesystem_polling_invocation` | COVERED structurally: raw timer polling fails verification unless a local bounded-lifecycle reason is present. |
+| P4 | `WorkspaceMonitor.stop` | watch-scoping failure/release tests; `audit_filesystem_polling_invocation` | COVERED for monitor and enforced ownership; each exceptional poll documents its release-bound lifecycle. |
 | B1 | Public workspace paths and bytes | baseline test final-content assertions | GAP: fixture comparison across all public outputs. |
 | B2 | Logging and artifact streams | existing stream tests | GAP: full stream/history inventory. |
 | B3 | Atomic publication helper | atomic replace and sync tests | COVERED for helper; all durability callers are GAP. |
 | B4 | Atomic staging helper | unique staging-path regression | GAP: process-safe concurrent publication proof. |
 | B5 | Live stream writers | existing flush/lifecycle tests | GAP: fake-clock live-latency comparison. |
 | B6 | Shared persistence/watch state | unique staging path behavior | GAP: independent-process coordination proof. |
-| D1 | Write/read consolidation audits | both audits are `ralph.verify` steps | COVERED for audited raw accesses; polling/tool-invocation audit is GAP. |
+| D1 | Write/read/polling consolidation audits | all three audits are `ralph.verify` steps | COVERED for audited raw accesses, polling, watch construction, and direct process selection. |
 | D2 | Audit diagnostics | actionable audit messages and tests | COVERED for write/read audits. |
 | D3 | Local audit markers | marker parsing in write/read audits | COVERED for write/read markers; validate existing markers behaviorally. |
 | E1 | Persistence and watch fake boundaries | baseline, idempotent-write, and watch-scoping tests | GAP: add black-box evidence for every matrix GAP as it closes. |
@@ -48,6 +49,10 @@ uv run python -m ralph.testing.audit_filesystem_read_consolidation
 ## S-1 Baseline
 
 `tests/test_filesystem_activity_baseline.py` drives a workspace write and monitor lifecycle through an in-memory `FileBackend` and observer boundary. A first cycle publishes `alpha` and registers one recursive root watch. Repeating the same cycle preserves final bytes without another publication, directory preparation, or watch registration. A changed cycle publishes `beta` while retaining the same watch. This establishes the initial W1/W2/P1 characterization without real filesystem, observer, subprocess, or clock activity.
+
+## Polling and invocation ownership
+
+`ralph.testing.audit_filesystem_polling_invocation` is the fail-closed owner for P1–P4 and Ralph-chosen subprocess execution. It scans every production module automatically and rejects raw `time.sleep`, watchdog `Observer` construction, and direct `subprocess` launch calls outside the lifecycle and typed-process owners. A local `# filesystem-poll-ok: <reason>` marker is accepted only with a non-empty explanation of the bounded external lifecycle; it is for unavoidable protocol keepalives, process-exit waits, teardown escalation, and cross-process lock acquisition, not ordinary filesystem polling.
 
 ## Next Step
 

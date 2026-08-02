@@ -407,6 +407,16 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Package-wide fail-closed lifecycle audit for P1-P4 and Ralph-chosen
+        # subprocess selection. New raw polling sleeps, watchdog Observer
+        # construction, and direct subprocess calls must use the lifecycle /
+        # typed-process owners or carry a local reasoned exception.
+        "filesystem polling/invocation ownership audit (audit_filesystem_polling_invocation)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_filesystem_polling_invocation"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # wt-043: render-integrity audit for the packaged prompt
         # templates. Renders every top-level .jinja template through the
         # real registry/partials/render_template path across the main
@@ -575,6 +585,15 @@ if not any("audit_resource_lifecycle" in label for label, *_rest in _VERIFY_STEP
         "A verify step running 'audit_resource_lifecycle' must be present in "
         "_VERIFY_STEPS (the resource-lifecycle / accumulator contract cannot be "
         "silently dropped)"
+    )
+
+# (f) The polling/watch/tool-invocation ownership audit must remain wired. This
+# guards P1-P4 and the product-owned subprocess-choice boundary against a
+# future raw timer loop, duplicate observer, or direct tool launch.
+if not any("audit_filesystem_polling_invocation" in label for label, *_rest in _VERIFY_STEPS):
+    raise RuntimeError(
+        "A verify step running 'audit_filesystem_polling_invocation' must be present in "
+        "_VERIFY_STEPS (the filesystem polling/invocation ownership contract cannot be silently dropped)"
     )
 
 
