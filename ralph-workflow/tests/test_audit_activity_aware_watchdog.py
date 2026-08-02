@@ -27,8 +27,6 @@ no ``time.sleep``, no real file I/O outside ``tmp_path``.
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -317,31 +315,24 @@ def test_audit_reader_file_valid_reader_is_clean(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.subprocess_e2e
-def test_audit_main_exit_code_is_one_on_violation(tmp_path: Path) -> None:
-    """``main()`` exits 1 when a violation is present (hard-fail, no dry-run).
+def test_audit_main_exit_code_is_one_on_violation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``main()`` returns 1 and reports an actionable violation.
 
-    This test spawns the audit module as a subprocess to verify the CLI
-    exit-code contract end-to-end; it is marked ``subprocess_e2e`` so the
-    test-policy audit excludes it from the fast suite.
+    The parser and exit-code decision are deterministic Python behavior, so
+    calling the documented CLI entry point directly retains the observable
+    contract without paying process startup in the subprocess-E2E profile.
     """
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_process_monitor(), encoding="utf-8")
 
-    result = subprocess.run(
-        [sys.executable, "-m", "ralph.testing.audit_activity_aware_watchdog", str(package_root)],
-        capture_output=True,
-        text=True,
-        timeout=2,
-        cwd=str(Path(__file__).parent.parent),
-        check=False,
-    )
+    exit_code = audit.main([str(package_root)])
+    output = capsys.readouterr().out
 
-    assert result.returncode == 1, (
-        f"expected exit code 1, got {result.returncode}; stdout={result.stdout}"
-    )
-    assert "process_monitor_injection" in result.stdout
+    assert exit_code == 1
+    assert "process_monitor_injection" in output
 
 
 def test_audit_default_process_monitor_injection_violation(tmp_path: Path) -> None:

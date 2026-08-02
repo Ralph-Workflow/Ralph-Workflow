@@ -33,6 +33,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
             "ralph/testing/audit_filesystem_read_consolidation.py",
             "ralph/testing/audit_filesystem_write_consolidation.py",
             "ralph/testing/audit_fsevents_watch_consolidation.py",
+            "ralph/testing/audit_filesystem_polling_invocation.py",
             "ralph/testing/audit_idempotent_write_adoption.py",
             "ralph/testing/audit_lint_bypass.py",
             "ralph/testing/audit_log_sink_buffering.py",
