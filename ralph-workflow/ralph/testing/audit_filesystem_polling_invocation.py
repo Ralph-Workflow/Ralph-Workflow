@@ -72,15 +72,16 @@ _SUBPROCESS_CALLS: frozenset[str] = frozenset(
 )
 
 
-def _module_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
+def _module_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str], set[str]]:
     time_names = _imported_names(tree, module="time", accepted={"time", "sleep"})
+    asyncio_names = _imported_names(tree, module="asyncio", accepted={"asyncio", "sleep"})
     observer_names = _imported_names(
         tree, module="watchdog.observers", accepted={"watchdog.observers", "Observer"}
     )
     subprocess_names = _imported_names(
         tree, module="subprocess", accepted={"subprocess", *_SUBPROCESS_CALLS}
     )
-    return time_names, observer_names, subprocess_names
+    return time_names, asyncio_names, observer_names, subprocess_names
 
 
 def _imported_names(tree: ast.Module, *, module: str, accepted: set[str]) -> set[str]:
@@ -119,6 +120,7 @@ def _violation_for_call(
     node: ast.Call,
     *,
     time_names: set[str],
+    asyncio_names: set[str],
     observer_names: set[str],
     subprocess_names: set[str],
 ) -> tuple[str, str] | None:
@@ -135,7 +137,10 @@ def _violation_for_call(
         "raw_observer_construction"
         if (name == "Observer" and (name in observer_names or root in observer_names))
         else "raw_sleep_poll"
-        if (name == "sleep" and (name in time_names or root in time_names))
+        if (
+            name == "sleep"
+            and (name in time_names or root in time_names or name in asyncio_names or root in asyncio_names)
+        )
         else "raw_subprocess_invocation"
         if (name in _SUBPROCESS_CALLS and (name in subprocess_names or root in subprocess_names))
         else None
@@ -167,7 +172,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
             )
         ]
     markers = _marker_lines(source)
-    time_names, observer_names, subprocess_names = _module_aliases(tree)
+    time_names, asyncio_names, observer_names, subprocess_names = _module_aliases(tree)
     violations: list[FilesystemPollingInvocationViolation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or _has_local_marker(node.lineno, markers):
@@ -175,6 +180,7 @@ def _scan_module(module_path: Path, rel_path: str) -> list[FilesystemPollingInvo
         details = _violation_for_call(
             node,
             time_names=time_names,
+            asyncio_names=asyncio_names,
             observer_names=observer_names,
             subprocess_names=subprocess_names,
         )

@@ -124,4 +124,4 @@ class ConnectivityMonitor:
                 for listener in list(self._listeners):
                     with contextlib.suppress(Exception):
                         listener(evt)
-            await asyncio.sleep(self._interval)
+            await asyncio.sleep(self._interval)  # filesystem-poll-ok: external connectivity probe interval is lifecycle-owned and cancellation stops this task

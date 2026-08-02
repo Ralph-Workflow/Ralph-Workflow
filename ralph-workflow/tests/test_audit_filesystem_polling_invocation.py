@@ -35,6 +35,25 @@ def test_regression_unowned_sleep_polling_fails_closed(tmp_path: Path) -> None:
     assert "injected clock" in violations[0].message
 
 
+def test_regression_asyncio_sleep_polling_fails_closed(tmp_path: Path) -> None:
+    """S-6: async timer polls are governed by the same P3 lifecycle boundary."""
+    module_rel = "feature/async_poller.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import asyncio\nasync def poll() -> None:\n    await asyncio.sleep(1)\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_sleep_poll"
+    assert "P3" in violations[0].message
+
+
 def test_regression_aliased_watchdog_module_construction_fails_closed(tmp_path: Path) -> None:
     """S-6: a module-qualified Observer alias cannot evade the watch owner."""
     module_rel = "feature/watch.py"

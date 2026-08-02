@@ -57,7 +57,7 @@ class FakeAgentExecutor:
         for line in seed.outputs:
             on_output(line)
             emitted_outputs.append(line)
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # filesystem-poll-ok: cooperative fake-executor yield has no polling lifecycle
 
         final_status = WorkerStatus.SUCCEEDED if seed.exit_code == 0 else WorkerStatus.FAILED
         on_status(final_status)
