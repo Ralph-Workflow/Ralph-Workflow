@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 from git import Repo as GitRepo
@@ -254,6 +253,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
 
 def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A custom review-role phase rendered with review.jinja must reference the plan handoff.
 
@@ -290,19 +290,23 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
 
     expected_plan_path = str(tmp_path / ".agent" / "PLAN.md")
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/src/app.py"):
-        prompt_path = materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase="review",
-                workspace=workspace,
-                pipeline_policy=pipeline_policy,
-                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
-                workspace_root=tmp_path,
-            ),
-            PromptPhaseOptions(
-                artifacts_policy=artifacts_policy,
-            ),
-        )
+    monkeypatch.setattr(
+        materialize_module,
+        "_git_diff",
+        lambda _workspace_root: pytest.fail("review prompt must not compute a diff"),
+    )
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="review",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+        ),
+    )
 
     rendered = workspace.read(prompt_path)
     assert expected_plan_path in rendered

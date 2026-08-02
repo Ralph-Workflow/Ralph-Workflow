@@ -185,7 +185,7 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
   - Eliminate sleep() and real wall-clock waits — inject a clock abstraction instead
   - Refactor production code for testability — extract I/O behind an interface
   - Assert on observable behavior, not implementation internals
-  - For cumulative volume bottlenecks (many fast tests, not individual slow tests): consolidate parameterized tests with overlapping coverage, optimize shared fixtures, or reduce redundant test coverage — see `docs/agents/testing-guide.md`
+  - For cumulative volume bottlenecks (many fast tests, not individual slow tests): consolidate parameterized tests with overlapping coverage, optimize shared fixtures, or reduce redundant test coverage — see `docs/agents/testing-guide.md` and `ralph-workflow/docs/ralph-workflow-policy/testing-policy.md` § "Test optimization"
 
 ## Required workflows
 

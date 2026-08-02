@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
-import ralph.prompts.materialize as materialize_module
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
@@ -56,19 +54,18 @@ def _render_development_analysis(
     workspace.write("PROMPT.md", prompt_content)
     _write_plan_handoff(workspace)
     workspace.write(".agent/artifacts/development_result.md", _MINIMAL_DEV_RESULT)
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
-        path = materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase="development_analysis",
-                workspace=workspace,
-                pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-                workspace_root=tmp_path,
-            ),
-            PromptPhaseOptions(
-                artifacts_policy=policy.artifacts,
-            ),
-        )
+    path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
+    )
     return workspace.read(path)
 
 

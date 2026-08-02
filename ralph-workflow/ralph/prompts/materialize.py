@@ -569,7 +569,7 @@ def _render_template_based_prompt(
     product_criteria_path: str | Path,
 ) -> str:
     template = tmpl_ctx.registry.get_template(template_name)
-    diff_content = _git_diff(workspace_root)
+    diff_content = ""
     latest_artifact_content, latest_artifact_path = _latest_artifact_content(
         workspace, phase, pipeline_policy, artifacts_policy
     )
@@ -588,7 +588,6 @@ def _render_template_based_prompt(
         values={
             "PLAN": "" if plan_path else (plan_content or "(no plan available)"),
             "DIFF": diff_content,
-            "CHANGES": diff_content,
             "LATEST_ARTIFACT": latest_artifact_content,
             "ISSUES": issues_content,
             "FIX_RESULT": fix_result_content,

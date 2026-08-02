@@ -43,15 +43,20 @@ checks performed by humans, or third-party hosted service reliability.
 
 ## Test optimization
 
-Optimize a slow or over-budget suite before changing its limits. Preserve the
-clearest test for each contract while deleting TDD scaffolding once a clearer
-test covers the same behavior, collapsing integration cases to unit tests when
-an injectable seam expresses the same observable contract, and retiring an
-end-to-end test once a deterministic integration test covers that contract.
-Never delete sole coverage; retain the smallest higher-layer test for a
-boundary the lower layer cannot observe. Apply this lifecycle whenever a suite
-exceeds its budget or a test is slow, and refactor seams rather than splitting,
-skipping, or weakening the gate.
+Optimize a slow or over-budget suite before changing its limits. Apply these
+moves while preserving the clearest test for every contract:
+
+1. Delete TDD-scaffolding coverage once a clearer test pins the same behavior;
+   never delete the sole coverage for a path.
+2. Collapse an integration case to a unit test when an injectable seam can
+   express the same observable contract more cheaply.
+3. Retire an end-to-end test once a deterministic integration test covers the
+   same contract; retain the smallest higher-layer test for boundaries the
+   lower layer cannot observe.
+
+Use this lifecycle whenever a suite exceeds its budget or a test is slow.
+Refactor seams for testability rather than splitting, skipping, or weakening
+the gate.
 
 ## Project facts to resolve
 

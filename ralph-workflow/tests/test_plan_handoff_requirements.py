@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 
@@ -82,10 +81,7 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
         "development_analysis": SessionDrain.DEVELOPMENT,
     }[phase]
 
-    with (
-        patch.object(materialize_module, "_git_diff", return_value="diff"),
-        pytest.raises(ValueError, match=r"\.agent/PLAN\.md"),
-    ):
+    with pytest.raises(ValueError, match=r"\.agent/PLAN\.md"):
         materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase=phase,
@@ -158,10 +154,7 @@ def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Review the implementation.")
 
-    with (
-        patch.object(materialize_module, "_git_diff", return_value="diff"),
-        pytest.raises(ValueError, match=r"\.agent/PLAN\.md"),
-    ):
+    with pytest.raises(ValueError, match=r"\.agent/PLAN\.md"):
         materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="review",

@@ -20,7 +20,6 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
@@ -456,16 +455,15 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
         "PREVIOUS ATTEMPT FAILED: missing decision artifact",
     )
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
-        prompt_path = materialize_module.materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase="development_analysis",
-                workspace=workspace,
-                pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-                workspace_root=tmp_path,
-            ),
-        )
+    prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+    )
 
     rendered = workspace.read(prompt_path)
     assert "PREVIOUS ATTEMPT FAILED" in rendered
@@ -488,20 +486,19 @@ def test_development_proof_failure_uses_retry_hint_contract(
     assert failure_events[0].retry_in_session is True
     assert workspace.exists(retry_hint_path("development"))
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
-        prompt_path = materialize_module.materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase="development",
-                workspace=workspace,
-                pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-                workspace_root=tmp_path,
-            ),
-            PromptPhaseOptions(
-                artifacts_policy=policy.artifacts,
-                previous_phase="development_analysis",
-            ),
-        )
+    prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="development_analysis",
+        ),
+    )
 
     rendered = workspace.read(prompt_path)
     assert "PREVIOUS ATTEMPT ERROR" in rendered
@@ -554,19 +551,18 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     ra = REQUIRED_ARTIFACTS[phase]
     workspace.write(ra.artifact_path, _PHASE_VALID_ARTIFACT[phase])
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
-        prompt_path = materialize_module.materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase=phase,
-                workspace=workspace,
-                pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(drain),
-                workspace_root=tmp_path,
-            ),
-            PromptPhaseOptions(
-                artifacts_policy=policy.artifacts,
-            ),
-        )
+    prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase=phase,
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(drain),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
+    )
 
     rendered = workspace.read(prompt_path)
     assert "PREVIOUS ATTEMPT FAILED" in rendered, (

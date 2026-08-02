@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 from git import Repo as GitRepo
@@ -259,19 +258,18 @@ def test_development_analysis_prompt_renders_without_development_result(
     _write_plan_handoff(workspace)
     # Intentionally do NOT write a development_result artifact
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
-        prompt_path = materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase="development_analysis",
-                workspace=workspace,
-                pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-                workspace_root=tmp_path,
-            ),
-            PromptPhaseOptions(
-                artifacts_policy=policy.artifacts,
-            ),
-        )
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
+    )
 
     rendered = workspace.read(prompt_path)
     assert rendered, "Prompt must not be empty"
@@ -384,20 +382,19 @@ def test_planning_loopback_from_analysis_preserves_history(
     index_file = history_index_path(artifact_dir, "plan")
     index_file.write_text("# History", encoding="utf-8")
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
-        materialize_prompt_for_phase(
-            PromptPhaseContext(
-                phase="planning",
-                workspace=workspace,
-                pipeline_policy=policy.pipeline,
-                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-                workspace_root=tmp_path,
-            ),
-            PromptPhaseOptions(
-                artifacts_policy=policy.artifacts,
-                previous_phase="planning_analysis",
-            ),
-        )
+    materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="planning_analysis",
+        ),
+    )
 
     assert archived_md.exists(), "archive must be preserved on planning loopback"
     assert index_file.exists(), "history index must be preserved on planning loopback"

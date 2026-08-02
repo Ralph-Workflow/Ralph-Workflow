@@ -79,7 +79,6 @@ def _patch_partial_pipeline_runtime(
         "_prompt_changed_since_last_materialization",
         lambda _root: True,
     )
-    monkeypatch.setattr(materialize_module, "_git_diff", lambda _root: "")
     monkeypatch.setattr(
         materialize_module,
         "_persist_product_criteria",
