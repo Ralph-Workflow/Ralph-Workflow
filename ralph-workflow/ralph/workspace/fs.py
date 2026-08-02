@@ -552,7 +552,7 @@ class FsWorkspace:
             File paths relative to workspace root, honoring skip patterns.
         """
         base_abs = self._abs(base)
-        if not base_abs.is_dir():
+        if not base_abs.is_dir() or self._is_skipped_traversal_base(base_abs):
             return ()
 
         results: list[str] = []
@@ -564,3 +564,11 @@ class FsWorkspace:
             results.extend(str(rel_root / f) for f in files)
 
         return tuple(results)
+
+    def _is_skipped_traversal_base(self, base_abs: Path) -> bool:
+        """Return whether a requested base lies inside an excluded generated tree."""
+        try:
+            relative_parts = base_abs.relative_to(self._root).parts
+        except ValueError:
+            return False
+        return any(part in RECURSIVE_SKIP_DIRECTORY_NAMES for part in relative_parts)

@@ -53,3 +53,11 @@ class TestFsWorkspaceIterFiles:
 
         assert "source.py" in files
         assert "build/generated.py" not in files
+
+    def test_iter_files_skips_a_generated_base_directory(self, tmp_path: Path) -> None:
+        """S-4 regression: an explicit generated base cannot bypass the skip set."""
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+
+        assert ws.iter_files(".git") == ()

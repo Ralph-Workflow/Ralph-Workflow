@@ -482,6 +482,9 @@ class MemoryWorkspace:
             File paths relative to workspace root, honoring skip patterns.
         """
         normalized = self._normalize(base)
+        base_parts = PurePosixPath(normalized).parts
+        if any(part in RECURSIVE_SKIP_DIRECTORY_NAMES for part in base_parts):
+            return ()
         if normalized and not normalized.endswith("/"):
             normalized += "/"
 
