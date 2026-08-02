@@ -556,9 +556,10 @@ def smoke_interactive_agy_command(
     ``agy/<model>`` alias.
     """
     agy_binary = get_agy_binary_override()
-    if shutil.which(agy_binary) is None and not (
-        Path(agy_binary).is_file() and os.access(agy_binary, os.X_OK)
-    ):
+    # filesystem-read-ok: external binary existence check via PATH
+    # override (RALPH_AGY_BINARY); operator-controlled system path,
+    # not project-filesystem state.
+    if shutil.which(agy_binary) is None and not os.access(agy_binary, os.X_OK):
         logger.error(
             "agy binary not found at '{}'. Install Google Anti Gravity and "
             "ensure `agy` is on PATH, or set RALPH_AGY_BINARY to a valid mock "
@@ -662,9 +663,10 @@ def smoke_interactive_cursor_command(
     it).
     """
     cursor_binary = get_cursor_binary_override()
-    if shutil.which(cursor_binary) is None and not (
-        Path(cursor_binary).is_file() and os.access(cursor_binary, os.X_OK)
-    ):
+    # filesystem-read-ok: external binary existence check via PATH
+    # override (RALPH_CURSOR_BINARY); operator-controlled system path,
+    # not project-filesystem state.
+    if shutil.which(cursor_binary) is None and not os.access(cursor_binary, os.X_OK):
         logger.error(
             "cursor binary not found at '{}'. Install Cursor Agent and "
             "ensure `agent` is on PATH, or set RALPH_CURSOR_BINARY to a "

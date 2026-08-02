@@ -7,6 +7,7 @@ import json
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.multimodal.resources import (
     MediaSource,
@@ -351,7 +352,7 @@ def _build_workspace_media_metadata(
     from pathlib import Path
 
     try:
-        raw_bytes = Path(abs_path).read_bytes()
+        raw_bytes = DEFAULT_FILE_BACKEND.read_bytes(Path(abs_path))
     except OSError as exc:
         return ToolResult(
             content=[ToolContent.text_content(f"Failed to read media file '{path}': {exc}")],
@@ -471,7 +472,7 @@ def handle_read_image(
 
         abs_path = workspace.absolute_path(normalized or path)
         try:
-            raw_bytes = Path(abs_path).read_bytes()
+            raw_bytes = DEFAULT_FILE_BACKEND.read_bytes(Path(abs_path))
         except OSError as exc:
             return ToolResult(
                 content=[ToolContent.text_content(f"Failed to read media file '{path}': {exc}")],

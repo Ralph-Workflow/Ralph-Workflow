@@ -6,6 +6,7 @@ import base64
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.multimodal.artifacts import (
     INLINE_IMAGE_MIME_TYPES,
     AudioContent,
@@ -307,7 +308,7 @@ def _handle_workspace_media(
         )
     abs_path = workspace.absolute_path(normalized or path)
     try:
-        raw_bytes = Path(abs_path).read_bytes()
+        raw_bytes = DEFAULT_FILE_BACKEND.read_bytes(Path(abs_path))
     except OSError as exc:
         return ToolResult(
             content=[ToolContent.text_content(f"Failed to read media file '{path}': {exc}")],

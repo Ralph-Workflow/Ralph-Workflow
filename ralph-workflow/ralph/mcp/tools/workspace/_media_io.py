@@ -135,7 +135,7 @@ def _entry_has_available_cache(workspace: Workspace, entry: dict[str, str]) -> b
     if not cache_path:
         return True
     try:
-        return Path(workspace.absolute_path(cache_path)).is_file()
+        return workspace.is_file(cache_path)
     except Exception:
         return False
 
@@ -208,12 +208,12 @@ def _load_artifact_bytes(
     """Load artifact bytes from cache_path (durable cache) or source_path (original file)."""
     if cache_path:
         try:
-            return Path(workspace.absolute_path(cache_path)).read_bytes()
+            return DEFAULT_FILE_BACKEND.read_bytes(Path(workspace.absolute_path(cache_path)))
         except Exception:
             pass
     if source_path:
         try:
-            return Path(workspace.absolute_path(source_path)).read_bytes()
+            return DEFAULT_FILE_BACKEND.read_bytes(Path(workspace.absolute_path(source_path)))
         except Exception:
             pass
     return None

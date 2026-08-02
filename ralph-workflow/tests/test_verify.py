@@ -240,6 +240,15 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="filesystem write consolidation audit ok\n",
         ),
+        (
+            "uv",
+            ("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation"),
+        ): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation"),
+            returncode=0,
+            stdout="filesystem read consolidation audit ok\n",
+        ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_template_render_integrity"),
@@ -307,6 +316,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_read_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_prompt_single_sourcing")),

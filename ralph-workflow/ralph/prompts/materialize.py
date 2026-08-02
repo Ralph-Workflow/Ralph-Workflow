@@ -966,13 +966,6 @@ def _resolve_agent_handoff(
         markdown = _read_optional(workspace, relative_handoff_path)
         if markdown:
             return markdown, handoff_path
-        if handoff_path:
-            try:
-                markdown = Path(handoff_path).read_text(encoding="utf-8")
-            except OSError:
-                markdown = None
-            if markdown:
-                return markdown, handoff_path
     artifact_content = _read_optional(workspace, artifact_path)
     if artifact_content:
         return artifact_content, workspace.absolute_path(artifact_path)
