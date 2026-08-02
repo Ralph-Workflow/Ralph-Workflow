@@ -79,6 +79,20 @@ def test_make_console_prefers_no_color_over_force_color(monkeypatch: pytest.Monk
     assert ctx.color_enabled is False
 
 
+def test_make_console_regression_default_color_auto_detection_respects_no_color() -> None:
+    """S-2: default color detection emits truecolor while no_color wins."""
+    color_console = theme.make_console(force_terminal=True)
+    no_color_console = theme.make_console(force_terminal=True, no_color=True)
+
+    with color_console.capture() as color_capture:
+        color_console.print("[theme.phase.development]development[/]")
+    with no_color_console.capture() as no_color_capture:
+        no_color_console.print("[theme.phase.development]development[/]")
+
+    assert "\x1b[38;2;" in color_capture.get()
+    assert "\x1b[38;2;" not in no_color_capture.get()
+
+
 def test_ralph_theme_contains_required_style_keys() -> None:
     assert isinstance(theme.RALPH_THEME, Theme)
     assert {

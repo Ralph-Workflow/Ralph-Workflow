@@ -909,12 +909,13 @@ def make_console(
     """
     resolved_no_color = no_color if no_color is not None else False
     resolved_force_terminal = force_terminal
+    resolved_color_system = color_system if color_system is not None else "auto"
     return Console(
         file=file,
         theme=RALPH_THEME,
         no_color=resolved_no_color,
         force_terminal=resolved_force_terminal,
-        color_system=color_system,
+        color_system=resolved_color_system,
         width=width,
         height=height,
         highlight=False,
