@@ -169,7 +169,12 @@ def _scene_snapshot(*, failed: bool) -> PipelineSnapshot:
         plan_total_steps=1,
         plan_current_step=1,
         decision_log=(
-            ("review", "revise" if failed else "proceed", "scene evidence", "2026-01-02T03:04:05+00:00"),
+            (
+                "review",
+                "revise" if failed else "proceed",
+                "scene evidence",
+                "2026-01-02T03:04:05+00:00",
+            ),
         ),
         is_terminal_success=not failed,
         is_terminal_failure=failed,
@@ -208,12 +213,20 @@ def _drive_production_scene(
         display.emit_metrics_table({"events": 2, "artifacts": 1})
         display.emit_status("production display state is ready")
         display.emit_warning("recovery detail is preserved in the rendered record")
-        display.emit_info_panel(title="Production note", content="Preview and records stay recoverable.")
+        display.emit_skill_failure_warning(["docs-mcp unavailable"])
+        display.emit_fallback_next_steps(["Re-run setup after configuring docs MCP"])
+        display.emit_info_panel(
+            title="Production note", content="Preview and records stay recoverable."
+        )
         display.emit_renderable(Text("Shared renderable content", style="theme.text.muted"))
         display.emit_missing_plan_hint()
         display.emit_phase_close_from_exit(
             PhaseExitModel(
-                "development", "execution", "pi", artifact_outcome="artifacts ready", content_blocks=1
+                "development",
+                "execution",
+                "pi",
+                artifact_outcome="artifacts ready",
+                content_blocks=1,
             )
         )
     elif scene_name == "failure":

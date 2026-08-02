@@ -4638,7 +4638,6 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[analysis]")
             artifact_type = self._analysis_handoff_artifact_type(drain)
             if artifact_type is not None:
                 markdown = self._resolve_authoritative_markdown_handoff(
@@ -4646,11 +4645,13 @@ class ParallelDisplay:
                     artifact_type,
                 )
                 if markdown:
+                    self._emit_section_rule("[analysis]")
                     self._render_text_block(f"ANALYSIS: {drain}", markdown, "analysis")
                     return
             summary = read_latest_analysis_decision(workspace_root, drain)
             if summary is None:
                 return
+            self._emit_section_rule("[analysis]")
             lines = [f"  decision: {summary.decision}"]
             if summary.reason:
                 lines.append(f"  reason: {summary.reason}")
@@ -4664,13 +4665,13 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            self._emit_section_rule("[commit-message]")
             try:
                 message = read_commit_message_artifact(workspace_root)
             except Exception:
                 message = None
             if message is None:
                 return
+            self._emit_section_rule("[commit-message]")
             self._render_text_block("COMMIT MESSAGE", message, "commit", indent=True)
 
     def emit_missing_plan_hint(self) -> None:

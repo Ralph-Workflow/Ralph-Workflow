@@ -177,9 +177,7 @@ def test_generated_scene_colours_primary_agent_content_and_waiting_state() -> No
         terminal_bg_is_light=False,
     )
 
-    assert re.search(
-        r"\x1b\[[0-9;]*38;[^m]*mimplemented Unicode-safe output", clean
-    )
+    assert re.search(r"\x1b\[[0-9;]*38;[^m]*mimplemented Unicode-safe output", clean)
     assert re.search(r"\x1b\[[0-9;]*38;[^m]*mchecking preview hierarchy", clean)
     assert re.search(r"\x1b\[[0-9;]*38;[^m]*m○ WAITING", idle)
 
@@ -255,7 +253,13 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
         ),
         (
             "closing_screen",
-            ("Pipeline Complete", "agent_calls=3", "[run-completion]", "Dry run mode", ".agent/raw/run.log"),
+            (
+                "Pipeline Complete",
+                "agent_calls=3",
+                "[run-completion]",
+                "Dry run mode",
+                ".agent/raw/run.log",
+            ),
         ),
     ),
 )
@@ -295,6 +299,8 @@ def test_generated_scene_clean_run_reaches_catalogued_table_panel_and_artifact_s
         "INFO production display state is ready",
         "Production note",
         "WARN recovery detail is preserved in the rendered record",
+        "Skills auto-install reported: docs-mcp unavailable.",
+        "1. Re-run setup after configuring docs MCP",
         "Shared renderable content",
         "[plan]",
         "(no plan artifact on disk)",
@@ -327,9 +333,7 @@ def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_th
     }
     catalog = {surface.name: surface for surface in SURFACE_CATALOG}
     for surface, carrier in expected_carriers.items():
-        rendered = render_scene(
-            catalog[surface].scene, common, terminal_bg_is_light=False
-        )
+        rendered = render_scene(catalog[surface].scene, common, terminal_bg_is_light=False)
         assert carrier in rendered, surface
 
 
@@ -356,10 +360,14 @@ def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scen
         "emit_log_line": "[output][pi] raw transcript carrier remains available",
         "emit_status_line": "[status][pi] waiting for an external review response",
         "emit_warn_line": "[warning][pi] waiting for an external review response",
+        "emit_skill_failure_warning": "Skills auto-install reported: docs-mcp unavailable.",
+        "emit_fallback_next_steps": "1. Re-run setup after configuring docs MCP",
         "emit_renderable": "Shared renderable content",
         "emit_dry_run_summary": "Dry run mode",
     }
-    catalog = {entry_point: surface for surface in SURFACE_CATALOG for entry_point in surface.entry_points}
+    catalog = {
+        entry_point: surface for surface in SURFACE_CATALOG for entry_point in surface.entry_points
+    }
     for emitter, carrier in expected_carriers.items():
         rendered = render_scene(catalog[emitter].scene, common, terminal_bg_is_light=False)
         assert carrier in rendered, emitter

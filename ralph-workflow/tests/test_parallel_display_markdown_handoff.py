@@ -108,6 +108,24 @@ def test_parallel_display_regression_fix_ignores_retired_json_artifacts(
     assert "retired issues payload" not in text
 
 
+def test_emit_analysis_decision_skips_an_empty_structural_rule(tmp_path: Path) -> None:
+    """S-1/S-6: an absent analysis artifact must not leave chrome without content."""
+    display, buf = _display()
+
+    display.emit_analysis_decision(tmp_path, "development")
+
+    assert "[analysis]" not in buf.getvalue()
+
+
+def test_emit_commit_message_skips_an_empty_structural_rule(tmp_path: Path) -> None:
+    """S-1/S-6: an absent commit artifact must not leave chrome without content."""
+    display, buf = _display()
+
+    display.emit_commit_message(tmp_path)
+
+    assert "[commit-message]" not in buf.getvalue()
+
+
 def test_emit_plan_artifact_hints_when_nothing_on_disk(tmp_path: Path) -> None:
     display, buf = _display()
 
