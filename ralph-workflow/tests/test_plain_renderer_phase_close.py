@@ -98,7 +98,7 @@ def test_phase_close_trims_empty_produced() -> None:
     line = body_lines[0]
     milestone = UNICODE_GLYPHS["milestone"]
     assert f"{milestone} phase=planning" in line
-    suffix = "(elapsed=0.0s, content_blocks=0, thinking_blocks=0, tool_calls=0, errors=0)"
+    suffix = "(elapsed=0s, content_blocks=0, thinking_blocks=0, tool_calls=0, errors=0)"
     assert line.endswith(suffix), f"expected line to end with {suffix}, got: {line}"
 
 

@@ -6,6 +6,7 @@ from ralph.display.phase_status import (
     PhaseIterationContext,
     format_analysis_cycle,
     format_dev_cycle,
+    format_elapsed_seconds,
     format_exit_trigger,
     format_transition_context_items,
 )
@@ -28,6 +29,15 @@ def test_format_analysis_cycle_with_cap() -> None:
     assert format_analysis_cycle(1, 3) == "iter 1/3"
     assert format_analysis_cycle(3, 3) == "iter 3/3"
     assert format_analysis_cycle(2, 5) == "iter 2/5"
+
+
+def test_format_elapsed_seconds_preserves_precision_across_minute_boundary() -> None:
+    """Durations use one vocabulary without discarding meaningful tenths."""
+    assert format_elapsed_seconds(-1.0) == "0s"
+    assert format_elapsed_seconds(59.9) == "59.9s"
+    assert format_elapsed_seconds(60.0) == "1m00s"
+    assert format_elapsed_seconds(60.9) == "1m00.9s"
+    assert format_elapsed_seconds(125.4) == "2m05.4s"
 
 
 # --- PhaseIterationContext tests ---

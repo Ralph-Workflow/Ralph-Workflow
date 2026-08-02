@@ -337,7 +337,7 @@ def test_completion_summary_elapsed_appears_before_metrics() -> None:
     )
     console.print(rendered)
     text = console.export_text()
-    assert "Elapsed: 30.0s" in text
+    assert "Elapsed: 30s" in text
     assert text.index("Elapsed:") < text.index("Metrics:")
 
 

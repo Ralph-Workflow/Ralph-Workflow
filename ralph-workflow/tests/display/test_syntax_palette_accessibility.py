@@ -191,14 +191,17 @@ def test_derived_diff_fills_meet_the_painted_line_accessibility_contract(
         assert fills is None
         return
     assert fills is not None
-    marker_styles = pick_status_styles(terminal_bg_is_light)
-    marker_hexes = tuple(
-        theme._extract_hex(marker_styles[status][0]) for status in ("error", "success")
-    )
-    for foreground in (*diff_token_foregrounds(terminal_bg_is_light), *marker_hexes):
+    old_foreground, new_foreground = diff_token_foregrounds(terminal_bg_is_light)
+    for foreground in (old_foreground, new_foreground):
         assert all(contrast_ratio(foreground, fill) >= 4.5 for fill in fills)
+    status_styles = pick_status_styles(terminal_bg_is_light)
+    assert old_foreground != theme._extract_hex(status_styles["error"][0])
+    assert new_foreground != theme._extract_hex(status_styles["success"][0])
     for matrix in _CVD_MATRICES:
         assert theme._simulate_cvd(fills[0], matrix) != theme._simulate_cvd(fills[1], matrix)
+        assert theme._simulate_cvd(old_foreground, matrix) != theme._simulate_cvd(
+            new_foreground, matrix
+        )
 
 
 def test_result_preview_uses_the_same_owned_palette_contract() -> None:

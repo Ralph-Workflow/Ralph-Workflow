@@ -764,21 +764,6 @@ class ParallelDisplay:
         """
         return ts.strftime("%H:%M:%S")
 
-    @staticmethod
-    def _format_duration(seconds: float) -> str:
-        """Format a duration in seconds as a compact human string.
-
-        Sub-minute deltas render as ``<n>s`` (e.g. ``0s``, ``10s``);
-        longer deltas render as ``<m>m<ss>s`` (e.g. ``1m30s``). The
-        value is floored to whole seconds so a sub-second
-        monotonic delta still renders as ``0s``.
-        """
-        total = max(0, int(seconds))
-        if total < _SECONDS_PER_MINUTE:
-            return f"{total}s"
-        minutes, secs = divmod(total, _SECONDS_PER_MINUTE)
-        return f"{minutes}m{secs}s"
-
     def _build_line(
         self,
         timestamp: str,
@@ -1786,9 +1771,9 @@ class ParallelDisplay:
         start_str = self._format_hh_mm_ss(open_wall) if open_wall is not None else "??:??:??"
         end_str = self._format_hh_mm_ss(end_wall)
         if open_mono is not None:
-            duration_str = self._format_duration(end_mono - open_mono)
+            duration_str = format_elapsed_seconds(end_mono - open_mono)
         else:
-            duration_str = "0s"
+            duration_str = format_elapsed_seconds(0.0)
         display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
         body = f"\u22ef {display_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str} \u00b7 {visible}"
         # S-7 (AC-07): quiet mode suppresses the terminal surface;

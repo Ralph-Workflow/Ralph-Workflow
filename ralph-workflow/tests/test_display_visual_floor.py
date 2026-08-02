@@ -75,6 +75,26 @@ def test_visual_floor_semantic_palettes_use_fixed_contrast_safe_foregrounds() ->
     _assert_palette_contrast(theme.STATUS_STYLES_ON_UNKNOWN_BG, ("#000000", "#FFFFFF"))
 
 
+def test_visual_floor_named_colour_categories_have_distinct_fixed_foregrounds() -> None:
+    """S-3 regression: every named category remains observable in the resolved theme."""
+    role_pairs = {
+        "chrome": "theme.display.chrome",
+        "agent text": "theme.display.agent_text",
+        "elision": "theme.display.elision",
+        "diff addition": "theme.diff.added",
+        "diff removal": "theme.diff.removed",
+    }
+    for background, surface in ((False, "#000000"), (True, "#FFFFFF"), (None, "#000000")):
+        resolved = theme.theme_for_background(background)
+        for name, role in role_pairs.items():
+            pigment = theme._extract_hex(str(resolved.styles[role]))
+            assert pigment, name
+            assert theme.contrast_ratio(pigment, surface) >= CONTRAST_FLOOR, name
+    dark = theme.theme_for_background(False)
+    assert str(dark.styles["theme.diff.added"]) != str(dark.styles["theme.status.success"])
+    assert str(dark.styles["theme.diff.removed"]) != str(dark.styles["theme.status.error"])
+
+
 def test_visual_floor_theme_roles_never_recede_to_attribute_only_dim() -> None:
     """S-3: semantic chrome retains an identifiable hue, not dim-only styling."""
     semantic_roles = (
@@ -112,7 +132,9 @@ def test_visual_floor_background_resolved_theme_roles_clear_the_actual_surface()
         assert dark_hex != light_hex, role
 
 
-def test_visual_floor_unknown_background_theme_roles_clear_both_possible_terminal_surfaces() -> None:
+def test_visual_floor_unknown_background_theme_roles_clear_both_possible_terminal_surfaces() -> (
+    None
+):
     """S-3 regression: unknown-background chrome must not inherit the dark palette."""
     unknown = theme.theme_for_background(None)
     foregrounds = {
@@ -162,7 +184,9 @@ def test_visual_floor_regression_measured_dark_background_emits_vivid_activity_c
         env={"RALPH_TERMINAL_BG": "dark"},
     )
     context.console.print(
-        render_event(make_event_for_emit(ActivityEventKind.ERROR, "operator-visible failure"), ctx=context)
+        render_event(
+            make_event_for_emit(ActivityEventKind.ERROR, "operator-visible failure"), ctx=context
+        )
     )
     assert "38;2;213;94;0m" in stream.getvalue()
 

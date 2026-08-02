@@ -121,14 +121,14 @@ def test_error_kind_increments_error_counter() -> None:
 
 
 def test_emit_phase_close_without_begin_phase_still_emits_suffix() -> None:
-    """emit_phase_close without prior begin_phase emits elapsed=0.0s and all counters zero."""
+    """emit_phase_close without prior begin_phase emits elapsed=0s and all counters zero."""
     pd, buf = _make_display()
     # No begin_phase call — simulate calling emit_phase_close cold
     buf.truncate(0)
     buf.seek(0)
     pd.emit_phase_close("planning", "")
     out = buf.getvalue()
-    assert "elapsed=0.0s" in out, f"Expected elapsed=0.0s: {out}"
+    assert "elapsed=0s" in out, f"Expected elapsed=0s: {out}"
     assert "content_blocks=0" in out
     assert "thinking_blocks=0" in out
     assert "tool_calls=0" in out

@@ -133,6 +133,33 @@ STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
     "info": (BLUE, "\u2139", "INFO"),
 }
 
+# Named display meaning roles are deliberately separate from event states.
+# They let production renderers and generated-output checks prove that every
+# operator-facing category is coloured without confusing a diff deletion with
+# a failed run.
+_DISPLAY_STYLES: Final[dict[str, str]] = {
+    "chrome": "#178383",
+    "agent_text": "#0080CC",
+    "elision": "#CC79A7",
+    "diff_added": "#0CB9F2",
+    "diff_removed": "#E69F00",
+}
+_DISPLAY_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
+    "chrome": "#006A6A",
+    "agent_text": "#002B5C",
+    "elision": "#6B2C6E",
+    "diff_added": "#1F5F8B",
+    "diff_removed": "#7A3D00",
+}
+_DISPLAY_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
+    "chrome": "#178383",
+    "agent_text": "#0074E8",
+    "elision": "#9060C0",
+    "diff_added": "#0074E8",
+    "diff_removed": "#BA5D00",
+}
+
+
 STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
     "success": ("bold #006B4D", "\u2713", "PASS"),
     "running": ("bold #1F5F8B", "\u25d0", "RUN"),
@@ -422,6 +449,11 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.status.bar_marker": "#178383",
     "theme.status.path_marker": "#178383",
     "theme.status.path": "#178383",
+    "theme.display.chrome": _DISPLAY_STYLES["chrome"],
+    "theme.display.agent_text": _DISPLAY_STYLES["agent_text"],
+    "theme.display.elision": _DISPLAY_STYLES["elision"],
+    "theme.diff.added": _DISPLAY_STYLES["diff_added"],
+    "theme.diff.removed": _DISPLAY_STYLES["diff_removed"],
 }
 
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
@@ -485,6 +517,11 @@ _THEME_STYLES_ON_LIGHT_BG: Final[dict[str, str]] = {
     "theme.status.bar_marker": "#006A6A",
     "theme.status.path_marker": "#006A6A",
     "theme.status.path": "#006A6A",
+    "theme.display.chrome": _DISPLAY_STYLES_ON_LIGHT_BG["chrome"],
+    "theme.display.agent_text": _DISPLAY_STYLES_ON_LIGHT_BG["agent_text"],
+    "theme.display.elision": _DISPLAY_STYLES_ON_LIGHT_BG["elision"],
+    "theme.diff.added": _DISPLAY_STYLES_ON_LIGHT_BG["diff_added"],
+    "theme.diff.removed": _DISPLAY_STYLES_ON_LIGHT_BG["diff_removed"],
 }
 RALPH_THEME_ON_LIGHT_BG: Final[Theme] = Theme(_THEME_STYLES_ON_LIGHT_BG)
 
@@ -543,6 +580,11 @@ _THEME_STYLES_ON_UNKNOWN_BG: Final[dict[str, str]] = {
     "theme.status.bar_marker": "#178383",
     "theme.status.path_marker": "#178383",
     "theme.status.path": "#178383",
+    "theme.display.chrome": _DISPLAY_STYLES_ON_UNKNOWN_BG["chrome"],
+    "theme.display.agent_text": _DISPLAY_STYLES_ON_UNKNOWN_BG["agent_text"],
+    "theme.display.elision": _DISPLAY_STYLES_ON_UNKNOWN_BG["elision"],
+    "theme.diff.added": _DISPLAY_STYLES_ON_UNKNOWN_BG["diff_added"],
+    "theme.diff.removed": _DISPLAY_STYLES_ON_UNKNOWN_BG["diff_removed"],
 }
 RALPH_THEME_ON_UNKNOWN_BG: Final[Theme] = Theme(_THEME_STYLES_ON_UNKNOWN_BG)
 
@@ -781,13 +823,19 @@ _DIFF_REMOVED_FILL_ON_LIGHT_BG: Final[str] = "#F5F1F0"
 _DIFF_ADDED_FILL_ON_LIGHT_BG: Final[str] = "#F0F4F5"
 
 
-def diff_token_foregrounds(terminal_bg_is_light: bool | None) -> tuple[str, str]:
-    """Return the deleted and inserted token colours for the resolved theme."""
+def display_styles_for_background(terminal_bg_is_light: bool | None) -> Mapping[str, str]:
+    """Return fixed-RGB meaning pigments for named console categories."""
     if terminal_bg_is_light is True:
-        return "#330B03", "#3E4712"
+        return _DISPLAY_STYLES_ON_LIGHT_BG
     if terminal_bg_is_light is False:
-        return "#94D90B", "#0CB9F2"
-    return "#2070F0", "#408070"
+        return _DISPLAY_STYLES
+    return _DISPLAY_STYLES_ON_UNKNOWN_BG
+
+
+def diff_token_foregrounds(terminal_bg_is_light: bool | None) -> tuple[str, str]:
+    """Return deleted and inserted foregrounds distinct from failure/success states."""
+    styles = display_styles_for_background(terminal_bg_is_light)
+    return styles["diff_removed"], styles["diff_added"]
 
 
 def diff_fill_styles(terminal_bg_is_light: bool | None) -> tuple[str, str] | None:
@@ -1031,6 +1079,7 @@ __all__ = [
     "detect_terminal_background_is_light",
     "diff_fill_styles",
     "diff_token_foregrounds",
+    "display_styles_for_background",
     "format_status",
     "identity_color",
     "make_console",

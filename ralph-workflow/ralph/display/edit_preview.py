@@ -113,7 +113,7 @@ from ralph.display.language_inference import lexer_for_path
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event
 from ralph.display.theme import (
-    pick_status_styles,
+    diff_token_foregrounds,
     preview_background_for_background,
     preview_foreground_for_background,
     syntax_theme_for_background,
@@ -140,24 +140,15 @@ _MIN_RENDER_ROWS_FOR_BLOCK: Final[int] = 2
 #: clear truncation cue.
 _ELISION_GLYPH: Final[str] = "\u2026"
 
-#: Semantic status names used by the diff-style old / new line markers.
-#: They are resolved through
-#: :func:`ralph.display.theme.pick_status_styles` so the marker colour
-#: is the background-appropriate variant (``error`` -> vermillion,
-#: ``success`` -> bluish-green, darkened on a light terminal). No hex
-#: literal appears here.
-_DIFF_OLD_STATUS: Final[str] = "error"
-_DIFF_NEW_STATUS: Final[str] = "success"
-
-#: Muted style used for the ``… (N more lines)`` elision line. ``dim``
-#: is a terminal attribute rather than a colour, so it reads correctly
-#: on either background.
-_ELISION_STYLE: Final[str] = "theme.text.muted"
+#: Muted style used for the ``… (N more lines)`` elision line. It is an
+#: explicit semantic role, rather than a default-foreground fallback.
+_ELISION_STYLE: Final[str] = "theme.display.elision"
 
 
-def _diff_marker_style(status: str, *, terminal_bg_is_light: bool | None) -> str:
-    """Return the Rich style string for a diff marker on this background."""
-    return pick_status_styles(terminal_bg_is_light)[status][0]
+def _diff_marker_style(removed: bool, *, terminal_bg_is_light: bool | None) -> str:
+    """Return the distinct resolved diff-polarity marker foreground."""
+    old_style, new_style = diff_token_foregrounds(terminal_bg_is_light)
+    return old_style if removed else new_style
 
 
 def _normalize_tool_name(name: str) -> str:
@@ -602,7 +593,7 @@ def _build_search_result_preview(
         )
         if pattern and (start := safe.find(pattern)) >= 0:
             syntax.stylize_range(
-                f"bold {_diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)}",
+                f"bold {_diff_marker_style(False, terminal_bg_is_light=terminal_bg_is_light)}",
                 (1, start),
                 (1, start + len(pattern)),
                 style_before=False,
@@ -647,8 +638,8 @@ def _build_edit_preview(
         return None
     lexer_name = "markdown" if path is None else lexer_for_path(path or "")
     is_markdown = _is_markdown_lexer(lexer_name)
-    old_style = _diff_marker_style(_DIFF_OLD_STATUS, terminal_bg_is_light=terminal_bg_is_light)
-    new_style = _diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)
+    old_style = _diff_marker_style(True, terminal_bg_is_light=terminal_bg_is_light)
+    new_style = _diff_marker_style(False, terminal_bg_is_light=terminal_bg_is_light)
     old_fill, new_fill = diff_fills or (None, None)
     safe_edits = [
         (

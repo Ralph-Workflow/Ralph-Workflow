@@ -535,7 +535,7 @@ def _render_tool_result_event(
     if target:
         text.append(escape(target) if escape_body else target, style="theme.text.muted")
         text.append(" ", style=style)
-    body_style = "theme.text.muted" if not is_error else style
+    body_style = "theme.display.agent_text" if not is_error else style
     _append_tool_result_body(text, body, unit_id, body_style, tool_ref, ctx, escape_body)
     return text
 
@@ -617,7 +617,7 @@ def _render_heartbeat_event(
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     _append_body_with_unit(
-        text, body, unit_id, "theme.text.muted", ctx=ctx, escape_body=escape_body
+        text, body, unit_id, "theme.display.agent_text", ctx=ctx, escape_body=escape_body
     )
     return text
 

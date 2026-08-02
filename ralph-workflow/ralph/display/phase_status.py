@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+_SECONDS_PER_MINUTE = 60
+
 if TYPE_CHECKING:
     from typing import Protocol
 
@@ -116,8 +118,21 @@ def format_analysis_cycle_minimal(n: int, cap: int | None = None) -> str:
 
 
 def format_elapsed_seconds(s: float) -> str:
-    """Return canonical elapsed-time label."""
-    return f"{round(s, 1)}s"
+    """Return the shared compact duration spelling for durable display surfaces.
+
+    Whole-minute values use ``<minutes>m<seconds>s``; a meaningful tenth is
+    retained in the seconds component at every scale.  Every stream boundary,
+    activity close, and completion view delegates here so a duration never
+    changes vocabulary merely because its surface changes.
+    """
+    rounded = round(max(0.0, s), 1)
+    whole_seconds = int(rounded)
+    if whole_seconds >= _SECONDS_PER_MINUTE:
+        minutes, remainder = divmod(whole_seconds, _SECONDS_PER_MINUTE)
+        fraction = rounded - whole_seconds
+        seconds_label = f"{remainder:02d}" if fraction == 0 else f"{remainder + fraction:04.1f}"
+        return f"{minutes}m{seconds_label}s"
+    return f"{whole_seconds}s" if rounded == whole_seconds else f"{rounded}s"
 
 
 def format_exit_trigger(snapshot: _ExitState) -> str:
