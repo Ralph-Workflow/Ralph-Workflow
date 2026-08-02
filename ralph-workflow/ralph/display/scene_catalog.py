@@ -198,9 +198,8 @@ def _drive_production_scene(
             "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
         )
         display.emit_phase_start_from_entry(entry)
-        if context.width > GRACEFUL_WIDTH_FLOOR:
-            display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
-            display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
+        display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
+        display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
         display.emit_phase_transition("development", "review")
         display.emit_metrics_table({"events": 2, "artifacts": 1})
         display.emit_status("production display state is ready")

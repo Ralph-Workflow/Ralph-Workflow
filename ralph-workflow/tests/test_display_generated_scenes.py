@@ -151,6 +151,19 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
     assert any(".agent/raw" in row for row in condensed_rows)
 
 
+def test_generated_scene_clean_run_preserves_activity_at_the_40_column_floor() -> None:
+    """S-2/S-5 regression: graceful degradation keeps the activity carrier visible."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("dark", "none", "ascii", GRACEFUL_WIDTH_FLOOR, "redirect"),
+        terminal_bg_is_light=False,
+    )
+
+    assert "[output][pi]" in rendered
+    assert "[reasoning][pi]" in rendered
+    assert all(cell_len(line) <= GRACEFUL_WIDTH_FLOOR for line in rendered.splitlines())
+
+
 def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None:
     assert CONTRAST_FLOOR == 4.5
     assert FULL_LAYOUT_WIDTH == 80
