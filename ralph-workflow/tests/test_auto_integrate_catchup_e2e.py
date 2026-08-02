@@ -2,14 +2,13 @@
 
 The catch-up worker's whole value claim is "a checkout with no commits
 of its own silently rides the moving target for free"; the unit tests
-in ``tests/test_auto_integrate_catchup.py`` prove the gate ordering
-against fakes, and THIS file proves the git effects: a behind-and-clean
-checkout lands exactly on the target tip, while divergence, dirt, and
-being on the target itself all leave the repository byte-identical.
+in ``tests/test_auto_integrate_catchup.py`` prove the decision gates
+against fakes, and THIS file proves the real-git effect: a behind-and-clean
+checkout lands exactly on the target tip.
 
-Only the landing test marked ``subprocess_e2e`` drives real git. The gate
-table and worker cadence use injected deterministic observations so the
-default suite proves those contracts without rebuilding repositories.
+Only the landing test marked ``subprocess_e2e`` drives real git. The worker
+cadence uses injected deterministic observations so the default suite proves
+that contract without rebuilding repositories.
 
 The ``_run`` / ``_commit`` / ``_init_repo`` helpers are duplicated here
 to keep this file standalone, matching the convention documented at
@@ -101,48 +100,6 @@ def test_behind_and_clean_checkout_lands_on_target_tip(tmp_path: Path) -> None:
     # And the branch itself moved, not a detached HEAD.
     branch = _run(repo, "symbolic-ref", "--short", "HEAD").stdout.strip()
     assert branch == _FEATURE
-
-
-def _inject_catchup_observations(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    clean: bool = True,
-    ancestor: bool = True,
-) -> list[str]:
-    """Install deterministic git-boundary observations and record mutations."""
-    mutations: list[str] = []
-    monkeypatch.setattr(catchup, "_current_branch_name", lambda _root: _FEATURE)
-    monkeypatch.setattr(catchup, "resolve_integration_target", lambda _config, _root: _TARGET)
-    shas = {_TARGET: "target-sha", _FEATURE: "feature-sha"}
-    monkeypatch.setattr(catchup, "observe_branch_sha", lambda _root, branch: (shas[branch], True))
-    monkeypatch.setattr(catchup, "is_ancestor", lambda _root, _ancestor, _descendant: ancestor)
-    monkeypatch.setattr(catchup, "_worktree_is_clean", lambda _root: clean)
-    monkeypatch.setattr(catchup, "_still_safe_to_merge", lambda _root, _branch: True)
-
-    def _fast_forward(_root: Path, sha: str) -> bool:
-        mutations.append(sha)
-        return True
-
-    monkeypatch.setattr(catchup, "fast_forward_via_worktree", _fast_forward)
-    return mutations
-
-
-def test_diverged_checkout_is_left_untouched(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mutations = _inject_catchup_observations(monkeypatch, ancestor=False)
-    outcome = catchup.attempt_catchup_fast_forward(_build_config(), Path("/workspace"))
-    assert outcome == catchup.CATCHUP_DIVERGED
-    assert mutations == []
-
-
-def test_dirty_worktree_defers_without_mutation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mutations = _inject_catchup_observations(monkeypatch, clean=False)
-    outcome = catchup.attempt_catchup_fast_forward(_build_config(), Path("/workspace"))
-    assert outcome == catchup.CATCHUP_DIRTY
-    assert mutations == []
 
 
 def test_checkout_on_target_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
