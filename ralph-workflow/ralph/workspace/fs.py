@@ -11,6 +11,7 @@ import os
 import shutil
 from collections import deque
 from pathlib import Path
+from stat import S_ISDIR
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -112,7 +113,7 @@ class FsWorkspace:
             initial_stat = abs_path.stat()
         except FileNotFoundError:
             return WorkspaceSnapshot(stat={"type": "missing"}, content=None)
-        if abs_path.is_dir():
+        if S_ISDIR(initial_stat.st_mode):
             return WorkspaceSnapshot(
                 stat={
                     "type": "dir",
@@ -430,12 +431,12 @@ class FsWorkspace:
             Dict with type ('file'|'dir'|'missing'), size_bytes,
             created_unix, modified_unix, mode.
         """
+        p = self._abs(path)
         try:
-            st = self._abs(path).stat()
+            st = p.stat()
         except FileNotFoundError:
             return {"type": "missing"}
-        p = self._abs(path)
-        if p.is_dir():
+        if S_ISDIR(st.st_mode):
             return {
                 "type": "dir",
                 "size_bytes": 0,
