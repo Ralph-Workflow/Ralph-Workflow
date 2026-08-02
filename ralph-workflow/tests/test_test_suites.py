@@ -249,6 +249,26 @@ class TestCases:
     assert test_suites_module.estimate_test_file_weight("# helper only\n") == 1
 
 
+def test_estimate_test_file_weight_accounts_for_literal_parametrized_collection() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize(("value", "expected"), [(1, "one"), (2, "two"), (3, "three")])
+def test_value(value: int, expected: str) -> None:
+    assert value
+
+@pytest.mark.parametrize("item", range(5))
+def test_dynamic_item(item: int) -> None:
+    assert item >= 0
+
+@pytest.mark.parametrize(argnames="keyword_item", argvalues=["one", "two"])
+def test_keyword_item(keyword_item: str) -> None:
+    assert keyword_item
+"""
+
+    assert test_suites_module.estimate_test_file_weight(source) == 6
+
+
 def test_required_real_git_file_weight_accounts_for_process_cost(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

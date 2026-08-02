@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import ast
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -128,7 +127,7 @@ _SHARD_POLL_INTERVAL_SECONDS = 0.01
 # did not exit after termination`` banners.
 _SHARD_TERMINATION_DRAIN_SECONDS = 1.0
 _REQUIRED_E2E_WEIGHT_MULTIPLIER = 120
-_TEST_DEFINITION_PATTERN = re.compile(r"^\s*(?:async\s+)?def\s+test_", re.MULTILINE)
+_PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
     raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not be empty")
@@ -323,9 +322,56 @@ def discover_subprocess_e2e_files(cwd: Path) -> tuple[str, ...]:
     return tuple(selected)
 
 
+def _literal_parametrize_case_count(decorator: ast.expr) -> int:
+    """Return the statically knowable collection multiplier for one decorator."""
+    if not isinstance(decorator, ast.Call):
+        return 1
+    target = decorator.func
+    if not (
+        isinstance(target, ast.Attribute)
+        and target.attr == "parametrize"
+        and isinstance(target.value, ast.Attribute)
+        and target.value.attr == "mark"
+        and isinstance(target.value.value, ast.Name)
+        and target.value.value.id == "pytest"
+    ):
+        return 1
+    cases: ast.expr | None
+    if len(decorator.args) > _PARAMETRIZE_CASES_ARGUMENT_INDEX:
+        cases = decorator.args[_PARAMETRIZE_CASES_ARGUMENT_INDEX]
+    else:
+        cases = next(
+            (keyword.value for keyword in decorator.keywords if keyword.arg == "argvalues"),
+            None,
+        )
+    if isinstance(cases, ast.List):
+        return max(1, len(cases.elts))
+    if isinstance(cases, ast.Tuple):
+        return max(1, len(cases.elts))
+    if isinstance(cases, ast.Set):
+        return max(1, len(cases.elts))
+    return 1
+
+
 def estimate_test_file_weight(source: str) -> int:
-    """Estimate collection work from statically visible test definitions."""
-    return max(1, sum(1 for _match in _TEST_DEFINITION_PATTERN.finditer(source)))
+    """Estimate collection work from visible tests and literal parametrization.
+
+    Literal ``pytest.mark.parametrize`` case lists represent distinct pytest
+    items, so account for them rather than balancing only function definitions.
+    Dynamic parameter sources remain conservatively weighted as one item.
+    """
+    tree = ast.parse(source)
+    weight = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or not node.name.startswith(
+            "test_"
+        ):
+            continue
+        multiplier = 1
+        for decorator in node.decorator_list:
+            multiplier *= _literal_parametrize_case_count(decorator)
+        weight += multiplier
+    return max(1, weight)
 
 
 def _test_file_weight(cwd: Path, relative_path: str) -> int:
