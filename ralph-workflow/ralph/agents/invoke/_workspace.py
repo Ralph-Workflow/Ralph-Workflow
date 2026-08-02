@@ -342,17 +342,27 @@ class WorkspaceMonitor:
         return self._classifier.classify(src_path)
 
     def stop(self) -> None:
-        """Stop monitoring the workspace."""
-        if self._observer is not None:
-            self._observer.stop()
-            self._observer.join(5)
-            self._observer = None
-            logger.debug(
-                "Stopped workspace monitoring: {} ({} events)",
-                self._workspace,
-                self._event_count,
-            )
+        """Stop monitoring the workspace and release its watch on every exit path.
+
+        The observer reference is cleared even when its shutdown operation
+        raises. This prevents a failed release from stranding lifecycle
+        ownership and suppressing a later required registration; joining still
+        runs after a failed ``stop`` before the original failure propagates.
+        """
+        observer = self._observer
+        self._observer = None
         self._handler = None
+        if observer is None:
+            return
+        try:
+            observer.stop()
+        finally:
+            observer.join(5)
+        logger.debug(
+            "Stopped workspace monitoring: {} ({} events)",
+            self._workspace,
+            self._event_count,
+        )
 
     def dispatch_event(self, event: object) -> None:
         """Dispatch a watchdog-style event through the per-monitor handler.
