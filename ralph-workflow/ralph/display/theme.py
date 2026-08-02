@@ -24,16 +24,23 @@ from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
 
 import ralph.display._identity as identity_helpers
+from ralph.display._identity import (
+    _DEUTERANOPIA_MATRIX,
+    _PROTANOPIA_MATRIX,
+    _TRITANOPIA_MATRIX,
+)
+from ralph.display._identity import (
+    normalize_identity_name as _normalize_identity_name,
+)
 from ralph.syntax_theme import SyntaxThemes
 
-# Accessibility tests and downstream display extensions historically import
-# these helpers from ``theme``. Keep that established surface while the shared
-# implementation lives in the focused identity module.
-_normalize_identity_name = identity_helpers.normalize_identity_name
-_simulate_cvd = identity_helpers.simulate_cvd
-_DEUTERANOPIA_MATRIX = identity_helpers._DEUTERANOPIA_MATRIX
-_PROTANOPIA_MATRIX = identity_helpers._PROTANOPIA_MATRIX
-_TRITANOPIA_MATRIX = identity_helpers._TRITANOPIA_MATRIX
+# The display theme is the public palette boundary. Keep the documented CVD
+# simulation constants available here so palette consumers test the same
+# transforms identity allocation uses rather than duplicating matrices. The
+# import above binds the canonical matrices directly into this module's
+# namespace so downstream consumers and legacy tests reading
+# ``theme._DEUTERANOPIA_MATRIX`` (and friends) still see the same object
+# references as ``ralph.display._identity``.
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -236,19 +243,6 @@ _DISPLAY_IDENTITY_ACTIVE_SET: Final[tuple[str, ...]] = (
     "pi",
     "cursor",
 )
-
-# Backwards-compatible re-exports of the CVD simulation matrices. The
-# matrices themselves live in ``ralph.display._identity`` after the
-# extraction refactor; legacy test modules and downstream consumers
-# historically imported them from this module's namespace.
-_DEUTERANOPIA_MATRIX: Final = identity_helpers._DEUTERANOPIA_MATRIX
-_PROTANOPIA_MATRIX: Final = identity_helpers._PROTANOPIA_MATRIX
-_TRITANOPIA_MATRIX: Final = identity_helpers._TRITANOPIA_MATRIX
-
-# Backwards-compatible alias for the identity normalization helper.
-# ``_identity`` owns the canonical implementation; legacy call sites
-# reference ``theme._normalize_identity_name`` directly.
-_normalize_identity_name = identity_helpers.normalize_identity_name
 
 
 def _simulate_cvd(
@@ -995,10 +989,15 @@ __all__ = [
     "UNICODE_GLYPHS",
     "VERMILLION",
     "YELLOW",
+    # Backwards-compatible CVD-matrix aliases (see imports near top).
+    "_DEUTERANOPIA_MATRIX",
     "_DIFF_ADDED_FILL_ON_DARK_BG",
     "_DIFF_ADDED_FILL_ON_LIGHT_BG",
     "_DIFF_REMOVED_FILL_ON_DARK_BG",
     "_DIFF_REMOVED_FILL_ON_LIGHT_BG",
+    "_PROTANOPIA_MATRIX",
+    "_TRITANOPIA_MATRIX",
+    "_normalize_identity_name",
     "background_hex_is_light",
     "detect_glyph_capability",
     "detect_terminal_background_is_light",
