@@ -72,14 +72,24 @@ def test_teardown_subtree_reaps_nested_children() -> None:
         host.wait(timeout=0.5)
     assert host.poll() is not None
 
-    # Confirm no descendants survived.
-    gone: set[int] = set()
-    for pid in child_pids:
-        try:
-            psutil.Process(pid)
-        except psutil.NoSuchProcess:
-            gone.add(pid)
-    assert gone == child_pids, f"some descendants survived teardown: {child_pids - gone}"
+    # A dead descendant can transiently remain as a zombie until the container's
+    # PID 1 reaps it. A zombie has no executable process and therefore cannot
+    # survive teardown; requiring immediate PID reuse made this boundary test
+    # environment-dependent without proving a stronger lifecycle contract.
+    survivors = {
+        pid
+        for pid in child_pids
+        if _is_live_process(pid)
+    }
+    assert not survivors, f"some descendants survived teardown: {survivors}"
+
+
+def _is_live_process(pid: int) -> bool:
+    """Return whether a PID still has an executable (non-zombie) process."""
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
 
 
 def test_teardown_subtree_missing_process_is_noop() -> None:
