@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
 if TYPE_CHECKING:
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 
 from rich.text import Text
 
+from ralph.config.models import UnifiedConfig
 from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.completion_summary import CompletionSummaryOptions
 from ralph.display.context import DisplayContext, make_display_context
@@ -44,6 +46,14 @@ CANONICAL_VALUE_FORMATS: Final[dict[str, str]] = {
     "path": "workspace=<verbatim-or-folded-path>",
     "identifier": "[category][agent-id]",
 }
+
+
+@dataclass(frozen=True)
+class _SceneCheckpointOptions:
+    """Minimal checkpoint summary input for the deterministic scene driver."""
+
+    phase: str
+    budget_progress: dict[str, tuple[int, int]]
 
 
 @dataclass(frozen=True)
@@ -226,7 +236,17 @@ def _drive_production_scene(
         display.emit_warn_line("pi", "warning", "waiting for an external review response")
         display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
         display.emit_phase_transition("development", "review")
+        display.emit_phase_close("development", "scene close outcome")
+        display.emit_agents_table({})
+        display.emit_providers_table(["scene-provider"])
+        display.emit_config_table(UnifiedConfig())
         display.emit_metrics_table({"events": 2, "artifacts": 1})
+        display.emit_checkpoint_summary_table(
+            _SceneCheckpointOptions("development", {"iterations": (1, 3)})
+        )
+        display.emit_diagnose_inventory_table([("scene-mcp", "scene", "stdio", "local")])
+        display.emit_diagnose_probe_table([("scene-mcp", "yes", "yes", "yes", "yes")])
+        display.emit_diagnose_servers_table([("scene-mcp", "stdio", "ready", 1, "scene")])
         display.emit_status("production display state is ready")
         display.emit_warning("recovery detail is preserved in the rendered record")
         display.emit_skill_failure_warning(["docs-mcp unavailable"])
@@ -235,6 +255,13 @@ def _drive_production_scene(
             title="Production note", content="Preview and records stay recoverable."
         )
         display.emit_renderable(Text("Shared renderable content", style="theme.text.muted"))
+        scene_workspace = Path("/scene-workspace-without-artifacts")
+        display.emit_plan_artifact(scene_workspace)
+        display.emit_development_artifact(scene_workspace)
+        display.emit_review_artifact(scene_workspace)
+        display.emit_fix_artifact(scene_workspace)
+        display.emit_analysis_decision(scene_workspace, "analysis")
+        display.emit_commit_message(scene_workspace)
         display.emit_missing_plan_hint()
         display.emit_phase_close_from_exit(
             PhaseExitModel(

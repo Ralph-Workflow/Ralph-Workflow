@@ -21,9 +21,12 @@ The executable catalog in ``ralph.display.scene_catalog`` declares every
 printable surface and the six generated reference scenes: first screen, clean
 run, failure, burst, idle stretch, and closing screen. Each catalogued public
 ``emit_*`` seam with deterministic scene inputs is driven through its production
-owner and checked for an observable transcript carrier; the catalog cannot
-claim a representative surface that its assigned scene does not render. The
-six scenes run at 40, 80, and 120 columns, including the 12-row graceful
+owner and checked for an observable transcript carrier when the surface has
+content; this includes phase-close variants and each operator table. Artifact
+renderers also run through their production owners with deliberate empty-artifact
+behavior: analysis decisions and commit messages correctly remain silent when
+there is no content, avoiding empty section chrome. The catalog cannot claim a
+representative surface that its assigned scene does not render. The six scenes run at 40, 80, and 120 columns, including the 12-row graceful
 floor, across the declared destination and colour cases. The
 clean-run driver also covers warning recovery, skill-install failure, and
 fallback next-step emitters, so their section carriers stay visible in both
@@ -108,7 +111,7 @@ display class in Ralph Workflow. Every public display helper has one production 
    * - :func:`~ralph.display.parallel_display.strip_markup`
      - ``ralph/display/parallel_display.py``
 
-The 43 named ``emit_*`` seams (42 ``ParallelDisplay`` instance methods
+The 46 named ``emit_*`` seams (45 ``ParallelDisplay`` instance methods
 plus the module-level ``emit_activity_line`` helper) own every
 user-facing banner, table, panel, and one-shot status surface. The
 persistent bottom Status Bar is intentionally outside the ``emit_*``

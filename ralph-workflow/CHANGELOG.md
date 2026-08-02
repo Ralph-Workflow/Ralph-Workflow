@@ -50,6 +50,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(display): exercise catalogued console seams in generated scenes** — phase-close and every operator table now render through their production owners with observable transcript carriers; empty analysis-decision and commit-message artifacts remain intentionally silent. Locked by `tests/test_display_generated_scenes.py` and `tests/test_parallel_display_markdown_handoff.py`.
 - **fix(display): make every clean-run warning and artifact carrier executable** — generated scenes now exercise skill-install failures, fallback guidance, analysis-decision, and commit-message entry points alongside their semantic section markers. Locked by `tests/test_display_generated_scenes.py`.
 - **fix(display): make generated scene ownership executable** — scene drivers now exercise status, warning, raw-log, renderable, and dry-run production seams, and catalogued scene assignments are asserted against their visible carriers. Locked by `tests/test_display_generated_scenes.py`.
 - **fix(display): resolve every semantic console role for light terminals** — banners, panels, tables, phase rules, and completion summaries now share a contrast-safe light-background theme, while generated scene ownership is checked against the scene that renders it. Locked by `tests/test_display_visual_floor.py` and `tests/test_display_generated_scenes.py`.

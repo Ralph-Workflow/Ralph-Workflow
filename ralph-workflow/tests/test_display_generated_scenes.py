@@ -416,6 +416,26 @@ def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() 
     assert entry_points.count("emit_completion_summary_panel") == 2
 
 
+def test_generated_scene_catalog_exercises_phase_close_and_table_owners() -> None:
+    """S-1 regression: clean-run evidence reaches phase-close and every table owner."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+    for carrier in (
+        "[phase-close]",
+        "Configured Agents",
+        "Available Providers",
+        "Effective Configuration",
+        "Checkpoint Summary",
+        "Effective Session MCP Inventory",
+        "Agent Transport Compatibility",
+        "Custom MCP Servers",
+    ):
+        assert carrier in rendered
+
+
 def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scene_inputs() -> None:
     """S-1 regression: every scene-backed emitter has observable production evidence."""
     common = SupportCase("dark", "none", "unicode", 80, "redirect")
@@ -429,6 +449,15 @@ def test_generated_scene_catalog_exercises_public_emitters_that_have_stable_scen
         "emit_fallback_next_steps": "1. Re-run setup after configuring docs MCP",
         "emit_renderable": "Shared renderable content",
         "emit_dry_run_summary": "Dry run mode",
+        "emit_phase_close": "[phase-close]",
+        "emit_agents_table": "Configured Agents",
+        "emit_providers_table": "Available Providers",
+        "emit_config_table": "Effective Configuration",
+        "emit_metrics_table": "Pipeline Metrics",
+        "emit_checkpoint_summary_table": "Checkpoint Summary",
+        "emit_diagnose_inventory_table": "Effective Session MCP Inventory",
+        "emit_diagnose_probe_table": "Agent Transport Compatibility",
+        "emit_diagnose_servers_table": "Custom MCP Servers",
     }
     catalog = {
         entry_point: surface for surface in SURFACE_CATALOG for entry_point in surface.entry_points
