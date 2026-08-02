@@ -15,7 +15,6 @@ from typer.testing import CliRunner
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.pipeline import effect_executor
 from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.state import PipelineState
@@ -204,44 +203,6 @@ def _isolate_pipeline_thread_locals() -> None:
     yield
     set_last_captured_session_id(None)
     effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _materialized_format_docs() -> Path:
-    """Materialize every bundled format doc into the ralph-workflow workspace.
-
-    Several regression tests (notably ``test_plan_md_canonical_validator_errors_section``
-    and the ``test_plan_md_has_canonical_validator_errors_to_fix_heading`` lock in
-    ``test_mcp_error_helpers_still_wrap``) read ``.agent/artifact-formats/plan.md``
-    straight off disk. That file is generated from
-    ``ralph/mcp/artifacts/format_docs/plan.md`` at runtime via
-    ``materialize_all_format_docs``; if a fresh checkout runs the tests before the
-    runtime has had a chance to materialize the docs (for example, in CI before
-    any pipeline session starts), the tests fail because the workspace is empty.
-
-    This session-scope fixture writes every bundled format doc into
-    ``ralph-workflow/.agent/artifact-formats/`` once per pytest session so the
-    on-disk copy always matches the bundled source. The fixture always invokes
-    the idempotent materializer so a partially populated or stale generated
-    tree is refreshed while byte-identical files avoid physical rewrites. It is
-    side-effect free beyond the local ``.agent/`` directory (which is
-    gitignored) and runs in well under one second on the bundled set.
-    """
-    workspace_root = Path(__file__).resolve().parent.parent
-    materialize_all_format_docs(workspace_root)
-    return workspace_root
-
-
-@pytest.fixture
-def materialized_format_doc_contents(
-    _materialized_format_docs: Path,
-) -> dict[str, str]:
-    """Return the live agent-facing format-doc tree as plain text values."""
-    formats_root = _materialized_format_docs / ".agent" / "artifact-formats"
-    return {
-        str(path.relative_to(_materialized_format_docs)): path.read_text(encoding="utf-8")
-        for path in formats_root.rglob("*.md")
-    }
 
 
 def _configure_repo_identity(repo: object) -> None:

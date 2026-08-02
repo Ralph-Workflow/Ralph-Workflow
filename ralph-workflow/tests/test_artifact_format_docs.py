@@ -39,6 +39,17 @@ _CLOSED_STATUS_VOCABULARIES = {
 }
 
 
+@pytest.fixture
+def materialized_format_doc_contents(tmp_path: Path) -> dict[str, str]:
+    """Materialize bundled docs in an isolated workspace for the surface check."""
+    materialize_all_format_docs(tmp_path)
+    formats_root = tmp_path / ".agent" / "artifact-formats"
+    return {
+        str(path.relative_to(tmp_path)): path.read_text(encoding="utf-8")
+        for path in formats_root.rglob("*.md")
+    }
+
+
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
 def test_every_supported_type_has_a_nonempty_format_doc(artifact_type: str) -> None:
     doc = load_bundled_format_doc(artifact_type)
