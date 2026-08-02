@@ -61,3 +61,24 @@ class TestFsWorkspaceIterFiles:
         (tmp_path / ".git" / "config").write_text("[core]\n", encoding="utf-8")
 
         assert ws.iter_files(".git") == ()
+
+    def test_iter_files_does_not_follow_a_symlink_cycle(self, tmp_path: Path) -> None:
+        """R2: a symlink cycle inside the traversal base cannot cause unbounded recursion."""
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "source.py").write_text("value = 1\n", encoding="utf-8")
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "nested.txt").write_text("nested\n", encoding="utf-8")
+        # Self-referential symlink that would otherwise form a cycle.
+        sub_loop = sub / "loop"
+        sub_loop.symlink_to(sub, target_is_directory=True)
+
+        files = ws.iter_files(".")
+
+        # ``os.walk`` does not follow directory symlinks by default, so the
+        # cycle resolves without recursion. The visible files are stable.
+        assert "source.py" in files
+        assert "sub/nested.txt" in files
+        assert "sub/loop/nested.txt" not in files
+        # Bounded number of files proves the traversal terminated.
+        assert len(files) == 2

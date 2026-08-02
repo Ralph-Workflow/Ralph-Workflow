@@ -24,7 +24,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | W7 | History, cache, and run directories | Existing retention owners | GAP: characterize every accumulating path and its policy. |
 | W8 | Engine-internal stores | Existing workspace/run scoping | GAP: identify watched-tree internal state eligible for relocation. |
 | R1 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: its one snapshot no longer composes `stat`/`read`; broader reader inventory remains GAP. |
-| R2 | `FsWorkspace.iter_files` | shared skip set and read audit | GAP: symlink-cycle and all traversal-owner coverage. |
+| R2 | `FsWorkspace.iter_files` | shared skip set and read audit; `tests/test_workspace_fs_fs_workspace_iter_files.py::test_iter_files_does_not_follow_a_symlink_cycle` | COVERED for symlink cycle via `os.walk` default non-follow; broader traversal-owner coverage remains GAP. |
 | R3 | `FsWorkspace.read_lines` and `read_bytes` | bounded read implementation/tests | GAP: all reader call sites and bounded snapshots. |
 | R4 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: metadata and content share one observation; broader probe/read inventory remains GAP. |
 | R5 | Explore index and workspace traversal | explore-index lifecycle tests | GAP: prove no-op index reuse rather than rewalk. |
