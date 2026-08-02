@@ -63,19 +63,33 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Plain-pytest
-# shards avoid xdist's shared-worker contention while preserving exact-once
-# test assignment. On the maintained 32-core CI profile, sixteen shards keep
-# the slowest shard below the combined deadline while fewer shards breach it.
-# Lower-core hosts preserve one core; operators may explicitly override
-# ``PYTEST_WORKERS`` for a measured environment.
+# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Each shard runs
+# pytest with xdist (``-n N`` per shard) so the in-shard wall clock scales
+# with the host's per-shard worker budget rather than with the count of
+# files in the shard. On a 32-core host the default profile is 16 shards *
+# 2 workers = 32 parallel pytest workers; lower-core hosts shrink the
+# per-shard worker count automatically. Operators may override
+# ``PYTEST_WORKERS`` for the shard count and ``PYTEST_XDIST_WORKERS_PER_SHARD``
+# for the in-shard worker count after measuring their own host.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-# The runner owns plain pytest subprocesses rather than xdist workers, so
-# preserving one core for its deadline/cleanup loop avoids scheduler starvation.
+# Hard cap on the number of plain-pytest shards; raising this cap does NOT
+# raise the combined 60-second budget tracked upstream in
+# ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. Lowering it widens each
+# shard's work (more files per shard) and is therefore a budget-pressure
+# change, not a budget-relief change.
 _MAX_PYTEST_WORKERS = 16
+_DEFAULT_XDIST_WORKERS_PER_SHARD = "auto"
+# Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
+# Combined with ``_MAX_PYTEST_WORKERS`` (16 shards) this gives a maximum
+# fan-out of 16 * 4 = 64 workers; the 32-core CI profile uses 16 * 2 = 32.
+# ``_MAX_XDIST_WORKERS_PER_SHARD = 0`` would mean "no xdist in shards" and
+# is reserved for an explicit operator override (it is NOT the default
+# because the default 16-shard fan-out is no longer sufficient on its own
+# to keep the slowest shard below the 60s combined budget on 32-core CI).
+_MAX_XDIST_WORKERS_PER_SHARD = 4
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -107,6 +121,10 @@ if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
     raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not be empty")
 if len(REQUIRED_AUTO_INTEGRATE_E2E_FILES) != len(set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)):
     raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not contain duplicates")
+if _MAX_PYTEST_WORKERS <= 0:
+    raise RuntimeError("_MAX_PYTEST_WORKERS must be positive")
+if _MAX_XDIST_WORKERS_PER_SHARD < 0:
+    raise RuntimeError("_MAX_XDIST_WORKERS_PER_SHARD must be non-negative")
 
 
 def validate_required_auto_integrate_selection(selected_files: Iterable[str]) -> None:
@@ -203,6 +221,34 @@ def _pytest_workers() -> str:
     return str(max(1, min(_MAX_PYTEST_WORKERS, available_cores - 1)))
 
 
+def _xdist_workers_per_shard() -> str:
+    """Return the in-shard xdist worker count, or ``"0"`` to disable xdist.
+
+    The default ``auto`` policy sizes each shard's xdist fan-out so that
+    ``PYTEST_WORKERS`` shards * ``N`` in-shard workers does not exceed the
+    host's available CPU count. The default target keeps the slowest shard
+    well under the 60-second combined budget on the maintained 32-core CI
+    profile (16 shards * 2 workers = 32). On lower-core hosts the in-shard
+    worker count shrinks automatically. Operators may set
+    ``PYTEST_XDIST_WORKERS_PER_SHARD`` to an explicit non-negative integer;
+    ``0`` opts out of xdist per shard (preserves the legacy plain-pytest
+    behavior) and is reserved for an operator override, not for the
+    default.
+    """
+    raw = os.getenv("PYTEST_XDIST_WORKERS_PER_SHARD", _DEFAULT_XDIST_WORKERS_PER_SHARD)
+    if raw != "auto":
+        return raw
+    available_cores = os.cpu_count() or 2
+    # ``_pytest_workers`` already keeps one core for the runner's
+    # deadline/cleanup loop, so the in-shard fan-out is bounded by the
+    # remaining cores divided by the shard count. We cap each shard at
+    # ``_MAX_XDIST_WORKERS_PER_SHARD`` so a future per-shard bump cannot
+    # silently exceed the host's actual parallelism.
+    shard_count = max(1, int(_pytest_workers()))
+    per_shard = max(1, available_cores // shard_count)
+    return str(min(_MAX_XDIST_WORKERS_PER_SHARD, per_shard))
+
+
 def _default_spawner(
     command: Sequence[str],
     *,
@@ -226,6 +272,7 @@ def _shard_command(
     *,
     basetemp: Path,
     marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
+    xdist_workers: str = "0",
 ) -> tuple[str, ...]:
     """Build the pytest command for one shard.
 
@@ -240,7 +287,28 @@ def _shard_command(
     well under the combined 60-second budget. The cache is
     still honored for raw targets that deliberately use the default
     xdist path, while maintained shard profiles avoid shared cache writes.
+
+    wt-01-fs-opti S-1: the shard command additionally opts into pytest-xdist
+    (``-n N`` + ``--dist loadgroup``) when ``xdist_workers`` is a positive
+    integer. The in-shard xdist fan-out shrinks each shard's wall clock
+    so the slowest shard fits inside the 60s combined budget enforced
+    upstream by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. The
+    ``loadgroup`` scheduler keeps long-running tests on the same worker
+    rather than scattering them, which is the right default for the
+    maintenance-heavy integration tests. ``xdist_workers == "0"`` opts out
+    of xdist (legacy plain-pytest behavior) and is reserved for an
+    operator override.
     """
+    use_xdist = xdist_workers.isdigit() and int(xdist_workers) > 0
+    if use_xdist:
+        xdist_args: tuple[str, ...] = (
+            "-n",
+            xdist_workers,
+            "--dist",
+            "loadgroup",
+        )
+    else:
+        xdist_args = ()
     return (
         sys.executable,
         "-m",
@@ -250,6 +318,7 @@ def _shard_command(
         "--no-header",
         "-p",
         "no:cacheprovider",
+        *xdist_args,
         "-m",
         marker_expression,
         "--basetemp",
@@ -509,6 +578,7 @@ def _run_shards(
     monotonic: Callable[[], float],
     wait: Callable[[float], None],
     marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
+    xdist_workers: str = "0",
 ) -> int:
     processes: list[ShardProcess] = []
     try:
@@ -530,6 +600,7 @@ def _run_shards(
                         shard,
                         basetemp=basetemp_root / f"shard-{shard_index}",
                         marker_expression=marker_expression,
+                        xdist_workers=xdist_workers,
                     ),
                     cwd=cwd,
                     env=env,
@@ -695,6 +766,7 @@ def run_test_suites(
             monotonic=monotonic,
             wait=wait,
             marker_expression=marker_expression,
+            xdist_workers=_xdist_workers_per_shard(),
         )
 
 

@@ -24,6 +24,21 @@
 # per-test 1 s SIGALRM cap instead.
 PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
+# In-shard xdist fan-out used by ralph.test_suites ONLY (not the raw
+# Make targets above, which already pass ``-n $(PYTEST_WORKERS)`` to
+# a single pytest invocation). The runner fans out into N shards and
+# then spawns M xdist workers per shard, so the total pytest worker
+# count is N * M. ``auto`` sizes M so N * M does not exceed the host's
+# available CPU count; the maintained 32-core CI profile resolves to
+# 16 shards * 2 workers = 32 parallel pytest workers. Setting it to
+# ``0`` opts out of xdist per shard and preserves the legacy plain-
+# pytest behavior; this is reserved for an explicit operator override
+# because the default plain-pytest fan-out is no longer sufficient
+# to keep the slowest shard under the 60s combined budget on 32-core
+# CI. The combined 60s budget remains immutable: changing
+# PYTEST_XDIST_WORKERS_PER_SHARD does NOT raise that budget.
+PYTEST_XDIST_WORKERS_PER_SHARD ?= auto
+export PYTEST_XDIST_WORKERS_PER_SHARD
 export PYTHONPATH := $(shell realpath .)
 # ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
 # outside the current project (``warning: VIRTUAL_ENV=... does not
