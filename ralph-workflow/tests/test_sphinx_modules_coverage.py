@@ -105,6 +105,7 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_public_docstrings": "test infrastructure, not public API",
     "testing.audit_fsevents_watch_consolidation": "test infrastructure, not public API",
     "testing.audit_log_sink_buffering": "test infrastructure, not public API",
+    "testing.audit_filesystem_polling_invocation": "test infrastructure, not public API",
 }
 
 _TOP_LEVEL_SECTION_HEADERS = frozenset(
