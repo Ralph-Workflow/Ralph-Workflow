@@ -319,15 +319,28 @@ def _discover_all_test_files(cwd: Path) -> tuple[str, ...]:
 
 
 def discover_test_files(cwd: Path) -> tuple[str, ...]:
-    """Return verification files, excluding only statically proven E2E-only modules."""
-    discovered = tuple(
-        path
-        for path in _discover_all_test_files(cwd)
-        if path in REQUIRED_AUTO_INTEGRATE_E2E_FILES
-        or not _is_module_subprocess_e2e((cwd / path).read_text(encoding="utf-8"), filename=path)
-    )
-    validate_required_auto_integrate_selection(discovered)
-    return discovered
+    """Return verification files, excluding only statically proven E2E-only modules.
+
+    Avoid parsing the common non-E2E case: a module can only be E2E-only when
+    it assigns ``pytestmark`` and mentions ``subprocess_e2e``.  This keeps
+    discovery below the one-second per-test ceiling while preserving the
+    conservative AST classification for every possible E2E candidate.
+    """
+    discovered: list[str] = []
+    for path in _discover_all_test_files(cwd):
+        if path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
+            discovered.append(path)
+            continue
+        source_bytes = (cwd / path).read_bytes()
+        if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
+            discovered.append(path)
+            continue
+        source = source_bytes.decode("utf-8")
+        if not _is_module_subprocess_e2e(source, filename=path):
+            discovered.append(path)
+    selected = tuple(discovered)
+    validate_required_auto_integrate_selection(selected)
+    return selected
 
 
 def discover_subprocess_e2e_files(cwd: Path) -> tuple[str, ...]:
