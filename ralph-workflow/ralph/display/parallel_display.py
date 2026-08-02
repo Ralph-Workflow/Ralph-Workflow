@@ -844,7 +844,9 @@ class ParallelDisplay:
         }.get(kind, "info")
         state_style = statuses[state][0]
         chrome_style = statuses["info"][0]
-        unit_style = f"bold {identity_color(unit_id, terminal_bg_is_light=self._terminal_bg_is_light)}"
+        unit_style = (
+            f"bold {identity_color(unit_id, terminal_bg_is_light=self._terminal_bg_is_light)}"
+        )
         text = Text(leading_indent)
         text.append(timestamp, style=chrome_style)
         text.append(" ")
@@ -920,9 +922,7 @@ class ParallelDisplay:
             cont_budget_for_head = max(
                 1, total_width - cell_len(f"{header} ") - chrome_prefix_width
             )
-            head_rows = ParallelDisplay._wrap_trailing_words(
-                head, total_width=cont_budget_for_head
-            )
+            head_rows = ParallelDisplay._wrap_trailing_words(head, total_width=cont_budget_for_head)
             first_row = head_rows[0] if head_rows else head
             # If the first row is itself wider than the chrome-prefixed
             # budget (e.g. a single ``CONDENSE-<unit>`` token that is
@@ -940,9 +940,7 @@ class ParallelDisplay:
                 tail_rows = head_rows[1:] if head_rows else []
             first_chunk = f"{header} {first_row}"
             cont_budget = max(1, total_width - cell_len(hang_prefix))
-            trailer_rows = ParallelDisplay._split_long_trailer(
-                trailer, total_width=cont_budget
-            )
+            trailer_rows = ParallelDisplay._split_long_trailer(trailer, total_width=cont_budget)
             return [first_chunk, *tail_rows, *trailer_rows]
         # The first row's chrome is the same width as ``hang_prefix``
         # (timestamp + badge + trailing space); ``_activity_text``
@@ -974,7 +972,7 @@ class ParallelDisplay:
         first_token = remaining.split(" ", 1)[0]
         if cell_len(first_token) > first_budget and cell_len(first_token) <= cont_budget:
             chunks.append(first_token)
-            rest = remaining[len(first_token):].lstrip()
+            rest = remaining[len(first_token) :].lstrip()
             if not rest:
                 return [f"{header} {chunks[0]}"]
             remaining = rest
@@ -1004,9 +1002,7 @@ class ParallelDisplay:
         # Continuation rows use the terminal width MINUS the hang-prefix
         # width because the caller hangs them under the body column,
         # not under the chrome prefix.
-        continuation_rows = ParallelDisplay._wrap_trailing_words(
-            remaining, total_width=cont_budget
-        )
+        continuation_rows = ParallelDisplay._wrap_trailing_words(remaining, total_width=cont_budget)
         return [f"{header} {chunks[0]}", *continuation_rows]
 
     @staticmethod
@@ -1566,7 +1562,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         timestamp = self._format_timestamp(self._clock())
-        sanitized = _sanitize(status)
+        sanitized = _strip_control_chars_for_render(status)
         rendered_unit_id = _render_unit_id(unit_id)
         self._console.print(
             self._build_line(

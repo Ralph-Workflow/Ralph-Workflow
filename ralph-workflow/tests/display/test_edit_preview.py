@@ -85,8 +85,8 @@ def test_markdown_preview_regression_wraps_prose_without_wrapping_fenced_code() 
     assert sum("identifier_" in row for row in rows) == 1
 
 
-def test_diff_preview_regression_uses_an_owned_surface_without_partial_polarity_bands() -> None:
-    """S-4: syntax and gutters share one surface; polarity belongs on markers."""
+def test_diff_preview_regression_uses_complete_owned_polarity_surfaces() -> None:
+    """S-4: each known-background changed row paints its complete polarity surface."""
     payloads: tuple[tuple[str, dict[str, object]], ...] = (
         ("edit_file", {"path": "a.py", "edits": [{"oldText": "old = 1", "newText": "new = 2"}]}),
         ("git_diff", {"content": "@@ -1 +1 @@\n-old\n+new\n"}),
@@ -121,7 +121,7 @@ def test_diff_preview_regression_uses_an_owned_surface_without_partial_polarity_
                     f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
                     for fill in fills
                 }
-                assert not any(fill in painted_rendered for fill in derived_fills)
+                assert derived_fills <= set(re.findall(r"48;2;\d+;\d+;\d+", painted_rendered))
             plain = _plain(painted_rendered)
             assert "-" in plain and "+" in plain and "1" in plain
             if tool_name == "git_diff":
@@ -170,8 +170,8 @@ def test_build_edit_preview_long_content_reports_elision() -> None:
     assert "more line" in _plain(_render_truecolor(preview)).lower()
 
 
-def test_diff_preview_regression_never_paints_partial_polarity_background_bands() -> None:
-    """S-4: every known diff preview uses its complete owned surface only."""
+def test_diff_preview_regression_paints_each_known_polarity_background_band() -> None:
+    """S-4 regression: removed and added rows retain their complete polarity fills."""
     payload: dict[str, object] = {
         "path": "a.py",
         "edits": [{"oldText": "old = 1", "newText": "new = 2"}],
@@ -189,7 +189,6 @@ def test_diff_preview_regression_never_paints_partial_polarity_background_bands(
         assert preview is not None
         rendered = _render_truecolor(preview)
         derived_fills = {
-            f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
-            for fill in fills
+            f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}" for fill in fills
         }
-        assert not any(fill in rendered for fill in derived_fills)
+        assert derived_fills <= set(re.findall(r"48;2;\d+;\d+;\d+", rendered))

@@ -50,9 +50,12 @@ Design:
   with both hunks syntax-highlighted under ``line_numbers=True`` using the same lexer.
   A positive integer ``start_line`` on an edit starts its new-content
   line numbers at that known file position; absent or invalid values
-  remain snippet-relative at 1. Only the literal ``-`` and ``+`` markers
-  use the ``theme.status.error`` / ``theme.status.success`` carriers, so
-  the diff remains readable when color is disabled.
+  remain snippet-relative at 1. When the caller resolves a known terminal
+  background, each removed/added hunk owns its complete derived fill,
+  including its gutter; undetermined backgrounds remain transparent.
+  Literal ``-`` and ``+`` markers retain the ``theme.status.error`` /
+  ``theme.status.success`` carriers, so the diff remains readable when
+  color is disabled.
 
 * A bounded preview cap (``_MAX_PREVIEW_LINES = 40``) trims long
   content and appends a muted ``\u2026 (N more lines)`` elision line
@@ -86,7 +89,10 @@ pure and reads no env.
 
 The diff ``-`` / ``+`` markers are resolved the same way, through
 :func:`ralph.display.theme.pick_status_styles`, so the marker colours
-also clear WCAG contrast on a light terminal.
+also clear WCAG contrast on a light terminal. Known-background diff rows
+receive the matched complete fill supplied by
+:func:`ralph.display.theme.diff_fill_styles`; the unknown-background path
+keeps the transparent dual-safe fallback.
 """
 
 from __future__ import annotations
@@ -388,6 +394,7 @@ def _make_syntax(
     is_markdown: bool,
     terminal_bg_is_light: bool | None,
     start_line: int = 1,
+    background_color: str | None = None,
 ) -> Syntax:
     """Build the themed ``Syntax`` renderable used by both preview shapes.
 
@@ -401,7 +408,8 @@ def _make_syntax(
         theme=syntax_theme_for_background(terminal_bg_is_light),
         line_numbers=True,
         word_wrap=is_markdown,
-        background_color=preview_background_for_background(terminal_bg_is_light),
+        background_color=background_color
+        or preview_background_for_background(terminal_bg_is_light),
         start_line=start_line,
     )
 
@@ -618,7 +626,9 @@ def _build_edit_preview(
 ) -> RenderableType | None:
     """Build a diff-style preview for ``edit_file`` / ``ralph_edit_md_artifact``.
 
-    Both the old (``-``) and new (``+``) hunks are syntax-highlighted
+    ``diff_fills`` paints complete removed/added known-background rows,
+    including their numbered gutters; ``None`` keeps the unknown-background
+    fallback transparent. Both the old (``-``) and new (``+``) hunks are syntax-highlighted
     through :func:`_make_syntax` with the same path-derived lexer. Only
     the literal marker glyphs use the ``theme.status.error`` /
     ``theme.status.success`` styles, preserving the diff when colour is
@@ -636,6 +646,7 @@ def _build_edit_preview(
     is_markdown = _is_markdown_lexer(lexer_name)
     old_style = _diff_marker_style(_DIFF_OLD_STATUS, terminal_bg_is_light=terminal_bg_is_light)
     new_style = _diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)
+    old_fill, new_fill = diff_fills or (None, None)
     safe_edits = [
         (
             edit,
@@ -671,7 +682,10 @@ def _build_edit_preview(
         if start_line_obj != start_line and remaining_lines > 0:
             blocks.append(Text("  (snippet)", style="theme.text.muted"))
             remaining_lines -= 1
-        for marker, source, style in (("-", old_safe, old_style), ("+", new_safe, new_style)):
+        for marker, source, style, fill in (
+            ("-", old_safe, old_style, old_fill),
+            ("+", new_safe, new_style, new_fill),
+        ):
             if not source:
                 continue
             source_lines = len(source.splitlines())
@@ -687,13 +701,14 @@ def _build_edit_preview(
             total_omitted += omitted or 0
             blocks.append(
                 Group(
-                    Text(marker, style=style),
+                    Text(marker, style=f"{style} on {fill}" if fill else style),
                     _make_syntax(
                         "\n".join(head),
                         lexer_name,
                         is_markdown=is_markdown,
                         terminal_bg_is_light=terminal_bg_is_light,
                         start_line=start_line,
+                        background_color=fill,
                     ),
                 )
             )
@@ -706,6 +721,7 @@ def _build_edit_preview(
                         is_markdown=is_markdown,
                         terminal_bg_is_light=terminal_bg_is_light,
                         start_line=tail_start,
+                        background_color=fill,
                     )
                 )
     if total_omitted:
@@ -750,6 +766,31 @@ def _build_content_preview(
     hunks = list(re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", content, re.MULTILINE))
     if is_diff and hunks:
         blocks: list[RenderableType] = []
+        old_fill, new_fill = diff_fills or (None, None)
+
+        def render_diff_rows(lines: list[str], start: int) -> RenderableType:
+            """Render each changed diff row on its complete resolved polarity fill."""
+            lexer = lexer_for_path(preview_path, "\n".join(lines))
+            return Group(
+                *(
+                    _make_syntax(
+                        row,
+                        lexer,
+                        is_markdown=False,
+                        terminal_bg_is_light=terminal_bg_is_light,
+                        start_line=line_number,
+                        background_color=(
+                            old_fill
+                            if row.startswith("-")
+                            else new_fill
+                            if row.startswith("+")
+                            else None
+                        ),
+                    )
+                    for line_number, row in enumerate(lines, start)
+                )
+            )
+
         remaining = _MAX_PREVIEW_LINES - 1
         omitted_total = 0
         omitted_source: list[str] = []
@@ -771,24 +812,10 @@ def _build_content_preview(
             if omitted:
                 omitted_source.extend(body_lines[len(head) : len(body_lines) - len(tail)])
             if head:
-                blocks.append(
-                    _make_syntax(
-                        "\n".join(head),
-                        lexer_for_path(preview_path, body),
-                        is_markdown=False,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=int(hunk.group(1)),
-                    )
-                )
+                blocks.append(render_diff_rows(head, int(hunk.group(1))))
             if tail:
                 blocks.append(
-                    _make_syntax(
-                        "\n".join(tail),
-                        lexer_for_path(preview_path, body),
-                        is_markdown=False,
-                        terminal_bg_is_light=terminal_bg_is_light,
-                        start_line=int(hunk.group(1)) + len(head) + (omitted or 0),
-                    )
+                    render_diff_rows(tail, int(hunk.group(1)) + len(head) + (omitted or 0))
                 )
             remaining -= len(head) + len(tail)
         if omitted_total:

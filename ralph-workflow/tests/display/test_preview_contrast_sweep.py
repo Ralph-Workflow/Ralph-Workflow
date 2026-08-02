@@ -123,7 +123,7 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
         surface = preview_background_for_background(terminal_bg_is_light)
         if surface == "default":
             assert "48;2;" not in rendered and "48;5;" not in rendered, name
-        else:
+        elif not name.endswith("_painted"):
             surface_sgr = (
                 f"48;2;{int(surface[1:3], 16)};{int(surface[3:5], 16)};{int(surface[5:7], 16)}"
             )
@@ -135,7 +135,7 @@ def test_preview_contrast_sweep_regression_no_black_on_black(
                 f"48;2;{int(fill[1:3], 16)};{int(fill[3:5], 16)};{int(fill[5:7], 16)}"
                 for fill in fills
             }
-            assert not any(sgr in rendered for sgr in fill_sgrs), name
+            assert fill_sgrs <= set(re.findall(r"48;2;\d+;\d+;\d+", rendered)), name
         _assert_no_operator_palette_sgr(rendered, name)
         colors = _RGB_SGR.findall(rendered)
         assert colors, f"contrast sweep emitted no truecolour tokens for {name}"
