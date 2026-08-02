@@ -110,7 +110,6 @@ def _sync_product_criteria_file(
         else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     )
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    backend.mkdir(product_criteria_path.parent, parents=True, exist_ok=True)
     if source_prompt_path.exists():
         # Compare content when both files exist. Equal size/mtime is not
         # sufficient here because rapid rewrites can preserve both metadata
@@ -136,7 +135,15 @@ def _sync_product_criteria_file(
         # provided -- but we always pass read_source above, so it is
         # populated when changed is True.
         if changed and prompt_text is not None:
-            write_text_if_changed(backend, product_criteria_path, prompt_text, encoding="utf-8")
+            write_text_if_changed(
+                backend,
+                product_criteria_path,
+                prompt_text,
+                encoding="utf-8",
+                prepare_write=lambda: backend.mkdir(
+                    product_criteria_path.parent, parents=True, exist_ok=True
+                ),
+            )
             if worker_namespace is None:
                 _write_prompt_history_snapshot(
                     workspace_root=workspace_root,
@@ -150,6 +157,9 @@ def _sync_product_criteria_file(
             product_criteria_path,
             default_product_criteria,
             encoding="utf-8",
+            prepare_write=lambda: backend.mkdir(
+                product_criteria_path.parent, parents=True, exist_ok=True
+            ),
         )
         if worker_namespace is None:
             _write_prompt_history_snapshot(

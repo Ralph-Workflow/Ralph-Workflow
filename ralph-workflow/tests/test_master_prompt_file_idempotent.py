@@ -65,6 +65,28 @@ def test_master_prompt_file_writer_regression_skips_identical_parent_preparation
     assert backend._files[destination] == "X"
 
 
+def test_product_criteria_sync_regression_skips_identical_parent_preparation() -> None:
+    """S-2: an unchanged fallback criteria replay does not touch its parent directory."""
+    backend = _CountingBackend()
+    workspace_root = Path("/virtual-ws")
+
+    master_prompt._sync_product_criteria_file(
+        workspace_root=workspace_root,
+        default_product_criteria="criteria",
+        backend=backend,
+    )
+    master_prompt._sync_product_criteria_file(
+        workspace_root=workspace_root,
+        default_product_criteria="criteria",
+        backend=backend,
+    )
+
+    criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
+    assert [path for path, _content in backend.write_text_calls].count(criteria_path) == 1
+    assert backend.mkdir_calls.count(criteria_path.parent) == 1
+    assert backend._files[criteria_path] == "criteria"
+
+
 def test_master_prompt_file_writer_writes_changed_content() -> None:
     backend = _CountingBackend()
     destination = Path("/virtual-ws/.agent/tmp/agent_master_prompt.md")
