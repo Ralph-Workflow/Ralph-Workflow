@@ -48,8 +48,8 @@ from ralph.display.theme import (
     ASCII_GLYPHS,
     UNICODE_GLYPHS,
     detect_glyph_capability,
+    detect_terminal_background_is_light,
     make_console,
-    terminal_background_is_light,
     theme_for_background,
 )
 
@@ -76,8 +76,8 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     Returns:
         _ResolvedEnv with all display-relevant env settings resolved.
     """
-    no_color = "NO_COLOR" in env
-    force_color = "FORCE_COLOR" in env
+    no_color = bool(env.get("NO_COLOR"))
+    force_color = bool(env.get("FORCE_COLOR"))
 
     force_ascii_val = env.get("RALPH_FORCE_ASCII", "").lower().strip()
     force_ascii = force_ascii_val in _RALPH_FORCE_ASCII_TRUTHY
@@ -567,7 +567,9 @@ def make_display_context(
     env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)
-    resolved_background = terminal_background_is_light(env_dict)
+    resolved_background: bool | None = None
+    with contextlib.suppress(Exception):
+        resolved_background = detect_terminal_background_is_light(env_dict)
     if console is None:
         injected_console = False
         resolved_console = _build_console(resolved_env, resolved_background)

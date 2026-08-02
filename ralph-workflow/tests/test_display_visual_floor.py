@@ -19,7 +19,11 @@ from ralph.display.edit_preview import build_edit_preview
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.scene_catalog import CONTRAST_FLOOR
 from ralph.display.snapshot import PipelineSnapshot
-from ralph.display.theme import pick_status_styles, preview_background_for_background
+from ralph.display.theme import (
+    pick_status_styles,
+    preview_background_for_background,
+    terminal_background_is_light,
+)
 from ralph.syntax_theme import SyntaxThemes
 
 _PREVIEW_SURFACES = {
@@ -119,6 +123,34 @@ def test_visual_floor_unknown_background_events_use_the_dual_safe_palette() -> N
     expected_style = pick_status_styles(None)["info"][0]
     assert context.terminal_background_is_light is None
     assert any(span.style == expected_style for span in rendered.spans)
+
+
+def test_visual_floor_regression_dark_event_uses_one_palette_for_identity_and_carrier() -> None:
+    """S-1/S-4: dark context never mixes unknown identity with dark state colour."""
+    context = make_display_context(env={"RALPH_TERMINAL_BG": "dark"})
+    rendered = render_event(
+        make_event_for_emit(ActivityEventKind.ERROR, "claude failed"),
+        ctx=context,
+        unit_id="claude",
+    )
+    assert theme.identity_color("claude", terminal_bg_is_light=False) in {
+        span.style for span in rendered.spans
+    }
+    assert pick_status_styles(False)["error"][0] in {span.style for span in rendered.spans}
+
+
+def test_visual_floor_regression_measured_dark_background_emits_vivid_activity_colour() -> None:
+    """S-4: a measured dark background selects the visible dark activity palette."""
+    assert terminal_background_is_light({}, measured_bg_hex="#000000") is False
+    stream = StringIO()
+    context = make_display_context(
+        console=theme.make_console(file=stream, force_terminal=True, color_system="truecolor"),
+        env={"RALPH_TERMINAL_BG": "dark"},
+    )
+    context.console.print(
+        render_event(make_event_for_emit(ActivityEventKind.ERROR, "operator-visible failure"), ctx=context)
+    )
+    assert "38;2;213;94;0m" in stream.getvalue()
 
 
 def test_visual_floor_error_event_resolves_identity_against_light_background() -> None:

@@ -84,9 +84,9 @@ views used by CLI diagnostics and listing commands.
 
    **Color environment variables:**
 
-   - ``NO_COLOR`` (any value) — disables all color output.  Takes precedence
+   - ``NO_COLOR`` (any non-empty value) — disables all color output.  Takes precedence
      over ``FORCE_COLOR``.
-   - ``FORCE_COLOR`` (any value) — enables color output on non-TTY streams.
+   - ``FORCE_COLOR`` (any non-empty value) — enables color output on non-TTY streams.
 
    **Glyph environment variables:**
 

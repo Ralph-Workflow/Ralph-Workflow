@@ -87,6 +87,20 @@ def test_no_color_env_disables_color() -> None:
     assert ctx.color_enabled is False
 
 
+def test_display_context_regression_empty_colour_overrides_are_ignored() -> None:
+    """S-1: empty NO_COLOR/FORCE_COLOR values do not change colour policy."""
+    no_color = make_display_context(
+        env={"NO_COLOR": "", "COLUMNS": str(_WIDE_WIDTH)},
+        console=Console(file=StringIO(), force_terminal=True, width=_WIDE_WIDTH, theme=RALPH_THEME),
+    )
+    force_color = make_display_context(
+        env={"FORCE_COLOR": "", "COLUMNS": str(_WIDE_WIDTH)},
+        console=Console(file=StringIO(), force_terminal=True, width=_WIDE_WIDTH, theme=RALPH_THEME),
+    )
+    assert no_color.color_enabled is True
+    assert force_color.color_enabled is True
+
+
 def test_no_color_wins_over_force_color() -> None:
     """NO_COLOR wins over FORCE_COLOR per standard CLI conventions."""
     env = {"NO_COLOR": "1", "FORCE_COLOR": "1", "COLUMNS": str(_WIDE_WIDTH)}

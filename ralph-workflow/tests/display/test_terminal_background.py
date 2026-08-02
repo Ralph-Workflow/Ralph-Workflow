@@ -24,6 +24,8 @@ from __future__ import annotations
 import pytest
 
 from ralph.display._terminal_bg_query import parse_osc11_reply
+from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import (
     SYNTAX_THEME_ON_DARK_BG,
     SYNTAX_THEME_ON_LIGHT_BG,
@@ -152,6 +154,13 @@ def test_syntax_theme_is_background_specific_pygments_theme() -> None:
     """Both themes are fixed token palettes chosen for the resolved background."""
     assert syntax_theme_for_background(False) is SYNTAX_THEME_ON_DARK_BG
     assert syntax_theme_for_background(True) is SYNTAX_THEME_ON_LIGHT_BG
+
+
+def test_display_context_regression_shares_background_with_parallel_display() -> None:
+    """S-1: every display surface receives the context's single resolution."""
+    context = make_display_context(env={"RALPH_TERMINAL_BG": "dark"})
+    display = ParallelDisplay(context)
+    assert display._terminal_bg_is_light is context.terminal_background_is_light
 
 
 def test_syntax_theme_tracks_the_resolved_background() -> None:

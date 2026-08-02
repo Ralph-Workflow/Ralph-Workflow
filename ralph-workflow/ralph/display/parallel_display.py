@@ -162,7 +162,6 @@ from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverf
 from ralph.display.record_writer import _INDENT_WIDTH, RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import (
-    detect_terminal_background_is_light,
     diff_fill_styles,
     identity_color,
     pick_status_styles,
@@ -527,17 +526,11 @@ class ParallelDisplay:
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._is_quiet: bool = is_quiet
-        # Resolve the terminal background ONCE, here, so the pure
-        # preview builder never touches env or the tty. The resolution
-        # asks the terminal for its actual background colour (OSC 11)
-        # and falls back to env hints, so syntax-highlight colours are
-        # chosen against the operator's real background rather than an
-        # assumed one. Any failure degrades to ``None``, selecting the
-        # both-backgrounds-safe unknown palette rather than assuming dark;
-        # the probe must never be able to break display construction.
-        self._terminal_bg_is_light: bool | None = None
-        with contextlib.suppress(Exception):
-            self._terminal_bg_is_light = detect_terminal_background_is_light(display_context.env)
+        self._terminal_bg_is_light = (
+            display_context.terminal_background_is_light
+            if isinstance(display_context, DisplayContext)
+            else None
+        )
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else (lambda: datetime.now(UTC))
         )
@@ -877,7 +870,7 @@ class ParallelDisplay:
         return f"{timestamp} {''.ljust(len(f'[{tag}]') + len(unit_id) + 2)}"
 
     @staticmethod
-    def _wrap_close_body(  # noqa: PLR0911 - 8 returns carry the chrome-prefix / continuation-budget / trailer branches (fits/head/trailer/single-word/over-budget/over-budget-2x/short-after-over/short-after-over-2x)
+    def _wrap_close_body(  # noqa: PLR0911 - bounded close-row wrapping branches
         header: str,
         visible: str,
         *,

@@ -574,92 +574,33 @@ _LIGHT_BG_LUMINANCE_CROSSOVER: Final[float] = 0.1791
 
 
 def _explicit_background_override(env: Mapping[str, str]) -> bool | None:
-    """Read ``RALPH_TERMINAL_BG`` as a light/dark word or a hex colour."""
     explicit = env.get("RALPH_TERMINAL_BG", "").lower().strip()
     if explicit in {"light", "1", "true", "yes"}:
         return True
     if explicit in {"dark", "0", "false", "no"}:
         return False
-    if explicit.startswith("#"):
-        return background_hex_is_light(explicit)
-    return None
+    return background_hex_is_light(explicit) if explicit.startswith("#") else None
 
 
 def _colorfgbg_is_light(env: Mapping[str, str]) -> bool | None:
-    """Classify the background from the legacy ``COLORFGBG`` hint.
-
-    Only the four palette indices whose lightness is unambiguous are
-    honoured; every other value stays undetermined rather than guessed.
-    """
-    colorfgbg = env.get("COLORFGBG", "").strip()
-    if not colorfgbg:
-        return None
-    parts = colorfgbg.split(";")
+    parts = env.get("COLORFGBG", "").strip().split(";")
     if len(parts) < _COLORFGBG_MIN_PARTS or not parts[1].isdigit():
         return None
-    bg_index = int(parts[1])
-    if bg_index in (7, 15):
-        return True
-    if bg_index in (0, 8):
-        return False
-    return None
+    return {7: True, 15: True, 0: False, 8: False}.get(int(parts[1]))
 
 
 def background_hex_is_light(bg_hex: str) -> bool | None:
-    """Classify an arbitrary background colour as light or dark.
-
-    Uses the WCAG relative luminance of the colour and the exact
-    crossover point at which dark foregrounds start out-contrasting
-    light ones, so any background colour -- not just black or white --
-    is classified from its measured contrast behaviour.
-
-    Parameters:
-        bg_hex: Background colour in ``#rgb`` or ``#rrggbb`` form.
-
-    Returns:
-        ``True`` when dark foregrounds read better on this background,
-        ``False`` when light foregrounds do, ``None`` when ``bg_hex``
-        is not a parseable colour.
-    """
+    """Classify a measured terminal background by WCAG luminance."""
     try:
-        luminance = relative_luminance(bg_hex)
+        return relative_luminance(bg_hex) > _LIGHT_BG_LUMINANCE_CROSSOVER
     except ValueError:
         return None
-    return luminance > _LIGHT_BG_LUMINANCE_CROSSOVER
 
 
 def terminal_background_is_light(
-    env: Mapping[str, str],
-    *,
-    measured_bg_hex: str | None = None,
+    env: Mapping[str, str], *, measured_bg_hex: str | None = None
 ) -> bool | None:
-    """Detect whether the terminal background is light.
-
-    Precedence, strongest signal first:
-
-    1. ``RALPH_TERMINAL_BG`` as an explicit ``light`` / ``dark`` word --
-       the operator overriding everything.
-    2. ``RALPH_TERMINAL_BG`` as a ``#RRGGBB`` colour -- classified by
-       :func:`background_hex_is_light`.
-    3. ``measured_bg_hex`` -- the colour the terminal itself reported
-       (see :mod:`ralph.display._terminal_bg_query`). This is a
-       measurement, so it beats the heuristic below.
-    4. ``COLORFGBG`` -- a coarse legacy hint set by only some
-       emulators, and usable only for the palette indices whose
-       lightness is unambiguous.
-
-    Returns ``None`` when no signal resolves, so the caller can fall
-    back to its documented default rather than acting on a guess.
-
-    Parameters:
-        env: Mapping of environment variable names to values.
-        measured_bg_hex: Background colour measured from the terminal,
-            or ``None`` when no measurement is available.
-
-    Returns:
-        ``True`` when the background is light, ``False`` when dark,
-        ``None`` when undetermined.
-    """
+    """Resolve override, measured OSC 11 colour, then the COLORFGBG hint."""
     explicit = _explicit_background_override(env)
     if explicit is not None:
         return explicit
@@ -671,22 +612,7 @@ def terminal_background_is_light(
 
 
 def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
-    """Resolve the terminal background, asking the terminal when allowed.
-
-    Wraps :func:`terminal_background_is_light` with the OSC 11 probe so
-    the answer comes from the emulator's own reported background colour
-    whenever it will tell us. The probe is skipped entirely when an
-    explicit ``RALPH_TERMINAL_BG`` override is present (no reason to
-    touch the tty when the operator already answered) and degrades to
-    ``None`` on every terminal that does not implement the query.
-
-    Parameters:
-        env: Mapping of environment variable names to values.
-
-    Returns:
-        ``True`` when the background is light, ``False`` when dark,
-        ``None`` when undetermined.
-    """
+    """Resolve the terminal background with OSC 11 unless overridden."""
     if env.get("RALPH_TERMINAL_BG", "").strip():
         return terminal_background_is_light(env)
     from ralph.display._terminal_bg_query import query_terminal_background_hex

@@ -998,7 +998,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/phases/commit_cleanup.py", 701),
         ("ralph/phases/commit_cleanup.py", 722),
         ("ralph/phases/commit_cleanup.py", 732),
-        ("ralph/display/parallel_display.py", 880),
+        ("ralph/display/parallel_display.py", 873),
         ("ralph/display/parallel_display.py", 1967),
         ("ralph/display/parallel_display.py", 1968),
         # wt-04-improve-display: _wrap_close_body fans out across 8 chrome-prefix
@@ -1008,7 +1008,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # for the same fan-out; refactoring the branches into a single accumulator
         # would complicate the per-row width-preservation contract that the existing
         # tests pin (see tests/display/test_parallel_display_close_markers.py).
-        ("ralph/display/parallel_display.py", 880),
+        ("ralph/display/parallel_display.py", 873),
         ("ralph/mcp/server/_metrics.py", 77),
         ("ralph/mcp/server/_metrics.py", 86),
         # process-lifetime memo of an immutable terminal probe (OSC 11)

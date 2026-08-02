@@ -332,7 +332,7 @@ def _render_text_event(
     if event.kind is ActivityEventKind.THINKING:
         style_name = "running"
     style, icon, label = _state_payload_for_context(
-        style_name, ctx.terminal_background_is_light if ctx is not None else False
+        style_name, ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -361,7 +361,7 @@ def _render_status_event(
     ``running``; subagent_progress uses ``info``.
     """
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else False
+        "info", ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -420,7 +420,7 @@ def _render_tool_use_event(
     body remains tool name plus arguments so all consumers share one shape.
     """
     style, icon, label = _state_payload_for_context(
-        "running", ctx.terminal_background_is_light if ctx is not None else False
+        "running", ctx.terminal_background_is_light if ctx is not None else None
     )
     raw_name = _normalized_event_content(event) or "tool"
     tool_name = friendly_tool_name(raw_name)
@@ -491,7 +491,7 @@ def _render_tool_result_event(
     is_error = outcome_is_failure(event.metadata)
     state = "error" if is_error else "success"
     style, icon, label = _state_payload_for_context(
-        state, ctx.terminal_background_is_light if ctx is not None else False
+        state, ctx.terminal_background_is_light if ctx is not None else None
     )
     raw_body = _normalized_event_content(event)
     if not raw_body:
@@ -553,7 +553,7 @@ def _render_error_event(
     body so the meaning persists with color disabled.
     """
     style, icon, label = _state_payload_for_context(
-        "error", ctx.terminal_background_is_light if ctx is not None else False
+        "error", ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _normalized_event_content(event) or "unknown error"
     text = Text()
@@ -571,7 +571,7 @@ def _render_lifecycle_event(
 ) -> Text:
     """Render a lifecycle event (phase transitions, run start / end)."""
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else False
+        "info", ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -593,7 +593,7 @@ def _render_progress_event(
     in-progress signal never accidentally reads as success/failure.
     """
     style, icon, label = _state_payload_for_context(
-        "running", ctx.terminal_background_is_light if ctx is not None else False
+        "running", ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
     text = Text()
@@ -611,7 +611,7 @@ def _render_heartbeat_event(
 ) -> Text:
     """Render a heartbeat event (idle-waitdog liveness ping)."""
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else False
+        "info", ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _format_body_with_unit(_normalized_event_content(event) or "alive", unit_id)
     text = Text()
@@ -640,7 +640,7 @@ def _render_unknown_event(
     key=value context.
     """
     style, icon, label = _state_payload_for_context(
-        "info", ctx.terminal_background_is_light if ctx is not None else False
+        "info", ctx.terminal_background_is_light if ctx is not None else None
     )
     body = _normalized_event_content(event)
     text = Text()
