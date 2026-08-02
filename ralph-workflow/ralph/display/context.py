@@ -580,7 +580,13 @@ def make_display_context(
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
         if isinstance(resolved_console, Console):
-            resolved_console.push_theme(theme_for_background(resolved_background))
+            # An explicitly supplied themed Console is the caller's display
+            # contract. A named Ralph role proves it has a caller-owned theme;
+            # otherwise install the resolved palette for a plain Console.
+            try:
+                resolved_console.get_style("theme.banner.border")
+            except Exception:
+                resolved_console.push_theme(theme_for_background(resolved_background))
     width = _compute_width(
         resolved_env,
         resolved_console,
