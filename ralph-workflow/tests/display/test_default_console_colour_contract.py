@@ -84,6 +84,25 @@ def test_display_context_regression_injected_console_keeps_semantic_theme(
     assert "38;2;" in stream.getvalue()
 
 
+def test_display_context_regression_unknown_background_themes_injected_console(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: no detected background must still emit semantic truecolor output."""
+    monkeypatch.setattr(
+        "ralph.display.context.detect_terminal_background_is_light",
+        lambda _env: None,
+    )
+    stream = StringIO()
+    ctx = make_display_context(
+        console=Console(file=stream, force_terminal=True, color_system="truecolor", highlight=False),
+        env={},
+    )
+
+    assert ctx.console.get_style("theme.status.success").color is not None
+    ctx.console.print(Text("coloured", style="theme.status.success"))
+    assert "38;2;" in stream.getvalue()
+
+
 def test_no_color_still_disables_output() -> None:
     """The explicit standard disable switch remains authoritative."""
     env = {**_colour_env(), "NO_COLOR": "1"}

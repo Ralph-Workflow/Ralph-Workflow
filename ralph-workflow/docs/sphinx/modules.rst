@@ -3936,13 +3936,6 @@ ralph.testing.audit_fenced_artifact_examples
    :members:
    :show-inheritance:
 
-ralph.testing.audit_filesystem_polling_invocation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_polling_invocation
-   :members:
-   :show-inheritance:
-
 ralph.testing.audit_filesystem_read_consolidation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3954,13 +3947,6 @@ ralph.testing.audit_filesystem_write_consolidation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_filesystem_write_consolidation
-   :members:
-   :show-inheritance:
-
-ralph.testing.audit_filesystem_polling_invocation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.testing.audit_filesystem_polling_invocation
    :members:
    :show-inheritance:
 
