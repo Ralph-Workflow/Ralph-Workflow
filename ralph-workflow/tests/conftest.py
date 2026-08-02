@@ -43,6 +43,19 @@ pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _fake_agy_models_probe() -> Generator[None, None, None]:
+    """Keep default tests independent of the locally installed AGY binary."""
+    from ralph.agents import registry
+
+    original_probe = registry._default_agy_models_probe
+    registry._default_agy_models_probe = lambda: "\n".join(registry._AGY_MODELS)
+    try:
+        yield
+    finally:
+        registry._default_agy_models_probe = original_probe
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Disable pytest's unraisableexception teardown gc passes.
 
