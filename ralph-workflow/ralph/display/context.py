@@ -152,7 +152,7 @@ def _build_console(resolved_env: _ResolvedEnv) -> Console:
         return make_console(no_color=True, force_terminal=False)
     if resolved_env.force_color:
         return make_console(no_color=False, force_terminal=True)
-    return make_console()
+    return make_console(force_terminal=True)
 
 
 def _compute_width(

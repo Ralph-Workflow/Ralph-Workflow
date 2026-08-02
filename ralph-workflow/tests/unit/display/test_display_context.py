@@ -9,6 +9,8 @@ constants (``COMPACT_HEADLINE_MAX_CHARS`` etc.) are removed.
 
 from __future__ import annotations
 
+from io import StringIO
+
 import pytest
 from rich.console import Console
 
@@ -76,6 +78,16 @@ def test_color_enabled_by_default() -> None:
     console = Console(width=120)
     ctx = make_display_context(console=console, env={})
     assert ctx.color_enabled is True
+
+
+def test_display_context_regression_default_console_emits_color_off_tty() -> None:
+    """S-2: the default color-enabled context emits ANSI to a non-TTY stream."""
+    output = StringIO()
+    ctx = make_display_context(env={})
+    ctx.console.file = output
+    ctx.console.print("[theme.phase.development]development[/]")
+
+    assert "\x1b[38;2;" in output.getvalue()
 
 
 def test_default_mode_uses_single_fixed_limits() -> None:
