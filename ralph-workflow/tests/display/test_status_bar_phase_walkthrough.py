@@ -186,12 +186,11 @@ def test_terminal_phase_omits_outer_cycle(phase: str) -> None:
     )
 
 
-def test_status_bar_regression_floor_phase_labels_remain_distinct() -> None:
-    """DA-003: every default working phase has a distinct narrow bar label."""
+@pytest.mark.parametrize("width", [40, 60])
+def test_status_bar_regression_abbreviated_phase_labels_remain_distinct(width: int) -> None:
+    """S-3: every default phase has a distinct carrier when abbreviated."""
     policy = _load_default_policy()
-    phases = tuple(
-        phase for phase, definition in policy.phases.items() if definition.role != "terminal"
-    )
+    phases = tuple(policy.phases)
     rendered = {
         render_status_bar(
             StatusBarModel(
@@ -203,7 +202,7 @@ def test_status_bar_regression_floor_phase_labels_remain_distinct() -> None:
                 outer_dev_iteration=1,
                 outer_dev_cap=5,
             ),
-            _ctx(40),
+            _ctx(width),
         ).plain
         for phase in phases
     }

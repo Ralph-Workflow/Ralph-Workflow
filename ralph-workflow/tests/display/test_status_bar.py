@@ -598,7 +598,8 @@ def test_render_status_bar_workspace_phase_visible_at_narrow_widths(width: int) 
     # _MIN_PHASE_BUDGET chars for phase (so a recognizable prefix of
     # the human phase label renders).
     phase_label_prefixes = (
-        long_phase[:3],  # "Dev" — first 3 chars of "Development Analysis"
+        long_phase[:3],  # "Dev" — full-form prefix
+        "DAn",  # unique abbreviated carrier for development analysis
         long_phase[:4],  # "Deve"
         long_phase[:2],  # "De"
     )
@@ -2522,8 +2523,8 @@ def test_status_bar_abbreviates_phase_at_60() -> None:
 
     The spec abbreviates the phase label at the 60-col rung so the
     dropped path's budget can be redirected to recognisable
-    segments. The rendered bar must include the short form
-    (``dev``) and NOT the full ``Development`` label.
+    segments. Development Analysis uses its distinct ``DAn`` carrier
+    rather than sharing Development's ``Dev`` label.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
@@ -2536,8 +2537,9 @@ def test_status_bar_abbreviates_phase_at_60() -> None:
     )
     ctx = _make_display_context(width=60)
     plain = render_status_bar(model, ctx, home="/Users/alice").plain
-    assert "dev" in plain.lower(), (
-        f"DA-003: abbreviated phase 'dev' must render at width=60; got plain={plain!r}"
+    assert "DAn" in plain, (
+        f"DA-003: distinct abbreviated phase 'DAn' must render at width=60; "
+        f"got plain={plain!r}"
     )
     assert "Development" not in plain, (
         f"DA-003: full 'Development' must NOT render at width=60 "

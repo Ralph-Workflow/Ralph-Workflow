@@ -248,21 +248,18 @@ _PHASE_ABBREVIATIONS: dict[str, str] = {
     "development": "Dev",
     "development_commit_cleanup": "DCl",
     "development_commit": "DCm",
-    "development_analysis": "Dev",
+    "development_analysis": "DAn",
     "development_final_commit_cleanup": "FCl",
     "development_final_commit": "FCm",
     "complete": "DONE",
     "failed_terminal": "FAIL",
-    "failed": "FAIL",
     "cancelled": "CXL",
 }
 
 
 def _abbreviated_phase_label(label: str, budget: int, width: int) -> str:
-    """Return a readable narrow phase carrier, unique at the 40-col floor."""
+    """Return a readable phase carrier unique at every abbreviated width."""
     key = label.lower().replace(" ", "_")
-    if width <= _FLOOR_THRESHOLD and key == "development_analysis":
-        return _tail_truncate("DAn", budget)
     return _tail_truncate(_PHASE_ABBREVIATIONS.get(key, key.title()), budget)
 
 
