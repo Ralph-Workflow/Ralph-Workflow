@@ -1,14 +1,4 @@
-"""Tests for the package-wide filesystem-write consolidation audit.
-
-The audit replaces the curated allowlist of
-``audit_idempotent_write_adoption.py`` with a package-wide AST walk
-that rejects every raw ``write_text`` / ``write_bytes`` /
-``Path.write_text`` / ``Path.write_bytes`` call outside the
-sanctioned shared primitives, except where the call site carries an
-explicit ``# filesystem-write-ok: <reason>`` marker naming the
-behavioral contract (transient scratch, deliberately timestamped,
-genuine append-only stream, etc.).
-"""
+"""Tests for the package-wide filesystem-write consolidation audit."""
 
 from __future__ import annotations
 
@@ -71,8 +61,6 @@ def test_flags_unknown_raw_write_text(tmp_path: Path) -> None:
     assert violations[0].kind == "raw_write_text"
     assert violations[0].file_path == module_rel
     assert violations[0].line == 2
-    # Diagnostic must cite the approved primitive so the reader knows
-    # what to do instead of just that the check failed (D2).
     assert (
         "write_text_if_changed" in violations[0].message or "atomic_write" in violations[0].message
     )
@@ -446,15 +434,11 @@ def test_cli_returns_clean_when_no_violations(tmp_path: Path) -> None:
     clean_root = tmp_path / "ralph"
     clean_root.mkdir()
 
-    # Add a single compliant module so the walk has at least one
-    # file to scan.
     (clean_root / "good.py").write_text(
         "from ralph.mcp.artifacts.idempotent_write import write_text_if_changed\n",
         encoding="utf-8",
     )
 
-    # The audit defaults to walking package_root itself when no
-    # explicit package_roots are supplied.
     assert audit.main([str(clean_root)]) == 0
 
 
@@ -485,12 +469,6 @@ def test_missing_package_root_fails_closed(tmp_path: Path) -> None:
     assert violations[0].kind == "missing_package_root"
     assert violations[0].file_path == str(missing_root)
     assert "could not be walked" in violations[0].message
-
-
-# ---------------------------------------------------------------------------
-# Raw qualified-mutation detection (DA-001: open/write/rename/replace/...).
-# Each test exercises one entry in the audit's qualified-mutation table.
-# ---------------------------------------------------------------------------
 
 
 def test_flags_raw_os_replace(tmp_path: Path) -> None:
@@ -999,7 +977,6 @@ def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> No
         package_root, module_paths=(module_rel,)
     )
     assert any(v.kind == "raw_replace" for v in violations)
-    # D2: diagnostic names the sanctioned primitive.
     assert any("idempotent_write" in v.message for v in violations)
 
 

@@ -311,9 +311,10 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: sixteen plain-pytest shards keep the slowest shard below
-    # the immutable combined budget on the maintained 32-core CI profile.
-    assert test_suites_module._pytest_workers() == "16"
+    # Regression: preserve one core while capping the verified profile at
+    # sixteen shards, regardless of the host running the suite.
+    expected = str(max(1, min(16, (test_suites_module.os.cpu_count() or 2) - 1)))
+    assert test_suites_module._pytest_workers() == expected
 
 
 def test_explicit_worker_count_overrides_the_auto_resolution(

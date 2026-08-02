@@ -872,7 +872,7 @@ class ParallelDisplay:
         return f"{timestamp} {''.ljust(len(f'[{tag}]') + len(unit_id) + 2)}"
 
     @staticmethod
-    def _wrap_close_body(  # noqa: PLR0911 - bounded close-row wrapping branches
+    def _wrap_close_body(
         header: str,
         visible: str,
         *,
@@ -902,46 +902,14 @@ class ParallelDisplay:
             return [first_line]
         trailer_idx = visible.rfind("(truncated,")
         if trailer_idx > 0:
-            head = visible[:trailer_idx].rstrip()
-            trailer = visible[trailer_idx:]
-            first_line_with_head = f"{header} {head}"
-            if cell_len(first_line_with_head) + chrome_prefix_width <= total_width:
-                return [first_line_with_head, trailer]
-            # The head (content before the trailer) does not fit in
-            # one chrome-prefixed row; split it into wrapped rows so
-            # each row stays under the terminal width while preserving
-            # the substring contract (e.g. ``CONDENSE-<unit>`` stays on
-            # a single row). The trailer is always emitted on its own
-            # row because it carries the atomic
-            # `` B, see .agent/raw/<unit>.log`` substring.
-            # The first row's chrome (timestamp + badge) is
-            # prepended by ``_activity_text``; subtract its width
-            # so a wide header does not push the head's first row
-            # past the console width and clip the middle of a
-            # marker like ``CONDENSE-<unit>``.
-            cont_budget_for_head = max(
-                1, total_width - cell_len(f"{header} ") - chrome_prefix_width
+            return ParallelDisplay._wrap_close_body_with_trailer(
+                header,
+                visible,
+                trailer_idx=trailer_idx,
+                total_width=total_width,
+                hang_prefix=hang_prefix,
+                chrome_prefix_width=chrome_prefix_width,
             )
-            head_rows = ParallelDisplay._wrap_trailing_words(head, total_width=cont_budget_for_head)
-            first_row = head_rows[0] if head_rows else head
-            # If the first row is itself wider than the chrome-prefixed
-            # budget (e.g. a single ``CONDENSE-<unit>`` token that is
-            # one cell wider than the head budget on a narrow terminal),
-            # move it to a continuation so the marker survives as a
-            # contiguous substring and Rich does not crop its tail on
-            # the chrome-prefixed first row. The continuation uses
-            # ``hang_prefix`` (one cell narrower than the chrome) so a
-            # 27-col marker fits in a 100-col terminal.
-            if head_rows and cell_len(first_row) > cont_budget_for_head:
-                head_rows = head_rows[1:] if len(head_rows) > 1 else []
-                tail_rows = [first_row, *head_rows]
-                first_row = ""
-            else:
-                tail_rows = head_rows[1:] if head_rows else []
-            first_chunk = f"{header} {first_row}"
-            cont_budget = max(1, total_width - cell_len(hang_prefix))
-            trailer_rows = ParallelDisplay._split_long_trailer(trailer, total_width=cont_budget)
-            return [first_chunk, *tail_rows, *trailer_rows]
         # The first row's chrome is the same width as ``hang_prefix``
         # (timestamp + badge + trailing space); ``_activity_text``
         # prepends it before the header. Subtract it from the
@@ -972,38 +940,68 @@ class ParallelDisplay:
         first_token = remaining.split(" ", 1)[0]
         if cell_len(first_token) > first_budget and cell_len(first_token) <= cont_budget:
             chunks.append(first_token)
-            rest = remaining[len(first_token) :].lstrip()
-            if not rest:
-                return [f"{header} {chunks[0]}"]
-            remaining = rest
+            remaining = remaining[len(first_token) :].lstrip()
         # First iteration: first-row chunk fits within ``first_budget``,
         # which is the terminal width minus the chrome prefix. The
         # first chunk is taken as the longest word-boundary prefix that
         # fits; if NO word fits, a single character is taken so the
         # joined passage never silently disappears.
-        budget = first_budget
-        head_words: list[str] = []
-        tail_words = remaining.split(" ")
-        while tail_words and cell_len(" ".join([*head_words, tail_words[0]])) <= budget:
-            head_words.append(tail_words.pop(0))
-        if head_words:
-            first_chunk = " ".join(head_words)
-            remaining = " ".join(tail_words)
+        if chunks and not remaining:
+            first_chunk = chunks[0]
+            continuation_rows: list[str] = []
         else:
-            # No single word fits in the first-row budget; take a
-            # single character so the first row carries the prefix
-            # start without dropping the body. Continuation rows then
-            # carry the rest with the full terminal width budget.
-            first_chunk = remaining[0]
-            remaining = remaining[1:]
-        chunks.append(first_chunk)
-        if not remaining:
-            return [f"{header} {chunks[0]}"]
-        # Continuation rows use the terminal width MINUS the hang-prefix
-        # width because the caller hangs them under the body column,
-        # not under the chrome prefix.
-        continuation_rows = ParallelDisplay._wrap_trailing_words(remaining, total_width=cont_budget)
+            budget = first_budget
+            head_words: list[str] = []
+            tail_words = remaining.split(" ")
+            while tail_words and cell_len(" ".join([*head_words, tail_words[0]])) <= budget:
+                head_words.append(tail_words.pop(0))
+            if head_words:
+                first_chunk = " ".join(head_words)
+                remaining = " ".join(tail_words)
+            else:
+                # No single word fits in the first-row budget; take a
+                # single character so the first row carries the prefix
+                # start without dropping the body. Continuation rows then
+                # carry the rest with the full terminal width budget.
+                first_chunk = remaining[0]
+                remaining = remaining[1:]
+            chunks.append(first_chunk)
+            # Continuation rows use the terminal width MINUS the hang-prefix
+            # width because the caller hangs them under the body column,
+            # not under the chrome prefix.
+            continuation_rows = ParallelDisplay._wrap_trailing_words(
+                remaining, total_width=cont_budget
+            )
         return [f"{header} {chunks[0]}", *continuation_rows]
+
+    @staticmethod
+    def _wrap_close_body_with_trailer(
+        header: str,
+        visible: str,
+        *,
+        trailer_idx: int,
+        total_width: int,
+        hang_prefix: str,
+        chrome_prefix_width: int,
+    ) -> list[str]:
+        """Wrap a condensed body while keeping its trailer intact."""
+        head = visible[:trailer_idx].rstrip()
+        trailer = visible[trailer_idx:]
+        first_line_with_head = f"{header} {head}"
+        if cell_len(first_line_with_head) + chrome_prefix_width <= total_width:
+            return [first_line_with_head, trailer]
+        cont_budget_for_head = max(1, total_width - cell_len(f"{header} ") - chrome_prefix_width)
+        head_rows = ParallelDisplay._wrap_trailing_words(head, total_width=cont_budget_for_head)
+        first_row = head_rows[0] if head_rows else head
+        if head_rows and cell_len(first_row) > cont_budget_for_head:
+            head_rows = head_rows[1:] if len(head_rows) > 1 else []
+            tail_rows = [first_row, *head_rows]
+            first_row = ""
+        else:
+            tail_rows = head_rows[1:] if head_rows else []
+        cont_budget = max(1, total_width - cell_len(hang_prefix))
+        trailer_rows = ParallelDisplay._split_long_trailer(trailer, total_width=cont_budget)
+        return [f"{header} {first_row}", *tail_rows, *trailer_rows]
 
     @staticmethod
     def _wrap_trailing_words(remaining: str, *, total_width: int) -> list[str]:
