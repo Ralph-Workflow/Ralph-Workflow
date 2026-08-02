@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -51,6 +52,19 @@ class LauncherWriter(Protocol):
     def __call__(self, path: Path, content: str) -> None: ...
 
 
+class BuildMetaWriter(Protocol):
+    """Protocol for stamping runtime-only snapshot metadata."""
+
+    def __call__(
+        self,
+        package_dir: Path,
+        flavor: str,
+        *,
+        source_commit: str = "",
+        installed_at: str = "",
+    ) -> None: ...
+
+
 def _run_command(command: Sequence[str], *, cwd: Path) -> None:
     cmd = tuple(command)
     result = run_process(cmd[0], cmd[1:], options=ProcessRunOptions(cwd=cwd))
@@ -84,10 +98,40 @@ def write_dev_launcher(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
-def _write_build_flavor(package_dir: Path, flavor: str) -> None:
+def _utc_now_iso8601() -> str:
+    """Return the current UTC time for runtime-only snapshot provenance."""
+    return datetime.now(UTC).isoformat()
+
+
+def _resolve_source_commit(source_dir: Path) -> str:
+    """Return the source checkout commit, or an empty stamp when unavailable."""
+    try:
+        result = run_process(
+            "git",
+            ("rev-parse", "HEAD"),
+            options=ProcessRunOptions(cwd=source_dir, timeout=5.0),
+        )
+    except (OSError, ProcessExecutionError):
+        return ""
+    return result.stdout.strip() if result.succeeded else ""
+
+
+def _write_build_flavor(
+    package_dir: Path,
+    flavor: str,
+    *,
+    source_commit: str = "",
+    installed_at: str = "",
+) -> None:
     build_meta = package_dir / "ralph" / "_build_meta.py"
     content = build_meta.read_text(encoding="utf-8")
     updated_content = content.replace('BUILD_FLAVOR: str = ""', f'BUILD_FLAVOR: str = "{flavor}"')
+    updated_content = updated_content.replace(
+        'BUILD_SOURCE_COMMIT: str = ""', f'BUILD_SOURCE_COMMIT: str = "{source_commit}"'
+    )
+    updated_content = updated_content.replace(
+        'BUILD_INSTALLED_AT: str = ""', f'BUILD_INSTALLED_AT: str = "{installed_at}"'
+    )
     write_text_if_changed(DEFAULT_FILE_BACKEND, build_meta, updated_content, encoding="utf-8")
 
 
@@ -99,7 +143,9 @@ def install_dev_checkout(
     launcher_dir: Path,
     install_root: Path | None = None,
     copy_tree: Callable[[Path, Path], Path] = copy_install_tree,
-    write_flavor: Callable[[Path, str], None] = _write_build_flavor,
+    write_flavor: BuildMetaWriter = _write_build_flavor,
+    resolve_commit: Callable[[Path], str] = _resolve_source_commit,
+    installed_at: Callable[[], str] = _utc_now_iso8601,
     write_launcher: LauncherWriter = write_dev_launcher,
     flavor: str = "-dev",
 ) -> None:
@@ -119,7 +165,12 @@ def install_dev_checkout(
         install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev"
     ) / "current"
     copied_dir = copy_tree(cwd, destination)
-    write_flavor(copied_dir, flavor)
+    write_flavor(
+        copied_dir,
+        flavor,
+        source_commit=resolve_commit(cwd),
+        installed_at=installed_at(),
+    )
     run((uv_executable, "sync", "--extra", "dev"), cwd=copied_dir)
     write_launcher(launcher_dir / DEV_LAUNCHER_NAME, render_dev_launcher(copied_dir))
 
@@ -133,7 +184,9 @@ def install_stable_release(
     from_path: Path | None = None,
     which_fn: Callable[[str], str | None] = shutil.which,
     resolve_installed_package_file: Callable[[str], Path | None] = resolve_package_file,
-    write_flavor: Callable[[Path, str], None] = _write_build_flavor,
+    write_flavor: BuildMetaWriter = _write_build_flavor,
+    resolve_commit: Callable[[Path], str] = _resolve_source_commit,
+    installed_at: Callable[[], str] = _utc_now_iso8601,
 ) -> None:
     """Install a stable release as the isolated global ``ralph`` command.
 
@@ -166,7 +219,12 @@ def install_stable_release(
             raise RuntimeError(
                 "Installed ralph package could not be located to mark it as a manual build."
             )
-        write_flavor(installed_package_file.parents[1], "-build")
+        write_flavor(
+            installed_package_file.parents[1],
+            "-build",
+            source_commit=resolve_commit(cwd),
+            installed_at=installed_at(),
+        )
 
 
 class _InstallArgs(argparse.Namespace):

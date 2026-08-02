@@ -253,8 +253,14 @@ def _swap_staged_index(
     # against either the new file (success) or the prior file
     # (failure). The re-open happens in a ``finally``-like
     # pattern via the explicit try/except blocks below.
-    with suppress(sqlite3.ProgrammingError):
-        store._conn.close()
+    try:
+        with suppress(sqlite3.ProgrammingError):
+            store._conn.close()
+    except BaseException:
+        # A signal can interrupt close itself. Reopen before propagating so
+        # the outer failure finalizer can still read the committed generation.
+        store.reopen()
+        raise
     # AC-05: deadline/cancel check after the connection close.
     # The close is irreversible for the duration of this call,
     # so a deadline that expires here MUST refuse to publish.

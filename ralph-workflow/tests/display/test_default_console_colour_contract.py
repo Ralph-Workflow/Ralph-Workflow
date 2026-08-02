@@ -41,6 +41,28 @@ def test_display_context_default_console_keeps_colour_enabled() -> None:
     assert ctx.console.no_color is False
 
 
+def test_display_context_regression_runtime_environment_keeps_colour_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S-2: production env resolution must never silently disable ANSI colour."""
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    for name in ("NO_COLOR", "FORCE_COLOR"):
+        monkeypatch.delenv(name, raising=False)
+
+    ctx = make_display_context()
+
+    assert ctx.console.color_system is not None
+    assert ctx.color_enabled is True
+
+
+def test_make_console_regression_none_override_still_enables_colour() -> None:
+    """S-2: an omitted colour system must resolve to Rich's auto mode, not None."""
+    console = make_console(force_terminal=True, color_system=None)
+
+    assert console.color_system is not None
+
+
 def test_no_color_still_disables_output() -> None:
     """The explicit standard disable switch remains authoritative."""
     env = {**_colour_env(), "NO_COLOR": "1"}

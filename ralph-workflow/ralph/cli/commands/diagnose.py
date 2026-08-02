@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, cast
 from rich.text import Text
 
 import ralph
+from ralph import _build_meta
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
@@ -160,12 +161,31 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
         ("Colour disabled", str(ctx.console.no_color), "", "", ""),
         ("Terminal", str(ctx.console.is_terminal), "", "", ""),
         ("Background is light", str(ctx.terminal_background_is_light), "", "", ""),
+        ("Build flavor", _build_meta.BUILD_FLAVOR or "(none)", "", "", ""),
+        ("Built from commit", _build_meta.BUILD_SOURCE_COMMIT or "(unknown)", "", "", ""),
+        ("Installed at", _build_meta.BUILD_INSTALLED_AT or "(unknown)", "", "", ""),
     ]
     rows.extend(
         (name, ctx.env.get(name, "(unset)"), "", "", "")
-        for name in ("TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR", "RALPH_TERMINAL_BG")
+        for name in (
+            "TERM",
+            "COLORTERM",
+            "NO_COLOR",
+            "FORCE_COLOR",
+            "RALPH_TERMINAL_BG",
+            "PYTHONPATH",
+            "VIRTUAL_ENV",
+        )
     )
     _emit_simple_table(display, "Terminal / colour", rows)
+    if ctx.console.color_system is None:
+        from ralph.display.parallel_display import ParallelDisplay
+
+        assert isinstance(display, ParallelDisplay)
+        display.emit_status(
+            "Warning: colour system is unset; this means the Console was built with "
+            "color_system=None or its destination is not a TTY."
+        )
 
 
 def _check_capability_state(*, display: object) -> bool:
@@ -641,10 +661,7 @@ def _check_agents_impl(
     *,
     display: object,
 ) -> bool:
-    """Internal: check agent availability with a pre-resolved display.
-
-    Returns True if any agent is missing from PATH.
-    """
+    """Return whether any configured agent is unavailable on PATH."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -781,7 +798,7 @@ def _print_agent_transport_compatibility(
     healthy_servers: tuple[UpstreamMcpServer, ...],
     workspace_root: Path,
 ) -> None:
-    """Print per-agent MCP transport compatibility for healthy custom servers."""
+    """Render per-agent transport compatibility for healthy custom servers."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -814,7 +831,7 @@ def _print_agent_transport_compatibility(
 
 
 def _print_effective_session_mcp_inventory(display: object, workspace_root: Path) -> None:
-    """Print the effective session MCP inventory table through the active display."""
+    """Render the effective session MCP inventory."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -854,11 +871,11 @@ def _check_workspace_files(*, display: object) -> bool:
     assert isinstance(display, ParallelDisplay)
     rows: list[tuple[object, ...]] = []
 
-    workspace_files = [
+    workspace_files = (
         ("PROMPT.md", "Implementation prompt"),
         (".agent/ralph-workflow.toml", "Local config"),
         (".agent/checkpoint.json", "Checkpoint"),
-    ]
+    )
 
     for file_path, description in workspace_files:
         path = Path(file_path)
@@ -866,8 +883,7 @@ def _check_workspace_files(*, display: object) -> bool:
         file_label.append(f"{file_path} ({description})")
         # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
         if path.exists():
-            # filesystem-read-ok: explicit diagnose command reports each operator-visible workspace path
-            size = path.stat().st_size
+            size = path.stat().st_size  # filesystem-read-ok: explicit diagnose command reports file size
             rows.append(
                 (
                     file_label,
@@ -890,15 +906,7 @@ def _check_workspace_files(*, display: object) -> bool:
 
 
 def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
-    """Render the FsHealth snapshot (RFC-013 P4) into the diagnose output.
-
-    Builds the section from a real :class:`FsHealth.gather` (via the
-    :func:`_run_fs_health_for_diagnose` test seam) so the operator-facing
-    "External-volume filesystem hygiene" mitigations surface here as the
-    docs/sphinx/diagnostics.md documentation promises. The function
-    always returns True — fs-health findings are advisory and must not
-    flip ``config_ok``.
-    """
+    """Render advisory filesystem-health diagnostics."""
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -955,10 +963,7 @@ def _status_text(label: str, detail: str, style: str) -> Text:
     return text
 
 
-def check_git_repo(
-    *,
-    display_context: DisplayContext | None = None,
-) -> bool:
+def check_git_repo(*, display_context: DisplayContext | None = None) -> bool:
     """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
@@ -988,10 +993,7 @@ def check_mcp_servers(
     return _check_mcp_servers(workspace_scope, display=display)
 
 
-def check_workspace_files(
-    *,
-    display_context: DisplayContext | None = None,
-) -> bool:
+def check_workspace_files(*, display_context: DisplayContext | None = None) -> bool:
     """Public check helper that resolves an active display from a context."""
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)

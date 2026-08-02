@@ -88,6 +88,11 @@ side. They never collide because the dev build registers no global `ralph` comma
 - **Manual build** — `make install` copies this checkout to
   `~/.local/share/ralph-workflow-dev/current`, syncs that copy, and writes an
   `rdev` launcher to `~/.local/bin/rdev`. Its `--version` ends in `-build`.
+  If all output is uncoloured (often white on black), run `rdev diagnose`:
+  compare `Loaded package` and `Built from commit`, then rerun `make install`
+  when the snapshot predates the checkout. A `PYTHONPATH` or `VIRTUAL_ENV`
+  pointing at that snapshot makes it win over the editable install, even from
+  inside the repository.
 - **Dev build** — `make dev` refreshes the same self-contained snapshot and
   `rdev` launcher, but its `--version` ends in `-dev`. From inside the repo you
   can still use `uv run ralph`. Neither source-checkout build writes a global

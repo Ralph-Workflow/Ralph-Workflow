@@ -8,6 +8,8 @@ from __future__ import annotations
 from ralph import _BASE_VERSION
 
 BUILD_FLAVOR: str = ""
+BUILD_SOURCE_COMMIT: str = ""
+BUILD_INSTALLED_AT: str = ""
 
 
 def flavored_version() -> str:

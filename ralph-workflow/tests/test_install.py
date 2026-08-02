@@ -83,7 +83,14 @@ def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
         assert source == package_dir
         return destination
 
-    def fake_flavor(path: Path, flavor: str) -> None:
+    def fake_flavor(
+        path: Path,
+        flavor: str,
+        *,
+        source_commit: str = "",
+        installed_at: str = "",
+    ) -> None:
+        del source_commit, installed_at
         flavors.append((path, flavor))
 
     install_module.install_dev_checkout(
@@ -198,7 +205,7 @@ def test_install_stable_release_marks_local_wheel_as_manual_build() -> None:
         resolve_installed_package_file=lambda _exe: Path(
             "/home/u/.local/share/uv/tools/ralph-workflow/lib/python3.14/site-packages/ralph/__init__.py"
         ),
-        write_flavor=lambda path, flavor: flavors.append((path, flavor)),
+        write_flavor=lambda path, flavor, **_kwargs: flavors.append((path, flavor)),
     )
 
     assert commands == [
@@ -346,15 +353,69 @@ def test_flavored_version_reports_build_and_dev_suffixes(monkeypatch: pytest.Mon
         assert _build_meta.flavored_version() == _build_meta._BASE_VERSION + flavor
 
 
-def test_write_build_flavor_changes_only_the_runtime_suffix(tmp_path: Path) -> None:
+def test_install_dev_checkout_stamps_snapshot_provenance() -> None:
+    """S-3: copied snapshots retain their source commit and installation time."""
+    package_dir = Path("/tmp/ralph-workflow")
+    copied_dir = Path("/install/current")
+    written: dict[str, str] = {}
+
+    def fake_writer(
+        _path: Path,
+        _flavor: str,
+        *,
+        source_commit: str = "",
+        installed_at: str = "",
+    ) -> None:
+        written["source_commit"] = source_commit
+        written["installed_at"] = installed_at
+
+    install_module.install_dev_checkout(
+        run=lambda _command, *, cwd: None,
+        uv_executable="uv",
+        cwd=package_dir,
+        launcher_dir=Path("/bin"),
+        install_root=Path("/install"),
+        copy_tree=lambda _source, _destination: copied_dir,
+        write_flavor=fake_writer,
+        resolve_commit=lambda _source: "abc123",
+        installed_at=lambda: "2026-08-02T12:00:00+00:00",
+        write_launcher=lambda _path, _content: None,
+    )
+
+    assert written == {
+        "source_commit": "abc123",
+        "installed_at": "2026-08-02T12:00:00+00:00",
+    }
+
+
+def test_write_build_flavor_stamps_runtime_provenance(tmp_path: Path) -> None:
     package_dir = tmp_path / "snapshot"
     build_meta = package_dir / "ralph" / "_build_meta.py"
     build_meta.parent.mkdir(parents=True)
-    build_meta.write_text('BUILD_FLAVOR: str = ""\n', encoding="utf-8")
+    build_meta.write_text(
+        'BUILD_FLAVOR: str = ""\n'
+        'BUILD_SOURCE_COMMIT: str = ""\n'
+        'BUILD_INSTALLED_AT: str = ""\n',
+        encoding="utf-8",
+    )
 
-    install_module._write_build_flavor(package_dir, "-dev")
+    install_module._write_build_flavor(
+        package_dir,
+        "-dev",
+        source_commit="abc123",
+        installed_at="2026-08-02T12:00:00+00:00",
+    )
 
-    assert build_meta.read_text(encoding="utf-8") == 'BUILD_FLAVOR: str = "-dev"\n'
+    assert build_meta.read_text(encoding="utf-8") == (
+        'BUILD_FLAVOR: str = "-dev"\n'
+        'BUILD_SOURCE_COMMIT: str = "abc123"\n'
+        'BUILD_INSTALLED_AT: str = "2026-08-02T12:00:00+00:00"\n'
+    )
+
+
+def test_resolve_source_commit_returns_empty_for_non_git_directory(tmp_path: Path) -> None:
+    """S-3: unavailable git provenance must not block installation."""
+    assert install_module._resolve_source_commit(tmp_path) == ""
 
 
 def test_render_dev_launcher_runs_checkout_via_uv() -> None:
