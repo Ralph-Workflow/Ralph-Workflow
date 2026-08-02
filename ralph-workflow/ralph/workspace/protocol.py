@@ -169,7 +169,8 @@ class Workspace(Protocol):
         Raises:
             FileNotFoundError: If file doesn't exist.
             UnicodeDecodeError: If the byte range cannot be decoded as UTF-8.
-            ValueError: If the requested byte range exceeds ``max_bytes``.
+            ValueError: If ``offset`` or ``limit`` is negative, or the requested
+                byte range exceeds ``max_bytes``.
         """
         ...
 

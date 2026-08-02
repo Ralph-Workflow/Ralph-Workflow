@@ -114,3 +114,11 @@ class TestFsWorkspaceReadBytes:
 
         assert text == "ijk"
         assert meta == {"total_bytes": 11, "returned_bytes": 3, "truncated": False}
+
+    def test_read_bytes_regression_rejects_a_negative_window_limit(self, tmp_path: Path) -> None:
+        """S-4: a negative limit cannot bypass the requested-window size guard."""
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "large.txt").write_text("abcdefghijk", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="limit must not be negative"):
+            ws.read_bytes("large.txt", limit=-1, max_bytes=10)

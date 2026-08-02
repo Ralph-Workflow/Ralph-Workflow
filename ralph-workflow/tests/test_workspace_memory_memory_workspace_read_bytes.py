@@ -52,3 +52,11 @@ class TestMemoryWorkspaceReadBytes:
 
         with pytest.raises(FileNotFoundError):
             ws.read_bytes("nonexistent.txt")
+
+    def test_read_bytes_rejects_a_negative_window_limit(self) -> None:
+        """S-4: the in-memory workspace matches the public window validation contract."""
+        ws = MemoryWorkspace()
+        ws.write("large.txt", "abcdefghijk")
+
+        with pytest.raises(ValueError, match="limit must not be negative"):
+            ws.read_bytes("large.txt", limit=-1, max_bytes=10)

@@ -329,13 +329,18 @@ class MemoryWorkspace:
         max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Read a byte window from a file, decoded as UTF-8."""
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+        if limit is not None and limit < 0:
+            raise ValueError("limit must not be negative")
+
         normalized = self._normalize(path)
         if normalized not in self._storage:
             raise FileNotFoundError(f"File not found: {path}")
         raw = self._storage[normalized].encode("utf-8")
         total_bytes = len(raw)
-        available_bytes = max(0, total_bytes - max(0, offset))
-        requested_bytes = available_bytes if limit is None else min(available_bytes, max(0, limit))
+        available_bytes = max(0, total_bytes - offset)
+        requested_bytes = available_bytes if limit is None else min(available_bytes, limit)
         if max_bytes is not None and requested_bytes > max_bytes:
             raise ValueError(
                 f"File too large for read_bytes: requested {requested_bytes} bytes exceeds "

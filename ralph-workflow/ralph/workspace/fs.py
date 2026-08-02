@@ -398,18 +398,23 @@ class FsWorkspace:
     ) -> tuple[str, dict[str, object]]:
         """Read a UTF-8 byte window without loading an unbounded full file.
 
-        A bounded window may be read from a larger file. The requested byte
-        range is rejected when it exceeds the configured ceiling before the
-        file is opened.
+        A bounded window may be read from a larger file. Negative offsets and
+        limits are invalid, and the requested byte range is rejected when it
+        exceeds the configured ceiling before the file is opened.
         """
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+        if limit is not None and limit < 0:
+            raise ValueError("limit must not be negative")
+
         abs_path = self._abs(path)
         try:
             total_bytes = abs_path.stat().st_size
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {path}") from None
         ceiling = max_bytes if max_bytes is not None else MAX_READ_BYTES
-        available_bytes = max(0, total_bytes - max(0, offset))
-        requested_bytes = available_bytes if limit is None else min(available_bytes, max(0, limit))
+        available_bytes = max(0, total_bytes - offset)
+        requested_bytes = available_bytes if limit is None else min(available_bytes, limit)
         if requested_bytes > ceiling:
             raise ValueError(
                 f"File too large for read_bytes: requested {requested_bytes} bytes exceeds "
