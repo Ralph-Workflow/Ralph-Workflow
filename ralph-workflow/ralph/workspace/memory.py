@@ -88,13 +88,38 @@ class MemoryWorkspace:
         return self._storage[normalized]
 
     def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
-        """Return one coherent in-memory observation for a logical request."""
+        """Return one coherent in-memory observation for a logical request.
+
+        Read directly from the storage boundary rather than composing ``stat``
+        and ``read`` calls, so consumers needing both metadata and content do
+        not make redundant observations.
+        """
         normalized = self._normalize(path)
-        stat = self.stat(normalized)
-        content = self._storage.get(normalized) if stat.get("type") == "file" else None
-        if max_bytes is not None and isinstance(content, str) and len(content.encode("utf-8")) > max_bytes:
-            content = None
-        return WorkspaceSnapshot(stat=stat, content=content)
+        if normalized in self._dirs:
+            return WorkspaceSnapshot(
+                stat={
+                    "type": "dir",
+                    "size_bytes": 0,
+                    "created_unix": None,
+                    "modified_unix": None,
+                    "mode": None,
+                },
+                content=None,
+            )
+        content = self._storage.get(normalized)
+        if content is not None:
+            size_bytes = len(content.encode("utf-8"))
+            return WorkspaceSnapshot(
+                stat={
+                    "type": "file",
+                    "size_bytes": size_bytes,
+                    "created_unix": None,
+                    "modified_unix": None,
+                    "mode": None,
+                },
+                content=content if max_bytes is None or size_bytes <= max_bytes else None,
+            )
+        return WorkspaceSnapshot(stat={"type": "missing"}, content=None)
 
     def write(self, path: str, content: str) -> None:
         """Write content to file.

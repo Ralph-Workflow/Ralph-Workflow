@@ -23,10 +23,10 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | W6 | Atomic artifact persistence | identical replay skips directory sync | COVERED for helper; durability policy inventory is GAP. |
 | W7 | History, cache, and run directories | Existing retention owners | GAP: characterize every accumulating path and its policy. |
 | W8 | Engine-internal stores | Existing workspace/run scoping | GAP: identify watched-tree internal state eligible for relocation. |
-| R1 | `FileBackend`; `Workspace` | `audit_filesystem_read_consolidation` | GAP: behavioral per-operation read reuse inventory. |
+| R1 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: its one snapshot no longer composes `stat`/`read`; broader reader inventory remains GAP. |
 | R2 | `FsWorkspace.iter_files` | shared skip set and read audit | GAP: symlink-cycle and all traversal-owner coverage. |
 | R3 | `FsWorkspace.read_lines` and `read_bytes` | bounded read implementation/tests | GAP: all reader call sites and bounded snapshots. |
-| R4 | `FileBackend.exists`; `Workspace.stat` | read-consolidation audit | GAP: eliminate repeated probe/read pairs behaviorally. |
+| R4 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: metadata and content share one observation; broader probe/read inventory remains GAP. |
 | R5 | Explore index and workspace traversal | explore-index lifecycle tests | GAP: prove no-op index reuse rather than rewalk. |
 | P1 | `WorkspaceMonitor.start` | `tests/agents/test_workspace_watch_scoping.py`; baseline test | COVERED for one monitor; cross-process coordination is GAP. |
 | P2 | `WorkspaceChangeClassifier` | watch-scoping classifier tests | GAP: enumerate standing engine-internal exclusions. |
@@ -84,7 +84,7 @@ contract at the call site.
 
 ## Next Step
 
-Use the next unresolved row to create a red black-box test before changing production code. The highest-value current gap is an instrumented workspace observation boundary that can prove R1/R3/R4 behavior without host filesystem access.
+Use the next unresolved row to create a red black-box test before changing production code. The highest-value current gap is the broader R3 reader inventory: prove bounded snapshots and partial-reader call sites do not re-open or load more than their requested window.
 
 ## Documentation review note
 

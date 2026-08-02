@@ -111,44 +111,36 @@ class FsWorkspace:
         """
         abs_path = self._abs(path)
         try:
-            initial_stat = abs_path.stat()
+            with abs_path.open("rb") as fh:
+                st = os.fstat(fh.fileno())
+                stat = {
+                    "type": "file",
+                    "size_bytes": st.st_size,
+                    "created_unix": st.st_ctime,
+                    "modified_unix": st.st_mtime,
+                    "mode": st.st_mode,
+                }
+                if max_bytes is not None and st.st_size > max_bytes:
+                    return WorkspaceSnapshot(stat=stat, content=None)
+                raw = fh.read()
         except FileNotFoundError:
             return WorkspaceSnapshot(stat={"type": "missing"}, content=None)
-        if S_ISDIR(initial_stat.st_mode):
+        except IsADirectoryError:
+            try:
+                st = abs_path.stat()
+            except FileNotFoundError:
+                return WorkspaceSnapshot(stat={"type": "missing"}, content=None)
             return WorkspaceSnapshot(
                 stat={
                     "type": "dir",
                     "size_bytes": 0,
-                    "created_unix": initial_stat.st_ctime,
-                    "modified_unix": initial_stat.st_mtime,
-                    "mode": initial_stat.st_mode,
+                    "created_unix": st.st_ctime,
+                    "modified_unix": st.st_mtime,
+                    "mode": st.st_mode,
                 },
                 content=None,
             )
-        if max_bytes is not None and initial_stat.st_size > max_bytes:
-            return WorkspaceSnapshot(
-                stat={
-                    "type": "file",
-                    "size_bytes": initial_stat.st_size,
-                    "created_unix": initial_stat.st_ctime,
-                    "modified_unix": initial_stat.st_mtime,
-                    "mode": initial_stat.st_mode,
-                },
-                content=None,
-            )
-        with abs_path.open("rb") as fh:
-            raw = fh.read()
-            st = os.fstat(fh.fileno())
-        return WorkspaceSnapshot(
-            stat={
-                "type": "file",
-                "size_bytes": st.st_size,
-                "created_unix": st.st_ctime,
-                "modified_unix": st.st_mtime,
-                "mode": st.st_mode,
-            },
-            content=raw.decode("utf-8"),
-        )
+        return WorkspaceSnapshot(stat=stat, content=raw.decode("utf-8"))
 
     def write(self, path: str, content: str) -> None:
         """Write content to file.

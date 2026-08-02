@@ -62,7 +62,18 @@ class TestHandleReadFile:
         assert "file contents" in result.content[0].text
         assert ws.snapshot_count == 1
         assert ws.read_count == 0
-        assert ws.stat_count == 1
+        assert ws.stat_count == 0
+
+    def test_snapshot_preserves_directory_type_when_memory_workspace_has_a_name_collision(self) -> None:
+        """S-4: one observation preserves the workspace's public directory semantics."""
+        ws = MemoryWorkspace()
+        ws.create_dir("occupied")
+        ws.write("occupied", "not readable as a file")
+
+        snapshot = ws.snapshot("occupied")
+
+        assert snapshot.stat["type"] == "dir"
+        assert snapshot.content is None
 
     def test_missing_capability_raises(self) -> None:
         ws = MagicMock()
