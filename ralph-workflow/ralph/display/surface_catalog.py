@@ -17,6 +17,7 @@ class SurfaceSpec:
     overflow_policy: str = "fold: preserve carriers and recovery-relevant tails"
     scene: str = "clean_run"
     entry_points: tuple[str, ...] = ()
+    production_entry_points: tuple[str, ...] = ()
 
 
 SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
@@ -27,6 +28,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "frame: operator welcome",
         scene="first_screen",
         entry_points=("emit_welcome_banner",),
+        production_entry_points=("ParallelDisplay.emit_welcome_banner",),
     ),
     SurfaceSpec(
         "first_run",
@@ -35,6 +37,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "frame: first-run guidance",
         scene="first_screen",
         entry_points=("emit_first_run_panel",),
+        production_entry_points=("ParallelDisplay.emit_first_run_panel",),
     ),
     SurfaceSpec(
         "run_open",
@@ -43,6 +46,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "frame: outcome-first run identity",
         scene="first_screen",
         entry_points=("emit_run_start",),
+        production_entry_points=("ParallelDisplay.emit_run_start",),
     ),
     SurfaceSpec(
         "phase_open",
@@ -50,6 +54,10 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="rule: phase, state, duration",
         scene="clean_run",
         entry_points=("emit_phase_start", "emit_phase_start_from_entry"),
+        production_entry_points=(
+            "ParallelDisplay.emit_phase_start",
+            "ParallelDisplay.emit_phase_start_from_entry",
+        ),
     ),
     SurfaceSpec(
         "phase_close",
@@ -57,6 +65,11 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="rule: phase, outcome, duration",
         scene="clean_run",
         entry_points=("emit_phase_close", "emit_phase_close_from_exit", "emit_phase_close_banner"),
+        production_entry_points=(
+            "ParallelDisplay.emit_phase_close",
+            "ParallelDisplay.emit_phase_close_from_exit",
+            "ParallelDisplay.emit_phase_close_banner",
+        ),
     ),
     SurfaceSpec(
         "phase_transition",
@@ -64,6 +77,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="rule: previous outcome, next phase",
         scene="clean_run",
         entry_points=("emit_phase_transition",),
+        production_entry_points=("ParallelDisplay.emit_phase_transition",),
     ),
     SurfaceSpec(
         "agent_text",
@@ -71,6 +85,11 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="grid: timestamp | category | unit | body",
         scene="clean_run",
         entry_points=("emit_activity_line", "emit_log_line", "emit_parsed_event"),
+        production_entry_points=(
+            "ParallelDisplay.emit_activity_line",
+            "ParallelDisplay.emit_log_line",
+            "ParallelDisplay.emit_parsed_event",
+        ),
     ),
     SurfaceSpec(
         "reasoning",
@@ -78,24 +97,28 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="grid: timestamp | category | unit | body",
         scene="clean_run",
         entry_points=("emit_analysis_result",),
+        production_entry_points=("ParallelDisplay.emit_analysis_result",),
     ),
     SurfaceSpec(
         "tool_call",
         "agent_event_renderer",
         format="grid: timestamp | category | unit | body",
         scene="burst",
+        production_entry_points=("ParallelDisplay.emit_activity_line",),
     ),
     SurfaceSpec(
         "tool_result",
         "agent_event_renderer",
         format="grid: timestamp | category | unit | body",
         scene="burst",
+        production_entry_points=("ParallelDisplay.emit_activity_line",),
     ),
     SurfaceSpec(
         "tool_error",
         "agent_event_renderer",
         format="grid: timestamp | error | unit | cause",
         scene="failure",
+        production_entry_points=("ParallelDisplay.emit_activity_line",),
     ),
     SurfaceSpec(
         "raw_warning_status",
@@ -103,6 +126,10 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="grid: timestamp | state | unit | body",
         scene="clean_run",
         entry_points=("emit_status_line", "emit_warn_line"),
+        production_entry_points=(
+            "ParallelDisplay.emit_status_line",
+            "ParallelDisplay.emit_warn_line",
+        ),
     ),
     SurfaceSpec(
         "table",
@@ -119,6 +146,16 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
             "emit_diagnose_probe_table",
             "emit_diagnose_servers_table",
         ),
+        production_entry_points=(
+            "ParallelDisplay.emit_agents_table",
+            "ParallelDisplay.emit_providers_table",
+            "ParallelDisplay.emit_config_table",
+            "ParallelDisplay.emit_metrics_table",
+            "ParallelDisplay.emit_checkpoint_summary_table",
+            "ParallelDisplay.emit_diagnose_inventory_table",
+            "ParallelDisplay.emit_diagnose_probe_table",
+            "ParallelDisplay.emit_diagnose_servers_table",
+        ),
     ),
     SurfaceSpec(
         "cli_status",
@@ -126,6 +163,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="label: INFO state message",
         scene="clean_run",
         entry_points=("emit_status",),
+        production_entry_points=("ParallelDisplay.emit_status",),
     ),
     SurfaceSpec(
         "cli_warning",
@@ -133,6 +171,11 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="label: WARN recovery message",
         scene="clean_run",
         entry_points=("emit_warning", "emit_skill_failure_warning", "emit_fallback_next_steps"),
+        production_entry_points=(
+            "ParallelDisplay.emit_warning",
+            "ParallelDisplay.emit_skill_failure_warning",
+            "ParallelDisplay.emit_fallback_next_steps",
+        ),
     ),
     SurfaceSpec(
         "panel",
@@ -140,6 +183,10 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="indent: titled content when populated",
         scene="clean_run",
         entry_points=("emit_info_panel", "emit_renderable"),
+        production_entry_points=(
+            "ParallelDisplay.emit_info_panel",
+            "ParallelDisplay.emit_renderable",
+        ),
     ),
     SurfaceSpec(
         "artifact",
@@ -155,16 +202,27 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
             "emit_commit_message",
             "emit_missing_plan_hint",
         ),
+        production_entry_points=(
+            "ParallelDisplay.emit_plan_artifact",
+            "ParallelDisplay.emit_development_artifact",
+            "ParallelDisplay.emit_review_artifact",
+            "ParallelDisplay.emit_fix_artifact",
+            "ParallelDisplay.emit_analysis_decision",
+            "ParallelDisplay.emit_commit_message",
+            "ParallelDisplay.emit_missing_plan_hint",
+        ),
     ),
     SurfaceSpec(
         "syntax_preview",
         "edit_preview",
         format="indent: shared unit; numbered source rows",
+        production_entry_points=("build_edit_preview",),
     ),
     SurfaceSpec(
         "diff_preview",
         "edit_preview",
         format="indent: shared unit; numbered polarity rows",
+        production_entry_points=("build_edit_preview",),
     ),
     SurfaceSpec(
         "elision",
@@ -172,12 +230,14 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="marker: count, bytes, recovery destination",
         overflow_policy="elide: count, size, and recoverable transcript destination",
         scene="burst",
+        production_entry_points=("condense_content",),
     ),
     SurfaceSpec(
         "status_bar",
         "status_bar",
         format="single row: state, phase, elapsed",
         scene="idle_stretch",
+        production_entry_points=("ParallelDisplay.update_status_bar",),
     ),
     SurfaceSpec(
         "completion_success",
@@ -186,6 +246,10 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "frame: outcome, metrics, recovery",
         scene="closing_screen",
         entry_points=("emit_completion_summary_panel", "emit_run_end"),
+        production_entry_points=(
+            "ParallelDisplay.emit_completion_summary_panel",
+            "ParallelDisplay.emit_run_end",
+        ),
     ),
     SurfaceSpec(
         "completion_failure",
@@ -194,6 +258,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "frame: cause, metrics, recovery",
         scene="failure",
         entry_points=("emit_completion_summary_panel",),
+        production_entry_points=("ParallelDisplay.emit_completion_summary_panel",),
     ),
     SurfaceSpec(
         "capability",
@@ -201,6 +266,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="list: capability name and state",
         scene="first_screen",
         entry_points=("emit_capability_summary",),
+        production_entry_points=("ParallelDisplay.emit_capability_summary",),
     ),
     SurfaceSpec(
         "dry_run",
@@ -208,6 +274,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="recap: planned work and recovery",
         scene="closing_screen",
         entry_points=("emit_dry_run_summary",),
+        production_entry_points=("ParallelDisplay.emit_dry_run_summary",),
     ),
     SurfaceSpec(
         "blank_gap",
@@ -215,6 +282,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="gap: deliberate structural separation",
         scene="clean_run",
         entry_points=("emit_blank_line",),
+        production_entry_points=("ParallelDisplay.emit_blank_line",),
     ),
     SurfaceSpec(
         "snapshot",
@@ -222,6 +290,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         format="grid: phase, state, recovery",
         scene="failure",
         entry_points=("emit_snapshot",),
+        production_entry_points=("ParallelDisplay.emit_snapshot",),
     ),
 )
 

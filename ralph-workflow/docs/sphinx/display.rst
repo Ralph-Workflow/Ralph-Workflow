@@ -19,10 +19,13 @@ Rendering guarantees
 
 The executable catalog in ``ralph.display.scene_catalog`` declares every
 printable surface and the six generated reference scenes: first screen, clean
-run, failure, burst, idle stretch, and closing screen. Each catalogued public
-``emit_*`` seam with deterministic scene inputs is driven through its production
-owner and checked for an observable transcript carrier when the surface has
-content; this includes phase-close variants and each operator table. Artifact
+run, failure, burst, idle stretch, and closing screen. Each catalogued surface
+names its concrete production seam, including non-``emit_*`` owners such as
+``build_edit_preview``, ``condense_content``, and
+``ParallelDisplay.update_status_bar``. Catalogued public ``emit_*`` seams with
+deterministic scene inputs are driven through their production owner and checked
+for an observable transcript carrier when the surface has content; this includes
+phase-close variants and each operator table. Artifact
 renderers also run through their production owners with deliberate empty-artifact
 behavior: analysis decisions and commit messages correctly remain silent when
 there is no content, avoiding empty section chrome. The catalog cannot claim a

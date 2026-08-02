@@ -9,7 +9,9 @@ import pytest
 from rich.cells import cell_len
 from rich.console import Console
 
+from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import make_display_context
+from ralph.display.edit_preview import build_edit_preview
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.scene_catalog import (
     CANONICAL_VALUE_FORMATS,
@@ -397,6 +399,58 @@ def test_generated_scene_catalog_assigns_owner_overflow_and_generated_scene_to_e
     assert {surface.scene for surface in SURFACE_CATALOG} <= set(SCENE_NAMES)
     assert all(surface.owner for surface in SURFACE_CATALOG)
     assert all(surface.overflow_policy for surface in SURFACE_CATALOG)
+    assert all(surface.production_entry_points for surface in SURFACE_CATALOG)
+
+
+def test_generated_scene_catalog_names_non_emitter_production_seams() -> None:
+    """S-1 regression: non-``emit_*`` surfaces cannot become unowned metadata."""
+    catalog = {surface.name: surface for surface in SURFACE_CATALOG}
+    assert catalog["tool_call"].production_entry_points == (
+        "ParallelDisplay.emit_activity_line",
+    )
+    assert catalog["tool_result"].production_entry_points == (
+        "ParallelDisplay.emit_activity_line",
+    )
+    assert catalog["tool_error"].production_entry_points == (
+        "ParallelDisplay.emit_activity_line",
+    )
+    assert catalog["syntax_preview"].production_entry_points == ("build_edit_preview",)
+    assert catalog["diff_preview"].production_entry_points == ("build_edit_preview",)
+    assert catalog["elision"].production_entry_points == ("condense_content",)
+    assert catalog["status_bar"].production_entry_points == (
+        "ParallelDisplay.update_status_bar",
+    )
+
+
+def test_generated_scene_catalog_production_entry_points_resolve_to_real_owners() -> None:
+    """S-1 regression: catalogued seams are callable production APIs, not prose."""
+    resolvable = {
+        "build_edit_preview": build_edit_preview,
+        "condense_content": condense_content,
+        "ParallelDisplay.update_status_bar": ParallelDisplay.update_status_bar,
+    }
+    for surface in SURFACE_CATALOG:
+        for entry_point in surface.production_entry_points:
+            callable_owner = resolvable.get(entry_point)
+            if callable_owner is None:
+                _owner, method = entry_point.split(".", 1)
+                callable_owner = getattr(ParallelDisplay, method)
+            assert callable(callable_owner), (surface.name, entry_point)
+
+
+def test_generated_scene_catalog_elision_owner_derives_a_recoverable_marker() -> None:
+    """S-1/S-7: the catalogued condenser produces the elision contract it claims."""
+    visible, condensed = condense_content(
+        "condensed production content " * 32,
+        options=CondenseOptions(
+            soft_limit=40,
+            hard_limit=4000,
+            overflow_ref=".agent/raw/codex.log",
+        ),
+    )
+    assert condensed
+    assert "truncated," in visible
+    assert ".agent/raw/codex.log" in visible
 
 
 def test_generated_scene_catalog_assigns_representative_surfaces_to_the_scene_that_renders_them() -> (
