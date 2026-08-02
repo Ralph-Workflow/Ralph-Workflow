@@ -78,6 +78,24 @@ def test_flags_unknown_raw_write_text(tmp_path: Path) -> None:
     )
 
 
+def test_regression_flags_dynamic_raw_write_text_lookup(tmp_path: Path) -> None:
+    """S-2: dynamic lookup cannot evade D1's raw stable-write enforcement."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    getattr(path, 'write_text')(content)\n",
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_write_text"]
+    assert "write_text_if_changed" in violations[0].message
+
+
 def test_ignores_guarded_write_via_canonical_helper(tmp_path: Path) -> None:
     """A call to the canonical ``write_text_if_changed`` helper passes."""
     module_rel = "alpha/example.py"

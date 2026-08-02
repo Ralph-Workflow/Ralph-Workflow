@@ -98,6 +98,8 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
 _MARKER_TOKEN = "filesystem-write-ok:"
 _OPEN_MODE_POSITION = 1
 _OPEN_MODE_MIN_ARGS = 2
+_GETATTR_NAME_POSITION = 1
+_GETATTR_MIN_ARGS = 2
 
 #: Module-level qualifiers (typically ``shutil``, ``os``, ``pathlib``)
 #: whose free-function calls are considered raw filesystem mutation
@@ -244,17 +246,30 @@ def _is_write_mode_open(call: ast.Call, *, path_method: bool = False) -> bool:
 
 
 def _raw_write_text_call(node: ast.Call) -> str | None:
-    """Return ``"write_text"`` / ``"write_bytes"`` for every raw full-file overwrite.
+    """Return a raw full-file overwrite name, including dynamic lookups.
 
     Receiver names are not proof of routing: an arbitrary new module can name
-    an unguarded writer ``backend`` or ``self``. Only the shared primitive
-    modules are exempt, so every other raw overwrite fails closed and must
-    route through an idempotent helper or carry a local contract marker.
+    an unguarded writer ``backend`` or ``self``. Likewise, resolving
+    ``write_text`` through ``getattr`` must not evade the package-wide audit.
+    Only shared primitive modules are exempt, so every other raw overwrite
+    fails closed and must route through an idempotent helper or carry a local
+    contract marker.
     """
-    if not isinstance(node.func, ast.Attribute):
+    if isinstance(node.func, ast.Attribute):
+        attr = node.func.attr
+        return attr if attr in {"write_text", "write_bytes"} else None
+    if not isinstance(node.func, ast.Call) or not isinstance(node.func.func, ast.Name):
         return None
-    attr = node.func.attr
-    return attr if attr in {"write_text", "write_bytes"} else None
+    if node.func.func.id != "getattr" or len(node.func.args) < _GETATTR_MIN_ARGS:
+        return None
+    dynamic_attr = node.func.args[_GETATTR_NAME_POSITION]
+    if isinstance(dynamic_attr, ast.Constant) and isinstance(dynamic_attr.value, str):
+        return (
+            dynamic_attr.value
+            if dynamic_attr.value in {"write_text", "write_bytes"}
+            else None
+        )
+    return None
 
 
 def _raw_builtin_open_call(
