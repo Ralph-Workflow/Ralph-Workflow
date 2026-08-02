@@ -200,11 +200,16 @@ def _drive_production_scene(
         )
         display.emit_phase_start_from_entry(entry)
         display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
+        display.emit_log_line("pi", "raw transcript carrier remains available")
+        display.emit_status_line("pi", "waiting for an external review response")
+        display.emit_warn_line("pi", "warning", "waiting for an external review response")
         display.emit_activity_line("pi", "thinking", "checking preview hierarchy")
         display.emit_phase_transition("development", "review")
         display.emit_metrics_table({"events": 2, "artifacts": 1})
         display.emit_status("production display state is ready")
+        display.emit_warning("recovery detail is preserved in the rendered record")
         display.emit_info_panel(title="Production note", content="Preview and records stay recoverable.")
+        display.emit_renderable(Text("Shared renderable content", style="theme.text.muted"))
         display.emit_missing_plan_hint()
         display.emit_phase_close_from_exit(
             PhaseExitModel(
@@ -252,6 +257,11 @@ def _drive_production_scene(
         # and CI streams; real TTYs retain the sole transient Live footer.
         display.update_status_bar(model)
     else:
+        display.emit_dry_run_summary(
+            phase="review",
+            iterations=1,
+            details={"recovery": ".agent/raw/run.log"},
+        )
         display.emit_run_end(phase="complete", total_agent_calls=3)
         display.emit_completion_summary_panel(
             _scene_snapshot(failed=False), options=CompletionSummaryOptions(elapsed_seconds=123.0)

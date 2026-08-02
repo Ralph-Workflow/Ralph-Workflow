@@ -19,8 +19,11 @@ Rendering guarantees
 
 The executable catalog in ``ralph.display.scene_catalog`` declares every
 printable surface and the six generated reference scenes: first screen, clean
-run, failure, burst, idle stretch, and closing screen. The supported matrix is
-an implementation input rather than a post-hoc description:
+run, failure, burst, idle stretch, and closing screen. Each catalogued public
+``emit_*`` seam with deterministic scene inputs is driven through its production
+owner and checked for an observable transcript carrier; the catalog cannot
+claim a representative surface that its assigned scene does not render. The
+supported matrix is an implementation input rather than a post-hoc description:
 
 - backgrounds: detected dark, detected light, operator-declared, and unknown;
 - colour: truecolour, reduced colour, and no colour;

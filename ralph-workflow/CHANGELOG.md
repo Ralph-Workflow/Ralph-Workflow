@@ -50,6 +50,7 @@ tag exists yet — a link to one would be a dead link.
 
 ### Changed
 
+- **fix(display): make generated scene ownership executable** — scene drivers now exercise status, warning, raw-log, renderable, and dry-run production seams, and catalogued scene assignments are asserted against their visible carriers. Locked by `tests/test_display_generated_scenes.py`.
 - **fix(display): resolve every semantic console role for light terminals** — banners, panels, tables, phase rules, and completion summaries now share a contrast-safe light-background theme, while generated scene ownership is checked against the scene that renders it. Locked by `tests/test_display_visual_floor.py` and `tests/test_display_generated_scenes.py`.
 - **fix(display): fold phase-close recaps without losing greppable counters** — narrow phase boundaries now repeat their phase carrier on every folded row so outcomes and metrics remain readable in live and redirected output. At the 40-column floor, the compact `[phase-close][<phase-id>]` carrier keeps phase identity and every counter visible. Locked by `tests/display/test_parallel_display_emit_phase_close_from_exit.py`.
 - **fix(display): document and assert Status Bar width in terminal display cells** — wide and combining Unicode values now have one explicit cell-width contract in the footer implementation, tests, and display manual. Locked by `tests/display/test_status_bar.py`.

@@ -96,7 +96,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "raw_warning_status",
         "parallel_display",
         format="grid: timestamp | state | unit | body",
-        scene="failure",
+        scene="clean_run",
         entry_points=("emit_status_line", "emit_warn_line"),
     ),
     SurfaceSpec(
@@ -126,7 +126,7 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
         "cli_warning",
         "parallel_display",
         format="label: WARN recovery message",
-        scene="failure",
+        scene="clean_run",
         entry_points=("emit_warning", "emit_skill_failure_warning", "emit_fallback_next_steps"),
     ),
     SurfaceSpec(
