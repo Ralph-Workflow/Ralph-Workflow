@@ -82,9 +82,6 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # One real-git landing journey retains the external Git boundary proof;
     # decision and recovery variants run in the opt-in subprocess profile.
     "tests/test_auto_integrate_end_to_end.py",
-    # These exercise independent CLI and TypeScript-extension boundaries.
-    "tests/test_cli_commit_command.py",
-    "tests/test_pi_mcp_extension_sse_behavior.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

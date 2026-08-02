@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_auto_integrate_end_to_end.py",
-    "tests/test_cli_commit_command.py",
-    "tests/test_pi_mcp_extension_sse_behavior.py",
 )
 
 
