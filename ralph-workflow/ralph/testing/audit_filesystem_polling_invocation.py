@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 _DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ("ralph",)
 _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
     {
-        "agents/invoke/_workspace.py",
         "executor/process.py",
         "process/manager/__init__.py",  # typed process owner constructs processes
         "process/manager/_process_manager.py",  # bounded termination grace, not polling

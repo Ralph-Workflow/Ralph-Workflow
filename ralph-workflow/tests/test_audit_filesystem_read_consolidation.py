@@ -376,6 +376,27 @@ def test_regression_exempt_suffix_cannot_skip_unrelated_module(tmp_path: Path) -
     assert [violation.kind for violation in violations] == ["raw_path_read_text"]
 
 
+def test_regression_workspace_monitor_is_not_broadly_exempt_from_read_enforcement(
+    tmp_path: Path,
+) -> None:
+    """S-6: future monitor reads must earn a local D3 exception, not a file exemption."""
+    module_rel = "agents/invoke/_workspace.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "from pathlib import Path\n"
+        "def load() -> str:\n"
+        "    return Path('state.txt').read_text(encoding='utf-8')\n",
+    )
+
+    violations = audit.audit_filesystem_read_consolidation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_path_read_text"]
+
+
 def test_exempt_paths_are_skipped(tmp_path: Path) -> None:
     """The default exempt set keeps the canonical primitives clean."""
     module_rel = "mcp/artifacts/file_backend.py"

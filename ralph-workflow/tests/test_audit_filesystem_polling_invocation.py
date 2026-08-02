@@ -41,6 +41,27 @@ def test_regression_explicit_module_path_cannot_escape_package_root(tmp_path: Pa
     assert violations[0].file_path == "../outside.py"
 
 
+def test_regression_workspace_monitor_is_not_broadly_exempt_from_polling_enforcement(
+    tmp_path: Path,
+) -> None:
+    """S-6: monitor-only ownership does not exempt new polling from local D3 review."""
+    module_rel = "agents/invoke/_workspace.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "import time\n"
+        "def poll() -> None:\n"
+        "    time.sleep(1)\n",
+    )
+
+    violations = audit.audit_filesystem_polling_invocation(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_sleep_poll"]
+
+
 def test_regression_exempt_suffix_cannot_skip_unrelated_module(tmp_path: Path) -> None:
     """S-6: canonical exemptions cannot silently allow similarly named modules."""
     module_rel = "unrelated/agents/invoke/_workspace.py"
