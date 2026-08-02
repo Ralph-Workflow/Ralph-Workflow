@@ -19,12 +19,13 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.workspace._snapshot import WorkspaceSnapshot
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
-#: Default maximum file size in bytes for ``read_lines`` (any mode).
-#: A ``stat`` precheck rejects files above this ceiling BEFORE we open
-#: them so a partial read against a multi-GB file cannot OOM the
-#: agent. Matches ``FULL_READ_DEFAULT_MAX_BYTES`` in
-#: ``ralph/mcp/tools/workspace/_utils.py`` (5 MB).
-MAX_READ_LINES_BYTES: int = 5_000_000
+#: Default maximum file size in bytes for bounded Workspace content reads.
+#: A ``stat`` precheck rejects full-file reads above this ceiling BEFORE we
+#: open them so an agent request cannot OOM the process. It matches
+#: ``FULL_READ_DEFAULT_MAX_BYTES`` in ``ralph/mcp/tools/workspace/_utils.py``.
+MAX_READ_BYTES: int = 5_000_000
+#: Backward-compatible name for the line-oriented Workspace read ceiling.
+MAX_READ_LINES_BYTES: int = MAX_READ_BYTES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -401,13 +402,28 @@ class FsWorkspace:
         *,
         offset: int = 0,
         limit: int | None = None,
+        max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
-        """Read a byte window from a file, decoded as UTF-8."""
+        """Read a UTF-8 byte window without loading an unbounded full file.
+
+        A bounded window may be read from a larger file. The requested byte
+        range is rejected when it exceeds the configured ceiling before the
+        file is opened.
+        """
         abs_path = self._abs(path)
         try:
             total_bytes = abs_path.stat().st_size
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {path}") from None
+        ceiling = max_bytes if max_bytes is not None else MAX_READ_BYTES
+        available_bytes = max(0, total_bytes - max(0, offset))
+        requested_bytes = available_bytes if limit is None else min(available_bytes, max(0, limit))
+        if requested_bytes > ceiling:
+            raise ValueError(
+                f"File too large for read_bytes: requested {requested_bytes} bytes exceeds "
+                f"limit of {ceiling} bytes (path={path!r}). "
+                "Use offset/limit to request a bounded window or raise max_bytes."
+            )
         with abs_path.open("rb") as fh:
             if offset:
                 fh.seek(offset)

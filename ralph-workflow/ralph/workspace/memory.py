@@ -289,6 +289,7 @@ class MemoryWorkspace:
         *,
         offset: int = 0,
         limit: int | None = None,
+        max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Read a byte window from a file, decoded as UTF-8."""
         normalized = self._normalize(path)
@@ -296,6 +297,14 @@ class MemoryWorkspace:
             raise FileNotFoundError(f"File not found: {path}")
         raw = self._storage[normalized].encode("utf-8")
         total_bytes = len(raw)
+        available_bytes = max(0, total_bytes - max(0, offset))
+        requested_bytes = available_bytes if limit is None else min(available_bytes, max(0, limit))
+        if max_bytes is not None and requested_bytes > max_bytes:
+            raise ValueError(
+                f"File too large for read_bytes: requested {requested_bytes} bytes exceeds "
+                f"limit of {max_bytes} bytes (path={path!r}). "
+                "Use offset/limit to request a bounded window or raise max_bytes."
+            )
         sliced = raw[offset : offset + limit] if limit is not None else raw[offset:]
         returned_bytes = len(sliced)
         truncated = (offset + returned_bytes) < total_bytes

@@ -148,6 +148,7 @@ class Workspace(Protocol):
         *,
         offset: int = 0,
         limit: int | None = None,
+        max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Read a byte window from a file, decoded as UTF-8.
 
@@ -155,6 +156,7 @@ class Workspace(Protocol):
             path: Relative path to the file.
             offset: 0-based byte offset to start reading from.
             limit: Maximum number of bytes to read (None means read to end).
+            max_bytes: Ceiling for the requested byte range.
 
         Returns:
             Tuple of (text content, metadata dict) where metadata has
@@ -163,6 +165,7 @@ class Workspace(Protocol):
         Raises:
             FileNotFoundError: If file doesn't exist.
             UnicodeDecodeError: If the byte range cannot be decoded as UTF-8.
+            ValueError: If the requested byte range exceeds ``max_bytes``.
         """
         ...
 
