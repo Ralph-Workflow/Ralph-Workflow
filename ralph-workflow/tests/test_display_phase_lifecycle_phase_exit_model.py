@@ -23,10 +23,12 @@ class TestPhaseExitModel:
         m = PhaseExitModel(phase_name="development")
         assert m.elapsed_seconds == 0.0
         assert m.exit_trigger is None
-        assert m.content_blocks == 0
-        assert m.thinking_blocks == 0
-        assert m.tool_calls == 0
-        assert m.errors == 0
+        # ``None`` preserves live counter values when no explicit phase-close
+        # override was supplied; zero is a deliberate override.
+        assert m.content_blocks is None
+        assert m.thinking_blocks is None
+        assert m.tool_calls is None
+        assert m.errors is None
         assert m.artifact_outcome == ""
         assert m.review_issues_found is None
         assert m.waiting_status_line is None
