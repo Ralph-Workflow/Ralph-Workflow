@@ -16,9 +16,6 @@ dark, and unknown terminal backgrounds.
 from __future__ import annotations
 
 import math
-import re
-import zlib
-from functools import lru_cache
 from typing import TYPE_CHECKING, Final, Literal
 
 from rich.console import Console
@@ -26,6 +23,7 @@ from rich.style import Style
 from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
 
+import ralph.display._identity as identity_helpers
 from ralph.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
@@ -216,8 +214,6 @@ IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
     "#907030",
 )
 
-_IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
-
 # The shipped roster is the baseline active set for shared surfaces. Rendering
 # it collision-aware prevents a hash collision before a particular display
 # has observed every peer in the current run.
@@ -233,21 +229,9 @@ _DISPLAY_IDENTITY_ACTIVE_SET: Final[tuple[str, ...]] = (
 )
 
 
-def _normalize_identity_name(name: str) -> str:
-    """Return a stable, lowercase, separator- and case-folded identity."""
-    if not name:
-        return "unknown"
-    folded = name.strip().lower()
-    folded = _IDENTITY_WS_RE.sub("-", folded)
-    folded = folded.strip("-")
-    return folded or "unknown"
-
-
 def _identity_slot(name: str) -> int:
     """Return the deterministic palette slot for ``name``."""
-    normalized = _normalize_identity_name(name)
-    digest = zlib.crc32(normalized.encode("utf-8"))
-    return digest % len(IDENTITY_PALETTE)
+    return identity_helpers.identity_slot(name, len(IDENTITY_PALETTE))
 
 
 def _status_role_hexes() -> frozenset[str]:
@@ -273,33 +257,6 @@ def _rgb(hex_color: str) -> tuple[int, int, int]:
     if len(body) != _HEX_LONG_LEN:
         raise ValueError(f"expected #RRGGBB or #RGB hex, got {hex_color!r}")
     return (int(body[0:2], 16), int(body[2:4], 16), int(body[4:6], 16))
-
-
-_DEUTERANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.625, 0.375, 0.0),
-    (0.7, 0.3, 0.0),
-    (0.0, 0.3, 0.7),
-)
-_PROTANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.567, 0.433, 0.0),
-    (0.558, 0.442, 0.0),
-    (0.0, 0.242, 0.758),
-)
-_TRITANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.95, 0.05, 0.0),
-    (0.0, 0.433, 0.567),
-    (0.0, 0.475, 0.525),
-)
-
-
-def _simulate_cvd(hex_color: str, matrix: tuple[tuple[float, float, float], ...]) -> str:
-    r, g, b = (channel / 255.0 for channel in _rgb(hex_color))
-    out_r = matrix[0][0] * r + matrix[0][1] * g + matrix[0][2] * b
-    out_g = matrix[1][0] * r + matrix[1][1] * g + matrix[1][2] * b
-    out_b = matrix[2][0] * r + matrix[2][1] * g + matrix[2][2] * b
-    return "#" + "".join(
-        f"{max(0, min(255, int(channel * 255))):02X}" for channel in (out_r, out_g, out_b)
-    )
 
 
 def identity_color(
@@ -330,77 +287,7 @@ def identity_color(
         palette = IDENTITY_PALETTE
     else:
         palette = IDENTITY_PALETTE_ON_UNKNOWN_BG
-    base_slot = _identity_slot(name)
-    if active is None:
-        return palette[base_slot]
-    return _identity_color_for_active_set(
-        name,
-        tuple(sorted(frozenset(active))),
-        terminal_bg_is_light,
-    )
-
-
-def _identity_color_for_active_set(
-    name: str,
-    active_names: tuple[str, ...],
-    terminal_bg_is_light: bool | None,
-) -> str:
-    """Resolve an identity against one bounded, normalized active-name set."""
-    if terminal_bg_is_light is True:
-        palette = IDENTITY_PALETTE_ON_LIGHT_BG
-    elif terminal_bg_is_light is False:
-        palette = IDENTITY_PALETTE
-    else:
-        palette = IDENTITY_PALETTE_ON_UNKNOWN_BG
-    base_slot = _identity_slot(name)
-    cvd_matrices = (
-        _DEUTERANOPIA_MATRIX,
-        _PROTANOPIA_MATRIX,
-        _TRITANOPIA_MATRIX,
-    )
-    resolved: dict[str, str] = {}
-    for other in active_names:
-        base = _identity_slot(other)
-        occupied = set(resolved.values())
-        occupied_cvd = {
-            _simulate_cvd(hex_color, matrix) for hex_color in occupied for matrix in cvd_matrices
-        }
-        chosen = palette[base]
-        for offset in range(len(palette)):
-            candidate = palette[(base + offset) % len(palette)]
-            if candidate in occupied:
-                continue
-            if {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices} & occupied_cvd:
-                continue
-            chosen = candidate
-            break
-        else:
-            for offset in range(len(palette)):
-                candidate = palette[(base + offset) % len(palette)]
-                if candidate not in occupied:
-                    chosen = candidate
-                    break
-        resolved[other] = chosen
-    if name in resolved:
-        return resolved[name]
-    active_hexes = set(resolved.values())
-    active_cvd_simulated = {
-        _simulate_cvd(hex_color, matrix) for hex_color in active_hexes for matrix in cvd_matrices
-    }
-    used = active_hexes | active_cvd_simulated
-    for offset in range(len(palette)):
-        candidate = palette[(base_slot + offset) % len(palette)]
-        if candidate in used:
-            continue
-        candidate_cvd = {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices}
-        if candidate_cvd & active_cvd_simulated:
-            continue
-        return candidate
-    return palette[base_slot]
-
-
-# Active identities are bounded by the display's in-memory recent-body window.
-_identity_color_for_active_set = lru_cache(maxsize=512)(_identity_color_for_active_set)
+    return identity_helpers.identity_color(name, palette=palette, active=active, rgb=_rgb)
 
 
 _THEME_STYLES: Final[dict[str, str]] = {
