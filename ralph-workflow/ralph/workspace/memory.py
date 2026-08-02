@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 
 from ralph.workspace._snapshot import WorkspaceSnapshot
+from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 
 class MemoryWorkspace:
@@ -443,27 +444,12 @@ class MemoryWorkspace:
         if normalized and not normalized.endswith("/"):
             normalized += "/"
 
-        skip_names = frozenset(
-            {
-                ".git",
-                ".hg",
-                ".mypy_cache",
-                ".pytest_cache",
-                ".ruff_cache",
-                ".svn",
-                ".venv",
-                "__pycache__",
-                "node_modules",
-                "target",
-            }
-        )
-
         results: list[str] = []
         for key in self._storage:
             if normalized == "" or key.startswith(normalized):
                 remainder = key[len(normalized) :]
                 parts = remainder.split("/")
-                if len(parts) == 1 or parts[0] not in skip_names:
+                if len(parts) == 1 or parts[0] not in RECURSIVE_SKIP_DIRECTORY_NAMES:
                     results.append(key)
 
         return tuple(results)

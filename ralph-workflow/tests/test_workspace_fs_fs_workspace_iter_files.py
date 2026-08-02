@@ -41,3 +41,15 @@ class TestFsWorkspaceIterFiles:
         files = ws.iter_files("nonexistent")
 
         assert files == ()
+
+    def test_iter_files_excludes_build_output(self, tmp_path: Path) -> None:
+        """S-4 regression: generated build output is outside the traversal surface."""
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "source.py").write_text("value = 1\n", encoding="utf-8")
+        (tmp_path / "build").mkdir()
+        (tmp_path / "build" / "generated.py").write_text("value = 2\n", encoding="utf-8")
+
+        files = ws.iter_files(".")
+
+        assert "source.py" in files
+        assert "build/generated.py" not in files
