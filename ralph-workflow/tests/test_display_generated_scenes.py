@@ -20,7 +20,6 @@ from ralph.display.scene_catalog import (
     SCENE_NAMES,
     SURFACE_CATALOG,
     SupportCase,
-    floor_matrix,
     render_scene,
     support_matrix,
 )
@@ -147,8 +146,8 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
     continuation_rows = condensed_rows[1:]
     assert continuation_rows
     assert all("[output][codex]" in row for row in continuation_rows)
-    assert any("count=3" in row for row in condensed_rows)
-    assert any("bytes=96" in row for row in condensed_rows)
+    assert any("count=24" in row for row in condensed_rows)
+    assert any("bytes=768" in row for row in condensed_rows)
     assert any(".agent/raw" in row for row in condensed_rows)
 
 
@@ -160,7 +159,7 @@ def test_generated_scene_contract_pins_accessibility_and_layout_floors() -> None
 
 
 @pytest.mark.timeout_seconds(5)
-@pytest.mark.parametrize("case", floor_matrix())
+@pytest.mark.parametrize("case", support_matrix())
 @pytest.mark.parametrize("scene_name", SCENE_NAMES)
 def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matrix(
     scene_name: str,
@@ -199,10 +198,11 @@ def test_generated_scene_renderer_exercises_each_scene_across_the_declared_matri
                 "WARN recover raw machine detail",
                 "tests failed",
                 "Pipeline Failed",
+                "failed_phase=review",
                 ".agent/raw/reviewer.log",
             ),
         ),
-        ("burst", ("[call][codex]", "[result][codex]", "edit_file")),
+        ("burst", ("[call][codex]", "[result][codex]", "edit_file", "count=24")),
         ("idle_stretch", ("WAIT", "Development", "2m03s")),
         ("closing_screen", ("Pipeline Complete", "agent_calls=3", "[run-completion]")),
     ),
@@ -291,6 +291,30 @@ def test_generated_scene_catalog_covers_every_public_parallel_display_emitter() 
     assert len(entry_points) == len(catalogued)
 
 
+def test_generated_scene_regression_clean_run_never_emits_an_empty_structural_rule() -> None:
+    """S-6: every structural rule carries a durable category identifier."""
+    rendered = render_scene(
+        "clean_run",
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+
+    assert not re.search(r"^───\s+$", rendered, flags=re.MULTILINE)
+
+
+def test_generated_scene_regression_burst_preserves_structural_carriers_under_volume() -> None:
+    """S-6: the burst scene exercises repetition without losing its recovery marker."""
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "none", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+
+    assert rendered.count("[call][codex]") >= 24
+    assert "count=24" in rendered
+    assert ".agent/raw/run.log" in rendered
+
+
 def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None:
     """S-1: generated output exercises every catalogued stream format."""
     common = SupportCase("dark", "none", "unicode", 80, "redirect")
@@ -301,7 +325,7 @@ def test_generated_scene_catalog_declares_runtime_backed_value_formats() -> None
     assert CANONICAL_VALUE_FORMATS["duration"] == "<minutes>m<seconds>s"
     assert "2m03s" in idle
     assert CANONICAL_VALUE_FORMATS["count"] == "count=<decimal>"
-    assert "count=3" in burst
+    assert "count=24" in burst
     assert CANONICAL_VALUE_FORMATS["path"] == "workspace=<verbatim-or-folded-path>"
     assert "workspace=/work/café" in opening
     assert CANONICAL_VALUE_FORMATS["identifier"] == "[category][agent-id]"

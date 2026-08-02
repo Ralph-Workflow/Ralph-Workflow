@@ -147,7 +147,7 @@ def _scene_environment(case: SupportCase) -> dict[str, str]:
 def _scene_snapshot(*, failed: bool) -> PipelineSnapshot:
     """Build fixed production completion input without pipeline execution."""
     return PipelineSnapshot(
-        phase="failed" if failed else "complete",
+        phase="review" if failed else "complete",
         previous_phase="review",
         review_issues_found=failed,
         interrupted_by_user=False,
@@ -197,7 +197,6 @@ def _drive_production_scene(
         entry = PhaseEntryModel(
             "development", "execution", "pi", outer_dev_iteration=1, outer_dev_cap=3
         )
-        display.begin_phase("development")
         display.emit_phase_start_from_entry(entry)
         if context.width > GRACEFUL_WIDTH_FLOOR:
             display.emit_activity_line("pi", "text", "implemented Unicode-safe output")
@@ -225,14 +224,18 @@ def _drive_production_scene(
             _scene_snapshot(failed=True), options=CompletionSummaryOptions(elapsed_seconds=123.0)
         )
     elif scene_name == "burst":
-        display.emit_activity_line(
-            "codex", "tool_use", "edit_file path=café.py", tool_signature=("edit_file", "café.py")
-        )
+        for event_index in range(24):
+            display.emit_activity_line(
+                "codex",
+                "tool_use",
+                f"edit_file path=café-{event_index:02d}.py",
+                tool_signature=("edit_file", f"café-{event_index:02d}.py"),
+            )
         display.emit_activity_line("codex", "tool_result", "edit_file complete")
         display.emit_activity_line(
             "codex",
             "raw",
-            "output condensed count=3 bytes=96",
+            "output condensed count=24 bytes=768",
             condensed_flag=True,
             condensed_ref=".agent/raw/run.log",
         )
@@ -282,11 +285,9 @@ def _render_scene_previews(console: Console, *, terminal_bg_is_light: bool | Non
 def support_matrix() -> tuple[SupportCase, ...]:
     """Return the complete declared support matrix.
 
-    The full matrix is a documentation aid; tests that drive the matrix
-    across every scene should use :func:`floor_matrix` instead, which
-    keeps the same declared dimensions but limits the width sweep to
-    the floor and the full layout, so the immutable 60-second combined
-    test budget holds.
+    Every reference scene is rendered across this complete matrix. The
+    separate :func:`floor_matrix` remains a compact helper for focused floor
+    mutations, not a substitute for support-matrix scene evidence.
     """
     backgrounds: tuple[Background, ...] = ("dark", "light", "unknown")
     colours: tuple[ColourMode, ...] = ("truecolour", "reduced", "none")

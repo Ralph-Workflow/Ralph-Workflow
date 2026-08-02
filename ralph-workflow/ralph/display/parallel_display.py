@@ -4224,7 +4224,7 @@ class ParallelDisplay:
             return
         self.flush_blocks()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("")
+            self._emit_section_rule("[phase-open]")
             c = self._console
             style = _phase_style(phase, pipeline_policy)
             label = _phase_label(phase)
@@ -4261,7 +4261,7 @@ class ParallelDisplay:
             return
         self.flush_blocks()
         with contextlib.suppress(Exception):
-            self._emit_section_rule("")
+            self._emit_section_rule("[phase-open]")
             c = self._console
             style = _phase_style(entry.phase_name, pipeline_policy)
             label = entry.human_label()
