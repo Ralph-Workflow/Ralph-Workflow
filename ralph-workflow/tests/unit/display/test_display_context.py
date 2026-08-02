@@ -25,7 +25,7 @@ from ralph.display._mode_adaptive_limits import (
     TOOL_RESULT_HEADLINE_MIN_CHARS,
 )
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.theme import RALPH_THEME
+from ralph.display.theme import theme_for_background
 
 _NARROW_TEST_WIDTH = 40
 _WIDE_TEST_WIDTH = 200
@@ -117,9 +117,9 @@ def test_display_context_is_frozen() -> None:
     assert params is not None and getattr(params, "frozen", False) is True
 
 
-def test_display_context_has_ralph_theme() -> None:
+def test_display_context_has_theme_for_resolved_background() -> None:
     ctx = make_display_context(env={})
-    assert ctx.theme is RALPH_THEME
+    assert ctx.theme is theme_for_background(ctx.terminal_background_is_light)
 
 
 def test_make_display_context_creates_console_when_none() -> None:

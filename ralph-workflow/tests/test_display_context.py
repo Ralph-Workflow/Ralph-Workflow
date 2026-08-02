@@ -16,7 +16,7 @@ from rich.console import Console
 from ralph.display import _mode_adaptive_limits as limits_module
 from ralph.display import context as context_module
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.theme import RALPH_THEME
+from ralph.display.theme import RALPH_THEME, theme_for_background
 
 _NARROW_WIDTH = 50
 _MEDIUM_WIDTH = 80
@@ -34,8 +34,7 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
     assert isinstance(ctx, DisplayContext)
     assert ctx.width > 0
     assert ctx.console is not None
-    # Theme should be RALPH_THEME (same object or same styles)
-    assert ctx.theme is RALPH_THEME
+    assert ctx.theme is theme_for_background(ctx.terminal_background_is_light)
 
 
 @pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])
