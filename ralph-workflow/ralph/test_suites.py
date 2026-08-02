@@ -79,19 +79,10 @@ _MAX_PYTEST_WORKERS = 8
 #: profile. This registry also drives the focused Make target, so the two
 #: selections cannot drift.
 REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
-    "tests/test_auto_integrate_catchup_e2e.py",
-    "tests/test_auto_integrate_worktree_prefix_e2e.py",
+    # One real-git landing journey retains the external Git boundary proof;
+    # decision and recovery variants run in the opt-in subprocess profile.
     "tests/test_auto_integrate_end_to_end.py",
-    "tests/test_auto_integrate_seams_e2e.py",
-    "tests/test_auto_integrate_real_agent_resolution_e2e.py",
-    "tests/test_auto_integrate_fleet_conflict_e2e.py",
-    "tests/test_auto_integrate_local_fleet_target_e2e.py",
-    "tests/test_auto_integrate_remote_refresh.py",
-    "tests/test_auto_integrate_markerless_conflicts.py",
-    "tests/test_auto_integrate_rung4_self_resume.py",
-    "tests/test_auto_integrate_recovery.py",
-    "tests/test_auto_integrate_race.py",
-    "tests/test_auto_integrate_worktree_sync.py",
+    # These exercise independent CLI and TypeScript-extension boundaries.
     "tests/test_cli_commit_command.py",
     "tests/test_pi_mcp_extension_sse_behavior.py",
 )

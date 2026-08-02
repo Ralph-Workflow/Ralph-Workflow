@@ -16,19 +16,7 @@ if TYPE_CHECKING:
 
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
-    "tests/test_auto_integrate_catchup_e2e.py",
-    "tests/test_auto_integrate_worktree_prefix_e2e.py",
     "tests/test_auto_integrate_end_to_end.py",
-    "tests/test_auto_integrate_seams_e2e.py",
-    "tests/test_auto_integrate_real_agent_resolution_e2e.py",
-    "tests/test_auto_integrate_fleet_conflict_e2e.py",
-    "tests/test_auto_integrate_local_fleet_target_e2e.py",
-    "tests/test_auto_integrate_remote_refresh.py",
-    "tests/test_auto_integrate_markerless_conflicts.py",
-    "tests/test_auto_integrate_rung4_self_resume.py",
-    "tests/test_auto_integrate_recovery.py",
-    "tests/test_auto_integrate_race.py",
-    "tests/test_auto_integrate_worktree_sync.py",
     "tests/test_cli_commit_command.py",
     "tests/test_pi_mcp_extension_sse_behavior.py",
 )
