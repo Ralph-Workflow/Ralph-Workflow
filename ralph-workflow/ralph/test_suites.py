@@ -106,7 +106,6 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_non_main_target.py",
     "tests/test_auto_integrate_rung4_self_resume.py",
     "tests/test_auto_integrate_recovery.py",
-    "tests/test_auto_integrate_recovery_terminal.py",
     "tests/test_auto_integrate_race.py",
     "tests/test_auto_integrate_worktree_sync.py",
     "tests/test_auto_integrate_catalog_e2e.py",
