@@ -193,6 +193,32 @@ def test_generated_scene_colours_every_named_semantic_category() -> None:
         ), carrier
 
 
+def test_generated_scene_opening_capabilities_and_closing_success_use_semantic_colours() -> None:
+    """S-3/S-6 regression: reference bookends visibly carry state, not chrome alone."""
+    opening = render_scene(
+        "first_screen",
+        SupportCase("dark", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+    closing = render_scene(
+        "closing_screen",
+        SupportCase("dark", "truecolour", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    assert re.search(r"\x1b\[1;38;2;0;158;115mOK — always available", opening)
+    assert re.search(r"\x1b\[1;38;2;0;158;115m\[PASS\]", closing)
+    for destination in ("redirect", "ci"):
+        captured_opening = render_scene(
+            "first_screen",
+            SupportCase("dark", "truecolour", "unicode", 80, destination),
+            terminal_bg_is_light=False,
+        )
+        assert re.search(
+            r"\x1b\[1;38;2;0;158;115mOK — always available", captured_opening
+        ), destination
+
+
 def test_generated_scene_colours_primary_agent_content_and_waiting_state() -> None:
     """S-3/S-6 regression: content and waiting labels never fall back to default foreground."""
     clean = render_scene(
@@ -490,6 +516,9 @@ def test_generated_scene_failure_leads_with_phase_and_cause_before_machine_detai
     cause = rendered.index("tests failed: assertion output retained")
     machine_detail = rendered.index("trace-detail")
     assert phase_open < cause < machine_detail
+    error_rows = [line for line in rendered.splitlines() if "[error][reviewer]" in line]
+    assert len(error_rows) <= 3
+    assert any(".agent/raw/reviewer.log" in line for line in error_rows)
 
 
 def test_generated_scene_regression_burst_preserves_structural_carriers_under_volume() -> None:

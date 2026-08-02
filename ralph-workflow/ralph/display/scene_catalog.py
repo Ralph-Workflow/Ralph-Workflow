@@ -84,8 +84,8 @@ class SupportCase:
 
     @property
     def height(self) -> int:
-        """Return a stable height that supports the catalog's reference scenes."""
-        return GRACEFUL_HEIGHT_FLOOR
+        """Return the 12-row degradation floor or a full-scene working height."""
+        return GRACEFUL_HEIGHT_FLOOR if self.width == GRACEFUL_WIDTH_FLOOR else 40
 
 
 SCENE_NAMES: Final[tuple[str, ...]] = (
@@ -142,11 +142,7 @@ def render_scene(
         console,
         context,
         scene_name,
-        include_capability_summary=(
-            case.width == FULL_LAYOUT_WIDTH
-            and case.colour == "none"
-            and case.destination == "redirect"
-        ),
+        include_capability_summary=case.width == FULL_LAYOUT_WIDTH,
     )
     if scene_name in {"clean_run", "burst"}:
         _render_scene_previews(console, terminal_bg_is_light=terminal_bg_is_light)
@@ -274,8 +270,17 @@ def _drive_production_scene(
         )
     elif scene_name == "failure":
         display.emit_phase_start("review", agent_name="reviewer")
-        raw_machine_detail = "tests failed: assertion output retained; " + "trace-detail " * 48
-        display.emit_activity_line("reviewer", "error", raw_machine_detail)
+        raw_machine_detail = (
+            "tests failed: assertion output retained; trace-detail "
+            "condensed count=48 bytes=624"
+        )
+        display.emit_activity_line(
+            "reviewer",
+            "error",
+            raw_machine_detail,
+            condensed_ref=".agent/raw/reviewer.log",
+            condensed_flag=True,
+        )
         display.emit_warn_line(
             "reviewer",
             "warning",
