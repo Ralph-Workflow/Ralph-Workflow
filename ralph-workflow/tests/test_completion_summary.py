@@ -86,6 +86,21 @@ def test_render_success_title_and_plan_summary() -> None:
     assert "Scope: 2 item(s)" in text
 
 
+def test_render_completion_summary_regression_leads_with_failure_phase_and_cause() -> None:
+    """S-6: a cold-read failure receipt presents phase and cause before metrics."""
+    text = render_completion_summary(
+        _make_snapshot(
+            phase="review",
+            last_error="verification gate failed",
+            pr_url=None,
+            is_terminal_success=False,
+            is_terminal_failure=True,
+        )
+    ).plain
+    assert text.index("failed_phase=review") < text.index("Metrics:")
+    assert text.index("Error: verification gate failed") < text.index("Metrics:")
+
+
 def test_render_failure_uses_failed_title() -> None:
     text = _render_plain(
         _make_snapshot(
@@ -111,6 +126,20 @@ def test_render_decision_log_renders_all_rows() -> None:
 def test_render_without_decision_log_shows_none_line() -> None:
     text = _render_plain(_make_snapshot(decision_log=()))
     assert "none recorded" in text
+
+
+def test_render_completion_summary_regression_preserves_raw_overflow_destination() -> None:
+    """S-6: the standalone receipt preserves the condensed transcript location."""
+    text = _render_plain(
+        _make_snapshot(),
+        workspace_root=None,
+    )
+    assert "raw_overflow=" not in text
+    summary = render_completion_summary(
+        _make_snapshot(),
+        options=CompletionSummaryOptions(overflow_path=".agent/raw/run.log"),
+    )
+    assert "raw_overflow=.agent/raw/run.log" in summary.plain
 
 
 def test_render_metrics_line_included() -> None:

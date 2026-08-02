@@ -144,18 +144,48 @@ STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
 }
 
 IDENTITY_PALETTE: Final[tuple[str, ...]] = (
-    "#E31A1C", "#3288BD", "#33A02C", "#6A3D9A", "#FF7F00", "#B15928",
-    "#E7298A", "#B2DF8A", "#FDBF6F", "#CAB2D6", "#FFFF99", "#A6CEE3",
+    "#E31A1C",
+    "#3288BD",
+    "#33A02C",
+    "#6A3D9A",
+    "#FF7F00",
+    "#B15928",
+    "#E7298A",
+    "#B2DF8A",
+    "#FDBF6F",
+    "#CAB2D6",
+    "#FFFF99",
+    "#A6CEE3",
 )
 
 IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
-    "#8B0000", "#00008B", "#006400", "#4B0082", "#663300", "#8B008B",
-    "#556B2F", "#5A4FCF", "#483D8B", "#A52A2A", "#3D3D3D", "#1A1A1A",
+    "#8B0000",
+    "#00008B",
+    "#006400",
+    "#4B0082",
+    "#663300",
+    "#8B008B",
+    "#556B2F",
+    "#5A4FCF",
+    "#483D8B",
+    "#A52A2A",
+    "#3D3D3D",
+    "#1A1A1A",
 )
 
 IDENTITY_PALETTE_ON_UNKNOWN_BG: Final[tuple[str, ...]] = (
-    "#0070F0", "#0080A0", "#3070E0", "#308080", "#508040", "#6070C0",
-    "#608000", "#7060F0", "#807080", "#9060C0", "#907000", "#907030",
+    "#0070F0",
+    "#0080A0",
+    "#3070E0",
+    "#308080",
+    "#508040",
+    "#6070C0",
+    "#608000",
+    "#7060F0",
+    "#807080",
+    "#9060C0",
+    "#907000",
+    "#907030",
 )
 
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
@@ -719,6 +749,20 @@ _PREVIEW_BACKGROUND_ON_DARK_BG: Final[str] = "#101417"
 _PREVIEW_BACKGROUND_ON_LIGHT_BG: Final[str] = "#F7F9FB"
 
 
+def preview_foreground_for_background(terminal_bg_is_light: bool | None) -> str:
+    """Return the fixed body foreground for an owned or transparent preview.
+
+    The transparent unknown-background fallback remains readable against both
+    black and white terminals; known preview surfaces use their corresponding
+    syntax default foreground.
+    """
+    if terminal_bg_is_light is True:
+        return "#202020"
+    if terminal_bg_is_light is False:
+        return "#D0D0D0"
+    return "#757575"
+
+
 def preview_background_for_background(terminal_bg_is_light: bool | None) -> str:
     """Return the complete owned preview surface for a resolved background.
 
@@ -994,6 +1038,8 @@ __all__ = [
     "identity_color",
     "make_console",
     "pick_status_styles",
+    "preview_background_for_background",
+    "preview_foreground_for_background",
     "syntax_theme_for_background",
     "terminal_background_is_light",
     "theme_for_background",

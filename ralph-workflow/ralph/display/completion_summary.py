@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -328,6 +328,12 @@ def render_completion_summary(
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
 
     lines.append(f"Exit: {_exit_trigger_label(snapshot)}")
+    if failed:
+        lines.append(f"failed_phase={snapshot.phase}")
+        lines.append(f"Error: {snapshot.last_error or 'unknown failure'}")
+        diagnostic = _children_persist_diagnostic_line(snapshot.last_error or "")
+        if diagnostic:
+            lines.append(diagnostic)
 
     if opts.elapsed_seconds is not None:
         lines.append(f"Elapsed: {format_elapsed_seconds(opts.elapsed_seconds)}")
@@ -353,6 +359,8 @@ def render_completion_summary(
     activity_parts.append(f"thinking_blocks={opts.thinking_block_count}")
     activity_parts.append(f"tool_calls={opts.tool_call_count}")
     activity_parts.append(f"errors={opts.error_count}")
+    if opts.overflow_path is not None:
+        activity_parts.append(f"raw_overflow={opts.overflow_path}")
     lines.append("Activity: " + " ".join(activity_parts))
 
     lines.extend(_plain_decision_lines(snapshot))
@@ -369,9 +377,15 @@ def render_completion_summary(
         lines.append("Iteration Context:")
         lines.extend(f"  {ln}" for ln in iter_lines)
 
-    lines.extend(_plain_tail_lines(snapshot, opts.workspace_root, opts.dropped_count))
+    tail_snapshot = snapshot if not failed else _snapshot_without_error(snapshot)
+    lines.extend(_plain_tail_lines(tail_snapshot, opts.workspace_root, opts.dropped_count))
 
     return Text("\n".join(lines))
+
+
+def _snapshot_without_error(snapshot: PipelineSnapshot) -> PipelineSnapshot:
+    """Return a failure receipt snapshot whose cause has already been rendered."""
+    return replace(snapshot, last_error=None)
 
 
 def make_badge_text(badge: str, rest: str) -> Text:

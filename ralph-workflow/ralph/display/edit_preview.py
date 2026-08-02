@@ -115,6 +115,7 @@ from ralph.display.preview_payload import PreviewPayload, payload_from_tool_even
 from ralph.display.theme import (
     pick_status_styles,
     preview_background_for_background,
+    preview_foreground_for_background,
     syntax_theme_for_background,
 )
 
@@ -350,15 +351,17 @@ class _BackgroundAwareMarkdown(Markdown):
         with markdown_theme_context(console, terminal_bg_is_light=self.terminal_bg_is_light):
             content = tuple(super().__rich_console__(console, options))
         surface = preview_background_for_background(self.terminal_bg_is_light)
-        if surface == "default":
-            yield from content
-            return
         # An expanded style wrapper paints every Markdown row (including prose,
-        # padding, and fenced code) without introducing body-frame chrome.
+        # padding, and fenced code) without introducing body-frame chrome. On
+        # unknown backgrounds it remains transparent but still supplies a
+        # dual-safe foreground for otherwise unstyled body prose.
         yield Padding(
             _MarkdownContent(content),
             pad=(0, 0),
-            style=Style(bgcolor=surface),
+            style=Style(
+                color=preview_foreground_for_background(self.terminal_bg_is_light),
+                bgcolor=None if surface == "default" else surface,
+            ),
             expand=True,
         )
 

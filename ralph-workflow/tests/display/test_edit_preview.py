@@ -10,7 +10,12 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 
 from ralph.display.edit_preview import build_edit_preview, render_markdown_preview
-from ralph.display.theme import diff_fill_styles, preview_background_for_background
+from ralph.display.theme import (
+    contrast_ratio,
+    diff_fill_styles,
+    preview_background_for_background,
+    preview_foreground_for_background,
+)
 
 
 def _render_truecolor(preview: object, *, width: int = 80) -> str:
@@ -67,6 +72,25 @@ def test_markdown_preview_regression_owns_known_background_for_prose_and_code() 
         assert sgr in rendered
         assert "Heading" in _plain(rendered)
         assert "value = 1" in _plain(rendered)
+
+
+def test_markdown_preview_regression_colours_unstyled_prose_on_every_background() -> None:
+    """S-3/S-4: Markdown body text has a fixed, contrast-safe foreground."""
+    for terminal_bg_is_light in (False, True, None):
+        rendered = _render_truecolor(
+            render_markdown_preview(
+                "Body prose.", width=80, terminal_bg_is_light=terminal_bg_is_light
+            )
+        )
+        foreground = preview_foreground_for_background(terminal_bg_is_light)
+        red, green, blue = (int(foreground[index : index + 2], 16) for index in (1, 3, 5))
+        assert f"38;2;{red};{green};{blue}" in rendered
+        backgrounds = (
+            ("#FFFFFF",)
+            if terminal_bg_is_light is True
+            else (("#000000",) if terminal_bg_is_light is False else ("#000000", "#FFFFFF"))
+        )
+        assert all(contrast_ratio(foreground, background) >= 4.5 for background in backgrounds)
 
 
 def test_markdown_preview_regression_wraps_prose_without_wrapping_fenced_code() -> None:
