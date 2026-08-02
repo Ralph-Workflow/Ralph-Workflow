@@ -65,15 +65,17 @@ if TYPE_CHECKING:
 
 # The 1.0 s per-test ITIMER_REAL budget charges wall clock. Plain-pytest
 # shards avoid xdist's shared-worker contention while preserving exact-once
-# test assignment. The automatic profile uses eight shards: higher concurrency
-# starves SQLite-backed tests long enough to trip their one-second test cap,
-# while fewer shards breach the combined suite deadline. Operators may
-# explicitly override ``PYTEST_WORKERS`` for a measured environment.
+# test assignment. The automatic profile uses sixteen shards: profiling on the
+# maintained 32-core CI profile shows this keeps the slowest shard below the
+# combined deadline, while fewer shards breach it. Operators may explicitly
+# override ``PYTEST_WORKERS`` for a measured environment.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 8
+# The runner owns plain pytest subprocesses rather than xdist workers, so
+# preserving one core for its deadline/cleanup loop avoids scheduler starvation.
+_MAX_PYTEST_WORKERS = max(1, min(16, (os.cpu_count() or 2) - 1))
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -193,7 +195,7 @@ def validate_exact_file_assignment(
 
 
 def _pytest_workers() -> str:
-    """Return an explicit override or the verified fixed shard profile."""
+    """Return an explicit override or the CPU-capped verified shard profile."""
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     return raw if raw != "auto" else str(_MAX_PYTEST_WORKERS)
 

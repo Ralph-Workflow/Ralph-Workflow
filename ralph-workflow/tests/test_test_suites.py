@@ -311,9 +311,9 @@ def test_auto_worker_count_uses_the_verified_safe_profile(
 ) -> None:
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
 
-    # Regression: eight shards avoid starving SQLite-backed tests while still
-    # keeping the default profile within the immutable combined budget.
-    assert test_suites_module._pytest_workers() == "8"
+    # Regression: sixteen plain-pytest shards keep the slowest shard below
+    # the immutable combined budget on the maintained 32-core CI profile.
+    assert test_suites_module._pytest_workers() == "16"
 
 
 def test_explicit_worker_count_overrides_the_auto_resolution(
