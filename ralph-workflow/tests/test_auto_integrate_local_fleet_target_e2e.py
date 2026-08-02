@@ -188,6 +188,8 @@ def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
     assert advanced
     feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(feature, target) == feature_tip
+    # A linked worktree observes the same target ref after the retry and landing.
+    assert branch_sha(tmp_git_repo, target) == feature_tip
     assert _run(feature, "merge-base", "--is-ancestor", advanced[0], feature_tip).returncode == 0
     assert _run(feature, "log", "--merges", "--format=%H").stdout.strip() == ""
     assert _run(feature, "show", "HEAD:shared.txt").stdout == _RESOLVED_CONTENT
