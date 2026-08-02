@@ -6,7 +6,7 @@ implementing module + pin test that enforces it. It is intentionally
 tutorial-free: no code, no implementation walkthrough — only the
 per-AC linkage. Drift between this document and the codebase is caught
 by the consolidated pin test
-`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`
+`tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r8`
 (whose `RALPH_PIN_TEST_PATHS` references every dedicated pin test file
 listed below); if a file is renamed or moved, `test_r8` fails and the
 doc must be updated to match.
@@ -16,7 +16,7 @@ internals (`ralph/watchdogs/`) and the source-of-truth modules
 referenced in this page. For the underpinning cross-transport
 subagent visibility contract, see the R5 section below and the
 per-transport parametrize at
-`tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`.
+`tests/agents/test_idle_watchdog.py`.
 
 ---
 
@@ -55,10 +55,10 @@ per-transport parametrize at
 
 ### Pin tests
 
-- `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`
-- `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
-- `tests/agents/idle_watchdog/test_shared_subagent_pid_registry.py`
-- `tests/agents/idle_watchdog/test_production_subagent_registry_wiring.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
   — production SubagentPidRegistry wiring end-to-end pin; exercises
   the `AgentRegistry.build_subagent_pid_registry(transport)` →
   `BaseExecutionStrategy(subagent_pid_source=...)` →
@@ -67,7 +67,7 @@ per-transport parametrize at
   OpenCode, Claude, Claude-interactive, Codex, Nanocoder, Generic,
   Agy, Pi). Pinned in wt-021 to lock the production wiring and
   catch any future refactor that bypasses the registry seam.
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r1`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r1`
 
 ---
 
@@ -104,10 +104,10 @@ per-transport parametrize at
 
 ### Pin tests
 
-- `tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py`
-- `tests/agents/idle_watchdog/test_stuck_classifier.py`
-- `tests/agents/idle_watchdog/test_no_output_at_start_loading.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r2`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r2`
 
 ---
 
@@ -158,11 +158,11 @@ per-transport parametrize at
 
 ### Pin tests
 
-- `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
-- `tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py`
-- `tests/agents/idle_watchdog/test_session_ceiling_no_resume.py`
-- `tests/agents/idle_watchdog/test_pure_stall_wedge.py`
-- `tests/agents/idle_watchdog/test_cumulative_waiting_ceiling_fires_with_real_subagent_alive.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
   — the NEW R3 regression pin for the cumulative ceiling hard
   enforcement. Exercises two scenarios via `_classify_stuck_now`
   override: (1) `SILENT_SUBAGENT` (the 2365s indefinite deferral
@@ -171,7 +171,7 @@ per-transport parametrize at
   Uses `FakeClock` + Protocol-typed `@dataclass` `ProcessMonitor`
   fake (NO real subprocess), in scope for the canonical R8 audit
   target.
-- `tests/agents/idle_watchdog/test_stuck_job_heartbeat_ceiling.py`
+- `tests/agents/test_idle_watchdog.py`
   — heartbeat-only ceiling pin for stuck jobs that emit heartbeats
   but no real work (`AliveBy.FRESH_HEARTBEAT_ONLY`). Locks the
   `no_progress_quiet_heartbeat_ceiling_seconds` (default 240s)
@@ -184,7 +184,7 @@ per-transport parametrize at
   indefinitely (the R2 guarantee); (5) `None` disables the
   heartbeat-only ceiling. Pinned in wt-021 to lock the
   heartbeat-only ceiling enforcement.
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r3`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r3`
 
 ---
 
@@ -245,12 +245,12 @@ per-transport parametrize at
 
 ### Pin tests
 
-- `tests/agents/idle_watchdog/test_resume_after_kill_contract.py`
-- `tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py`
-- `tests/agents/idle_watchdog/test_resume_session_id_threading.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
 - `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
-- `tests/agents/idle_watchdog/test_resume_contract_invariant.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r4`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r4`
 
 ---
 
@@ -283,7 +283,7 @@ PER-TRANSPORT COVERAGE REQUIRED: every `AgentTransport` member
 (OpenCode, Claude, Claude-interactive, Codex, Nanocoder, Generic, Agy,
 Pi) flows all three R5 fields through both surfaces via the
 parametrized per-transport pin test at
-`tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`.
+`tests/agents/test_idle_watchdog.py`.
 
 ### Implementing modules
 
@@ -311,15 +311,15 @@ parametrized per-transport pin test at
 
 ### Pin tests
 
-- `tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`
+- `tests/agents/test_idle_watchdog.py`
   — per-transport parametrize over `list(AgentTransport)`;
   parametrized test methods assert all three R5 fields on BOTH
   surfaces (the watchdog `diagnostic_snapshot()` dict and the
   `WaitingStatusEvent` dataclass) for every supported transport.
-- `tests/agents/idle_watchdog/test_subagent_progress_surface.py`
-- `tests/agents/idle_watchdog/test_waiting_subagent_progress.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
 - `tests/process/monitor/test_dispatch_all_transports.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r5`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r5`
   — the consolidated surface test; exercises all three R5 fields on
   the watchdog public surface AND on emitted `WaitingStatusEvent`
   instances for a single-watcher scenario.
@@ -360,8 +360,8 @@ parametrized per-transport pin test at
 
 ### Pin tests
 
-- `tests/agents/idle_watchdog/test_log_spam_throttle.py`
-- `tests/agents/idle_watchdog/test_log_spam_throttle_public_surface.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
   — the NEW R6 public-surface proof that drives the watchdog via
   `watchdog.evaluate(classify_quiet=...)` only (NO `setattr` on
   `_classify_stuck_now`, NO direct call to `_gate_fire`, NO read
@@ -397,10 +397,10 @@ parametrized per-transport pin test at
   (a) only; tests that exercise (b) are listed in the R5
   cross-transport visibility pins (R5 owns the subagent-activity
   surface).
-- `tests/agents/idle_watchdog/test_evidence_deferral_throttle.py`
-- `tests/agents/idle_watchdog/test_invocation_start_full_reset.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6_heartbeat`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r6`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r6_heartbeat`
 
 ### Heartbeat UX (chosen)
 
@@ -632,7 +632,7 @@ here is the safest cleanup step (no leaked state across runs).
 
 ### Pin tests (black-box capture)
 
-- `tests/agents/idle_watchdog/test_stall_status_events.py` — the
+- `tests/agents/test_idle_watchdog.py` — the
   watchdog-sourced transition contract: `_set_stall` emits
   `STALLED` exactly once on entry into a stall and `STALL_RESUMED`
   exactly once on exit; repeated ticks emit no duplicates; the
@@ -955,7 +955,7 @@ level 1 rejects unsupported claims per AGENTS.md.
   ambiguous-warning path. Together with the classifier and
   classification pin files above, this third pin closes the
   producer→classifier→recovery chain end-to-end (20 R7 tests).
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r7`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r7`
 
 ---
 
@@ -977,7 +977,7 @@ level 1 rejects unsupported claims per AGENTS.md.
 - `ralph/process/monitor/_process_monitor.py:42` —
   `class ProcessMonitor(Protocol)`; tests inject `@dataclass` fakes
   (the `_HelpersOnlyMonitor` / `_FilteredCountMonitor` pattern in
-  `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`
+  `tests/agents/test_idle_watchdog.py`
   and the consolidated suite).
 - `ralph/agents/timeout_clock.py:16` — `class FakeClock`; the
   deterministic clock every watchdog test drives instead of
@@ -993,7 +993,7 @@ level 1 rejects unsupported claims per AGENTS.md.
 
 - The **canonical RALPH pin-test set** (the entries of
   `RALPH_PIN_TEST_PATHS` in
-  `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`)
+  `tests/agents/test_idle_watchdog.py`)
   — every entry uses `FakeClock` from `ralph.agents.timeout_clock`
   plus a local `@dataclass` `ProcessMonitor` Protocol fake (no real
   `time.sleep`, no real `subprocess.run`, no real `tmp_path` or
@@ -1003,7 +1003,7 @@ level 1 rejects unsupported claims per AGENTS.md.
   AST-level audit module that enforces the no-real-sleep / no-real-
   subprocess / no-real-file-IO contract on every non-`subprocess_e2e`
   test file across the whole `tests/` tree.
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`
+- `tests/agents/test_idle_watchdog.py::TestTrustworthyIdleWatchdogSpec::test_r8`
   — the consolidated AC-08 assertion that the canonical RALPH
   pin-test set exists on disk, that the `ProcessMonitor` Protocol
   advertises both seam names (`spawned_subagent_count` and
@@ -1021,7 +1021,7 @@ governed by their own contracts:
 1. **End-to-end integration tests** (marked with
    `pytest.mark.subprocess_e2e`) — exercise real subprocess, real
    filesystem, and real wall-clock time by design. Example:
-   `tests/agents/idle_watchdog/test_e2e_activity_aware.py`. These
+   `tests/agents/test_idle_watchdog.py`. These
    tests are explicitly excluded from
    `ralph/testing/audit_test_policy.py` enforcement and are the only
    path that verifies the production `DefaultProcessMonitor`
@@ -1032,8 +1032,8 @@ governed by their own contracts:
    tests cannot observe (e.g. "no `sys.exit` in the watchdog
    modules", "`WatchdogFireReason` is constructed only by the two
    canonical owner classes"). Examples:
-   `tests/agents/idle_watchdog/test_watchdog_recovery_contract.py`,
-   `tests/agents/idle_watchdog/test_diagnostic_snapshot.py`. The
+   `tests/agents/test_idle_watchdog.py`,
+   `tests/agents/test_idle_watchdog.py`. The
    `Path.read_text()` call is part of the watchdog contract
    verification path, not a test artefact; the test asserts on the
    parsed AST structure, not on file contents.
@@ -1042,7 +1042,7 @@ governed by their own contracts:
    place where the runtime actually emits
    `AgentInactivityTimeoutError`) via a synthesized invoke flow with
    temporary workspaces. Example:
-   `tests/agents/idle_watchdog/test_runtime_session_resume_safe_mapping.py`.
+   `tests/agents/test_idle_watchdog.py`.
    These tests use `tmp_path` because the runtime seam emits to a
    real workspace; the contract they pin is the canonical
    `WatchdogFireReason -> session_resume_safe` mapping at the line

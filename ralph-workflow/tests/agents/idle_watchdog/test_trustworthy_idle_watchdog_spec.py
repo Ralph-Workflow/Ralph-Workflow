@@ -98,51 +98,51 @@ from ralph.recovery.failure_classifier import FailureClassifier
 # pin test is added to the spec, append the relative path here too.
 RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     # R1 - Child-process monitors count only real subagents.
-    "tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py",
-    "tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py",
-    "tests/agents/idle_watchdog/test_shared_subagent_pid_registry.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
     # R1 (NEW) - production SubagentPidRegistry wiring end-to-end pin
     # for the AgentRegistry -> BaseExecutionStrategy ->
     # classify_quiet injection path and the parser-side registry
     # storage. Pinned in wt-021 to lock the production wiring and
     # catch any future refactor that bypasses the registry seam.
-    "tests/agents/idle_watchdog/test_production_subagent_registry_wiring.py",
+    "tests/agents/test_idle_watchdog.py",
     # R2 - No false positives.
-    "tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py",
-    "tests/agents/idle_watchdog/test_stuck_classifier.py",
-    "tests/agents/idle_watchdog/test_no_output_at_start_loading.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
     # R3 - No false negatives.
-    "tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py",
-    "tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py",
-    "tests/agents/idle_watchdog/test_session_ceiling_no_resume.py",
-    "tests/agents/idle_watchdog/test_pure_stall_wedge.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
     # R3 (NEW) - cumulative ceiling hard-enforcement pin. Uses
     # FakeClock + Protocol-typed @dataclass ProcessMonitor fake
     # (NO real subprocess) so it stays in the canonical R8 audit
     # target. Pinned in wt-021 to lock the fix that removed the
     # _gate_fire consultation from the cumulative ceiling block.
-    "tests/agents/idle_watchdog/test_cumulative_waiting_ceiling_fires_with_real_subagent_alive.py",
+    "tests/agents/test_idle_watchdog.py",
     # R3 (NEW) - heartbeat-only ceiling pin for stuck jobs that
     # emit heartbeats but no real work (AliveBy.FRESH_HEARTBEAT_ONLY).
     # Pinned in wt-021 to lock the no_progress_quiet_heartbeat_ceiling
     # enforcement and the FRESH_PROGRESS deferral invariant.
-    "tests/agents/idle_watchdog/test_stuck_job_heartbeat_ceiling.py",
+    "tests/agents/test_idle_watchdog.py",
     # R4 - Resume on watchdog kill, never restart.
-    "tests/agents/idle_watchdog/test_resume_after_kill_contract.py",
-    "tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py",
-    "tests/agents/idle_watchdog/test_resume_session_id_threading.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
     "tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py",
-    "tests/agents/idle_watchdog/test_resume_contract_invariant.py",
+    "tests/agents/test_idle_watchdog.py",
     # R5 - Real-time subagent visibility for all supported agents.
-    "tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py",
-    "tests/agents/idle_watchdog/test_subagent_progress_surface.py",
-    "tests/agents/idle_watchdog/test_waiting_subagent_progress.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
     "tests/process/monitor/test_dispatch_all_transports.py",
     # R6 - Quiet, meaningful output.
-    "tests/agents/idle_watchdog/test_log_spam_throttle.py",
-    "tests/agents/idle_watchdog/test_log_spam_throttle_public_surface.py",
-    "tests/agents/idle_watchdog/test_evidence_deferral_throttle.py",
-    "tests/agents/idle_watchdog/test_invocation_start_full_reset.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
+    "tests/agents/test_idle_watchdog.py",
     # R7 - Explain and handle the "mysterious" rc=0 exits.
     "tests/recovery/test_opencode_resumable_exit_classification.py",
     "tests/recovery/test_opencode_resumable_exit_classifier.py",
