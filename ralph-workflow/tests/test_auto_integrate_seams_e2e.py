@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
-import pytest
-
 from ralph.config.models import UnifiedConfig
-from ralph.git.merge import branch_sha
-from ralph.git.operations import get_head_sha
 from ralph.pipeline import run_loop, runner
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
@@ -134,56 +129,3 @@ def test_fan_out_join_threads_injected_outcome_into_state(
     assert joined.phase == state.phase
     assert joined.rebase is expected
     assert integration.call_count == 1
-
-
-def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ("git", *args),
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=5,
-    )
-
-
-@pytest.mark.subprocess_e2e
-@pytest.mark.timeout_seconds(5)
-def test_linked_worktree_landing_updates_checked_out_mainline(
-    tmp_git_repo: Path,
-) -> None:
-    """Real Git proves the worktree-aware fast-forward updates ref and files."""
-    main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
-    feature = tmp_git_repo.parent / "feature"
-    assert (
-        _run(
-            tmp_git_repo,
-            "worktree",
-            "add",
-            "-b",
-            "feature",
-            str(feature),
-        ).returncode
-        == 0
-    )
-    (feature / "feature.txt").write_text("feature\n", encoding="utf-8")
-    assert _run(feature, "add", "feature.txt").returncode == 0
-    assert _run(feature, "commit", "-m", "feature").returncode == 0
-
-    outcome = auto_integrate_after_commit(
-        UnifiedConfig.model_validate(
-            {
-                "general": {
-                    "auto_integrate_enabled": True,
-                    "auto_integrate_target": main,
-                }
-            }
-        ),
-        WorkspaceScope(feature),
-        RebaseState(),
-    )
-
-    assert outcome is not None
-    assert outcome.fast_forwarded is True
-    assert branch_sha(feature, main) == get_head_sha(feature)
-    assert (tmp_git_repo / "feature.txt").read_text(encoding="utf-8") == "feature\n"

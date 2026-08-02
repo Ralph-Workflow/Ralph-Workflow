@@ -8,6 +8,7 @@ per-test 1 s budget without losing the end-to-end contract they assert.
 from __future__ import annotations
 
 import dataclasses
+import re
 import shutil
 import tomllib
 from io import StringIO
@@ -1166,8 +1167,9 @@ def test_cli_init_with_missing_custom_config_keeps_local_config_absent(
     assert result.exit_code == 0, result.output
     assert not custom.exists()
     assert not custom.parent.exists()
-    assert "does not create project-local configuration" in result.output
-    assert "ralph --init-local-config" in result.output
+    normalized_output = " ".join(re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output).split())
+    assert "does not create project-local configuration" in normalized_output
+    assert "ralph --init-local-config" in normalized_output
     assert (tmp_path / "PROMPT.md").exists()
     assert (xdg_dir / "ralph-workflow.toml").exists()
 

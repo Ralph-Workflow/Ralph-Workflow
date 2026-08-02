@@ -112,7 +112,9 @@ def test_pty_child_runs_in_its_own_session_and_paints_nothing_on_the_parent(
             if not chunk:
                 break
             raw_chunks.append(chunk)
-            if b"child_sid=" in b"".join(raw_chunks):
+            captured = b"".join(raw_chunks)
+            marker = b"child_sid="
+            if marker in captured and b"\n" in captured.split(marker, maxsplit=1)[1]:
                 break
         raw = b"".join(raw_chunks)
 

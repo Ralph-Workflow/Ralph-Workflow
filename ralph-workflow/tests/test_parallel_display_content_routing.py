@@ -89,8 +89,13 @@ def test_output_does_not_contain_raw_json(tmp_path: Path) -> None:
     pd, buf = _make_display(tmp_path)
     raw_json = '{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}'
     pd.activity_router.push_raw_line("u", raw_json, provider=ActivityProvider.CLAUDE)
-    out = buf.getvalue()
-    assert raw_json not in out
+    pd.stop()
+
+    output = buf.getvalue()
+    assert raw_json not in output
+    content_rows = [line for line in output.splitlines() if "[output][u]" in line]
+    assert len(content_rows) == 1
+    assert "hi" in content_rows[0]
 
 
 def test_very_long_line_is_condensed(tmp_path: Path) -> None:
@@ -133,8 +138,11 @@ def test_only_one_activity_router_per_parallel_display(tmp_path: Path) -> None:
 def test_malformed_ndjson_does_not_crash(tmp_path: Path) -> None:
     pd, buf = _make_display(tmp_path)
     pd.activity_router.push_raw_line("u", "not valid json {{{", provider=ActivityProvider.CLAUDE)
-    out = buf.getvalue()
-    assert isinstance(out, str)
+    pd.stop()
+
+    output = buf.getvalue()
+    assert output.count("[output][u]") == 1
+    assert "not valid json {{{" in output
 
 
 def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
