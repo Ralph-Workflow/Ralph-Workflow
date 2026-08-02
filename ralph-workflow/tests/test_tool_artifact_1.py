@@ -19,9 +19,9 @@ from ralph.mcp.tools.md_artifact import (
     handle_stage_md_artifact,
     handle_submit_md_artifact,
 )
-from tests._support.typed_accessors import must_mapping, must_text
 from tests._artifact_format_docs_mock_session import planning_session
 from tests._artifact_format_docs_mock_workspace import MockWorkspace
+from tests._support.typed_accessors import must_mapping, must_text
 
 if TYPE_CHECKING:
     from pathlib import Path

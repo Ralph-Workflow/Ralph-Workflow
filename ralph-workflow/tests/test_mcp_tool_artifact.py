@@ -10,11 +10,11 @@ import pytest
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact, handle_verify_md_artifact
+from tests._artifact_format_docs_mock_session import MockSession, planning_session
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 from tests._support.typed_accessors import (
     must_dict_list,
 )
-from tests._artifact_format_docs_mock_session import MockSession, planning_session
-from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

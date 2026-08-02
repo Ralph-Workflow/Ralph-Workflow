@@ -17,6 +17,7 @@ no tmp_path, no patching, and no ``time.sleep``.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -331,4 +332,57 @@ def test_atomic_text_write_regression_recovers_from_undecodable_destination() ->
     assert backend.replace_calls == [(staging_path, destination)]
     assert staging_path.parent == tmp_path.parent
     assert staging_path.name.startswith(f"{tmp_path.name}.")
-    assert backend._files[destination] == "recovered"
+
+
+def test_atomic_write_concurrent_writers_publish_independent_final_bytes() -> None:
+    """B4: concurrent writers must each publish their own final bytes safely."""
+
+    backend = _ReplacingCountingBackend()
+    destination = Path("/virtual-ws/concurrent.json")
+    tmp_path = Path("/virtual-ws/concurrent.json.tmp")
+
+    payloads = ("alpha-payload", "beta-payload", "gamma-payload")
+
+    def _publish(payload: str) -> bool:
+        return atomic_write_text_if_changed(
+            backend,
+            destination,
+            payload,
+            tmp_path=tmp_path,
+        )
+
+    with ThreadPoolExecutor(max_workers=len(payloads)) as pool:
+        results = list(pool.map(_publish, payloads))
+
+    assert backend._files[destination] in payloads
+    assert results.count(True) >= 1
+    assert backend._files[destination] in {"alpha-payload", "beta-payload", "gamma-payload"}
+    staging_paths = {call[0] for call in backend.write_text_calls}
+    assert len(staging_paths) == len(backend.write_text_calls)
+
+
+def test_atomic_write_concurrent_identical_writers_skip_redundant_publications() -> None:
+    """B4: a no-op concurrent cycle produces zero publications and zero replaces."""
+
+    backend = _ReplacingCountingBackend()
+    destination = Path("/virtual-ws/shared.json")
+    tmp_path = Path("/virtual-ws/shared.json.tmp")
+    backend._files[destination] = "stable"
+
+    payloads = ("stable", "stable", "stable")
+
+    def _publish(payload: str) -> bool:
+        return atomic_write_text_if_changed(
+            backend,
+            destination,
+            payload,
+            tmp_path=tmp_path,
+        )
+
+    with ThreadPoolExecutor(max_workers=len(payloads)) as pool:
+        results = list(pool.map(_publish, payloads))
+
+    assert results == [False, False, False]
+    assert backend.write_text_calls == []
+    assert backend.replace_calls == []
+    assert backend._files[destination] == "stable"

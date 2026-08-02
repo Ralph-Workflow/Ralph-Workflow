@@ -6,12 +6,12 @@ import json
 from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.md_artifact import handle_verify_md_artifact
+from tests._artifact_format_docs_mock_session import planning_session
+from tests._artifact_format_docs_mock_workspace import MockWorkspace
 from tests._support.typed_accessors import (
     must_dict_list,
     must_str,
 )
-from tests._artifact_format_docs_mock_session import planning_session
-from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path

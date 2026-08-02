@@ -20,8 +20,8 @@ from ralph.mcp.tools.tool_content import ToolContent
 from ralph.pipeline.phase_entry_cleaner import clear_phase_entry_drains
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
-from tests.mcp.test_md_plan_spec import _plan_document
 from tests._artifact_format_docs_mock_session import planning_session
+from tests.mcp.test_md_plan_spec import _plan_document
 
 _JSON_OBJECT = TypeAdapter(dict[str, object])
 

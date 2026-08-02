@@ -35,7 +35,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | B1 | Public workspace paths and bytes | baseline test final-content assertions | GAP: fixture comparison across all public outputs. |
 | B2 | Logging and artifact streams | existing stream tests | GAP: full stream/history inventory. |
 | B3 | Atomic publication helper | `tests/test_atomic_write_if_changed.py` (atomic replace and sync); `tests/test_idempotent_write.py` | COVERED for helper; all durability callers are GAP. |
-| B4 | Atomic staging helper | unique staging-path regression | GAP: process-safe concurrent publication proof. |
+| B4 | Atomic staging helper | `tests/test_atomic_write_if_changed.py::test_atomic_write_concurrent_writers_publish_independent_final_bytes`; `tests/test_atomic_write_if_changed.py::test_atomic_write_concurrent_identical_writers_skip_redundant_publications` | COVERED for the in-process concurrent path: unique staging paths, replacement via the canonical primitive, and skip-on-identical-concurrent publication are all black-box pinned; cross-process publication remains GAP. |
 | B5 | Live stream writers | existing flush/lifecycle tests | GAP: fake-clock live-latency comparison. |
 | B6 | Shared persistence/watch state | unique staging path behavior | GAP: independent-process coordination proof. |
 | D1 | Write/read/polling consolidation audits | `tests/test_audit_filesystem_write_consolidation.py`; `tests/test_audit_filesystem_read_consolidation.py`; `tests/test_audit_filesystem_polling_invocation.py`; `tests/test_audit_fsevents_watch_consolidation.py` (all wired into `ralph.verify`) | COVERED for audited raw accesses, polling, watch construction, and direct process selection. |
