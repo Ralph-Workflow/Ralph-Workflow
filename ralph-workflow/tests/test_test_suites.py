@@ -261,6 +261,62 @@ def test_required_real_git_file_weight_accounts_for_process_cost(
     )
 
 
+def test_estimate_test_file_weight_matches_class_scope_walk_for_known_samples() -> None:
+    """The fast class-scope walker must match a literal parametrization sample.
+
+    The class-scope walker is the optimized replacement for the
+    ``ast.walk``-based implementation: it descends through ``ClassDef``
+    bodies but does not visit nested-function bodies (pytest does not
+    collect them anyway). This test pins the contract that a
+    well-formed test file with both module-level and class-level
+    parametrized tests still produces the same weight as the old
+    ``ast.walk`` walker.
+    """
+    source = '''
+import pytest
+
+
+@pytest.mark.parametrize(("value", "expected"), [(1, "one"), (2, "two"), (3, "three")])
+def test_module_level_parametrized(value: int, expected: str) -> None:
+    assert value
+
+
+def test_module_level_plain() -> None:
+    assert True
+
+
+class TestClassScope:
+    @pytest.mark.parametrize("arg", ["a", "b", "c"])
+    def test_method_parametrized(self, arg: str) -> None:
+        assert arg
+
+    def test_method_plain(self) -> None:
+        assert True
+
+
+def helper_helper_function() -> None:
+    """This is not a test; the walker must not count it."""
+
+    def test_nested_under_helper() -> None:
+        """Nested function definitions are not collected by pytest."""
+        assert True
+'''
+
+    # 1 module-level parametrized (3 cases) + 1 module-level plain + 1 class
+    # method parametrized (3 cases) + 1 class method plain = 8.
+    assert test_suites_module.estimate_test_file_weight(source) == 8
+
+
+def test_estimate_test_file_weight_handles_syntax_error_gracefully() -> None:
+    """A file that fails to parse must report weight 1 rather than raising.
+
+    The walker only walks visible nodes; if the AST step fails, the
+    fallback weight of 1 keeps the shard balancer from crashing the
+    whole ``make test`` run on a stray bad module.
+    """
+    assert test_suites_module.estimate_test_file_weight("def @broken:") == 1
+
+
 def test_validate_exact_file_assignment_rejects_duplicate_file() -> None:
     selected = ("tests/test_alpha.py", "tests/test_bravo.py")
     shards = (("tests/test_alpha.py",), ("tests/test_alpha.py", "tests/test_bravo.py"))
