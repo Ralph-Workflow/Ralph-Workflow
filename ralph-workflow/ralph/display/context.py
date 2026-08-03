@@ -181,8 +181,8 @@ def _build_console(
     return make_console(
         file=output_stream,
         no_color=False,
-        force_terminal=None,
-        color_system="auto",
+        force_terminal=True,
+        color_system="truecolor",
         terminal_bg_is_light=terminal_bg_is_light,
     )
 
