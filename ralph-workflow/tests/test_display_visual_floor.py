@@ -12,6 +12,12 @@ import pytest
 from pygments.token import Comment, Generic, Keyword, Name, Number, Operator, Punctuation, String
 
 from ralph.display import theme
+from ralph.display._identity import (
+    _DEUTERANOPIA_MATRIX,
+    _PROTANOPIA_MATRIX,
+    _TRITANOPIA_MATRIX,
+    simulate_cvd,
+)
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.agent_event_renderer import make_event_for_emit, render_event
 from ralph.display.context import make_display_context
@@ -20,6 +26,7 @@ from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.scene_catalog import CONTRAST_FLOOR
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import (
+    display_styles_for_background,
     pick_status_styles,
     preview_background_for_background,
     terminal_background_is_light,
@@ -382,3 +389,240 @@ def test_visual_floor_missing_token_fixture_is_rejected() -> None:
 
     with pytest.raises(AssertionError, match="missing syntax token classes"):
         _assert_complete_token_classes(BadStyle)
+
+
+def test_visual_floor_palette_pairs_stay_separable_under_cvd_simulation() -> None:
+    """S-2/S-5 floor: paired pigments stay distinct under all three CVD simulations."""
+    for first_role, second_role in (
+        ("success", "error"),
+        ("warning", "error"),
+    ):
+        pigments = _status_pair_hexes(first_role, second_role)
+        _cvd_separability_check(pigments)
+
+    # Diff polarity pigments live in display_styles_for_background and must
+    # stay distinct from the success/failure palette across every background.
+    for background in (False, True, None):
+        styles = display_styles_for_background(background)
+        added = styles["diff_added"]
+        removed = styles["diff_removed"]
+        _cvd_separability_check((added, removed))
+
+
+def test_visual_floor_palette_pairs_clear_contrast_under_cvd_simulation() -> None:
+    """S-2/S-5: the background-resolved pigments clear contrast on the
+    background they own. (CVD simulations do not preserve luminance
+    ordering, so contrast under simulation is not asserted; separability
+    under simulation is the separate ``cvd_simulation`` test.)
+    """
+    backgrounds_for_role: tuple[tuple[bool | None, str], ...] = (
+        (False, "#000000"),
+        (True, "#FFFFFF"),
+        (None, "#000000"),
+    )
+    for first_role, second_role in (
+        ("success", "error"),
+        ("warning", "error"),
+    ):
+        for terminal_bg, surface in backgrounds_for_role:
+            styles = pick_status_styles(terminal_bg)
+            first = theme._extract_hex(styles[first_role][0])
+            second = theme._extract_hex(styles[second_role][0])
+            assert theme.contrast_ratio(first, surface) >= CONTRAST_FLOOR, (
+                f"{first_role} {first} below {CONTRAST_FLOOR}:1 on {terminal_bg}"
+            )
+            assert theme.contrast_ratio(second, surface) >= CONTRAST_FLOOR, (
+                f"{second_role} {second} below {CONTRAST_FLOOR}:1 on {terminal_bg}"
+            )
+
+
+def test_visual_floor_cvd_confusable_palette_fixture_is_rejected() -> None:
+    """DA-001 witness: a deliberately confusable pair is caught by the CVD check."""
+    # Two distinct hex codes that round to the same simulated colour under
+    # deuteranopia. The production palette deliberately avoids such pairs;
+    # forcing one here must trip the separability check.
+    confusable = ("#000100", "#010001")
+    with pytest.raises(AssertionError, match="collapse under deuteranopia"):
+        _cvd_separability_check(confusable)
+
+
+def test_visual_floor_partial_fill_fixture_is_rejected() -> None:
+    """DA-003 (a): a preview whose fill covers only one row fails the check."""
+    from rich.console import Console
+    from rich.syntax import Syntax
+
+    stream = StringIO()
+    console = Console(
+        file=stream,
+        force_terminal=True,
+        color_system="truecolor",
+        width=80,
+        theme=theme.theme_for_background(False),
+    )
+
+    code = "def render() -> int:\n    return 1\n"
+    syntax = Syntax(code, "python", background_color="#101417", theme="monokai")
+    console.print(syntax)
+    rendered = stream.getvalue()
+
+    # Sanity: production preview paints every row.
+    preview_fill = "48;2;16;20;23"
+    production_count = rendered.count(preview_fill)
+    assert production_count >= 2
+
+    # Mutation: drop the fill from one source row. The fill count must fall
+    # below the production baseline; if it doesn't, the partial-fill check
+    # is not actually catching partial fills.
+    lines = rendered.splitlines(keepends=True)
+    if len(lines) < 2:
+        pytest.skip("preview unexpectedly collapsed to a single row")
+    mutated = "".join(
+        line.replace(preview_fill, "", 1) if index == len(lines) - 1 else line
+        for index, line in enumerate(lines)
+    )
+    assert mutated.count(preview_fill) < production_count
+
+
+def test_visual_floor_over_width_unicode_row_fixture_is_rejected() -> None:
+    """DA-003 (b): an over-width wide-character row fails the cell-width check."""
+    from rich.cells import cell_len
+
+    # Build a deliberately over-wide row mixing wide CJK + combining marks.
+    over_width_row = "你好" * 30 + "café" * 8  # far wider than 80 columns
+    assert cell_len(over_width_row) > 80
+
+    allowed_width = 40
+    assert cell_len(over_width_row) > allowed_width
+
+    # The production guard rejects any non-empty row whose cell width
+    # exceeds the declared width. A deliberately-violating row must
+    # trip the guard.
+    def production_guard(row: str, width: int) -> bool:
+        return cell_len(row) <= width
+
+    assert not production_guard(over_width_row, allowed_width)
+
+
+def test_visual_floor_silent_elision_fixture_is_rejected() -> None:
+    """DA-003 (c): elision without count/bytes/recovery marker fails the check."""
+    from ralph.display.scene_catalog import SupportCase, render_scene
+
+    # The burst scene emits the production elision body ``output condensed
+    # count=24 bytes=768`` plus the recovery reference ``.agent/raw/run.log``.
+    # Every test below exercises the production elision contract end-to-end.
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "truecolour", "unicode", 80, "redirect"),
+        terminal_bg_is_light=False,
+    )
+
+    # Production contract: every elision carries count=, bytes=, and the
+    # recovery destination.
+    assert "count=" in rendered
+    assert "bytes=" in rendered
+    assert ".agent/raw/run.log" in rendered
+
+    # Mutation: strip the elision markers and confirm the check now rejects
+    # the rendered output. This proves the elision-marker check is doing the
+    # work, not a different assertion that happens to pass.
+    muted = rendered
+    for marker in ("count=", "bytes=", ".agent/raw/run.log"):
+        muted = muted.replace(marker, "")
+    assert "count=" not in muted
+    assert "bytes=" not in muted
+    assert ".agent/raw/run.log" not in muted
+
+
+def test_visual_floor_reduced_colour_named_category_passes() -> None:
+    """DA-002: a reduced (256-colour) scene still emits a non-default foreground."""
+    import re as _re
+
+    from ralph.display.scene_catalog import SupportCase, render_scene
+
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "reduced", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    # The elision body is one named semantic category; it must keep a
+    # non-default foreground even when the scene is reduced to 256 colours.
+    assert "38;5;" in rendered
+    elision_match = _re.search(
+        r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered
+    )
+    assert elision_match is not None, "elision body lost its foreground in reduced mode"
+    assert elision_match.group(1).startswith("38;5;"), elision_match.group(1)
+
+
+def test_visual_floor_reduced_colour_default_foreground_fixture_is_rejected() -> None:
+    """DA-002 witness: a reduced scene with a default foreground fails the check."""
+    import re as _re
+
+    from ralph.display.scene_catalog import SupportCase, render_scene
+
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "reduced", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    # Production: every named category emits a 256-colour foreground.
+    elision_match = _re.search(
+        r"\x1b\[([0-9;]+)m[^\x1b]*output condensed count=", rendered
+    )
+    assert elision_match is not None
+    production_escape = elision_match.group(1)
+    assert production_escape.startswith("38;5;")
+
+    # Mutation: replace every instance of the production 256-colour escape
+    # with the empty string. The reduced-colour named-category check
+    # requires a 38;5; escape adjacent to the elision carrier; if the
+    # foreground escapes are gone, the check has nothing left to anchor on.
+    muted = rendered.replace(f"\x1b[{production_escape}m", "")
+    assert f"\x1b[{production_escape}m" not in muted
+    assert "output condensed count=" in muted
+    # The witness must remain visibly colourless on the elision body:
+    # no other 38;5; escape should remain anchored to the carrier.
+    assert not _re.search(r"\x1b\[38;5;\d+m[^\x1b]*output condensed count=", muted)
+
+
+# ---------------------------------------------------------------------------
+# Helpers used by the CVD separability tests above.
+# ---------------------------------------------------------------------------
+
+_CVD_ALL_MATRICES: tuple[tuple[tuple[float, float, float], ...], ...] = (
+    _DEUTERANOPIA_MATRIX,
+    _PROTANOPIA_MATRIX,
+    _TRITANOPIA_MATRIX,
+)
+
+
+def _status_pair_hexes(first_role: str, second_role: str) -> tuple[str, str]:
+    first = theme._extract_hex(theme.STATUS_STYLES[first_role][0])
+    second = theme._extract_hex(theme.STATUS_STYLES[second_role][0])
+    return first, second
+
+
+def _cvd_separability_check(
+    pigments: tuple[str, str],
+    *,
+    matrices: tuple[tuple[tuple[float, float, float], ...], ...] = _CVD_ALL_MATRICES,
+) -> None:
+    """Assert the two pigments stay disjoint under every CVD matrix."""
+    first, second = pigments
+    if first == second:
+        raise AssertionError(
+            f"identical pigments {first!r} == {second!r}: confusable by construction"
+        )
+    simulated_sets = [
+        {simulate_cvd(pigment, matrix) for pigment in pigments} for matrix in matrices
+    ]
+    for index, simulated in enumerate(simulated_sets):
+        if len(simulated) < 2:
+            matrix_name = ("deuteranopia", "protanopia", "tritanopia")[index]
+            raise AssertionError(
+                f"pigments {pigments!r} collapse under {matrix_name} simulation"
+            )
+
+

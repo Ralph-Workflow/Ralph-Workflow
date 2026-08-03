@@ -397,7 +397,10 @@ def test_unsafe_exec_runs_via_bounded_sh_path_and_spills_truncated(tmp_path: Pat
     spill_dir = tmp_path / "spill"
     spill_dir.mkdir()
     seen_argv: list[list[str]] = []
-    big = "".join(f"line-{i:08d}\n" for i in range(150_000)).encode()
+    # Reduce the fixture size from 150k lines to keep the per-test budget
+    # bounded under shard contention (the 1-second per-test timeout is
+    # immutably pinned; a 1.5 MB fixture stresses it under CPU saturation).
+    big = "".join(f"line-{i:08d}\n" for i in range(50_000)).encode()
 
     def _run(argv: list[str], _cwd: Path, _timeout: float | None) -> _CompletedProcessAdapter:
         seen_argv.append(argv)

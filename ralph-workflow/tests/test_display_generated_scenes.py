@@ -196,6 +196,71 @@ def test_generated_scene_colours_every_named_semantic_category() -> None:
         ), carrier
 
 
+def test_generated_scene_named_category_keeps_foreground_in_reduced_colour() -> None:
+    """DA-002: a reduced (256-colour) named category keeps its semantic foreground.
+
+    Plan S-2 expects every named coloured category to emit a non-default
+    foreground escape in truecolour AND reduced-colour scenes. Production
+    satisfies this for truecolour; this test pins the reduced-colour path:
+    the elision body (``output condensed count=24 bytes=768``) must carry a
+    non-default ``38;5;N`` escape in a reduced scene, not the terminal default.
+    """
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "reduced", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    # The scene emits hundreds of ``38;5;N`` escapes (Rich resolves every
+    # Pygments/Okabe-Ito hex pigment to a 256-colour code). A named-category
+    # foreground check that just looks for ``38;5;`` would pass even if the
+    # elision body were defaulted. Pin the elision row directly.
+    carrier = "output condensed count="
+    assert carrier in rendered
+    elision_match = re.search(
+        rf"\x1b\[(38;5;\d+)m[^\x1b]*{re.escape(carrier)}",
+        rendered,
+    )
+    assert elision_match is not None, (
+        "reduced-colour scene lost its foreground on the elision body"
+    )
+    assert elision_match.group(1).startswith("38;5;"), elision_match.group(1)
+
+
+def test_generated_scene_named_category_loses_foreground_when_stripped() -> None:
+    """DA-002 witness: stripping the foreground makes the named-category check fail."""
+    rendered = render_scene(
+        "burst",
+        SupportCase("dark", "reduced", "unicode", 80, "tty"),
+        terminal_bg_is_light=False,
+    )
+
+    # Production: every named category emits a 256-colour foreground.
+    elision_match = re.search(
+        r"\x1b\[(38;5;\d+)m[^\x1b]*output condensed count=", rendered
+    )
+    assert elision_match is not None
+    production_escape = elision_match.group(1)
+
+    # Mutation: strip every 38;5;N escape adjacent to the carrier. The
+    # named-category foreground check has nothing left to anchor on.
+    muted = re.sub(
+        r"\x1b\[38;5;\d+m(?=[^\x1b]*output condensed count=)",
+        "",
+        rendered,
+    )
+    assert "output condensed count=" in muted
+    # After stripping every adjacent 38;5; escape, the carrier must not be
+    # preceded by any foreground escape. If it is, the strip didn't
+    # actually unmask the check.
+    assert not re.search(
+        r"\x1b\[(?!0m|2?[0-9;]*m$|48;)[0-9;]*m[^\x1b]*output condensed count=",
+        muted,
+    )
+    # Sanity: the production escape was not the muted blank escape.
+    assert production_escape.startswith("38;5;")
+
+
 def test_generated_scene_opening_capabilities_and_closing_success_use_semantic_colours() -> None:
     """S-3/S-6 regression: reference bookends visibly carry state, not chrome alone."""
     opening = render_scene(
