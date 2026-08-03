@@ -881,10 +881,36 @@ def _find_cast_violations(lines: list[str], rel_path: str) -> list[CastPolicyVio
     return violations
 
 
+def _is_venv_part(part: str) -> bool:
+    """Return True for any ``.venv``-style virtual environment directory.
+
+    ``uv`` may name an environment with a Python-version suffix
+    (``.venv312``, ``.venv-3.14``, etc.), so the match is prefix-based
+    for the ``.venv`` family rather than relying on the exact string.
+    """
+    if not part.startswith(".venv"):
+        return False
+    suffix = part[len(".venv") :]
+    suffix = suffix.replace("-", "").replace(".", "")
+    return suffix == "" or suffix.isdigit()
+
+
+def _is_skipped_part(part: str) -> bool:
+    """Decide whether a path part is a directory the audit should ignore.
+
+    The audit never walks virtualenvs, caches, build artefacts, or
+    transient scratch trees. ``uv`` may name an environment with a
+    Python-version suffix (``.venv312``, ``.venv-3.14``, etc.), so the
+    match is prefix-based for the ``.venv`` family rather than relying
+    on the exact string.
+    """
+    return part in _SKIP_DIRS or _is_venv_part(part)
+
+
 def _collect_py_files(root: Path) -> Iterable[Path]:
     """Yield all Python files under *root*, skipping excluded directories."""
     for path in root.rglob("*.py"):
-        if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
+        if any(_is_skipped_part(part) for part in path.relative_to(root).parts):
             continue
         yield path
 
