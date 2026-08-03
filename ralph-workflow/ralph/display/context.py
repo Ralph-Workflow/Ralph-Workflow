@@ -39,7 +39,7 @@ import signal
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal, TextIO, cast
 
 from ralph.display._mode_adaptive_limits import _DEFAULT_LIMITS
 from ralph.display._resolved_env import _ResolvedEnv
@@ -147,7 +147,7 @@ def _build_console(
     resolved_env: _ResolvedEnv,
     terminal_bg_is_light: bool | None,
     *,
-    output_stream: object | None = None,
+    output_stream: TextIO | None = None,
 ) -> Console:
     """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
 
