@@ -140,6 +140,7 @@ def _patch_runner_dependencies(
 class TestRunLoopPipelineDeps:
     """Tests for run_loop.run(pipeline_deps=...)."""
 
+    @pytest.mark.timeout_seconds(5)
     def test_run_with_pipeline_deps_none_uses_agent_registry_from_config(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

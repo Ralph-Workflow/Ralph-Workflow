@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
@@ -40,6 +42,7 @@ def _materialize(
     return workspace, workspace.read(path)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_materialized_planning_prompt_teaches_native_markdown_submission(
     tmp_path: Path,
 ) -> None:
