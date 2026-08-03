@@ -16,16 +16,16 @@ terminal_phase = "complete"
 # Loop counters
 # ---------------------------------------------------------------------------
 
-# Raise this if development-analysis reviews keep looping past 10 passes before approving a change;
+# Raise this if development-analysis reviews keep looping past 3 passes before approving a change;
 # lower it to fail fast on a weaker development agent instead of grinding through retries.
 [loop_counters.development_analysis_iteration]
-default_max = 10
+default_max = 3
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-# Raise above 0 only when a smaller planning model needs extra passes to self-correct;
-# capable planners usually do not need it, and each pass costs more.
-default_max = 0
+# Lower this toward 0 when a capable planning model does not need extra self-correction passes;
+# raise it when a smaller planner needs more, remembering each pass costs more.
+default_max = 3
 description = "Planning analysis loop iteration counter"
 
 # Raise this only if commit-cleanup (fixing lint/format issues before a commit) needs more than 3 self-correction passes;

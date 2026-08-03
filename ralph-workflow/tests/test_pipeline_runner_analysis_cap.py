@@ -23,6 +23,8 @@ DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / 
 
 # Analysis iteration cap value for testing
 _DEV_MAX_ANALYSIS = 3
+# A below-cap analysis-iteration value under the bundled default policy.
+_DEV_ANALYSIS_BELOW_CAP = 1
 
 
 def _reduce(
@@ -72,7 +74,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_commit",
-            loop_iterations={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
+            loop_iterations={"development_analysis_iteration": _DEV_ANALYSIS_BELOW_CAP},
             outer_progress={"iteration": 1},
             budget_caps={"iteration": 3, "reviewer_pass": 2},
         )

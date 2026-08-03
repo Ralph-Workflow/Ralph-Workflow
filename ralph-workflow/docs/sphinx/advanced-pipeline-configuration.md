@@ -101,7 +101,7 @@ Example:
 
 ```toml
 [loop_counters.development_analysis_iteration]
-default_max = 10
+default_max = 3
 description = "Development analysis loop iteration counter"
 ```
 

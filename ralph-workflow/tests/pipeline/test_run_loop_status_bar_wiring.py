@@ -244,8 +244,8 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
       with ``iteration_state_field="development_analysis_iteration"``,
       so a state with
       ``loop_iterations={"development_analysis_iteration": 2}``
-      produces ``inner_analysis=3, inner_analysis_cap=10``
-      (AnalysisLoopCounter(2, 10).display_iteration).
+      produces ``inner_analysis=3, inner_analysis_cap=3``
+      (AnalysisLoopCounter(2, 3).display_iteration).
     """
     workspace_root = Path("/tmp/wt028-statusbar-e2e").resolve()
     policy_bundle = _load_default_policy()
@@ -317,7 +317,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     #         to 1/5 (the find_commit_counter_from_phase logic reaches
     #         ``development_final_commit_cleanup`` whose
     #         ``increments_counter="iteration"``), analysis iteration
-    #         3/10.
+    #         3/3.
     assert len(captured) == 2, (
         f"expected exactly 2 update_status_bar pushes (one per signature), "
         f"got {len(captured)}: phase_labels={[m.phase_label for m in captured]!r}"
@@ -344,7 +344,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert second_push.outer_dev_iteration == 1
     assert second_push.outer_dev_cap == 5
     assert second_push.inner_analysis == 3
-    assert second_push.inner_analysis_cap == 10
+    assert second_push.inner_analysis_cap == 3
 
     # AC-03 invariant: the StatusBar's observable ``last_model``
     # reflects the final push (the ``update_status_bar`` patch
@@ -358,7 +358,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     assert last.workspace_root == workspace_root_str
     assert last.phase_label == "Development Analysis"
     assert last.inner_analysis == 3
-    assert last.inner_analysis_cap == 10
+    assert last.inner_analysis_cap == 3
 
 
 def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
@@ -513,7 +513,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
 
     # ``development_analysis`` is an analysis phase that exercises BOTH
     # the outer-dev (``iteration`` counter, cap 5) and inner-analysis
-    # (``development_analysis_iteration`` counter, cap 10) paths, so the
+    # (``development_analysis_iteration`` counter, cap 3) paths, so the
     # StatusBar model is fully populated and the bar's narrow-width
     # layout is forced to make every field compete for space.
     state = PipelineState(

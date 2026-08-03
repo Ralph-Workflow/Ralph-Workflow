@@ -18,8 +18,8 @@ from ralph.policy.validation import PolicyValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS_DIR = ROOT / "ralph" / "policy" / "defaults"
-PLANNING_ANALYSIS_DEFAULT_MAX = 0
-DEVELOPMENT_ANALYSIS_DEFAULT_MAX = 10
+PLANNING_ANALYSIS_DEFAULT_MAX = 3
+DEVELOPMENT_ANALYSIS_DEFAULT_MAX = 3
 
 
 def test_phase_loop_policy_uses_counter_link_only() -> None:
