@@ -624,13 +624,11 @@ def make_display_context(
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
         if isinstance(resolved_console, Console):
-            # An explicitly supplied themed Console is the caller's display
-            # contract. A named Ralph role proves it has a caller-owned theme;
-            # otherwise install the resolved palette for a plain Console.
-            try:
-                resolved_console.get_style("theme.banner.border")
-            except Exception:
-                resolved_console.push_theme(theme_for_background(resolved_background))
+            # Every injected console must receive Ralph's resolved theme. A
+            # caller-owned theme may contain stale Rich style caches (the
+            # historical all-colour-off regression), so push a fresh palette
+            # even when a Ralph role already exists.
+            resolved_console.push_theme(theme_for_background(resolved_background))
     width = _compute_width(
         resolved_env,
         resolved_console,
