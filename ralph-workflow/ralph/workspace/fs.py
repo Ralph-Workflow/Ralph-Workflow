@@ -6,7 +6,6 @@ wraps pathlib.Path operations for real filesystem access.
 
 from __future__ import annotations
 
-import itertools
 import os
 import shutil
 from collections import deque
@@ -302,29 +301,18 @@ class FsWorkspace:
                 "Use a partial read (head/tail/range) or raise max_bytes."
             )
 
-        total_lines = self._count_lines(abs_path)
-
-        returned_lines: list[str]
-        truncated = False
-
-        if head is not None:
-            returned_lines = self._read_head_lines(abs_path, head)
-            if total_lines > head:
-                truncated = True
-        elif tail is not None:
-            returned_lines = self._read_tail_lines(abs_path, tail)
-            if total_lines > tail:
-                truncated = True
-        elif start is not None or end is not None:
-            start_idx = (start - 1) if start is not None else 0
-            end_idx = end if end is not None else total_lines
-            start_idx = max(0, start_idx)
-            end_idx = min(total_lines, end_idx)
-            returned_lines = self._read_range_lines(abs_path, start_idx, end_idx)
-            if end_idx < total_lines:
-                truncated = True
-        else:
-            returned_lines = self._read_all_lines(abs_path)
+        returned_lines, total_lines = self._read_lines_once(
+            abs_path,
+            start=start,
+            end=end,
+            head=head,
+            tail=tail,
+        )
+        truncated = (
+            (head is not None and total_lines > head)
+            or (tail is not None and total_lines > tail)
+            or ((start is not None or end is not None) and end is not None and end < total_lines)
+        )
 
         return "".join(returned_lines), {
             "total_lines": total_lines,
@@ -359,34 +347,47 @@ class FsWorkspace:
         return total
 
     @staticmethod
-    def _read_head_lines(abs_path: Path, head: int) -> list[str]:
-        """Read the first ``head`` lines via itertools.islice (O(window) memory)."""
-        with abs_path.open(encoding="utf-8") as fh:
-            return list(itertools.islice(fh, head))
+    def _read_lines_once(
+        abs_path: Path,
+        *,
+        start: int | None,
+        end: int | None,
+        head: int | None,
+        tail: int | None,
+    ) -> tuple[list[str], int]:
+        """Read and count a requested line window from one file observation.
 
-    @staticmethod
-    def _read_tail_lines(abs_path: Path, tail: int) -> list[str]:
-        """Read the last ``tail`` lines via collections.deque (O(window) memory)."""
-        with abs_path.open(encoding="utf-8") as fh:
-            return list(deque(fh, maxlen=tail))
-
-    @staticmethod
-    def _read_range_lines(abs_path: Path, start_idx: int, end_idx: int) -> list[str]:
-        """Read lines in [start_idx, end_idx) via itertools.islice (O(window) memory)."""
-        with abs_path.open(encoding="utf-8") as fh:
-            return list(itertools.islice(fh, start_idx, end_idx))
-
-    @staticmethod
-    def _read_all_lines(abs_path: Path) -> list[str]:
-        """Read all lines via 64KB-chunked stream (O(n) time, O(n) memory).
-
-        The full-file path still requires the entire file in memory
-        (we need to return all of it) but the chunked scan avoids the
-        per-line ``str.decode`` overhead of ``fh.readlines()`` and
-        lets us short-circuit early if ``ValueError`` is raised.
+        The stream is opened once so metadata and returned content describe the
+        same observation. Head and range requests retain only their requested
+        lines; tail uses a bounded deque. Full reads retain all lines because
+        the public result necessarily contains all lines.
         """
+        if head is not None:
+            selected: list[str] | deque[str] = []
+        elif tail is not None:
+            selected = deque(maxlen=tail)
+        elif start is not None or end is not None:
+            selected = []
+        else:
+            selected = []
+
+        total_lines = 0
         with abs_path.open(encoding="utf-8") as fh:
-            return fh.readlines()
+            for line in fh:
+                line_index = total_lines
+                total_lines += 1
+                if head is not None:
+                    if line_index < head:
+                        selected.append(line)
+                elif tail is not None:
+                    selected.append(line)
+                elif start is not None or end is not None:
+                    start_index = max(0, (start - 1) if start is not None else 0)
+                    if line_index >= start_index and (end is None or line_index < end):
+                        selected.append(line)
+                else:
+                    selected.append(line)
+        return list(selected), total_lines
 
     def read_bytes(
         self,

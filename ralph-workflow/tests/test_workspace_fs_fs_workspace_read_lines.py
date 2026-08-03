@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from ralph.workspace.fs import FsWorkspace
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class TestFsWorkspaceReadLines:
@@ -142,6 +139,30 @@ class TestFsWorkspaceReadLines:
         assert meta["total_lines"] == 3
         assert meta["returned_lines"] == 2
         assert meta["truncated"] is False
+
+    def test_read_lines_regression_reuses_one_content_observation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """S-5: one logical line request opens its content only once."""
+        ws = FsWorkspace(tmp_path)
+        target = tmp_path / "lines.txt"
+        target.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+        original_open = Path.open
+        content_opens = 0
+
+        def counting_open(candidate: Path, *args: object, **kwargs: object) -> object:
+            nonlocal content_opens
+            if candidate == target:
+                content_opens += 1
+            return original_open(candidate, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", counting_open)
+
+        content, metadata = ws.read_lines("lines.txt", head=2)
+
+        assert content == "alpha\nbeta\n"
+        assert metadata == {"total_lines": 3, "returned_lines": 2, "truncated": True}
+        assert content_opens == 1
 
     def test_read_lines_count_lines_helper_no_trailing_newline(self, tmp_path: Path) -> None:
         """Direct regression for the prior analysis-feedback bug.
