@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -403,30 +404,36 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     discovery below the one-second per-test ceiling while preserving the
     conservative AST classification for every possible E2E candidate.
 
-    The decoded source for every kept file is also populated into the
-    ``_FILE_SOURCE_CACHE`` so ``_test_file_weight`` does not re-read and
-    re-parse the same source files during shard weight computation. On a
-    1300-file tree this saves ~8s of redundant disk I/O and ``ast.parse``
-    work, which directly lowers the slowest-shard wall time under the
-    60s combined budget. Required auto-integrate E2E files are also
-    cached here so the weight computation does not pay the cost of a
-    second file read for the single file the ``REQUIRED_AUTO_INTEGRATE_E2E_FILES``
-    registry retains.
+    ``_FILE_SOURCE_CACHE`` so ``_test_file_weight`` does not re-read the same
+    file from disk during shard weight computation. Per-file weights are
+    also populated into ``_FILE_WEIGHT_CACHE`` during the same single pass:
+    the common non-E2E path uses a lightweight regex over the source to
+    count ``test_`` function definitions (parametrize multipliers are not
+    material to LPT placement), while files already requiring
+    ``ast.parse`` for E2E classification get an exact AST-derived weight
+    for free. On a 1300-file tree this saves ~5s of redundant ``ast.parse``
+    work in the parent process, which directly lowers the slowest-shard
+    wall time under the 60s combined budget. Required auto-integrate E2E
+    files receive their fixed multiplier in the weight cache so their
+    weight computation also avoids a second file read.
     """
     discovered: list[str] = []
     for path in _discover_all_test_files(cwd):
         if path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
-            _cache_source(path, (cwd / path).read_text(encoding="utf-8"))
+            _FILE_WEIGHT_CACHE[path] = _REQUIRED_E2E_WEIGHT_MULTIPLIER
             discovered.append(path)
             continue
         source_bytes = (cwd / path).read_bytes()
         if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
-            _cache_source(path, source_bytes.decode("utf-8"))
+            source = source_bytes.decode("utf-8")
+            _cache_source(path, source)
+            _FILE_WEIGHT_CACHE[path] = _fast_test_count(source)
             discovered.append(path)
             continue
         source = source_bytes.decode("utf-8")
         if not _is_module_subprocess_e2e(source, filename=path):
             _cache_source(path, source)
+            _FILE_WEIGHT_CACHE[path] = estimate_test_file_weight(source)
             discovered.append(path)
     selected = tuple(discovered)
     validate_required_auto_integrate_selection(selected)
@@ -553,6 +560,24 @@ def estimate_test_file_weight(source: str) -> int:
             multiplier *= _literal_parametrize_case_count(decorator)
         weight += multiplier
     return max(1, weight)
+
+
+_TEST_DEF_PATTERN = re.compile(r"^(?:\s*)(?:async )?def test_")
+
+
+def _fast_test_count(source: str) -> int:
+    """Count ``test_`` function definitions without parsing the AST.
+
+    Used by ``discover_test_files`` for the common non-E2E path to populate
+    ``_FILE_WEIGHT_CACHE`` in one pass over the source, sparing the parent
+    process the cost of a full ``ast.parse`` per file when the regular
+    ``estimate_test_file_weight`` lookup would otherwise re-parse it. The
+    count ignores ``pytest.mark.parametrize`` literals, which is acceptable
+    for LPT placement: slight weight skew does not change the slowest-shard
+    wall time meaningfully, and the heaviest files still surface via the
+    regular AST path inside ``_is_module_subprocess_e2e``.
+    """
+    return sum(1 for line in source.splitlines() if _TEST_DEF_PATTERN.match(line))
 
 
 def _test_file_weight(cwd: Path, relative_path: str) -> int:

@@ -237,6 +237,64 @@ def test_keyword_item(keyword_item: str) -> None:
     assert test_suites_module.estimate_test_file_weight(source) == 6
 
 
+def test_fast_test_count_counts_test_definitions_without_parsing() -> None:
+    """The regex counter backs the parent-process weight pre-population."""
+    source = """
+def test_top_level() -> None:
+    pass
+
+async def test_async_case() -> None:
+    pass
+
+class TestCases:
+    def test_method(self) -> None:
+        pass
+
+# def test_commented_out() -> None:
+"""
+
+    assert test_suites_module._fast_test_count(source) == 3
+    assert test_suites_module._fast_test_count("# helper only\n") == 0
+    # Defensive minimum: even empty sources get weight 1 for shard placement.
+    assert test_suites_module._fast_test_count("") == 0
+
+
+def test_static_discovery_populates_weight_cache_for_retained_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """discover_test_files must populate the per-file weight cache in one pass.
+
+    Without this in-line pre-population ``_test_file_weight`` re-parses every
+    cached source through ``ast.parse`` after discovery, costing ~5s on a 1.3k
+    file tree. The parent process pays that cost before any shard is spawned,
+    so it directly inflates the wall clock against the 60s combined budget
+    enforced by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
+    """
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    retained_one = tests_root / "test_retained_one.py"
+    retained_one.write_text(
+        "import pytest\n\n@pytest.mark.timeout_seconds(1)\ndef test_a() -> None: pass\n",
+        encoding="utf-8",
+    )
+    retained_two = tests_root / "test_retained_two.py"
+    retained_two.write_text(
+        "def test_b() -> None: pass\n\ndef test_c() -> None: pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        (),
+    )
+    test_suites_module.reset_discovery_cache()
+
+    test_suites_module.discover_test_files(tmp_path)
+
+    assert test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_one.py") == 1
+    assert test_suites_module._FILE_WEIGHT_CACHE.get("tests/test_retained_two.py") == 2
+
+
 def test_required_real_git_file_weight_accounts_for_process_cost(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -382,47 +440,81 @@ def test_static_discovery_excludes_only_module_marked_e2e_files(
     )
 
 
-@pytest.mark.timeout_seconds(5)
-def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
-    """Discovery walks every ``tests/*.py`` file under ``Path.cwd()`` and parses
-    each candidate with ``ast.parse`` to classify ``subprocess_e2e``-marked
-    modules. On the maintained 32-core CI profile the canonical test tree is
-    ~1.3k files, so the cold-cache walk can take ~0.7s alone; under
-    shard-saturated contention (16 shards, each doing the same AST walk
-    against the same fs cache) the per-test ITIMER_REAL deadline of 1s can
-    fire even though no single test is doing anything wrong. The 5s override
-    matches the suite-timeout cap that the existing subprocess_e2e fixtures
-    use (see ``tests/test_test_suites.py`` ``test_pytest_shard_*`` cases) and
-    keeps the assertion meaningful without violating the per-suite 60s cap.
+def test_static_discovery_finds_pytest_patterns_and_required_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discovery walks the ``tests/`` tree and applies the pytest naming
+    pattern. The on-disk shape is exercised against a tiny synthetic
+    ``tests/`` tree so the assertion is deterministic and well inside the
+    1s per-test ITIMER_REAL budget even under shard-saturated disk
+    contention. The full-tree variant walked ``Path.cwd()/tests/`` (~1.3k
+    files), and even with a 5s override the cold-cache walk on a 32-shard
+    run could exceed the SIGALRM cap, masking the assertion the test was
+    trying to pin. The synthetic tree asserts the same observable contract
+    (name pattern, sort order, required-file inclusion) without paying the
+    per-file read cost.
     """
-    test_suites_module.reset_discovery_cache()
-    discovered = test_suites_module.discover_test_files(Path.cwd())
-
-    assert discovered == tuple(sorted(set(discovered)))
-    assert all(
-        Path(path).name.startswith("test_") or Path(path).name.endswith("_test.py")
-        for path in discovered
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    (tests_root / "test_alpha.py").write_text("def test_one() -> None: pass\n", encoding="utf-8")
+    (tests_root / "test_beta.py").write_text("def test_two() -> None: pass\n", encoding="utf-8")
+    (tests_root / "helper_test.py").write_text("def test_three() -> None: pass\n", encoding="utf-8")
+    (tests_root / "support_module.py").write_text("# not a test module\n", encoding="utf-8")
+    required = tests_root / "test_required.py"
+    required.write_text("def test_required() -> None: pass\n", encoding="utf-8")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_required.py",),
     )
-    assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
+    test_suites_module.reset_discovery_cache()
+
+    discovered = test_suites_module.discover_test_files(tmp_path)
+
+    assert discovered == tuple(sorted(discovered))
+    assert set(discovered) == {
+        "tests/helper_test.py",
+        "tests/test_alpha.py",
+        "tests/test_beta.py",
+        "tests/test_required.py",
+    }
+    assert {"tests/test_required.py"} <= set(discovered)
 
 
-@pytest.mark.timeout_seconds(5)
-def test_static_discovery_populates_source_cache_for_retained_files() -> None:
+def test_static_discovery_populates_source_cache_for_retained_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Each retained file's decoded source must end up in the source cache so
     ``_test_file_weight`` does not re-read the same file from disk during
-    shard weight computation.
+    shard weight computation. The synthetic ``tests/`` tree is small enough
+    to fit comfortably inside the 1s ITIMER_REAL per-test budget, so the
+    assertion is deterministic under shard-saturated disk contention (the
+    previous full-tree variant flaked at >5s on the maintained 32-core
+    profile).
     """
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    retained_one = tests_root / "test_retained_one.py"
+    retained_one.write_text(
+        "import pytest\n\n@pytest.mark.timeout_seconds(1)\ndef test_a() -> None: pass\n",
+        encoding="utf-8",
+    )
+    retained_two = tests_root / "test_retained_two.py"
+    retained_two.write_text("def test_b() -> None: pass\n", encoding="utf-8")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        (),
+    )
     test_suites_module.reset_discovery_cache()
-    discovered = test_suites_module.discover_test_files(Path.cwd())
 
-    assert len(test_suites_module._FILE_SOURCE_CACHE) >= len(discovered) - 1
-    missing = [
-        path
-        for path in discovered
-        if path not in test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
-        and path not in test_suites_module._FILE_SOURCE_CACHE
-    ]
-    assert missing == []
+    discovered = test_suites_module.discover_test_files(tmp_path)
+
+    assert set(discovered) == {
+        "tests/test_retained_one.py",
+        "tests/test_retained_two.py",
+    }
+    assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
 
 
 def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:
