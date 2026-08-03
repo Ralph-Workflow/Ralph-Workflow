@@ -403,6 +403,13 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
     it assigns ``pytestmark`` and mentions ``subprocess_e2e``.  This keeps
     discovery below the one-second per-test ceiling while preserving the
     conservative AST classification for every possible E2E candidate.
+
+    The decoded source for every kept file is also populated into the
+    ``_FILE_SOURCE_CACHE`` so ``_test_file_weight`` does not re-read and
+    re-parse the same source files during shard weight computation. On a
+    1300-file tree this saves ~8s of redundant disk I/O and ``ast.parse``
+    work, which directly lowers the slowest-shard wall time under the
+    60s combined budget.
     """
     discovered: list[str] = []
     for path in _discover_all_test_files(cwd):
@@ -411,10 +418,12 @@ def discover_test_files(cwd: Path) -> tuple[str, ...]:
             continue
         source_bytes = (cwd / path).read_bytes()
         if b"pytestmark" not in source_bytes or b"subprocess_e2e" not in source_bytes:
+            _cache_source(path, source_bytes.decode("utf-8"))
             discovered.append(path)
             continue
         source = source_bytes.decode("utf-8")
         if not _is_module_subprocess_e2e(source, filename=path):
+            _cache_source(path, source)
             discovered.append(path)
     selected = tuple(discovered)
     validate_required_auto_integrate_selection(selected)

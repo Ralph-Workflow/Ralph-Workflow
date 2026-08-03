@@ -339,6 +339,7 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     use (see ``tests/test_test_suites.py`` ``test_pytest_shard_*`` cases) and
     keeps the assertion meaningful without violating the per-suite 60s cap.
     """
+    test_suites_module.reset_discovery_cache()
     discovered = test_suites_module.discover_test_files(Path.cwd())
 
     assert discovered == tuple(sorted(set(discovered)))
@@ -347,6 +348,24 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
         for path in discovered
     )
     assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
+
+
+def test_static_discovery_populates_source_cache_for_retained_files() -> None:
+    """Each retained file's decoded source must end up in the source cache so
+    ``_test_file_weight`` does not re-read the same file from disk during
+    shard weight computation.
+    """
+    test_suites_module.reset_discovery_cache()
+    discovered = test_suites_module.discover_test_files(Path.cwd())
+
+    assert len(test_suites_module._FILE_SOURCE_CACHE) >= len(discovered) - 1
+    missing = [
+        path
+        for path in discovered
+        if path not in test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
+        and path not in test_suites_module._FILE_SOURCE_CACHE
+    ]
+    assert missing == []
 
 
 def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:
