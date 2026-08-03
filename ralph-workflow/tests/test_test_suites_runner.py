@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
-from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph import test_suites as test_suites_module
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
 
 
 class _FakeShardProcess:
+    """Controllable fake process for runner lifecycle assertions."""
+
     def __init__(
         self,
         returncodes: list[int | None],
@@ -58,6 +64,8 @@ class _FakeShardProcess:
 
 
 class _StubSpawner:
+    """Return predetermined fake shard processes and record their commands."""
+
     def __init__(self, processes: list[_FakeShardProcess]) -> None:
         self._processes = list(processes)
         self.calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
@@ -74,6 +82,8 @@ class _StubSpawner:
 
 
 class _FakeClock:
+    """Deterministic monotonic clock for deadline tests."""
+
     def __init__(self) -> None:
         self.value = 0.0
 
@@ -82,15 +92,6 @@ class _FakeClock:
 
     def advance(self, seconds: float) -> None:
         self.value += seconds
-
-
-
-def test_run_test_suites_timeout_names_each_incomplete_shard_and_its_files(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("PYTEST_WORKERS", "2")
 
 @pytest.mark.parametrize(
     ("cpu_count", "expected_workers"),
