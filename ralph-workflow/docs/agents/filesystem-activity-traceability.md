@@ -23,7 +23,7 @@ uv run python -m ralph.testing.audit_filesystem_polling_invocation
 | W6 | Atomic artifact persistence, checkpoint, and Explore staged-index publication | `tests/test_atomic_write_if_changed.py` (identical replay skips directory sync); `tests/test_checkpoint_idempotent.py` (changed checkpoint publication syncs its directory; identical replay skips it); `tests/test_explore_pipeline.py::test_mode_full_swap_io_failure_preserves_committed_generation` | COVERED for canonical atomic publication and checkpoint durability, including Explore's use of its pre-publication failure boundary; durability policy inventory is GAP. |
 | W7 | History, cache, and run directories | Existing retention owners | GAP: characterize every accumulating path and its policy. |
 | W8 | Engine-internal stores | Existing workspace/run scoping | GAP: identify watched-tree internal state eligible for relocation. |
-| R1 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: its one snapshot no longer composes `stat`/`read`; broader reader inventory remains GAP. |
+| R1 | `Workspace.snapshot`; MCP `read_file`; `FsWorkspace.read_lines` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; `tests/test_workspace_fs_fs_workspace_read_lines.py::TestFsWorkspaceReadLines::test_read_lines_regression_does_not_probe_metadata_before_its_content_observation`; read audit | COVERED for the full-file tool request and line reads: each uses one content observation rather than composing a metadata probe with a later read; broader reader inventory remains GAP. |
 | R2 | `FsWorkspace.iter_files` | shared skip set and read audit; `tests/test_workspace_fs_fs_workspace_iter_files.py::test_iter_files_does_not_follow_a_symlink_cycle` | COVERED for symlink cycle via `os.walk` default non-follow; broader traversal-owner coverage remains GAP. |
 | R3 | `FsWorkspace.read_lines` and `read_bytes` | `tests/test_workspace_fs_fs_workspace_read_lines.py`; `tests/test_workspace_fs_fs_workspace_read_bytes.py` | COVERED for bounded line and byte windows; broader reader-call-site inventory remains GAP. |
 | R4 | `Workspace.snapshot`; MCP `read_file` | `tests/test_tool_workspace_handle_read_file.py::test_full_read_reuses_one_snapshot_for_metadata_and_content`; read audit | COVERED for the full-file tool request: metadata and content share one observation; broader probe/read inventory remains GAP. |
@@ -61,8 +61,9 @@ contract requires the directory entry to be durable. The retained destination pa
 final bytes are unchanged.
 
 `Workspace.snapshot` is the typed one-observation boundary for a request that needs
-metadata and content together. `read_lines` and `read_bytes` size-check before reading
-and expose only their requested window. `Workspace.iter_files` is the canonical recursive
+metadata and content together. `read_lines` obtains its size from the same opened stream
+that supplies its window; `read_bytes` size-checks before reading and exposes only its
+requested window. `Workspace.iter_files` is the canonical recursive
 walk and applies `RECURSIVE_SKIP_DIRECTORY_NAMES`; raw reads, probes, and traversals are
 rejected by the package-wide read audit unless a local
 `# filesystem-read-ok: <reason>` explains the bounded boundary.

@@ -293,20 +293,14 @@ class FsWorkspace:
 
         abs_path = self._abs(path)
         ceiling = max_bytes if max_bytes is not None else MAX_READ_LINES_BYTES
-        file_size = abs_path.stat().st_size
-        if mode_count == 0 and file_size > ceiling:
-            raise ValueError(
-                f"File too large for read_lines: {file_size} bytes exceeds "
-                f"limit of {ceiling} bytes (path={path!r}). "
-                "Use a partial read (head/tail/range) or raise max_bytes."
-            )
-
         returned_lines, total_lines = self._read_lines_once(
             abs_path,
             start=start,
             end=end,
             head=head,
             tail=tail,
+            full_read_ceiling=ceiling if mode_count == 0 else None,
+            display_path=path,
         )
         truncated = (
             (head is not None and total_lines > head)
@@ -354,6 +348,8 @@ class FsWorkspace:
         end: int | None,
         head: int | None,
         tail: int | None,
+        full_read_ceiling: int | None,
+        display_path: str,
     ) -> tuple[list[str], int]:
         """Read and count a requested line window from one file observation.
 
@@ -373,6 +369,13 @@ class FsWorkspace:
 
         total_lines = 0
         with abs_path.open(encoding="utf-8") as fh:
+            file_size = os.fstat(fh.fileno()).st_size
+            if full_read_ceiling is not None and file_size > full_read_ceiling:
+                raise ValueError(
+                    f"File too large for read_lines: {file_size} bytes exceeds "
+                    f"limit of {full_read_ceiling} bytes (path={display_path!r}). "
+                    "Use a partial read (head/tail/range) or raise max_bytes."
+                )
             for line in fh:
                 line_index = total_lines
                 total_lines += 1

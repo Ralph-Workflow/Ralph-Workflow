@@ -140,6 +140,27 @@ class TestFsWorkspaceReadLines:
         assert meta["returned_lines"] == 2
         assert meta["truncated"] is False
 
+    def test_read_lines_regression_does_not_probe_metadata_before_its_content_observation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """S-5: the one opened stream supplies both its size and line window."""
+        ws = FsWorkspace(tmp_path)
+        target = tmp_path / "lines.txt"
+        target.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+        original_stat = Path.stat
+
+        def guarded_stat(candidate: Path, *args: object, **kwargs: object) -> object:
+            if candidate == target:
+                raise AssertionError("read_lines must obtain size from its opened stream")
+            return original_stat(candidate, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", guarded_stat)
+
+        content, metadata = ws.read_lines("lines.txt", head=2)
+
+        assert content == "alpha\nbeta\n"
+        assert metadata == {"total_lines": 3, "returned_lines": 2, "truncated": True}
+
     def test_read_lines_regression_reuses_one_content_observation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
