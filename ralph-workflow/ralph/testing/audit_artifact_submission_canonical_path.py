@@ -146,6 +146,32 @@ _FORBIDDEN_CALLS: tuple[tuple[str, str, str], ...] = (
 
 _AUDIT_MODULE_ROOT = Path(__file__).parent.parent.parent
 
+# Cheap text pre-filter: any source that contains none of these substrings
+# cannot match a forbidden path literal or forbidden call target, so the
+# full AST pass on it is pure overhead. On a 1121-file tree the pre-filter
+# collapses the AST workload from ~1100 files to ~150 files and reduces
+# the audit end-to-end wall time from ~29s to well under the 30s
+# per-step cap ``_VERIFY_STEP_TIMEOUT_SECONDS`` enforced by
+# ``ralph/verify.py``. Keep this list synced with
+# ``_FORBIDDEN_PATH_PATTERNS`` (string side) and ``_FORBIDDEN_CALLS``
+# (function side). A module is only worth a full AST walk if it
+# contains at least one of these needles.
+_AUDIT_PRE_FILTER_NEEDLES: tuple[str, ...] = (
+    ".agent",
+    "write_artifact_receipt",
+    "delete_artifact_receipt",
+    "shutil.copy",
+    "shutil.copy2",
+    "shutil.copyfile",
+    "shutil.copytree",
+    "shutil.move",
+    "os.rename",
+    "os.renames",
+    "os.replace",
+    "Path.rename",
+    "Path.replace",
+)
+
 
 def _assert_invariants() -> None:
     """Import-time guard: if/raise RuntimeError (NOT assert) so python -O cannot strip."""
@@ -162,6 +188,25 @@ def _assert_invariants() -> None:
             raise RuntimeError(f"_FILE_ALLOWLIST entry does not exist: {_path}")
     if not _SKIP_DIRS:
         raise RuntimeError("_SKIP_DIRS must not be empty")
+    if not _AUDIT_PRE_FILTER_NEEDLES:
+        raise RuntimeError("_AUDIT_PRE_FILTER_NEEDLES must not be empty")
+    # The pre-filter must mention every forbidden literal substring so the
+    # AST short-circuit cannot silently drop a file that contains an
+    # audited literal or call. ``.agent/`` covers every
+    # ``_FORBIDDEN_PATH_PATTERNS`` entry; each ``_FORBIDDEN_CALLS`` target
+    # is added verbatim so files importing ``shutil.copy`` etc. survive
+    # the pre-filter.
+    _needed_targets = {".agent", *(target for target, _c, _d in _FORBIDDEN_CALLS)}
+    missing = sorted(
+        target
+        for target in _needed_targets
+        if not any(needle in target for needle in _AUDIT_PRE_FILTER_NEEDLES)
+    )
+    if missing:
+        raise RuntimeError(
+            "_AUDIT_PRE_FILTER_NEEDLES is missing forbidden-pattern needles: "
+            + ", ".join(missing)
+        )
 
 
 _assert_invariants()
@@ -531,11 +576,23 @@ def _process_call_node(
 
 
 def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:
-    """Audit a single Python file for canonical-path bypasses."""
+    """Audit a single Python file for canonical-path bypasses.
+
+    Modules whose source contains no ``_AUDIT_PRE_FILTER_NEEDLES`` substring
+    cannot match a forbidden literal or forbidden call target; the AST pass
+    on them is pure overhead. The cheap bytes-level pre-filter short-circuits
+    those files before ``ast.parse`` is paid for.
+    """
     findings: list[BypassFinding] = []
     try:
-        source = file_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        source_bytes = file_path.read_bytes()
+    except OSError:
+        return findings
+    if not any(needle.encode("utf-8") in source_bytes for needle in _AUDIT_PRE_FILTER_NEEDLES):
+        return findings
+    try:
+        source = source_bytes.decode("utf-8")
+    except UnicodeDecodeError:
         return findings
 
     try:

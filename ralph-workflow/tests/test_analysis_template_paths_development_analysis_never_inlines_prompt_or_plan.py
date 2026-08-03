@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
@@ -69,6 +71,7 @@ def _render_development_analysis(
     return workspace.read(path)
 
 
+@pytest.mark.timeout_seconds(5)
 class TestDevelopmentAnalysisNeverInlinesPromptOrPlan:
     def test_tiny_prompt_is_not_inlined(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis(tmp_path, prompt_content=_TINY_PROMPT)

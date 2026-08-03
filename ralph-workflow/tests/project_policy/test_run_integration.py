@@ -194,6 +194,7 @@ def test_unprepared_project_still_proceeds_to_planning() -> None:
     assert any("NOT READY" in m or "could not" in m for m in emit_messages)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_remediation_agent_that_fixes_project_proceeds() -> None:
     """A faked remediation agent that completes every required file allows the
     runner to proceed (the helper returns ``_EXIT_SUCCESS``).

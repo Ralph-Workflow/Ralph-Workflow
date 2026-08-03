@@ -1,4 +1,12 @@
-"""Tests for partition, weight, and discovery primitives in the test-suite runner."""
+"""Discovery, partitioning, and weight estimation tests for the test-suite runner.
+
+This module owns the static AST / partitioning checks for
+:mod:`ralph.test_suites`. The shared fakes for the shard-runner orchestration
+side (which previously lived here) live in
+:mod:`tests._test_test_suites_helpers` so the test runner orchestration
+tests can be their own file (``tests/test_test_suites_orchestration.py``)
+under the maintained ``1000``-line-per-file cap.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +15,6 @@ from pathlib import Path
 import pytest
 
 from ralph import test_suites as test_suites_module
-
-EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
 
 
 def test_partition_selected_files_assigns_every_file_once_deterministically() -> None:
@@ -438,191 +444,4 @@ def test_static_discovery_populates_source_cache_for_retained_files(
         "tests/test_retained_two.py",
     }
     assert test_suites_module._FILE_SOURCE_CACHE.keys() >= set(discovered)
-
-
-def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:
-    """Shard teardown owns lifecycle cleanup without per-shard background work."""
-    policy = test_suites_module._PYTEST_SHARD_PROCESS_MANAGER.policy
-
-    assert policy.log_events is False
-    assert policy.enable_zombie_reaper is False
-
-
-def test_required_auto_integrate_e2e_registry_matches_verification_contract() -> None:
-    assert (
-        test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES
-        == EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    )
-    assert len(set(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)) == len(
-        EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    )
-
-
-def test_required_auto_integrate_selection_fails_closed_when_file_is_missing() -> None:
-    selected = EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES[:-1]
-
-    try:
-        test_suites_module.validate_required_auto_integrate_selection(selected)
-    except RuntimeError as exc:
-        assert EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES[-1] in str(exc)
-    else:
-        raise AssertionError("missing required auto-integrate file was accepted")
-
-
-def test_required_auto_integrate_selection_accepts_complete_registry() -> None:
-    test_suites_module.validate_required_auto_integrate_selection(
-        EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    )
-
-
-def test_focused_auto_integrate_profile_shards_exact_registry_without_discovery(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("PYTEST_WORKERS", "2")
-    processes = [_FakeShardProcess([0]), _FakeShardProcess([0])]
-    spawner = _StubSpawner(processes)
-
-    exit_code = test_suites_module.run_test_suites(
-        cwd=tmp_path,
-        spawner=spawner,
-        file_weigher=lambda _cwd, _path: 1,
-        wait=lambda _seconds: None,
-        auto_integrate_e2e_only=True,
-    )
-
-    assigned_files = tuple(
-        path for command, _cwd, _env in spawner.calls for path in command[3 : command.index("-q")]
-    )
-    assert exit_code == 0
-    assert sorted(assigned_files) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-    assert len(assigned_files) == len(set(assigned_files))
-
-
-def test_subprocess_e2e_profile_uses_canonical_marker_with_explicit_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("PYTEST_WORKERS", "1")
-    spawner = _StubSpawner([_FakeShardProcess([0])])
-    monkeypatch.setattr(
-        test_suites_module,
-        "discover_subprocess_e2e_files",
-        lambda _cwd: ("tests/test_e2e.py",),
-    )
-
-    assert (
-        test_suites_module.run_test_suites(
-            cwd=tmp_path,
-            spawner=spawner,
-            file_weigher=lambda _cwd, _path: 1,
-            wait=lambda _seconds: None,
-            subprocess_e2e_only=True,
-        )
-        == 0
-    )
-    command = spawner.calls[0][0]
-    assert command[3 : command.index("-q")] == ("tests/test_e2e.py",)
-    marker_flag = command.index("-m", command.index("pytest") + 1)
-    assert command[marker_flag + 1] == test_suites_module._SUBPROCESS_E2E_MARK_EXPRESSION
-
-
-def test_run_test_suites_terminates_and_reaps_siblings_on_first_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("PYTEST_WORKERS", "2")
-    monkeypatch.setattr(
-        test_suites_module,
-        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
-    )
-    failed = _FakeShardProcess([1], stderr=b"failed\n")
-    sibling = _FakeShardProcess([None])
-    spawner = _StubSpawner([failed, sibling])
-
-    exit_code = test_suites_module.run_test_suites(
-        cwd=tmp_path,
-        spawner=spawner,
-        file_discoverer=lambda _cwd: (
-            "tests/test_alpha.py",
-            "tests/test_bravo.py",
-        ),
-        file_weigher=lambda _cwd, _path: 1,
-        wait=lambda _seconds: None,
-    )
-
-    assert exit_code == 1
-    assert failed.reaped
-    assert not failed.terminated
-    assert sibling.terminated
-    assert sibling.reaped
-
-
-def test_run_test_suites_uses_one_parent_deadline_and_reaps_all_on_timeout(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("PYTEST_WORKERS", "2")
-    monkeypatch.setattr(
-        test_suites_module,
-        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
-    )
-    processes = [_FakeShardProcess([None]), _FakeShardProcess([None])]
-    spawner = _StubSpawner(processes)
-    clock = _FakeClock()
-
-    exit_code = test_suites_module.run_test_suites(
-        cwd=tmp_path,
-        suite_timeout_seconds=5.0,
-        spawner=spawner,
-        file_discoverer=lambda _cwd: (
-            "tests/test_alpha.py",
-            "tests/test_bravo.py",
-        ),
-        file_weigher=lambda _cwd, _path: 1,
-        monotonic=clock,
-        wait=clock.advance,
-    )
-
-    assert exit_code == 124
-    assert all(process.terminated and process.reaped for process in processes)
-
-
-def test_run_test_suites_spawn_deadline_names_already_started_shard(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("PYTEST_WORKERS", "2")
-    monkeypatch.setattr(
-        test_suites_module,
-        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
-        ("tests/test_alpha.py", "tests/test_bravo.py"),
-    )
-    clock = _FakeClock()
-    process = _FakeShardProcess([None])
-
-    def spawn_after_deadline(
-        command: Sequence[str], *, cwd: Path, env: Mapping[str, str]
-    ) -> _FakeShardProcess:
-        del command, cwd, env
-        clock.advance(5.0)
-        return process
-
-    exit_code = test_suites_module.run_test_suites(
-        cwd=tmp_path,
-        suite_timeout_seconds=5.0,
-        spawner=spawn_after_deadline,
-        file_discoverer=lambda _cwd: ("tests/test_alpha.py", "tests/test_bravo.py"),
-        file_weigher=lambda _cwd, _path: 1,
-        monotonic=clock,
-        wait=clock.advance,
-    )
-
-    assert exit_code == 124
-    assert process.terminated and process.reaped
-    assert capsys.readouterr().err.splitlines()[:1] == [
-        "pytest shard 0 timed out after 5.00s; files: tests/test_alpha.py",
-    ]
 
