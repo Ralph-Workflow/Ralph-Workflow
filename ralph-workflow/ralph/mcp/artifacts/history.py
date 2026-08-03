@@ -102,13 +102,18 @@ def archive_artifact_before_overwrite(
     if not backend.exists(canonical_markdown):
         return []
 
-    timestamp = _safe_timestamp(now_iso)
     hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
     backend.mkdir(hist_dir, parents=True, exist_ok=True)
 
     created: list[Path] = []
 
-    archive_markdown = hist_dir / f"{timestamp}_{artifact_type}.md"
+    archive_markdown = _unique_archive_path(
+        hist_dir,
+        artifact_type,
+        ".md",
+        backend=backend,
+        now_iso=now_iso,
+    )
     write_text_if_changed(backend, archive_markdown, backend.read_text(canonical_markdown))
     created.append(archive_markdown)
 

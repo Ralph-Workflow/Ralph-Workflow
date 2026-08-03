@@ -63,6 +63,30 @@ class TestArchiveArtifactBeforeOverwrite:
         if handoff_rel:
             assert any(p.suffix == ".md" for p in created)
 
+    def test_preserves_distinct_archives_when_timestamp_is_reused(self, tmp_path: Path) -> None:
+        """S-4 regression: repeated archival must retain every recorded version."""
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        canonical = artifact_dir / "plan.md"
+        canonical.write_text("# First plan", encoding="utf-8")
+
+        first_created = archive_artifact_before_overwrite(
+            artifact_dir, tmp_path, "plan", now_iso=_now_iso
+        )
+        canonical.write_text("# Second plan", encoding="utf-8")
+        second_created = archive_artifact_before_overwrite(
+            artifact_dir, tmp_path, "plan", now_iso=_now_iso
+        )
+
+        first_archive = first_created[0]
+        second_archive = second_created[0]
+        assert first_archive != second_archive
+        assert first_archive.read_text(encoding="utf-8") == "# First plan"
+        assert second_archive.read_text(encoding="utf-8") == "# Second plan"
+        index = history_index_path(artifact_dir, "plan")
+        assert first_archive.name in index.read_text(encoding="utf-8")
+        assert second_archive.name in index.read_text(encoding="utf-8")
+
     def test_builds_index_after_archive(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
