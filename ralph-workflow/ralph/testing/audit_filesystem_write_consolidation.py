@@ -529,11 +529,7 @@ def _raw_qualified_mutation_call(
         return None
     receiver = node.func.value
     receiver_key = _path_receiver_key(receiver)
-    workspace_resolver_call = (
-        isinstance(receiver, ast.Call)
-        and isinstance(receiver.func, ast.Attribute)
-        and receiver.func.attr in {"_abs", "absolute_path"}
-    )
+    workspace_resolver_call = _is_workspace_resolver_receiver(receiver)
     if workspace_resolver_call or (
         receiver_key is not None and (_scope_key(node, parents), receiver_key) in path_variables
     ):
@@ -551,6 +547,21 @@ def _raw_qualified_mutation_call(
     ):
         return attr
     return _qualified_mutation_attr(attr, receiver, resolved_root)
+
+
+def _is_workspace_resolver_receiver(receiver: ast.expr) -> bool:
+    """Return whether a receiver derives from a workspace path resolver.
+
+    A resolver result often flows through ``.parent`` before a directory
+    mutation. Treat that one attribute chain as path provenance so a direct
+    ``self._abs(path).parent.mkdir(...)`` cannot bypass the shared backend.
+    """
+    if isinstance(receiver, ast.Call):
+        return isinstance(receiver.func, ast.Attribute) and receiver.func.attr in {
+            "_abs",
+            "absolute_path",
+        }
+    return isinstance(receiver, ast.Attribute) and _is_workspace_resolver_receiver(receiver.value)
 
 
 def _qualified_mutation_attr(attr: str, receiver: ast.expr, root: str) -> str | None:
