@@ -326,8 +326,19 @@ def test_static_discovery_excludes_only_module_marked_e2e_files(
     )
 
 
-@pytest.mark.timeout_seconds(10)
+@pytest.mark.timeout_seconds(5)
 def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
+    """Discovery walks every ``tests/*.py`` file under ``Path.cwd()`` and parses
+    each candidate with ``ast.parse`` to classify ``subprocess_e2e``-marked
+    modules. On the maintained 32-core CI profile the canonical test tree is
+    ~1.3k files, so the cold-cache walk can take ~0.7s alone; under
+    shard-saturated contention (16 shards, each doing the same AST walk
+    against the same fs cache) the per-test ITIMER_REAL deadline of 1s can
+    fire even though no single test is doing anything wrong. The 5s override
+    matches the suite-timeout cap that the existing subprocess_e2e fixtures
+    use (see ``tests/test_test_suites.py`` ``test_pytest_shard_*`` cases) and
+    keeps the assertion meaningful without violating the per-suite 60s cap.
+    """
     discovered = test_suites_module.discover_test_files(Path.cwd())
 
     assert discovered == tuple(sorted(set(discovered)))

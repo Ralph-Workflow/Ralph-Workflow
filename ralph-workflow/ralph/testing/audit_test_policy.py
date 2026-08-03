@@ -104,32 +104,15 @@ _IO_ALLOWLIST: set[str] = {
     "test_analysis_context_partial_analysis_context_suppression",
     "test_analysis_prompt_payload_contract_analysis_template_payload_contract",
     "test_analysis_prompt_payload_contract_retry_hint_guard_in_templates",
-    # AST inspection tests that read production Python source files to enforce
-    # invariants (e.g., no hardcoded phase names). The read target IS the
-    # subject under test — replacing with mocked content would defeat the purpose.
-    "test_no_hardcoded_phase_names_artifact_tool_has_no_canonical_drain_names",
-    "test_no_hardcoded_phase_names_display_layer_has_no_canonical_phase_names",
-    "test_no_hardcoded_phase_names_handoffs_has_no_canonical_phase_names",
-    "test_no_hardcoded_phase_names_materialize_has_no_canonical_phase_names",
-    "test_no_hardcoded_phase_names_register_role_handlers_is_generic",
-    "test_no_hardcoded_phase_names_runner_artifact_handoff_is_generic",
-    "test_no_hardcoded_phase_names_runner_has_no_canonical_phase_names",
-    # The seven source-inspection guards above were consolidated into this
-    # single module. Keep the aggregate filename exempt for the same reason:
-    # production source is the observable subject of these structural tests.
+    # Source-inspection guard that reads production Python source files
+    # (prompts/materialize.py, mcp/tools/artifact.py, display/parallel_display.py,
+    # display/completion_summary.py, cli/commands/run.py, pipeline/handoffs.py,
+    # and the plain_renderer package) to enforce no hardcoded phase names.
+    # The seven previous single-source guards were consolidated into this
+    # single module. Production source is the observable subject of these
+    # structural tests, so replacing with mocked content would defeat the
+    # purpose.
     "test_no_hardcoded_phase_names",
-    # Static analysis test that reads agent_event_renderer.py to enforce
-    # the no-literal-hex invariant (the renderer must reference
-    # STATUS_STYLES, not inline hex colours). The read target IS the
-    # subject under test — replacing with mocked content would defeat
-    # the purpose.
-    "test_agent_event_renderer_has_no_literal_hex_outside_theme",
-    # Production-caller AST inspection tests that read production source files
-    # (activity_stream.py, parallel_display.py, activity_model.py) to enforce
-    # that the canonical render_event + typed-normalizer contract is wired
-    # in at every ingestion site. The read target IS the subject under test
-    # -- replacing with mocked content would defeat the regression guard.
-    "test_production_callers_use_typed_event_api",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
     "test_doc_adding_a_new_agent",
@@ -181,9 +164,12 @@ _IO_ALLOWLIST: set[str] = {
     "test_git_wrapper",
     # Helper backend classes: write_text is a method on a custom backend
     # object (MemoryBackend subclass), not a Path.write_text() call.
-    # The audit tool's AST heuristic cannot distinguish these.
-    "test_tool_artifact_1_helper_failingartifactbackend",
-    "test_tool_artifact_2_helper_failingartifactbackend",
+    # The audit tool's AST heuristic cannot distinguish these. The helpers
+    # were renamed to leading-underscore names so pytest does not collect
+    # them, but the audit walks every .py file under tests/ so they still
+    # need an exemption keyed on the actual filename stem.
+    "_tool_artifact_1_helper_failingartifactbackend",
+    "_tool_artifact_2_helper_failingartifactbackend",
     # Docs<->pin-list parity guard: reads docs/agents/watchdog-spec.md
     # to enforce that every RALPH_PIN_TEST_PATHS entry is cited in the
     # traceability doc. The assertion is the contract under test;
@@ -206,9 +192,13 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # Measures fan-out/verify timing to confirm parallelism works
     # correctly, not to accumulate passage-of-time for control flow.
     "test_parallel_serialized_verification",
-    # Measures actual process kill duration for hard-kill correctness testing.
-    # Wall-clock measurement IS the point of this test.
-    "test_hard_kill_helper_sleeperexecutor",
+    # Helper executor for the hard-kill integration test: measures actual
+    # process kill duration as a correctness assertion (the test proves
+    # the hard-kill seam terminates within the bounded grace period).
+    # The helper was renamed to a leading-underscore name so pytest does
+    # not collect it, but the audit walks every .py file under tests/
+    # so it still needs an exemption keyed on the actual filename stem.
+    "_hard_kill_helper_sleeperexecutor",
     # Performance regression test: measures real subscriber dispatch latency.
     # Wall-clock measurement IS the correctness assertion.
     "test_subscriber_performance",

@@ -979,6 +979,38 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.tools._exec_completed_process",
             ("_CompletedProcessAdapter",),
         ),
+        # wt-04 idle-watchdog consolidation: the consolidated
+        # ``tests/agents/test_idle_watchdog.py`` is the surviving single
+        # regression surface for the idle-watchdog subsystem (per
+        # consolidation commit ``a673ae85d``), so the consolidated suite
+        # must reach the same private seams the prior split files did —
+        # otherwise the regression coverage of the consolidation would
+        # silently drop those seams without flagging the audit.
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.idle_watchdog._subagent_identity",
+            ("_MAX_REGISTRY_ENTRIES",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.invoke._errors",
+            ("_IdleStreamTimeoutError",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.invoke._monitor_factory",
+            ("_discovery_strategy_for_config",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.invoke._session",
+            ("_bounded_output_lines",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.pipeline.effect_executor",
+            ("_failure_requires_fresh_session",),
+        ),
     }
 )
 
