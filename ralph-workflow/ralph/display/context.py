@@ -146,8 +146,10 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
         # restore a concrete renderer so the public output seam cannot fall
         # back to monochrome after theme/style caching.
         with contextlib.suppress(Exception):
-            if getattr(console, "_color_system", None) is None:
-                console._color_system = "truecolor"  # type: ignore[attr-defined]  # Rich exposes this runtime field only
+            color_system_raw: object = getattr(console, "_color_system", None)
+            if color_system_raw is None:
+                color_state = cast("dict[str, object]", console.__dict__)
+                color_state["_color_system"] = "truecolor"
 
 
 def _build_console(
@@ -577,6 +579,7 @@ def make_display_context(
     *,
     env: Mapping[str, str] | None = None,
     console: Console | None = None,
+    output_stream: TextIO | None = None,
     force_width: int | None = None,
     force_glyphs: bool | None = None,
     force_height: int | None = None,
@@ -586,6 +589,7 @@ def make_display_context(
     Args:
         env: Environment mapping (defaults to os.environ).
         console: Console to use (defaults to make_console() with env-aware color policy).
+        output_stream: Destination used when Ralph constructs the console. Defaults to stdout.
         force_width: Override terminal width detection.
         force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
         force_height: Override terminal height detection. ``None``
@@ -597,6 +601,9 @@ def make_display_context(
     Returns:
         Fully initialised DisplayContext.
     """
+    if console is not None and output_stream is not None:
+        msg = "output_stream cannot be combined with an injected console"
+        raise ValueError(msg)
     env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)
@@ -608,7 +615,7 @@ def make_display_context(
         resolved_console = _build_console(
             resolved_env,
             resolved_background,
-            output_stream=sys.stdout,
+            output_stream=sys.stdout if output_stream is None else output_stream,
         )
     else:
         from rich.console import Console

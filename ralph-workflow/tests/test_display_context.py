@@ -8,6 +8,7 @@ dispatch. The adaptive limits come from a single fixed
 
 from __future__ import annotations
 
+import re
 from io import StringIO
 
 import pytest
@@ -92,15 +93,49 @@ def test_no_color_env_disables_color() -> None:
     assert ctx.color_enabled is False
 
 
-def test_force_color_redirect_emits_ansi() -> None:
-    """FORCE_COLOR keeps semantic ANSI in a redirected transcript."""
+def test_display_context_regression_force_color_redirect_emits_semantic_ansi() -> None:
+    """S-1/S-2: FORCE_COLOR colours Ralph-built redirected consoles."""
     stream = StringIO()
-    ctx = make_display_context(env={"FORCE_COLOR": "1"}, console=Console(
-        file=stream, force_terminal=True, color_system="truecolor", width=_WIDE_WIDTH,
-        theme=RALPH_THEME,
-    ))
+    ctx = make_display_context(
+        env={"FORCE_COLOR": "1", "RALPH_TERMINAL_BG": "dark"},
+        output_stream=stream,
+    )
+
     ctx.console.print("[theme.status.success]PASS[]")
-    assert "\x1b[" in stream.getvalue()
+
+    assert ctx.color_enabled is True
+    assert re.search(r"\x1b\[[0-9;]*38;2;", stream.getvalue())
+
+
+class _TtyLikeStringIO(StringIO):
+    """In-memory stream that models a colour-capable terminal."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def test_display_context_regression_normal_tty_emits_semantic_ansi() -> None:
+    """S-1/S-2: ordinary colour-capable TTY output stays visibly coloured."""
+    stream = _TtyLikeStringIO()
+    ctx = make_display_context(
+        env={"RALPH_TERMINAL_BG": "dark"},
+        output_stream=stream,
+    )
+
+    ctx.console.print("[theme.phase.development]development[/]")
+
+    assert ctx.color_enabled is True
+    assert re.search(r"\x1b\[[0-9;]*38;2;", stream.getvalue())
+
+
+def test_output_stream_cannot_override_an_injected_console() -> None:
+    """The factory rejects ambiguous output ownership."""
+    with pytest.raises(ValueError, match="output_stream cannot be combined"):
+        make_display_context(
+            env={},
+            console=_recording_console(),
+            output_stream=StringIO(),
+        )
 
 
 def test_display_context_regression_empty_colour_overrides_are_ignored() -> None:
