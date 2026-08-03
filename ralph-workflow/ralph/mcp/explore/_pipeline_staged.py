@@ -17,6 +17,8 @@ from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.mcp.explore._pipeline_state import (
     ReindexOptions,
     ReindexResult,
@@ -194,6 +196,7 @@ def _swap_staged_index(
     deadline_ms: int,
     now_fn: Callable[[], float],
     cancel: Callable[[], bool] | None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
     """Atomically replace the main index files with the staging ones.
 
@@ -294,9 +297,12 @@ def _swap_staged_index(
     # until ``os.replace`` succeeds; a failure mid-swap leaves
     # the prior committed database on disk.
     try:
-        # filesystem-write-ok: atomic SQLite DB swap (bytes copied from staging; publish via replace)
-        tmp_main.write_bytes(staging_db.read_bytes())
-        tmp_main.replace(main_db)
+        atomic_write_bytes_if_changed(
+            backend,
+            main_db,
+            staging_db.read_bytes(),
+            tmp_path=tmp_main,
+        )
     except BaseException:
         # The main DB is unchanged because ``os.replace`` did
         # not complete. Clean up the temp file (best effort)
@@ -339,9 +345,12 @@ def _swap_staged_index(
         try:
             if tmp_aux.exists():
                 tmp_aux.unlink()
-            # filesystem-write-ok: atomic WAL/SHM swap (bytes copied from staging; publish via replace)
-            tmp_aux.write_bytes(src.read_bytes())
-            tmp_aux.replace(dst)
+            atomic_write_bytes_if_changed(
+                backend,
+                dst,
+                src.read_bytes(),
+                tmp_path=tmp_aux,
+            )
         except OSError:
             # WAL/SHM swap failure is non-fatal: the main DB
             # is already in place and openable. Continue.

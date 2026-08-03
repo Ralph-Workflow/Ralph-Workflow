@@ -451,11 +451,10 @@ def test_mode_full_swap_io_failure_preserves_committed_generation(
     the prior file, and the store remains queryable for
     subsequent operations.
 
-    The fault is injected by patching ``Path.write_bytes`` to
-    raise when the staging swap writes the ``.swap`` temp
-    file. This triggers the early failure path in
-    ``_swap_staged_index`` before ``os.replace`` is called, so
-    the main database is provably untouched.
+    The fault is injected at the canonical atomic-publication boundary
+    before it stages or replaces the main database. This triggers the
+    early failure path in ``_swap_staged_index``, so the main database
+    is provably untouched.
     """
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
@@ -470,24 +469,21 @@ def test_mode_full_swap_io_failure_preserves_committed_generation(
         fts_before = _count_fts_rows(store)
         assert files_before >= 3
 
-        # 2. Patch ``Path.write_bytes`` to fail when the swap
-        #    writes the ``.swap`` temp file. This fires inside
-        #    ``_swap_staged_index`` after the connection close
-        #    but before ``Path.replace``, which is the exact
-        #    window the analysis feedback flagged as
-        #    non-atomic. The fault is scoped to swap files only
-        #    so the staging reindex can still build the new
-        #    database in its own directory.
-        original_write_bytes = Path.write_bytes
+        # 2. Make the canonical atomic publication boundary reject the
+        #    staged main-index publication. This fires after the live
+        #    connection closes but before publication, so the main database
+        #    remains provably untouched.
         swap_failures = {"n": 0}
 
-        def flaky_write_bytes(self: Path, data: bytes) -> int:
-            if self.name.endswith(".swap") and self.parent == store.db_path.parent:
-                swap_failures["n"] += 1
-                raise OSError("simulated disk full during swap")
-            return original_write_bytes(self, data)
+        def fail_atomic_publication(*args: object, **kwargs: object) -> bool:
+            del args, kwargs
+            swap_failures["n"] += 1
+            raise OSError("simulated disk full during swap")
 
-        monkeypatch.setattr(Path, "write_bytes", flaky_write_bytes)
+        monkeypatch.setattr(
+            "ralph.mcp.explore._pipeline_staged.atomic_write_bytes_if_changed",
+            fail_atomic_publication,
+        )
 
         # 3. Trigger a full reindex. The fault fires in the
         #    swap step, so the result is ``failed`` and the
