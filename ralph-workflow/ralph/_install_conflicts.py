@@ -94,14 +94,47 @@ def detect_existing_ralph(
     return ExistingInstall(Path(executable), package_file, info.kind)
 
 
+def is_same_source_install(
+    existing: ExistingInstall,
+    *,
+    cwd: Path,
+) -> bool:
+    """Return True when an existing source install already points at ``cwd``.
+
+    ``make dev`` calls :func:`prompt_for_conflict` repeatedly on the same
+    checkout while iterating: every run resolves the global ``ralph`` script
+    to this same source tree, so a non-interactive ``make dev`` would otherwise
+    refuse to re-establish the dev build.  When the existing install is a
+    source checkout that resolves to ``cwd`` (or anywhere inside it), the
+    install is already correct and we may continue without prompting.
+    """
+    if existing.kind is not InstallKind.SOURCE:
+        return False
+    try:
+        cwd_resolved = cwd.resolve()
+        package_resolved = existing.package_file.resolve()
+    except OSError:
+        return False
+    return package_resolved.is_relative_to(cwd_resolved)
+
+
 def prompt_for_conflict(
     existing: ExistingInstall,
     *,
     input_fn: Callable[[str], str],
     is_tty: bool,
+    cwd: Path | None = None,
 ) -> ConflictResolution:
-    """Ask how to handle an existing install; never block without a TTY."""
+    """Ask how to handle an existing install; never block without a TTY.
+
+    When ``is_tty`` is false but the existing install is the same source
+    checkout already pointed at by ``cwd``, :class:`ConflictResolution.CONTINUE`
+    is returned without prompting so that ``make dev`` stays idempotent on
+    repeated invocations.
+    """
     if not is_tty:
+        if cwd is not None and is_same_source_install(existing, cwd=cwd):
+            return ConflictResolution.CONTINUE
         raise RuntimeError(
             f"Existing {existing.kind} Ralph install at {existing.executable}; "
             "refusing to shadow it in non-interactive mode."

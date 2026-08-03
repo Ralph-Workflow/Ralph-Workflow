@@ -308,7 +308,12 @@ def _resolve_install_conflict(*, run: RunCommand) -> None:
     )
     if existing is None:
         return
-    resolution = prompt_for_conflict(existing, input_fn=input, is_tty=os.isatty(0))
+    resolution = prompt_for_conflict(
+        existing,
+        input_fn=input,
+        is_tty=os.isatty(0),
+        cwd=Path(__file__).resolve().parents[1],
+    )
     if resolution is ConflictResolution.ABORT:
         raise RuntimeError(f"Installation aborted because {existing.executable} already exists.")
     if resolution is ConflictResolution.REMOVE:
