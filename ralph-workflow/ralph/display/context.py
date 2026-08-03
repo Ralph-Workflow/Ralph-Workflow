@@ -159,7 +159,12 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
                 # re-stamped with a string the public API documents as valid
                 # input. ``object.__setattr__`` keeps mypy and ruff B010
                 # silent while still assigning the attribute directly.
-                object.__setattr__(console, "_color_system", "truecolor")
+                # Rich stores the resolved enum internally; assigning the
+                # public enum value avoids a stale ``None`` while preserving
+                # Rich's renderer contract across supported versions.
+                from rich.console import ColorSystem
+
+                object.__setattr__(console, "_color_system", ColorSystem.TRUECOLOR)
 
 
 def _build_console(
