@@ -92,6 +92,17 @@ def test_no_color_env_disables_color() -> None:
     assert ctx.color_enabled is False
 
 
+def test_force_color_redirect_emits_ansi() -> None:
+    """FORCE_COLOR keeps semantic ANSI in a redirected transcript."""
+    stream = StringIO()
+    ctx = make_display_context(env={"FORCE_COLOR": "1"}, console=Console(
+        file=stream, force_terminal=True, color_system="truecolor", width=_WIDE_WIDTH,
+        theme=RALPH_THEME,
+    ))
+    ctx.console.print("[theme.status.success]PASS[]")
+    assert "\x1b[" in stream.getvalue()
+
+
 def test_display_context_regression_empty_colour_overrides_are_ignored() -> None:
     """S-1: empty NO_COLOR/FORCE_COLOR values do not change colour policy."""
     no_color = make_display_context(

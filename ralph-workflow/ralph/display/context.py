@@ -144,25 +144,47 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
 
 
 def _build_console(
-    resolved_env: _ResolvedEnv, terminal_bg_is_light: bool | None
+    resolved_env: _ResolvedEnv,
+    terminal_bg_is_light: bool | None,
+    *,
+    output_stream: object | None = None,
 ) -> Console:
     """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
 
+    Ralph keeps ANSI in durable redirected transcripts when the destination
+    supports it.  ``FORCE_COLOR`` explicitly opts into that behaviour, while
+    the ordinary path still uses Rich's terminal detection for real streams.
+    ``NO_COLOR`` is checked first and always wins.
+
     Args:
         resolved_env: Pre-resolved environment settings.
+        terminal_bg_is_light: Resolved terminal background.
+        output_stream: Destination stream for rendered output.
 
     Returns:
         Configured Console instance.
     """
     if resolved_env.no_color:
         return make_console(
-            no_color=True, force_terminal=False, terminal_bg_is_light=terminal_bg_is_light
+            file=output_stream,
+            no_color=True,
+            force_terminal=False,
+            terminal_bg_is_light=terminal_bg_is_light,
         )
     if resolved_env.force_color:
         return make_console(
-            no_color=False, force_terminal=True, terminal_bg_is_light=terminal_bg_is_light
+            file=output_stream,
+            no_color=False,
+            force_terminal=True,
+            terminal_bg_is_light=terminal_bg_is_light,
         )
-    return make_console(force_terminal=True, terminal_bg_is_light=terminal_bg_is_light)
+    return make_console(
+        file=output_stream,
+        no_color=False,
+        force_terminal=None,
+        color_system="auto",
+        terminal_bg_is_light=terminal_bg_is_light,
+    )
 
 
 def _compute_width(
@@ -576,7 +598,11 @@ def make_display_context(
         resolved_background = detect_terminal_background_is_light(env_dict)
     if console is None:
         injected_console = False
-        resolved_console = _build_console(resolved_env, resolved_background)
+        resolved_console = _build_console(
+            resolved_env,
+            resolved_background,
+            output_stream=sys.stdout,
+        )
     else:
         from rich.console import Console
 
