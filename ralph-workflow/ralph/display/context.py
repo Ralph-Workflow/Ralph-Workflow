@@ -41,8 +41,6 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal, TextIO, cast
 
-from rich.color import ColorSystem
-
 from ralph.display._mode_adaptive_limits import _DEFAULT_LIMITS
 from ralph.display._resolved_env import _ResolvedEnv
 from ralph.display.mode import DEFAULT_MODE

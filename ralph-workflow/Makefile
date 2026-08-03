@@ -2,9 +2,9 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: `auto` preserves one core while capping at sixteen shards. The
-# 1.0 s per-test SIGALRM budget charges wall clock; sixteen shards are the
-# measured profile on maintained 32-core CI.
+# Default: `auto` preserves one core while capping at thirty-two shards. The
+# 1.0 s per-test SIGALRM budget charges wall clock; the full host profile
+# keeps collection and audit-heavy files below the immutable suite deadline.
 # Operators may override after measuring their own host.
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
@@ -29,8 +29,8 @@ export PYTEST_WORKERS
 # a single pytest invocation). The runner fans out into N shards and
 # then spawns M xdist workers per shard, so the total pytest worker
 # count is N * M. The default ``0`` keeps each shard on plain pytest
-# (no in-shard xdist); the maintained 32-core CI profile uses 16
-# shards * 1 worker = 16 parallel pytest workers and stays well under
+# (no in-shard xdist); the maintained 32-core CI profile uses 31
+# shards * 1 worker = 31 parallel pytest workers and stays well under
 # the 60s combined budget. Setting the variable to ``auto`` opts into
 # the legacy CPU-utilisation-maximising policy: M is sized so N * M
 # does not exceed the host's available CPU count, which on a 32-core
