@@ -164,10 +164,13 @@ _IO_ALLOWLIST: set[str] = {
     "test_git_wrapper",
     # Helper backend classes: write_text is a method on a custom backend
     # object (MemoryBackend subclass), not a Path.write_text() call.
-    # The audit tool's AST heuristic cannot distinguish these. The helpers
-    # were renamed to leading-underscore names so pytest does not collect
-    # them, but the audit walks every .py file under tests/ so they still
-    # need an exemption keyed on the actual filename stem.
+    # The audit tool's AST heuristic cannot distinguish these.
+    # These helper modules were renamed from ``test_*_helper_*`` to
+    # ``_*_helper_*`` in commit e1247b55d ("exclude helper modules from
+    # pytest collection") so pytest stops collecting them as test files.
+    # The audit's allowlist still keys on the file stem, so the entries
+    # must match the renamed stems — leaving the legacy ``test_`` prefix
+    # would silently re-flag the very helpers this list is meant to allow.
     "_tool_artifact_1_helper_failingartifactbackend",
     "_tool_artifact_2_helper_failingartifactbackend",
     # Docs<->pin-list parity guard: reads docs/agents/watchdog-spec.md
@@ -192,12 +195,11 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # Measures fan-out/verify timing to confirm parallelism works
     # correctly, not to accumulate passage-of-time for control flow.
     "test_parallel_serialized_verification",
-    # Helper executor for the hard-kill integration test: measures actual
-    # process kill duration as a correctness assertion (the test proves
-    # the hard-kill seam terminates within the bounded grace period).
-    # The helper was renamed to a leading-underscore name so pytest does
-    # not collect it, but the audit walks every .py file under tests/
-    # so it still needs an exemption keyed on the actual filename stem.
+    # Measures actual process kill duration for hard-kill correctness testing.
+    # Wall-clock measurement IS the point of this test.
+    # Renamed from ``test_*_helper_*`` to ``_*_helper_*`` in commit
+    # e1247b55d; the audit's allowlist keys on the file stem, so this
+    # entry must match the renamed stem to remain effective.
     "_hard_kill_helper_sleeperexecutor",
     # Performance regression test: measures real subscriber dispatch latency.
     # Wall-clock measurement IS the correctness assertion.

@@ -770,6 +770,39 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.agents.invoke._session",
             ("_bounded_output_lines",),
         ),
+        # wt-01-fs-opti consolidation (commit 153a70e72): the idle-watchdog
+        # tests under tests/agents/idle_watchdog/ were merged into the single
+        # consolidated tests/agents/test_idle_watchdog.py module. Each entry
+        # below re-anchors the allowlist to the consolidated file so the
+        # grandfathered private imports the original files used remain
+        # grandfathered after consolidation; the import symbols are
+        # unchanged. New entries that would introduce *additional* private
+        # imports to a non-grandfathered file would still be rejected.
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.invoke._monitor_factory",
+            ("_discovery_strategy_for_config",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.invoke._errors",
+            ("_IdleStreamTimeoutError",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.invoke._session",
+            ("_bounded_output_lines",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.pipeline.effect_executor",
+            ("_failure_requires_fresh_session",),
+        ),
+        (
+            "tests/agents/test_idle_watchdog.py",
+            "ralph.agents.idle_watchdog._subagent_identity",
+            ("_MAX_REGISTRY_ENTRIES",),
+        ),
         (
             "tests/agents/invoke/test_pty_check_fire_resume_metadata.py",
             "ralph.agents.invoke._errors",

@@ -20,12 +20,9 @@ from ralph.pipeline import commit_executor as commit_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
-    InvokeAgentEffect,
 )
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:

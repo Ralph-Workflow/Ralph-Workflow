@@ -6,10 +6,8 @@ import subprocess
 from pathlib import Path
 
 from ralph.mcp.tools.git_read import (
-    WorkspaceWithRoot,
     run_git_command,
 )
-from tests.mock_workspace_root import MockWorkspaceRoot
 
 CUSTOM_LOG_COUNT = 20
 

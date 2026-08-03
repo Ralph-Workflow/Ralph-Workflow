@@ -6,46 +6,24 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
-from loguru import logger
 
 # Config imports for multimodal tests
 from ralph.config.mcp_models import McpConfig, MediaConfig
-from ralph.mcp.multimodal.capabilities import (
-    UNKNOWN_IDENTITY,
-    DeliveryMode,
-    MultimodalModelIdentity,
-    ResolvedCapabilityProfile,
-)
 from ralph.mcp.protocol import startup
-from ralph.mcp.protocol.capability_mapping import McpCapability
-from ralph.mcp.protocol.env import MCP_SESSION_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
-from ralph.mcp.tools.names import upstream_proxy_tool_name
-from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
-    UpstreamMcpServer,
 )
-from ralph.mcp.upstream.models import UpstreamCallError
-from ralph.mcp.upstream.registry import UpstreamRegistry
-from ralph.phases import PhaseContext
-from ralph.phases.execution import handle_execution_phase
-from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
-from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from tests._support.typed_accessors import (
     must_dict_list,
     must_mapping,
     must_str,
 )
-from tests.mcp.test_md_plan_spec import _plan_document
 
 # Lazy imports for multimodal tests that require optional dependencies
 # These are only available when the multimodal feature is fully configured

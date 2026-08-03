@@ -16,10 +16,6 @@ from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import (
-    InvokeAgentEffect,
-)
-from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     AgentChainConfig,
@@ -27,7 +23,6 @@ from ralph.policy.models import (
     AgentsPolicy,
     PolicyBundle,
 )
-from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:

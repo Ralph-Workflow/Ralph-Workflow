@@ -2,20 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
 from ralph.mcp.protocol.capability_mapping import (
     Capability,
-    DrainClass,
     McpCapability,
-    PolicyMode,
-    SessionDrain,
-    drain_class_for_session,
-    drain_to_policy_mode,
     lookup_ralph_capability,
 )
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
-from ralph.policy.validation import PolicyValidationError
 
 
 class TestNewCapabilities:

@@ -9,7 +9,6 @@ from rich.console import Console
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import (
     MAJOR_ROLE_PAIRS,
-    phase_label,
     phase_style,
     resolve_active_display,
 )

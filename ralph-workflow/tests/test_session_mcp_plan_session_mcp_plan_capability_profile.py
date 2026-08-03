@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,8 +15,7 @@ from ralph.mcp.multimodal.capabilities import (
     DeliveryMode,
     ResolvedCapabilityProfile,
 )
-from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan, resolve_model_identity
-from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
+from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 if TYPE_CHECKING:

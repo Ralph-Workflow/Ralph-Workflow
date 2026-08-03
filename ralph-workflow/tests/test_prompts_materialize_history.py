@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
-from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import (
     ArtifactContract,
     ArtifactHistoryPolicy,
@@ -20,8 +18,6 @@ from ralph.prompts.materialize import (
     PromptPhaseOptions,
     materialize_prompt_for_phase,
     resolve_fix_result_content,
-    submit_artifact_tool_name_for_transport,
-    tool_name_prefix_for_transport,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.fs import FsWorkspace
