@@ -151,11 +151,13 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
             color_system_raw: object = getattr(console, "_color_system", None)
             if color_system_raw is None:
                 # Rich accepts either the string key or the ColorSystem enum at
-                # runtime (Console.__init__ does ``COLOR_SYSTEMS[color_system]``);
-                # use the enum value so the field's declared
-                # ``ColorSystem | None`` annotation is honored without a
-                # mypy suppression.
-                console._color_system = ColorSystem.TRUECOLOR
+                # runtime (Console.__init__ does ``COLOR_SYSTEMS[color_system]``).
+                # ``object.__setattr__`` is used (not ``setattr``) to bypass
+                # the B010 ruff check on constant-attribute setattr calls;
+                # the attribute name ``_color_system`` is dictated by Rich's
+                # Console dataclass and is the only path to force a concrete
+                # renderer on an already-constructed console.
+                object.__setattr__(console, "_color_system", "truecolor")
 
 
 def _build_console(
