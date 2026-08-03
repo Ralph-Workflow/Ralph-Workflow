@@ -119,6 +119,7 @@ def save(
             path,
             serialized,
             tmp_path=tmp_path,
+            sync_directory=True,
             prepare_write=lambda: backend.mkdir(path.parent, parents=True, exist_ok=True),
         )
         logger.debug("Checkpoint saved to {}", path)

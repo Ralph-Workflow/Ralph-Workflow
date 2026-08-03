@@ -45,6 +45,7 @@ class _ReplacingCountingBackend(FileBackend):
         self.write_text_calls: list[tuple[Path, str]] = []
         self.replace_calls: list[tuple[Path, Path]] = []
         self.mkdir_calls: list[Path] = []
+        self.sync_directory_calls: list[Path] = []
 
     def exists(self, path: Path) -> bool:
         return path in self._files
@@ -65,6 +66,9 @@ class _ReplacingCountingBackend(FileBackend):
     def replace(self, source: Path, destination: Path) -> None:
         self.replace_calls.append((source, destination))
         self._files[destination] = self._files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        self.sync_directory_calls.append(path)
 
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         if missing_ok:
@@ -105,6 +109,7 @@ def test_checkpoint_save_regression_writes_and_replaces_on_first_save() -> None:
     # Parent directory creation is routed through the injected backend, not
     # the real filesystem.
     assert dest.parent in backend.mkdir_calls
+    assert backend.sync_directory_calls == [dest.parent]
 
 
 def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None:
@@ -125,6 +130,7 @@ def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None
     writes_after_first = len(backend.write_text_calls)
     replaces_after_first = len(backend.replace_calls)
     mkdirs_after_first = len(backend.mkdir_calls)
+    syncs_after_first = len(backend.sync_directory_calls)
     stored_after_first = backend._files[dest]
 
     ckpt.save(state, dest, backend=backend)
@@ -132,6 +138,7 @@ def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None
     assert len(backend.write_text_calls) == writes_after_first
     assert len(backend.replace_calls) == replaces_after_first
     assert len(backend.mkdir_calls) == mkdirs_after_first
+    assert len(backend.sync_directory_calls) == syncs_after_first
     assert backend._files[dest] == stored_after_first
     assert tmp not in backend._files
 
@@ -153,10 +160,12 @@ def test_checkpoint_save_regression_writes_and_replaces_when_state_changed() -> 
     ckpt.save(initial, dest, backend=backend)
     writes_after_first = len(backend.write_text_calls)
     replaces_after_first = len(backend.replace_calls)
+    syncs_after_first = len(backend.sync_directory_calls)
 
     ckpt.save(changed, dest, backend=backend)
 
     assert len(backend.write_text_calls) == writes_after_first + 1
     assert len(backend.replace_calls) == replaces_after_first + 1
+    assert len(backend.sync_directory_calls) == syncs_after_first + 1
     assert backend._files[dest] == changed.model_dump_json(indent=2)
     assert tmp not in backend._files
