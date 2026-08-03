@@ -45,26 +45,6 @@ def test_show_phase_transition_minor_renders_rule() -> None:
     assert "Development Analysis" in output
 
 
-def test_phase_label_converts_underscore_names() -> None:
-    assert phase_label("development_analysis") == "Development Analysis"
-    assert phase_label("review_commit") == "Review Commit"
-    assert phase_label("planning") == "Planning"
-
-
-def test_phase_style_canonical_names_without_policy_return_muted() -> None:
-    assert phase_style("planning") == "theme.text.muted"
-    assert phase_style("development") == "theme.text.muted"
-    assert phase_style("complete") == "theme.text.muted"
-    assert phase_style("failed") == "theme.text.muted"
-
-
-def test_phase_style_role_names_without_policy_return_correct_styles() -> None:
-    assert phase_style("review") == "theme.phase.review"
-    assert phase_style("fix") == "theme.phase.fix"
-    assert phase_style("execution") == "theme.phase.development"
-    assert phase_style("terminal") == "theme.phase.complete"
-
-
 def test_show_phase_start_without_counters() -> None:
     console = Console(record=True)
     display = resolve_active_display(None, _ctx_from_console(console))

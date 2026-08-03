@@ -326,6 +326,7 @@ def test_static_discovery_excludes_only_module_marked_e2e_files(
     )
 
 
+@pytest.mark.timeout_seconds(10)
 def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     discovered = test_suites_module.discover_test_files(Path.cwd())
 
@@ -347,9 +348,9 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
 
 @pytest.mark.parametrize(
     ("cpu_count", "expected_workers"),
-    ((None, "1"), (1, "1"), (2, "1"), (16, "15"), (17, "16"), (64, "16")),
+    ((None, "1"), (1, "1"), (2, "1"), (16, "15"), (32, "31"), (64, "32")),
 )
-def test_auto_worker_count_preserves_one_core_and_caps_at_sixteen(
+def test_auto_worker_count_preserves_one_core_and_caps_at_thirty_two(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,

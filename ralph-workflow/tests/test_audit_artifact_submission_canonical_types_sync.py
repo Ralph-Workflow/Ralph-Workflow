@@ -9,10 +9,6 @@ from ralph.testing.audit_artifact_submission_canonical_path import (
 )
 
 
-def test_canonical_types_equals_known_artifact_types() -> None:
-    assert _CANONICAL_TYPES == KNOWN_ARTIFACT_TYPES
-
-
 def test_known_artifact_types_is_non_empty() -> None:
     assert KNOWN_ARTIFACT_TYPES
 

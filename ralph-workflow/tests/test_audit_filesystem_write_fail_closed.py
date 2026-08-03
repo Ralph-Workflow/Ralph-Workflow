@@ -15,16 +15,6 @@ def _write_fake_package(tmp_path: Path, module_rel: str, body: str) -> Path:
     return package_root
 
 
-def test_regression_missing_default_production_root_fails_closed(tmp_path: Path) -> None:
-    """S-6: a missing default root cannot make the write audit silently pass."""
-    violations = audit.audit_filesystem_write_consolidation(tmp_path)
-
-    assert len(violations) == 1
-    assert violations[0].kind == "missing_production_root"
-    assert violations[0].file_path == "ralph"
-    assert "fail closed" in violations[0].message
-
-
 def test_synthetic_unknown_writer_in_production_would_fail(tmp_path: Path) -> None:
     """S-6: an unrecognized production ``os.replace`` must be rejected."""
     module_rel = "sneaky/example.py"

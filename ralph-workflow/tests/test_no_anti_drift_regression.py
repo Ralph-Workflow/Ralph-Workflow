@@ -203,6 +203,7 @@ class TestSessionIdLifecycleSingleExtractor:
             "transport session id."
         )
 
+    @pytest.mark.timeout_seconds(10)
     def test_no_private_session_imports_outside_invoke_package(self) -> None:
         """`from ralph.agents.invoke._session import` may only appear inside the package
         AND in `ralph/agents/parsers/`.

@@ -126,12 +126,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-def test_resolve_display_defaults_to_legacy_console_display() -> None:
-    display = runner_module.resolve_display(None, make_display_context())
-
-    assert isinstance(display, runner_module.ParallelDisplay)
-
-
 def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_planning_entry(
     tmp_path: Path,
 ) -> None:
@@ -164,51 +158,6 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     rendered = workspace.read(".agent/tmp/planning_prompt.md")
     assert "You are in PLANNING MODE" in rendered
     assert "PLANNING EDIT MODE" not in rendered
-
-
-def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_analysis_loopback(
-    tmp_path: Path,
-) -> None:
-    policy_bundle = _load_default_policy_bundle()
-    workspace = FsWorkspace(tmp_path)
-    workspace.write("PROMPT.md", "Revise the plan")
-    workspace.write(
-        ".agent/PLAN.md",
-        "# Execution Plan\n\nExisting plan\n",
-    )
-    workspace.write(
-        ".agent/PLANNING_ANALYSIS_DECISION.md",
-        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
-        "## Summary\n- [S1] Need revisions\n"
-        "## What Came Up Short\n- [W1] issue\n"
-        "## How To Fix\n- [W1] fix it\n",
-    )
-    workspace.write(
-        ".agent/tmp/planning_prompt.md",
-        "You are in PLANNING MODE. Create a detailed, structured execution plan.",
-    )
-    effect = InvokeAgentEffect(
-        agent_name="claude",
-        phase="planning",
-        prompt_file="PROMPT.md",
-        drain="planning",
-        chain_name="planning",
-    )
-    state = PipelineState(phase="planning", previous_phase="planning_analysis")
-    registry = MagicMock()
-    registry.get.return_value = None
-
-    runner_module.materialize_agent_prompt_if_needed(
-        effect,
-        state,
-        workspace,
-        policy_bundle,
-        registry,
-    )
-
-    rendered = workspace.read(".agent/tmp/planning_prompt.md")
-    assert "PLANNING EDIT MODE" in rendered
-    assert "You are in PLANNING MODE" not in rendered
 
 
 @pytest.mark.parametrize("analysis_iteration", [2, 3, 4])

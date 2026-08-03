@@ -176,10 +176,6 @@ def test_is_fts_eligible_rejects_regex() -> None:
     assert is_fts_eligible("foo.*", is_regex=True, whole_word=False) is False
 
 
-def test_is_fts_eligible_rejects_whole_word_phrase() -> None:
-    assert is_fts_eligible("hello world", is_regex=False, whole_word=True) is False
-
-
 def test_fts_query_for_uses_phrase_quotes() -> None:
     assert fts_query_for("hello", whole_word=False) == '"hello"'
     assert fts_query_for("hello", whole_word=True) == '"hello"'

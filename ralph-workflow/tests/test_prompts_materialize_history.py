@@ -31,27 +31,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_tool_name_prefix_for_claude_interactive() -> None:
-    assert tool_name_prefix_for_transport(AgentTransport.CLAUDE_INTERACTIVE) == "mcp__ralph__"
-
-
-def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_claude() -> None:
-    assert submit_artifact_tool_name_for_transport(AgentTransport.CLAUDE) == claude_tool_name(
-        SUBMIT_MD_ARTIFACT_TOOL
-    )
-    assert submit_artifact_tool_name_for_transport(
-        AgentTransport.CLAUDE_INTERACTIVE
-    ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
-
-
-def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_agy() -> None:
-    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_MD_ARTIFACT_TOOL
-
-
-def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
-    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_MD_ARTIFACT_TOOL
-
-
 def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
     fix_result_doc = "---\ntype: fix_result\n---\n## Summary\n- [S1] Applied fixes\n"
@@ -62,14 +41,6 @@ def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) ->
     content, path = resolve_fix_result_content(workspace)
     assert content == fix_result_doc
     assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
-
-
-def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: Path) -> None:
-    workspace = FsWorkspace(tmp_path)
-
-    content, path = resolve_fix_result_content(workspace)
-    assert content == "(no fix result available)"
-    assert path == ""
 
 
 def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(

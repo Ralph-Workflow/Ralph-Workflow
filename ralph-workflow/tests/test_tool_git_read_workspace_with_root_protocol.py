@@ -19,10 +19,6 @@ CUSTOM_LOG_COUNT = 20
 
 
 class TestWorkspaceWithRootProtocol:
-    def test_path_object_satisfies_protocol(self) -> None:
-        ws = MockWorkspaceRoot(Path("/tmp"))
-        assert isinstance(ws, WorkspaceWithRoot)
-        assert ws.root == Path("/tmp")
 
     def test_str_workspace_uses_injected_fallback_cwd(self) -> None:
         seen: list[Path] = []

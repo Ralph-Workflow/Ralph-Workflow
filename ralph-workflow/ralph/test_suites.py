@@ -85,7 +85,7 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``. Lowering it widens each
 # shard's work (more files per shard) and is therefore a budget-pressure
 # change, not a budget-relief change.
-_MAX_PYTEST_WORKERS = 16
+_MAX_PYTEST_WORKERS = 32
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
 # 16-shard fan-out already uses one pytest process per shard and adding
@@ -96,8 +96,8 @@ _MAX_PYTEST_WORKERS = 16
 # in-shard fan-out.
 _DEFAULT_XDIST_WORKERS_PER_SHARD = "0"
 # Hard cap on the number of pytest-xdist workers spawned INSIDE each shard.
-# Combined with ``_MAX_PYTEST_WORKERS`` (16 shards) this gives a maximum
-# fan-out of 16 * 8 = 128 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
+# Combined with ``_MAX_PYTEST_WORKERS`` (32 shards) this gives a maximum
+# fan-out of 32 * 4 = 128 workers when ``_DEFAULT_XDIST_WORKERS_PER_SHARD``
 # is overridden to ``"auto"`` or a positive integer. The default plain-
 # pytest path keeps the slowest shard under the 60s combined budget on
 # 32-core CI without coordination overhead.

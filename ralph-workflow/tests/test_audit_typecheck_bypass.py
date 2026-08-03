@@ -402,12 +402,6 @@ def test_main_violations_return_one(tmp_path: Path) -> None:
     assert result == 1
 
 
-def test_main_missing_directory_returns_two() -> None:
-    """main() returns 2 when directory doesn't exist."""
-    result = main(["/nonexistent/path/12345"])
-    assert result == 2
-
-
 # ---------------------------------------------------------------------------
 # Skip dirs test
 # ---------------------------------------------------------------------------

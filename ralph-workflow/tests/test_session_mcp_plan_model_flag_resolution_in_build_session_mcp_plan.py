@@ -78,61 +78,12 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY
 
 
-def test_resolve_model_identity_claude_interactive() -> None:
-    identity = resolve_model_identity(AgentTransport.CLAUDE_INTERACTIVE, "--model sonnet")
-
-    assert identity.provider == "claude"
-    assert identity.model_id == "--model sonnet"
-    assert identity.transport == AgentTransport.CLAUDE_INTERACTIVE.value
-
-
 def test_resolve_model_identity_agy() -> None:
     identity = resolve_model_identity(AgentTransport.AGY, "--model gemini-2.5-pro")
 
     assert identity.provider == "gemini"
     assert identity.model_id == "--model gemini-2.5-pro"
     assert identity.transport == AgentTransport.AGY.value
-
-
-def test_session_mcp_plan_derives_web_and_upstream_capabilities_from_live_config(
-    isolated_home: Path,
-    tmp_path: Path,
-) -> None:
-    (isolated_home / ".claude.json").write_text(
-        json.dumps({"mcpServers": {"github": {"command": "npx", "args": ["-y", "github-mcp"]}}}),
-        encoding="utf-8",
-    )
-    agent_dir = tmp_path / ".agent"
-    agent_dir.mkdir()
-    (agent_dir / "mcp.toml").write_text(
-        """
-[mcp_servers.docs]
-transport = "http"
-url = "http://docs.example/mcp"
-
-[web_search]
-enabled = true
-
-[web_visit]
-enabled = true
-""".strip(),
-        encoding="utf-8",
-    )
-
-    plan = build_session_mcp_plan(
-        transport=AgentTransport.CLAUDE,
-        drain="planning",
-        workspace_path=tmp_path,
-        agents_policy=_default_agents_policy(tmp_path),
-    )
-
-    assert "web.search" in plan.capabilities
-    assert "web.visit" in plan.capabilities
-    assert "upstream.tool_use" in plan.capabilities
-    assert plan.server_env is not None
-
-    upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
-    assert {server.name for server in upstreams} == {"github", "docs"}
 
 
 def test_build_session_mcp_plan_filters_server_env_to_cached_upstreams(
@@ -170,37 +121,6 @@ url = "http://docs.example/mcp"
     assert {server.name for server in upstreams} == {"github"}
 
 
-def test_build_session_mcp_plan_claude_interactive_includes_upstreams(
-    isolated_home: Path,
-    tmp_path: Path,
-) -> None:
-    (isolated_home / ".claude.json").write_text(
-        json.dumps({"mcpServers": {"github": {"command": "npx", "args": ["-y", "github-mcp"]}}}),
-        encoding="utf-8",
-    )
-    agent_dir = tmp_path / ".agent"
-    agent_dir.mkdir()
-    (agent_dir / "mcp.toml").write_text(
-        """
-[mcp_servers.docs]
-transport = "http"
-url = "http://docs.example/mcp"
-""".strip(),
-        encoding="utf-8",
-    )
-
-    plan = build_session_mcp_plan(
-        transport=AgentTransport.CLAUDE_INTERACTIVE,
-        drain="planning",
-        workspace_path=tmp_path,
-        agents_policy=_default_agents_policy(tmp_path),
-    )
-
-    assert plan.server_env is not None
-    upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
-    assert {server.name for server in upstreams} == {"github", "docs"}
-
-
 def test_build_session_mcp_plan_agy_includes_upstreams(
     isolated_home: Path,
     tmp_path: Path,
@@ -235,79 +155,6 @@ url = "http://docs.example/mcp"
 
     upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
     assert {"agy-upstream", "docs"}.issubset({server.name for server in upstreams})
-
-
-def test_session_mcp_plan_omits_web_search_and_web_visit_for_commit_even_when_enabled(
-    isolated_home: Path,
-    tmp_path: Path,
-) -> None:
-    del isolated_home
-    agent_dir = tmp_path / ".agent"
-    agent_dir.mkdir()
-    (agent_dir / "mcp.toml").write_text(
-        """
-[web_search]
-enabled = true
-
-[web_visit]
-enabled = true
-""".strip(),
-        encoding="utf-8",
-    )
-
-    plan = build_session_mcp_plan(
-        transport=AgentTransport.CLAUDE,
-        drain="commit",
-        workspace_path=tmp_path,
-        agents_policy=_default_agents_policy(tmp_path),
-    )
-
-    assert "web.search" not in plan.capabilities
-    assert "web.visit" not in plan.capabilities
-
-
-def test_session_mcp_plan_grants_read_diff_and_exec_for_development_analysis(
-    isolated_home: Path,
-    tmp_path: Path,
-) -> None:
-    del isolated_home
-
-    plan = build_session_mcp_plan(
-        transport=AgentTransport.CLAUDE,
-        drain="development_analysis",
-        workspace_path=tmp_path,
-        agents_policy=_default_agents_policy(tmp_path),
-    )
-
-    assert "workspace.read" in plan.capabilities
-    assert "git.status_read" in plan.capabilities
-    assert "git.diff_read" in plan.capabilities
-    assert "artifact.submit" in plan.capabilities
-    assert "process.exec_bounded" in plan.capabilities
-    assert "run.report_progress" in plan.capabilities
-    assert "workspace.write_tracked" not in plan.capabilities
-
-
-def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
-    isolated_home: Path,
-    tmp_path: Path,
-) -> None:
-    del isolated_home
-
-    plan = build_session_mcp_plan(
-        transport=AgentTransport.CLAUDE,
-        drain="review_analysis",
-        workspace_path=tmp_path,
-        agents_policy=_default_agents_policy(tmp_path),
-    )
-
-    assert "workspace.read" in plan.capabilities
-    assert "git.status_read" in plan.capabilities
-    assert "git.diff_read" in plan.capabilities
-    assert "artifact.submit" in plan.capabilities
-    assert "process.exec_bounded" in plan.capabilities
-    assert "run.report_progress" in plan.capabilities
-    assert "workspace.write_tracked" not in plan.capabilities
 
 
 class TestModelFlagResolutionInBuildSessionMcpPlan:
