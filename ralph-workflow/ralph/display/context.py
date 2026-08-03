@@ -41,6 +41,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal, TextIO, cast
 
+from rich.color import ColorSystem
+
 from ralph.display._mode_adaptive_limits import _DEFAULT_LIMITS
 from ralph.display._resolved_env import _ResolvedEnv
 from ralph.display.mode import DEFAULT_MODE
@@ -146,14 +148,14 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
         # restore a concrete renderer so the public output seam cannot fall
         # back to monochrome after theme/style caching.
         with contextlib.suppress(Exception):
-            if console._color_system is None:
-                # Rich exposes ``_color_system`` as ``ColorSystem | None`` but
-                # accepts ``"truecolor"`` as a valid runtime assignment via
-                # the COLOR_SYSTEMS map; the property setter validates and
-                # translates the string. The setter is intentionally bypassed
-                # here because the underlying field is private and re-stamped
-                # with a string the public API documents as valid input.
-                setattr(console, "_color_system", "truecolor")
+            color_system_raw: object = getattr(console, "_color_system", None)
+            if color_system_raw is None:
+                # Rich accepts either the string key or the ColorSystem enum at
+                # runtime (Console.__init__ does ``COLOR_SYSTEMS[color_system]``);
+                # use the enum value so the field's declared
+                # ``ColorSystem | None`` annotation is honored without a
+                # mypy suppression.
+                console._color_system = ColorSystem.TRUECOLOR
 
 
 def _build_console(
