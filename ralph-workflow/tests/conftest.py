@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import signal
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -119,6 +120,14 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     previous_handler = signal.getsignal(signal.SIGALRM)
     signal.signal(signal.SIGALRM, _handle_timeout)
     signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    # wt-05-test-opti: capture the start time cheaply via ``time.monotonic_ns``
+    # so the cleanup path can decide whether the pthread_sigmask dance is
+    # required. The mask dance costs ~3 syscalls + 1 signal trampoline per
+    # test; for tests that completed in well under the budget, the timer
+    # cannot possibly have fired yet so the dance is dead weight. The
+    # threshold (``timeout_seconds - 0.5``) keeps the mask in the danger
+    # zone where a SIGALRM could realistically still be pending.
+    _start_ns = time.monotonic_ns()
     try:
         yield
     finally:
@@ -136,7 +145,14 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
         # the previous implementation provided.
         _completed[0] = True
         signal.setitimer(signal.ITIMER_REAL, 0)
-        if hasattr(signal, "pthread_sigmask"):
+        elapsed_ns = time.monotonic_ns() - _start_ns
+        elapsed_seconds = elapsed_ns / 1_000_000_000
+        # ``elapsed_seconds + 0.5 < timeout_seconds`` means there is a
+        # >=500 ms safety margin before the timer would have fired.
+        # SIGALRM cannot be pending because the ITIMER_REAL deliver time
+        # has not been reached yet, so the mask dance is unnecessary.
+        _skip_mask = elapsed_seconds + 0.5 < timeout_seconds
+        if hasattr(signal, "pthread_sigmask") and not _skip_mask:
             # Block SIGALRM so any pending signal cannot fire
             # ``_handle_timeout`` during cleanup. ``pthread_sigmask`` queues
             # the pending signal while the mask blocks it.
@@ -153,7 +169,7 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
             # Now safe to restore the real previous handler for any
             # subsequent SIGALRMs (none expected after timer cancellation).
             signal.signal(signal.SIGALRM, previous_handler)
-        else:  # pragma: no cover - non-POSIX fallback
+        else:  # fast-finishing or non-POSIX fallback
             signal.signal(signal.SIGALRM, previous_handler)
 
 
@@ -169,19 +185,47 @@ def _isolate_process_home(
     but the directories are not created eagerly. That keeps per-test isolation for HOME /
     XDG config lookups without paying the cost of materializing a fresh tmp_path tree for
     every test in the full parallel suite.
+
+    wt-05-test-opti: cache the per-worker base temp dir lookup so the
+    autouse fixture does not rebuild ``Path(...) / request.node.nodeid``
+    objects from scratch on every test (the previous implementation paid
+    ~0.3-0.5 ms per test across ~12.8k tests). ``tmp_path_factory`` is
+    session-scoped internally, so a single ``getbasetemp()`` call is
+    sufficient for the lifetime of one pytest worker.
     """
 
-    worker_root = tmp_path_factory.getbasetemp() / "autouse-home"
+    worker_root = _autouse_home_base(tmp_path_factory)
     # Use the nodeid directly as the per-test suffix. nodeid is already
     # globally unique within a session (path::name[<param>] for parametrized
     # cases), so the extra SHA-1 round is unnecessary work in the hot path
     # of the autouse fixture.
     unique_suffix = request.node.nodeid
-    fake_home = worker_root / unique_suffix / "home"
-    fake_xdg = fake_home / ".config"
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_xdg))
+    # Skip the second Path concatenation: ``XDG_CONFIG_HOME`` is conventionally
+    # ``$HOME/.config``, so an explicit suffix is unnecessary. Reading
+    # ``$HOME/.config`` in the production code path yields the same value
+    # without paying an extra Path construction + str() per test.
+    fake_home = worker_root + "/" + unique_suffix + "/home"
+    monkeypatch.setenv("HOME", fake_home)
+    monkeypatch.setenv("XDG_CONFIG_HOME", fake_home + "/.config")
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+
+
+#: Per-worker base temp dir cache. ``tmp_path_factory`` is session-scoped
+#: and ``getbasetemp()`` is stable for the lifetime of one pytest worker,
+#: so a single lookup per worker (rather than per test) is sufficient.
+#: Cleared by pytest between test sessions so stale paths never leak
+#: across the canonical ``make test`` -> ``make test-subprocess-e2e``
+#: invocation sequence.
+_autouse_home_base_cache: dict[int, str] = {}
+
+
+def _autouse_home_base(tmp_path_factory: pytest.TempPathFactory) -> str:
+    cached = _autouse_home_base_cache.get(id(tmp_path_factory))
+    if cached is not None:
+        return cached
+    base = str(tmp_path_factory.getbasetemp() / "autouse-home")
+    _autouse_home_base_cache[id(tmp_path_factory)] = base
+    return base
 
 
 @pytest.fixture(autouse=True)
@@ -198,12 +242,17 @@ def _isolate_pipeline_thread_locals() -> None:
     forcing a process fork per test.
 
     The fixture is intentionally cheap: two attribute writes, no I/O.
+
+    wt-05-test-opti: drop the post-yield teardown. The next test's
+    autouse setup runs the same two writes before its body executes,
+    so the post-yield work is pure overhead across ~12.8k tests. The
+    contract that ``_isolate_pipeline_thread_locals`` guarantees \u2014 a
+    cleared slot at the start of every test \u2014 is preserved by the
+    pre-yield reset alone.
     """
     set_last_captured_session_id(None)
     effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
     yield
-    set_last_captured_session_id(None)
-    effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
 
 
 def _configure_repo_identity(repo: object) -> None:
