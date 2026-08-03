@@ -176,7 +176,7 @@ def test_generated_scene_colours_every_named_semantic_category() -> None:
         ("burst", "edit_file complete", "38;2;19;136;78"),
         ("clean_run", "waiting for an external review response", "38;2;23;131;131"),
         ("failure", "tests failed", "38;2;176;92;92"),
-        ("idle_stretch", "WAITING", "38;2;186;93;0"),
+        ("idle_stretch", "WAITING", "1;33"),
         ("burst", "output condensed count=24 bytes=768", "38;2;144;96;192"),
         ("burst", "-", "38;2;186;93;0"),
         ("burst", "+", "38;2;0;116;232"),

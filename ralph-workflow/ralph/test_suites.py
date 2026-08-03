@@ -67,8 +67,7 @@ if TYPE_CHECKING:
 # pytest with xdist (``-n N`` per shard) so the in-shard wall clock scales
 # with the host's per-shard worker budget rather than with the count of
 # files in the shard. The default profile uses one plain pytest process per
-# shard; the CPU-capped shard count is selected below and operators may
-# override ``PYTEST_WORKERS`` for smaller hosts.
+# shard. Operators may override ``PYTEST_WORKERS`` for smaller hosts.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
@@ -81,7 +80,7 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 _MAX_PYTEST_WORKERS = 32
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
-# 16-shard fan-out already uses one pytest process per shard and adding
+# 32-shard fan-out already uses one pytest process per shard and adding
 # xdist workers inside each shard shifts wall-clock budget from
 # parallel-IO back into pytest-coordination overhead. Operators may
 # override with ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` for the legacy

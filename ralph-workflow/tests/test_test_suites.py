@@ -350,6 +350,7 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_static_discovery_populates_source_cache_for_retained_files() -> None:
     """Each retained file's decoded source must end up in the source cache so
     ``_test_file_weight`` does not re-read the same file from disk during
