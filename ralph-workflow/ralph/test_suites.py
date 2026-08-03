@@ -500,11 +500,51 @@ def estimate_test_file_weight(source: str) -> int:
 
 
 def _test_file_weight(cwd: Path, relative_path: str) -> int:
-    source = (cwd / relative_path).read_text(encoding="utf-8")
-    weight = estimate_test_file_weight(source)
+    # Reuse the parser cache populated by ``discover_test_files`` to avoid
+    # re-reading and re-parsing the same source files during shard weight
+    # computation. Without this cache, each shard load pays the cost of an
+    # additional full read and ``ast.parse`` for every selected file even
+    # though ``discover_test_files`` already walked the same files.
+    weight = _estimate_weight_from_cache(relative_path)
+    if weight is None:
+        source = (cwd / relative_path).read_text(encoding="utf-8")
+        weight = estimate_test_file_weight(source)
     if relative_path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
         return weight * _REQUIRED_E2E_WEIGHT_MULTIPLIER
     return weight
+
+
+_FILE_SOURCE_CACHE: dict[str, str] = {}
+_FILE_WEIGHT_CACHE: dict[str, int] = {}
+
+
+def _cache_source(path: str, source: str) -> None:
+    """Store the parsed source for ``path`` so later weight lookups avoid re-reading."""
+    _FILE_SOURCE_CACHE[path] = source
+
+
+def _estimate_weight_from_cache(path: str) -> int | None:
+    cached_source = _FILE_SOURCE_CACHE.get(path)
+    if cached_source is None:
+        return None
+    cached_weight = _FILE_WEIGHT_CACHE.get(path)
+    if cached_weight is not None:
+        return cached_weight
+    weight = estimate_test_file_weight(cached_source)
+    _FILE_WEIGHT_CACHE[path] = weight
+    return weight
+
+
+def reset_discovery_cache() -> None:
+    """Reset the transient source/weight caches populated during file discovery.
+
+    The runner calls this between separate ``make test`` / ``make
+    test-subprocess-e2e`` invocations so a stale cache cannot leak across
+    pytest profiles; the in-flight invocation still benefits from the
+    cached source the discovery pass already paid to parse.
+    """
+    _FILE_SOURCE_CACHE.clear()
+    _FILE_WEIGHT_CACHE.clear()
 
 
 def _remaining_seconds(deadline: float, monotonic: Callable[[], float]) -> float:
