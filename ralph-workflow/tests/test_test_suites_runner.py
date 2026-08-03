@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
+
 from ralph import test_suites as test_suites_module
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
 
