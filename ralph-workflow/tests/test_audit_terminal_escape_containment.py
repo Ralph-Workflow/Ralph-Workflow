@@ -124,6 +124,7 @@ def test_audit_blocks_regression_when_strip_terminal_control_missing(
         return content.replace("def strip_terminal_control", "def _gone")
 
     monkeypatch.setattr(audit_module, "_read", _read_without_helper)
+    _narrow_invariants(monkeypatch, rel_path="display/line_sanitizer.py", invariant_cls=Invariant)
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -148,6 +149,7 @@ def test_audit_blocks_regression_when_sgr_only_regex_returns(
         return content + "\n_LEGACY = re.compile(r'[0-9;]*m')\n"
 
     monkeypatch.setattr(audit_module, "_read", _read_with_sgr)
+    _narrow_invariants(monkeypatch, rel_path="display/_plain_constants.py", invariant_cls=Invariant)
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -172,6 +174,7 @@ def test_audit_blocks_regression_when_pty_runner_paint_returns(
         return content + "\ntqdm(..., file=sys.stdout)\n"
 
     monkeypatch.setattr(audit_module, "_read", _read_with_paint)
+    _narrow_invariants(monkeypatch, rel_path="agents/invoke/_pty_runner.py", invariant_cls=Invariant)
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -195,6 +198,7 @@ def test_audit_blocks_regression_when_stdin_none_returns_to_process_reader(
         return content + "\nSpawnOptions(stdin=None,)\n"
 
     monkeypatch.setattr(audit_module, "_read", _read_with_inherit)
+    _narrow_invariants(monkeypatch, rel_path="agents/invoke/_process_reader.py", invariant_cls=Invariant)
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -225,6 +229,43 @@ def _patch_rel(monkeypatch: pytest.MonkeyPatch, rel_path: str, transform) -> Non
     monkeypatch.setattr(audit_module, "_read", _read)
 
 
+def _narrow_invariants(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    rel_path: str | None = None,
+    qualname: str | None = None,
+    callee_name: str | None = None,
+    invariant_cls: type | None = None,
+) -> None:
+    """Replace ``_INVARIANTS`` with the single invariant matching the given filters.
+
+    Each adversarial test drives exactly one regression; running the full
+    25-invariant sweep inside every adversarial test costs ~10-15 s of
+    per-shard wall time because the two package-wide invariants re-scan
+    the entire package on every call. Narrowing the audit's invariant
+    list to the targeted invariant keeps the same banner / assertion
+    shape but executes only the seam under test.
+    """
+    matching = []
+    for inv in audit_module._INVARIANTS:
+        if rel_path is not None and getattr(inv, "rel_path", None) != rel_path:
+            continue
+        if qualname is not None and getattr(inv, "qualname", None) != qualname:
+            continue
+        if callee_name is not None and getattr(inv, "callee_name", None) != callee_name:
+            continue
+        if invariant_cls is not None and not isinstance(inv, invariant_cls):
+            continue
+        matching.append(inv)
+    if not matching:
+        raise RuntimeError(
+            f"No invariant matched filters: "
+            f"rel_path={rel_path!r} qualname={qualname!r} "
+            f"callee_name={callee_name!r} invariant_cls={invariant_cls!r}"
+        )
+    monkeypatch.setattr(audit_module, "_INVARIANTS", tuple(matching))
+
+
 def test_audit_blocks_regression_when_activity_model_render_event_line_drops_strip(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -244,6 +285,12 @@ def test_audit_blocks_regression_when_activity_model_render_event_line_drops_str
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/activity_model.py",
+        qualname="render_event_line",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -263,14 +310,23 @@ def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_contro
     path = "display/parallel_display.py"
 
     def _transform(src: str) -> str:
-        # Replacing terminal-control sanitization with ``return line`` drops the
-        # control-strip invariant while preserving the current literal-bracket design.
+        # Drop ``strip_terminal_control`` from the wired sink body so the
+        # ``ParallelDisplay.strip_markup`` invariant fires. The helper
+        # name still appears elsewhere (imports, docstrings, _strip_markup),
+        # so a whole-file literal check would still pass -- the AST
+        # function-body check must fail.
         return src.replace(
             "return strip_terminal_control(line)",
             "return line",
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/parallel_display.py",
+        qualname="ParallelDisplay.strip_markup",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -296,6 +352,12 @@ def test_audit_blocks_regression_when_module_level_emit_activity_line_drops_sani
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/parallel_display.py",
+        qualname="emit_activity_line",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -323,6 +385,12 @@ def test_audit_blocks_regression_when_render_titled_lines_drops_strip(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/parallel_display.py",
+        qualname="ParallelDisplay._render_titled_lines",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -350,12 +418,12 @@ def test_audit_blocks_regression_when_spawn_options_drops_devnull(
         )
 
     _patch_rel(monkeypatch, path, _transform)
-    callsite_invariant = next(
-        invariant
-        for invariant in audit_module._INVARIANTS
-        if isinstance(invariant, CallSiteInvariant) and invariant.rel_path == path
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="agents/invoke/_process_reader.py",
+        callee_name="SpawnOptions",
+        invariant_cls=CallSiteInvariant,
     )
-    monkeypatch.setattr(audit_module, "_INVARIANTS", (callsite_invariant,))
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -379,6 +447,12 @@ def test_audit_blocks_regression_when_subprocess_executor_drops_devnull(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="agents/subprocess_executor.py",
+        callee_name="SpawnOptions",
+        invariant_cls=CallSiteInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -446,6 +520,11 @@ def test_audit_blocks_regression_when_spawn_options_devnull_default_reverted(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="process/manager/_spawn_options.py",
+        invariant_cls=Invariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -475,6 +554,11 @@ def test_audit_blocks_regression_when_a_new_spawn_options_call_passes_stdin_none
         return src + "\nSpawnOptions(stdin=None,)\n"
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        callee_name="SpawnOptions",
+        invariant_cls=PackageWideCallSiteInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -507,6 +591,12 @@ def test_audit_blocks_regression_when_logging_configure_logging_drops_console_si
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="logging.py",
+        qualname="configure_logging",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -539,6 +629,12 @@ def test_audit_blocks_regression_when_cli_configure_logging_drops_sink(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="cli/main.py",
+        qualname="_configure_logging",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -563,6 +659,12 @@ def test_audit_blocks_regression_when_cli_main_drops_sanitizing_log_sink(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="cli/main.py",
+        qualname="main",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -586,6 +688,12 @@ def test_audit_blocks_regression_when_sanitizing_log_sink_drops_stripper(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/log_sink.py",
+        qualname="make_sanitizing_log_sink",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -609,6 +717,12 @@ def test_audit_blocks_regression_when_stderr_log_sink_drops_stripper(
         )
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/log_sink.py",
+        qualname="make_stderr_log_sink",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -634,6 +748,11 @@ def test_audit_blocks_regression_when_log_sink_constructs_console_inline(
         return src + "\n_console = Console(file=sys.stderr)\n"
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="display/log_sink.py",
+        invariant_cls=Invariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
@@ -654,6 +773,12 @@ def test_audit_blocks_regression_when_pty_spawn_drops_setsid_or_tiocsctty(
         return src.replace("os.setsid()", "_ = None  # nosetsid")
 
     _patch_rel(monkeypatch, path, _transform)
+    _narrow_invariants(
+        monkeypatch,
+        rel_path="process/pty.py",
+        qualname="spawn_pty_process",
+        invariant_cls=FunctionBodyInvariant,
+    )
 
     rc = audit_main([])
     captured = capsys.readouterr()
