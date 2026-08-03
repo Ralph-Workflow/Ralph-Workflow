@@ -11,7 +11,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-_MAX_RAW_LINES: int = 4096
+# Keep a single parser burst below the per-test and live-output latency budget.
+# The cap is deliberately small enough that a pathological no-boundary stream
+# yields a bounded record promptly instead of retaining thousands of raw events.
+_MAX_RAW_LINES: int = 512
 _MAX_BUFFER_CHARS: int = 1 << 20
 
 
