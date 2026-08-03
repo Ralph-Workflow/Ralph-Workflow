@@ -491,7 +491,14 @@ def _path_target_key(target: ast.expr) -> str | None:
 
 
 def _path_receiver_key(receiver: ast.expr) -> str | None:
-    """Return the matching provenance key for a mutation receiver."""
+    """Return the matching provenance key for a mutation receiver.
+
+    ``Path.parent`` preserves path provenance, so a workspace-resolved
+    destination assigned to a local cannot evade directory-creation checks by
+    deriving its parent before calling ``mkdir``.
+    """
+    if isinstance(receiver, ast.Attribute) and receiver.attr == "parent":
+        return _path_receiver_key(receiver.value)
     return _path_target_key(receiver)
 
 

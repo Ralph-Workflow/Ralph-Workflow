@@ -78,6 +78,29 @@ def test_regression_flags_workspace_resolver_parent_mkdir(tmp_path: Path) -> Non
     assert [violation.kind for violation in violations] == ["raw_mkdir"]
 
 
+def test_regression_flags_workspace_resolver_parent_variable_mkdir(tmp_path: Path) -> None:
+    """S-3: parent preparation derived from a resolved workspace path remains audited."""
+    module_rel = "alpha/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        (
+            "class Workspace:\n"
+            "    def _abs(self, path):\n"
+            "        return path\n"
+            "    def prepare(self, path):\n"
+            "        destination = self._abs(path)\n"
+            "        destination.parent.mkdir(parents=True, exist_ok=True)\n"
+        ),
+    )
+
+    violations = audit.audit_filesystem_write_consolidation(
+        package_root, module_paths=(module_rel,)
+    )
+
+    assert [violation.kind for violation in violations] == ["raw_mkdir"]
+
+
 def test_flags_raw_builtin_open_write_mode(tmp_path: Path) -> None:
     """``open(path, "w")`` is a raw write that bypasses the canonical primitive."""
     module_rel = "alpha/example.py"

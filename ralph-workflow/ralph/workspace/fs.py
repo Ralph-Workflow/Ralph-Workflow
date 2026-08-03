@@ -511,7 +511,7 @@ class FsWorkspace:
             # filesystem-write-ok: explicit user-requested workspace directory copy preserves the tree contract
             shutil.copytree(str(src_abs), str(dest_abs), dirs_exist_ok=overwrite)
         else:
-            dest_abs.parent.mkdir(parents=True, exist_ok=True)
+            self._backend.mkdir(dest_abs.parent, parents=True, exist_ok=True)
             # filesystem-write-ok: explicit user-requested workspace copy preserves source bytes and metadata
             shutil.copy2(str(src_abs), str(dest_abs))
 
