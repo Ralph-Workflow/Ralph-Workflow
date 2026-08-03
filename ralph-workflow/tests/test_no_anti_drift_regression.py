@@ -17,7 +17,9 @@ import importlib
 import pathlib
 import re
 import time
+import tokenize
 from functools import cache
+from io import StringIO
 
 import pytest
 
@@ -69,6 +71,9 @@ def _parse(path: pathlib.Path) -> ast.AST:
 # regex compile.
 _DEF_NAME_RE = re.compile(r"(?:async\s+def|def)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 _DISPLAY_CONTEXT_CONSTRUCTION_RE = re.compile(r"^\s*DisplayContext\s*\(")
+_STATIC_WIRE_FORM_LITERAL_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:[rRuUbBfF]{0,3})?['\"](mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+)['\"]"
+)
 
 
 @cache
@@ -93,16 +98,32 @@ def _has_legacy_console_display_classdef(path: pathlib.Path) -> bool:
 
 
 def _all_string_literals(source: str) -> set[str]:
-    tree = ast.parse(source)
-    literals: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            literals.add(node.value)
-        elif isinstance(node, ast.JoinedStr):
-            for part in node.values:
-                if isinstance(part, ast.Constant) and isinstance(part.value, str):
-                    literals.add(part.value)
-    return literals
+    """Return literal string fragments without parsing an entire source module.
+
+    The wire-form audit runs over production modules that can be much larger
+    than the tiny set of string tokens relevant to this contract. A targeted
+    source prefilter catches whole ordinary and static f-string literals;
+    tokenization additionally preserves Python's adjacent-literal folding
+    without paying for a whole-module AST walk.
+    """
+    literals = set(_STATIC_WIRE_FORM_LITERAL_RE.findall(source))
+    values: set[str] = set()
+    adjacent_parts: list[str] = []
+    for token in tokenize.generate_tokens(StringIO(source).readline):
+        if token.type == tokenize.STRING:
+            value = ast.literal_eval(token.string)
+            if isinstance(value, str):
+                adjacent_parts.append(value)
+                values.add(value)
+            continue
+        if token.type in {tokenize.COMMENT, tokenize.NL}:
+            continue
+        if adjacent_parts:
+            values.add("".join(adjacent_parts))
+            adjacent_parts.clear()
+    if adjacent_parts:
+        values.add("".join(adjacent_parts))
+    return values | literals
 
 
 _WIRE_FORM_RE = re.compile(r"^mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+$")
