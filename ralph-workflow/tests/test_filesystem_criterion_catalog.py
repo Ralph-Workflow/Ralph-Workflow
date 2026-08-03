@@ -27,9 +27,7 @@ from ralph.workspace.fs import FsWorkspace
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # The ``scripts/`` tree lives one level up from the Python package.
 WORKSPACE_ROOT = REPO_ROOT.parent
-TRACEABILITY_DOC = (
-    REPO_ROOT / "docs" / "agents" / "filesystem-activity-traceability.md"
-)
+TRACEABILITY_DOC = REPO_ROOT / "docs" / "agents" / "filesystem-activity-traceability.md"
 TESTS_ROOT = REPO_ROOT / "tests"
 SCRIPTS_ROOT = WORKSPACE_ROOT / "scripts"
 
@@ -59,6 +57,21 @@ def _row_for_criterion(text: str, criterion: str) -> str:
     raise AssertionError(f"criterion {criterion} missing from traceability matrix")
 
 
+def test_regression_rejects_noncommittal_matrix_status() -> None:
+    """S-2: every criterion is either evidenced or an explicit discovery gap."""
+    malformed = "| W1 | FsWorkspace.write | no evidence | pending review |"
+
+    with pytest.raises(AssertionError, match="COVERED or GAP"):
+        _assert_explicit_status(malformed, "W1")
+
+
+def _assert_explicit_status(row: str, criterion: str) -> None:
+    """Require each row to claim evidence or retain an explicit discovery gap."""
+    assert "COVERED" in row or "GAP" in row, (
+        f"{criterion} must be explicitly marked COVERED or GAP, got row: {row!r}"
+    )
+
+
 def _referenced_test_paths(row: str) -> list[str]:
     """Return every path reference that appears in ``row``.
 
@@ -78,9 +91,10 @@ def _referenced_test_paths(row: str) -> list[str]:
             # Drop a `::test_id` selector; the file path is what we need.
             if "::" in stripped:
                 stripped = stripped.split("::", 1)[0]
-            if (stripped.startswith("tests/") and stripped.endswith(".py")) or (stripped.startswith("scripts/") and (
-                stripped.endswith(".py") or stripped.endswith(".sh")
-            )):
+            if (stripped.startswith("tests/") and stripped.endswith(".py")) or (
+                stripped.startswith("scripts/")
+                and (stripped.endswith(".py") or stripped.endswith(".sh"))
+            ):
                 collected.append(stripped)
             elif stripped.startswith("./") and stripped.endswith(".py") and "/tests/" in stripped:
                 collected.append(stripped[2:])
@@ -97,6 +111,13 @@ def test_matrix_lists_every_criterion(criterion: str) -> None:
     """The traceability matrix must enumerate every product criterion."""
     row = _row_for_criterion(_traceability_text(), criterion)
     assert "|" in row, f"criterion {criterion} row malformed: {row!r}"
+
+
+def test_matrix_rows_use_explicit_coverage_or_gap_status() -> None:
+    """Keep each criterion an evidenced claim or an explicit implementation backlog item."""
+    text = _traceability_text()
+    for criterion in _EXPECTED_CRITERIA:
+        _assert_explicit_status(_row_for_criterion(text, criterion), criterion)
 
 
 def test_covered_rows_reference_real_test_files() -> None:
@@ -122,9 +143,7 @@ def test_covered_rows_reference_real_test_files() -> None:
                 if relative_path.startswith("tests/")
                 else WORKSPACE_ROOT / relative_path
             )
-            assert absolute.exists(), (
-                f"{criterion} references missing file: {relative_path}"
-            )
+            assert absolute.exists(), f"{criterion} references missing file: {relative_path}"
 
 
 def test_covered_rows_resolve_inside_tests_tree() -> None:

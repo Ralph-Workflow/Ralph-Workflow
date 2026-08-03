@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
@@ -56,15 +56,29 @@ def load_state(path: Path) -> VersionCheckState | None:
     return VersionCheckState(last_checked=float(last_checked), latest_version=latest_version)
 
 
-def save_state(path: Path, state: VersionCheckState) -> None:
-    """Persist ``state`` to ``path``; filesystem errors are swallowed."""
+def save_state(
+    path: Path,
+    state: VersionCheckState,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Persist ``state`` to ``path``; filesystem errors are swallowed.
+
+    Parent creation is deferred until changed content requires publication, so
+    a repeated version-check result leaves both the cache and its parent intact.
+    """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
         document: dict[str, object] = {
             "last_checked": state.last_checked,
             "latest_version": state.latest_version,
         }
-        write_text_if_changed(DEFAULT_FILE_BACKEND, path, json.dumps(document), encoding="utf-8")
+        write_text_if_changed(
+            backend,
+            path,
+            json.dumps(document),
+            encoding="utf-8",
+            prepare_write=lambda: backend.mkdir(path.parent, parents=True, exist_ok=True),
+        )
     except OSError:
         pass
 

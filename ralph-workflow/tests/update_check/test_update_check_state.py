@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.update_check.state import (
     DEFAULT_TTL_SECONDS,
     VersionCheckState,
@@ -14,6 +15,53 @@ from ralph.update_check.state import (
 )
 
 
+class _RecordingBackend(FileBackend):
+    """In-memory persistence boundary exposing stable-cache mutations."""
+
+    def __init__(self) -> None:
+        self.files: dict[Path, str] = {}
+        self.writes: list[tuple[Path, str]] = []
+        self.directories: list[Path] = []
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del parents, exist_ok
+        self.directories.append(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del encoding
+        return self.files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        del encoding
+        self.writes.append((path, content))
+        self.files[path] = content
+
+    def read_bytes(self, path: Path) -> bytes:
+        return self.files[path].encode("utf-8")
+
+    def write_bytes(self, path: Path, content: bytes) -> None:
+        self.files[path] = content.decode("utf-8")
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self.files[destination] = self.files.pop(source)
+
+    def sync_directory(self, path: Path) -> None:
+        del path
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        if missing_ok:
+            self.files.pop(path, None)
+        else:
+            del self.files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        del path, pattern
+        return []
+
+
 def test_cache_path_honors_xdg_cache_home() -> None:
     path = cache_path({"XDG_CACHE_HOME": "/custom/cache"})
     assert path == Path("/custom/cache/ralph-workflow/version-check.json")
@@ -22,6 +70,23 @@ def test_cache_path_honors_xdg_cache_home() -> None:
 def test_cache_path_defaults_to_home_cache() -> None:
     path = cache_path({})
     assert path == Path.home() / ".cache" / "ralph-workflow" / "version-check.json"
+
+
+def test_save_state_regression_identical_replay_skips_cache_and_parent_mutations() -> None:
+    """S-3: unchanged update state does not rewrite its cache or parent directory."""
+    backend = _RecordingBackend()
+    path = Path("/virtual-cache/ralph-workflow/version-check.json")
+    state = VersionCheckState(last_checked=123.5, latest_version="0.9.1")
+
+    save_state(path, state, backend=backend)
+    writes_after_first = list(backend.writes)
+    directories_after_first = list(backend.directories)
+
+    save_state(path, state, backend=backend)
+
+    assert backend.writes == writes_after_first
+    assert backend.directories == directories_after_first
+    assert backend.files[path] == '{"last_checked": 123.5, "latest_version": "0.9.1"}'
 
 
 def test_save_then_load_roundtrips(tmp_path: Path) -> None:
