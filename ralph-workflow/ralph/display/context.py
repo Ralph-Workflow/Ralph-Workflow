@@ -146,10 +146,14 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
         # restore a concrete renderer so the public output seam cannot fall
         # back to monochrome after theme/style caching.
         with contextlib.suppress(Exception):
-            color_system_raw: object = getattr(console, "_color_system", None)
-            if color_system_raw is None:
-                color_state = cast("dict[str, object]", console.__dict__)
-                color_state["_color_system"] = "truecolor"
+            if console._color_system is None:
+                # Rich exposes ``_color_system`` as ``ColorSystem | None`` but
+                # accepts ``"truecolor"`` as a valid runtime assignment via
+                # the COLOR_SYSTEMS map; the property setter validates and
+                # translates the string. The setter is intentionally bypassed
+                # here because the underlying field is private and re-stamped
+                # with a string the public API documents as valid input.
+                setattr(console, "_color_system", "truecolor")
 
 
 def _build_console(
