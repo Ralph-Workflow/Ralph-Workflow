@@ -161,8 +161,11 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
                 # silent while still assigning the attribute directly.
                 # Rich stores the resolved enum internally; assigning the
                 # public enum value avoids a stale ``None`` while preserving
-                # Rich's renderer contract across supported versions.
-                from rich.console import ColorSystem
+                # Rich's renderer contract across supported versions. Import
+                # ``ColorSystem`` from its defining module ``rich.color``
+                # because ``rich.console`` only re-exports it implicitly,
+                # which mypy's ``implicit_reexport`` default rejects.
+                from rich.color import ColorSystem
 
                 object.__setattr__(console, "_color_system", ColorSystem.TRUECOLOR)
 
