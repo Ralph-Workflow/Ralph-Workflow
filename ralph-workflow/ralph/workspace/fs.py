@@ -30,6 +30,29 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
+    """Resolve a candidate against ``base`` without probing the filesystem.
+
+    ``Path.resolve(strict=False)`` calls ``Path.stat`` on every component
+    of the target path to learn whether it exists and to follow symlinks.
+    For the Workspace's path-containment check that side effect is
+    disallowed: the S-5 invariant pins ``read_lines`` (and any other
+    content-reading surface that funnels through ``_resolve_candidate``)
+    to a single observation of the file, obtained from the opened stream.
+    We therefore use ``os.path.normpath`` over the textual concatenation
+    of the root and candidate strings; ``~`` expansion already happens
+    earlier in ``__init__`` for the root and allowed roots, and for
+    user-supplied paths the workspace contract treats ``~`` literally.
+
+    The returned ``Path`` instance is comparable to ``self._allowed_roots``
+    via ``Path.relative_to``, matching the historical semantics.
+    """
+    base_str = os.fspath(base)
+    candidate_str = os.fspath(candidate_path)
+    joined = candidate_str if candidate_path.is_absolute() else base_str + os.sep + candidate_str
+    return Path(os.path.normpath(joined))
+
+
 class FsWorkspace:
     """Real filesystem workspace anchored at repo root.
 
@@ -67,7 +90,14 @@ class FsWorkspace:
     def _resolve_candidate(self, path: str) -> Path:
         candidate_path = Path(path)
         base = self._root if not candidate_path.is_absolute() else Path("/")
-        candidate = (base / candidate_path).expanduser().resolve(strict=False)
+        # Resolve via string normalisation rather than ``Path.resolve``
+        # because ``Path.resolve(strict=False)`` invokes ``Path.stat`` on
+        # the target to discover whether each path component exists or is
+        # a symlink, which violates the S-5 invariant that the one
+        # opened stream is the only observation of the file. The
+        # returned path is still a ``Path`` instance and preserves the
+        # historical containment semantics against ``self._allowed_roots``.
+        candidate = _normalize_absolute_path(base, candidate_path)
         for allowed_root in self._allowed_roots:
             try:
                 candidate.relative_to(allowed_root)
