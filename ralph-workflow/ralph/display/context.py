@@ -148,15 +148,15 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
         # restore a concrete renderer so the public output seam cannot fall
         # back to monochrome after theme/style caching.
         with contextlib.suppress(Exception):
-            color_system_raw: object = getattr(console, "_color_system", None)
-            if color_system_raw is None:
-                # Rich accepts either the string key or the ColorSystem enum at
-                # runtime (Console.__init__ does ``COLOR_SYSTEMS[color_system]``).
-                # ``object.__setattr__`` is used (not ``setattr``) to bypass
-                # the B010 ruff check on constant-attribute setattr calls;
-                # the attribute name ``_color_system`` is dictated by Rich's
-                # Console dataclass and is the only path to force a concrete
-                # renderer on an already-constructed console.
+            if console._color_system is None:
+                # Rich exposes ``_color_system`` as ``ColorSystem | None`` but
+                # accepts ``"truecolor"`` as a valid runtime assignment via
+                # the COLOR_SYSTEMS map; the property setter validates and
+                # translates the string. The typed setter is intentionally
+                # bypassed here because the underlying field is private and
+                # re-stamped with a string the public API documents as valid
+                # input. ``object.__setattr__`` keeps mypy and ruff B010
+                # silent while still assigning the attribute directly.
                 object.__setattr__(console, "_color_system", "truecolor")
 
 
