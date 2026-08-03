@@ -66,16 +66,9 @@ if TYPE_CHECKING:
 # The 1.0 s per-test ITIMER_REAL budget charges wall clock. Each shard runs
 # pytest with xdist (``-n N`` per shard) so the in-shard wall clock scales
 # with the host's per-shard worker budget rather than with the count of
-# files in the shard. On a 32-core host the default profile is 16 shards *
-# 1 worker = 16 parallel pytest workers (plain pytest, no in-shard xdist).
-# In-shard xdist was previously defaulted to 2 workers per shard but the
-# empirical 32-core wall-clock measurement shows that the per-shard
-# pytest-xdist coordination overhead exceeds the parallelism gain when
-# the suite is already shard-saturated (16 shards on 32 cores). Plain
-# pytest per shard keeps the slowest shard well under the 60s combined
-# budget; operators on lower-core hosts (or hosts with idle cores beyond
-# the shard cap) may opt into in-shard xdist by setting
-# ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` or an explicit non-zero integer.
+# files in the shard. The default profile uses one plain pytest process per
+# shard; the CPU-capped shard count is selected below and operators may
+# override ``PYTEST_WORKERS`` for smaller hosts.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)
 )
