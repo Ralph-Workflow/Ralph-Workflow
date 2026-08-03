@@ -20,7 +20,7 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.theme import RALPH_THEME
+from ralph.display.theme import theme_for_background
 
 _RETIRED_LEVEL_BADGES = ("INFO", "WARN", "ERROR", "SUCCESS", "MILESTONE")
 _RETIRED_CAT_BADGES = ("META", "OUT")
@@ -33,7 +33,7 @@ def _make_color_renderer() -> tuple[ParallelDisplay, StringIO]:
         color_system="truecolor",
         force_terminal=True,
         no_color=False,
-        theme=RALPH_THEME,
+        theme=theme_for_background(True),
         width=200,
         highlight=False,
     )

@@ -11,70 +11,10 @@ under the maintained ``1000``-line-per-file cap.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph import test_suites as test_suites_module
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-
-class _FakeShardProcess:
-    """Controllable fake process for shard-runner behavior tests."""
-    def __init__(self, returncodes: list[int | None], *, stderr: bytes = b"") -> None:
-        self._returncodes = list(returncodes)
-        self._last_returncode: int | None = None
-        self._stderr = stderr
-        self.terminated = False
-        self.reaped = False
-
-    def poll(self) -> int | None:
-        if self._returncodes:
-            self._last_returncode = self._returncodes.pop(0)
-        return self._last_returncode
-
-    def communicate(
-        self, input: bytes | None = None, timeout: float | None = None
-    ) -> tuple[bytes, bytes]:
-        del input, timeout
-        self.reaped = True
-        return b"", self._stderr
-
-    def terminate(self, grace_period_s: float | None = None) -> None:
-        del grace_period_s
-        self.terminated = True
-        self._last_returncode = -15
-
-    def cleanup_orphans(self) -> None:
-        return None
-
-
-class _StubSpawner:
-    """Return predetermined fake processes and record shard commands."""
-    def __init__(self, processes: list[_FakeShardProcess]) -> None:
-        self._processes = list(processes)
-        self.calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
-
-    def __call__(
-        self, command: Sequence[str], *, cwd: Path, env: Mapping[str, str]
-    ) -> _FakeShardProcess:
-        self.calls.append((tuple(command), cwd, dict(env)))
-        return self._processes.pop(0)
-
-
-class _FakeClock:
-    """Injectable monotonic clock for deterministic suite deadlines."""
-    def __init__(self) -> None:
-        self.value = 0.0
-
-    def __call__(self) -> float:
-        return self.value
-
-    def advance(self, seconds: float) -> None:
-        self.value += seconds
-
+import ralph.test_suites as test_suites_module
 
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = ("tests/test_auto_integrate_end_to_end.py",)
 
