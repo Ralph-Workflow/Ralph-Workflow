@@ -234,6 +234,7 @@ def test_get_latest_returns_none_when_nothing_published() -> None:
     assert registry.get_latest() is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_run_loop_publishes_snapshot_on_each_reduce_step(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

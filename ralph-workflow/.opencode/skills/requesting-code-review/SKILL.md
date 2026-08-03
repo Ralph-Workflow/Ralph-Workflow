@@ -23,11 +23,9 @@ Dispatch a code reviewer subagent to catch issues before they cascade. The revie
 
 ## How to Request
 
-**1. Get git SHAs:**
-```bash
-BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
-HEAD_SHA=$(git rev-parse HEAD)
-```
+**1. Prepare a current-state package:**
+
+Give the reviewer the relevant current file list and the implementer's verification report. Require it to read every listed file as it exists now.
 
 **2. Dispatch code reviewer subagent:**
 
@@ -36,8 +34,8 @@ Dispatch a `general-purpose` subagent, filling the template at [code-reviewer.md
 **Placeholders:**
 - `{DESCRIPTION}` - Brief summary of what you built
 - `{PLAN_OR_REQUIREMENTS}` - What it should do
-- `{BASE_SHA}` - Starting commit
-- `{HEAD_SHA}` - Ending commit
+- `{CURRENT_FILES}` - Relevant files to read as they exist now
+- `{VERIFICATION_REPORT}` - Commands run and their results
 
 **3. Act on feedback:**
 - Fix Critical issues immediately
@@ -52,14 +50,15 @@ Dispatch a `general-purpose` subagent, filling the template at [code-reviewer.md
 
 You: Let me request code review before proceeding.
 
-BASE_SHA=$(git log --oneline | grep "Task 1" | head -1 | awk '{print $1}')
-HEAD_SHA=$(git rev-parse HEAD)
+[Prepare current-state package]
+  CURRENT_FILES: src/index.ts, tests/index.test.ts
+  VERIFICATION_REPORT: npm test src/index.test.ts passed
 
 [Dispatch code reviewer subagent]
   DESCRIPTION: Added verifyIndex() and repairIndex() with 4 issue types
   PLAN_OR_REQUIREMENTS: Task 2 from docs/superpowers/plans/deployment-plan.md
-  BASE_SHA: a7981ec
-  HEAD_SHA: 3df7661
+  CURRENT_FILES: src/index.ts, tests/index.test.ts (read each as it exists now)
+  VERIFICATION_REPORT: npm test src/index.test.ts passed
 
 [Subagent returns]:
   Strengths: Clean architecture, real tests
