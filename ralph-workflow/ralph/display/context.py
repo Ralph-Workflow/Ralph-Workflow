@@ -81,7 +81,11 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     # accidentally alter a caller's injected console. NO_COLOR remains the
     # final authority when both are present.
     no_color = bool(env.get("NO_COLOR", "").strip())
-    force_color = bool(env.get("FORCE_COLOR", "").strip())
+    # FORCE_COLOR follows the conventional numeric contract as well as the
+    # usual truthy spellings: ``FORCE_COLOR=0`` is an explicit opt-out unless
+    # NO_COLOR is present (which always wins).
+    force_color_value = env.get("FORCE_COLOR", "").strip().lower()
+    force_color = force_color_value not in {"", "0", "false", "no", "off"}
 
     force_ascii_val = env.get("RALPH_FORCE_ASCII", "").lower().strip()
     force_ascii = force_ascii_val in _RALPH_FORCE_ASCII_TRUTHY

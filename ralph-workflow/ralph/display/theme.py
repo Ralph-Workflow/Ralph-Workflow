@@ -940,7 +940,10 @@ def make_console(
         A ``rich.console.Console`` instance with the Ralph theme.
     """
     resolved_no_color = no_color if no_color is not None else False
-    resolved_force_terminal = force_terminal
+    # A colour system must remain concrete by default: Rich treats ``None`` as
+    # monochrome even when the destination is a capable TTY or a forced
+    # transcript. NO_COLOR is the only intentional path to that state.
+    resolved_force_terminal = force_terminal if force_terminal is not None else True
     resolved_color_system: Literal["auto", "standard", "256", "truecolor", "windows"] | None = (
         color_system if color_system is not None else "truecolor"
     )
