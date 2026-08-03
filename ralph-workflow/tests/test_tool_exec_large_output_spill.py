@@ -9,6 +9,7 @@ plus the path, so the agent can read it in chunks.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,13 @@ _FIRST_LINE = "line-00000000"
 _LAST_LINE = "line-00149999"
 
 
+@lru_cache(maxsize=1)
 def _large_body() -> bytes:
+    # Build the heavy stdout body once and share it across tests in this
+    # module. The body must exceed ``INLINE_OUTPUT_LIMIT_BYTES`` (1 MiB) so
+    # the production spill branch is exercised end-to-end; sharing the
+    # bytes avoids paying the join+encode cost on every test invocation
+    # (which previously caused SIGALRM-driven flakiness under contention).
     return "".join(f"line-{i:08d}\n" for i in range(150_000)).encode()
 
 
