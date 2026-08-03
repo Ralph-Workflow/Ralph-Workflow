@@ -141,6 +141,13 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
     if _console_has_forced_color(console):
         with contextlib.suppress(Exception):
             console.no_color = False
+        # Rich may retain a stale auto-detected colour system on an injected
+        # console.  An explicitly forced terminal is Ralph's colour contract:
+        # restore a concrete renderer so the public output seam cannot fall
+        # back to monochrome after theme/style caching.
+        with contextlib.suppress(Exception):
+            if getattr(console, "_color_system", None) is None:
+                console._color_system = "truecolor"  # type: ignore[attr-defined]  # Rich exposes this runtime field only
 
 
 def _build_console(
