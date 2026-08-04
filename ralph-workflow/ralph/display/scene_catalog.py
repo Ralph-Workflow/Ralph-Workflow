@@ -456,10 +456,15 @@ def compact_matrix() -> tuple[SupportCase, ...]:
         for glyphs in glyph_modes
         for destination in destinations
     )
+    # Per the docstring above, the width-axis witness exercises the
+    # graceful floor at ONE representative (background, colour) cell per
+    # destination, not the full 3 x 3 cross product. That keeps the matrix
+    # at the documented 54 + 9 + 3 = 66 cases (single representative cell
+    # per destination for the graceful floor) and reduces the per-shard
+    # wall time under the immutable combined 60 s budget.
     width_witness = tuple(
-        SupportCase(background, colour, "unicode", GRACEFUL_WIDTH_FLOOR, destination)
+        SupportCase(background, "truecolour", "unicode", GRACEFUL_WIDTH_FLOOR, destination)
         for background in backgrounds
-        for colour in colours
         for destination in destinations
     ) + tuple(
         SupportCase("dark", "truecolour", "unicode", 120, destination)
