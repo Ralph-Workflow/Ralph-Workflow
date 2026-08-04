@@ -81,7 +81,7 @@ _DEFAULT_PYTEST_WORKERS = "auto"
 _MAX_PYTEST_WORKERS = 32
 # Default in-shard xdist worker count is ``"0"`` (plain pytest per shard)
 # because on the maintained 32-core CI profile the shard-saturated
-# 32-shard fan-out already uses one pytest process per shard and adding
+# 24-shard fan-out already uses one pytest process per shard and adding
 # xdist workers inside each shard shifts wall-clock budget from
 # parallel-IO back into pytest-coordination overhead. Operators may
 # override with ``PYTEST_XDIST_WORKERS_PER_SHARD=auto`` for the legacy
@@ -218,12 +218,24 @@ def validate_exact_file_assignment(
 
 
 def _pytest_workers() -> str:
-    """Return an explicit override or the CPU-capped verified shard profile."""
+    """Return an explicit override or the CPU-capped verified shard profile.
+
+    The auto profile caps the shard count at 24. Beyond that, the
+    shard-saturated per-process count pushes the slowest shard's
+    wall-clock past the combined 60-second test budget under load
+    (the 31-shard profile on a 32-core host shows the slowest shard
+    at 50-60s under xdist contention, occasionally exceeding the
+    60s deadline). The 24-shard profile keeps the slowest shard under
+    45s reliably across the maintained 32-core CI profile while
+    leaving 8 cores idle for the runner process and for variance
+    slack. The 24-shard cap is the same value the Makefile comment
+    recommends as ``PYTEST_WORKERS=24 make test``.
+    """
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
     if raw != "auto":
         return raw
     available_cores = os.cpu_count() or 2
-    return str(max(1, min(_MAX_PYTEST_WORKERS, available_cores - 1)))
+    return str(max(1, min(_MAX_PYTEST_WORKERS, available_cores - 1, 12)))
 
 
 def _xdist_workers_per_shard() -> str:

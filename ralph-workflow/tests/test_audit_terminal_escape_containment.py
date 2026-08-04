@@ -87,11 +87,20 @@ def test_audit_blocks_regression_when_csi_class_is_narrowed(
         "_read",
         lambda rel_path: fake_source if rel_path == "display/line_sanitizer.py" else "",
     )
-    monkeypatch.setattr(
-        audit_module,
-        "_INVARIANTS",
-        (fake_invariant, *audit_module._INVARIANTS[1:]),
-    )
+    # DA-001: the previous shape ``(fake_invariant, *audit_module._INVARIANTS[1:])``
+    # kept every other invariant (including MarkupParseInvariant and
+    # PackageWideCallSiteInvariant, both of which walk the entire package)
+    # in the audit's iteration. The first such walk per pytest worker
+    # process performs an uncached ``os.walk(_PACKAGE_ROOT)`` plus an AST
+    # parse of every ``from_markup`` / ``SpawnOptions`` call site in
+    # the tree; under xdist contention that cold walk exceeded the 1 s
+    # SIGALRM cap and aborted the test. Narrowing the audit to ONLY the
+    # targeted ``fake_invariant`` keeps the same exit-code and banner
+    # assertions (``display/line_sanitizer.py`` is named by the targeted
+    # violation, ``TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED`` is the
+    # canonical banner) while paying zero package-walk cost. The other
+    # invariants remain covered by their own adversarial tests below.
+    monkeypatch.setattr(audit_module, "_INVARIANTS", (fake_invariant,))
 
     violations = fake_invariant.violations()
     assert any("[0-?]" in v for v in violations), (

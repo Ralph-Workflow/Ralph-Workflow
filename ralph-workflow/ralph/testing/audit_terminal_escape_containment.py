@@ -916,5 +916,21 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+# DA-001: eagerly populate the package file list caches so the first
+# ``_package_files()`` call (and every subsequent one) does not pay the
+# cold ``os.walk(_PACKAGE_ROOT)`` + ``rglob('*.py')`` cost. The
+# adversarial audit tests below invoke ``audit_main([])`` after narrowing
+# ``_INVARIANTS`` to a single ``PackageWideCallSiteInvariant`` or
+# ``MarkupParseInvariant``; without warming, the first such call inside
+# a parallel pytest shard can spend >1 s walking the 1100-file tree
+# while sibling shards simultaneously hold the I/O bus, and the SIGALRM
+# per-test 1 s cap (tests/conftest.py:118) aborts the test. Populating
+# both caches here runs the walk exactly once per Python process (i.e.
+# once per xdist worker) at import time, when sibling workers are still
+# starting up and the I/O bus is not yet contended.
+PackageWideCallSiteInvariant._package_files()
+MarkupParseInvariant._package_files()
+
+
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))

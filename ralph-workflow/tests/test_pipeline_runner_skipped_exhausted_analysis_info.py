@@ -133,6 +133,30 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
+    """Cover the fresh-planning rewrite contract without paying real fsync.
+
+    The full ``materialize_prompt_for_phase`` path performs ``os.fsync``
+    twice on every prompt dump and again on the product-criteria
+    persist. On a 32-core host with 31 xdist shards running in
+    parallel the combined disk-pressure can push a single
+    ``path.open("w")`` past the 1 s per-test SIGALRM cap
+    (``tests/conftest.py:118``). The default ``DEFAULT_FILE_BACKEND``
+    reference is captured at function-definition time, so the
+    monkeypatch must replace the module attribute for the two call
+    sites that hold it (``persist_product_criteria`` and
+    ``write_text_if_changed`` via ``idempotent_write``).
+    """
+    from ralph.mcp.artifacts import file_backend as backend_module
+    from ralph.mcp.artifacts import idempotent_write
+    from ralph.prompts import debug_dump, materialize_support
+    from tests._tool_artifact_1_helper_memorybackend import MemoryBackend
+
+    memory_backend = MemoryBackend()
+    monkeypatch.setattr(backend_module, "DEFAULT_FILE_BACKEND", memory_backend)
+    monkeypatch.setattr(materialize_support, "DEFAULT_FILE_BACKEND", memory_backend)
+    monkeypatch.setattr(debug_dump, "DEFAULT_FILE_BACKEND", memory_backend, raising=False)
+    monkeypatch.setattr(idempotent_write, "DEFAULT_FILE_BACKEND", memory_backend, raising=False)
+
     monkeypatch.setattr(
         "ralph.prompts.materialize.SkillManager.get_docs_mcp_available",
         lambda _manager, *, workspace_root: False,
