@@ -106,6 +106,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from rich.style import Style as _RichStyle
+
 from rich.cells import cell_len
 from rich.console import Group
 from rich.padding import Padding
@@ -115,6 +117,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.text import Text as _RichText
 
+from ralph.display import theme as _display_theme
 from ralph.display._activity_line_options import ActivityLineOptions as _ActivityLineOptions
 from ralph.display._phase_close_counters import _PhaseCloseCounters
 from ralph.display._phase_close_options import PhaseCloseOptions
@@ -789,15 +792,22 @@ class ParallelDisplay:
             "SUCCESS": "success",
             "MILESTONE": "running",
         }.get(level, "info")
+        # Parse status-style strings into a fresh ``Style`` per call so
+        # Rich's internal ANSI cache cannot downgrade a later console (the
+        # historical regression where hex colors rendered as the ANSI
+        # ``bright cyan`` fallback because an earlier ``color_system=
+        # "standard"`` console cached the Style's ANSI on its own hash).
+        timestamp_style = _display_theme._fresh_style(statuses["info"][0])
+        suffix_style = _display_theme._fresh_style(statuses[state][0])
         t = Text()
         if leading_indent:
             t.append(leading_indent)
-        t.append(timestamp, style=statuses["info"][0])
+        t.append(timestamp, style=timestamp_style)
         t.append(" ")
         # Snapshot and lifecycle surfaces retain their explicit bracket labels
         # in colour-off mode while the semantic foreground makes the same
         # category visible in every render-capable destination.
-        t.append(suffix, style=statuses[state][0])
+        t.append(suffix, style=suffix_style)
         del cat
         return t
 
@@ -828,18 +838,39 @@ class ParallelDisplay:
             "tool_result": "success",
             "thinking": "pending",
         }.get(kind, "info")
-        state_style = statuses[state][0]
-        chrome_style = statuses["info"][0]
-        unit_style = (
+        # Parse the status-style string into a fresh ``Style`` per call so
+        # Rich's internal ANSI cache cannot downgrade a later console (the
+        # historical regression where hex colors rendered as the ANSI
+        # ``bright cyan`` fallback because an earlier ``color_system=
+        # "standard"`` console cached the Style's ANSI on its own hash).
+        # ``_fresh_style`` mints a per-instance ``_hash`` so the second
+        # console re-derives the ANSI against its own color system.
+        state_style = _display_theme._fresh_style(statuses[state][0])
+        chrome_style = _display_theme._fresh_style(statuses["info"][0])
+        unit_style = _display_theme._fresh_style(
             f"bold {identity_color(unit_id, terminal_bg_is_light=self._terminal_bg_is_light)}"
         )
+        # The ``body_style`` argument can be a hex/style string or a theme
+        # role name (e.g. ``theme.display.elision``). When it is a theme
+        # role name, defer the theme lookup to Rich's ``Text.append`` so
+        # the resolved background-aware pigment comes from the same
+        # console that will render the Text. When it is a hex/style
+        # string, wrap it in a fresh ``Style`` so Rich's internal ANSI
+        # cache cannot downgrade a later console (the historical
+        # regression where an earlier ``color_system="standard"``
+        # console cached the Style's ANSI on its own hash).
+        body_style_obj: _RichStyle | str | None
+        if isinstance(body_style, str) and not body_style.startswith("theme."):
+            body_style_obj = _display_theme._fresh_style(body_style)
+        else:
+            body_style_obj = body_style
         text = Text(leading_indent)
         text.append(timestamp, style=chrome_style)
         text.append(" ")
         text.append(f"[{tag}]", style=state_style)
         text.append(f"[{unit_id}]", style=unit_style)
         text.append(" ")
-        text.append(body, style=body_style or state_style)
+        text.append(body, style=body_style_obj or state_style)
         return text
 
     def _close_hang_prefix(self, timestamp: str, tag: str, unit_id: str) -> str:
@@ -3865,7 +3896,9 @@ class ParallelDisplay:
             total_width=self._ctx.width,
             body_measure=self._ctx.width,
         ).split("\n")
-        carrier_style = pick_status_styles(self._terminal_bg_is_light)["info"][0]
+        carrier_style = _display_theme._fresh_style(
+            pick_status_styles(self._terminal_bg_is_light)["info"][0]
+        )
         for row in folded_rows:
             self._console.print(
                 Text(f"{carrier} {row}", style=carrier_style),
