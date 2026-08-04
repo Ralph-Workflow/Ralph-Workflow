@@ -170,30 +170,35 @@ def test_generated_scene_narrow_condensed_records_keep_a_greppable_event_carrier
 def test_generated_scene_colours_every_named_semantic_category() -> None:
     """S-3 regression: named categories have a non-default foreground on their real surface."""
     cases = (
-        ("first_screen", "SCENE first_screen", "38;2;23;131;131"),
-        ("clean_run", "implemented Unicode-safe output", "38;2;23;131;131"),
-        ("burst", "edit_file path=café-00.py", "38;2;0;116;232"),
-        ("burst", "edit_file complete", "38;2;19;136;78"),
-        ("clean_run", "waiting for an external review response", "38;2;23;131;131"),
-        ("failure", "tests failed", "38;2;176;92;92"),
-        ("idle_stretch", "WAITING", "38;2;186;93;0"),
-        ("burst", "output condensed count=24 bytes=768", "38;2;144;96;192"),
-        ("burst", "-", "38;2;186;93;0"),
-        ("burst", "+", "38;2;0;116;232"),
+        ("first_screen", (("SCENE first_screen", "38;2;23;131;131"),)),
+        ("clean_run", (
+            ("implemented Unicode-safe output", "38;2;23;131;131"),
+            ("waiting for an external review response", "38;2;23;131;131"),
+        )),
+        ("burst", (
+            ("edit_file path=café-00.py", "38;2;0;116;232"),
+            ("edit_file complete", "38;2;19;136;78"),
+            ("output condensed count=24 bytes=768", "38;2;144;96;192"),
+            ("-", "38;2;186;93;0"),
+            ("+", "38;2;0;116;232"),
+        )),
+        ("failure", (("tests failed", "38;2;176;92;92"),)),
+        ("idle_stretch", (("WAITING", "38;2;186;93;0"),)),
     )
     sgr = r"\x1b\[[0-9;]*"
-    for scene_name, carrier, foreground in cases:
+    for scene_name, assertions in cases:
         rendered = render_scene(
             scene_name,
             SupportCase("unknown", "truecolour", "unicode", 80, "tty"),
             terminal_bg_is_light=None,
         )
         visible = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rendered)
-        assert carrier in visible
-        assert re.search(
-            rf"{sgr}{foreground}m(?:[^\x1b]*?){re.escape(carrier)}",
-            rendered,
-        ), carrier
+        for carrier, foreground in assertions:
+            assert carrier in visible
+            assert re.search(
+                rf"{sgr}{foreground}m(?:[^\x1b]*?){re.escape(carrier)}",
+                rendered,
+            ), carrier
 
 
 def test_generated_scene_named_category_keeps_foreground_in_reduced_colour() -> None:

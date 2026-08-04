@@ -185,6 +185,13 @@ class TestCases:
 """
 
     assert test_suites_module._fast_test_count(source) == 3
+    parametrized = '''
+import pytest
+@pytest.mark.parametrize("value", [1, 2, 3, 4, 5])
+def test_values(value: int) -> None:
+    assert value
+'''
+    assert test_suites_module._fast_test_count(parametrized) == 5
     assert test_suites_module._fast_test_count("# helper only\n") == 0
     # Defensive minimum: even empty sources get weight 1 for shard placement.
     assert test_suites_module._fast_test_count("") == 0
