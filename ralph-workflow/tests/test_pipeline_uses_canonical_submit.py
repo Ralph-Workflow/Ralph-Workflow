@@ -52,11 +52,18 @@ class _PipelineSession:
         return "approved"
 
 
+@pytest.mark.timeout_seconds(3)
 def test_pipeline_phase_stamps_canonical_receipt(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A successful pipeline phase leaves a receipt and sentinel via the canonical path."""
+    """A successful pipeline phase leaves a receipt and sentinel via the canonical path.
+
+    The pipeline runner imports ~50 modules and walks the canonical
+    receipt/sentinel fixtures; on a loaded xdist worker this can take
+    marginally over 1 s, so the per-test cap is widened to 3 s to match
+    the sibling audit test in this file.
+    """
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         del args, kwargs
         return PipelineEvent.AGENT_SUCCESS
