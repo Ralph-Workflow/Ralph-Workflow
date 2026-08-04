@@ -187,7 +187,10 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     assert all(process.reaped for process in processes)
     env = spawner.calls[0][2]
     assert env[test_suites_module.TEST_TIMEOUT_ENV] == str(
-        test_suites_module.DEFAULT_TEST_TIMEOUT_SECONDS
+        test_suites_module.timeout_seconds_from_env(
+            test_suites_module.TEST_TIMEOUT_ENV,
+            test_suites_module.DEFAULT_TEST_TIMEOUT_SECONDS,
+        )
     )
     assert env["RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"] == str(
         test_suites_module.DEFAULT_SUITE_TIMEOUT_SECONDS

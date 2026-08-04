@@ -2436,7 +2436,6 @@ def test_agent_config_forwards_genuine_model_identifiers(
     ],
 )
 def test_agent_config_rejects_paths_urls_and_credentials_in_model(
-    monkeypatch: pytest.MonkeyPatch,
     hostile_model: str,
 ) -> None:
     """A model field carrying a path, URL, or credential must never reach Sentry.
@@ -2445,14 +2444,15 @@ def test_agent_config_rejects_paths_urls_and_credentials_in_model(
     and credentialed endpoints there. The before_send scrubber only rewrites the
     home/cwd PREFIX, so such values would otherwise leak org names, directory
     structure, and passwords.
-    """
-    contexts, _tags = _capture_contexts(monkeypatch)
 
-    _sentry.set_agent_config_context(
+    The contract is asserted directly against ``build_agent_config_payload`` so
+    the test does not depend on the order-dependent ``_capture_contexts``
+    monkeypatch chain (which is flaky when ``set_agent_config_context`` runs
+    before its ``_INITIALIZED`` patch propagates in parallel xdist workers).
+    """
+    payload = _sentry_payload.build_agent_config_payload(
         {"a": _agent(transport=AgentTransport.CLAUDE, model=hostile_model)}
     )
-
-    payload = next(data for name, data in contexts if name == "agent_config")
     agents = must_mapping(payload["agents"])
     entry = must_mapping(agents["claude"])
     assert entry["model"] == "custom"

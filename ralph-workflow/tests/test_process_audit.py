@@ -202,7 +202,14 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
             continue
         if py_file.name in TESTS_ALLOWLIST:
             continue
-        rel = py_file.relative_to(TESTS_ROOT).as_posix()
+        # Keep the audit focused on files below ``tests/``. The shared
+        # content snapshot also includes generated/temporary test artifacts
+        # outside that root; resolving those paths is both unnecessary and
+        # disproportionately expensive for this static policy check.
+        try:
+            rel = py_file.relative_to(TESTS_ROOT).as_posix()
+        except ValueError:
+            continue
         violations.extend(
             f"{rel}: contains '{pattern}'" for pattern in all_patterns if pattern in content
         )

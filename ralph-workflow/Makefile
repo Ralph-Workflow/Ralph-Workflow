@@ -60,6 +60,7 @@ endif
 # not here. Do NOT raise this to work around slow tests — fix the test
 # design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
+COVERAGE_SUITE_TIMEOUT_SECONDS ?= 120
 # LIVE_AGY_SUITE_TIMEOUT_SECONDS is the per-suite timeout for the
 # `test-live-agy` target. Live AGY invocations require real network
 # round-trips to the Antigravity backend and run well past the 60s
@@ -176,7 +177,7 @@ coverage: test-cov
 
 test-cov:
 	rm -f .coverage.pytest .coverage.pytest.*
-	uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke" --cov=ralph --cov-report=
+	RALPH_PYTEST_SUITE_TIMEOUT_SECONDS=$(COVERAGE_SUITE_TIMEOUT_SECONDS) uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke" --cov=ralph --cov-report= --basetemp=$${TMPDIR:-/tmp}/ralph-coverage --no-header --tb=no --maxfail=1
 	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
 # Linting

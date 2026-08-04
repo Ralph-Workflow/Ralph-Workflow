@@ -34,9 +34,62 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
+def _stub_heavy_sync_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    skip_project_install: bool = True,
+    skip_auto_commit: bool = True,
+    skip_retention_sweep: bool = True,
+    skip_bootstrap_seed: bool = True,
+) -> None:
+    """Stub out the heavy side-effect paths that the sync helper fans out to.
+
+    Most MagicMock tests in this file only care about one helper (SkillManager,
+    auto_seed_default_git_exclude, ...). The other side-effect paths
+    (``commit_skill_updates``, ``sweep_agent_dir``,
+    ``install_project_baseline_skills``) are lazy-imported and run FOR REAL
+    on every call, costing ~0.6 s per test. Stub them when the test does
+    not exercise them so the default suite stays inside the immutable
+    combined 60 s budget. Each lazy-import target is patched on its
+    defining module so the import inside ``_sync_shipped_skills_on_pipeline_run``
+    picks up the stub.
+    """
+    if skip_project_install:
+        # ``run.py`` does a top-level ``from ralph.skills._installer import ...``
+        # (the names are bound into ``run_module`` at import time), so
+        # patching the installer module is a no-op for these two names.
+        # Patch the rebinding on ``run_module`` instead.
+        monkeypatch.setattr(
+            run_module, "_project_skills_need_install", lambda _root: False
+        )
+        monkeypatch.setattr(
+            run_module, "install_project_baseline_skills", lambda _root: ({}, [])
+        )
+    if skip_auto_commit:
+        monkeypatch.setattr(
+            "ralph.skills._auto_commit.commit_skill_updates",
+            lambda *args: None,
+        )
+    if skip_retention_sweep:
+        monkeypatch.setattr(
+            "ralph.workspace.agent_dir_retention.sweep_agent_dir",
+            lambda *args, **_kw: 0,
+        )
+    if skip_bootstrap_seed:
+        monkeypatch.setattr(
+            "ralph.config.bootstrap.auto_seed_default_gitignore",
+            lambda _root: None,
+        )
+        monkeypatch.setattr(
+            "ralph.config.bootstrap.auto_seed_default_git_exclude",
+            lambda _root: None,
+        )
+
+
 def test_sync_calls_check_skills_for_updates_even_without_state_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    _stub_heavy_sync_paths(monkeypatch)
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -49,6 +102,7 @@ def test_sync_calls_check_skills_for_updates_even_without_state_file(
 def test_sync_calls_check_skills_for_updates_when_state_exists(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    _stub_heavy_sync_paths(monkeypatch)
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -59,6 +113,7 @@ def test_sync_calls_check_skills_for_updates_when_state_exists(
 
 
 def test_sync_is_non_fatal_on_exception(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _stub_heavy_sync_paths(monkeypatch)
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.side_effect = RuntimeError("simulated failure")
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -252,6 +307,11 @@ def test_sync_git_exclude_seed_is_non_fatal_on_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A raising git exclude auto-seed must not raise; logger.debug is emitted."""
+    # Keep the bootstrap stub disabled so the test's targeted
+    # ``auto_seed_default_git_exclude`` raising-mock is the only
+    # bootstrap interference (the parallel gitignore call must run for
+    # real to exercise the auto-seed path).
+    _stub_heavy_sync_paths(monkeypatch, skip_bootstrap_seed=False)
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -277,6 +337,7 @@ def test_sync_gitignore_seed_is_non_fatal_on_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A raising gitignore auto-seed must not raise; logger.debug is emitted."""
+    _stub_heavy_sync_paths(monkeypatch, skip_bootstrap_seed=False)
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)

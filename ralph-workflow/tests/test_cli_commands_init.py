@@ -16,6 +16,7 @@ from ralph.skills import manager as manager_module
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills._capability_status import CapabilityStatus
+from ralph.skills._installer import install_project_baseline_skills
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -55,6 +56,21 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
         return ctx
 
     monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
+    # Skip the project-scope skill install path: every test in this file
+    # already stubs ``SkillManager.ensure_baseline_capabilities`` and the
+    # install path is incidental to the assertions. ``_ensure_baseline_capabilities``
+    # lazy-imports these symbols from ``ralph.skills._installer`` and binds
+    # them locally, so patching the source module is the only seam that
+    # takes effect for the lazy import.
+    # Reference the name so the import isn't flagged as unused.
+    _ = install_project_baseline_skills
+    monkeypatch.setattr(
+        "ralph.skills._installer._project_skills_need_install", lambda _root: False
+    )
+    monkeypatch.setattr(
+        "ralph.skills._installer.install_project_baseline_skills",
+        lambda _root: ({}, []),
+    )
     return stream
 
 
