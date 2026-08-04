@@ -23,6 +23,7 @@ The bench is intentionally narrow:
   ralph.mcp.explore.reindex_bench`` from the repo root. It writes
   its JSON summary to stdout so the caller can pipe it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -278,24 +279,21 @@ def _index_snapshot(
             key=_span_sort_key,
         )
         spans_list: list[tuple[str, str, int, int, str | None]] = [
-            (s.span_id, s.kind, s.start_line, s.end_line, s.symbol_id)
-            for s in spans_rows
+            (s.span_id, s.kind, s.start_line, s.end_line, s.symbol_id) for s in spans_rows
         ]
         symbols_rows = sorted(
             store.iter_symbols(),
             key=_symbol_sort_key,
         )
         symbols_list: list[tuple[str, str, str, str, str]] = [
-            (s.symbol_id, s.name, s.qualified_name, s.kind, s.path)
-            for s in symbols_rows
+            (s.symbol_id, s.name, s.qualified_name, s.kind, s.path) for s in symbols_rows
         ]
         edges_rows = sorted(
             store.iter_edges(),
             key=_edge_sort_key,
         )
         edges_list: list[tuple[str, str, str, str, str]] = [
-            (e.edge_id, e.relation, e.source_id, e.target_id, e.path)
-            for e in edges_rows
+            (e.edge_id, e.relation, e.source_id, e.target_id, e.path) for e in edges_rows
         ]
         snapshot: dict[str, object] = {
             "generation": result.generation,
@@ -521,11 +519,7 @@ def _output_summary(summaries: Sequence[dict[str, object]]) -> dict[str, object]
         "metadata": _platform_metadata(),
         "workloads": list(summaries),
     }
-    failed = [
-        workload
-        for workload in summaries
-        if workload.get("passed") is False
-    ]
+    failed = [workload for workload in summaries if workload.get("passed") is False]
     overall["all_passed"] = not failed
     overall["failed_workloads"] = [w["label"] for w in failed]
     return overall
@@ -671,8 +665,7 @@ def _parse_implementations(arg: str) -> list[str]:
     for name in parts:
         if name not in allowed:
             raise argparse.ArgumentTypeError(
-                f"unknown implementation: {name!r}; expected one of "
-                f"{sorted(allowed)}"
+                f"unknown implementation: {name!r}; expected one of {sorted(allowed)}"
             )
     return parts
 
@@ -772,9 +765,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # through the parser hooks below.
     raw_compare: object = args.compare
     raw_implementation: object = args.implementation
-    compare_tokens: list[str] | None = (
-        list(raw_compare) if isinstance(raw_compare, list) else None
-    )
+    compare_tokens: list[str] | None = list(raw_compare) if isinstance(raw_compare, list) else None
     implementation_tokens: list[str] = (
         list(raw_implementation) if isinstance(raw_implementation, list) else []
     )

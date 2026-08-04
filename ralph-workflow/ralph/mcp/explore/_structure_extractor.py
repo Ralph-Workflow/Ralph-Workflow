@@ -44,9 +44,7 @@ DEFAULT_CROSSOVER_NODES: Final[int] = 200
 IMPL_SCALAR: Final[str] = "scalar"
 IMPL_ACCELERATED: Final[str] = "accelerated"
 IMPL_AUTO: Final[str] = "auto"
-_IMPLEMENTATIONS: Final[frozenset[str]] = frozenset(
-    {IMPL_SCALAR, IMPL_ACCELERATED, IMPL_AUTO}
-)
+_IMPLEMENTATIONS: Final[frozenset[str]] = frozenset({IMPL_SCALAR, IMPL_ACCELERATED, IMPL_AUTO})
 
 
 class PythonStructureExtractor(Protocol):
@@ -152,7 +150,9 @@ def _accelerated_extract_python(
 # ``select_structure_extractor("auto", ...)`` per file does not pay
 # for the dict lookup. The mapping is small and immutable; module
 # scope is the right scope.
-_IMPL_REGISTRY: Final[dict[str, PythonStructureExtractor]] = {  # bounded-accumulator-ok: static dispatch table (immutable after module load; only two well-known keys)
+_IMPL_REGISTRY: Final[
+    dict[str, PythonStructureExtractor]
+] = {  # bounded-accumulator-ok: static dispatch table (immutable after module load; only two well-known keys)
     IMPL_SCALAR: _scalar_extract_python,
     IMPL_ACCELERATED: _accelerated_extract_python,
 }
@@ -186,8 +186,7 @@ def select_structure_extractor(
     """
     if name not in _IMPLEMENTATIONS:
         raise ValueError(
-            f"unknown structure extractor: {name!r}; expected one of "
-            f"{sorted(_IMPLEMENTATIONS)}"
+            f"unknown structure extractor: {name!r}; expected one of {sorted(_IMPLEMENTATIONS)}"
         )
     if name == IMPL_AUTO:
         cutoff = get_runtime_crossover()

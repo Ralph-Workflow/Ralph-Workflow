@@ -153,21 +153,15 @@ def test_scalar_and_accelerated_agree_on_empty_and_non_ascii_inputs() -> None:
         ("nested.py", "def a():\n    def b():\n        return b()\n    return b\n"),
     )
     for path, content in cases:
-        scalar = extract_python_scalar(
-            path=path, content=content, content_hash="h", generation=1
-        )
+        scalar = extract_python_scalar(path=path, content=content, content_hash="h", generation=1)
         accel = extract_python_accelerated(
             path=path, content=content, content_hash="h", generation=1
         )
-        assert sorted(_row_id(r) for r in scalar.spans) == sorted(
-            _row_id(r) for r in accel.spans
-        )
+        assert sorted(_row_id(r) for r in scalar.spans) == sorted(_row_id(r) for r in accel.spans)
         assert sorted(_row_id(r) for r in scalar.symbols) == sorted(
             _row_id(r) for r in accel.symbols
         )
-        assert sorted(_row_id(r) for r in scalar.edges) == sorted(
-            _row_id(r) for r in accel.edges
-        )
+        assert sorted(_row_id(r) for r in scalar.edges) == sorted(_row_id(r) for r in accel.edges)
 
 
 def test_dispatcher_selects_accelerated_when_requested() -> None:
@@ -182,16 +176,12 @@ def test_dispatcher_selects_accelerated_when_requested() -> None:
     accel = extract_python_accelerated(
         path="m.py", content=_common_source(), content_hash="h", generation=1
     )
-    assert sorted(_row_id(r) for r in result.edges) == sorted(
-        _row_id(r) for r in accel.edges
-    )
+    assert sorted(_row_id(r) for r in result.edges) == sorted(_row_id(r) for r in accel.edges)
 
 
 def test_dispatcher_selects_scalar_by_default_and_explicitly() -> None:
     """The default ``structure_extractor`` is the scalar reference path."""
-    default = extract_python(
-        path="m.py", content=_common_source(), content_hash="h", generation=1
-    )
+    default = extract_python(path="m.py", content=_common_source(), content_hash="h", generation=1)
     explicit = extract_python(
         path="m.py",
         content=_common_source(),
@@ -208,9 +198,7 @@ def test_dispatcher_selects_scalar_by_default_and_explicitly() -> None:
         (default.edges, scalar.edges),
         (explicit.edges, scalar.edges),
     ):
-        assert sorted(_row_id(r) for r in rows) == sorted(
-            _row_id(r) for r in expected
-        )
+        assert sorted(_row_id(r) for r in rows) == sorted(_row_id(r) for r in expected)
 
 
 # --- Selection: the seam must honor the named selector ------------------
@@ -239,12 +227,8 @@ def test_auto_selector_threads_node_count_and_crossover() -> None:
     try:
         # Below default crossover (200) -> scalar.
         set_runtime_crossover(DEFAULT_CROSSOVER_NODES)
-        low = structure_extractor_name(
-            select_structure_extractor(IMPL_AUTO, ast_node_count=10)
-        )
-        high = structure_extractor_name(
-            select_structure_extractor(IMPL_AUTO, ast_node_count=5000)
-        )
+        low = structure_extractor_name(select_structure_extractor(IMPL_AUTO, ast_node_count=10))
+        high = structure_extractor_name(select_structure_extractor(IMPL_AUTO, ast_node_count=5000))
         assert low == IMPL_SCALAR
         assert high == IMPL_ACCELERATED
 
@@ -257,9 +241,7 @@ def test_auto_selector_threads_node_count_and_crossover() -> None:
     finally:
         set_runtime_crossover(None)
     # Default crossover is restored after the test.
-    restored = structure_extractor_name(
-        select_structure_extractor(IMPL_AUTO, ast_node_count=10)
-    )
+    restored = structure_extractor_name(select_structure_extractor(IMPL_AUTO, ast_node_count=10))
     assert restored == IMPL_SCALAR
 
 
