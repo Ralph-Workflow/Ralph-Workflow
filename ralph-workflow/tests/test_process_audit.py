@@ -78,6 +78,9 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_artifact_submission_canonical_path.py",
     # spawns python -O to verify import-time invariants survive -O
     "test_single_mode_anti_drift.py",
+    "test_explore_reindex_bench.py",
+    # black-box subprocess coverage for ``python -m ralph.mcp.explore.reindex_bench``
+    # --help / --compare / --end-to-end entry points
     # drives scripts/wt028-drift-check.sh via subprocess.run as the
     # system-under-test (the bash script is the artifact being probed;
     # subprocess is the same invocation path make verify-drift uses)

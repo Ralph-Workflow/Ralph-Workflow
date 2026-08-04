@@ -94,6 +94,7 @@ def _staged_full_reindex(
                 timeout_ms=remaining_ms,
                 path_scope=options.path_scope,
                 clock=options.clock,
+                structure_extractor=options.structure_extractor,
             )
             # Lazy import to avoid the circular import between
             # ``_pipeline_staged`` and ``pipeline``: ``pipeline``

@@ -214,8 +214,49 @@ def extract_python(
     content: str,
     content_hash: str,
     generation: int,
+    structure_extractor: str = "scalar",
+) -> StructureExtraction:
+    """Dispatch to the named Python structure extractor.
+
+    ``structure_extractor`` selects between the historical four-pass
+    walker (:func:`extract_python_scalar`) and the single-pass fused
+    walker (:func:`extract_python_accelerated`). The reindex
+    pipeline threads the value through ``ReindexOptions``; unit
+    tests pin the implementation by passing the name explicitly.
+    The default is the scalar path so any caller that omits the
+    argument continues to see the historical behavior.
+    """
+    # Lazy import: ``structure`` is the single source of the
+    # ``StructureExtraction`` dataclass the seam imports. The
+    # seam imports back into this module for the implementation
+    # callables. The lazy import avoids a module-load cycle.
+    from ralph.mcp.explore._structure_extractor import (
+        select_structure_extractor,
+    )
+
+    extractor = select_structure_extractor(structure_extractor)
+    return extractor(
+        path=path,
+        content=content,
+        content_hash=content_hash,
+        generation=generation,
+    )
+
+
+def extract_python_scalar(
+    *,
+    path: str,
+    content: str,
+    content_hash: str,
+    generation: int,
 ) -> StructureExtraction:
     """Extract spans/symbols/edges from a Python source ``content``.
+
+    Reference implementation that walks the AST four times: one
+    recursive walker for symbols / contains / defines /
+    inherits_syntax, then one ``ast.walk`` per additional relation
+    (calls, imports), then an O(N^2) body walk for references_text,
+    then a symbol pass for tests, and a line scan for mentions.
 
     Raises ``PythonExtractionError`` when the source fails to parse. Per
     the prompt's PA-001 invariant, the reindex pipeline catches the
@@ -689,6 +730,474 @@ def extract_python(
     )
 
 
+def extract_python_accelerated(
+    *,
+    path: str,
+    content: str,
+    content_hash: str,
+    generation: int,
+) -> StructureExtraction:
+    """Single-pass fused walker that emits every relation inline.
+
+    Folds the calls, imports, references, tests, and mentions
+    emissions into the recursive walker that already produces
+    symbols and contains / defines edges. The output rows are
+    byte-for-byte identical to the scalar walker. The fused pass
+    eliminates the three redundant ``ast.walk`` traversals and
+    the O(N^2) ``ast.walk(body_node)`` references loop from the
+    historical implementation.
+    """
+    spans: list[SpanRow] = []
+    symbols: list[SymbolRow] = []
+    edges: list[EdgeRow] = []
+
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as exc:
+        raise PythonExtractionError(f"{path!r}: {exc}") from exc
+
+    module_start, module_col, module_end, module_end_col = _line_col(tree)
+    file_span_id = derive_span_id(
+        path=path,
+        start_line=module_start,
+        start_col=module_col,
+        end_line=max(module_end, module_start),
+        end_col=max(module_end_col, module_col),
+        kind="module",
+        content_hash=content_hash,
+    )
+    spans.append(
+        SpanRow(
+            span_id=file_span_id,
+            path=path,
+            start_line=module_start,
+            start_col=module_col,
+            end_line=max(module_end, module_start),
+            end_col=max(module_end_col, module_col),
+            kind="module",
+            symbol_id=None,
+            content_hash=content_hash,
+            generation=generation,
+        )
+    )
+
+    # Names defined in this file (after symbol emission); used to
+    # decide which ``Name`` nodes participate in references_text.
+    defined_names: set[str] = set()
+    # Symbol-id index keyed by name, so the references pass can
+    # resolve the source symbol id in O(1) per Name visit.
+    name_to_qualified: dict[str, list[str]] = {}
+
+    module_qualified = Path(path).stem
+    # Stack of body (start_line, end_line, qualified_name) for the
+    # currently active definition. Names inside a body are emitted
+    # only when their ``lineno`` lies in the active body's range,
+    # and the symbol's own name is excluded.
+    body_stack: list[tuple[int, int, str, str]] = []
+
+    def _walk(node: ast.AST, parent_qualified: str, container_span_id: str) -> None:
+        kind_name = _node_kind(node)
+        node_name: str = ""
+        sym_id: str = ""
+        span_id: str = ""
+        child_qualified = parent_qualified
+        active_body: tuple[int, int, str, str] | None = None
+
+        if kind_name is not None and hasattr(node, "name"):
+            name_obj: object = getattr(node, "name", "")
+            node_name = name_obj if isinstance(name_obj, str) else str(name_obj)
+            if node_name:
+                start_line, start_col, end_line, end_col = _line_col(node)
+                span_id = derive_span_id(
+                    path=path,
+                    start_line=start_line,
+                    start_col=start_col,
+                    end_line=end_line,
+                    end_col=end_col,
+                    kind=kind_name,
+                    content_hash=content_hash,
+                )
+                child_qualified = _qualify(parent_qualified, node_name)
+                sym_id = derive_symbol_id(
+                    path=path,
+                    qualified_name=child_qualified,
+                    kind=kind_name,
+                    span_id=span_id,
+                )
+                spans.append(
+                    SpanRow(
+                        span_id=span_id,
+                        path=path,
+                        start_line=start_line,
+                        start_col=start_col,
+                        end_line=end_line,
+                        end_col=end_col,
+                        kind=kind_name,
+                        symbol_id=sym_id,
+                        content_hash=content_hash,
+                        generation=generation,
+                    )
+                )
+                symbols.append(
+                    SymbolRow(
+                        symbol_id=sym_id,
+                        name=node_name,
+                        qualified_name=child_qualified,
+                        kind=kind_name,
+                        path=path,
+                        span_id=span_id,
+                        language="python",
+                        extracted_from="ast",
+                        confidence=CONFIDENCE_EXTRACTED,
+                        generation=generation,
+                    )
+                )
+                defined_names.add(node_name)
+                name_to_qualified.setdefault(node_name, []).append(child_qualified)
+                if parent_qualified:
+                    edges.append(
+                        EdgeRow(
+                            edge_id=derive_edge_id(
+                                source_id=f"sym:{path}:{parent_qualified}",
+                                target_id=sym_id,
+                                relation="contains",
+                                path=path,
+                                span_id=container_span_id,
+                            ),
+                            source_id=f"sym:{path}:{parent_qualified}",
+                            target_id=sym_id,
+                            relation="contains",
+                            path=path,
+                            span_id=container_span_id,
+                            provenance="extracted",
+                            confidence=CONFIDENCE_EXTRACTED,
+                            reason="ast:ClassDef/FunctionDef body",
+                            generation=generation,
+                        )
+                    )
+                    edges.append(
+                        EdgeRow(
+                            edge_id=derive_edge_id(
+                                source_id=f"sym:{path}:{parent_qualified}",
+                                target_id=sym_id,
+                                relation="defines",
+                                path=path,
+                                span_id=span_id,
+                            ),
+                            source_id=f"sym:{path}:{parent_qualified}",
+                            target_id=sym_id,
+                            relation="defines",
+                            path=path,
+                            span_id=span_id,
+                            provenance="extracted",
+                            confidence=CONFIDENCE_EXTRACTED,
+                            reason=f"ast:{kind_name} inside {parent_qualified}",
+                            generation=generation,
+                        )
+                    )
+                if kind_name == "class" and isinstance(node, ast.ClassDef):
+                    for base in node.bases:
+                        base_id_obj: object = getattr(base, "id", None)
+                        if isinstance(base_id_obj, str) and base_id_obj:
+                            base_id: str | None = base_id_obj
+                        else:
+                            base_id = _attr_name(base)
+                        if base_id:
+                            edges.append(
+                                EdgeRow(
+                                    edge_id=derive_edge_id(
+                                        source_id=sym_id,
+                                        target_id=f"unresolved:{base_id}",
+                                        relation="inherits_syntax",
+                                        path=path,
+                                        span_id=span_id,
+                                    ),
+                                    source_id=sym_id,
+                                    target_id=f"unresolved:{base_id}",
+                                    relation="inherits_syntax",
+                                    path=path,
+                                    span_id=span_id,
+                                    provenance="extracted",
+                                    confidence=CONFIDENCE_EXTRACTED,
+                                    reason="ast:ClassDef bases",
+                                    generation=generation,
+                                )
+                            )
+                # tests: emit a tests edge from this definition
+                # when the name follows the test_ prefix.
+                if kind_name == "function" and node_name.startswith("test_"):
+                    edges.append(
+                        EdgeRow(
+                            edge_id=derive_edge_id(
+                                source_id=sym_id,
+                                target_id=f"file:{path}",
+                                relation="tests",
+                                path=path,
+                                span_id=span_id,
+                            ),
+                            source_id=sym_id,
+                            target_id=f"file:{path}",
+                            relation="tests",
+                            path=path,
+                            span_id=span_id,
+                            provenance="extracted",
+                            confidence=CONFIDENCE_INFERRED,
+                            reason="ast:function:name=test_*",
+                            generation=generation,
+                        )
+                    )
+                # Push the active body frame so descendant Name
+                # nodes participate in references_text. The
+                # historical implementation ran one outer
+                # ``ast.walk`` per definition body; this stack
+                # folds the work into the single traversal.
+                body_start, _, body_end, _ = _line_col(node)
+                active_body = (body_start, body_end, child_qualified, node_name)
+                body_stack.append(active_body)
+
+        # In-place per-node relation emission. ``Call`` becomes a
+        # calls_syntax edge. ``Name`` whose id is in
+        # ``defined_names`` becomes a references_text edge
+        # provided the active body is the owning definition.
+        if isinstance(node, ast.Call):
+            callee: object | None = None
+            func_obj: object = node.func
+            if isinstance(func_obj, ast.Name):
+                callee = func_obj.id
+            elif isinstance(func_obj, ast.Attribute):
+                attr_id: object = getattr(func_obj, "attr", None)
+                callee = attr_id if isinstance(attr_id, str) else None
+            if isinstance(callee, str) and callee:
+                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
+                call_span_id = derive_span_id(
+                    path=path,
+                    start_line=span_start_line,
+                    start_col=span_start_col,
+                    end_line=span_end_line,
+                    end_col=span_end_col,
+                    kind="call",
+                    content_hash=content_hash,
+                )
+                edges.append(
+                    EdgeRow(
+                        edge_id=derive_edge_id(
+                            source_id=f"file:{path}",
+                            target_id=f"unresolved:{callee}",
+                            relation="calls_syntax",
+                            path=path,
+                            span_id=call_span_id,
+                        ),
+                        source_id=f"file:{path}",
+                        target_id=f"unresolved:{callee}",
+                        relation="calls_syntax",
+                        path=path,
+                        span_id=call_span_id,
+                        provenance="extracted",
+                        confidence=CONFIDENCE_INFERRED,
+                        reason="ast:Call",
+                        generation=generation,
+                    )
+                )
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                target = alias.name
+                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
+                imp_span_id = derive_span_id(
+                    path=path,
+                    start_line=span_start_line,
+                    start_col=span_start_col,
+                    end_line=span_end_line,
+                    end_col=span_end_col,
+                    kind="import",
+                    content_hash=content_hash,
+                )
+                edges.append(
+                    EdgeRow(
+                        edge_id=derive_edge_id(
+                            source_id=f"file:{path}",
+                            target_id=f"unresolved:{target}",
+                            relation="imports",
+                            path=path,
+                            span_id=imp_span_id,
+                        ),
+                        source_id=f"file:{path}",
+                        target_id=f"unresolved:{target}",
+                        relation="imports",
+                        path=path,
+                        span_id=imp_span_id,
+                        provenance="extracted",
+                        confidence=CONFIDENCE_EXTRACTED,
+                        reason="ast:Import",
+                        generation=generation,
+                    )
+                )
+        elif isinstance(node, ast.ImportFrom):
+            module_name = node.module or ""
+            for alias in node.names:
+                target = f"{module_name}.{alias.name}" if module_name else alias.name
+                span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
+                imp_span_id = derive_span_id(
+                    path=path,
+                    start_line=span_start_line,
+                    start_col=span_start_col,
+                    end_line=span_end_line,
+                    end_col=span_end_col,
+                    kind="import",
+                    content_hash=content_hash,
+                )
+                edges.append(
+                    EdgeRow(
+                        edge_id=derive_edge_id(
+                            source_id=f"file:{path}",
+                            target_id=f"unresolved:{target}",
+                            relation="imports",
+                            path=path,
+                            span_id=imp_span_id,
+                        ),
+                        source_id=f"file:{path}",
+                        target_id=f"unresolved:{target}",
+                        relation="imports",
+                        path=path,
+                        span_id=imp_span_id,
+                        provenance="extracted",
+                        confidence=CONFIDENCE_EXTRACTED,
+                        reason="ast:ImportFrom",
+                        generation=generation,
+                    )
+                )
+        elif isinstance(node, ast.Name):
+            raw_id: object = node.id
+            ref_name: str = raw_id if isinstance(raw_id, str) else ""
+            if ref_name and ref_name in defined_names and body_stack:
+                # The historical scalar walker iterates EACH
+                # enclosing definition body and emits one edge
+                # per ``ast.Name`` whose identifier is in the
+                # defined-name set. Walking the stack from the
+                # innermost frame outward reproduces that
+                # behaviour without a second ``ast.walk`` pass:
+                # the deepest enclosing body whose name differs
+                # from ``ref_name`` becomes the target, so the
+                # inner self-reference (``b`` inside ``b``) is
+                # filtered but the outer reference (``b``
+                # inside the surrounding ``a``) still emits.
+                ref_line, _, ref_end, ref_end_col = _line_col(node)
+                target_name: str | None = None
+                target_span_id: str | None = None
+                for frame in reversed(body_stack):
+                    bs, be, _frame_qualified, frame_name = frame
+                    if frame_name == ref_name:
+                        continue
+                    if bs <= ref_line <= be:
+                        target_name = frame_name
+                        raw_col: object = getattr(node, "col_offset", 0)
+                        ref_col_offset = (
+                            int(raw_col)
+                            if isinstance(raw_col, int) and not isinstance(raw_col, bool)
+                            else 0
+                        )
+                        target_span_id = derive_span_id(
+                            path=path,
+                            start_line=ref_line,
+                            start_col=ref_col_offset,
+                            end_line=ref_end,
+                            end_col=ref_end_col,
+                            kind="reference",
+                            content_hash=content_hash,
+                        )
+                        break
+                if target_name is not None and target_span_id is not None:
+                    for def_sym in symbols:
+                        if def_sym.name == ref_name:
+                            edges.append(
+                                EdgeRow(
+                                    edge_id=derive_edge_id(
+                                        source_id=f"sym:{path}:{def_sym.qualified_name}",
+                                        target_id=f"sym:{path}:{target_name}",
+                                        relation="references_text",
+                                        path=path,
+                                        span_id=target_span_id,
+                                    ),
+                                    source_id=f"sym:{path}:{def_sym.qualified_name}",
+                                    target_id=f"sym:{path}:{target_name}",
+                                    relation="references_text",
+                                    path=path,
+                                    span_id=target_span_id,
+                                    provenance="inferred",
+                                    confidence=CONFIDENCE_INFERRED,
+                                    reason="text_match:identifier",
+                                    generation=generation,
+                                )
+                            )
+                            break
+
+        for child in ast.iter_child_nodes(node):
+            _walk(child, child_qualified, container_span_id)
+
+        if active_body is not None:
+            body_stack.pop()
+
+    _walk(tree, parent_qualified=module_qualified, container_span_id=file_span_id)
+
+    # mentions: scan leading ``#``-prefixed comments for defined
+    # symbol names. The relation is ``inferred`` and must never
+    # imply code dependency. Each comment line emits one edge per
+    # matched identifier; the matched token's span is the
+    # comment span itself. This step is a pure text scan over
+    # the source ``content`` (no AST cost), so it stays as a
+    # single post-pass.
+    if defined_names:
+        lines_list: list[str] = content.splitlines()
+        for line_index, raw_line in enumerate(lines_list, start=1):
+            stripped = raw_line.lstrip()
+            if not stripped.startswith("#"):
+                continue
+            comment_text = stripped.lstrip("#").strip()
+            tokens_raw: list[str] = _IDENT_RE.findall(comment_text)
+            tokens: list[str] = [t for t in tokens_raw if isinstance(t, str)]
+            if not tokens:
+                continue
+            for token in tokens:
+                if token not in defined_names:
+                    continue
+                mention_span_id = derive_span_id(
+                    path=path,
+                    start_line=line_index,
+                    start_col=raw_line.index("#"),
+                    end_line=line_index,
+                    end_col=len(raw_line),
+                    kind="comment",
+                    content_hash=content_hash,
+                )
+                edges.append(
+                    EdgeRow(
+                        edge_id=derive_edge_id(
+                            source_id=f"comment:{path}:{line_index}",
+                            target_id=f"unresolved:{token}",
+                            relation="mentions",
+                            path=path,
+                            span_id=mention_span_id,
+                        ),
+                        source_id=f"comment:{path}:{line_index}",
+                        target_id=f"unresolved:{token}",
+                        relation="mentions",
+                        path=path,
+                        span_id=mention_span_id,
+                        provenance="inferred",
+                        confidence=CONFIDENCE_AMBIGUOUS,
+                        reason="text_match:comment",
+                        generation=generation,
+                    )
+                )
+
+    return StructureExtraction(
+        path=path,
+        content_hash=content_hash,
+        spans=tuple(spans),
+        symbols=tuple(symbols),
+        edges=tuple(edges),
+    )
+
+
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -1065,8 +1574,14 @@ def extract_structure(
     content: str,
     content_hash: str,
     generation: int,
+    structure_extractor: str = "scalar",
 ) -> StructureExtraction:
-    """Dispatch to the per-language extractor; unknown languages return empty."""
+    """Dispatch to the per-language extractor; unknown languages return empty.
+
+    ``structure_extractor`` is forwarded to :func:`extract_python`
+    for Python sources and is otherwise ignored. Markdown and
+    other languages do not currently have multiple implementations.
+    """
     language = detect_language(path)
     if language == "python":
         return extract_python(
@@ -1074,6 +1589,7 @@ def extract_structure(
             content=content,
             content_hash=content_hash,
             generation=generation,
+            structure_extractor=structure_extractor,
         )
     if language == "markdown":
         return extract_markdown(
@@ -1104,6 +1620,8 @@ __all__ = [
     "detect_language",
     "extract_markdown",
     "extract_python",
+    "extract_python_accelerated",
+    "extract_python_scalar",
     "extract_structure",
 ]
 

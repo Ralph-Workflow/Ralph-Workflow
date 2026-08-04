@@ -156,6 +156,7 @@ def _run_reindex(
                 size_bytes=actual_size,
                 mtime_ns=actual_mtime,
                 generation=target_generation,
+                structure_extractor=options.structure_extractor,
             )
         except PythonExtractionError as exc:
             # PA-001 / AC-02: the typed structure-extraction failure
@@ -352,6 +353,7 @@ def _re_extract_path(
     size_bytes: int,
     mtime_ns: int,
     generation: int,
+    structure_extractor: str = "scalar",
 ) -> None:
     """Re-extract chunks and evidence for ``relative_path``.
 
@@ -429,6 +431,7 @@ def _re_extract_path(
         content=text,
         content_hash=content_hash,
         generation=generation,
+        structure_extractor=structure_extractor,
     )
 
     # --- Replacement phase: tombstone + delete + upsert only after

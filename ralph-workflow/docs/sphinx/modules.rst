@@ -2674,6 +2674,13 @@ ralph.mcp.explore.ranking
    :members:
    :show-inheritance:
 
+ralph.mcp.explore.reindex_bench
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.reindex_bench
+   :members:
+   :show-inheritance:
+
 ralph.mcp.explore.store
 ~~~~~~~~~~~~~~~~~~~~~~~
 

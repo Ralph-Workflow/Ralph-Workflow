@@ -36,12 +36,24 @@ class ReindexResult:
 
 @dataclass(frozen=True, slots=True)
 class ReindexOptions:
-    """Options for a reindex call."""
+    """Options for a reindex call.
+
+    ``structure_extractor`` selects between the historical
+    four-pass Python walker (``"scalar"``) and the single-pass
+    fused walker (``"accelerated"``). ``"auto"`` selects
+    ``accelerated`` for files at or above the runtime AST-node
+    crossover and ``scalar`` otherwise. The default is
+    ``"auto"`` so callers see the optimal walker without any
+    configuration; the bench CLI measures the real crossover
+    and publishes it back via
+    :func:`ralph.mcp.explore._structure_extractor.set_runtime_crossover`.
+    """
 
     mode: str = "changed"
     timeout_ms: int = DEFAULT_TIMEOUT_MS
     path_scope: tuple[str, ...] = ()
     clock: Clock | None = None
+    structure_extractor: str = "auto"
 
 
 class FileReadError(Exception):
