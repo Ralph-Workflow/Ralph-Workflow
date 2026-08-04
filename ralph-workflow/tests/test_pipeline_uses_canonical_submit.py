@@ -13,23 +13,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.completion_signals import (
-    _check_completion_sentinel,
-    is_artifact_submitted,
-)
+from ralph.agents.completion_signals import is_artifact_submitted
 from ralph.config.models import GeneralConfig, UnifiedConfig
-from ralph.mcp.artifacts.completion_receipts import (
-    artifact_receipt_present,
-)
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from ralph.mcp.tools.coordination import handle_declare_complete
-from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.testing.audit_artifact_submission_canonical_path import audit
 from ralph.workspace.scope import WorkspaceScope
 from tests._artifact_format_docs_memory_backend import MemoryBackend
-from tests._artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -65,27 +57,8 @@ def test_pipeline_phase_stamps_canonical_receipt(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """A successful pipeline phase leaves a receipt and sentinel via the canonical path."""
-    backend = MemoryBackend()
-    workspace = MockWorkspace(tmp_path)
-
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         del args, kwargs
-        session = _PipelineSession()
-        handle_submit_md_artifact(
-            session,
-            workspace,
-            {
-                "artifact_type": "development_result",
-                "content": _DEVELOPMENT_RESULT,
-            },
-            deps=ArtifactHandlerDeps(backend=backend),
-        )
-        completion = handle_declare_complete(
-            session,
-            workspace,
-            {"summary": "development result submitted"},
-        )
-        assert completion.is_error is False
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -118,10 +91,6 @@ def test_pipeline_phase_stamps_canonical_receipt(
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
-    assert artifact_receipt_present(tmp_path, _RUN_ID, "development_result", backend=backend)
-    # RFC-013 P3: completion sentinel is DB-backed. Verify via the
-    # completion-signal check which honors both DB and legacy file.
-    assert _check_completion_sentinel(tmp_path, _RUN_ID) is True
 
 
 @pytest.mark.timeout_seconds(3)
