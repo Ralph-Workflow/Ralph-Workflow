@@ -2611,6 +2611,17 @@ ralph.mcp.explore.bench
    :members:
    :show-inheritance:
 
+ralph.mcp.explore.reindex_bench
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.mcp.explore.reindex_bench is a standalone ``python -m``
+   benchmark CLI for the ``reindex()`` hot path; using :no-members:
+   keeps autodoc from introspecting the ``argparse`` ``main`` entry
+   point, which is callable but not a public class.
+
+.. automodule:: ralph.mcp.explore.reindex_bench
+   :no-members:
+
 ralph.mcp.explore.deferred_phases
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

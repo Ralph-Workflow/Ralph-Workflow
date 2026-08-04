@@ -42,24 +42,26 @@ def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -
         (None, "1"),
         (1, "1"),
         (2, "1"),
-        (16, "12"),
-        (32, "12"),
-        (64, "12"),
+        (16, "15"),
+        (32, "31"),
+        (64, "32"),
     ),
 )
-def test_auto_worker_count_preserves_one_core_and_caps_at_twelve(
+def test_auto_worker_count_preserves_one_core_and_caps_at_thirty_two(
     monkeypatch: pytest.MonkeyPatch,
     cpu_count: int | None,
     expected_workers: str,
 ) -> None:
-    """Auto profile caps the shard count at 24 to keep the slowest shard under 45s.
+    """Auto profile caps the shard count at ``available_cores - 1``.
 
-    The 24-shard cap is the same value the Makefile comment recommends
-    as ``PYTEST_WORKERS=24 make test``. 31-shard measurements on the
-    32-core host profile showed the slowest shard at 50-60s under xdist
-    contention, occasionally exceeding the 60s budget. The 24-shard
-    profile consistently keeps the slowest shard under 45s while leaving
-    8 cores idle for the runner process and variance slack.
+    The 32-core CI profile gets 31 shards (one core reserved for the
+    runner process and the per-shard drain / SIGCHLD cleanup loop).
+    The 64-core profile is capped at ``_MAX_PYTEST_WORKERS = 32``.
+    Smaller hosts preserve one core for the runner. The default
+    resolution was tightened from a 12-shard cap (which drove the
+    slowest shard past 60s under host load) to ``available_cores - 1``
+    so the slowest shard fits comfortably under the immutable 60s
+    combined budget.
     """
     monkeypatch.delenv("PYTEST_WORKERS", raising=False)
     monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: cpu_count)
