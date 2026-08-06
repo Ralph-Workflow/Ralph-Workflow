@@ -12,6 +12,7 @@ If you only need to run Ralph Workflow, start with [Configuration](configuration
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Getting Started](getting-started.md) — run-spec authoring, prompt template shape, and proof-of-finish handoff
 - [Streaming Blocks and Long-Content Display](#streaming-blocks-and-long-content-display) — output event structure and rendering behavior
+- [Background-aware presentation](#background-aware-presentation) — surface-adaptive chroma, frequency tiers, and the per-frame salience budget
 - [Supervising API](#supervising-api) — trackable instance model for orchestration use cases
 
 ## Configuration-loading internals
@@ -159,6 +160,16 @@ falls back to transparency. Event identities, semantic event states, and the Sta
 the matching solved palette. An undetermined background uses the dual-safe palette targeting
 the `[0.175, 0.1833]` luminance band rather than assuming a dark terminal. The text label
 remains the identity carrier, so color is never required to understand an entry.
+
+Role anchors are classified into four render-frequency tiers (constant body
+text down to rare alarms), with chroma budget inversely proportional to how
+often a role renders; structural chrome (panel borders, titles, rules) is
+deliberately split from the semantic `info` state so the busiest on-screen
+accent does not also mean "an info event just happened." A per-frame
+salience allocator then spends a bounded accent budget across whichever
+roles are competing to render in one frame, promoting a role that just
+changed state and decaying one that has been steady, so a long quiet run
+visibly drains of colour and a genuine event re-lights instantly.
 
 See [Colour model: surface-adaptive chroma, frequency tiers, and the salience budget](display.html#colour-model-surface-adaptive-chroma-frequency-tiers-and-the-salience-budget)
 for the palette solver's surface-adaptive chroma, the E-1 render-frequency tier table, and

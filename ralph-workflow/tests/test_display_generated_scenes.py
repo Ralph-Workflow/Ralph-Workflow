@@ -784,6 +784,53 @@ def test_generated_scene_salience_decisions_never_exceed_the_depth_budget(
         assert any(len(v) > 1 for v in frames.values()), (scene_name, case, frames)
 
 
+#: E-3's routine-output accent ceiling: at most this many tier-3/4 accents
+#: lit in one frame outside the catalogue's deliberate concurrent-activity
+#: stress vehicle (``burst``). Distinct from G-8's wider, colour-depth-scaled
+#: *contention* budget (``ACCENT_BUDGET_BY_DEPTH``, 4/3/2) -- see the
+#: docstring on ``test_generated_scene_routine_output_never_exceeds_the_e3_accent_ceiling``
+#: below.
+_E3_ROUTINE_ACCENT_CEILING: int = 2
+
+
+def test_generated_scene_routine_output_never_exceeds_the_e3_accent_ceiling() -> None:
+    """PLAN.md S-3 / G-10: "a frame of routine output lights no more than
+    the stated tier-3/4 accent count" is a *distinct* assertion from G-8's
+    depth-scaled contention ceiling
+    (``test_generated_scene_salience_decisions_never_exceed_the_depth_budget``,
+    which checks against ``ACCENT_BUDGET_BY_DEPTH`` -- 4 at truecolor, 3 at
+    256-colour, 2 at 16-colour). That test does not by itself prove E-3's
+    narrower "~2 concurrent accents for routine output" claim, because the
+    depth budget is deliberately wider than 2 at truecolor/256-colour. This
+    test is the narrower, E-3-specific gate: every scene except ``burst``
+    (the catalogue's deliberate concurrent-activity stress vehicle -- see
+    PLAN.md's Characterize section) must never light more than
+    ``_E3_ROUTINE_ACCENT_CEILING`` tier-3/4 accents in any one frame, on any
+    of the three representative colour-depth cases."""
+    for case in _SALIENCE_CASES:
+        for scene_name in SCENE_NAMES:
+            if scene_name == "burst":
+                continue
+            decisions = scene_salience_decisions(
+                scene_name, case, terminal_bg_is_light=case.terminal_background_is_light
+            )
+            frames: dict[int, list[object]] = {}
+            for decision in decisions:
+                frames.setdefault(decision.frame_index, []).append(decision)
+            for frame_index, frame_decisions in frames.items():
+                lit_event_or_alarm = sum(
+                    1
+                    for d in frame_decisions
+                    if d.lit and d.tier in (FrequencyTier.EVENT, FrequencyTier.ALARM)
+                )
+                assert lit_event_or_alarm <= _E3_ROUTINE_ACCENT_CEILING, (
+                    scene_name,
+                    case,
+                    frame_index,
+                    frame_decisions,
+                )
+
+
 def test_generated_scene_alarm_decisions_are_never_demoted() -> None:
     """G-5: the failure scene's error-role frames must always be lit,
     regardless of colour depth or contention."""

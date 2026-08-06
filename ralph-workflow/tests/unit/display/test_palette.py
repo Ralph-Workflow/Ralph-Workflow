@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from itertools import pairwise
+from itertools import combinations, pairwise
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -189,6 +189,111 @@ def test_palette_cvd_separability() -> None:
                 assert sim1 != sim2, f"{r1} vs {r2} collapse under CVD simulation on {surface_hex}"
 
 
+#: S-2: role pairs that deliberately resolve to byte-identical hex on every
+#: surface because `ROLE_ANCHORS` assigns them the literal same `RoleAnchor`
+#: object by design -- not an accidental collision:
+#: - `diff_added`/`success` and `diff_removed`/`error` share their base
+#:   anchor because a diff row's added/removed colour IS the same semantic
+#:   pigment as success/error (E-6: the diff *fill* is what carries the
+#:   hue-tint distinction, not the anchor); the two never need to be
+#:   distinguished from each other by hue alone -- a diff row's fill
+#:   background already carries that distinction.
+#: - `foreground`/`agent_text` share their anchor because both are exactly
+#:   the same near-neutral Monokai Pro body-text pigment -- `agent_text` is
+#:   plain body text, not a state carrier (see its own comment in
+#:   `_palette.py`).
+_ALL_PAIRS_DELIBERATE_TWINS: frozenset[frozenset[str]] = frozenset(
+    {
+        frozenset({"success", "diff_added"}),
+        frozenset({"error", "diff_removed"}),
+        frozenset({"agent_text", "foreground"}),
+    }
+)
+
+#: S-2/C-3: an all-pairs sweep needs the *canonical* (concrete) surfaces --
+#: not the dual-safe fallback (`None`). The dual-safe band is narrow by
+#: construction (E-8) and normalises each role's placement by its raw
+#: reference offset across the *entire* role set, so two roles with a small
+#: offset gap (e.g. `running`/`info`, deliberately close because `running`
+#: is a small, documented nudge off `info` -- see S-1) can legitimately
+#: compress to the same or a barely-different dual-safe pixel. This mirrors
+#: `test_palette_quantised_separability`'s existing surface set, which
+#: excludes `None` for the same reason.
+_ALL_PAIRS_CANONICAL_SURFACES: tuple[str, ...] = ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF")
+
+
+def test_palette_all_role_pairs_stay_hex_and_cvd_separable() -> None:
+    """S-2: broaden C-3 coverage beyond a curated pair list -- every distinct
+    role in `ROLE_ANCHORS` must resolve to a different hex, and stay
+    disjoint under all three CVD simulations, from every other role (except
+    the documented deliberate twins above) on every canonical surface. This
+    catches a *future* accidental anchor collision automatically instead of
+    requiring a human to remember to add the pair to a curated list."""
+    matrices = (_DEUTERANOPIA_MATRIX, _PROTANOPIA_MATRIX, _TRITANOPIA_MATRIX)
+    roles = list(ROLE_ANCHORS.keys())
+    for surface_hex in _ALL_PAIRS_CANONICAL_SURFACES:
+        palette = resolve_palette(surface_hex)
+        for r1, r2 in combinations(roles, 2):
+            if frozenset({r1, r2}) in _ALL_PAIRS_DELIBERATE_TWINS:
+                continue
+            p1, p2 = palette[r1], palette[r2]
+            assert p1 != p2, f"{r1} vs {r2} resolve to identical hex on {surface_hex}"
+            for matrix in matrices:
+                assert simulate_cvd(p1, matrix) != simulate_cvd(p2, matrix), (
+                    f"{r1} vs {r2} collapse under CVD simulation on {surface_hex}"
+                )
+
+
+#: S-2: 256-colour quantisation is a coarse 6x6x6 sRGB cube (6 levels per
+#: channel) -- far coarser than truecolor or the CVD simulations above, so a
+#: handful of role pairs that stay cleanly separable everywhere else
+#: legitimately round to the same cube index on specific surfaces. Each
+#: entry here is a measured, characterized exception (same C-5 precedent as
+#: `_DOCUMENTED_256_COLOUR_EXCEPTIONS` above), not a silently-accepted
+#: regression: `chrome` collides with `info`/`running` on light/near-black
+#: surfaces because it deliberately shares their hue and reference
+#: lightness, differing only in a chroma cut too small for the 6-level cube
+#: to register (E-2); `pending`/`elision` collide on `#000000` because
+#: `elision`'s S-1 lightness nudge compresses at the darkest extreme of the
+#: gamut, where the cube's levels are sparsest. A future anchor change that
+#: removes one of these from the measured set must also remove it here
+#: rather than leaving it stale (mirrors
+#: ``test_palette_256_colour_depth_documented_exceptions_stay_pinned_and_close``).
+_ALL_PAIRS_256_COLOUR_EXCEPTIONS: frozenset[tuple[str, frozenset[str]]] = frozenset(
+    {
+        ("#1E1E1E", frozenset({"info", "running"})),
+        ("#FAF8F5", frozenset({"info", "running"})),
+        ("#FAF8F5", frozenset({"info", "chrome"})),
+        ("#FAF8F5", frozenset({"running", "chrome"})),
+        ("#000000", frozenset({"info", "chrome"})),
+        ("#000000", frozenset({"pending", "elision"})),
+        ("#FFFFFF", frozenset({"info", "running"})),
+        ("#FFFFFF", frozenset({"info", "chrome"})),
+        ("#FFFFFF", frozenset({"running", "chrome"})),
+    }
+)
+
+
+def test_palette_all_role_pairs_stay_quantised_separable_or_documented() -> None:
+    """S-2: every distinct role pair (excluding the deliberate twins) must
+    stay separable after 256-colour quantisation too, except the measured,
+    documented near-miss exceptions above -- so a *future* new collision
+    still fails loudly instead of silently joining an ever-growing
+    unexamined list."""
+    roles = list(ROLE_ANCHORS.keys())
+    for surface_hex in _ALL_PAIRS_CANONICAL_SURFACES:
+        palette = resolve_palette(surface_hex)
+        for r1, r2 in combinations(roles, 2):
+            pair = frozenset({r1, r2})
+            if pair in _ALL_PAIRS_DELIBERATE_TWINS:
+                continue
+            if (surface_hex, pair) in _ALL_PAIRS_256_COLOUR_EXCEPTIONS:
+                continue
+            q1 = _to_256_color(palette[r1])
+            q2 = _to_256_color(palette[r2])
+            assert q1 != q2, f"roles {r1} and {r2} collide in 256-color cube on {surface_hex}"
+
+
 def test_derive_preview_background_matches_theme_module() -> None:
     """DA-002: theme.py and _palette.py must derive the identical preview fill
     -- previously they disagreed because each carried its own light/dark
@@ -241,10 +346,7 @@ def test_role_anchors_hue_chroma_are_measured_not_literal() -> None:
         "warning": "#FC9867",
         "skipped": "#FFD866",
         "info": "#78DCE8",
-        "running": "#78DCE8",
         "pending": "#AB9DF2",
-        "analysis": "#AB9DF2",
-        "elision": "#AB9DF2",
         "agent_text": "#FCFCFA",
         "foreground": "#FCFCFA",
         "comment": "#727072",
@@ -299,6 +401,85 @@ def test_chrome_anchor_shares_info_hue_but_has_lower_documented_chroma() -> None
     assert chrome.l_ref == info_anchor.l_ref
     assert 0.0 < chrome.chroma <= TIER_2_CHROMA_BUDGET
     assert chrome.chroma < info_anchor.chroma
+
+
+def test_running_analysis_elision_anchors_are_derived_from_measured_twins_not_hand_typed() -> None:
+    """C-3's fix must still satisfy A-1: `running`/`analysis`/`elision` have
+    no Monokai Pro twin of their own (like `muted`/`chrome`), so every field
+    must trace to a measured anchor plus a documented nudge -- never a bare
+    literal."""
+    from ralph.display._palette import (
+        _ANALYSIS_L_REF_NUDGE,
+        _ELISION_L_REF_NUDGE,
+        _RUNNING_L_REF_NUDGE,
+    )
+
+    info_anchor = ROLE_ANCHORS["info"]
+    pending_anchor = ROLE_ANCHORS["pending"]
+    running = ROLE_ANCHORS["running"]
+    analysis = ROLE_ANCHORS["analysis"]
+    elision = ROLE_ANCHORS["elision"]
+
+    assert running.hue == info_anchor.hue
+    assert running.chroma == info_anchor.chroma
+    assert running.l_ref == info_anchor.l_ref - _RUNNING_L_REF_NUDGE
+
+    for role_anchor in (analysis, elision):
+        assert role_anchor.hue == pending_anchor.hue
+        assert role_anchor.chroma == pending_anchor.chroma
+    assert analysis.l_ref == pending_anchor.l_ref - _ANALYSIS_L_REF_NUDGE
+    assert elision.l_ref == pending_anchor.l_ref + _ELISION_L_REF_NUDGE
+
+
+#: C-3: the concrete surfaces (not the narrow dual-safe fallback -- see
+#: E-8/PLAN.md's non-goals for why the dual-safe band cannot carry a
+#: same-hue role pair's full separation) every role-collision pair below
+#: must stay separable on, matching the surface set
+#: ``test_palette_quantised_separability`` already uses.
+_C3_CANONICAL_SURFACES: tuple[str, ...] = ("#2D2A2E", "#1E1E1E", "#FAF8F5", "#000000", "#FFFFFF")
+
+#: C-3's minimum OKLab ΔE floor for the previously-colliding role pairs.
+#: Measured margins for the chosen nudges are 0.019 (analysis vs pending,
+#: worst CVD case) and up -- this floor sits comfortably below every
+#: measured margin so the test fails loudly if a future anchor change
+#: narrows the gap, without being so tight it is brittle to float noise.
+_C3_MIN_DELTA_E: float = 0.015
+
+
+def _oklab_delta_e(hex_a: str, hex_b: str) -> float:
+    import math
+
+    la, aa, ba = rgb_to_oklab(*hex_to_rgb(hex_a))
+    lb, ab, bb = rgb_to_oklab(*hex_to_rgb(hex_b))
+    return math.dist((la, aa, ba), (lb, ab, bb))
+
+
+def test_palette_c3_role_collision_pairs_stay_separable() -> None:
+    """C-3: `running`/`info` and `pending`/`analysis`/`elision` used to
+    resolve to byte-identical hex on every surface (ΔE = 0) because
+    `ROLE_ANCHORS` assigned them the literal same `RoleAnchor` object. Each
+    pair below must now clear a minimum perceptual distance -- on every
+    canonical surface, under all three CVD simulations, and after
+    256-colour quantisation -- so a live worker table's "running" state and
+    a streaming "info" log line (or "pending"/"analysis"/"elision" shown
+    together) are never carried by the identical pigment."""
+    from ralph.display._color_depth import quantise_hex
+
+    matrices = (_DEUTERANOPIA_MATRIX, _PROTANOPIA_MATRIX, _TRITANOPIA_MATRIX)
+    pairs = (("running", "info"), ("analysis", "pending"), ("elision", "pending"), ("analysis", "elision"))
+    for surface_hex in _C3_CANONICAL_SURFACES:
+        palette = resolve_palette(surface_hex)
+        for r1, r2 in pairs:
+            h1, h2 = palette[r1], palette[r2]
+            assert h1 != h2, f"{r1} vs {r2} collide on {surface_hex}"
+            de = _oklab_delta_e(h1, h2)
+            assert de >= _C3_MIN_DELTA_E, f"{r1} vs {r2} on {surface_hex}: ΔE {de:.4f} < {_C3_MIN_DELTA_E}"
+            q1, q2 = quantise_hex(h1, "256"), quantise_hex(h2, "256")
+            assert q1 != q2, f"{r1} vs {r2} on {surface_hex}: quantised collision {q1}"
+            for matrix in matrices:
+                sim1 = simulate_cvd(h1, matrix)
+                sim2 = simulate_cvd(h2, matrix)
+                assert sim1 != sim2, f"{r1} vs {r2} on {surface_hex}: CVD collision under {matrix}"
 
 
 def test_palette_monokai_fidelity_on_reference_surface() -> None:

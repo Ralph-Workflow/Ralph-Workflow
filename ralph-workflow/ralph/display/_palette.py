@@ -257,6 +257,14 @@ _comment_anchor: Final[RoleAnchor] = _anchor_of_hex("#727072")
 #: highest-salience failure keys (``theme.phase.failed``, ``theme.status.error``).
 #: ``FrequencyTier`` itself lives in :mod:`ralph.display._frequency_tier`,
 #: split out so this module keeps a single top-level class (``RoleAnchor``).
+#: DoD #3: this evidence is not left as prose -- the counting probe above
+#: is re-run as a live, regression-checked assertion in
+#: ``tests/unit/display/test_frequency_tier_evidence.py`` (not pinned to
+#: these exact historical counts, which would make it a brittle
+#: golden-number test, but to the directional property that must hold for
+#: the ordering above to mean anything: the busiest observed theme key is
+#: backed by a tier-1 role, and no tier-3/4 role's busiest key out-resolves
+#: it). Re-run that module directly to reproduce the counts cited above.
 
 #: E-1's tier-1 ("field") chroma budget ceiling: near-neutral, renders
 #: constantly.
@@ -321,21 +329,67 @@ _chrome_anchor: Final[RoleAnchor] = RoleAnchor(
     l_ref=_info_anchor.l_ref,
 )
 
+#: C-3: `running` shares `info`'s cool axis (both are the liveness/status
+#: pigment) but must stay perceptually separable from it -- before this
+#: nudge `ROLE_ANCHORS` assigned the literal same `_info_anchor` object to
+#: both, so a live worker table showing "running" next to a streaming
+#: info-level log line resolved to byte-identical hex on every surface
+#: (ΔE = 0), failing C-3's minimum-perceptual-distance requirement. Follows
+#: the `chrome` precedent immediately below (nudged off `info` by a fixed,
+#: documented amount rather than re-measured from an independent hex):
+#: `running` keeps `info`'s measured hue AND full measured chroma -- it
+#: stays a tier-3 event accent, not demoted toward the tier-2 structural
+#: budget -- and is nudged darker in `l_ref` by a fixed offset, sized (via
+#: the same measure-then-check method as every other nudge in this module)
+#: to clear 256-colour quantisation and all three CVD simulations on every
+#: canonical surface while staying well clear of its own 4.5:1 floor -- see
+#: ``test_palette_c3_role_collision_pairs_stay_separable`` in
+#: ``tests/unit/display/test_palette.py``.
+_RUNNING_L_REF_NUDGE: Final[float] = 0.06
+_running_anchor: Final[RoleAnchor] = RoleAnchor(
+    hue=_info_anchor.hue,
+    chroma=_info_anchor.chroma,
+    l_ref=_info_anchor.l_ref - _RUNNING_L_REF_NUDGE,
+)
+
+#: C-3: `analysis` and `elision` both shared the literal `_pending_anchor`
+#: object with `pending` (and therefore with each other) -- the same
+#: byte-identical-on-every-surface defect as `running`/`info` above.
+#: `pending` itself is left untouched (it is one of the six core Monokai
+#: Pro twins pinned bit-for-bit by
+#: ``test_palette_monokai_fidelity_on_reference_surface``); `analysis` and
+#: `elision` are nudged apart from `pending` -- and from each other -- in
+#: opposite `l_ref` directions, keeping `pending`'s measured hue and
+#: chroma unchanged, by fixed offsets sized the same way as
+#: ``_RUNNING_L_REF_NUDGE``.
+_ANALYSIS_L_REF_NUDGE: Final[float] = 0.12
+_ELISION_L_REF_NUDGE: Final[float] = 0.10
+_analysis_anchor: Final[RoleAnchor] = RoleAnchor(
+    hue=_pending_anchor.hue,
+    chroma=_pending_anchor.chroma,
+    l_ref=_pending_anchor.l_ref - _ANALYSIS_L_REF_NUDGE,
+)
+_elision_anchor: Final[RoleAnchor] = RoleAnchor(
+    hue=_pending_anchor.hue,
+    chroma=_pending_anchor.chroma,
+    l_ref=_pending_anchor.l_ref + _ELISION_L_REF_NUDGE,
+)
+
 ROLE_ANCHORS: Final[dict[str, RoleAnchor]] = {
     "success": _success_anchor,
     "error": _error_anchor,
     "warning": _warning_anchor,
     "skipped": _skipped_anchor,
     "info": _info_anchor,
-    "running": _info_anchor,
+    "running": _running_anchor,
     "pending": _pending_anchor,
-    "analysis": _pending_anchor,
+    "analysis": _analysis_anchor,
     # `agent_text` is body text, not a state carrier -- it takes the
     # `foreground` anchor's own hue/chroma/l_ref rather than duplicating
     # `info`'s, which is what makes it distinguishable from `chrome`.
     "agent_text": _agent_text_anchor,
     "chrome": _chrome_anchor,
-    "elision": _pending_anchor,
+    "elision": _elision_anchor,
     "muted": _muted_anchor,
     "diff_added": _success_anchor,
     "diff_removed": _error_anchor,
